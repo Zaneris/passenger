@@ -77,6 +77,48 @@ public sealed class PrettierService : IAsyncDisposable
     /// <summary>Whether a save formats the file with Prettier first ("Run on save").</summary>
     public bool OnSave(string path) => settings().PrettierOnSave && Covers(path) && PackageFor(path) is not null;
 
+    /// <summary>Prettier's configuration files, as Prettier looks for them from a file's folder up.</summary>
+    private static readonly string[] Configurations =
+    [
+        ".prettierrc", ".prettierrc.json", ".prettierrc.yaml", ".prettierrc.yml", ".prettierrc.json5", ".prettierrc.js", ".prettierrc.mjs",
+        ".prettierrc.cjs", ".prettierrc.ts", ".prettierrc.mts", ".prettierrc.cts", ".prettierrc.toml",
+        "prettier.config.js", "prettier.config.mjs", "prettier.config.cjs", "prettier.config.ts", "prettier.config.mts", "prettier.config.cts",
+    ];
+
+    /// <summary>Whether the folder names Prettier for a file, rather than having it installed alone: a Prettier configuration
+    /// from the file's folder up, or a package.json there that lists prettier or configures it (its <c>prettier</c> key),
+    /// in the person's folders (<see cref="FoldersUp"/>).</summary>
+    public static bool NamedFor(string path)
+    {
+        foreach (string at in Path.GetDirectoryName(path) is { } start ? FoldersUp.From(start) : [])
+        {
+            if (Configurations.Any(name => FoldersUp.Found(at, name) is { } found && File.Exists(found)))
+            {
+                return true;
+            }
+            if (FoldersUp.Found(at, "package.json") is { } manifest && File.Exists(manifest) && (ProjectPackages.Names(manifest, "prettier") || Configures(manifest)))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Whether a package.json holds a Prettier configuration of its own.</summary>
+    private static bool Configures(string manifest)
+    {
+        try
+        {
+            using JsonDocument read = JsonDocument.Parse(File.ReadAllText(manifest), LenientJson.Document);
+            return JsonMembers.Value(read.RootElement, "prettier") is not null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            // One being edited may not read yet: it configures nothing until it does.
+            return false;
+        }
+    }
+
     /// <summary>The nearest .prettierignore from the file's folder up, in the person's folders (<see cref="FoldersUp"/>),
     /// for when Settings names none.</summary>
     public static string? IgnoreFile(string path)

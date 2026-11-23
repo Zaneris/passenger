@@ -429,7 +429,7 @@ public partial class MainWindow
                     status.Text = message;
                 }
             };
-            web.Eslint.Browse += (_, page) =>
+            web.Tools.Browse += (_, page) =>
             {
                 if (session == next)
                 {

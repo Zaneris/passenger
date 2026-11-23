@@ -2,12 +2,15 @@
   "name": "passenger-test-node-packages",
   "version": "1.0.0",
   "private": true,
-  "description": "The project's own ESLint and Prettier (and Prettier 2, as prettier2) the tests put in a test folder's node_modules (EslintPrettierTests), Yarn, which lays out a test's Plug'n'Play project with no registry, and xterm.js run without a screen, which TerminalEmulationTests holds the terminal to, fetched at build by tools/Passenger.NodePackages; never carried by the app.",
+  "description": "The project's own ESLint and Prettier (and Prettier 2, as prettier2), Oxlint, Oxfmt and Biome the tests put in a test folder's node_modules (EslintPrettierTests), Yarn, which lays out a test's Plug'n'Play project with no registry, and xterm.js run without a screen, which TerminalEmulationTests holds the terminal to, fetched at build by tools/Passenger.NodePackages; never carried by the app.",
   "license": "MIT",
   "dependencies": {
+    "@biomejs/biome": "2.6.8",
     "@xterm/headless": "6.0.0",
     "@yarnpkg/cli-dist": "4.19.0",
     "eslint": "10.15.0",
+    "oxfmt": "0.80.0",
+    "oxlint": "1.95.0",
     "prettier": "3.10.1",
     "prettier2": "npm:prettier@2.8.8"
   }

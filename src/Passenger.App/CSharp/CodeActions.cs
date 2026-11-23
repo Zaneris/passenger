@@ -182,7 +182,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             return;
         }
         Selection primary = Editor.Selections.Primary;
-        IReadOnlyList<EslintFix> linted = [];
+        IReadOnlyList<LintFix> linted = [];
         IReadOnlyList<CodeAction> actions = [];
         if (context.Ask(own.Count > 0 ? null : what) is { } lsp && context.Current is { } current)
         {
@@ -192,7 +192,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
                 .ToList();
             try
             {
-                // ESLint's fixes for the line first, before the language's own.
+                // The linters' fixes for the line first, before the language's own.
                 linted = only is null ? await context.Languages.Web.LintFixes(document, primary.Caret) : [];
                 actions = [.. (await lsp.CodeActionsAsync(primary.Range, here)).Where(a => a.Disabled is null && (only?.Invoke(a) ?? true))];
             }
@@ -222,7 +222,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             {
                 case EditorFix fix:
                     return ApplyOwnFix(document, fix);
-                case EslintFix fix:
+                case LintFix fix:
                     return context.Languages.Web.RunLintFix(document, fix);
                 case CodeAction chosen:
                     return Carry(document, chosen, primary.Caret, chosen.Title, id, null);
@@ -998,9 +998,9 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     }
 
     /// <summary>Reformat Code on a file, the window's and an agent's alike, as one undoable edit, only <paramref name="within"/>
-    /// when given: XAML by Passenger's own layout, a web language by its project's Prettier where it formats it on Reformat
-    /// Code, else the language <paramref name="server"/> gives, asked for only then; a read-only file refused before any is
-    /// asked. Null with no server to ask, or once the file has closed.</summary>
+    /// when given: XAML by Passenger's own layout, a web language by the formatter its folder names (Oxfmt, Biome) or its
+    /// project's Prettier where it formats it on Reformat Code, else the language <paramref name="server"/> gives, asked for
+    /// only then; a read-only file refused before any is asked. Null with no server to ask, or once the file has closed.</summary>
     internal Task<Reformatted?> ReformatAsync(OpenDocument document, TextRange? within, Func<LspDocument?> server, CancellationToken cancel = default) =>
         ReformatAsync(document, within, () => Task.FromResult(server()), cancel);
 
@@ -1096,6 +1096,27 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return null;
         }
+        Reformatted done = Laid(document, asked, answer, what, within, whole);
+        return done.Applied && within is not null && whole ? done with { Said = $"{done.Said} the whole file: its language server formats no selection" } : done;
+    }
+
+    /// <summary>One of the folder's formatters' layout of a file (Oxfmt's, Biome's), always of the whole file, carried
+    /// through what was typed as it worked, applied; null where it lays none of the file out, or once the file has closed.</summary>
+    internal async Task<Reformatted?> ToolFormatAsync(Web.ToolDocument tool, OpenDocument document, string what, TextRange? within, CancellationToken cancel = default)
+    {
+        using ChangeTracker asked = new(document.Text);
+        if (await tool.FormatAsync(cancel) is not { } answer || !context.Editors.Documents.Contains(document))
+        {
+            return null;
+        }
+        Reformatted done = Laid(document, asked, answer, what, within, whole: true);
+        return done.Applied && within is not null ? done with { Said = $"{done.Said} the whole file: {tool.Tool.Name} formats no selection" } : done;
+    }
+
+    /// <summary>A server's layout of a file, in the text as <paramref name="asked"/> began, applied as one undoable edit:
+    /// <paramref name="within"/>'s own lines alone where it formatted only them.</summary>
+    private Reformatted Laid(OpenDocument document, ChangeTracker asked, IReadOnlyList<LspTextEdit> answer, string what, TextRange? within, bool whole)
+    {
         List<TextEdit> laid = WorkspaceEdits.Convert(asked.Snapshot, answer, asked.Document.LineEnding, document.Indentation.Options);
         if (within is { } kept && !whole)
         {
@@ -1103,8 +1124,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             laid.RemoveAll(e => e.Start >= kept.End);
         }
         // The server's edits that come to nothing in the file's line breaks and indentation are no reformat.
-        Reformatted done = Reformatted.Apply(context.Editors, document, asked, laid, what);
-        return done.Applied && within is not null && whole ? done with { Said = $"{done.Said} the whole file: its language server formats no selection" } : done;
+        return Reformatted.Apply(context.Editors, document, asked, laid, what);
     }
 
     /// <summary>The selection a file's reformatting keeps to: the editor's, when it shows the file and something is selected.</summary>

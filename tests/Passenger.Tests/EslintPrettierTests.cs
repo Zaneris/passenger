@@ -19,8 +19,8 @@ namespace Passenger.Tests;
 /// eslint.config.js, .prettierrc and .prettierignore: problems as typed and their fixes, Fix ESLint Problems, Prettier on
 /// Reformat Code and on save, .prettierignore honoured, the banner offering npm install for what is not installed,
 /// packages in a node_modules another user made above passed over, a Yarn Plug'n'Play project's packages found through its
-/// .pnp.cjs, and a Bun or Deno folder's servers run on its runtime. Each test opens its own window; one that cannot find
-/// Node.js skips, saying so.</summary>
+/// .pnp.cjs, a Bun or Deno folder's servers run on its runtime, and Oxlint with Oxfmt, and Biome, in folders that name
+/// them. Each test opens its own window; one that cannot find Node.js skips, saying so.</summary>
 public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Project>
 {
     private const string PreferConst = "ESLint: 'total' is never reassigned. Use 'const' instead. (prefer-const)";
@@ -54,6 +54,9 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         OpenWindows.CloseAll();
         Flow.Step(nameof(A_Bun_or_Deno_folder_runs_TypeScript_and_ESLint_on_its_runtime_with_no_Node_js_on_the_PATH),
             A_Bun_or_Deno_folder_runs_TypeScript_and_ESLint_on_its_runtime_with_no_Node_js_on_the_PATH);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_folder_naming_Oxlint_and_Oxfmt_gets_Oxlints_problems_and_fixes_and_Oxfmts_layout_on_Reformat_Code_and_on_save),
+            A_folder_naming_Oxlint_and_Oxfmt_gets_Oxlints_problems_and_fixes_and_Oxfmts_layout_on_Reformat_Code_and_on_save);
     }
 
     /// <summary>Prettier formats on Reformat Code and on save by the project's configuration, and a save lands whatever
@@ -69,6 +72,134 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         OpenWindows.CloseAll();
         Flow.Step(nameof(Save_saves_the_file_though_Prettiers_runner_ends_or_the_folder_closes_while_it_formats),
             Save_saves_the_file_though_Prettiers_runner_ends_or_the_folder_closes_while_it_formats);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_folder_naming_Biome_gets_its_problems_and_fixes_and_its_layout_on_Reformat_Code_and_on_save_rather_than_an_installed_Prettiers),
+            A_folder_naming_Biome_gets_its_problems_and_fixes_and_its_layout_on_Reformat_Code_and_on_save_rather_than_an_installed_Prettiers);
+    }
+
+    /// <summary>A folder whose package.json lists oxlint and oxfmt, with an .oxlintrc.json and an .oxfmtrc.json: Oxlint's
+    /// problem shows as typed, in Problems too, its fix makes it go, and Oxfmt lays the file out on Reformat Code and, with
+    /// Reformat on save, on save, each by the folder's own configuration.</summary>
+    private void A_folder_naming_Oxlint_and_Oxfmt_gets_Oxlints_problems_and_fixes_and_Oxfmts_layout_on_Reformat_Code_and_on_save()
+    {
+        Project.SkipWithoutNode();
+        Project.SkipWithout("Oxlint", "@oxlint");
+        string folder = TestFolders.Create("oxc-");
+        Project.Write(folder,
+            ("package.json", "{\n  \"name\": \"oxc-client\",\n  \"private\": true,\n  \"devDependencies\": {\n"
+                + $"    \"oxfmt\": \"{Project.VersionOf("oxfmt")}\",\n    \"oxlint\": \"{Project.VersionOf("oxlint")}\"\n  }}\n}}\n"),
+            (".oxlintrc.json", "{\n  \"rules\": { \"prefer-const\": \"error\" }\n}\n"),
+            (".oxfmtrc.json", "{ \"semi\": false, \"singleQuote\": true }\n"),
+            ("src/app.js", Project.App));
+        Project.CopyPackages(folder, "oxlint", "@oxlint", "oxfmt", "@oxfmt", "tinypool");
+        MainWindow window = Ui.OpenFolder(folder, autosaves: false);
+        try
+        {
+            string path = Path.Combine(PathNames.Canonical(folder), "src", "app.js");
+            window.OpenFile(path);
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            OpenDocument document = window.EditorArea.Active!;
+            Ui.PlaceAfter(editor, "console.log(items);");
+            Ui.Press(window, "ENTER");
+            window.KeyTextInput("let total = items.length;");
+            Ui.Press(window, "ENTER");
+            window.KeyTextInput("console.log(total);");
+            static bool Oxlints(Marker m) => m.Message.StartsWith("Oxlint: `total` is never reassigned.", StringComparison.Ordinal) && m.Message.EndsWith("(eslint(prefer-const))", StringComparison.Ordinal);
+            Ui.WaitFor(() => document.Markers.Any(Oxlints), "Oxlint's problem under the let never assigned again, as it is typed");
+            Marker problem = Assert.Single(document.Markers, Oxlints);
+            Assert.Equal(MarkerKind.Error, problem.Kind);
+            Assert.Equal("total", editor.Document.Snapshot.GetText(problem.Range.Start, problem.Range.Length));
+            window.Perform(AppActions.ShowProblems);
+            Ui.Settle();
+            Assert.Contains(window.BottomPanel.Problems.FileProblems, p => p.Message == problem.Message);
+
+            Ui.PlaceAfter(editor, "let tot");
+            Ui.Run(window, AppActions.QuickFix);
+            Ui.WaitFor(() => window.Assist.Offered.Count > 0, "the fixes for the line");
+            Assert.StartsWith("Oxlint: Replace `let total = items.length;` with `const total", window.Assist.Offered[0], StringComparison.Ordinal);
+            Assert.Contains("Oxlint: Fix current file", window.Assist.Offered);
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("const total = items.length;", StringComparison.Ordinal), "the let made a const by Oxlint's fix");
+            Ui.WaitFor(() => !document.Markers.Any(Oxlints), "the problem gone once the code is fixed");
+
+            editor.ApplyEdits([new TextEdit(editor.Document.Snapshot.Length, 0, "const  label = {name:\"tea\"};\n")]);
+            Ui.Run(window, AppActions.Reformat);
+            Ui.WaitFor(() => editor.Document.Snapshot.ToString().EndsWith("console.log(total)\nconst label = { name: 'tea' }\n", StringComparison.Ordinal),
+                "the file laid out by Oxfmt as its .oxfmtrc.json asks, with no semicolons and single quotes");
+
+            window.ApplySettings(window.Settings with { ReformatOnSave = true });
+            editor.ApplyEdits([new TextEdit(editor.Document.Snapshot.Length, 0, "const  more = [1,2];\n")]);
+            Assert.True(window.Perform(AppActions.Save), "Save did not run");
+            Ui.WaitFor(() => !document.IsModified, "app.js saved");
+            Assert.EndsWith("const label = { name: 'tea' }\nconst more = [1, 2]\n", File.ReadAllText(path), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    /// <summary>A folder with a biome.json whose package.json lists Biome, with Prettier installed beside it but named
+    /// nowhere: Biome's problem shows as typed, its fix (which its server gives only once chosen) makes it go, and Biome,
+    /// not Prettier, lays the file out on Reformat Code and on save by biome.json.</summary>
+    private void A_folder_naming_Biome_gets_its_problems_and_fixes_and_its_layout_on_Reformat_Code_and_on_save_rather_than_an_installed_Prettiers()
+    {
+        Project.SkipWithoutNode();
+        Project.SkipWithout("Biome", "@biomejs", "cli-");
+        string folder = TestFolders.Create("biome-");
+        Project.Write(folder,
+            ("package.json", "{\n  \"name\": \"biome-client\",\n  \"private\": true,\n  \"devDependencies\": {\n"
+                + $"    \"@biomejs/biome\": \"{Project.VersionOf("@biomejs/biome")}\"\n  }}\n}}\n"),
+            ("biome.json", "{\n  \"linter\": { \"rules\": { \"style\": { \"useConst\": \"error\" } } },\n  \"formatter\": { \"indentStyle\": \"space\" },\n"
+                + "  \"javascript\": { \"formatter\": { \"semicolons\": \"asNeeded\", \"quoteStyle\": \"single\" } }\n}\n"),
+            ("src/app.js", Project.App));
+        Project.CopyPackages(folder, "@biomejs", "prettier");
+        MainWindow window = Ui.OpenFolder(folder, autosaves: false);
+        try
+        {
+            string path = Path.Combine(PathNames.Canonical(folder), "src", "app.js");
+            window.OpenFile(path);
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            OpenDocument document = window.EditorArea.Active!;
+            Ui.PlaceAfter(editor, "console.log(items);");
+            Ui.Press(window, "ENTER");
+            window.KeyTextInput("let total = items.length;");
+            Ui.Press(window, "ENTER");
+            window.KeyTextInput("console.log(total);");
+            const string UseConst = "Biome: This let declares a variable that is only assigned once. (lint/style/useConst)";
+            Ui.WaitFor(() => document.Markers.Any(m => m.Message == UseConst), "Biome's problem under the let never assigned again, as it is typed");
+            Marker problem = Assert.Single(document.Markers, m => m.Message == UseConst);
+            Assert.Equal(MarkerKind.Error, problem.Kind);
+            Assert.Equal("https://biomejs.dev/linter/rules/use-const", problem.Link?.AbsoluteUri);
+
+            Ui.PlaceAfter(editor, "let tot");
+            Ui.Run(window, AppActions.QuickFix);
+            Ui.WaitFor(() => window.Assist.Offered.Count > 0, "the fixes for the line");
+            Assert.StartsWith("Biome: ", window.Assist.Offered[0], StringComparison.Ordinal);
+            Assert.Contains("Biome: Fix current file", window.Assist.Offered);
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("const total = items.length", StringComparison.Ordinal), "the let made a const by Biome's fix");
+            Ui.WaitFor(() => !document.Markers.Any(m => m.Message == UseConst), "the problem gone once the code is fixed");
+
+            editor.ApplyEdits([new TextEdit(editor.Document.Snapshot.Length, 0, "const  label = {name:\"tea\"};\n")]);
+            Ui.Run(window, AppActions.Reformat);
+            Ui.WaitFor(() => editor.Document.Snapshot.ToString().EndsWith("console.log(total)\nconst label = { name: 'tea' }\n", StringComparison.Ordinal),
+                "the file laid out by Biome as its biome.json asks, with no semicolons and single quotes, not by the Prettier installed beside it");
+
+            window.ApplySettings(window.Settings with { ReformatOnSave = true, PrettierOnSave = true });
+            editor.ApplyEdits([new TextEdit(editor.Document.Snapshot.Length, 0, "const  more = [1,2];\n")]);
+            Assert.True(window.Perform(AppActions.Save), "Save did not run");
+            Ui.WaitFor(() => !document.IsModified, "app.js saved");
+            Assert.EndsWith("const label = { name: 'tea' }\nconst more = [1, 2]\n", File.ReadAllText(path), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
     }
 
     /// <summary>ESLint's problem shows as typed, with its rule's page, and its fix, which ESLint's server makes by handing
@@ -608,6 +739,11 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
 
         private readonly List<string> added = [];
 
+        /// <summary>The tests' packages a project of Oxlint, Oxfmt or Biome takes, which the ESLint and Prettier project leaves out.</summary>
+        private static readonly string[] Others = ["oxlint", "@oxlint", "oxfmt", "@oxfmt", "tinypool", "@biomejs"];
+
+        private static string Packages => Path.Combine(AppContext.BaseDirectory, "node-packages", "node_modules");
+
         private static readonly (string Path, string Text)[] Files =
         [
             ("package.json", Package),
@@ -624,9 +760,11 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
             Folder = TestFolders.Create("lint-");
             TestFolders.Prepare(() =>
             {
-                string packages = Path.Combine(AppContext.BaseDirectory, "node-packages", "node_modules");
-                Assert.True(Directory.Exists(Path.Combine(packages, "eslint")), $"The tests' own eslint and prettier are not at {packages}: the build puts them there");
-                CopyFolder(packages, Path.Combine(Folder, "node_modules"));
+                Assert.True(Directory.Exists(Path.Combine(Packages, "eslint")), $"The tests' own eslint and prettier are not at {Packages}: the build puts them there");
+                foreach (string package in Directory.EnumerateDirectories(Packages).Where(d => !Others.Contains(Path.GetFileName(d))))
+                {
+                    CopyFolder(package, Path.Combine(Folder, "node_modules", Path.GetFileName(package)));
+                }
                 Reset();
             }, Folder);
         }
@@ -726,6 +864,33 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         {
             NodeRuntime node = await NodeRuntime.FindAsync(null);
             return node.Problem ?? node.TooOldFor(Path.Combine(AppContext.BaseDirectory, "node-packages", "node_modules", "eslint", "package.json"), "ESLint");
+        }
+
+        /// <summary>Skips a test where the tests' packages hold no build of a tool for this system (a folder under
+        /// <paramref name="scope"/>, its name starting <paramref name="prefix"/>), which the build fetches only where npm has one.</summary>
+        public static void SkipWithout(string tool, string scope, string prefix = "binding-") =>
+            Assert.SkipWhen(!Directory.Exists(Path.Combine(Packages, scope)) || !Directory.EnumerateDirectories(Path.Combine(Packages, scope), prefix + "*").Any(),
+                $"{tool} has no build for this system among the tests' packages ({Path.Combine(Packages, scope)}), so it cannot run here");
+
+        /// <summary>Files written into a test's folder, by their paths from it.</summary>
+        public static void Write(string folder, params (string Path, string Text)[] files)
+        {
+            foreach ((string path, string text) in files)
+            {
+                string full = Path.Combine(folder, path);
+                Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+                File.WriteAllText(full, text);
+            }
+        }
+
+        /// <summary>Some of the tests' packages (top-level folders of node_modules, a scope's whole) copied into a folder's
+        /// node_modules.</summary>
+        public static void CopyPackages(string folder, params string[] packages)
+        {
+            foreach (string package in packages)
+            {
+                CopyFolder(Path.Combine(Packages, package), Path.Combine(folder, "node_modules", package));
+            }
         }
 
         private static void CopyFolder(string from, string to)

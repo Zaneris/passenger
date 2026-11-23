@@ -223,9 +223,10 @@ public sealed partial class PassengerTools
         return $"Renamed {old} to {newName} in {Relative(document.Path)}{(runs == 0 ? string.Empty : $", and in {Plural.Of(runs, "script")} that {Plural.Agreeing(runs, "runs", "run")} it")}";
     }
 
-    /// <summary>ESLint's fixes for the problems on a web file's line, which Show Context Actions lists first, once the file's
-    /// checks have answered its text (its server's fixes are asked by them too); none where ESLint does not check the file.</summary>
-    private async Task<IReadOnlyList<EslintFix>> LintFixes(Served served, int offset, CancellationToken cancel)
+    /// <summary>The linters' fixes for the problems on a web file's line (ESLint's, Oxlint's, Biome's), which Show Context
+    /// Actions lists first, once the file's checks have answered its text (its server's fixes are asked by them too); none
+    /// where no linter checks the file.</summary>
+    private async Task<IReadOnlyList<LintFix>> LintFixes(Served served, int offset, CancellationToken cancel)
     {
         if (served is not ServerServed { Web: not null })
         {
@@ -235,20 +236,16 @@ public sealed partial class PassengerTools
         return await window.Assist.Languages.Web.LintFixes(served.Document, offset);
     }
 
-    /// <summary>One of ESLint's fixes made, as choosing it makes it: its server's command, which hands the window its edit
-    /// before it answers (<see cref="ServerCommands"/>); the file saved.</summary>
-    private async Task<string> ApplyLintFix(ServerServed web, EslintFix fix)
+    /// <summary>One of a linter's fixes made, as choosing it makes it: its edit, then its server's command, which hands the
+    /// window its edit before it answers (<see cref="ServerCommands"/>); the file saved.</summary>
+    private async Task<string> ApplyLintFix(ServerServed web, LintFix fix)
     {
         if (fix.OpensDocumentation)
         {
             return $"'{fix.Title}' opens the rule's page in a browser, and changes nothing";
         }
-        if (Session.Web?.Eslint.For(web.Document) is not { } lint)
-        {
-            throw new InvalidOperationException($"'{fix.Title}' was not applied: ESLint no longer checks {Path.GetFileName(web.Document.Path)}");
-        }
         int version = web.Document.Text.Version;
-        RefactorOutcome made = await ServerCommands.RunAsync(Editors, fix.Title, $"'{fix.Title}'", null, run => lint.RunAsync(fix, run), null, null, null);
+        RefactorOutcome made = await WebAssist.MakeLintFixAsync(Editors, web.Document, fix, $"'{fix.Title}'", null);
         if (made.Problem is not null)
         {
             throw new InvalidOperationException(made.Problem);

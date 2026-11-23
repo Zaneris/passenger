@@ -337,7 +337,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     [McpServerTool(Name = McpTools.Diagnostics, Title = "Errors and warnings", ReadOnly = true), Description(
         "A file's errors, warnings and notes as the editor marks them, fresh: C#'s from the language server (its messages too), any " +
         "other's once its checks have run (XAML's, an MSBuild file's evaluation and NuGet advisories, a web language's server " +
-        "and ESLint). With no path, or a folder's, what the Problems window lists beyond a file's (within it): toolset (each " +
+        "and the folder's linters). With no path, or a folder's, what the Problems window lists beyond a file's (within it): toolset (each " +
         "project's load warnings and errors), build (the last build's, whoever started it) and solution (every file's, while " +
         "settings' solutionWideAnalysis is on), errors first, by file, at most 200 in all; project (a name) narrows these. " +
         "severity (error, warning, info, hint) narrows either.")]
@@ -995,7 +995,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "The fixes and refactorings offered at a position (Show Context Actions), or over a selection to endLine:endColumn (Extract " +
         "Method, Introduce Variable), as 'title [kind]' with the choices each offers (nested actions, a Fix All's scopes, where " +
         "a XAML resource goes), which apply_code_action takes: Passenger's own fixes first (a GDScript's are all Passenger's), then " +
-        "ESLint's, then the language server's; in XAML, the line's problems' fixes (a binding's missing property or command, a missing converter), Extract " +
+        "the folder's linters' (ESLint's, Oxlint's, Biome's), then the language server's; in XAML, the line's problems' fixes (a binding's missing property or command, a missing converter), Extract " +
         "Resource and Extract Style. A Suppress or Configure action's choices are counted, and listed when title names it.")]
     public Task<IReadOnlyList<string>> CodeActions(string path, int line, int column, int? endLine = null, int? endColumn = null, string? title = null,
         CancellationToken cancel = default) => OnUi(cancel, async () =>
@@ -1035,7 +1035,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             default:
                 int offset = Offset(served.Document, line, column);
                 await AspireMarked(served, cancel);
-                IReadOnlyList<EslintFix> linted = await LintFixes(served, offset, cancel);
+                IReadOnlyList<LintFix> linted = await LintFixes(served, offset, cancel);
                 listed = [.. (await window.Assist.OwnFixesAsync(served.Document, offset)).Select(f => (f.Title, $"{f.Title} [quickfix]")),
                     .. linted.Select(f => (f.Title, f.Action.Kind is { Length: > 0 } kind ? $"{f.Title} [{kind}]" : f.Title)),
                     .. (await Actions((ServerServed)served, line, column, endLine, endColumn)).Select(a => (a.Title, Described(a, all: title is not null)))];
@@ -1102,7 +1102,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             return await ApplyOwnFix(served.Document, own, patience, name);
         }
-        IReadOnlyList<EslintFix> linted = await LintFixes(served, offset, cancel);
+        IReadOnlyList<LintFix> linted = await LintFixes(served, offset, cancel);
         if (linted.FirstOrDefault(f => f.Title == title) is { } lint)
         {
             return await ApplyLintFix(server, lint);
@@ -1225,7 +1225,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     [McpServerTool(Name = McpTools.Format, Title = "Reformat a file", Destructive = true), Description(
         "Reformats a file as Reformat Code does, and saves it: XAML by its .editorconfig, GDScript by Godot's style guide, a " +
         ".feature file by its gherkin_* editorconfig keys, a web " +
-        "language by the project's Prettier where it formats it, else the language server. MSBuild files have none.")]
+        "language by the formatter its folder names (Oxfmt, Biome) or its Prettier where it formats it, else the language server. MSBuild files have none.")]
     public Task<string> Format(string path, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         if (Resolve(path) is { } full && !Reaches(full, changes: true))

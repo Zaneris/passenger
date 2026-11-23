@@ -179,11 +179,20 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         return true;
     }
 
-    /// <summary>Prettier's "Run on 'Reformat Code' action", for any file it formats, only <paramref name="within"/> when
-    /// given: one its .prettierignore names, or of a type it does not format, goes to its language server.</summary>
+    /// <summary>The folder's formatter for a file: one its configuration names (Oxfmt, Biome) where it lays the file out,
+    /// else Prettier's "Run on 'Reformat Code' action", for any file it formats, only <paramref name="within"/> when given:
+    /// one its .prettierignore names, or of a type it does not format, goes to its language server.</summary>
     public override async Task<CodeActions.Reformatted?> FormatAsync(OpenDocument document, TextRange? within)
     {
-        if (!PrettierReformats(document) || context.Web?.Invoke() is not { } web)
+        if (context.Web?.Invoke() is not { } web)
+        {
+            return null;
+        }
+        if (await FormatWithToolsAsync(web, document, "Reformat Code", within) is { } laid)
+        {
+            return laid;
+        }
+        if (!PrettierReformats(document))
         {
             return null;
         }

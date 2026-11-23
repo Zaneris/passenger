@@ -82,7 +82,8 @@ public static class ProjectPackages
         }
     }
 
-    private static bool Names(string manifest, string name)
+    /// <summary>Whether a package.json lists a package among what <c>npm install</c> installs.</summary>
+    public static bool Names(string manifest, string name)
     {
         try
         {

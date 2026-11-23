@@ -279,13 +279,15 @@ Packages the build or the tests use that no app carries.
 | `Microsoft.Bcl.AsyncInterfaces`, `Microsoft.Win32.Registry` | the test platform's | MIT | © Microsoft Corporation. All rights reserved. |
 | `vpk` | Velopack's packer, a .NET tool at the version `dotnet-tools.json` pins, which builds the Windows installer (`tools/package-win.sh`). It carries others' programs under their own terms for what Passenger's installer does not use or carry: Microsoft's signtool and Azure Artifact Signing client, which sign it only when signing is asked for (the Windows SDK's and Microsoft's terms), WiX (MS-RL) for MSI packages, and zstd (BSD-3-Clause or GPL-2.0) | MIT | Copyright © Velopack Ltd. All rights reserved. |
 
-### The tests' own ESLint, Prettier, Yarn and xterm.js
+### The tests' own ESLint, Prettier, Oxlint, Oxfmt, Biome, Yarn and xterm.js
 
-The npm packages `EslintPrettierTests` put in a test folder's node_modules as a project's own ESLint and Prettier, the
-Yarn it lays a Plug'n'Play project out with, and the terminal `TerminalEmulationTests` holds Passenger's terminal to:
+The npm packages `EslintPrettierTests` put in a test folder's node_modules as a project's own ESLint, Prettier, Oxlint,
+Oxfmt and Biome, the Yarn it lays a Plug'n'Play project out with, and the terminal `TerminalEmulationTests` holds
+Passenger's terminal to:
 `tests/Passenger.Tests/NodePackages/package.json` pins them and `package-lock.json` everything they bring, each with
 its tarball's sha512, which the tests' build checks as `tools/Passenger.NodePackages` puts them in the tests' output
-(`node-packages/`). No app carries them, and no test fetches them from npm. Each is named by its npm name, with the
+(`node-packages/`), of a package for some systems only the one for the system it builds on. No app carries them, and no
+test fetches them from npm. Each is named by its npm name, with the
 licence its package.json states and the copyright line its licence file (else its source) carries, else its author.
 `tools/check-notices.py` fails naming any package the lock file pins that is not named here.
 
@@ -295,6 +297,11 @@ licence its package.json states and the copyright line its licence file (else it
 | `@xterm/headless` | xterm.js with no screen, the terminal Passenger's own is compared with, output for output | MIT | Copyright (c) 2014-2020 The xterm.js authors; Copyright (c) 2012-2013, Christopher Jeffrey; Copyright (c) 2011 Fabrice Bellard (as its source carries them; it has no licence file) |
 | `prettier`, `prettier2` (Prettier 2.8.8, under npm's alias) | the project's own Prettier, 3 and 2, which Passenger's Prettier runner formats with | MIT | Copyright © James Long and contributors |
 | `@yarnpkg/cli-dist` | Yarn, which lays a test's Plug'n'Play project out offline, its packages the tests' own; its one bundled file carries the code of the packages it is built from under their own notices | BSD-2-Clause | no licence file or copyright line of its own; its repository's (yarnpkg/berry) licence: Copyright (c) 2016-present, Yarn Contributors |
+| `oxlint`, `oxfmt` | the project's own Oxlint and Oxfmt, whose language servers Passenger runs | MIT | Copyright (c) 2024-present VoidZero Inc. & Contributors; Copyright (c) 2023 Boshen |
+| `@oxlint/binding-android-arm-eabi`, `@oxlint/binding-android-arm64`, `@oxlint/binding-darwin-arm64`, `@oxlint/binding-darwin-x64`, `@oxlint/binding-freebsd-x64`, `@oxlint/binding-linux-arm-gnueabihf`, `@oxlint/binding-linux-arm-musleabihf`, `@oxlint/binding-linux-arm64-gnu`, `@oxlint/binding-linux-arm64-musl`, `@oxlint/binding-linux-ppc64-gnu`, `@oxlint/binding-linux-riscv64-gnu`, `@oxlint/binding-linux-riscv64-musl`, `@oxlint/binding-linux-s390x-gnu`, `@oxlint/binding-linux-x64-gnu`, `@oxlint/binding-linux-x64-musl`, `@oxlint/binding-openharmony-arm64`, `@oxlint/binding-win32-arm64-msvc`, `@oxlint/binding-win32-ia32-msvc`, `@oxlint/binding-win32-x64-msvc`, `@oxfmt/binding-android-arm-eabi`, `@oxfmt/binding-android-arm64`, `@oxfmt/binding-darwin-arm64`, `@oxfmt/binding-darwin-x64`, `@oxfmt/binding-freebsd-x64`, `@oxfmt/binding-linux-arm-gnueabihf`, `@oxfmt/binding-linux-arm-musleabihf`, `@oxfmt/binding-linux-arm64-gnu`, `@oxfmt/binding-linux-arm64-musl`, `@oxfmt/binding-linux-ppc64-gnu`, `@oxfmt/binding-linux-riscv64-gnu`, `@oxfmt/binding-linux-riscv64-musl`, `@oxfmt/binding-linux-s390x-gnu`, `@oxfmt/binding-linux-x64-gnu`, `@oxfmt/binding-linux-x64-musl`, `@oxfmt/binding-openharmony-arm64`, `@oxfmt/binding-win32-arm64-msvc`, `@oxfmt/binding-win32-ia32-msvc`, `@oxfmt/binding-win32-x64-msvc` | Oxlint's and Oxfmt's native code, each for one system | MIT | no licence file; its author: Boshen and oxc contributors |
+| `tinypool` | Oxfmt's | MIT | Copyright (c) 2020 James M Snell and the Piscina contributors |
+| `@biomejs/biome` | the project's own Biome, whose language server Passenger runs | MIT OR Apache-2.0 | Copyright (c) 2023 Biome Developers and Contributors. |
+| `@biomejs/cli-android-arm64`, `@biomejs/cli-android-x64`, `@biomejs/cli-darwin-arm64`, `@biomejs/cli-darwin-x64`, `@biomejs/cli-linux-arm64`, `@biomejs/cli-linux-arm64-musl`, `@biomejs/cli-linux-x64`, `@biomejs/cli-linux-x64-musl`, `@biomejs/cli-win32-arm64`, `@biomejs/cli-win32-x64` | Biome's program, each for one system | MIT OR Apache-2.0 | no licence file or author; its repository is biomejs/biome, as `@biomejs/biome`'s |
 | `@eslint/config-array`, `@eslint/core`, `@eslint/object-schema`, `@eslint/plugin-kit`, `@humanfs/core`, `@humanfs/node`, `@humanfs/types` | eslint's configuration, rules and file system | Apache-2.0 | no copyright line; its author: Nicholas C. Zakas |
 | `@eslint/config-helpers` | eslint's configuration | Apache-2.0 | no copyright line or author; its repository is eslint/rewrite |
 | `@humanwhocodes/module-importer`, `@humanwhocodes/retry` | eslint's | Apache-2.0 | no copyright line; its author: Nicholas C. Zaks (as it is written) |

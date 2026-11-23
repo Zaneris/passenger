@@ -48,7 +48,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
     private const string TsServerRequest = "typescript.tsserverRequest";
 
     /// <summary>The file's markers from the container engine's checks (BuildKit's of a Dockerfile, Compose's of a compose
-    /// file), which the editor shows with its own server's and ESLint's.</summary>
+    /// file), which the editor shows with its own server's and its linters'.</summary>
     private readonly AnchoredList<Marker> engine = new(m => m.Range, (m, range) => m with { Range = range });
 
     /// <summary>A GDScript's marks from Passenger's own reading of it (<see cref="Godot.GodotScriptTypes"/>), shown until its
@@ -112,11 +112,23 @@ public sealed class WebDocument : IServerDocument, IDisposable
 
     public IReadOnlyList<Diagnostic> Diagnostics => diagnostics.Placed;
 
-    /// <summary>ESLint's share of the file, while ESLint checks it.</summary>
-    public EslintDocument? Lint { get; set; }
+    /// <summary>The file's share of each of the folder's tools that serves it (ESLint, Oxlint, Biome, Oxfmt), in the order
+    /// their problems are listed (<see cref="FolderTools"/>).</summary>
+    public List<ToolDocument> Tools { get; } = [];
 
-    /// <summary>ESLint's problems changed (<see cref="EslintDocument.Markers"/>): shown with the server's own.</summary>
+    /// <summary>A linter's problems changed (<see cref="ToolDocument.Markers"/>): shown with the server's own.</summary>
     public void ShowLint() => document.Markers = Shown();
+
+    /// <summary>The markers of every linter that checks the file, in the order of their starts.</summary>
+    private IReadOnlyList<Marker> Linted()
+    {
+        IReadOnlyList<Marker> linted = [];
+        foreach (ToolDocument tool in Tools)
+        {
+            linted = Merged(linted, tool.Markers);
+        }
+        return linted;
+    }
 
     /// <summary>The container engine's checks of the file as it stands, shown with the server's own
     /// (<see cref="Containers.EngineChecks"/>).</summary>
@@ -149,7 +161,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
     private IReadOnlyList<Marker> Shown()
     {
         IReadOnlyList<Marker> own = spoken || passengers.Count == 0 ? diagnostics.Markers : Merged(diagnostics.Markers, passengers.Items);
-        IReadOnlyList<Marker> lint = Lint?.Markers ?? [];
+        IReadOnlyList<Marker> lint = Linted();
         if (engine.Count == 0)
         {
             return Merged(own, lint);

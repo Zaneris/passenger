@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Passenger.App.Editors;
 using Passenger.App.Web;
 using Passenger.App.Workspace;
 using Passenger.Lsp;
@@ -8,14 +9,14 @@ using Passenger.Core;
 
 namespace Passenger.App.CSharp;
 
-/// <summary>ESLint's fixes and Prettier's formatting: Show Context Actions lists ESLint's fixes for the caret's line
-/// first ("ESLint: Fix 'prefer-const'"), Fix ESLint Problems fixes the whole file as <c>eslint --fix</c> would,
-/// Reformat Code formats with Prettier the files its glob covers (Reformat with Prettier any file it reads), and an
-/// explicit save runs both first as Settings ask. Each is one undoable edit, the caret kept where the code it was in
-/// went.</summary>
+/// <summary>The folder's linters' fixes and its formatters' layout: Show Context Actions lists the fixes of ESLint, Oxlint
+/// and Biome for the caret's line first ("ESLint: Fix 'prefer-const'"), Fix ESLint Problems fixes the whole file as
+/// <c>eslint --fix</c> would, Reformat Code lays a file out with the formatter the folder names for it (Oxfmt, Biome) or
+/// with Prettier for the files its glob covers (Reformat with Prettier any file it reads), and an explicit save runs ESLint's
+/// fixes and Prettier first as Settings ask. Each is one undoable edit, the caret kept where the code it was in went.</summary>
 internal sealed partial class WebAssist
 {
-    private EslintDocument? LintOf(OpenDocument document) => context.Web?.Invoke()?.Eslint.For(document);
+    private ToolDocument? LintOf(OpenDocument document) => context.Web?.Invoke()?.Tools.For(document, WebTool.Eslint);
 
     /// <summary>Reformat with Prettier and Fix ESLint Problems, in the editor's menu.</summary>
     public void AddLintingActions(ActionRegistry registry)
@@ -40,43 +41,72 @@ internal sealed partial class WebAssist
     /// <summary>Whether Reformat Code formats a file with Prettier ("Run on 'Reformat Code' action").</summary>
     internal bool PrettierReformats(OpenDocument? file) => file is not null && context.Web?.Invoke()?.Prettier.OnReformat(file.Path) == true;
 
-    /// <summary>ESLint's fixes for the problems on the caret's line; none when ESLint does not check the file.</summary>
-    internal async Task<IReadOnlyList<EslintFix>> LintFixes(OpenDocument document, int caret)
+    /// <summary>Whether Reformat Code lays a file out with one of the folder's formatters, Prettier or one its configuration
+    /// names, rather than its language server.</summary>
+    internal bool FolderReformats(OpenDocument? file) => PrettierReformats(file) || file is not null && context.Web?.Invoke() is { } web && FormattersOf(web, file).Count > 0;
+
+    /// <summary>The formatters the folder names for a file beside Prettier, in the order Reformat Code asks them: Oxfmt, then
+    /// Biome, which leaves to Prettier a file the folder names Prettier for too (Biome then its linter alone).</summary>
+    private static IReadOnlyList<ToolDocument> FormattersOf(WebLanguages web, OpenDocument document)
     {
-        if (LintOf(document) is not { } lint)
-        {
-            return [];
-        }
-        try
-        {
-            return await lint.FixesAsync(caret);
-        }
-        catch (LanguageServerFailed)
-        {
-            // The server's own actions are still offered.
-            return [];
-        }
+        IReadOnlyList<ToolDocument> tools = web.Tools.For(document);
+        return [.. ((WebTool[])[WebTool.Oxfmt, WebTool.Biome])
+            .Where(t => t != WebTool.Biome || !web.Prettier.OnReformat(document.Path) || !PrettierService.NamedFor(document.Path))
+            .Select(t => tools.FirstOrDefault(d => d.Tool == t)).OfType<ToolDocument>()];
     }
 
-    /// <summary>One of ESLint's fixes chosen: made by its server's command, which hands the window its edit
-    /// (<see cref="ServerCommands"/>); its rule's page opened for the documentation.</summary>
-    internal async Task RunLintFix(OpenDocument document, EslintFix fix)
+    /// <summary>A file laid out by the first of the folder's formatters that formats it (<see cref="FormattersOf"/>), as one
+    /// undoable edit, refused while one has yet to start; null where none lays it out, which leaves it to Prettier or its
+    /// language server.</summary>
+    private async Task<CodeActions.Reformatted?> FormatWithToolsAsync(WebLanguages web, OpenDocument document, string what, TextRange? within, CancellationToken cancel = default)
     {
-        if (LintOf(document) is not { } lint)
+        foreach (ToolDocument formatter in FormattersOf(web, document))
         {
-            context.Say($"{fix.Title} was not applied: ESLint no longer checks {document.Name}");
-            return;
+            if (formatter.Lsp is null)
+            {
+                return CodeActions.Reformatted.Refused(what, $"{formatter.Tool.Name}'s language server is not running for {document.Name}");
+            }
+            if (await actions.ToolFormatAsync(formatter, document, what, within, cancel) is { } done)
+            {
+                return done with { Said = done.Changed ? $"{formatter.Tool.Name}: {done.Said}" : done.Said };
+            }
         }
+        return null;
+    }
+
+    /// <summary>The fixes of each linter that checks the file for the problems on the caret's line, ESLint's first; none
+    /// where none checks it.</summary>
+    internal async Task<IReadOnlyList<LintFix>> LintFixes(OpenDocument document, int caret)
+    {
+        List<LintFix> fixes = [];
+        foreach (ToolDocument tool in context.Web?.Invoke()?.Tools.For(document) ?? [])
+        {
+            try
+            {
+                fixes.AddRange(await tool.FixesAsync(caret));
+            }
+            catch (LanguageServerFailed)
+            {
+                // The others' fixes, and the language server's own actions, are still offered.
+            }
+        }
+        return fixes;
+    }
+
+    /// <summary>One of a linter's fixes chosen, as <see cref="MakeLintFixAsync"/> makes it, what came of it said; its
+    /// rule's page opened for the documentation.</summary>
+    internal async Task RunLintFix(OpenDocument document, LintFix fix)
+    {
         if (fix.OpensDocumentation)
         {
-            if (lint.Diagnostics.FirstOrDefault(d => !d.CodeIsNumber && d.Code == fix.Rule)?.CodePage is { } page)
+            if (fix.From.Diagnostics.FirstOrDefault(d => !d.CodeIsNumber && d.Code == fix.Rule)?.CodePage is { } page)
             {
                 context.Browse(page);
             }
             return;
         }
         using IDisposable held = BackgroundWork.Scope();
-        RefactorOutcome made = await ServerCommands.RunAsync(context.Editors, fix.Title, fix.Title, null, run => lint.RunAsync(fix, run), null, null, context.Say);
+        RefactorOutcome made = await MakeLintFixAsync(context.Editors, document, fix, fix.Title, context.Say);
         if (made.Left.Count > 0)
         {
             context.Say(Refusals.NotAppliedEditedMeanwhile(fix.Title, made.Left));
@@ -85,6 +115,27 @@ internal sealed partial class WebAssist
         {
             context.Say(said);
         }
+    }
+
+    /// <summary>A linter's fix made, for the window and an agent alike: the edit its action carries (asked of the server
+    /// where it left it for later), then its command, which hands the window its edit (<see cref="ServerCommands"/>); refused
+    /// where the tool no longer serves the file.</summary>
+    internal static async Task<RefactorOutcome> MakeLintFixAsync(EditorArea editors, OpenDocument document, LintFix fix, string what, Action<string>? waiting)
+    {
+        if (fix.From.Lsp is null || !fix.From.Web.Tools.Contains(fix.From))
+        {
+            return RefactorOutcome.Refused($"{what} was not applied: {fix.From.Tool.Name} no longer checks {document.Name}");
+        }
+        JsonElement? edit;
+        try
+        {
+            edit = await fix.From.EditOfAsync(fix);
+        }
+        catch (LanguageServerFailed failed)
+        {
+            return RefactorOutcome.Refused($"{what} was not applied: {failed.Reason}");
+        }
+        return await ServerCommands.RunAsync(editors, fix.Title, what, edit, run => fix.From.RunAsync(fix, run), null, null, waiting);
     }
 
     private async Task FixEslintProblems()
@@ -109,7 +160,7 @@ internal sealed partial class WebAssist
 
     /// <summary>Every problem ESLint can fix in a file fixed, one undo step: whether the text changed, null when ESLint gave
     /// nothing or the edit no longer fits what was typed meanwhile (said in the status bar).</summary>
-    private async Task<bool?> FixAll(OpenDocument document, EslintDocument lint, string what)
+    private async Task<bool?> FixAll(OpenDocument document, ToolDocument lint, string what)
     {
         string before = document.Text.Snapshot.ToString();
         try
@@ -153,11 +204,12 @@ internal sealed partial class WebAssist
         {
             return false;
         }
-        if (LintOf(document) is { } lint && web.Eslint.FixesOnSave)
+        if (LintOf(document) is { } lint && web.Tools.FixesOnSave)
         {
             await FixAll(document, lint, "Run eslint --fix on save");
         }
-        if (!web.Prettier.OnSave(document.Path))
+        // A file another formatter lays out is Reformat on save's, one formatter at most a file.
+        if (!web.Prettier.OnSave(document.Path) || FormattersOf(web, document).Count > 0)
         {
             return false;
         }

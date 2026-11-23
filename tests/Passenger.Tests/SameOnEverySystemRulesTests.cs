@@ -42,7 +42,7 @@ public sealed partial class SameOnEverySystemRulesTests
         ("Passenger.App.Godot.", "runs Godot"),
         ("Passenger.App.Web.WebLanguages::InstallAsync", "installs a language's tools"),
         ("Passenger.App.Web.WebLanguages::UseTools", "runs a language's tools"),
-        ("Passenger.App.Web.EslintService", "runs ESLint"),
+        ("Passenger.App.Web.FolderTools", "runs the folder's linters and formatters"),
         ("Passenger.App.Web.PrettierService", "runs Prettier"),
         ("Passenger.App.Browsers", "runs a browser"),
         ("Passenger.App.MainWindow::Browse", "opens a browser"),

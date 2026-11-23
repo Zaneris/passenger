@@ -203,10 +203,10 @@
     </ItemGroup>
   </Target>
 
-  <!-- The project's own ESLint and Prettier that EslintPrettierTests put in a test folder's node_modules: npm packages
-       NodePackages/package.json pins and package-lock.json locks, each tarball with its sha512, put in place at build by
-       tools/Passenger.NodePackages (no Node.js, cached in artifacts/node/cache) under node-packages/ in the tests' output;
-       no test reaches npm's registry. To move a pin, change package.json, have npm write the lock again (npm install with
+  <!-- The project's own ESLint, Prettier, Oxlint, Oxfmt and Biome that EslintPrettierTests put in a test folder's
+       node_modules: npm packages NodePackages/package.json pins and package-lock.json locks, each tarball with its sha512,
+       put in place at build by tools/Passenger.NodePackages (no Node.js, cached in artifacts/node/cache) under
+       node-packages/ in the tests' output, a package for some systems only this one's; no test reaches npm's registry. To move a pin, change package.json, have npm write the lock again (npm install with
        its package-lock-only and ignore-scripts options), and bring THIRD_PARTY_NOTICES.md's tests' table along. -->
   <PropertyGroup>
     <TestNodeLock>$(MSBuildThisFileDirectory)NodePackages/package-lock.json</TestNodeLock>
@@ -229,6 +229,7 @@
       <TestNodeLine Include="cache=$(TestNodeRoot)cache" />
       <TestNodeLine Include="out=$(TestNodeFolder)" />
       <TestNodeLine Include="stamp=$(TestNodeStamp)" />
+      <TestNodeLine Include="systems=this" />
     </ItemGroup>
     <MakeDir Directories="$(TestNodeRoot)" />
     <WriteLinesToFile File="$(TestNodeArguments)" Lines="@(TestNodeLine)" Overwrite="true" WriteOnlyWhenDifferent="true" />

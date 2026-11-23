@@ -249,8 +249,8 @@ public static class Declared
     public static readonly ToggleSetting ReformatOnSave = new(s => s.ReformatOnSave, (s, v) => s with { ReformatOnSave = v },
         new(D.EditorPage, "Reformat on save", "save actions on save format on save reformat code formatting layout c# xaml",
             "File, Save and Save All reformat each changed file first, as Reformat Code does, as one undoable edit; autosave never "
-            + "does. A file Prettier's Run on save covers is Prettier's alone, and GDScript's own Reformat on save (Code Style: "
-            + "GDScript) turns this on for scripts alone."));
+            + "does. A web file whose folder names Oxfmt or Biome is laid out by it, one Prettier's Run on save covers otherwise by "
+            + "Prettier alone, and GDScript's own Reformat on save (Code Style: GDScript) turns this on for scripts alone."));
 
     public static readonly ChoiceSetting<CSharpFormatter> CSharpFormatter = new(s => s.CSharpFormatter, (s, v) => s with { CSharpFormatter = v },
         [(Settings.CSharpFormatter.Passenger, "Passenger's own"), (Settings.CSharpFormatter.DotnetFormat, "dotnet format")],

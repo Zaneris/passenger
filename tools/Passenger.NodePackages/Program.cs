@@ -12,8 +12,9 @@ namespace Passenger.NodePackages;
 /// <summary>Puts every package a package-lock.json pins into a folder's node_modules, as <c>npm ci --ignore-scripts</c>
 /// lays them out, with no Node.js: each tarball is downloaded from the registry the lock file names (or taken from the
 /// cache it was downloaded to before), checked against the lock file's sha512 <c>integrity</c>, and unpacked. What the
-/// build hands over is a file of <c>name=value</c> lines. A tarball whose hash differs, a package only for some systems,
-/// or a file to leave out that no package carries any longer fails the build, naming it.</summary>
+/// build hands over is a file of <c>name=value</c> lines. A tarball whose hash differs, a package only for some systems
+/// (unless told to take this system's, <see cref="Inputs.ThisSystem"/>), or a file to leave out that no package carries any
+/// longer fails the build, naming it.</summary>
 public static class Program
 {
     public static async Task<int> Main(string[] args)
@@ -55,6 +56,10 @@ public sealed class Inputs
     /// to, both from the folder the packages go in).</summary>
     public List<(string Glob, string To)> Moved { get; } = [];
 
+    /// <summary>Whether a package only for some systems is put in place where it is for this one and passed over elsewhere,
+    /// as npm installs one (packages built on each system that uses them, the tests'), rather than refused.</summary>
+    public bool ThisSystem { get; private set; }
+
     public static Inputs Read(string path)
     {
         Inputs inputs = new();
@@ -78,6 +83,9 @@ public sealed class Inputs
                 case "leaveOut":
                     inputs.LeftOut.Add(value.Replace('\\', '/'));
                     break;
+                case "systems" when value == "this":
+                    inputs.ThisSystem = true;
+                    break;
                 case "move":
                     (string glob, string to) = file.Pair(name, value, "a glob and the folder its files go to, as glob|folder");
                     inputs.Moved.Add((glob.Replace('\\', '/'), to.Replace('\\', '/')));
@@ -95,8 +103,8 @@ public sealed class Inputs
 }
 
 /// <summary>One package as the lock file pins it: where it goes under the folder, its version, its tarball and the hash
-/// that tarball must have.</summary>
-public sealed record Locked(string Place, string Version, Uri Tarball, byte[] Sha512)
+/// that tarball must have; one for some systems only (<see cref="Native"/>) carries a program built for this one.</summary>
+public sealed record Locked(string Place, string Version, Uri Tarball, byte[] Sha512, bool Native = false)
 {
     /// <summary>Its tarball's name in the cache, from its hash, so a tarball cached is the one the lock file names.</summary>
     public string CacheName => $"{Path.GetFileName(Place)}-{Version}-{Convert.ToHexStringLower(Sha512)[..32]}.tgz";
@@ -116,7 +124,7 @@ public static class Packages
     public static async Task InstallAsync(Inputs inputs, Func<Uri, Task<byte[]>> download)
     {
         byte[] lockBytes = await File.ReadAllBytesAsync(inputs.Lock);
-        IReadOnlyList<Locked> packages = Read(lockBytes, inputs.Lock);
+        IReadOnlyList<Locked> packages = Read(lockBytes, inputs.Lock, inputs.ThisSystem);
         Directory.CreateDirectory(inputs.Cache);
         string staging = inputs.Out.TrimEnd('/', '\\') + ".new";
         // Two builds at once (a solution's and a publish's) take turns, the second finding the packages in place.
@@ -166,8 +174,8 @@ public static class Packages
     }
 
     /// <summary>The packages a lock file (npm's lockfileVersion 2 or 3) pins, in its order: every one under node_modules/
-    /// but a development one or a link.</summary>
-    public static IReadOnlyList<Locked> Read(byte[] lockFile, string path)
+    /// but a development one or a link, and with <paramref name="thisSystem"/> one only for other systems.</summary>
+    public static IReadOnlyList<Locked> Read(byte[] lockFile, string path, bool thisSystem = false)
     {
         using JsonDocument document = JsonDocument.Parse(lockFile);
         if (JsonMembers.Object(document.RootElement, "packages") is not { } entries)
@@ -190,9 +198,16 @@ public static class Packages
             {
                 throw new PackageException($"{path}: '{entry.Name}' is not a place under node_modules/");
             }
-            if (JsonMembers.Value(value, "os") is not null || JsonMembers.Value(value, "cpu") is not null)
+            if (JsonMembers.Value(value, "os") is not null || JsonMembers.Value(value, "cpu") is not null || JsonMembers.Value(value, "libc") is not null)
             {
-                throw new PackageException($"{path}: {entry.Name} is only for some systems, and Passenger carries one copy of these packages for every system");
+                if (!thisSystem)
+                {
+                    throw new PackageException($"{path}: {entry.Name} is only for some systems, and Passenger carries one copy of these packages for every system");
+                }
+                if (!Systems.Takes(value))
+                {
+                    continue;
+                }
             }
             string version = JsonMembers.Text(value, "version") ?? throw new PackageException($"{path}: {entry.Name} has no version");
             string resolved = JsonMembers.Text(value, "resolved") ?? throw new PackageException($"{path}: {entry.Name} has no resolved tarball");
@@ -206,14 +221,17 @@ public static class Packages
             {
                 throw new PackageException($"{path}: {entry.Name} has no sha512 integrity ('{integrity}'), the only hash this tool takes");
             }
-            packages.Add(new Locked(entry.Name, version, tarball, Convert.FromBase64String(sha512["sha512-".Length..])));
+            bool native = JsonMembers.Value(value, "os") is not null || JsonMembers.Value(value, "cpu") is not null || JsonMembers.Value(value, "libc") is not null;
+            packages.Add(new Locked(entry.Name, version, tarball, Convert.FromBase64String(sha512["sha512-".Length..]), native));
         }
         return packages;
     }
 
-    /// <summary>What the folder was made from: the lock file's hash and the files left out and moved, which a build compares.</summary>
+    /// <summary>What the folder was made from: the lock file's hash, the files left out and moved, and whether it took this
+    /// system's packages (with their programs executable), which a build compares.</summary>
     private static string Stamp(byte[] lockFile, Inputs inputs) =>
-        $"{Convert.ToHexStringLower(SHA256.HashData(lockFile))}\n{string.Join('\n', inputs.LeftOut)}\n{string.Join('\n', inputs.Moved.Select(m => $"{m.Glob}|{m.To}"))}\n";
+        $"{Convert.ToHexStringLower(SHA256.HashData(lockFile))}\n{string.Join('\n', inputs.LeftOut)}\n{string.Join('\n', inputs.Moved.Select(m => $"{m.Glob}|{m.To}"))}\n"
+        + (inputs.ThisSystem ? "systems=this, programs executable\n" : string.Empty);
 
     private static async Task<FileStream> TakeTurnAsync(string path)
     {
@@ -312,6 +330,8 @@ public static class Packages
 
     private static bool Matches(byte[] tarball, byte[] sha512) => CryptographicOperations.FixedTimeEquals(SHA512.HashData(tarball), sha512);
 
+    private const UnixFileMode Executable = UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
+
     /// <summary>A tarball's files under a package's folder, without the one folder npm packs them in (<c>package/</c>).</summary>
     private static async Task UnpackAsync(byte[] tarball, string folder, Locked package)
     {
@@ -346,6 +366,11 @@ public static class Packages
                         {
                             await data.CopyToAsync(written);
                         }
+                    }
+                    // A program built for this system (Biome's) runs only as the tarball marks it, executable.
+                    if (package.Native && !OperatingSystem.IsWindows() && (entry.Mode & Executable) != 0)
+                    {
+                        File.SetUnixFileMode(target, File.GetUnixFileMode(target) | (entry.Mode & Executable));
                     }
                     break;
                 default:
@@ -394,5 +419,49 @@ public static class Packages
             throw new PackageException($"no package carries {glob}, which is {what}: the packages have changed, so check what is {what} again");
         }
         return matched;
+    }
+}
+
+/// <summary>Whether a package only for some systems is for this one, as npm reads a package's <c>os</c>, <c>cpu</c> and
+/// <c>libc</c>: each list names this system's (Node.js's names for it) or, its names all negated (<c>!win32</c>), does not
+/// negate it.</summary>
+public static class Systems
+{
+    public static bool Takes(JsonElement package) =>
+        Fits(JsonMembers.Value(package, "os"), Os) && Fits(JsonMembers.Value(package, "cpu"), Cpu) && Fits(JsonMembers.Value(package, "libc"), Libc);
+
+    /// <summary>This system as Node.js's <c>process.platform</c> names it.</summary>
+    private static string Os => OperatingSystem.IsWindows() ? "win32" : OperatingSystem.IsMacOS() ? "darwin" : OperatingSystem.IsFreeBSD() ? "freebsd" : "linux";
+
+    /// <summary>This machine's processor as Node.js's <c>process.arch</c> names it.</summary>
+    private static string Cpu => System.Runtime.InteropServices.RuntimeInformation.OSArchitecture switch
+    {
+        System.Runtime.InteropServices.Architecture.X64 => "x64",
+        System.Runtime.InteropServices.Architecture.Arm64 => "arm64",
+        System.Runtime.InteropServices.Architecture.X86 => "ia32",
+        System.Runtime.InteropServices.Architecture.Arm => "arm",
+        System.Runtime.InteropServices.Architecture other => other.ToString().ToLowerInvariant(),
+    };
+
+    /// <summary>This Linux's C library, musl where its loader is there, else glibc; none elsewhere.</summary>
+    private static string? Libc => !OperatingSystem.IsLinux() ? null
+        : Directory.Exists("/lib") && Directory.EnumerateFiles("/lib", "ld-musl-*").Any() ? "musl" : "glibc";
+
+    private static bool Fits(JsonElement? list, string? ours)
+    {
+        if (list is not { ValueKind: JsonValueKind.Array } names)
+        {
+            return true;
+        }
+        string[] all = [.. names.EnumerateArray().Select(n => n.GetString() ?? string.Empty)];
+        if (ours is null)
+        {
+            return false;
+        }
+        if (all.Contains("!" + ours))
+        {
+            return false;
+        }
+        return all.All(n => n.StartsWith('!')) || all.Contains(ours);
     }
 }

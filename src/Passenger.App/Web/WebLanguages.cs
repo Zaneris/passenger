@@ -114,11 +114,11 @@ public sealed class WebLanguages : IAsyncDisposable
         asksDockerHub = now.DockerHubTags;
         trusted = WorkspaceTrust.Trusts(folder);
         Schemas = new JsonSchemas(() => settings().DownloadJsonSchemas);
-        Eslint = new EslintService(folder, settings, FindNodeAsync);
+        Tools = new FolderTools(folder, settings, FindNodeAsync);
         Prettier = new PrettierService(folder, settings, FindNodeAsync);
         Checks = new Containers.EngineChecks(engine ?? (() => Containers.ContainerEngine.Shared), now.BuildKitChecks);
-        Eslint.Message += (_, message) => Message?.Invoke(this, message);
-        Eslint.Stopped += (_, lost) => Stopped?.Invoke(this, lost);
+        Tools.Message += (_, message) => Message?.Invoke(this, message);
+        Tools.Stopped += (_, lost) => Stopped?.Invoke(this, lost);
     }
 
     /// <summary>A server's state changed (starting, ready, stopped, no Node.js); raised on the UI thread.</summary>
@@ -151,8 +151,8 @@ public sealed class WebLanguages : IAsyncDisposable
     /// <summary>The GDScript servers asked for since they were last let go, whose starts may be headless editors.</summary>
     private readonly HashSet<ServerPlace> godotAsked = [];
 
-    /// <summary>ESLint, for the files it checks.</summary>
-    public EslintService Eslint { get; }
+    /// <summary>The folder's own linters and formatters (ESLint, Oxlint, Oxfmt, Biome), for the files each serves.</summary>
+    public FolderTools Tools { get; }
 
     /// <summary>Prettier, for the files it formats.</summary>
     public PrettierService Prettier { get; }
@@ -275,7 +275,7 @@ public sealed class WebLanguages : IAsyncDisposable
             Start(server);
         }
         // Else the start under way connects it with the rest of its kind.
-        Eslint.Attach(document, features);
+        Tools.Attach(document, features);
         Checks.Attach(document, features);
         Announce(document);
     }
@@ -285,7 +285,7 @@ public sealed class WebLanguages : IAsyncDisposable
         UiThread.Check();
         if (documents.Remove(document, out WebDocument? features))
         {
-            Eslint.Detach(document);
+            Tools.Detach(document);
             Checks.Detach(document);
             features.Dispose();
             document.Notice = null;
@@ -379,8 +379,8 @@ public sealed class WebLanguages : IAsyncDisposable
     private static (ToolConfiguration, string?, string) Linting(AppSettings settings) => (settings.Eslint, settings.EslintPackage, settings.EslintFiles);
 
     /// <summary>What a file's banner says: why its language server cannot run (no Node.js), offering to start one left
-    /// stopped again; else that a package its package.json lists for ESLint or Prettier is not installed, offering to
-    /// install it; else nothing.</summary>
+    /// stopped again; else that a package its package.json lists for ESLint, Prettier, Oxlint, Oxfmt or Biome is not
+    /// installed, offering to install it (those the nearest such package.json lists); else nothing.</summary>
     private void Announce(OpenDocument document)
     {
         if (!documents.TryGetValue(document, out WebDocument? features))
@@ -395,16 +395,22 @@ public sealed class WebLanguages : IAsyncDisposable
             return;
         }
         List<string> tools = [];
+        List<string> packages = [];
         string? manifest = null;
-        if (Eslint.Missing(document.Path) is { } linted)
+        void Lacks(string tool, string package, string? listing)
         {
-            tools.Add("ESLint");
-            manifest = linted;
+            if (listing is not null && (manifest is null || PathNames.Same(listing, manifest)))
+            {
+                tools.Add(tool);
+                packages.Add(package);
+                manifest = listing;
+            }
         }
-        if (Prettier.Missing(document.Path) is { } formatted)
+        Lacks("ESLint", "eslint", Tools.EslintMissing(document.Path));
+        Lacks("Prettier", "prettier", Prettier.Missing(document.Path));
+        foreach (WebTool tool in WebTool.Installed)
         {
-            tools.Add("Prettier");
-            manifest ??= formatted;
+            Lacks(tool.Name, tool.Package!, tool.Missing(document.Path));
         }
         if (manifest is null)
         {
@@ -420,11 +426,10 @@ public sealed class WebLanguages : IAsyncDisposable
             document.NoticeAction = null;
             return;
         }
-        string packages = Plural.Listed([.. tools.Select(t => t.ToLowerInvariant())]);
         string holder = YarnPnp.ManifestFor(where) is null ? "node_modules" : YarnPnp.ManifestName;
         document.Notice = tools.Count == 1
-            ? $"{tools[0]} is not installed: {Shown(manifest)} lists {packages}, which is not in {holder}."
-            : $"{Plural.Listed(tools)} are not installed: {Shown(manifest)} lists {packages}, which are not in {holder}.";
+            ? $"{tools[0]} is not installed: {Shown(manifest)} lists {packages[0]}, which is not in {holder}."
+            : $"{Plural.Listed(tools)} are not installed: {Shown(manifest)} lists {Plural.Listed(packages)}, which are not in {holder}.";
         document.NoticeAction = new NoticeAction($"Run '{install}'", () => IdeErrors.Observe(InstallAsync(where)));
     }
 
@@ -456,22 +461,23 @@ public sealed class WebLanguages : IAsyncDisposable
         }
         foreach ((OpenDocument document, WebDocument features) in documents.ToList())
         {
-            Eslint.Attach(document, features);
+            Tools.Attach(document, features);
         }
         AnnounceAll();
     }
 
-    /// <summary>Files changed on disk: a package.json, lock file or Yarn's .pnp.cjs looks for the packages again, and,
-    /// under the runtime the lockfile says, for the runtime; and ESLint hears of its configuration's changes.</summary>
+    /// <summary>Files changed on disk: a package.json, lock file, Yarn's .pnp.cjs or a tool's configuration (a biome.json
+    /// come or gone) looks for the packages and the tools again, and, under the runtime the lockfile says, for the runtime;
+    /// and each tool hears of its configuration's changes.</summary>
     public void FilesChanged(IReadOnlyCollection<string> paths)
     {
         UiThread.Check();
-        if (paths.Any(p => NodeProjects.Concerns(p) || Path.GetFileName(p) == YarnPnp.ManifestName))
+        if (paths.Any(p => NodeProjects.Concerns(p) || Path.GetFileName(p) == YarnPnp.ManifestName || WebTool.Installed.Any(t => t.Configures(Path.GetFileName(p)))))
         {
             Recheck();
             IdeErrors.Observe(FollowLockfileAsync());
         }
-        Eslint.FilesChanged(paths);
+        Tools.FilesChanged(paths);
         Checks.FilesChanged(paths);
     }
 
@@ -488,7 +494,7 @@ public sealed class WebLanguages : IAsyncDisposable
         if (now != linting)
         {
             linting = now;
-            Eslint.Reset();
+            Tools.Reset(WebTool.Eslint);
         }
         Recheck();
     }
@@ -630,7 +636,7 @@ public sealed class WebLanguages : IAsyncDisposable
     private void Restart()
     {
         finding = null;
-        Eslint.Reset();
+        Tools.Reset();
         IdeErrors.Observe(Prettier.ResetAsync());
         foreach ((ServerPlace place, NodeServer server) in servers.ToList())
         {
@@ -648,7 +654,7 @@ public sealed class WebLanguages : IAsyncDisposable
             return;
         }
         trusted = true;
-        Eslint.Reset();
+        Tools.Reset();
         IdeErrors.Observe(Prettier.ResetAsync());
         ServerPlace place = new(WebServerKind.TypeScript, null);
         if (servers.TryGetValue(place, out NodeServer? server))
@@ -669,7 +675,7 @@ public sealed class WebLanguages : IAsyncDisposable
             return;
         }
         trusted = false;
-        Eslint.Reset();
+        Tools.Reset();
         IdeErrors.Observe(Prettier.ResetAsync());
         foreach ((ServerPlace place, NodeServer server) in servers.Where(s => s.Key.Kind == WebServerKind.TypeScript
             || s.Key.Kind == WebServerKind.GDScript && (godotAsked.Contains(s.Key) || GodotHeadlessAtOpen)).ToList())
@@ -1058,7 +1064,7 @@ public sealed class WebLanguages : IAsyncDisposable
         UiThread.Check();
         disposed = true;
         ending.Cancel();
-        Task linter = Eslint.DisposeAsync().AsTask();
+        Task linter = Tools.DisposeAsync().AsTask();
         Task formatter = Prettier.DisposeAsync().AsTask();
         Checks.Dispose();
         foreach (WebDocument features in documents.Values)

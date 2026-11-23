@@ -44,7 +44,7 @@ public static class Refusals
 
     /// <summary>What trusting a folder lets Passenger run, as the trust question and the banner say it.</summary>
     public const string TrustLets = "Trusted, Passenger runs its code as it works: design-time builds and restore as it opens, the analyzers and "
-        + "source generators its projects name, builds, runs, tests and debugging, its own TypeScript, ESLint and Prettier, and the programs its "
+        + "source generators its projects name, builds, runs, tests and debugging, its own TypeScript, ESLint, Prettier, Oxlint, Oxfmt and Biome, and the programs its "
         + "Git configuration names.";
 
     /// <summary>What the banner over an untrusted folder says.</summary>

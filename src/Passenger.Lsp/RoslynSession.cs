@@ -1037,6 +1037,12 @@ public sealed class LspDocument : IDisposable
         await Server.RequestAsync<List<LspTextEdit>>(LspMethods.Formatting,
             new DocumentFormattingParams(Identifier, FormattingOptions.Of(indent, conventions, Text.Snapshot)), cancel) ?? [];
 
+    /// <summary>The whole document formatted as <see cref="FormatAsync(IndentOptions, EditorConfig, CancellationToken)"/>
+    /// formats it; null where the server answers none, as one that lays none of the document out does.</summary>
+    public async Task<IReadOnlyList<LspTextEdit>?> FormattedAsync(IndentOptions indent, EditorConfig conventions, CancellationToken cancel = default) =>
+        await Server.RequestAsync<List<LspTextEdit>?>(LspMethods.Formatting,
+            new DocumentFormattingParams(Identifier, FormattingOptions.Of(indent, conventions, Text.Snapshot)), cancel);
+
     /// <summary>Whether the server formats a range of a document, not only the whole.</summary>
     public bool FormatsRanges => Server.Provides("documentRangeFormattingProvider");
 
