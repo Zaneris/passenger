@@ -16,7 +16,7 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task The_gates_variables_hold_as_one_flow()
     {
-        await Flow.StepApartAsync("a parameter a lambda captures is listed once with its live value", () => new VariablesCasesTests(testOutputHelper), t => t.A_parameter_a_lambda_captures_is_listed_once_with_its_live_value());
+        await Flow.StepApartAsync("a variable a lambda captures is listed once with its live value, one an async methods block captures too", () => new VariablesCasesTests(testOutputHelper), t => t.A_variable_a_lambda_captures_is_listed_once_with_its_live_value_one_an_async_methods_block_captures_too());
         await Flow.StepApartAsync("an exception wrapping another reports the inner one", () => new VariablesCasesTests(testOutputHelper), t => t.An_exception_wrapping_another_reports_the_inner_one());
         await Flow.StepApartAsync("a union shows the value it holds as that values type opening to its members", () => new VariablesCasesTests(testOutputHelper), t => t.A_union_shows_the_value_it_holds_as_that_values_type_opening_to_its_members());
         await Flow.StepApartAsync("a pointer shows its address and type and opens to what it points at", () => new VariablesCasesTests(testOutputHelper), t => t.A_pointer_shows_its_address_and_type_and_opens_to_what_it_points_at());
@@ -24,7 +24,7 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         await Flow.StepApartAsync("a value whose ToString throws shows its type and opens to its members", () => new VariablesCasesTests(testOutputHelper), t => t.A_value_whose_ToString_throws_shows_its_type_and_opens_to_its_members());
     }
 
-    private async Task A_parameter_a_lambda_captures_is_listed_once_with_its_live_value()
+    private async Task A_variable_a_lambda_captures_is_listed_once_with_its_live_value_one_an_async_methods_block_captures_too()
     {
         int line = Debuggees.Line("PassengerCases", "Console.WriteLine(f());");
         await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", line, []);
@@ -34,6 +34,14 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         List<DapVariable> locals = await host.LocalsAsync(stop);
         Assert.Equal("41", Assert.Single(locals, v => v.Name == "captured").Value);
         Assert.Single(locals, v => v.Name == "f");
+
+        // An async method's: one its block captures as well as one its body does.
+        int inBlock = Debuggees.Line("PassengerCases", "Console.WriteLine(twice());");
+        stop = await (await host.BreakpointsAsync(inBlock, Debuggees.Source("PassengerCases", "Program.cs"))).ContinueAsync().WaitForStoppedEvent();
+        Assert.Equal(inBlock, stop.ReadStopInfo().line);
+        locals = await host.LocalsAsync(stop);
+        Assert.True(locals.SingleOrDefault(v => v.Name == "inBlock")?.Value == "4" && locals.SingleOrDefault(v => v.Name == "given")?.Value == "2",
+            $"An async method's block capturing inBlock, and given from its body, listed {string.Join(", ", locals.Select(v => $"{v.Name} = {v.Value}"))}");
     }
 
     private async Task An_exception_wrapping_another_reports_the_inner_one()

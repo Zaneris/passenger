@@ -74,8 +74,9 @@ public partial class ManagedDebugger
 
     /// Walks the compiler-generated closure chain starting at <paramref name="closureValue"/> (a closure or a state
     /// machine), listing each one's fields, the variables it holds, and none of its properties. Parent closures are linked
-    /// via a field of kind <see cref="GeneratedNameKind.DisplayClassLocalOrField"/> (e.g. "&lt;&gt;8__1").
-    /// A state machine's hoisted locals are listed only where <paramref name="inScope"/> holds their slots, when it is given.
+    /// via a field of kind <see cref="GeneratedNameKind.DisplayClassLocalOrField"/> (e.g. "&lt;&gt;8__1"), a closure's one
+    /// parent, or a state machine's closure of each scope with captures. A state machine's hoisted locals and closures
+    /// are taken only where <paramref name="inScope"/> holds their slots, when it is given.
     private async Task AddClosureChainMembers(ICorDebugValue closureValue, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result,
         IReadOnlySet<int>? inScope = null)
     {
@@ -105,16 +106,18 @@ public partial class ManagedDebugger
             return;
         }
         IMetaDataImport metadataImport = closure.Class.Module.GetMetaDataInterface<IMetaDataImport>();
-        IEnumerable<mdFieldDef> fields = metadataImport.EnumFields(closure.Class.Token);
-        foreach (mdFieldDef field in fields)
+        mdFieldDef[] links = [.. metadataImport.EnumFields(closure.Class.Token).Where(field => metadataImport.GetFieldProps(field).szField is var name
+            && GeneratedNameParser.GetKind(name) is GeneratedNameKind.DisplayClassLocalOrField
+            && (inScope is null || !GeneratedNameParser.TryParseSlotIndex(name, out int slot) || inScope.Contains(slot)))];
+        // A closure has one parent link; a state machine a closure for each scope with captures.
+        foreach (mdFieldDef field in inScope is null ? links.Take(1) : links)
         {
-            (string szField, mdTypeDef pClass, CorFieldAttr pdwAttr, nint ppvSigBlob, int pcbSigBlob, CorElementType pdwCPlusTypeFlag, nint ppValue, int pcchValue) fieldProps = metadataImport.GetFieldProps(field);
-            if (GeneratedNameParser.GetKind(fieldProps.szField) is GeneratedNameKind.DisplayClassLocalOrField)
+            // Read again for each: what the one before showed may have evaluated in the program.
+            if (closureValue.UnwrapDebugValueToObjectOrNull() is not { } holder)
             {
-                ICorDebugValue parentClosureValue = closure.GetFieldValue(closure.Class, field);
-                await AddClosureChainMembers(parentClosureValue, threadId, stackDepth, result);
-                break; // only one parent link per closure class
+                return;
             }
+            await AddClosureChainMembers(holder.GetFieldValue(holder.Class, field), threadId, stackDepth, result);
         }
     }
 

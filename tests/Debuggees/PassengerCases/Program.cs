@@ -193,6 +193,7 @@ Attributed.NonUser();
 Attributed.Hidden();
 Console.WriteLine("end");
 Captures.Outer(41);
+Captures.InBlockAsync(2).GetAwaiter().GetResult();
 Nested.Throw();
 Displays.Show();
 Unions.Show();
@@ -234,6 +235,18 @@ internal static class Captures
 	{
 		Func<int> f = () => captured + 1;
 		Console.WriteLine(f());
+	}
+
+	// A variable a block of an async method captures: the state machine holds a closure for the block apart from its own.
+	public static async Task InBlockAsync(int given)
+	{
+		await Task.Yield();
+		if (given > 0)
+		{
+			int inBlock = given * 2;
+			Func<int> twice = () => inBlock + given;
+			Console.WriteLine(twice());
+		}
 	}
 }
 
