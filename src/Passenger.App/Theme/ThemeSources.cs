@@ -81,6 +81,9 @@ public sealed partial record ThemeSource(ThemeSourceKind Kind, string Name)
             : throw new FormatException($"{Variable} takes a folder, a GitHub repository (owner/name) or an https address, not '{named}': {why}")
         : this;
 
+    /// <summary>Passenger's own theme, Tokens.axaml, by the name Settings lists it under and a theme names it as its base.</summary>
+    public const string Own = "Passenger";
+
     /// <summary>The themes Passenger carries in its built-in source beside its own, by name, which the command line's
     /// <c>--look</c> names.</summary>
     public static readonly IReadOnlyList<string> Carried = ["Cubicle", HighContrast];
@@ -107,7 +110,7 @@ public sealed partial record ThemeSource(ThemeSourceKind Kind, string Name)
     {
         foreach ((string key, string own, Func<string, string?> named) in new (string, string, Func<string, string?>)[]
         {
-            (look, "Passenger", name => FormerlyCarried.FirstOrDefault(n => n.Equals(name, StringComparison.OrdinalIgnoreCase))),
+            (look, Own, name => FormerlyCarried.FirstOrDefault(n => n.Equals(name, StringComparison.OrdinalIgnoreCase))),
             // "Rider" is the name 0.3 kept the same scheme under.
             (scheme, "Theme", name => name.Equals("Rider", StringComparison.OrdinalIgnoreCase) ? FormerScheme : null),
         })

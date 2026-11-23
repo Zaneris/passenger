@@ -100,6 +100,10 @@ public sealed record ThemeFile(string Name, string Description, IReadOnlyDiction
     /// <summary>The VS Code colour theme it is laid over, or null for none.</summary>
     public VsCodeBase? Base { get; init; }
 
+    /// <summary>The theme Passenger carries it is laid over, by name (<see cref="ThemeSource.Carried"/>), or null for
+    /// Passenger's own, under every theme.</summary>
+    public string? BuiltInBase { get; init; }
+
     /// <summary>The picture drawn under a variant, or null for none.</summary>
     public BackgroundValue? BackgroundOf(bool dark) => dark ? DarkBackground : LightBackground;
 
@@ -198,11 +202,12 @@ public static partial class ThemeFiles
     private static ThemeFile Theme(string file, JsonElement root, IReadOnlyDictionary<string, ThemeTokenKind> tokens, bool code, List<string> problems)
     {
         string what = code ? "a code colour scheme" : "a theme";
-        PassOver(file, root, code ? [Member.Format, Member.Name, "description", .. Sections, "languages", Member.VsCode] : [Member.Format, Member.Name, "description", .. Sections, .. Beyond], what, problems);
+        PassOver(file, root, code ? [Member.Format, Member.Name, "description", .. Sections, "languages", Member.VsCode, Member.Base] : [Member.Format, Member.Name, "description", .. Sections, .. Beyond], what, problems);
         string name = Words(root, Member.Name, LongestName, needed: true);
         string description = Words(root, "description", LongestDescription, needed: false);
-        // Over a VS Code theme, the plain kinds a file leaves out are the base's own.
-        bool plain = JsonMembers.Value(root, Member.VsCode) is null;
+        string? carried = BuiltInBase(root);
+        // Over a VS Code theme or one Passenger carries, the plain kinds a file leaves out are the base's own.
+        bool plain = JsonMembers.Value(root, Member.VsCode) is null && carried is null;
         Dictionary<string, TokenValue>[] sections = TokenSections(file, root, tokens, code, null, plain, problems);
         if (!code)
         {
@@ -217,6 +222,7 @@ public static partial class ThemeFiles
             Languages = Languages(file, JsonMembers.Value(root, "languages"), tokens, plain, problems),
             Layout = code ? null : Layout(file, JsonMembers.Value(root, "layout"), problems),
             Base = Base(file, JsonMembers.Value(root, Member.VsCode), problems),
+            BuiltInBase = carried,
         };
     }
 

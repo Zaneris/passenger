@@ -5,9 +5,9 @@ using Passenger.App;
 namespace Passenger.UnitTests.Theme;
 
 /// <summary>A theme's members beyond its tokens, as read: its background picture for each variant (its file, opacity, tint,
-/// places, fit and alignment, and a variant's own), its fonts, and the code's tokens for a language over its own, in themes
-/// and code colour schemes; each refusal, which takes the whole file; and a picture's kind and size read from its header
-/// alone, refused past its bounds before anything decodes it.</summary>
+/// places, fit and alignment, and a variant's own), its fonts, the code's tokens for a language over its own, in themes
+/// and code colour schemes, and the carried theme it is laid over; each refusal, which takes the whole file; and a picture's
+/// kind and size read from its header alone, refused past its bounds before anything decodes it.</summary>
 public class ThemeBeyondTests
 {
     private static readonly Dictionary<string, ThemeTokenKind> Tokens = new(StringComparer.Ordinal)
@@ -43,6 +43,7 @@ public class ThemeBeyondTests
         ("fonts give the codes family and size and the windows family", Fonts_give_the_codes_family_and_size_and_the_windows_family),
         ("a language gives the codes tokens for both variants and for each and one this Passenger does not know is passed over", A_language_gives_the_codes_tokens_for_both_variants_and_for_each_and_one_this_Passenger_does_not_know_is_passed_over),
         ("a code colour scheme gives languages but no background or fonts which it passes over", A_code_colour_scheme_gives_languages_but_no_background_or_fonts_which_it_passes_over),
+        ("a theme names a carried theme as its base and laid over it keeps all the base gives that it does not", A_theme_names_a_carried_theme_as_its_base_and_laid_over_it_keeps_all_the_base_gives_that_it_does_not),
         ("a picture is read beside its themes file in the source", () => Cases.Each<(string, string, string)>(
         [
             ("Dusk/theme.json", "dusk.webp", "Dusk/dusk.webp"),
@@ -100,6 +101,13 @@ public class ThemeBeyondTests
             ("\"languages\": {\"csharp\": {\"tokens\": {\"Syntax.Keyword\": \"#000000\"}, \"dark\": {\"Syntax.Keyword\": \"#111111\"}}}", "in tokens and in dark of languages' csharp"),
             ("\"languages\": [\"csharp\"]", "gives languages as"),
         ], row => A_language_whose_tokens_are_not_the_codes_or_of_the_wrong_kind_refuses_the_theme(row.Item1, row.Item2))),
+        ("a base Passenger does not carry refuses the theme", () => Cases.Each<(string, string)>(
+        [
+            ("\"base\": \"Harbour\"", "(Harbour is in Passenger's themes repository, not carried): a base is a theme Passenger carries, \"Passenger\", \"Cubicle\" or \"High Contrast\""),
+            ("\"base\": \"cubicle\"", "gives base as \"cubicle\": a base is a theme Passenger carries"),
+            ("\"base\": [\"Cubicle\"]", "gives base as"),
+            ("\"base\": \"Cubicle\", \"vscode\": {\"file\": \"dark.json\"}", "gives both base and vscode"),
+        ], row => A_base_Passenger_does_not_carry_refuses_the_theme(row.Item1, row.Item2))),
         ("a pictures kind and size come from its header as PNG JPEG and each kind of WebP write them", A_pictures_kind_and_size_come_from_its_header_as_PNG_JPEG_and_each_kind_of_WebP_write_them),
         ("a picture larger than a background may be is refused before anything decodes it", A_picture_larger_than_a_background_may_be_is_refused_before_anything_decodes_it));
 
@@ -142,6 +150,8 @@ public class ThemeBeyondTests
     private void A_language_whose_tokens_are_not_the_codes_or_of_the_wrong_kind_refuses_the_theme(string members, string why) =>
         Assert.Contains(why, Refused(members), StringComparison.Ordinal);
 
+    private void A_base_Passenger_does_not_carry_refuses_the_theme(string members, string why) => Assert.Contains(why, Refused(members), StringComparison.Ordinal);
+
     private void A_code_colour_scheme_gives_languages_but_no_background_or_fonts_which_it_passes_over()
     {
         ThemeRead<ThemeFile> read = ThemeFiles.ReadCodeColours("Code.json", Encoding.UTF8.GetBytes("""
@@ -151,6 +161,33 @@ public class ThemeBeyondTests
         Assert.Null(read.Read.DarkBackground);
         Assert.Equal(ThemeFonts.None, read.Read.Fonts);
         Assert.Equal(2, read.Problems.Count);
+    }
+
+    private void A_theme_names_a_carried_theme_as_its_base_and_laid_over_it_keeps_all_the_base_gives_that_it_does_not()
+    {
+        ThemeFile under = Read("""
+            "tokens": {"Frame": "#101010"}, "dark": {"Syntax.Keyword": "#202020"}, "fonts": {"code": {"family": "Fira Code", "size": 12}},
+            "background": {"image": "under.png"}, "languages": {"csharp": {"tokens": {"Syntax.Keyword": "#303030"}}, "json": {"dark": {"Syntax.Keyword": "#404040"}}}
+            """);
+        ThemeFile over = Read("""
+            "base": "Cubicle", "light": {"Frame": "#EEEEEE"}, "fonts": {"window": {"family": "Inter"}},
+            "languages": {"csharp": {"dark": {"Syntax.Keyword": "#505050"}}}
+            """);
+        Assert.Equal("Cubicle", over.BuiltInBase);
+        Assert.Null(Read("""
+            "base": "Passenger"
+            """).BuiltInBase);
+        ThemeFile laid = ThemeFiles.Over(under, over);
+        Assert.Equal(new ColourValue(0xFF101010, 1), laid.Dark["Frame"]);
+        Assert.Equal(new ColourValue(0xFFEEEEEE, 1), laid.Light["Frame"]);
+        Assert.Equal(new ColourValue(0xFF202020, 1), laid.Dark["Syntax.Keyword"]);
+        Assert.Equal(new ThemeFonts("Fira Code", 12, "Inter"), laid.Fonts);
+        Assert.Equal("under.png", laid.DarkBackground?.Image);
+        Assert.Equal(new ColourValue(0xFF505050, 1), laid.Languages["csharp"].Dark["Syntax.Keyword"]);
+        Assert.Equal(new ColourValue(0xFF303030, 1), laid.Languages["csharp"].Light["Syntax.Keyword"]);
+        Assert.Equal(new ColourValue(0xFF404040, 1), laid.Languages["json"].Dark["Syntax.Keyword"]);
+        Assert.True(ThemeFiles.CodeOf(laid) is { Both.Count: 0 } code && code.Dark.ContainsKey("Syntax.Keyword") && !code.Dark.ContainsKey("Frame"),
+            "A code colour scheme over a carried theme takes more than the theme's code");
     }
 
     private void A_pictures_kind_and_size_come_from_its_header_as_PNG_JPEG_and_each_kind_of_WebP_write_them()

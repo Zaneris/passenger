@@ -180,6 +180,13 @@ public static class Themes
             unfetched[(code, theme)] = got.Refused ?? $"{file} holds {got.Read?.Name}, not {theme.Name}";
             return null;
         }
+        (ThemeFile? carried, string? uncarried) = BuiltInThemes.Under(whole, code);
+        if (carried is null)
+        {
+            unfetched[(code, theme)] = $"{theme.Name} is refused: {uncarried}";
+            return null;
+        }
+        whole = carried;
         if (whole.Base is { } wanted)
         {
             // A base not kept beside the theme is fetched in its place.
@@ -206,9 +213,11 @@ public static class Themes
         SourcedTheme? wanted = InHighContrast ? SourcedTheme.BuiltIn(ThemeSource.HighContrast) : Look;
         ThemeFile? theme = wanted is { } look ? Kept(false, look) ?? Fetched(false, look) : null;
         ThemeFile? scheme = !InHighContrast && Scheme is { } colours ? Kept(true, colours) ?? Fetched(true, colours) : null;
-        Func<string, byte[]?> images = theme is null || wanted is not { From: { } source } shown ? _ => null
+        Func<string, byte[]?> own = theme is null || wanted is not { From: { } source } shown ? _ => null
             : source == ThemeSource.BuiltIn ? image => BuiltInThemes.Image(false, shown.Name, image)
             : image => KeptThemes.Image(source, false, shown.Name, image);
+        // A picture the theme takes from the carried theme it is laid over is the base's own.
+        Func<string, byte[]?> images = theme?.BuiltInBase is { } carried ? image => own(image) ?? BuiltInThemes.Image(false, carried, image) : own;
         Lay(app, theme, scheme, images);
         Say();
     }

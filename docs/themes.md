@@ -42,7 +42,7 @@ scheme file of your own.
 
 `name` is required, at most 64 characters; `description` is optional, at most 1,000. `tokens` holds values for both
 variants, `dark` and `light` for one each; a token goes in `tokens` or in `dark` and `light`, never both. Any of the
-three may be left out, as may `background`, `fonts`, `languages`, `layout` and `vscode` below.
+three may be left out, as may `background`, `fonts`, `languages`, `layout`, `base` and `vscode` below.
 
 A token is named as its key in [Tokens.axaml](../src/Passenger.App/Theme/Tokens.axaml) without `Passenger.`:
 `Frame`, `Editor.Background`, `Syntax.Keyword`, `SyntaxStyle.Comment`, `ControlRadius`, and the margins
@@ -330,6 +330,26 @@ A kind a theme colours no way takes the one after "else", then Passenger's palet
 | `Diff.Deleted` | `diffEditor.removedLineBackground`, `diffEditor.removedTextBackground` |
 | `Diff.AddedWord` | `diffEditor.insertedTextBackground` |
 | `Diff.DeletedWord` | `diffEditor.removedTextBackground` |
+
+## A theme over one Passenger carries
+
+```json
+{
+  "format": 1,
+  "name": "Cubicle in rose",
+  "base": "Cubicle",
+  "tokens": { "Accent": "#C0306A", "ControlRadius": 4 }
+}
+```
+
+`base` names a theme Passenger carries as the theme's base: `Cubicle` or `High Contrast`, or `Passenger`, its own, which is
+under every theme already, so naming it is the same as leaving `base` out. The theme shows the base with only what it
+gives changed: the base gives every token the theme leaves out (a token the theme gives one variant alone keeps the base's
+for the other), its fonts where the theme names none, its picture where the theme gives no `background`, its default
+layout where the theme gives no `layout`, and its colours for a language beneath the theme's own for it. The base is
+carried with Passenger, so it needs no fetching and draws offline, and a later Passenger's base is the theme's base from
+then on. A theme gives `base` or `vscode`, never both. A code colour scheme may name a carried theme as its base too,
+taking that theme's code colours (`Editor.*`, `Syntax.*`, `SyntaxStyle.*`, `Diff.*` and its languages) alone.
 
 ## A theme over a VS Code theme
 

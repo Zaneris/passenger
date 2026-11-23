@@ -283,7 +283,7 @@ public sealed class ThemePicker : StackPanel
     {
         bool code = setting.Code;
         SourcedTheme? chosen = setting.Get(working());
-        List<Choice> choices = [new(null, code ? "Same as theme" : "Passenger", string.Empty, null)];
+        List<Choice> choices = [new(null, code ? "Same as theme" : ThemeSource.Own, string.Empty, null)];
         List<string> refused = [];
         List<string> underWay = [];
         SourceRead builtIn = BuiltInThemes.Listed(ThemeResources.Kinds);

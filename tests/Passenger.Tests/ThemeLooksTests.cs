@@ -13,7 +13,8 @@ namespace Passenger.Tests;
 
 /// <summary>What a theme sets beyond its tokens, as a person meets it: a theme added from a file with a picture beside it keeps
 /// the picture and draws it over the editor at its opacity, and colours a language's code its own way, other languages
-/// keeping the theme's; and a theme's margins move the editor's text and size a tool window's header and a dialog's footer.</summary>
+/// keeping the theme's; a theme's margins move the editor's text and size a tool window's header and a dialog's footer; and a
+/// theme over a carried theme shows the base with only its changes.</summary>
 public sealed class ThemeLooksTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("theme-looks-folder-");
@@ -35,6 +36,47 @@ public sealed class ThemeLooksTests : IDisposable
     {
         Flow.StepApart<ThemeLooksTests>("a theme added from a file keeps its picture draws it over the editor and colours its languages code its own way", t => t.A_theme_added_from_a_file_keeps_its_picture_draws_it_over_the_editor_and_colours_its_languages_code_its_own_way());
         Flow.StepApart<ThemeLooksTests>("a themes margins move the editors text and size the tool windows header and a dialogs footer", t => t.A_themes_margins_move_the_editors_text_and_size_the_tool_windows_header_and_a_dialogs_footer());
+        Flow.StepApart<ThemeLooksTests>("a theme over a carried theme shows the base with only its changes", t => t.A_theme_over_a_carried_theme_shows_the_base_with_only_its_changes());
+    }
+
+    private void A_theme_over_a_carried_theme_shows_the_base_with_only_its_changes()
+    {
+        ThemeFile cubicle = CarriedThemes.Theme("Cubicle")!;
+        string name = $"Over Cubicle {Guid.NewGuid():N}";
+        string json = $$$"""{"format": 1, "name": "{{{name}}}", "base": "Cubicle", "tokens": {"Accent": "#C0306A", "ControlRadius": 9}}""";
+        Assert.Null(KeptThemes.Keep(ThemeSource.Added, false, name, System.Text.Encoding.UTF8.GetBytes(json)));
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings };
+        window.Show();
+        Ui.Settle();
+        try
+        {
+            window.ApplySettings(window.Settings with { Look = new SourcedTheme(ThemeSource.Added.Name, name) });
+            Ui.Settle();
+            Assert.True(Themes.Said is null, $"The theme over Cubicle was not laid: {Themes.Said}");
+            foreach (ThemeVariant variant in (ThemeVariant[])[ThemeVariant.Dark, ThemeVariant.Light])
+            {
+                Assert.True(Drawn(window, TokenKeys.Accent, variant) is ISolidColorBrush { Color: var accent } && accent == Color.Parse("#C0306A"), $"The theme's own accent is not drawn under {variant}");
+                Dictionary<string, TokenValue> carried = new(cubicle.Both);
+                foreach ((string token, TokenValue value) in variant == ThemeVariant.Dark ? cubicle.Dark : cubicle.Light)
+                {
+                    carried[token] = value;
+                }
+                Assert.True(Drawn(window, TokenKeys.Frame, variant) is ISolidColorBrush { Color: var frame } && frame.ToUInt32() == ((ColourValue)carried["Frame"]).Argb,
+                    $"Cubicle's frame is not drawn under {variant} over Cubicle");
+            }
+            Assert.True(Drawn(window, TokenKeys.ControlRadius, ThemeVariant.Dark) is CornerRadius { TopLeft: 9 }, "The theme's own radius is not drawn over Cubicle's");
+            Assert.True(Drawn(window, TokenKeys.TabRadius, ThemeVariant.Dark) is CornerRadius { TopLeft: 0 }, "Cubicle's square tabs are lost under a theme over it");
+            Assert.True(Themes.Layout is { } layout && layout.RightWidth == cubicle.Layout!.RightWidth && layout.ToolWindows == cubicle.Layout.ToolWindows
+                && layout.Places.SequenceEqual(cubicle.Layout.Places), "Cubicle's default layout is not the default under a theme over it");
+            Assert.Equal(cubicle.Fonts.CodeSize, Themes.Fonts.CodeSize);
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+
+        static object? Drawn(Control control, string key, ThemeVariant variant) => control.TryFindResource(key, variant, out object? found) ? found : null;
     }
 
     private void A_theme_added_from_a_file_keeps_its_picture_draws_it_over_the_editor_and_colours_its_languages_code_its_own_way()

@@ -10,7 +10,7 @@ namespace Passenger.Tests;
 public static class CarriedThemes
 {
     /// <summary>Passenger's own theme, Tokens.axaml, by the name Settings lists it under.</summary>
-    public const string Own = "Passenger";
+    public const string Own = ThemeSource.Own;
 
     /// <summary>The folder the repository's copy is in.</summary>
     public static string Folder => Path.Combine(AppContext.BaseDirectory, "Themes");
@@ -53,11 +53,12 @@ public static class CarriedThemes
     /// <summary>A code colour scheme of the copy as read, by its file's name.</summary>
     public static ThemeRead<ThemeFile> ReadScheme(string name) => ThemeFiles.ReadCodeColours($"{name}.json", File.ReadAllBytes(Path.Combine(Folder, $"{name}.json")), ThemeResources.Kinds);
 
-    /// <summary>A theme of the copy or one Passenger carries, whole; null for <see cref="Own"/>. One the repository lays over a
-    /// VS Code theme by its Open VSX id, which the tests cannot reach, is laid over <see cref="StandInBase"/> in its place.</summary>
+    /// <summary>A theme of the copy or one Passenger carries, whole, over the carried theme it names as its base; null for
+    /// <see cref="Own"/>. One the repository lays over a VS Code theme by its Open VSX id, which the tests cannot reach, is
+    /// laid over <see cref="StandInBase"/> in its place.</summary>
     public static ThemeFile? Theme(string name) => name == Own ? null
         : name.StartsWith(VsCodePrefix, StringComparison.Ordinal) ? VsCodeColours.ToTheme(ReadVsCode(name[VsCodePrefix.Length..]))
-        : ReadTheme(name).Read is { } read ? (read.Base is null ? read : ThemeFiles.Over(VsCodeColours.ToTheme(ReadVsCode(StandInBase)), read))
+        : ReadTheme(name).Read is { } read ? (read.Base is null ? BuiltInThemes.Under(read, code: false).Whole! : ThemeFiles.Over(VsCodeColours.ToTheme(ReadVsCode(StandInBase)), read))
         : throw new InvalidOperationException($"{name}.json does not read: {ReadTheme(name).Refused}");
 
     /// <summary>The VS Code colour theme the tests lay a repository theme over in place of the one it names on Open VSX: a
