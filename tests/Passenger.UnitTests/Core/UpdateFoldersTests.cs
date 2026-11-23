@@ -120,8 +120,8 @@ public sealed class UpdateFoldersTests : IDisposable
             $"A Mac app's copy is kept in {ThisCopy.FolderOf(Path.Combine(bundle, "Contents", "MacOS"))}, inside its bundle, whose seal a data folder would break");
 
         string packages = Path.Combine(root, "WinGet", "Packages");
-        string installed = Directory.CreateDirectory(Path.Combine(packages, "Zaneris.Passenger_Microsoft.Winget.Source_8wekyb3d8bbwe", "Passenger")).FullName;
-        Assert.True(ThisCopy.Of(installed, [packages]).PackageManager == new PackageManagerMark("WinGet", "winget upgrade --id Zaneris.Passenger"),
+        string installed = Directory.CreateDirectory(Path.Combine(packages, "PassengerIDE.Passenger_Microsoft.Winget.Source_8wekyb3d8bbwe", "Passenger")).FullName;
+        Assert.True(ThisCopy.Of(installed, [packages]).PackageManager == new PackageManagerMark("WinGet", "winget upgrade --id PassengerIDE.Passenger"),
             $"A copy WinGet unpacked was read as {ThisCopy.Of(installed, [packages]).PackageManager?.ToString() ?? "no package manager's"}, so it would not name winget upgrade");
         File.WriteAllText(Path.Combine(installed, ThisCopy.PackageManagerName), "Scoop\nscoop update passenger\n");
         Assert.True(ThisCopy.Of(installed, [packages]).PackageManager == new PackageManagerMark("Scoop", "scoop update passenger"),

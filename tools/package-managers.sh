@@ -17,7 +17,7 @@ repository=https://github.com/Zaneris/passenger
 files=$repository/releases/download/v$version
 site=https://passenger-ide.net
 described='IDE for C# and .NET'
-winget=Zaneris.Passenger
+winget=PassengerIDE.Passenger
 
 # Prints a release file's SHA-256 as SHA256SUMS says it.
 sum_of() {

@@ -627,8 +627,10 @@ jobs:
             echo "::notice title=WinGet::No PACKAGES_GITHUB_TOKEN in the secrets: the manifests are not sent"
             exit 0
           fi
-          tools/package-pr.sh microsoft/winget-pkgs "Zaneris.Passenger-$VERSION" "New version: Zaneris.Passenger version $VERSION" \
-            "manifests/z/Zaneris/Passenger/$VERSION" release/packages/winget/*.yaml
+          # The identifier the manifests are named by; winget-pkgs keeps them under its first letter, then a folder a part.
+          id=$(basename release/packages/winget/*.installer.yaml .installer.yaml)
+          tools/package-pr.sh microsoft/winget-pkgs "$id-$VERSION" "New version: $id version $VERSION" \
+            "manifests/$(printf %.1s "$id" | tr '[:upper:]' '[:lower:]')/$(echo "$id" | tr . /)/$VERSION" release/packages/winget/*.yaml
 
       # The AUR's host key as aur.archlinux.org publishes it (Ed25519, SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4).
       # A package the AUR has not yet is made by its first push.
