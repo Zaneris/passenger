@@ -621,8 +621,8 @@ jobs:
             echo "::notice title=Homebrew::No PACKAGES_GITHUB_TOKEN in the secrets: the cask is not sent"
             exit 0
           fi
-          tools/package-pr.sh Homebrew/homebrew-cask "passenger-ide-$VERSION" "passenger-ide $VERSION" Casks/p \
-            "$RUNNER_TEMP/packages/homebrew/passenger-ide.rb"
+          tools/package-pr.sh Homebrew/homebrew-cask Casks/p/passenger-ide.rb "passenger-ide-$VERSION" "passenger-ide $VERSION" \
+            "passenger-ide $VERSION (new cask)" Casks/p "$RUNNER_TEMP/packages/homebrew/passenger-ide.rb"
 
       - name: WinGet
         if: ${{ !cancelled() && steps.files.outcome == 'success' }}
@@ -635,8 +635,9 @@ jobs:
           fi
           # The identifier the manifests are named by; winget-pkgs keeps them under its first letter, then a folder a part.
           id=$(basename "$RUNNER_TEMP"/packages/winget/*.installer.yaml .installer.yaml)
-          tools/package-pr.sh microsoft/winget-pkgs "$id-$VERSION" "New version: $id version $VERSION" \
-            "manifests/$(printf %.1s "$id" | tr '[:upper:]' '[:lower:]')/$(echo "$id" | tr . /)/$VERSION" "$RUNNER_TEMP"/packages/winget/*.yaml
+          package=manifests/$(printf %.1s "$id" | tr '[:upper:]' '[:lower:]')/$(echo "$id" | tr . /)
+          tools/package-pr.sh microsoft/winget-pkgs "$package" "$id-$VERSION" "New version: $id version $VERSION" \
+            "New package: $id version $VERSION" "$package/$VERSION" "$RUNNER_TEMP"/packages/winget/*.yaml
 
       # The AUR's host key as aur.archlinux.org publishes it (Ed25519, SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4).
       # A package the AUR has not yet is made by its first push.

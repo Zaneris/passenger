@@ -1,16 +1,19 @@
 #!/bin/sh
 # A pull request giving a package manager's repository a release's files, as the release workflow opens for Homebrew
-# and WinGet: `tools/package-pr.sh UPSTREAM BRANCH TITLE FOLDER FILE...` puts each FILE into FOLDER on BRANCH of the
-# fork of UPSTREAM (Homebrew/homebrew-cask) that GH_TOKEN's account has, made if it has none, and opens the request
-# from it. All through GitHub's API by gh, cloning neither repository; run again, it writes the branch anew.
+# and WinGet: `tools/package-pr.sh UPSTREAM PACKAGE BRANCH TITLE FIRST FOLDER FILE...` puts each FILE into FOLDER on
+# BRANCH of the fork of UPSTREAM (Homebrew/homebrew-cask) that GH_TOKEN's account has, made if it has none, and opens
+# the request from it, titled FIRST while UPSTREAM has no PACKAGE yet (the cask, or the package's folder), else TITLE.
+# All through GitHub's API by gh, cloning neither repository; run again, it writes the branch anew.
 set -eu
 . "$(dirname "$0")/release-common.sh"
-[ $# -ge 5 ] || fail "usage: package-pr.sh UPSTREAM BRANCH TITLE FOLDER FILE..."
+[ $# -ge 7 ] || fail "usage: package-pr.sh UPSTREAM PACKAGE BRANCH TITLE FIRST FOLDER FILE..."
 upstream=$1
-branch=$2
-title=$3
-folder=$4
-shift 4
+package=$2
+branch=$3
+title=$4
+first=$5
+folder=$6
+shift 6
 
 user=$(gh api user --jq .login)
 fork=$user/${upstream#*/}
@@ -28,6 +31,8 @@ base=$(gh api "repos/$upstream" --jq .default_branch)
 commit=$(gh api "repos/$upstream/git/ref/heads/$base" --jq .object.sha)
 gh api "repos/$fork/git/refs" -f "ref=refs/heads/$branch" -f "sha=$commit" --silent 2> /dev/null ||
     gh api -X PATCH "repos/$fork/git/refs/heads/$branch" -f "sha=$commit" -F force=true --silent
+
+gh api "repos/$upstream/contents/$package?ref=$commit" --silent 2> /dev/null || title=$first
 
 for file in "$@"; do
     [ -f "$file" ] || fail "no $file"
