@@ -23,7 +23,11 @@ public partial class ManagedDebugger
             {
                 // This field points to a parent closure class - follow the chain to find 'this'
                 ICorDebugValue parentClosureValue = objectValue.GetFieldValue(objectValue.Class, field);
-                ICorDebugObjectValue parentObjectValue = parentClosureValue.UnwrapDebugValueToObject();
+                if (parentClosureValue.UnwrapDebugValueToObjectOrNull() is not { } parentObjectValue)
+                {
+                    // A closure of a scope the code has not reached yet is null, holding no 'this'.
+                    continue;
+                }
                 IMetaDataImport parentMetadataImport = parentObjectValue.Class.Module.GetMetaDataInterface<IMetaDataImport>();
                 return GetAsyncOrLambdaProxyFieldValue(parentClosureValue, parentMetadataImport);
             }
