@@ -7,6 +7,7 @@ using Passenger.App.Xaml;
 using Passenger.Core;
 using Passenger.Languages;
 using Passenger.Lsp;
+using Passenger.Text;
 
 namespace Passenger.App.CSharp;
 
@@ -125,6 +126,10 @@ internal sealed partial class CodeActions
         }
         bool stopped = false;
         EditorArea editors = context.Editors;
+        // dotnet format lays the C# files out in one run once each is ready, Code Cleanup's usings tidied first.
+        bool dotnet = kind != Tidying.OptimizeImports && context.CSharpFormatter == Settings.CSharpFormatter.DotnetFormat;
+        List<string> formatting = [];
+        string? failed = null;
         using (CommandHistory.Recording recording = editors.Commands.RecordWrites(name))
         using (LocalHistory.Activity? named = history?.Over(name, files))
         using (named?.Own())
@@ -161,26 +166,47 @@ internal sealed partial class CodeActions
                     continue;
                 }
                 recording.Watch(file);
+                bool laidApart = dotnet && UsesDotnetFormat(file);
+                if (laidApart)
+                {
+                    formatting.Add(file);
+                    if (kind == Tidying.Reformat)
+                    {
+                        continue;
+                    }
+                }
                 if (editors.Find(file) is { } shown)
                 {
-                    await TidiedAsync(shown);
+                    await TidiedAsync(shown, !laidApart);
                     // Its step taken now, so what the person types there next stays theirs.
                     recording.TakeOpen();
                     continue;
                 }
                 if (editors.Borrow(file) is not ({ } borrowed, { } hold))
                 {
+                    formatting.Remove(file);
                     left.Add(new FileLeft(file, PassedOver.Unread, $"{relative(file)}: it cannot be read as text"));
                     continue;
                 }
                 using (hold)
                 {
-                    await TidiedAsync(borrowed);
+                    await TidiedAsync(borrowed, !laidApart);
                     if (borrowed.IsModified && editors.SaveSaying(borrowed) is { } unsaved)
                     {
                         changed.RemoveAll(c => PathNames.Same(c.Path, file));
                         left.Add(new FileLeft(file, PassedOver.Unsaved, $"{relative(file)}: it could not be saved: {unsaved}"));
                     }
+                }
+            }
+            if (!stopped && formatting.Count > 0)
+            {
+                stage?.Invoke($"{name}: dotnet format over {Plural.Of(formatting.Count, "C# file")}");
+                Dictionary<string, string?> was = formatting.ToDictionary(f => f, TextOf, PathNames.Comparer);
+                failed = await DotnetFormattedAsync(formatting, kind, stop);
+                recording.TakeOpen();
+                foreach (string file in formatting.Where(f => TextOf(f) != was[f] && !changed.Any(c => PathNames.Same(c.Path, f))))
+                {
+                    changed.Add(new FileTidied(file, DotnetFormatted));
                 }
             }
             foreach ((string unsaved, Exception refused) in await recording.LandedAsync(null))
@@ -189,9 +215,11 @@ internal sealed partial class CodeActions
                 left.Add(new FileLeft(unsaved, PassedOver.Unsaved, $"{relative(unsaved)}: it could not be saved: {refused.Message}"));
             }
         }
-        return new FilesTidied(files.Count, changed, left, stopped);
+        return failed is null ? new FilesTidied(files.Count, changed, left, stopped) : throw new InvalidOperationException($"{name} was not applied: {failed}");
 
-        async Task TidiedAsync(OpenDocument document)
+        string? TextOf(string file) => editors.Find(file)?.Text.Snapshot.ToString() ?? FileText.Load(file)?.Text;
+
+        async Task TidiedAsync(OpenDocument document, bool layOut)
         {
             if (document.ReadOnlyWhy is { } readOnly)
             {
@@ -200,7 +228,7 @@ internal sealed partial class CodeActions
             }
             // Its text's version says whether the run changed it, never the text made into a string twice.
             int before = document.Text.Version;
-            string? done = await TidyOneAsync(kind, document, stop);
+            string? done = await TidyOneAsync(kind, document, layOut, stop);
             if (done is null)
             {
                 left.Add(new FileLeft(document.Path, PassedOver.Unread, $"{relative(document.Path)}: the language server does not read it"));
@@ -261,9 +289,73 @@ internal sealed partial class CodeActions
     /// <summary>A file as a run's words name it: by its path from the open folder where it is under it.</summary>
     private string Relative(string path) => context.Root is { } root && PathNames.IsUnder(path, root) ? Path.GetRelativePath(root, path) : path;
 
+    /// <summary>What a file dotnet format changed says it did.</summary>
+    private const string DotnetFormatted = "Reformatted by dotnet format";
+
+    /// <summary>Whether Settings' C# formatter has dotnet format lay out a file: a C# file of the folder's, when it is chosen.</summary>
+    private bool UsesDotnetFormat(OpenDocument document) => UsesDotnetFormat(document.Path);
+
+    private bool UsesDotnetFormat(string path) =>
+        context.CSharpFormatter == Settings.CSharpFormatter.DotnetFormat && path.EndsWith(".cs", PathNames.Comparison) && !GeneratedCode.IsCopy(path);
+
+    /// <summary>A file Reformat Code or Code Cleanup has dotnet format lay out, as one undoable step of its own; one with
+    /// a selection laid out whole, saying so.</summary>
+    private async Task<Reformatted> DotnetFormatOneAsync(OpenDocument document, Tidying kind, bool selection, CancellationToken cancel)
+    {
+        string what = TitleOf(kind);
+        if (await context.Editors.ClearAsync([document.Path]) is { } held)
+        {
+            return Reformatted.Refused(what, held);
+        }
+        using LocalHistory.Activity? named = context.History()?.Over(what, [document.Path]);
+        using IDisposable? own = named?.Own();
+        string before = document.Text.Snapshot.ToString();
+        if (await DotnetFormattedAsync([document.Path], kind, cancel) is { } failed)
+        {
+            return Reformatted.Refused(what, failed);
+        }
+        bool changed = document.Text.Snapshot.ToString() != before;
+        string said = changed ? DotnetFormatted : "Already formatted";
+        return new Reformatted(true, changed, selection ? $"{said}, the whole file: dotnet format lays out no selection" : said);
+    }
+
+    /// <summary>dotnet format over C# files, as Settings' C# formatter asks: each open one holding what is not saved saved
+    /// first, as dotnet format reads the disk, then taken from disk again as one undoable step of its own, what dotnet format
+    /// wrote. Null once it ran, else why not.</summary>
+    private async Task<string?> DotnetFormattedAsync(IReadOnlyList<string> files, Tidying kind, CancellationToken cancel)
+    {
+        if (context.DotnetFormat is not { } run)
+        {
+            return Refusals.NoFolder;
+        }
+        foreach (OpenDocument unsaved in files.Select(context.Editors.Find).OfType<OpenDocument>().Where(d => d.IsModified))
+        {
+            if (context.Editors.SaveSaying(unsaved) is { } why)
+            {
+                return $"{unsaved.Name} could not be saved: {why}";
+            }
+        }
+        if (await EditorArea.LandedAsync(files, null) is [(string path, Exception refused), ..])
+        {
+            return $"{Path.GetFileName(path)} could not be saved: {refused.Message}";
+        }
+        try
+        {
+            return await run(files, kind == Tidying.Reformat, cancel);
+        }
+        finally
+        {
+            // What it wrote before it failed or was stopped is taken too.
+            foreach (OpenDocument open in files.Select(context.Editors.Find).OfType<OpenDocument>())
+            {
+                open.Reload();
+            }
+        }
+    }
+
     /// <summary>One file of a run, as its own command makes it, in the status bar's words; null where no language server
     /// reads a file that needs one.</summary>
-    private async Task<string?> TidyOneAsync(Tidying kind, OpenDocument document, CancellationToken stop)
+    private async Task<string?> TidyOneAsync(Tidying kind, OpenDocument document, bool layOut, CancellationToken stop)
     {
         if (kind == Tidying.Reformat)
         {
@@ -280,7 +372,7 @@ internal sealed partial class CodeActions
         }
         if (kind == Tidying.Cleanup)
         {
-            return CleanedUp(await CleanUpAsync(lsp, document));
+            return CleanedUp(await CleanUpAsync(lsp, document, layOut));
         }
         (bool removed, bool sorted) = await TidyUsings(lsp, document);
         return Optimized(removed, sorted);

@@ -878,6 +878,20 @@ public sealed class CodeAssist
     /// <summary>Settings' Reformat on save, for every file a language's own on-save formatting leaves.</summary>
     public bool ReformatsOnSave { get; set; }
 
+    /// <summary>Settings' C# formatter (<see cref="AssistContext.CSharpFormatter"/>).</summary>
+    public Settings.CSharpFormatter CSharpFormatter
+    {
+        get => context.CSharpFormatter;
+        set => context.CSharpFormatter = value;
+    }
+
+    /// <summary>dotnet format as the window runs it (<see cref="AssistContext.DotnetFormat"/>).</summary>
+    public Func<IReadOnlyList<string>, bool, CancellationToken, Task<string?>>? DotnetFormat
+    {
+        get => context.DotnetFormat;
+        set => context.DotnetFormat = value;
+    }
+
     /// <summary>What a save does first to a changed file, as Settings ask: <c>eslint --fix</c>, then Prettier, or a
     /// GDScript's Reformat on save, else Reformat on save's Reformat Code, so one formatter at most lays it out. Each its
     /// own undoable edit. Why Reformat on save left the file as it was, or null.</summary>

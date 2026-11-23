@@ -790,6 +790,14 @@ public static class Refusals
     /// chosen (<paramref name="of"/>, "of src/App") that holds no file it lays out.</summary>
     public static string NothingToTidy(string what, string of) => $"{what} found no file it lays out {of}";
 
+    /// <summary>A C# file Settings' C# formatter would have dotnet format lay out that is in none of the folder's projects (or
+    /// is a file-based program), which dotnet format opens no workspace for.</summary>
+    public static string DotnetFormatsProjects(string name) => $"dotnet format lays out a project's files, and {name} is in none of the folder's projects";
+
+    /// <summary>dotnet format, which Settings' C# formatter chose, ended with an exit code other than 0, saying why.</summary>
+    public static string DotnetFormatFailed(int exit, string said) =>
+        $"dotnet format failed (exit code {exit}){(said.Length > 0 ? $": {said}" : string.Empty)}";
+
     /// <summary>A file of generated code as Roslyn tells it (<see cref="CSharp.GeneratedCode.GeneratedAmongAsync"/>), which a
     /// run over many files leaves as what generates it writes it.</summary>
     public static string GeneratedLeft(string file) => $"{file} is generated code: what generates it writes it again, so it was left as it is";

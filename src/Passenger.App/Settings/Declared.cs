@@ -252,6 +252,15 @@ public static class Declared
             + "does. A file Prettier's Run on save covers is Prettier's alone, and GDScript's own Reformat on save (Code Style: "
             + "GDScript) turns this on for scripts alone."));
 
+    public static readonly ChoiceSetting<CSharpFormatter> CSharpFormatter = new(s => s.CSharpFormatter, (s, v) => s with { CSharpFormatter = v },
+        [(Settings.CSharpFormatter.Passenger, "Passenger's own"), (Settings.CSharpFormatter.DotnetFormat, "dotnet format")],
+        new(D.EditorPage, "C# formatter", "c# formatter dotnet format reformat code cleanup on save layout whitespace style analyzers sdk editorconfig",
+            "What lays C# out for Reformat Code, Code Cleanup and Reformat on save, in the editor and over what the Explorer has chosen. "
+            + "Passenger's own: the C# language server, at once, a selection alone where one is chosen. dotnet format: the folder's .NET SDK "
+            + "runs dotnet format on the file's project or the solution, reading each .editorconfig as the build does, and the editor takes "
+            + "what it wrote as one undoable step; Reformat Code fixes whitespace, Code Cleanup also the code style and analyzer findings set "
+            + "to warning or above. It saves the file first, lays out the whole file, and runs only in a trusted folder."));
+
     public static readonly ToggleSetting EnsureFinalLineBreak = new(s => s.EnsureFinalLineBreak, (s, v) => s with { EnsureFinalLineBreak = v },
         new(D.EditorPage, "Ensure a final line break on save", "save actions on save final line break newline end of file eol",
             "Every save, autosave too, ends a file with a line break; an insert_final_newline of false saves a file with none.")

@@ -148,6 +148,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// a language's own on-save formatting takes (Prettier's Run on save, GDScript's Reformat on save).</summary>
     public bool ReformatOnSave { get; init; }
 
+    /// <summary>"C# formatter": what lays C# out for Reformat Code, Code Cleanup and Reformat on save, Passenger's own (the
+    /// language server's) at first.</summary>
+    public CSharpFormatter CSharpFormatter { get; init; }
+
     /// <summary>"Ensure a final line break on save": every save, autosave too, ends a file with a line break where no
     /// .editorconfig sets <c>insert_final_newline</c> for it.</summary>
     public bool EnsureFinalLineBreak { get; init; }
@@ -780,6 +784,14 @@ public enum ConfirmClosing
     Never,
     WhenQuitting,
     EveryWindow,
+}
+
+/// <summary>What lays C# out, in the order Settings lists them: Passenger's own (the C# language server), or the SDK's
+/// dotnet format.</summary>
+public enum CSharpFormatter
+{
+    Passenger,
+    DotnetFormat,
 }
 
 /// <summary>Where a diff opens, in the order Settings lists them.</summary>

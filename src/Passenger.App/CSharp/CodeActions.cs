@@ -923,6 +923,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             try
             {
                 Reformatted? done = null;
+                // dotnet format lays out the whole file, once for every stretch.
+                if (UsesDotnetFormat(document))
+                {
+                    lines = lines.Count > 0 ? [lines[^1]] : lines;
+                }
                 for (int i = lines.Count - 1; i >= 0; i--)
                 {
                     TextSnapshot text = document.Text.Snapshot;
@@ -1007,6 +1012,10 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return refused;
         }
+        if (UsesDotnetFormat(document))
+        {
+            return await DotnetFormatOneAsync(document, Tidying.Reformat, within is not null, cancel);
+        }
         within = within is { } range ? WholeLines(document.Text.Snapshot, range) : null;
         if (await context.Languages.FormatAsync(document, within) is { } done)
         {
@@ -1017,6 +1026,9 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
 
     /// <summary>How long a save waits for a language server's layout before it goes on without it.</summary>
     private static readonly TimeSpan SaveLimit = TimeSpan.FromSeconds(3);
+
+    /// <summary>How long Reformat on save waits for dotnet format, which loads the projects each time.</summary>
+    private static readonly TimeSpan DotnetFormatLimit = TimeSpan.FromSeconds(60);
 
     /// <summary>Reformat on save: a changed file laid out whole as Reformat Code lays it out, as one undoable edit, its
     /// language server given <see cref="SaveLimit"/> to answer. Null once done, or where nothing lays the file out; else
@@ -1036,7 +1048,9 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             return served?.Lsp;
         }
         using CancellationTokenSource limit = new();
-        limit.CancelAfter(Waits.Of(SaveLimit));
+        // dotnet format loads the projects first, and the file is saved before it runs.
+        bool dotnet = UsesDotnetFormat(document);
+        limit.CancelAfter(Waits.Of(dotnet ? DotnetFormatLimit : SaveLimit));
         try
         {
             return await ReformatAsync(document, null, ServerOf, limit.Token) switch
@@ -1049,7 +1063,8 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         catch (OperationCanceledException) when (limit.IsCancellationRequested)
         {
-            return $"{what} was not applied to {document.Name}: its language server did not answer within {Durations.Said(Waits.Of(SaveLimit))}";
+            return dotnet ? $"{what} was not applied to {document.Name}: dotnet format did not finish within {Durations.Said(Waits.Of(DotnetFormatLimit))}"
+                : $"{what} was not applied to {document.Name}: its language server did not answer within {Durations.Said(Waits.Of(SaveLimit))}";
         }
         catch (LanguageServerFailed failed)
         {
@@ -1132,9 +1147,10 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// <summary>What Code Cleanup says it did to a file.</summary>
     public static string CleanedUp(IReadOnlyList<string> done) => done.Count == 0 ? "Already clean" : $"Code cleanup {string.Join(", ", done)}";
 
-    /// <summary>Code Cleanup on a C# file: the unnecessary usings removed, the usings sorted, then the file reformatted;
-    /// what it did, in the status bar's words ("removed unused usings"), none when the file was clean.</summary>
-    public async Task<IReadOnlyList<string>> CleanUpAsync(LspDocument lsp, OpenDocument document)
+    /// <summary>Code Cleanup on a C# file: the unnecessary usings removed, the usings sorted, then, unless
+    /// <paramref name="layOut"/> is false, the file reformatted by Settings' C# formatter; what it did, in the status bar's
+    /// words ("removed unused usings"), none when the file was clean.</summary>
+    public async Task<IReadOnlyList<string>> CleanUpAsync(LspDocument lsp, OpenDocument document, bool layOut = true)
     {
         List<string> done = [];
         (bool removed, bool sorted) = await TidyUsings(lsp, document);
@@ -1147,7 +1163,12 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             done.Add("sorted the usings");
         }
         string unformatted = document.Text.Snapshot.ToString();
-        if (await ServerFormatAsync(lsp, document, "Code Cleanup") is { } formatted)
+        if (!layOut)
+        {
+            return done;
+        }
+        if ((UsesDotnetFormat(document) ? await DotnetFormatOneAsync(document, Tidying.Cleanup, false, CancellationToken.None)
+            : await ServerFormatAsync(lsp, document, "Code Cleanup")) is { } formatted)
         {
             if (!formatted.Applied)
             {

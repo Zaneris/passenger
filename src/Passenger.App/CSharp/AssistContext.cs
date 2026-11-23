@@ -180,6 +180,13 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>The open folder's Local History, which names a run over many files one change set.</summary>
     public Func<Passenger.App.History.LocalHistory?> History { get; set; } = () => null;
 
+    /// <summary>Settings' C# formatter: what lays C# out for Reformat Code, Code Cleanup and Reformat on save.</summary>
+    public Settings.CSharpFormatter CSharpFormatter { get; set; }
+
+    /// <summary>dotnet format over C# files (canonical paths), whitespace alone or everything it fixes, as the window runs it
+    /// for the open folder: null once it ran, else why not.</summary>
+    public Func<IReadOnlyList<string>, bool, CancellationToken, Task<string?>>? DotnetFormat { get; set; }
+
     /// <summary>A change the window makes of a server's edit, run in a <see cref="Patience"/>: made again once the server has
     /// read the files not open written a moment before it was asked (by Undo, another change, another program), what it
     /// waits for said as the work of the <paramref name="action"/> that asked for it.</summary>

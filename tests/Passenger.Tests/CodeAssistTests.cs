@@ -1240,7 +1240,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>The Explorer's Code menu: Reformat Code over a folder lays out the file open in its editor and the one not
     /// open on disk, and Code Cleanup over the project tidies every file of it, each as one command that one Undo in the
-    /// Explorer takes back whole, saying what it changed.</summary>
+    /// Explorer takes back whole, saying what it changed; with dotnet format as the C# formatter, the folder's open file is
+    /// saved first and takes what dotnet format wrote, one Undo taking all of it back too.</summary>
     private void Reformat_code_over_a_folder_and_code_cleanup_over_the_project_from_the_explorer_each_change_every_file_as_one_step_of_undo()
     {
         string crooked = project.PathOf("Tidy/Crooked.cs");
@@ -1283,6 +1284,22 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.StartsWith("Undo Code Cleanup? It changes ", asked.LastOrDefault(), StringComparison.Ordinal);
         Assert.True(File.ReadAllText(messy) == messyBefore && File.ReadAllText(spaced) == Spaced && shown.Text.Snapshot.ToString() == Crooked,
             $"One Undo of the project's Code Cleanup left Messy.cs as:\n{File.ReadAllText(messy)}\nSpaced.cs as:\n{File.ReadAllText(spaced)}\nand Crooked.cs as:\n{shown.Text.Snapshot}");
+
+        // dotnet format as the C# formatter: it reads the disk, so the open file is saved first and takes what it wrote.
+        window.ApplySettings(window.Settings with { CSharpFormatter = CSharpFormatter.DotnetFormat });
+        Ui.ChooseFromRowMenu(window, ExplorerRow(window, project.PathOf("Tidy"), Passenger.App.Explorer.NodeKind.Folder), "Code", "Reformat Code");
+        Ui.WaitFor(() => window.Status?.StartsWith("Reformat Code ", StringComparison.Ordinal) == true && window.Status != "Reformat Code: finding the files of Tidy…",
+            () => $"the folder's reformat by dotnet format; the status says '{window.Status}'");
+        Assert.Equal("Reformat Code changed 2 of the 2 files of Tidy", window.Status);
+        Assert.True(shown.Text.Snapshot.ToString() == CrookedLaid && !shown.IsModified && File.ReadAllText(crooked) == CrookedLaid && File.ReadAllText(spaced) == SpacedLaid,
+            $"dotnet format over Tidy left Crooked.cs, open, {(shown.IsModified ? "unsaved" : "saved")} as:\n{shown.Text.Snapshot}\non disk:\n{File.ReadAllText(crooked)}\nand Spaced.cs as:\n{File.ReadAllText(spaced)}");
+        Ui.ClickRow(window, ExplorerRow(window, project.PathOf("Tidy"), Passenger.App.Explorer.NodeKind.Folder));
+        Ui.Run(window, EditorActions.Undo);
+        Ui.Settle();
+        Assert.True(shown.Text.Snapshot.ToString() == Crooked && File.ReadAllText(spaced) == Spaced,
+            $"One Undo of dotnet format's run left Crooked.cs as:\n{shown.Text.Snapshot}\nand Spaced.cs as:\n{File.ReadAllText(spaced)}");
+        shown.Save();
+        window.ApplySettings(window.Settings with { CSharpFormatter = CSharpFormatter.Passenger });
         window.Close();
     }
 
