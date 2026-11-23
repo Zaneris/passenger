@@ -233,6 +233,10 @@ public static class MSBuildNames
     /// <summary>The target that restores a project's packages.</summary>
     public const string Restore = "Restore";
 
+    // WPF's markup compilation at design time, and the target a build runs it after, which resolves the references.
+    public const string DesignTimeMarkupCompilation = "DesignTimeMarkupCompilation";
+    public const string ResolveReferences = "ResolveReferences";
+
     /// <summary>"true" has a question's evaluation pass over the restore's assets, which it reads nothing of.</summary>
     public const string SkipResolvePackageAssets = "SkipResolvePackageAssets";
 

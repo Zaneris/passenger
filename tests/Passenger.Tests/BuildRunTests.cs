@@ -1288,7 +1288,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// server's) is writing its generated code: both write obj/…/App.g.cs, which Windows lets one writer have. The
     /// build waits for the design-time build, the Build window saying so, and runs alone. Here the design-time build
     /// holds App.g.cs as MarkupCompile does while it writes it, until the test lets it go; a build's MarkupCompile
-    /// begun meanwhile says so.</summary>
+    /// begun meanwhile says so. A design-time build after the build finds its output up to date and deletes none of it.</summary>
     private void A_build_begun_while_a_wpf_apps_design_time_build_writes_its_generated_code_waits_for_it_and_succeeds()
     {
         string app = PathNames.Canonical(TestFolders.Create("wpf-build-"));
@@ -1329,6 +1329,12 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
                 Assert.False(File.Exists(Path.Combine(app, "overlapped")), $"The build's MarkupCompile ran while the design-time build had App.g.cs open ({window.Status}):\n{built}");
                 Assert.True(window.Status == "Build succeeded", $"The WPF app did not build once its design-time build had ended ({window.Status}):\n{built}");
                 Assert.Contains(waiting, built, StringComparison.Ordinal);
+                string baml = Path.Combine(app, "obj", "Debug", $"{WpfApp.Framework}-windows", "MainWindow.baml");
+                Assert.True(File.Exists(baml), $"The build compiled no {baml}:\n{built}");
+                int designed = window.Session.DesignTimeBuilds.Builds;
+                File.AppendAllText(Path.Combine(app, "Overlap.csproj"), Environment.NewLine);
+                Ui.PumpUntil(() => window.Session.DesignTimeBuilds.Builds > designed, "a design-time build of Overlap once its project file was written", TimeSpan.FromMinutes(2));
+                Assert.True(File.Exists(baml), "A design-time build after the build deleted the MainWindow.baml the build compiled, which a build of the app beside it then finds missing (BG1002)");
             }
             finally
             {

@@ -49,7 +49,7 @@ internal static class DesignTimeBuilds
 
     /// <summary>The targets a design-time build runs that write what the project's build then reads: WPF's markup
     /// compilation, and Avalonia's resources (before CoreCompile, so in a design-time build too, unless up to date).</summary>
-    private static readonly string[] Generating = ["DesignTimeMarkupCompilation", "GenerateAvaloniaResources"];
+    private static readonly string[] Generating = [MSBuildNames.DesignTimeMarkupCompilation, "GenerateAvaloniaResources"];
 
     private static readonly List<string> Running = [];
     private static int holds;
@@ -250,8 +250,10 @@ internal static class DesignTimeBuilds
     }
 
     /// <summary>Compile and CoreCompile, and XAML's markup compilation where a project has it, with the errors and
-    /// warnings the build logged. One that generates XAML's output (<see cref="Generating"/>) takes its turn with the
-    /// IDE's own builds (<see cref="HoldAsync"/>).</summary>
+    /// warnings the build logged. WPF's runs where a build runs it, after the references and before Compile's own
+    /// targets (the assembly version, the generated C#), so it reads what a build's read and leaves a build's output up
+    /// to date as it is. One that generates XAML's output (<see cref="Generating"/>) takes its turn with the IDE's own
+    /// builds (<see cref="HoldAsync"/>).</summary>
     private static async Task<(ProjectInstance Built, IReadOnlyList<BuildDiagnostic> Logged)> BuildAsync(string path, Project project, DiagnosticLogger diagnostics, CancellationToken cancel)
     {
         ProjectInstance instance = project.CreateProjectInstance();
@@ -259,12 +261,9 @@ internal static class DesignTimeBuilds
         {
             return (instance, []);
         }
-        List<string> targets = [MSBuildNames.Compile, MSBuildNames.CoreCompile];
-        bool markup = instance.Targets.ContainsKey("DesignTimeMarkupCompilation");
-        if (markup)
-        {
-            targets.Add("DesignTimeMarkupCompilation");
-        }
+        string[] targets = instance.Targets.ContainsKey(MSBuildNames.DesignTimeMarkupCompilation)
+            ? [MSBuildNames.ResolveReferences, MSBuildNames.DesignTimeMarkupCompilation, MSBuildNames.Compile, MSBuildNames.CoreCompile]
+            : [MSBuildNames.Compile, MSBuildNames.CoreCompile];
         using IDisposable? turn = Generating.Any(instance.Targets.ContainsKey) ? await TurnAsync(project.FullPath, cancel).ConfigureAwait(false) : null;
         // A program's project, and those of the programs it references, are in this process's memory alone: no other node has them.
         HostServices? inMemory = null;
@@ -273,7 +272,7 @@ internal static class DesignTimeBuilds
             inMemory = new HostServices();
             inMemory.SetNodeAffinity(string.Empty, NodeAffinity.InProc);
         }
-        BuildRequestData request = new(instance, [.. targets], inMemory, BuildRequestDataFlags.ProvideProjectStateAfterBuild);
+        BuildRequestData request = new(instance, targets, inMemory, BuildRequestDataFlags.ProvideProjectStateAfterBuild);
         TaskCompletionSource<BuildResult> done = new(TaskCreationOptions.RunContinuationsAsynchronously);
         BuildSubmission submission = BuildManager.DefaultBuildManager.PendBuildRequest(request);
         List<BuildDiagnostic> logged = diagnostics.Register(submission.SubmissionId);
