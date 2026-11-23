@@ -2040,27 +2040,51 @@ public sealed partial class Git
             : await RunAsync(Root, ["update-index", "-z", "--index-info"], $"{entry.Mode} {written.Read!.Trim()}\t{name}\0");
     }
 
-    /// <summary>What the index holds at a file, its mode and blob, or null where it holds none (or it is in conflict), for
-    /// putting it back as it was (<see cref="PutIndexEntryAsync"/>).</summary>
-    public async Task<(string Mode, string Blob)?> IndexEntryAsync(string path) =>
-        await IndexEntryOfAsync(GitForm(Relative(path), !Ascii.IsValid(Relative(path)) && await ComposesAsync()));
-
-    /// <summary>Puts the index's entry at a file as <paramref name="entry"/> has it, taking it out where that is null.</summary>
-    public async Task<GitResult> PutIndexEntryAsync(string path, (string Mode, string Blob)? entry)
+    /// <summary>What the index holds at each file, its mode and blob, or null where it holds none (or it is in conflict), for
+    /// putting them back as they were (<see cref="PutIndexEntriesAsync"/>): one git reads them however many there are.</summary>
+    public async Task<IReadOnlyList<(string Mode, string Blob)?>> IndexEntriesAsync(IReadOnlyList<string> paths)
     {
-        string name = GitForm(Relative(path), !Ascii.IsValid(Relative(path)) && await ComposesAsync());
-        // A mode of zeros takes the entry out.
-        string line = entry is { } put ? $"{put.Mode} {put.Blob}\t{name}\0" : $"0 {new string('0', 40)}\t{name}\0";
-        return await RunAsync(Root, ["update-index", "-z", "--index-info"], line);
+        bool composed = paths.Any(p => !Ascii.IsValid(Relative(p))) && await ComposesAsync();
+        Dictionary<string, (string Mode, string Blob)> held = await StageZeroAsync();
+        return [.. paths.Select(p => held.TryGetValue(GitForm(Relative(p), composed), out (string Mode, string Blob) entry) ? entry : ((string, string)?)null)];
+    }
+
+    /// <summary>Puts the index's entry at each file as its entry has it, taking it out where that is null, by one git.</summary>
+    public async Task<GitResult> PutIndexEntriesAsync(IReadOnlyList<(string Path, (string Mode, string Blob)? Entry)> entries)
+    {
+        bool composed = entries.Any(e => !Ascii.IsValid(Relative(e.Path))) && await ComposesAsync();
+        StringBuilder lines = new();
+        foreach ((string path, (string Mode, string Blob)? entry) in entries)
+        {
+            string name = GitForm(Relative(path), composed);
+            // A mode of zeros takes the entry out.
+            lines.Append(entry is { } put ? $"{put.Mode} {put.Blob}\t{name}\0" : $"0 {new string('0', 40)}\t{name}\0");
+        }
+        return lines.Length == 0 ? Done : await RunAsync(Root, ["update-index", "-z", "--index-info"], lines.ToString());
     }
 
     /// <summary>The index's stage-0 entry at a name as git writes it, or null where it has none.</summary>
-    private async Task<(string Mode, string Blob)?> IndexEntryOfAsync(string name)
+    private async Task<(string Mode, string Blob)?> IndexEntryOfAsync(string name) =>
+        (await StageZeroAsync()).TryGetValue(name, out (string Mode, string Blob) entry) ? entry : null;
+
+    /// <summary>The index's stage-0 entries by their names as git writes them; none where git could not read it.</summary>
+    private async Task<Dictionary<string, (string Mode, string Blob)>> StageZeroAsync()
     {
+        Dictionary<string, (string Mode, string Blob)> held = new(StringComparer.Ordinal);
         GitResult entries = await RunAsync(Root, ["ls-files", "--stage", "-z"]);
-        // "<mode> <blob> <stage>\t<name>"
-        return entries.Succeeded && entries.Output.Split('\0').FirstOrDefault(e => e.IndexOf('\t') is > 0 and int tab && e[(tab + 1)..] == name) is { } entry
-            && entry[..entry.IndexOf('\t')].Split(' ') is [{ } mode, { } blob, "0"] ? (mode, blob) : null;
+        if (!entries.Succeeded)
+        {
+            return held;
+        }
+        foreach (string entry in entries.Output.Split('\0'))
+        {
+            // "<mode> <blob> <stage>\t<name>"
+            if (entry.IndexOf('\t') is > 0 and int tab && entry[..tab].Split(' ') is [{ } mode, { } blob, "0"])
+            {
+                held[entry[(tab + 1)..]] = (mode, blob);
+            }
+        }
+        return held;
     }
 
     /// <summary>Where a commit of whole files failed (a hook refused it, its signing was refused), the index's entries for

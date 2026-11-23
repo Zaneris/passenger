@@ -95,11 +95,13 @@ public sealed class StagingTests : IDisposable
         }
     }
 
-    /// <summary>A file staged by Stage's keys in the Commit window puts the window in Staged and Unstaged, a box under Unstaged
-    /// stages its file, the Commit window's Undo takes the last stage back, and Commit takes the staged file alone.</summary>
+    /// <summary>A file staged by Stage's keys in the Commit window puts the window in Staged and Unstaged, a group's box stages
+    /// its files, git's index read by one git before and one after however many, the Commit window's Undo takes the last
+    /// stage back, and Commit takes the staged file alone.</summary>
     private void Files_staged_from_the_commit_window_are_listed_apart_undone_there_and_committed_alone()
     {
-        MainWindow window = Open();
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "noted\n");
+        MainWindow window = Open(files: 4);
         try
         {
             List<string> asked = [];
@@ -117,17 +119,43 @@ public sealed class StagingTests : IDisposable
             Assert.True(Under(commit, CommitView.StagedGroup) == "Other.txt" && Under(commit, CommitView.UnstagedGroup) == "Shop.cs",
                 $"Staged lists [{Under(commit, CommitView.StagedGroup)}] and Unstaged [{Under(commit, CommitView.UnstagedGroup)}]");
 
-            CheckBox box = RowOf(window, "New.txt").GetVisualDescendants().OfType<CheckBox>().First(b => b.IsVisible);
-            Assert.False(box.IsChecked, "An unversioned file's box is ticked while it is not staged");
-            Ui.Click(box);
-            Ui.WaitFor(() => Under(commit, CommitView.StagedGroup) == "New.txt, Other.txt", () => $"Staged to list New.txt, staged by its box, and Other.txt, where it lists [{Under(commit, CommitView.StagedGroup)}]");
+            ListBox changes = commit.GetVisualDescendants().OfType<ListBox>().First(l => ReferenceEquals(l.ItemsSource, commit.Rows));
+            CheckBox box = Ui.Row(changes, commit.Rows.OfType<CommitGroup>().First(g => g.Name == "Unversioned Files")).GetVisualDescendants().OfType<CheckBox>().First(b => b.IsVisible);
+            Assert.False(box.IsChecked, "The unversioned files' box is ticked while none is staged");
+            List<string> reads = [];
+            void Heard(object? sender, ChildStart start)
+            {
+                if (start.Command.Contains("ls-files --stage", StringComparison.Ordinal))
+                {
+                    lock (reads)
+                    {
+                        reads.Add(start.Command);
+                    }
+                }
+            }
+            ChildProcesses.Started += Heard;
+            try
+            {
+                Ui.Click(box);
+                Ui.WaitFor(() => Under(commit, CommitView.StagedGroup) == "New.txt, Notes.txt, Other.txt",
+                    () => $"Staged to list New.txt and Notes.txt, staged by their group's box, and Other.txt, where it lists [{Under(commit, CommitView.StagedGroup)}]");
+            }
+            finally
+            {
+                ChildProcesses.Started -= Heard;
+            }
             Assert.Contains("New.txt", Staged(), StringComparison.Ordinal);
+            lock (reads)
+            {
+                Assert.True(reads.Count <= 2, $"Staging two files read git's index by {reads.Count} gits, one before and one after for each file");
+            }
 
             Ui.Click(RowOf(window, "Other.txt"));
             Ui.Press(window, Ui.Shortcut(EditorActions.Undo));
-            Ui.WaitFor(() => Under(commit, CommitView.StagedGroup) == "Other.txt", () => $"the Commit window's Undo to take New.txt's stage back, where Staged lists [{Under(commit, CommitView.StagedGroup)}]");
+            Ui.WaitFor(() => Under(commit, CommitView.StagedGroup) == "Other.txt", () => $"the Commit window's Undo to take the group's stage back, where Staged lists [{Under(commit, CommitView.StagedGroup)}]");
             Assert.DoesNotContain("New.txt", Staged(), StringComparison.Ordinal);
-            Assert.True(asked is [{ } question] && question.Contains("Stage New.txt", StringComparison.Ordinal), $"Undo asked [{string.Join(" | ", asked)}]");
+            Assert.DoesNotContain("Notes.txt", Staged(), StringComparison.Ordinal);
+            Assert.True(asked is [{ } question] && question.Contains("Stage New.txt and Notes.txt", StringComparison.Ordinal), $"Undo asked [{string.Join(" | ", asked)}]");
 
             commit.Message = "Other alone";
             Assert.True(Ui.Landed(commit.CommitAsync(false), "the commit of what is staged"), window.Status);

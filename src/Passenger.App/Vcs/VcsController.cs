@@ -1679,15 +1679,13 @@ public sealed class VcsController : IDisposable
     /// <summary>What git's index holds at each path (its mode and blob, or none), for putting it back as it was.</summary>
     public async Task<IReadOnlyList<(string Path, (string Mode, string Blob)? Entry)>> IndexEntriesAsync(IReadOnlyList<string> paths)
     {
-        List<(string, (string, string)?)> entries = [];
-        if (git is { } repository)
+        if (git is not { } repository)
         {
-            foreach (string path in paths.Distinct(PathNames.Comparer))
-            {
-                entries.Add((path, await repository.IndexEntryAsync(path)));
-            }
+            return [];
         }
-        return entries;
+        string[] distinct = [.. paths.Distinct(PathNames.Comparer)];
+        IReadOnlyList<(string Mode, string Blob)?> held = await repository.IndexEntriesAsync(distinct);
+        return [.. distinct.Select((path, i) => (path, held[i]))];
     }
 
     /// <summary>Puts git's index's entries back as <paramref name="entries"/> has them, then reads the status again: null
@@ -1701,16 +1699,9 @@ public sealed class VcsController : IDisposable
         }
         VcsOutcome put = await OneAtATimeAsync(async () =>
         {
-            foreach ((string path, (string Mode, string Blob)? entry) in entries)
-            {
-                if (await repository.PutIndexEntryAsync(path, entry) is { Succeeded: false } refused)
-                {
-                    await RefreshAsync();
-                    return new VcsOutcome(false, refused.Message);
-                }
-            }
+            GitResult written = await repository.PutIndexEntriesAsync(entries);
             await RefreshAsync();
-            return new VcsOutcome(true, string.Empty);
+            return new VcsOutcome(written.Succeeded, written.Succeeded ? string.Empty : written.Message);
         }, refused => refused);
         return put.Succeeded ? null : put.Message;
     }
