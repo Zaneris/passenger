@@ -1056,7 +1056,7 @@ public sealed class VcsController : IDisposable
         return Report(pushed.Succeeded, pushed.Succeeded ? $"Pushed {Branch}" : $"Push failed: {pushed.Message}");
     }
 
-    /// <summary>Asks which of several remotes a branch that tracks none is pushed to, given the branch and the remotes; null
+    /// <summary>Asks which of several remotes to take, given the question's words ("Push feature to") and the remotes; null
     /// once the person gives up. The window's, unset with none to ask in.</summary>
     public Func<string, IReadOnlyList<string>, Task<string?>>? ChooseRemote { get; set; }
 
@@ -1077,7 +1077,7 @@ public sealed class VcsController : IDisposable
         {
             return (null, $"{branch} tracks no remote's branch, and there are {Numbers.Said(remotes.Count)} remotes to push it to ({string.Join(", ", remotes)}): Push… in the window asks which");
         }
-        return await choose(branch, remotes) is { } chosen ? (chosen, null) : (null, $"{branch} was not pushed: no remote was chosen");
+        return await choose($"Push {branch} to", remotes) is { } chosen ? (chosen, null) : (null, $"{branch} was not pushed: no remote was chosen");
     }
 
     /// <summary>Update Project: the upstream fetched, then its commits brought in as the person's git config says (merged
@@ -1582,13 +1582,164 @@ public sealed class VcsController : IDisposable
             case RefKind.Local:
                 return SwitchAsync(repository => repository.DeleteBranchAsync(branch.Name, force), $"Deleted branch {branch.Name}", "Git branch");
             case RefKind.Tag:
-                return SwitchAsync(repository => repository.DeleteTagAsync(branch.Name), $"Deleted tag {branch.Name}", "Git tag");
+                return SwitchAsync(repository => repository.DeleteTagAsync(branch.Name),
+                    $"Deleted tag {branch.Name} here: a remote that has it keeps it until it is deleted there (Delete on Remote…)", "Git tag");
             default:
                 string remote = (remotes ?? []).Where(r => branch.Name.StartsWith(r + "/", StringComparison.Ordinal)).MaxBy(r => r.Length)
                     ?? branch.Name[..Math.Max(0, branch.Name.IndexOf('/', StringComparison.Ordinal))];
                 return RemoteSwitchAsync(AppActions.Push, $"Deleting {branch.Name}…", "Delete", (repository, stopping, asker) => repository.DeleteRemoteBranchAsync(remote, branch.Name[(remote.Length + 1)..], stopping, asker),
                     $"Deleted remote branch {branch.Name}", "Git push");
         }
+    }
+
+    /// <summary>The tag of this name as it stands, or null where there is none or no working tree.</summary>
+    public async Task<TagInfo?> TagOfAsync(string name) => git is { } repository ? await repository.TagOfAsync(name) : null;
+
+    /// <summary>The commit a revision names as the log lists it, or null where it names none or there is no working tree.</summary>
+    public async Task<CommitInfo?> CommitAtAsync(string revision) => git is { } repository ? await repository.CommitAtAsync(revision) : null;
+
+    /// <summary>The remotes' names; none outside a working tree.</summary>
+    public async Task<IReadOnlyList<string>> RemotesAsync() => git is { } repository ? await repository.RemotesAsync() : [];
+
+    /// <summary>New Tag…'s plan carried out, held as its action's work: the tag made, or moved from the commit it named, an
+    /// annotated one signed as planned (a key's passphrase asked in the window, one not signed saying why and how to mend
+    /// it), then pushed where planned, in place of the remote's own of the name where it moves one; told in words that say
+    /// what it means for others.</summary>
+    public async Task<VcsOutcome> MakeTagAsync(TagPlan plan)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return Report(false, NoRepository);
+        }
+        if (plan.PushTo is not null && WhyNotRemote is { } untrusted)
+        {
+            return Report(false, untrusted);
+        }
+        string making = plan.Moving is null ? $"Tagging {plan.Commit.Short} as {plan.Name}…" : $"Moving {plan.Name} to {plan.Commit.Short}…";
+        if (!Begin(AppActions.NewTag, making, out Working? work, stoppable: plan.PushTo is not null))
+        {
+            return Report(false, UnderWay(AppActions.NewTag));
+        }
+        using Working? held = work;
+        return await OneAtATimeAsync(async () =>
+        {
+            GitResult made;
+            if (plan.Sign)
+            {
+                (Signer signer, SigningSetup setup) = await SignerAsync(repository, CommitSigning.AsConfigured with { Sign = true });
+                made = Unsigned(await repository.MakeTagAsync(plan, signer), setup with { Signs = true });
+            }
+            else
+            {
+                made = await repository.MakeTagAsync(plan);
+            }
+            if (!made.Succeeded)
+            {
+                return Report(false, $"{plan.Name} was not {(plan.Moving is null ? "made" : "moved")}: {made.Message}");
+            }
+            string done = plan.Moving is null
+                ? $"Tagged {plan.Commit.Short} as {plan.Name}{(plan.IsAnnotated ? plan.Sign ? ", annotated and signed" : ", annotated" : string.Empty)}"
+                : $"Moved {plan.Name} from {GitHashes.Short(plan.Moving.Commit)} to {plan.Commit.Short}";
+            if (plan.PushTo is not { } remote)
+            {
+                await RefreshAsync();
+                return Report(true, plan.Moving is null ? $"{done}: it is in this repository alone until pushed" : $"{done} here: a remote that has it keeps it where it was until it is pushed");
+            }
+            work?.Say($"Pushing {plan.Name} to {remote}…");
+            GitResult? pushed = await RemoteAsync(work, (stopping, asker) => repository.PushTagAsync(remote, plan.Name, replace: plan.Moving is not null, stopping, asker));
+            await RefreshAsync();
+            return pushed is null ? Report(false, $"{done} here, but its push to {remote} was stopped")
+                : !pushed.Succeeded ? Report(false, $"{done} here, but it was not pushed to {remote}: {pushed.Message}")
+                : Report(true, plan.Moving is null ? $"{done} and pushed it to {remote}, where whoever fetches gets it" : $"{done} here and on {remote}: whoever fetched it before keeps it where it was");
+        }, refused => refused);
+    }
+
+    /// <summary>The remote a tag goes to or is deleted on: the only one, or the one of several the person chooses, asked
+    /// as <paramref name="asking"/> ("Push tag v1.0 to"); null where there is none, said as every outcome is.</summary>
+    public async Task<string?> TagRemoteAsync(string tag, string asking)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return Refused(NoRepository);
+        }
+        if (WhyNotRemote is { } untrusted)
+        {
+            return Refused(untrusted);
+        }
+        IReadOnlyList<string> remotes = await repository.RemotesAsync();
+        return remotes switch
+        {
+            [string only] => only,
+            [] => Refused($"The repository has no remote for tag {tag}"),
+            _ when ChooseRemote is { } choose => await choose(asking, remotes) ?? Refused($"No remote was chosen for tag {tag}"),
+            _ => Refused($"There are {Numbers.Said(remotes.Count)} remotes ({string.Join(", ", remotes)}) and none to ask which"),
+        };
+
+        string? Refused(string why)
+        {
+            Report(false, why);
+            return null;
+        }
+    }
+
+    /// <summary>A tag's Push…: the tag pushed to <paramref name="remote"/>, in place of the remote's own of the name where
+    /// <paramref name="replace"/>; one the remote refused for having its own says so, which the window asks to replace.</summary>
+    public async Task<TagPush> PushTagAsync(string tag, string remote, bool replace = false)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return new TagPush(Report(false, NoRepository), false);
+        }
+        if (WhyNotRemote is { } untrusted)
+        {
+            return new TagPush(Report(false, untrusted), false);
+        }
+        if (!Begin(AppActions.Push, $"Pushing tag {tag} to {remote}…", out Working? work, stoppable: true))
+        {
+            return new TagPush(Report(false, UnderWay(AppActions.Push)), false);
+        }
+        using Working? held = work;
+        GitResult? pushed = await RemoteAsync(work, (stopping, asker) => repository.PushTagAsync(remote, tag, replace, stopping, asker));
+        await RefreshAsync();
+        if (pushed is null)
+        {
+            return new TagPush(Report(false, "Push stopped"), false);
+        }
+        if (!pushed.Succeeded && TagNames.RemoteHasAnother(pushed))
+        {
+            return new TagPush(Report(false, $"{remote} has its own tag {tag}, naming another commit: pushing it in place of that one moves it there for whoever fetches"), true);
+        }
+        return new TagPush(pushed.Succeeded
+            ? Report(true, replace ? $"Pushed tag {tag} to {remote} in place of its own: whoever fetched the old one keeps it until they fetch tags again with --force"
+                : $"Pushed tag {tag} to {remote}, where whoever fetches gets it")
+            : Report(false, $"Tag {tag} was not pushed to {remote}: {pushed.Message}"), false);
+    }
+
+    /// <summary>A tag's Delete on Remote…: the tag deleted on <paramref name="remote"/>, this repository's own kept.</summary>
+    public async Task<VcsOutcome> DeleteRemoteTagAsync(string tag, string remote)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return Report(false, NoRepository);
+        }
+        if (WhyNotRemote is { } untrusted)
+        {
+            return Report(false, untrusted);
+        }
+        if (!Begin(AppActions.Push, $"Deleting tag {tag} on {remote}…", out Working? work, stoppable: true))
+        {
+            return Report(false, UnderWay(AppActions.Push));
+        }
+        using Working? held = work;
+        GitResult? deleted = await RemoteAsync(work, (stopping, asker) => repository.DeleteRemoteTagAsync(remote, tag, stopping, asker));
+        await RefreshAsync();
+        return deleted is null ? Report(false, "Delete stopped")
+            : deleted.Succeeded ? Report(true, $"Deleted tag {tag} on {remote}: a repository that fetched it keeps its own, this one's too, until it is deleted there")
+            : Report(false, $"Tag {tag} was not deleted on {remote}: {deleted.Message}");
     }
 
     /// <summary>Update of a local branch: the one checked out updated as Update Project does, another brought
@@ -2381,6 +2532,9 @@ public sealed class VcsController : IDisposable
 /// <summary>A conflicted file's versions as the merge window shows them: the one both sides came from, yours (left) and
 /// theirs (right), and the words for its sides.</summary>
 public sealed record MergeTexts(string Path, string Base, string Left, string Right, ConflictSides Sides);
+
+/// <summary>What a tag's push came to, and whether the remote refused it for having its own tag of the name.</summary>
+public sealed record TagPush(VcsOutcome Outcome, bool RemoteHasAnother);
 
 /// <summary>What an operation on the working tree came to: whether it worked, and what the person is told of it (git's own
 /// words when it did not), the words the status bar is told as it lands.</summary>

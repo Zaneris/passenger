@@ -13,6 +13,9 @@ public sealed record SigningSetup(bool Signs, SigningFormat Format, string? Key,
     /// <summary>The gpgsm git signs an X.509 commit with, where its config names one (gpg.x509.program).</summary>
     public string? X509Program { get; init; }
 
+    /// <summary>Whether every tag is signed (tag.gpgsign), which a new tag's signing starts from.</summary>
+    public bool SignsTags { get; init; }
+
     public static readonly SigningSetup None = new(false, SigningFormat.OpenPgp, null);
 
     /// <summary>The setup `git config -z --show-scope --get-regexp` wrote: each setting its scope and a NUL, its name, a
@@ -40,6 +43,7 @@ public sealed record SigningSetup(bool Signs, SigningFormat Format, string? Key,
             }
         }
         bool signs = set.TryGetValue(GitConfigKeys.CommitGpgSign, out (string Scope, string Value) sign) && Truth(sign.Value);
+        bool signsTags = set.TryGetValue(GitConfigKeys.TagGpgSign, out (string Scope, string Value) signTags) && Truth(signTags.Value);
         SigningFormat format = set.GetValueOrDefault(GitConfigKeys.GpgFormat).Value?.ToLowerInvariant() switch
         {
             "ssh" => SigningFormat.Ssh,
@@ -52,6 +56,7 @@ public sealed record SigningSetup(bool Signs, SigningFormat Format, string? Key,
         return new SigningSetup(signs, format, key, scope, set.GetValueOrDefault(GitConfigKeys.GpgSshDefaultKeyCommand).Value is { Length: > 0 }, set.ContainsKey(GitConfigKeys.GpgFormat), program)
         {
             X509Program = x509,
+            SignsTags = signsTags,
         };
 
         static bool Truth(string value) => value.Trim().ToLowerInvariant() is "true" or "yes" or "on" or "1";
@@ -378,7 +383,7 @@ public sealed partial class Git
     /// <summary>How the tree's git config has a commit signed, read by one git.</summary>
     public async Task<SigningSetup> SigningAsync()
     {
-        GitResult config = await RunAsync(Root, ["config", "-z", "--show-scope", "--get-regexp", GitConfigKeys.Pattern(GitConfigKeys.CommitGpgSign, GitConfigKeys.GpgFormat,
+        GitResult config = await RunAsync(Root, ["config", "-z", "--show-scope", "--get-regexp", GitConfigKeys.Pattern(GitConfigKeys.CommitGpgSign, GitConfigKeys.TagGpgSign, GitConfigKeys.GpgFormat,
             GitConfigKeys.UserSigningKey, GitConfigKeys.GpgSshDefaultKeyCommand, GitConfigKeys.GpgProgram, GitConfigKeys.GpgOpenPgpProgram, GitConfigKeys.GpgX509Program)], answers: [1]);
         return config.Succeeded ? SigningSetup.Of(config.Output) : SigningSetup.None;
     }

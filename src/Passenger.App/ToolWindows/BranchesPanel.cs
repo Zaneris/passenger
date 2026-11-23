@@ -84,8 +84,8 @@ public sealed record GitBranchesState : IStateDocument<GitBranchesState>
 /// <summary>The branches panel at the Git log's left: HEAD (Current Branch), then Local, Remote by remote and Tags, each
 /// grouped by directory, the current branch first, then favourites (main and master starred to begin with), then
 /// folders, then the rest by name; a search narrows them. A double-click or Enter on one filters the log to it (Update
-/// Branch Filter in Log); its menu checks out, branches, compares, rebases, merges, updates, pushes, renames and
-/// deletes.</summary>
+/// Branch Filter in Log); its menu checks out, branches, tags, compares, rebases, merges, updates, pushes, renames and
+/// deletes, and a tag's moves it, pushes it and deletes it here or on a remote.</summary>
 public sealed class BranchesPanel : DockPanel
 {
     private VcsController vcs;
@@ -194,6 +194,16 @@ public sealed class BranchesPanel : DockPanel
 
     public event EventHandler<BranchInfo>? WorkingTreeDiffRequested;
 
+    /// <summary>A tag to make where a branch is, asked for in the New Tag dialog.</summary>
+    public event EventHandler<BranchInfo>? NewTagRequested;
+
+    /// <summary>A tag to move to another commit, asked for in the New Tag dialog.</summary>
+    public event EventHandler<BranchInfo>? MoveTagRequested;
+
+    public event EventHandler<BranchInfo>? PushTagRequested;
+
+    public event EventHandler<BranchInfo>? DeleteRemoteTagRequested;
+
     /// <summary>A branch was marked or unmarked as a favourite, for the folder to keep.</summary>
     public event EventHandler<GitBranchesState>? FavoritesChanged;
 
@@ -220,6 +230,10 @@ public sealed class BranchesPanel : DockPanel
             IdeErrors.Observe(GreyWhenRefusedAsync((MenuItem)items[^1], vcs.WhyNotCheckoutRefAsync(branch, Branches)));
         }
         Add($"New Branch from {it}…", () => NewBranchRequested?.Invoke(this, branch));
+        if (branch.Kind != RefKind.Tag)
+        {
+            Add($"New Tag at {it}…", () => NewTagRequested?.Invoke(this, branch));
+        }
         if (branch.Kind == RefKind.Local && !isCurrent)
         {
             Add(current is null ? "Checkout and Rebase onto Current" : $"Checkout and Rebase onto {here}", () => IdeErrors.Observe(vcs.CheckoutAndRebaseAsync(branch)), detached);
@@ -248,9 +262,19 @@ public sealed class BranchesPanel : DockPanel
             Separate();
             Add("Rename…", () => RenameRequested?.Invoke(this, branch));
         }
+        if (branch.Kind == RefKind.Tag)
+        {
+            Add("Move Tag…", () => MoveTagRequested?.Invoke(this, branch));
+            Add("Push…", () => PushTagRequested?.Invoke(this, branch), vcs.WhyNotRemote);
+            Separate();
+        }
         if (WhyNotDelete(branch) is null)
         {
             Add("Delete", () => DeleteRequested?.Invoke(this, branch));
+        }
+        if (branch.Kind == RefKind.Tag)
+        {
+            Add("Delete on Remote…", () => DeleteRemoteTagRequested?.Invoke(this, branch), vcs.WhyNotRemote);
         }
         if (items.Count > 0 && items[^1] is Separator)
         {

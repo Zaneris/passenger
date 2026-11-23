@@ -120,11 +120,11 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("a commit whose hook leaves a job holding gits output is done within seconds", t => t.A_commit_whose_hook_leaves_a_job_holding_gits_output_is_done_within_seconds());
     }
 
-    /// <summary>The log and annotations as one flow, each step the check one test made in an instance of its own:
-    /// annotations in a SHA-256 repository, the Commit and Log menus ignoring a file, reverting a commit and branching
-    /// from one, a commit's file in the log jumping to its source and copying its path, a commit made elsewhere reaching
-    /// the log of the working tree's top and of a folder in it, and an interactive rebase from the log making the history
-    /// its preview showed and going on from its stops.</summary>
+    /// <summary>The log and annotations as one flow, each step in an instance of its own: annotations in a SHA-256
+    /// repository, the Commit and Log menus ignoring a file, reverting a commit and branching from one, a commit's file in
+    /// the log jumping to its source, a commit made elsewhere reaching the log of the tree's top and of a folder in it, an
+    /// interactive rebase making the history its preview showed, and a tag made from the log, annotated and signed,
+    /// pushed, moved and deleted here and on the remote as its preview said.</summary>
     [AvaloniaFact]
     public void The_log_follows_commits_made_anywhere_and_its_menus_act_on_the_commit_or_file_chosen()
     {
@@ -134,6 +134,7 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("a commit made elsewhere reaches the log of the working trees top and of a folder in it", t => t.A_commit_made_elsewhere_reaches_the_log_of_the_working_trees_top_and_of_a_folder_in_it());
         Flow.StepApart<VcsTests>("an interactive rebase from the log moves squashes rewords and drops commits making the history its preview showed", t => t.An_interactive_rebase_from_the_log_moves_squashes_rewords_and_drops_commits_making_the_history_its_preview_showed());
         Flow.StepApart<VcsTests>("an interactive rebase stops for conflicts and at an edit and goes on by skip commit and continue rebase", t => t.An_interactive_rebase_stops_for_conflicts_and_at_an_edit_and_goes_on_by_skip_commit_and_continue_rebase());
+        Flow.StepApart<VcsTests>("a tag made from the log annotated and signed is pushed moved and deleted here and on the remote as its preview said", t => t.A_tag_made_from_the_log_annotated_and_signed_is_pushed_moved_and_deleted_here_and_on_the_remote_as_its_preview_said());
     }
 
     /// <summary>Stash and Unstash as one flow, each step the check one test made in an instance of its own: nothing to
@@ -2031,6 +2032,115 @@ public sealed partial class VcsTests : IDisposable
         Assert.Equal(["Notes", "Twice", "First"], Git("log", "--format=%s").Split('\n', StringSplitOptions.RemoveEmptyEntries));
         Assert.Contains("count += 2", File.ReadAllText(Path.Combine(folder, "Shop.cs")), StringComparison.Ordinal);
         window.Close();
+    }
+
+    /// <summary>New Tag… from a commit of the log makes an annotated tag signed with the repository's SSH key and pushes it,
+    /// the dialog saying so in words and in git's before anything runs; Move Tag… from the tag's menu moves it to HEAD and
+    /// pushes it in place of the remote's; a tag whose remote has its own of the name asks before replacing it; and Delete
+    /// on Remote… then Delete take it off the remote and out of the repository, each saying what it means for others.</summary>
+    private void A_tag_made_from_the_log_annotated_and_signed_is_pushed_moved_and_deleted_here_and_on_the_remote_as_its_preview_said()
+    {
+        Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
+        string origin = TestFolders.Create("tag-origin-");
+        string keys = TestFolders.Create("tag-keys-");
+        try
+        {
+            string key = Ui.AwaitPumped(Waiting.Apart(() => TestSshKeys.MakeAsync(keys, "tagger")), "the key tags are signed with", TimeSpan.FromMinutes(1));
+            File.WriteAllText(Path.Combine(keys, "allowed_signers"), $"tests@passenger.invalid {TestSshKeys.Public(key)}\n");
+            Git("config", GitConfigKeys.GpgFormat, "ssh");
+            Git("config", GitConfigKeys.UserSigningKey, key + ".pub");
+            Git("config", GitConfigKeys.GpgSshAllowedSignersFile, Path.Combine(keys, "allowed_signers"));
+            TestGit.Run(origin, "init", "-q", "--bare", "-b", "main");
+            Git("remote", "add", "origin", origin);
+            File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 2", StringComparison.Ordinal));
+            Git("commit", "-q", "-am", "Twice");
+            string first = Git("rev-parse", "HEAD~1").Trim();
+            string twice = Git("rev-parse", "HEAD").Trim();
+            MainWindow window = Open();
+            window.Perform(AppActions.ShowGit);
+            GitLogView log = window.GitLog;
+            Ui.Landed(() => log.Rows.Any(r => r.Commit.Subject == "First"), "the log");
+            log.Select(log.Rows.First(r => r.Commit.Subject == "First").Commit);
+            Ui.ChooseFromMenu(Find(log, log.Rows), "New Tag…");
+            Ui.WaitFor(() => window.TagWindow is { IsVisible: true }, "the New Tag dialog");
+            TagDialog dialog = DialogButtonsTests.Check(window.TagWindow!);
+            Assert.Equal(first, dialog.AtBox.Text);
+            dialog.KeyTextInput("v1.0");
+            Ui.Click(dialog.KindBox[true]);
+            Ui.Click(dialog.MessageBox);
+            dialog.KeyTextInput("Release one");
+            Ui.Click(dialog.SignBox);
+            dialog.PushBox.SelectedIndex = 1;
+            Ui.Settle();
+            string at = $"{GitHashes.Short(first)} (First)";
+            Assert.Equal(
+                [
+                    $"Makes an annotated tag v1.0 at {at}.",
+                    "Keeps the message, you as its tagger and the time with it; signs it with SSH key tagger.pub, so whoever fetches it can check it is yours.",
+                    "Pushes it to origin, where whoever fetches from origin gets it.",
+                ], dialog.WhatItDoes);
+            Assert.Equal($"git tag -a -s -m \"…\" v1.0 {GitHashes.Short(first)}\ngit push origin v1.0", dialog.GitWords);
+            Ui.Click(dialog.CreateButton);
+            Ui.Landed(() => window.TagWindow is null && !window.Vcs.IsBusy, "the tag made and pushed");
+            Assert.Equal($"Tagged {GitHashes.Short(first)} as v1.0, annotated and signed and pushed it to origin, where whoever fetches gets it", window.Status);
+            Assert.Equal(first, TestGit.Run(origin, "rev-parse", "v1.0^{commit}").Trim());
+            Assert.Equal("Release one", Git("tag", "-l", "--format=%(contents:subject)", "v1.0").Trim());
+            Git("tag", "-v", "v1.0");
+
+            BranchesPanel panel = window.GitBranches;
+            ListBox branches = Find(panel, panel.Rows);
+            Ui.Landed(() => panel.Select("v1.0"), "the tag in the branches panel");
+            Ui.ChooseFromMenu(branches, "Move Tag…");
+            Ui.WaitFor(() => window.TagWindow is { IsVisible: true }, "the Move Tag dialog");
+            dialog = DialogButtonsTests.Check(window.TagWindow!);
+            Ui.Landed(() => dialog.MessageBox.Text == "Release one", "the tag's own message to keep");
+            Assert.True(dialog.KindBox.Choice, "Move Tag… of an annotated tag offered to make it lightweight");
+            dialog.PushBox.SelectedIndex = 1;
+            Ui.Settle();
+            Assert.Equal(
+                [
+                    $"Moves v1.0 from {at} to {GitHashes.Short(twice)} (Twice).",
+                    "Keeps the message, you as its tagger and the time with it.",
+                    "Pushes it to origin in place of the v1.0 there, if it has one: whoever fetched that one keeps it until they fetch tags again with --force.",
+                ], dialog.WhatItDoes);
+            Assert.Equal("Move Tag", dialog.CreateButton.Content);
+            Ui.Click(dialog.CreateButton);
+            Ui.Landed(() => window.TagWindow is null && !window.Vcs.IsBusy, "the tag moved and pushed");
+            Assert.Equal($"Moved v1.0 from {GitHashes.Short(first)} to {GitHashes.Short(twice)} here and on origin: whoever fetched it before keeps it where it was", window.Status);
+            Assert.Equal(twice, TestGit.Run(origin, "rev-parse", "v1.0^{commit}").Trim());
+
+            Git("tag", "v2", first);
+            Git("push", "-q", "origin", "v2");
+            Git("tag", "-f", "v2", twice);
+            List<string> asked = [];
+            window.Confirm = (title, _, _) =>
+            {
+                asked.Add(title);
+                return Task.FromResult(true);
+            };
+            window.Perform(AppActions.GitLogRefresh);
+            Ui.Landed(() => panel.Select("v2"), "the second tag in the branches panel");
+            Ui.ChooseFromMenu(branches, "Push…");
+            Ui.Landed(() => asked.Count == 1 && !window.Vcs.IsBusy, "the question whether to replace origin's own v2");
+            Assert.Equal("Replace origin's Tag v2", asked[0]);
+            Assert.Equal(twice, TestGit.Run(origin, "rev-parse", "v2^{commit}").Trim());
+
+            Assert.True(panel.Select("v1.0"));
+            Ui.ChooseFromMenu(branches, "Delete on Remote…");
+            Ui.Landed(() => asked.Count == 2 && !window.Vcs.IsBusy, "the tag deleted on origin");
+            Assert.Equal("Delete Tag on Remote", asked[1]);
+            Assert.DoesNotContain("v1.0", TestGit.Run(origin, "tag").Split('\n'));
+            Assert.Contains("v1.0", Git("tag").Split('\n'));
+            Ui.ChooseFromMenu(branches, "Delete");
+            Ui.Landed(() => !Git("tag").Split('\n').Contains("v1.0") && !window.Vcs.IsBusy, "the tag deleted here");
+            Assert.StartsWith("Deleted tag v1.0 here: a remote that has it keeps it", window.Status, StringComparison.Ordinal);
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(origin);
+            TestFolders.Delete(keys);
+        }
     }
 
     /// <summary>The Git log open, the commit with <paramref name="subject"/> chosen and Interactively Rebase from Here taken

@@ -545,7 +545,7 @@ public sealed class BranchesTests : IDisposable
         Assert.True(feature.IsSubMenuOpen, "Choosing feature in the branch menu opened no menu of feature's");
         Assert.Equal(
             [
-                "Checkout", "New Branch from 'feature'…", "Checkout and Rebase onto 'main'", "Compare with 'main'", "Show Diff with Working Tree",
+                "Checkout", "New Branch from 'feature'…", "New Tag at 'feature'…", "Checkout and Rebase onto 'main'", "Compare with 'main'", "Show Diff with Working Tree",
                 "Rebase 'main' onto 'feature'", "Merge 'feature' into 'main'", "Update", "Push…", "Rename…", "Delete",
             ], feature.Items.OfType<MenuItem>().Select(i => i.Header as string));
 

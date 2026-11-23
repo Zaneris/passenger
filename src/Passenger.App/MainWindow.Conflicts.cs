@@ -19,17 +19,17 @@ public partial class MainWindow
 
     private void AddMergeConflicts()
     {
-        Add(AppActions.ResolveConflicts, "Resolve Conflicts…", _ => ShowConflicts(), 5,
+        Add(AppActions.ResolveConflicts, "Resolve Conflicts…", _ => ShowConflicts(), 7,
             () => session.Vcs.Conflicts.Count == 0 ? "No conflicts found" : null);
-        Add(AppActions.ContinueRebase, "Continue Rebase", context => IdeErrors.Observe(session.Vcs.ContinueRebaseAsync()), 6,
+        Add(AppActions.ContinueRebase, "Continue Rebase", context => IdeErrors.Observe(session.Vcs.ContinueRebaseAsync()), 8,
             () => NoRebase() ?? (session.Vcs.Conflicts.Count > 0 ? VcsController.ContinueRefused : null));
-        Add(AppActions.SkipRebase, "Skip Commit", context => IdeErrors.Observe(session.Vcs.SkipRebaseAsync()), 7, () => session.Vcs.WhyNotSkip);
-        Add(AppActions.AbortRebase, "Abort Rebase", context => IdeErrors.Observe(AbortAsync("Abort Rebase", $"Abort rebase in {Path.GetFileName(session.Vcs.Repository?.Root)}?")), 8, NoRebase);
-        Add(AppActions.AbortMerge, "Abort Merge", context => IdeErrors.Observe(AbortAsync("Abort Merge", "Abort merge?")), 9,
+        Add(AppActions.SkipRebase, "Skip Commit", context => IdeErrors.Observe(session.Vcs.SkipRebaseAsync()), 9, () => session.Vcs.WhyNotSkip);
+        Add(AppActions.AbortRebase, "Abort Rebase", context => IdeErrors.Observe(AbortAsync("Abort Rebase", $"Abort rebase in {Path.GetFileName(session.Vcs.Repository?.Root)}?")), 10, NoRebase);
+        Add(AppActions.AbortMerge, "Abort Merge", context => IdeErrors.Observe(AbortAsync("Abort Merge", "Abort merge?")), 11,
             () => session.Vcs.Merge.Operation is MergeOperation.Merge ? null : "No merge in progress");
-        Add(AppActions.AbortCherryPick, "Abort Cherry-Pick", context => IdeErrors.Observe(AbortAsync("Abort Cherry-Pick", "Abort cherry-pick?")), 10,
+        Add(AppActions.AbortCherryPick, "Abort Cherry-Pick", context => IdeErrors.Observe(AbortAsync("Abort Cherry-Pick", "Abort cherry-pick?")), 12,
             () => session.Vcs.Merge.Operation is MergeOperation.CherryPick ? null : "No cherry-pick in progress");
-        Add(AppActions.AbortRevert, "Abort Revert", context => IdeErrors.Observe(AbortAsync("Abort Revert", "Abort revert?")), 11,
+        Add(AppActions.AbortRevert, "Abort Revert", context => IdeErrors.Observe(AbortAsync("Abort Revert", "Abort revert?")), 13,
             () => session.Vcs.Merge.Operation is MergeOperation.Revert ? null : "No revert in progress");
 
         string? NoRebase() => session.Vcs.Merge.Operation is MergeOperation.Rebase ? null : "No rebase in progress";

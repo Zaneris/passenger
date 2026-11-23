@@ -55,6 +55,9 @@ public static class TypingPauses
     /// <summary>Before a Markdown, HTML or SVG preview takes the text again.</summary>
     public static TimeSpan Previews => Of(TimeSpan.FromMilliseconds(300));
 
+    /// <summary>Before a name or a revision typed in a Git dialog (New Tag's) is looked up in the repository.</summary>
+    public static TimeSpan GitNames => Of(TimeSpan.FromMilliseconds(250));
+
     /// <summary>Before a file's change bars are worked out again.</summary>
     public static TimeSpan ChangeBars => Of(TimeSpan.FromMilliseconds(120));
 

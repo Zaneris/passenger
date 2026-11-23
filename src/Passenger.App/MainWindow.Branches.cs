@@ -24,6 +24,10 @@ public partial class MainWindow
         panel.DeleteRequested += (_, branch) => IdeErrors.Observe(DeleteBranchAsync(branch));
         panel.CompareRequested += (_, branch) => CompareWithCurrent(branch);
         panel.WorkingTreeDiffRequested += (_, branch) => ShowWorkingTreeDiff(branch);
+        panel.NewTagRequested += (_, branch) => IdeErrors.Observe(ShowNewTagAsync(branch.Ref.GitName ?? branch.Ref.FullName));
+        panel.MoveTagRequested += (_, tag) => IdeErrors.Observe(ShowNewTagAsync("HEAD", tag.Name));
+        panel.PushTagRequested += (_, tag) => IdeErrors.Observe(PushTagAsync(tag));
+        panel.DeleteRemoteTagRequested += (_, tag) => IdeErrors.Observe(DeleteRemoteTagAsync(tag));
         panel.FavoritesChanged += (_, favorites) => session.State?.GitBranches.Set(favorites);
     }
 

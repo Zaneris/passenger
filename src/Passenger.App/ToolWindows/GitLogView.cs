@@ -90,6 +90,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             new Separator(),
             ListMenus.Item("Checkout Revision", () => IdeErrors.Observe(vcs.CheckoutRevisionAsync(commit.Hash))),
             ListMenus.Item("New Branch…", () => NewBranchRequested?.Invoke(this, commit)),
+            ListMenus.Item("New Tag…", () => NewTagRequested?.Invoke(this, commit)),
             new Separator(),
             ListMenus.Item("Cherry-Pick", () => IdeErrors.Observe(vcs.CherryPickAsync(commit.Hash))),
             ListMenus.Item("Revert Commit", () => IdeErrors.Observe(vcs.RevertAsync(commit.Hash))),
@@ -246,6 +247,9 @@ public sealed class GitLogView : DockPanel, IOwnKeys
 
     /// <summary>The commits from one up to HEAD to plan an interactive rebase of.</summary>
     public event EventHandler<CommitInfo>? InteractiveRebaseRequested;
+
+    /// <summary>A tag to make at a commit, asked for in the New Tag dialog.</summary>
+    public event EventHandler<CommitInfo>? NewTagRequested;
 
     /// <summary>The current branch to move to a commit, in a mode (a hard reset to be agreed to first).</summary>
     public event EventHandler<(CommitInfo Commit, ResetMode Mode)>? ResetRequested;

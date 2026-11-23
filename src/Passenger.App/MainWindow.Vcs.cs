@@ -157,6 +157,7 @@ public partial class MainWindow
             NamePopup popup = new($"New Branch from {commit.Short}", string.Empty, async name => (await session.Vcs.NewBranchAtAsync(name, commit.Hash)).Problem);
             popups.Show(popup, _ => { });
         };
+        view.NewTagRequested += (_, commit) => IdeErrors.Observe(ShowNewTagAsync(commit.Hash));
         view.ResetRequested += (_, reset) => IdeErrors.Observe(ResetToAsync(reset));
         view.InteractiveRebaseRequested += (_, commit) => IdeErrors.Observe(InteractiveRebaseAsync(commit));
         FollowBranches(view.Log.Branches!);
@@ -332,13 +333,14 @@ public partial class MainWindow
         return popup;
     }
 
-    /// <summary>Which of several remotes a branch that tracks none is pushed to: chosen from a list of them, null once the
-    /// popup closes with none chosen (Escape, a click outside it).</summary>
-    private Task<string?> ChooseRemoteAsync(string branch, IReadOnlyList<string> remotes)
+    /// <summary>Which of several remotes to take (a branch that tracks none pushed to, a tag pushed or deleted on), asked in
+    /// <paramref name="asking"/>'s words: chosen from a list of them, null once the popup closes with none chosen (Escape, a
+    /// click outside it).</summary>
+    private Task<string?> ChooseRemoteAsync(string asking, IReadOnlyList<string> remotes)
     {
         TaskCompletionSource<string?> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
         string? chosen = null;
-        ChoicePopup popup = new($"Push {branch} to", "Search for remotes", [.. remotes.Select(r => new Choice(r, string.Empty, r))], "No remote matches");
+        ChoicePopup popup = new(asking, "Search for remotes", [.. remotes.Select(r => new Choice(r, string.Empty, r))], "No remote matches");
         // Heard before the popup closes for it, which ends the question.
         popup.Done += (_, choice) => chosen = choice?.Value as string;
         popup.DetachedFromVisualTree += (_, _) => answer.TrySetResult(chosen);
@@ -834,6 +836,9 @@ public partial class MainWindow
         Add(AppActions.UpdateProject, "Update Project…", context => IdeErrors.Observe(session.Vcs.UpdateAsync()), new("Git", 0, 2), remote: true);
         Add(AppActions.Fetch, "Fetch", context => IdeErrors.Observe(session.Vcs.FetchAsync()), new("Git", 0, 3), remote: true);
         Add(AppActions.Branches, "Branches…", _ => ShowBranches(BranchButton), new("Git", 0, 4));
+        // At the commit chosen in the Git log where the log has the keys, else at HEAD; the dialog takes any other.
+        Add(AppActions.NewTag, "New Tag…", context => IdeErrors.Observe(ShowNewTagAsync(
+            (context.Focused as Visual)?.FindAncestorOfType<ToolWindows.GitLogView>(includeSelf: true)?.Selected?.Hash ?? "HEAD")), new("Git", 0, 5));
         Add(AppActions.Stash, "Stash Changes…", _ => ShowStash(), new("Git", 1, 0), whyNot: () => session.Vcs.WhyNotStash);
         Add(AppActions.Unstash, "Unstash Changes…", context => IdeErrors.Observe(ShowUnstashAsync()), new("Git", 1, 1));
         Add(AppActions.ShowDiff, "Show Diff", context => IdeErrors.Observe(ShowDiffAsync(context.File!.Path)), new("Git", 2, 0), onFile: true);
