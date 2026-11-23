@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.SignatureHelp;
 
@@ -7,10 +8,11 @@ namespace Passenger.Roslyn.Extension;
 
 /// <summary>Which of a call's signatures still fit the arguments it has so far, and the parameter the caret's argument
 /// fills in each, as C# binds arguments: by name where one is named, else by place, the rest of a <c>params</c> list in its
-/// last parameter. An argument fits a parameter its type converts to implicitly; one whose type is not known yet (empty,
-/// typed partway, a lambda, <c>null</c>) or a parameter of a type still to be inferred is no evidence either way, so the
-/// signature still fits. Read from the signatures Roslyn's signature help gives, in its order, each keeping its symbol's
-/// key.</summary>
+/// last parameter. An argument fits a parameter it converts to implicitly as written (a constant to a smaller number, an
+/// interpolated string to its handler), a <c>params</c> list's parameter also where it converts to the list's element; one
+/// whose type is not known yet (empty, typed partway, a lambda, <c>null</c>) or a parameter of a type still to be inferred
+/// is no evidence either way, so the signature still fits. Read from the signatures Roslyn's signature help gives, in its
+/// order, each keeping its symbol's key.</summary>
 internal static class SignatureFits
 {
     /// <summary>Each signature's fit and the parameter the caret's argument fills there (-1 for none), in the order the
@@ -25,12 +27,12 @@ internal static class SignatureFits
         {
             return null;
         }
-        (string? Name, ITypeSymbol? Type)[] arguments = Arguments(model, list, cancellationToken);
+        Argument[] arguments = Arguments(model, list, cancellationToken);
         // The place the caret's argument stands at, past the arguments written where it follows the last comma.
         int at = list.Arguments.GetSeparators().Count(comma => comma.SpanStart < position);
         if (arguments.Length <= at)
         {
-            arguments = [.. arguments, .. Enumerable.Repeat<(string?, ITypeSymbol?)>((null, null), at + 1 - arguments.Length)];
+            arguments = [.. arguments, .. Enumerable.Repeat(new Argument(null, null, null), at + 1 - arguments.Length)];
         }
         (bool, int)[] fits = new (bool, int)[items.Items.Count];
         for (int i = 0; i < fits.Length; i++)
@@ -39,7 +41,7 @@ internal static class SignatureFits
             {
                 return null;
             }
-            fits[i] = Fit(model.Compilation, parameters, arguments, at, items.ArgumentName);
+            fits[i] = Fit(model, parameters, arguments, at, items.ArgumentName);
         }
         return fits;
     }
@@ -66,17 +68,21 @@ internal static class SignatureFits
         {
             return fits;
         }
-        (string? Name, ITypeSymbol? Type)[] arguments = Arguments(model, call.ArgumentList, cancellationToken);
+        Argument[] arguments = Arguments(model, call.ArgumentList, cancellationToken);
         for (int i = 0; i < fits.Length; i++)
         {
-            fits[i] = Fit(model.Compilation, [.. overloads[i].Parameters], arguments, -1, null).Fits;
+            fits[i] = Fit(model, [.. overloads[i].Parameters], arguments, -1, null).Fits;
         }
         return fits;
     }
 
-    /// <summary>Each argument of a call as it binds: its name where it is named, and its type where one is known.</summary>
-    private static (string? Name, ITypeSymbol? Type)[] Arguments(SemanticModel model, BaseArgumentListSyntax list, CancellationToken cancellationToken) =>
-        [.. list.Arguments.Select(a => (a.NameColon?.Name.Identifier.ValueText, a.Expression.IsMissing ? null : model.GetTypeInfo(a.Expression, cancellationToken).Type))];
+    /// <summary>An argument of a call as it binds: its name where it is named, what is written for it as a value (none for
+    /// one passed by reference, whose type must match), and its type where one is known.</summary>
+    private sealed record Argument(string? Name, ExpressionSyntax? Value, ITypeSymbol? Type);
+
+    private static Argument[] Arguments(SemanticModel model, BaseArgumentListSyntax list, CancellationToken cancellationToken) =>
+        [.. list.Arguments.Select(a => new Argument(a.NameColon?.Name.Identifier.ValueText, a.RefKindKeyword.IsKind(SyntaxKind.None) ? a.Expression : null,
+            a.Expression.IsMissing ? null : model.GetTypeInfo(a.Expression, cancellationToken).Type))];
 
     /// <summary>A signature's parameters, from the symbol its key names, as many as it shows; null where it keeps none.</summary>
     private static IParameterSymbol[]? Parameters(SignatureHelpItem item, Compilation compilation, CancellationToken cancellationToken)
@@ -93,13 +99,12 @@ internal static class SignatureFits
         return parameters is { } known && known.Length == item.Parameters.Length ? [.. known] : null;
     }
 
-    private static (bool Fits, int Parameter) Fit(Compilation compilation, IParameterSymbol[] parameters, (string? Name, ITypeSymbol? Type)[] arguments,
-        int at, string? named)
+    private static (bool Fits, int Parameter) Fit(SemanticModel model, IParameterSymbol[] parameters, Argument[] arguments, int at, string? named)
     {
         int filled = -1;
         for (int k = 0; k < arguments.Length; k++)
         {
-            (string? name, ITypeSymbol? type) = arguments[k];
+            (string? name, ExpressionSyntax? value, ITypeSymbol? type) = arguments[k];
             name ??= k == at ? named : null;
             int place = name is not null ? Array.FindIndex(parameters, p => p.Name == name)
                 : k < parameters.Length ? k
@@ -118,15 +123,37 @@ internal static class SignatureFits
                 continue;
             }
             ITypeSymbol wanted = parameters[place].Type;
-            bool converts = compilation.ClassifyCommonConversion(type, wanted).IsImplicit
-                || (parameters[place].IsParams && wanted is IArrayTypeSymbol { ElementType: var element } && compilation.ClassifyCommonConversion(type, element).IsImplicit);
-            if (!converts)
+            if (!Converts(model, value, type, wanted)
+                && !(parameters[place].IsParams && ElementOf(model.Compilation, wanted) is { } element && Converts(model, value, type, element)))
             {
                 return (false, -1);
             }
         }
         return (true, filled);
     }
+
+    /// <summary>Whether an argument converts to a type implicitly: as written where it is passed as a value, an interpolated
+    /// string to any handler of one, else by its type.</summary>
+    private static bool Converts(SemanticModel model, ExpressionSyntax? value, ITypeSymbol type, ITypeSymbol to) =>
+        value is not null
+            ? model.ClassifyConversion(value, to).IsImplicit || (value is InterpolatedStringExpressionSyntax && to.GetAttributes().Any(IsHandlerMark))
+            : model.Compilation.ClassifyCommonConversion(type, to).IsImplicit;
+
+    /// <summary>Whether an attribute marks its type an interpolated string handler.</summary>
+    private static bool IsHandlerMark(AttributeData attribute) =>
+        attribute.AttributeClass?.ToDisplayString() == "System.Runtime.CompilerServices.InterpolatedStringHandlerAttribute";
+
+    /// <summary>What a <c>params</c> list of a type takes each of: an array's elements, a span's, or what the collection
+    /// enumerates; null for a type that enumerates nothing it names.</summary>
+    private static ITypeSymbol? ElementOf(Compilation compilation, ITypeSymbol list) => list switch
+    {
+        IArrayTypeSymbol array => array.ElementType,
+        INamedTypeSymbol { TypeArguments: [var element] } named when SymbolEqualityComparer.Default.Equals(named.OriginalDefinition, compilation.GetTypeByMetadataName("System.Span`1"))
+            || SymbolEqualityComparer.Default.Equals(named.OriginalDefinition, compilation.GetTypeByMetadataName("System.ReadOnlySpan`1"))
+            || named.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T => element,
+        INamedTypeSymbol named => named.AllInterfaces.FirstOrDefault(i => i.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T)?.TypeArguments[0],
+        _ => null,
+    };
 
     /// <summary>Whether a type is known as it stands, none of it a type parameter still to be inferred.</summary>
     private static bool Fixed(ITypeSymbol type) => type switch

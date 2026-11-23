@@ -513,7 +513,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>Parameter Info at a call of several overloads shows each: those the arguments so far no longer fit set back,
     /// the parameter the caret's argument fills strong in each that fits. An argument typed that only one overload takes sets
-    /// the other back, and once it is gone again both fit; an argument not typed yet is no evidence against either.</summary>
+    /// the other back, and once it is gone again both fit; an argument not typed yet is no evidence against either. Arguments
+    /// fit as C# converts them: a constant a smaller number's overload, strings a params span of strings, an interpolated
+    /// string its handler.</summary>
     private void Parameter_info_shows_every_overload_setting_back_those_the_arguments_no_longer_fit()
     {
         MainWindow window = project.Open("Kinds.cs");
@@ -554,6 +556,29 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Equal("        _ = new System.ArgumentNullException(label, );", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line));
         Ui.Run(window, AppActions.ParameterInfo);
         Ui.WaitFor(() => Overloads().Count(o => o.Fits) == 2, () => $"both two-argument overloads fitting once the argument is gone: {string.Join(" | ", Overloads())}");
+
+        Ui.PlaceAfter(editor, "System.Math.Max(1, 2");
+        Ui.Run(window, AppActions.ParameterInfo);
+        Ui.WaitFor(() => Overloads().Any(o => o.Code.EndsWith("(byte val1, byte val2)", StringComparison.Ordinal)), () => $"Math.Max's overloads: {window.Assist.SignatureText}");
+        Assert.True(Overloads().All(o => o.Fits), $"Two constants set back the overloads of the numbers they convert to: {string.Join(" | ", Overloads().Where(o => !o.Fits))}");
+        Ui.Press(window, "END");
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("_ = string.Join(\",\", label, label);");
+        Ui.Press(window, "LEFT");
+        Ui.Press(window, "LEFT");
+        Ui.Run(window, AppActions.ParameterInfo);
+        Ui.WaitFor(() => Overloads().Any(o => o.Code.Contains("ReadOnlySpan<string?>", StringComparison.Ordinal)), () => $"string.Join's overloads: {window.Assist.SignatureText}");
+        Assert.True(Overloads().Any(o => o.Code.Contains("ReadOnlySpan<string?>", StringComparison.Ordinal) && o.Fits),
+            $"Strings set back the overload whose params span of strings takes them: {string.Join(" | ", Overloads())}");
+        Ui.Press(window, "END");
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("System.Diagnostics.Debug.Assert(true, $\"{label}\");");
+        Ui.Press(window, "LEFT");
+        Ui.Press(window, "LEFT");
+        Ui.Run(window, AppActions.ParameterInfo);
+        Ui.WaitFor(() => Overloads().Any(o => o.Code.EndsWith("AssertInterpolatedStringHandler message)", StringComparison.Ordinal)), () => $"Debug.Assert's overloads: {window.Assist.SignatureText}");
+        Assert.True(Overloads().Any(o => o.Code.EndsWith("AssertInterpolatedStringHandler message)", StringComparison.Ordinal) && o.Fits),
+            $"An interpolated string set back the overload whose handler takes it: {string.Join(" | ", Overloads())}");
         window.Close();
 
         // The overload the card marks chosen.
