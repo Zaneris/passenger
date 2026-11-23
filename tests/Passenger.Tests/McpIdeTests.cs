@@ -204,7 +204,9 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
         foreach ((Dictionary<string, object?> arguments, string said) in new (Dictionary<string, object?>, string)[]
         {
             (new() { ["text"] = "(", ["regex"] = true }, "Invalid pattern '('"),
-            (new() { ["text"] = "Twice", ["scope"] = "directory", ["directory"] = "nowhere" }, "Directory is not found"),
+            // A directory given alone is the directory scope's, never passed over for the whole solution's.
+            (new() { ["text"] = "Twice", ["directory"] = "nowhere" }, "Directory is not found"),
+            (new() { ["text"] = "Twice", ["scope"] = "openFiles", ["directory"] = "." }, "give scope directory, or leave directory out"),
             (new() { ["text"] = "Twice", ["mask"] = "*.cs; *.json" }, "File masks should be comma-separated"),
         })
         {

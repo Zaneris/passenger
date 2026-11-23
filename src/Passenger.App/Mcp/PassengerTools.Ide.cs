@@ -238,11 +238,11 @@ public sealed partial class PassengerTools
     [McpServerTool(Name = McpTools.FindInFiles, Title = "Find in Files", ReadOnly = true), Description(
         "Every match of text in the folder's files, as Find in Files finds them: an open file as the editor has it, every " +
         "other text file on disk (binary and very large files left out, and build output, dependencies and version control " +
-        "unless the directory scope is inside one), each with its line's text, at most limit (1000; capped says so); stopped names the files a regex ran too long in. scope: solution (the default), project (project's name, .csproj or .shproj), " +
+        "unless the directory scope is inside one), each with its line's text, at most limit (1000; capped says so); stopped names the files a regex ran too long in. scope: solution (the default; project or directory given alone takes its own), project (project's name, .csproj or .shproj), " +
         "directory (directory, its subdirectories unless recursive is false), openFiles, currentFile or recentlyViewed. mask: " +
         "names by * and ?, comma-separated, ! leaving one out (\"*.cs, !*.g.cs\").")]
     public Task<FindInFilesResult> FindInFiles(string text, bool matchCase = false, bool wholeWords = false, bool regex = false,
-        string scope = "solution",
+        string? scope = null,
         string? project = null,
         string? directory = null,
         bool recursive = true,
@@ -272,7 +272,7 @@ public sealed partial class PassengerTools
         "every line break is written as the file's own. Returns how many matches in " +
         "which files, and each file left as it was with why.")]
     public Task<string> ReplaceInFiles(string text, string replacement, bool matchCase = false, bool wholeWords = false, bool regex = false,
-        string scope = "solution",
+        string? scope = null,
         string? project = null,
         string? directory = null,
         bool recursive = true,
@@ -445,7 +445,7 @@ public sealed partial class PassengerTools
     }
 
     /// <summary>Find in Files' query and scope as an agent names them, refused as the popup refuses them.</summary>
-    private (SearchQuery Query, SearchScope Scope) Search(string text, bool matchCase, bool wholeWords, bool regex, string scope, string? project, string? directory,
+    private (SearchQuery Query, SearchScope Scope) Search(string text, bool matchCase, bool wholeWords, bool regex, string? scope, string? project, string? directory,
         bool recursive, string? mask)
     {
         if (Session.Folder is null)
@@ -461,6 +461,13 @@ public sealed partial class PassengerTools
         {
             throw new ArgumentException(wrong);
         }
+        // A project or directory given alone takes its scope; beside another scope, which searches without it, it is refused.
+        scope ??= (project, directory) switch
+        {
+            ({ }, null) => "project",
+            (null, { }) => "directory",
+            _ => "solution",
+        };
         SearchScope chosen = scope switch
         {
             "solution" => new SearchScope(SearchScopeKind.Solution, null, null, recursive, null, mask),
@@ -471,6 +478,11 @@ public sealed partial class PassengerTools
             "recentlyViewed" => new SearchScope(SearchScopeKind.Scope, null, null, recursive, MainWindow.RecentlyViewedScope, mask),
             _ => throw new ArgumentException($"No scope '{scope}'; there are solution, project, directory, openFiles, currentFile and recentlyViewed"),
         };
+        if (project is not null && scope != "project" || directory is not null && scope != "directory")
+        {
+            string named = project is not null && scope != "project" ? "project" : "directory";
+            throw new ArgumentException($"{named} names what the {named} scope searches, not the {scope} scope: give scope {named}, or leave {named} out");
+        }
         return chosen.Problem() is { } problem ? throw new ArgumentException(problem) : (query, chosen);
     }
 
