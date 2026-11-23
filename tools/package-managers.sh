@@ -3,13 +3,17 @@
 # Homebrew's cask (OUT/homebrew/passenger-ide.rb), WinGet's manifests (OUT/winget/) and the AUR's recipe
 # (OUT/aur/PKGBUILD and .SRCINFO) for the release's own files, by the names and sums the release carries: nothing is
 # built again. Homebrew's and WinGet's install the disk image and the installer, so that copy updates itself; the AUR's
-# is pacman's, said by app/package-manager. The release workflow publishes them (tools/package-pr.sh, the AUR by git).
+# is pacman's, its app/package-manager naming what updates it. The release workflow publishes them (tools/package-pr.sh,
+# the AUR by git).
 set -eu
 . "$(dirname "$0")/release-common.sh"
 [ $# = 3 ] || fail "usage: package-managers.sh VERSION SHA256SUMS OUT"
 version=$1
 sums=$2
 out=$3
+case $version in
+    *[!0-9.]*) fail "the version '$version' is not X.Y.Z in numbers" ;;
+esac
 echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || fail "the version '$version' is not X.Y.Z in numbers"
 [ -f "$sums" ] || fail "no $sums"
 
@@ -19,17 +23,24 @@ site=https://passenger-ide.net
 described='IDE for C# and .NET'
 winget=PassengerIDE.Passenger
 
-# Prints a release file's SHA-256 as SHA256SUMS says it.
+# Prints a release file's SHA-256, from the one line of SHA256SUMS that gives it.
 sum_of() {
-    sum=$(awk -v file="$1" '$2 == file || $2 == "*" file { print $1 }' "$sums")
-    echo "$sum" | grep -Eq '^[0-9a-f]{64}$' || fail "$sums has no SHA-256 for $1"
-    echo "$sum"
+    awk -v file="$1" '($2 == file || $2 == "*" file) && $1 ~ /^[0-9a-f]+$/ && length($1) == 64 { print $1; found++ }
+        END { exit found != 1 }' "$sums" || fail "$sums has no one SHA-256 for $1"
 }
 upper() {
     echo "$1" | tr 'a-f' 'A-F'
 }
 
-rm -rf "$out"
+# Every sum read before anything is written, as a sum_of failing inside a here-document stops nothing.
+mac_arm64=$(sum_of Passenger-macos-arm64.dmg)
+mac_x64=$(sum_of Passenger-macos-x64.dmg)
+windows_x64=$(sum_of Passenger-windows-x64.exe)
+windows_arm64=$(sum_of Passenger-windows-arm64.exe)
+linux_x64=$(sum_of Passenger-linux-x64.tar.gz)
+linux_arm64=$(sum_of Passenger-linux-arm64.tar.gz)
+
+rm -rf "$out/homebrew" "$out/winget" "$out/aur"
 mkdir -p "$out/homebrew" "$out/winget" "$out/aur"
 
 # Homebrew's `passenger` is Phusion Passenger, so the cask is passenger-ide; macOS 13 is the app's LSMinimumSystemVersion.
@@ -38,8 +49,8 @@ cask "passenger-ide" do
   arch arm: "arm64", intel: "x64"
 
   version "$version"
-  sha256 arm:   "$(sum_of Passenger-macos-arm64.dmg)",
-         intel: "$(sum_of Passenger-macos-x64.dmg)"
+  sha256 arm:   "$mac_arm64",
+         intel: "$mac_x64"
 
   url "$repository/releases/download/v#{version}/Passenger-macos-#{arch}.dmg",
       verified: "github.com/Zaneris/passenger/"
@@ -52,12 +63,17 @@ cask "passenger-ide" do
     strategy :github_latest
   end
 
+  no_autobump! because: :bumped_by_upstream
+
   auto_updates true
   depends_on macos: :ventura
 
   app "Passenger.app"
 
-  zap trash: "~/Library/Application Support/Passenger"
+  zap trash: [
+    "~/Library/Application Support/Passenger",
+    "~/Library/Preferences/io.github.zaneris.passenger.plist",
+  ]
 end
 END
 
@@ -88,10 +104,10 @@ ProductCode: PassengerIDE
 Installers:
 - Architecture: x64
   InstallerUrl: $files/Passenger-windows-x64.exe
-  InstallerSha256: $(upper "$(sum_of Passenger-windows-x64.exe)")
+  InstallerSha256: $(upper "$windows_x64")
 - Architecture: arm64
   InstallerUrl: $files/Passenger-windows-arm64.exe
-  InstallerSha256: $(upper "$(sum_of Passenger-windows-arm64.exe)")
+  InstallerSha256: $(upper "$windows_arm64")
 ManifestType: installer
 ManifestVersion: $manifest
 END
@@ -120,15 +136,12 @@ ManifestType: defaultLocale
 ManifestVersion: $manifest
 END
 
-# The AUR's recipe and what makepkg --printsrcinfo would say of it, written from one list each so they agree. It lays
-# the archive out as site/linux.html's Packaging Passenger says, the libraries those the page names.
+# The AUR's recipe, laid out as site/linux.html's Packaging Passenger says, and its .SRCINFO, from the same lists.
 name=passenger-ide-bin
 depends='fontconfig git libice libsm libx11 ttf-font'
 optional='dotnet-sdk: build and run .NET projects (one installed by hand works too)
-nodejs: the web languages
+nodejs: the web languages (Bun or Deno serve them too)
 webkit2gtk-4.1: the HTML preview'
-x64=$(sum_of Passenger-linux-x64.tar.gz)
-arm64=$(sum_of Passenger-linux-arm64.tar.gz)
 # The words of a list quoted for a PKGBUILD's array, one line to a word (depends) or to a line (optional).
 quoted() {
     sed "s/.*/'&'/" | tr '\n' ' ' | sed 's/ $//'
@@ -149,15 +162,15 @@ conflicts=('passenger-ide')
 options=('!strip' '!debug')
 source_x86_64=("Passenger-\$pkgver-linux-x64.tar.gz::$repository/releases/download/v\$pkgver/Passenger-linux-x64.tar.gz")
 source_aarch64=("Passenger-\$pkgver-linux-arm64.tar.gz::$repository/releases/download/v\$pkgver/Passenger-linux-arm64.tar.gz")
-sha256sums_x86_64=('$x64')
-sha256sums_aarch64=('$arm64')
+sha256sums_x86_64=('$linux_x64')
+sha256sums_aarch64=('$linux_arm64')
 
 package() {
     local shipped="\$srcdir/passenger" app=io.github.zaneris.passenger
     install -d "\$pkgdir/opt/passenger-ide" "\$pkgdir/usr/bin"
     cp -a "\$shipped/app" "\$pkgdir/opt/passenger-ide/"
     install -m755 "\$shipped/passenger" "\$pkgdir/opt/passenger-ide/passenger"
-    echo pacman > "\$pkgdir/opt/passenger-ide/app/package-manager"
+    printf 'AUR\nyay -Syu %s\n' "\$pkgname" > "\$pkgdir/opt/passenger-ide/app/package-manager"
     ln -s /opt/passenger-ide/passenger "\$pkgdir/usr/bin/passenger-ide"
     install -Dm644 "\$shipped/\$app.desktop" "\$pkgdir/usr/share/applications/\$app.desktop"
     install -Dm644 "\$shipped/\$app.png" "\$pkgdir/usr/share/icons/hicolor/256x256/apps/\$app.png"
@@ -184,9 +197,9 @@ END
         echo "options = !strip"
         echo "options = !debug"
         echo "source_x86_64 = Passenger-$version-linux-x64.tar.gz::$files/Passenger-linux-x64.tar.gz"
-        echo "sha256sums_x86_64 = $x64"
+        echo "sha256sums_x86_64 = $linux_x64"
         echo "source_aarch64 = Passenger-$version-linux-arm64.tar.gz::$files/Passenger-linux-arm64.tar.gz"
-        echo "sha256sums_aarch64 = $arm64"
+        echo "sha256sums_aarch64 = $linux_arm64"
     } | sed 's/^/	/'
     echo
     echo "pkgname = $name"

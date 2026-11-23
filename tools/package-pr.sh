@@ -34,9 +34,9 @@ for file in "$@"; do
     path=$folder/$(basename "$file")
     # A file already there (a cask's earlier version) is replaced by naming what it holds.
     held=$(gh api "repos/$fork/contents/$path?ref=$branch" --jq .sha 2> /dev/null || true)
-    # shellcheck disable=SC2086 # the one optional argument
-    base64 < "$file" | tr -d '\n' | gh api -X PUT "repos/$fork/contents/$path" -f "message=$title" -f "branch=$branch" \
-        -F content=@- ${held:+-f "sha=$held"} --silent
+    jq -n --arg message "$title" --arg branch "$branch" --arg content "$(base64 < "$file" | tr -d '\n')" --arg held "$held" \
+        '{$message, $branch, $content} + (if $held == "" then {} else {sha: $held} end)' |
+        gh api -X PUT "repos/$fork/contents/$path" --input - --silent
     echo "$fork@$branch: $path"
 done
 
