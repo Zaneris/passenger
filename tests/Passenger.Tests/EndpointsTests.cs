@@ -113,6 +113,9 @@ public sealed class EndpointsTests : IDisposable
         Ui.WaitFor(() => window.Endpoints.Response.Response is not null, "the second answer");
         Assert.False(window.Endpoints.Response.Passed, "A 404 passed a test that expects an answer below 400");
         Assert.False(window.Endpoints.Outcome(window.Endpoints.Requests[2]));
+        Assert.Null(window.OpenFile(Path.Combine(folder, "http-client.env.json.user")));
+        Assert.True(window.EditorArea.Active!.Language == Passenger.Languages.Language.Json,
+            $"Visual Studio's private environments of an .http file opened as {window.EditorArea.Active.Language.Name}, not as JSON");
         window.Close();
     }
 
