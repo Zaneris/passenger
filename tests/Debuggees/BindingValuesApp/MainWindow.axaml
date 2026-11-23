@@ -4,7 +4,7 @@
         x:Class="BindingValuesApp.MainWindow"
         x:DataType="local:MainViewModel"
         x:CompileBindings="False"
-        Title="{Binding Title}" Width="480" Height="320">
+        Title="{CompiledBinding Title}" Width="480" Height="320">
     <StackPanel x:Name="Panel" Margin="12" Spacing="8">
         <TextBlock x:Name="Customer" Text="{Binding Customer.Name}" />
         <TextBlock x:Name="Orders" Text="{CompiledBinding Customer.Orders}" />

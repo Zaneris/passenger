@@ -83,6 +83,9 @@ public sealed class BindingValuesTests : IClassFixture<RestoredFolders>, IDispos
         Assert.Contains("→ Name = {string} \"Grace Hopper\"", card, StringComparison.Ordinal);
         card = Hover(window, editor, "Customer.Orders");
         Assert.Contains("→ Orders = {int} 3", card, StringComparison.Ordinal);
+        // A compiled binding to one member of the DataContext, which Avalonia 12.2 makes a typed expression of.
+        card = Hover(window, editor, "{CompiledBinding Title}");
+        Assert.Contains("DataContext = {BindingValuesApp.MainViewModel}\n→ Title = {string} \"Binding Values\"", card, StringComparison.Ordinal);
         card = Hover(window, editor, "Nmae");
         Assert.Contains("Binding failed at Nmae: Could not find a matching property accessor for 'Nmae'", card, StringComparison.Ordinal);
         Assert.Contains("TextBlock#Broken.Text = {string} null", card, StringComparison.Ordinal);

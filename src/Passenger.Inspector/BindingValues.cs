@@ -268,19 +268,15 @@ internal static class BindingReader
             return new BoundValue(name, string.Empty, null, [], $"{Words.TypeName(instance.GetType())} has no property {name}", null);
         }
         watched?.Add((instance, property));
-        UntypedBindingExpressionBase? expression;
-        try
-        {
-            expression = BindingOperations.GetBindingExpressionBase(instance, property) as UntypedBindingExpressionBase;
-        }
-        catch (Exception error) when (error is InvalidOperationException or NotSupportedException)
-        {
-            expression = null;
-        }
+        BindingExpressions.Found? bound = BindingExpressions.Of(instance, property);
         ShownValue value = Shown(instance.GetValue(property), slots, property.PropertyType);
-        if (expression is null)
+        if (bound is null)
         {
             return new BoundValue(name, string.Empty, value, [], null, null) { Unbound = true };
+        }
+        if (bound.Expression is not UntypedBindingExpressionBase expression)
+        {
+            return new BoundValue(name, bound.Description, value, TypedSteps(bound, instance, slots), null, null);
         }
         bool failed = expression.ErrorType == BindingErrorType.Error;
         List<PathStep> steps = Steps(expression, instance, slots, failed, out string? failedAt);
@@ -332,6 +328,15 @@ internal static class BindingReader
             steps.Add(new PathStep(step, has ? Shown(value, slots) : null));
         }
         return steps;
+    }
+
+    /// <summary>The path of a typed expression, which reads one member of the element's DataContext and never fails: the
+    /// DataContext, and the member with the value the expression last read from it, none where it has read none.</summary>
+    private static List<PathStep> TypedSteps(BindingExpressions.Found bound, AvaloniaObject instance, List<object?>? slots)
+    {
+        PathStep source = new("DataContext", Shown((instance as StyledElement)?.DataContext, slots));
+        object? read = Field(bound.Expression, "_sourceValue");
+        return [source, new PathStep(bound.Description, read is not null && Property(read, "HasValue") is true ? Shown(Property(read, "Value"), slots) : null)];
     }
 
     private static bool IsSource(object? node)

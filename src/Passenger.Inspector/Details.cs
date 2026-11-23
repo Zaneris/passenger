@@ -2,7 +2,6 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
-using Avalonia.Data.Core;
 using Avalonia.Diagnostics;
 using Avalonia.Layout;
 using Avalonia.LogicalTree;
@@ -185,19 +184,8 @@ internal sealed class Details(Inspector inspector)
     }
 
     /// <summary>The binding that gives a property its value at the priority it has, as its XAML would write it, if one does.</summary>
-    private static string? Bound(Visual visual, AvaloniaProperty property, BindingPriority priority)
-    {
-        try
-        {
-            return BindingOperations.GetBindingExpressionBase(visual, property) is UntypedBindingExpressionBase expression && expression.Priority == priority
-                ? expression.Description
-                : null;
-        }
-        catch (Exception error) when (error is InvalidOperationException or NotSupportedException)
-        {
-            return null;
-        }
-    }
+    private static string? Bound(Visual visual, AvaloniaProperty property, BindingPriority priority) =>
+        BindingExpressions.Of(visual, property) is { } bound && bound.Priority == priority ? bound.Description : null;
 
     /// <summary>The ancestor an inherited value comes from (the nearest that has it other than by inheritance), and its XAML.</summary>
     private static (string?, SourcePlace?) InheritedFrom(Visual visual, AvaloniaProperty property)

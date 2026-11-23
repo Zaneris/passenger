@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Data;
-using Avalonia.Data.Core;
 using Avalonia.Diagnostics;
 using Passenger.Dap;
 
@@ -95,7 +94,7 @@ internal sealed class PropertyBreaks
                 {
                     case BindingPriority.Style or BindingPriority.StyleTrigger when Element is Visual visual && new Styling(visual).Winner(property) is { } won:
                         return ($", by {(won.Source == ValueSources.Theme ? "theme" : "style")} {won.Detail}", won.Place);
-                    case BindingPriority.LocalValue when BindingOperations.GetBindingExpressionBase(Element, property) is UntypedBindingExpressionBase { Priority: BindingPriority.LocalValue } bound:
+                    case BindingPriority.LocalValue when BindingExpressions.Of(Element, property) is { Priority: BindingPriority.LocalValue } bound:
                         return (Words.ChangedByBinding(bound.Description), null);
                     default:
                         return (Words.ChangedBy(Details.SourceOf(e.Priority)), null);

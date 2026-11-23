@@ -289,11 +289,14 @@ public sealed class XamlBreakpointsTests : IClassFixture<RestoredFolders>, IDisp
         Says(window, $" at MainWindow.axaml:{red + 1})");
         Resume(window);
 
+        // A compiled binding to one member of the DataContext, which Avalonia 12.2 makes a typed expression of.
         Watch(window, "Caption", "Text");
+        PropertyValue text = window.LiveTree.PropertyRows.First(p => p.Name == "Text");
+        Assert.True(text is { Source: ValueSources.Local, Detail: "Caption" }, $"The caption's Text row named no binding: {text.Source} {text.Detail}");
         Ui.TypeToDebugged(window, "rename");
         stop = Stopped(window, "the stop where the caption's binding sets its Text");
         AssertAt(stop, Path.Combine(folder, "MainViewModel.cs"), Line(Path.Combine(folder, "MainViewModel.cs"), "PropertyChanged?.Invoke"));
-        Says(window, "binding");
+        Says(window, "by its binding Caption)");
         Resume(window);
 
         Ui.Run(window, AppActions.Stop);
