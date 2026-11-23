@@ -24,7 +24,7 @@ public static class AppleSimulators
     /// <summary>How long a simulator's boot is waited for, to its system's start.</summary>
     private static readonly TimeSpan BootLimit = TimeSpan.FromMinutes(5);
 
-    /// <summary>How long one of simctl's other commands is waited for (an install copies the whole app).</summary>
+    /// <summary>How long one of simctl's other commands is waited for, an install's but none.</summary>
     private static readonly TimeSpan SimctlLimit = TimeSpan.FromMinutes(3);
 
     /// <summary>The simulators this process booted and has not shut down, by their simctl and UDID, which the watchdog shuts
@@ -156,16 +156,18 @@ public static class AppleSimulators
         return (new SimulatorBuild(identifier, PathNames.Canonical(bundle), read.Property(MSBuildNames.RuntimeIdentifier) ?? string.Empty), null);
     }
 
-    /// <summary>Installs the built app on a booted simulator: the app, or why not.</summary>
+    /// <summary>Installs the built app on a booted simulator: the app, or why not. The install is waited for as long as it
+    /// goes, as an Android device's is, the start's Stop ending it: the first of a boot starts the simulator's install
+    /// services, which takes seconds on an idle Mac and minutes on a loaded one.</summary>
     public static async Task<(SimulatorApp? App, string? Problem)> InstallAsync(SimulatorBuild built, string udid, AppleTools tools, CancellationToken cancel)
     {
+        ChildResult installed = await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Simctl, ["install", udid, built.Bundle]), cancel: cancel);
+        if (!installed.Succeeded)
+        {
+            return (null, installed.Said);
+        }
         try
         {
-            ChildResult installed = await SimctlAsync(tools.Simctl, ["install", udid, built.Bundle], cancel);
-            if (!installed.Succeeded)
-            {
-                return (null, installed.Said);
-            }
             ChildResult data = await SimctlAsync(tools.Simctl, ["get_app_container", udid, built.Package, "data"], cancel);
             return data.Succeeded && data.Output.Trim() is { Length: > 0 } container
                 ? (new SimulatorApp(udid, tools.Simctl, built.Package, built.Bundle, built.RuntimeIdentifier)
@@ -176,7 +178,7 @@ public static class AppleSimulators
         }
         catch (TimeoutException)
         {
-            return (null, $"simctl did not finish installing it in {Durations.Said(SimctlLimit)}");
+            return (null, $"simctl did not say where its data container is in {Durations.Said(SimctlLimit)}");
         }
     }
 
