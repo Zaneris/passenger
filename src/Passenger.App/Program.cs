@@ -30,6 +30,16 @@ internal static class Program
         {
             return signed;
         }
+        // What the copy's place says, before anything reads the state folder it may be: fatal where a marker is malformed.
+        try
+        {
+            ThisCopy.Read();
+        }
+        catch (FormatException error)
+        {
+            Console.Error.WriteLine($"passenger: {error.Message}");
+            return 2;
+        }
         // Before anything reads the state folder, or leaves the folder a relative PASSENGER_SETTINGS is read from.
         State.StateStore.NameWhole();
         // Before anything of the IDE starts, so a start that fails before its log is set up still leaves why.
@@ -149,12 +159,12 @@ internal static class Program
     }
 
     /// <summary>A screenshot keeps nothing of the person's: unless PASSENGER_SETTINGS names a folder, its state and logs
-    /// (Roslyn's server's among them) go to a temporary one, removed when it ends, and its terminal's shell never reads or
-    /// writes the person's history or startup files.</summary>
+    /// (Roslyn's server's among them) go to a temporary one, a portable copy's too, removed when it ends, and its
+    /// terminal's shell never reads or writes the person's history or startup files.</summary>
     private static int Apart(Func<int> run)
     {
         string? scratch = null;
-        if (Environment.GetEnvironmentVariable(State.StateStore.Variable) is not { Length: > 0 } root)
+        if (State.StateStore.Named is not { } root)
         {
             scratch = Directory.CreateTempSubdirectory("passenger-screenshot-").FullName;
             root = scratch;

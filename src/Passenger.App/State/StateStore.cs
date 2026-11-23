@@ -68,8 +68,9 @@ public sealed class StateStore
     [IdentifierHome]
     public const string Variable = "PASSENGER_SETTINGS";
 
-    /// <summary>The folder: PASSENGER_SETTINGS names it, else the user's local application data.</summary>
-    public static string DefaultRoot => Named ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Passenger");
+    /// <summary>The folder: PASSENGER_SETTINGS names it, else a portable copy's data folder (<see cref="ThisCopy.Data"/>),
+    /// else the user's local application data.</summary>
+    public static string DefaultRoot => Named ?? ThisCopy.Data ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Passenger");
 
     /// <summary>The state folder made the person's alone as Passenger starts (<see cref="Containers.OwnFiles.Folder"/>, one an
     /// earlier Passenger made put right), its logs with all they hold (<see cref="Containers.OwnFiles.Tree"/>): Local History
@@ -90,17 +91,24 @@ public sealed class StateStore
         }
     }
 
-    /// <summary>The folder PASSENGER_SETTINGS names, or null where it names none.</summary>
-    public static string? Named => Environment.GetEnvironmentVariable(Variable) is { Length: > 0 } folder ? folder : null;
+    /// <summary>The folder PASSENGER_SETTINGS names, or null where it names none or this portable copy's own data folder,
+    /// which it gave the programs it starts (<see cref="NameWhole"/>).</summary>
+    public static string? Named => Environment.GetEnvironmentVariable(Variable) is { Length: > 0 } folder
+        && !(ThisCopy.Data is { } data && PathNames.Same(folder, data)) ? folder : null;
 
     /// <summary>Makes a folder PASSENGER_SETTINGS names by a relative path the one it names from the folder Passenger was
-    /// started in, before Passenger leaves that folder for the person's home: this process and every program it starts
-    /// (a terminal's shell, a Godot editor's addon, another Passenger) then take the same folder.</summary>
+    /// started in, before Passenger leaves that folder for the person's home, and names a portable copy's data folder where
+    /// it names none: this process and every program it starts (a terminal's shell, a Godot editor's addon, another
+    /// Passenger) then take the same folder.</summary>
     public static void NameWhole()
     {
         if (Named is { } named && !Path.IsPathFullyQualified(named))
         {
             OwnEnvironment.Set(Variable, Path.GetFullPath(named));
+        }
+        else if (Named is null && ThisCopy.Data is { } data)
+        {
+            OwnEnvironment.Set(Variable, data);
         }
     }
 

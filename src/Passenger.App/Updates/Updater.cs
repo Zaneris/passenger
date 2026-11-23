@@ -395,10 +395,33 @@ public abstract class Updater
     /// <summary>SIGTERM, as macOS and Linux number it.</summary>
     private const int Terminate = 15;
 
-    /// <summary>The updater of the running copy, or null with why it cannot update itself: not in a disk image's app
-    /// bundle or an installer's folder, or where it cannot replace itself.</summary>
+    /// <summary>What a copy that never installs a release itself, whatever put it in place, says of a newer one, linking
+    /// the release's page: a portable one (<see cref="ThisCopy.Data"/>), its new build put in its place by hand, and one a
+    /// package manager installed (<see cref="ThisCopy.PackageManager"/>), that manager's to update. Null for any other.</summary>
+    public static UpdatedElsewhere? LeftElsewhere() =>
+        ThisCopy.Data is { } data ? Portable(data, Releases.ThisSystemsAsset(portable: true))
+        : ThisCopy.PackageManager is { } manager ? Packaged(manager)
+        : null;
+
+    /// <summary>What a portable copy keeping its state in <paramref name="data"/> says of a newer release.</summary>
+    public static UpdatedElsewhere Portable(string data, string? asset) =>
+        new($"This copy of Passenger is portable, keeping its state in {data}, so it never replaces itself: "
+            + $"put the release's {asset ?? "portable build"} in its place, keeping its {ThisCopy.DataName} folder.", Download: false);
+
+    /// <summary>What a copy a package manager installed says of a newer release.</summary>
+    public static UpdatedElsewhere Packaged(PackageManagerMark manager) =>
+        new($"This copy of Passenger is {manager.Said}: {manager.Updates}.", Download: false);
+
+    /// <summary>The updater of the running copy, or null with why it cannot update itself: portable or a package manager's
+    /// (<see cref="LeftElsewhere"/>), not in a disk image's app bundle or an installer's folder, or where it cannot replace
+    /// itself.</summary>
     public static Updater? OfThisCopy(string stateFolder, out string why)
     {
+        if (LeftElsewhere() is { } elsewhere)
+        {
+            why = elsewhere.Why;
+            return null;
+        }
         if (OperatingSystem.IsMacOS())
         {
             return DiskImageUpdater.OfThisBundle(Path.Combine(stateFolder, "updates"), out why);

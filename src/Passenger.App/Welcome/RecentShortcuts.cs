@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Passenger.Core;
 using Passenger.Editor;
 using static Passenger.App.MainWindow;
 
@@ -31,12 +32,14 @@ public static class RecentShortcuts
     public static bool DockFollowsUnseen { get; set; }
 
     /// <summary>The window's recent list changed, or it opened on it: the system's lists follow once it rests, in a
-    /// Passenger a person sees, or where a test's recently used list or Dock stands in.</summary>
+    /// Passenger a person sees, or where a test's recently used list or Dock stands in. A portable copy writes no list the
+    /// system keeps (<see cref="ThisCopy.Data"/>): only the Dock's menu, held by its process alone, follows.</summary>
     public static void Follow(MainWindow window)
     {
         UiThread.Check();
-        bool recentlyUsed = LinuxRecentlyUsed.StandIn is not null || OperatingSystem.IsLinux() && !PassengerApp.ShowsNoWindow;
-        bool jumpList = OperatingSystem.IsWindows() && !PassengerApp.ShowsNoWindow;
+        bool registers = ThisCopy.Data is null;
+        bool recentlyUsed = LinuxRecentlyUsed.StandIn is not null || OperatingSystem.IsLinux() && !PassengerApp.ShowsNoWindow && registers;
+        bool jumpList = OperatingSystem.IsWindows() && !PassengerApp.ShowsNoWindow && registers;
         bool dock = OperatingSystem.IsMacOS() && (!PassengerApp.ShowsNoWindow || DockFollowsUnseen);
         if (!recentlyUsed && !jumpList && !dock)
         {

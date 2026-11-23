@@ -84,7 +84,10 @@ public partial class App : Application
         {
             // Only the person's window updates Passenger, and only a copy its installer or disk image put in place.
             Updates.Updater? updater = Updates.Updater.OfThisCopy(State.StateStore.DefaultRoot, out string notUpdating);
-            MainWindow window = new() { AgentsAllowed = Program.Options.ListenForAgents, SelfUpdate = updater, SaysLastCrash = true };
+            MainWindow window = new()
+            {
+                AgentsAllowed = Program.Options.ListenForAgents, SelfUpdate = updater, UpdatesElsewhere = Updates.Updater.LeftElsewhere(), SaysLastCrash = true,
+            };
             // The person's windows open on the layout and settings they left; headless ones keep the defaults.
             window.KeepLayout();
             window.KeepSettings();

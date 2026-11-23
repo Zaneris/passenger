@@ -11,12 +11,12 @@ namespace Passenger.App;
 /// day after each answer by the wall clock (an hour after a check that failed) while Check for updates is on. A copy its
 /// installer, disk image or archive put in place downloads a newer one in the background, saying so in the status bar,
 /// checks it, offers Restart to Update and installs it as Passenger ends (or says the command that installs it); any
-/// other copy says once per version that one is out, linking this system's download, or, for a package manager's copy,
-/// that the package manager updates it. Help, Check for Updates asks when a person wants. The window watching does it
-/// all once for the process, and every window shows its notice and offers Restart to Update, one opened later too. Every
-/// answer is logged; only one a person asked for, or a download that did not land, is said. A release past a security
-/// release this version lacks (<see cref="ReleaseNotes.SecurityOf"/>) is a security update in the notice, in the warning
-/// colour, saying what it fixes, and the status bar says so once, offering a restart when it is ready.</summary>
+/// other copy says once per version that one is out, linking this system's download, or the release's page with what
+/// updates a portable copy or a package manager's. Help, Check for Updates asks when a person wants. The window watching
+/// does it all once for the process, and every window shows its notice and offers Restart to Update, one opened later
+/// too. Every answer is logged; only one a person asked for, or a download that did not land, is said. A release past a
+/// security release this version lacks (<see cref="ReleaseNotes.SecurityOf"/>) is a security update in the notice, in the
+/// warning colour, saying what it fixes, and the status bar says so once, offering a restart when it is ready.</summary>
 public partial class MainWindow
 {
     /// <summary>The words when there is nothing newer.</summary>
@@ -75,6 +75,17 @@ public partial class MainWindow
     }
 
     private Updater? selfUpdate;
+
+    /// <summary>What a copy that never installs a release itself says of a newer one, linking its page, where it has no
+    /// <see cref="SelfUpdate"/>: a portable copy's, or a package manager's (<see cref="Updater.LeftElsewhere"/>), which App
+    /// gives the person's window and the window after it takes as it closes. Null for any other.</summary>
+    public UpdatedElsewhere? UpdatesElsewhere
+    {
+        get => updatesElsewhere;
+        init => updatesElsewhere = value;
+    }
+
+    private UpdatedElsewhere? updatesElsewhere;
 
     /// <summary>The newer release the status bar shows, its version and what its link opens, or null while it shows
     /// none.</summary>
@@ -175,6 +186,7 @@ public partial class MainWindow
             return;
         }
         selfUpdate ??= from.selfUpdate;
+        updatesElsewhere ??= from.updatesElsewhere;
         if (said is null && from.said is not null)
         {
             (said, notice) = (from.said, from.notice);
@@ -294,7 +306,7 @@ public partial class MainWindow
         }
         answeredAt = answer is ReleaseAnswer.Failed ? null : UpdateClock.GetUtcNow();
         IdeErrors.Write($"Updates: {answer.Said}");
-        UpdatedElsewhere? elsewhere = null;
+        UpdatedElsewhere? elsewhere = SelfUpdate is null ? updatesElsewhere : null;
         if (answer is ReleaseAnswer.Newer && SelfUpdate is { } installs && settings.CheckForUpdates)
         {
             try
