@@ -120,16 +120,21 @@ tar -xzf Passenger-linux-$arch.tar.gz</pre>
         kept until the new one starts.</p>
     <p>Run from where its archive was unpacked, Passenger only says a newer release is out, and links the archive for
         your machine: unpack it in its place, or install it. A copy your package manager installed is updated by it.</p>
+    <p>To carry Passenger on a USB stick or keep it apart, make a folder named <code>data</code> in the unpacked
+        <code>passenger</code> folder, beside its launcher. That copy is then portable: it keeps its settings, layout,
+        trusted folders and history in <code>data</code>, never in your home, adds nothing to your menu or recent files,
+        and says when a release is out without replacing itself.</p>
 
     <h2>Packaging Passenger</h2>
     <p>A package of Passenger (an AUR, <code>.deb</code> or <code>.rpm</code> package) installs the archive's
         <code>passenger</code> folder where it chooses, with its desktop entry, icons and file types, rather than running
         <code>install.sh</code>. It also writes one file beside the app, <code>app/package-manager</code>: a line naming
-        the package manager, such as <code>pacman</code>, <code>apt</code> or <code>dnf</code>. Passenger then leaves its
-        updates to that manager and says so, rather than asking the system's package database whose the copy is, and
-        never writes over the package's files. Name the command <code>passenger-ide</code>, as <code>install.sh</code>
-        does.</p>
-<pre>echo pacman > "$pkgdir/opt/passenger-ide/app/package-manager"</pre>
+        the package manager, such as <code>pacman</code>, <code>apt</code> or <code>dnf</code>, and a second line, if you
+        like, with the command that updates Passenger. Passenger then leaves its updates to that manager and says so,
+        naming that command, rather than asking the system's package database whose the copy is, and never writes over
+        the package's files. A file of more lines, or that is not text, stops Passenger as it starts, saying why. Name
+        the command <code>passenger-ide</code>, as <code>install.sh</code> does.</p>
+<pre>printf 'AUR\nyay -Syu passenger-ide-bin\n' > "$pkgdir/opt/passenger-ide/app/package-manager"</pre>
 
     <h2>Uninstalling</h2>
 <pre>~/.local/opt/passenger/install.sh --uninstall

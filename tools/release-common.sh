@@ -1,7 +1,7 @@
 # What the release scripts and the recipes beside them share, sourced by each (package-mac.sh, package-win.sh,
 # package-linux.sh, container-tools.sh, debug-relay.sh, release-notes.sh, app-icon.sh) and by `just publish` after their
-# `set -eu`: a failure said under the script's name, the checkout's root, the version a release is, and a project's
-# Release publish. A function given the checkout's root takes it first.
+# `set -eu`: a failure said under the script's name, the checkout's root, the version a release is, a project's Release
+# publish, and the check of a portable copy. A function given the checkout's root takes it first.
 
 # Says why on stderr, under the name of the script that sourced this ($0 without .sh), and ends it.
 fail() {
@@ -42,4 +42,42 @@ publish_app() {
     publish_root=$1
     shift
     publish_project "$publish_root" Passenger.App "$@" -p:PublishReadyToRun=true
+}
+
+# A portable copy as a person makes one of a build unpacked: check_portable PROGRAM COPY runs the copy's PROGRAM as a
+# person's window with nobody at it (--headless) on an empty folder, a data folder made in the copy's folder COPY and its
+# HOME a fresh one, until its log names the folder it opened, two minutes at most, then ends it with its input. It fails
+# unless that log is in data, the HOME is still empty, and on Windows, whose folders follow no HOME, the local
+# application data's Passenger is as it was. What it made goes after, its data folder too.
+check_portable() {
+    portable_program=$1
+    portable_data="$2/data"
+    portable_work=$(mktemp -d "${TMPDIR:-/tmp}/passenger-portable.XXXXXX")
+    portable_installed="$portable_work/none/Passenger"
+    # Git's sh on Windows: paths a Windows program reads as given.
+    if command -v cygpath > /dev/null 2>&1; then
+        portable_work=$(cygpath -m "$portable_work")
+        portable_installed="$(cygpath -m "$LOCALAPPDATA")/Passenger"
+    fi
+    portable_log="$portable_data/logs/passenger.log"
+    [ ! -e "$portable_data" ] || fail "$portable_data is there before the portable copy's check"
+    mkdir -p "$portable_data" "$portable_work/home" "$portable_work/opened"
+    portable_before=$(find "$portable_installed" 2>/dev/null | LC_ALL=C sort || true)
+    {
+        tries=0
+        until grep -q '] Opened ' "$portable_log" 2>/dev/null || [ "$tries" -ge 240 ]; do
+            tries=$((tries + 1))
+            sleep 0.5
+        done
+    } | env -u PASSENGER_SETTINGS -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME HOME="$portable_work/home" \
+        "$portable_program" --headless "$portable_work/opened" > "$portable_work/run.log" 2>&1 \
+        || { cat "$portable_work/run.log" >&2; fail "the portable copy $portable_program failed its run"; }
+    grep -q '] Opened ' "$portable_log" 2>/dev/null \
+        || { cat "$portable_work/run.log" >&2; fail "the portable copy $portable_program kept no log in its data folder, $portable_data"; }
+    portable_written=$(find "$portable_work/home" -mindepth 1 | head -n 5)
+    [ -z "$portable_written" ] || fail "the portable copy wrote in its HOME: $portable_written"
+    [ "$(find "$portable_installed" 2>/dev/null | LC_ALL=C sort || true)" = "$portable_before" ] \
+        || fail "the portable copy wrote in the local application data's state, $portable_installed"
+    rm -rf "$portable_data" "$portable_work"
+    echo "$(basename "$0" .sh): $portable_program ran as a portable copy, its state in its data folder and nothing written outside"
 }

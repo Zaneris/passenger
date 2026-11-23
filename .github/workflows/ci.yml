@@ -2,9 +2,10 @@
 # --ref main`; a pull request's branch the same way): the solution built (warnings are errors) and every test run on
 # macOS (arm64), Windows and Linux, the gate's failing the run and the report lane's listed; the debug relay built for
 # Android and iOS, and carried in each package as the release's; the macOS disk images made and checked; the Windows
-# installer and the Linux archive built, installed, used and uninstalled; and on Linux, the solution restored from
-# nothing and every package checked against THIRD_PARTY_NOTICES.md. Every restore is locked to the packages.lock.json
-# files. Actions are pinned to a release's commit.
+# installer and the Linux archive built, installed, used and uninstalled; each system's portable build run as a portable
+# copy (the packaging scripts' check); and on Linux, the solution restored from nothing and every package checked
+# against THIRD_PARTY_NOTICES.md. Every restore is locked to the packages.lock.json files. Actions are pinned to a
+# release's commit.
 name: CI
 
 on:

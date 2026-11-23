@@ -1,9 +1,9 @@
 # A release, run by hand from a vX.Y.Z tag with Dry run unticked (Actions > Release > Run workflow, or `gh workflow run
 # Release --ref vX.Y.Z -f dry_run=false`; pushing the tag alone runs nothing): the gate's tests (unless Skip the tests
-# is ticked), then each system's package and the container tools at the tag's version, each build checked to say that
-# version, published as the tag's GitHub release with SHA256SUMS, the version's notes and Velopack's feed for each
-# Windows channel. The files' names never change, since the site's download links and an installed Passenger take them
-# by name. Signed only when the repository's secrets hold the credentials (the signing steps name them), else unsigned.
+# is ticked), then each system's package, its portable build and the container tools at the tag's version, each build
+# checked to say that version, published as the tag's GitHub release with SHA256SUMS, the version's notes and Velopack's
+# feed for each Windows channel. The files' names never change, since the site's download links, an installed Passenger
+# and a package manager's manifest take them by name; the assets job gives each file's SHA-256 by name as its output. Signed only when the repository's secrets hold the credentials (the signing steps name them), else unsigned.
 # A dry run, the default and from a branch the only kind, builds and checks everything and keeps what the release would
 # carry as the run's artifact. Only the last job, which publishes, can write to the repository. Actions are pinned to a
 # release's commit.
@@ -365,17 +365,19 @@ jobs:
           Write-Host "Passenger.dll for $env:RID says it is $said"
 
       # Each Windows channel's update feed, releases.<rid>.json, naming the full package and its SHA-256, beside it: an
-      # installed Passenger reads the newer release's by these names.
+      # installed Passenger reads the newer release's by these names. The portable builds beside the packages: the Mac's
+      # app zipped, Windows' app folder zipped, and Linux's archive, which is its own.
       - name: Gather the release's files
         run: |
           mkdir -p artifacts/release
           case $RID in
             osx-*)
-              cp "artifacts/package/Passenger-macos-${RID#osx-}.dmg" artifacts/release/
+              cp "artifacts/package/Passenger-macos-${RID#osx-}.dmg" "artifacts/package/Passenger-macos-${RID#osx-}.zip" artifacts/release/
               ;;
             win-*)
-              cp "artifacts/package/Passenger-windows-${RID#win-}.exe" "artifacts/package/$RID/velopack/releases.$RID.json" \
-                "artifacts/package/$RID/velopack/PassengerIDE-$VERSION-$RID-full.nupkg" artifacts/release/
+              cp "artifacts/package/Passenger-windows-${RID#win-}.exe" "artifacts/package/Passenger-windows-${RID#win-}-portable.zip" \
+                "artifacts/package/$RID/velopack/releases.$RID.json" "artifacts/package/$RID/velopack/PassengerIDE-$VERSION-$RID-full.nupkg" \
+                artifacts/release/
               ;;
             linux-*)
               cp "artifacts/package/Passenger-linux-${RID#linux-}.tar.gz" artifacts/release/
@@ -396,7 +398,7 @@ jobs:
           name: package-${{ matrix.rid }}
           path: artifacts/release/
           if-no-files-found: error
-          # Disk images and installers are compressed already.
+          # Disk images, installers and zips are compressed already.
           compression-level: 0
           retention-days: 1
 
@@ -457,10 +459,13 @@ jobs:
           retention-days: 1
 
   # Everything the release carries, in one place: checked by name, so a renamed package never replaces one the site
-  # links to, with SHA256SUMS over it and the notes. A dry run keeps it as the run's artifact.
+  # links to, with SHA256SUMS over it and the notes. A dry run keeps it as the run's artifact. Its output, sums, is each
+  # file's SHA-256 by its name as a JSON object, from which a package manager's manifest is made.
   assets:
     name: Assets
     needs: [version, package, container-tools]
+    outputs:
+      sums: ${{ steps.sums.outputs.sums }}
     # Its own word on what it needs, as a skipped Test would otherwise skip it too.
     if: ${{ !cancelled() && needs.version.result == 'success' && needs.package.result == 'success' && needs.container-tools.result == 'success' }}
     runs-on: ubuntu-26.04
@@ -492,8 +497,12 @@ jobs:
           Passenger-linux-arm64.tar.gz
           Passenger-linux-x64.tar.gz
           Passenger-macos-arm64.dmg
+          Passenger-macos-arm64.zip
           Passenger-macos-x64.dmg
+          Passenger-macos-x64.zip
+          Passenger-windows-arm64-portable.zip
           Passenger-windows-arm64.exe
+          Passenger-windows-x64-portable.zip
           Passenger-windows-x64.exe
           PassengerIDE-$VERSION-win-arm64-full.nupkg
           PassengerIDE-$VERSION-win-x64-full.nupkg
@@ -517,13 +526,15 @@ jobs:
             }
           done
 
-      # What a Mac's update checks its disk image against, and a person a download.
+      # What a Mac's update checks its disk image against, a person a download, and a package manager's manifest its build.
       - name: Checksums
+        id: sums
         working-directory: release/assets
         run: |
           sha256sum -- * > ../SHA256SUMS
           mv ../SHA256SUMS .
           cat SHA256SUMS
+          echo "sums=$(jq -cRn '[inputs | capture("^(?<sum>[0-9a-f]{64}) [ *](?<name>.+)$") | {(.name): .sum}] | add' < SHA256SUMS)" >> "$GITHUB_OUTPUT"
 
       # The version's own notes (docs/release-notes), else the commits since the last release; a release published with
       # notes still the stand-in fails here.

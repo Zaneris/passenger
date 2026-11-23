@@ -1,13 +1,14 @@
 #!/bin/sh
-# Passenger's macOS disk image: `just package-mac [osx-arm64|osx-x64] [--dry-run]` makes
-# artifacts/package/Passenger-macos-arm64.dmg (Apple Silicon) or Passenger-macos-x64.dmg (Intel), names each release keeps.
-# The Release publish (self-contained, ReadyToRun, the debugger and Roslyn's server beside it) becomes Passenger.app,
-# signed under the hardened runtime with the entitlements below: by PASSENGER_SIGN_IDENTITY (a Developer ID
-# Application identity), else ad hoc, which Apple Silicon needs to run it at all and which a person opens once through
-# System Settings > Privacy & Security > Open Anyway. With PASSENGER_NOTARY_PROFILE (a notarytool keychain profile) the
-# app is notarized and stapled, then the image signed, notarized and stapled too. --dry-run writes the Developer ID's
-# and the notary's commands to a file instead of running them, and signs ad hoc. The image is then mounted read-only
-# and checked.
+# Passenger's macOS disk image and portable build: `just package-mac [osx-arm64|osx-x64] [--dry-run]` makes
+# artifacts/package/Passenger-macos-arm64.dmg (Apple Silicon) or -x64.dmg (Intel), and beside it the same app zipped in
+# a Passenger folder, Passenger-macos-arm64.zip or -x64.zip, names each release keeps. The Release publish
+# (self-contained, ReadyToRun, the debugger and Roslyn's server beside it) becomes Passenger.app, signed under the
+# hardened runtime with the entitlements below: by PASSENGER_SIGN_IDENTITY (a Developer ID Application identity), else
+# ad hoc, which Apple Silicon needs to run it at all and which a person opens once through System Settings > Privacy &
+# Security > Open Anyway. With PASSENGER_NOTARY_PROFILE (a notarytool keychain profile) the app is notarized and stapled
+# before it is zipped, then the image signed, notarized and stapled too. --dry-run writes the Developer ID's and the
+# notary's commands to a file instead of running them, and signs ad hoc. The image is then mounted read-only and
+# checked, and the zip unpacked and run as a portable copy.
 set -eu
 . "$(dirname "$0")/release-common.sh"
 rid=osx-arm64
@@ -45,6 +46,7 @@ app="$stage/Passenger.app"
 mount="$work/mount"
 commands="$work/dry-run.txt"
 image="$out/Passenger-macos-$arch.dmg"
+portable="$out/Passenger-macos-$arch.zip"
 version=$(release_version "$root")
 # The build number counts the commits, so each rises.
 if [ "$(git -C "$root" rev-parse --is-shallow-repository)" = true ]; then
@@ -175,7 +177,7 @@ if [ -f "$image" ]; then
         echo "package-mac: ejected $disk, a mount of the image being replaced" >&2
     done
 fi
-rm -rf "$work" "$image"
+rm -rf "$work" "$image" "$portable"
 mkdir -p "$work"
 
 publish_app "$root" "$rid" "$version" -o "$publish" -nologo -v quiet
@@ -315,6 +317,11 @@ if [ -n "$profile" ]; then
     notarize "$work/Passenger.zip"
     developer xcrun stapler staple "$app"
 fi
+# The portable build: the app as the image carries it in a Passenger folder, where a portable copy's data folder goes.
+mkdir -p "$work/zip/Passenger"
+ditto "$app" "$work/zip/Passenger/Passenger.app"
+ditto -c -k --keepParent "$work/zip/Passenger" "$portable"
+rm -rf "$work/zip"
 
 # Beside the app: a link to /Applications and the volume's icon; its name carries the version, as the file's cannot.
 volume_name="Passenger $version"
@@ -463,6 +470,21 @@ codesign --verify --deep --strict "$check/Passenger.app" || fail "a run of the a
 rm -rf "$settings" "$check"
 settings=
 
+# The portable build unpacked: the app alone, sealed (and notarized), run as a portable copy that writes nothing inside.
+mkdir -p "$work/portable"
+ditto -x -k "$portable" "$work/portable"
+unpacked="$work/portable/Passenger"
+[ "$(ls -A "$work/portable")" = Passenger ] && [ "$(ls -A "$unpacked")" = Passenger.app ] \
+    || fail "the portable build holds $(cd "$work/portable" && find . -maxdepth 2 | tr '\n' ' ')rather than Passenger/Passenger.app alone"
+codesign --verify --deep --strict "$unpacked/Passenger.app" || fail "the portable build's app does not verify"
+if [ -n "$profile" ]; then
+    developer xcrun stapler validate "$unpacked/Passenger.app"
+    developer spctl --assess --type execute --verbose "$unpacked/Passenger.app"
+fi
+check_portable "$unpacked/Passenger.app/Contents/MacOS/Passenger" "$unpacked"
+codesign --verify --deep --strict "$unpacked/Passenger.app" || fail "a portable copy's run wrote inside the app, breaking its seal"
+rm -rf "$work/portable"
+
 size=$(du -h "$image" | cut -f1 | tr -d ' ')
 if [ -n "$dry_run" ]; then
     signed="signed ad hoc; what the Developer ID would run is in $commands"
@@ -474,3 +496,4 @@ else
     signed="signed by $identity, notarized and stapled"
 fi
 echo "package: $image ($size, Passenger $version build $build for $rid, $signed)"
+echo "package: $portable ($(du -h "$portable" | cut -f1 | tr -d ' '), the same app zipped, its portable build)"

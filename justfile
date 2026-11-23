@@ -99,14 +99,16 @@ debug-relay *args:
 # The app signed ad hoc, or with PASSENGER_SIGN_IDENTITY and then, with PASSENGER_NOTARY_PROFILE, the app and the image
 # notarized and stapled, and checked mounted; --dry-run writes what those two would run instead.
 # The macOS disk image, artifacts/package/Passenger-macos-arm64.dmg (Apple Silicon) or -x64.dmg (Intel, checked under
-# Rosetta on Apple Silicon): just package-mac [osx-arm64|osx-x64] [--dry-run]
+# Rosetta on Apple Silicon), and its app zipped beside it as the portable build, run as a portable copy:
+# just package-mac [osx-arm64|osx-x64] [--dry-run]
 package-mac *args:
     tools/package-mac.sh {{args}}
 
 # Passenger's Windows installer, packed by Velopack's vpk (dotnet-tools.json): it installs per user with no
 # administrator, adds a Start menu entry, opens .sln, .slnx and .csproj in Passenger, and uninstalls from Settings > Apps.
 # Signed on Windows by PASSENGER_SIGNTOOL_PARAMS or PASSENGER_ARTIFACT_SIGNING_METADATA (tools/package-win.sh).
-# The Windows installer, artifacts/package/Passenger-windows-x64.exe or -arm64.exe: just package-win [win-x64|win-arm64]
+# The Windows installer, artifacts/package/Passenger-windows-x64.exe or -arm64.exe, and beside it the portable build,
+# -x64-portable.zip or -arm64-portable.zip, run as a portable copy on Windows: just package-win [win-x64|win-arm64]
 [unix]
 package-win rid="win-x64":
     tools/package-win.sh {{rid}}
@@ -117,7 +119,7 @@ package-win rid="win-x64":
     $sh = (Get-Command sh -ErrorAction SilentlyContinue).Source; if (-not $sh) { $sh = Join-Path (Split-Path (Split-Path (Get-Command git).Source)) 'bin\sh.exe' }; & $sh tools/package-win.sh {{rid}}
 
 # Passenger for Linux: one passenger/ folder (the app, its launcher, install.sh and the desktop entry with its icon) in
-# artifacts/package/Passenger-linux-x64.tar.gz or -arm64.tar.gz, unpacked and checked.
+# artifacts/package/Passenger-linux-x64.tar.gz or -arm64.tar.gz, unpacked and checked, as installed and as a portable copy.
 # On Linux or macOS: just package-linux [linux-x64|linux-arm64]
 [unix]
 package-linux rid="linux-x64":

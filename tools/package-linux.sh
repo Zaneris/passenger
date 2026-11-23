@@ -3,7 +3,9 @@
 # (or -arm64), a name each release keeps. It holds one passenger/ folder: the Release publish (self-contained,
 # ReadyToRun, the debugger and Roslyn's server beside it) in app/, the `passenger` launcher, install.sh, and the desktop
 # entry's template, its icon and the file types it opens (tools/linux). The archive is then unpacked again and checked:
-# its layout, every ELF file built for its processor, and the launcher running the app. Made on Linux or macOS.
+# its layout, every ELF file built for its processor, and the launcher running the app, as installed and as a portable
+# copy, a data folder beside the launcher. Made on Linux or macOS. It is also the portable build: unpacked anywhere it
+# runs, and a package manager installs it as it is.
 set -eu
 . "$(dirname "$0")/release-common.sh"
 rid=${1:-linux-x64}
@@ -83,6 +85,7 @@ if [ "$(uname -s)" = Linux ] && [ "$(uname -m)" = "$(echo "$machine" | tr - _)" 
     PASSENGER_SETTINGS="$work/state" "$shipped/passenger" --screenshot "$work/welcome.png" --size 1000x700 > /dev/null \
         || fail "the launcher could not run the app"
     [ -s "$work/welcome.png" ] || fail "the app ran but drew no window"
+    check_portable "$shipped/passenger" "$shipped"
 fi
 
 size=$(du -h "$archive" | cut -f1 | tr -d ' ')
