@@ -15,18 +15,36 @@ public static class ShellMarks
     [IdentifierHome]
     public const string BashVariable = "PASSENGER_SHELL_MARKS";
 
-    /// <summary>What bash's PROMPT_COMMAND begins with until <see cref="BashMarks"/> runs.</summary>
-    private const string BashPrompt = $"eval \"${BashVariable}\";";
-
     /// <summary>bash's marks, run once at the first prompt: the status taken first at every prompt, before anything else
-    /// in PROMPT_COMMAND changes it, and PS0 saying a command runs where bash has it (4.4 on).</summary>
-    private const string BashMarks = $$"""
-        PROMPT_COMMAND=${PROMPT_COMMAND#'{{BashPrompt}}'}
-        __passenger_marks() { printf '\033]133;D;%s\007\033]133;A\007' "$1"; }
-        PROMPT_COMMAND='__passenger_marks "$?";'"$PROMPT_COMMAND"
+    /// in PROMPT_COMMAND changes it, then given back to what follows there (through &amp;&amp;, so an ERR trap runs no second
+    /// time); PS0 saying a command runs where bash has it (4.4 on).</summary>
+    private static readonly string BashMarks = $$"""
+        {{BashTakeOut(BashVariable)}}__passenger_marks() { printf '\033]133;D;%s\007\033]133;A\007' "$1"; return "$1"; }
+        PROMPT_COMMAND='__passenger_marks "$?" && :'"${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
         if [ "${BASH_VERSINFO[0]}" -gt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -ge 4 ]; }; then PS0='\e]133;C\a'"${PS0-}"; fi
         printf '\033]133;A\007'
         unset {{BashVariable}}
+
+        """;
+
+    /// <summary>What ends <see cref="BashMarks"/> where Passenger's environment gave bash no PROMPT_COMMAND: Passenger's own
+    /// put it in the shell's environment, which a child bash, lacking its function, would take.</summary>
+    private const string BashUnexported = "export -n PROMPT_COMMAND\n";
+
+    /// <summary>What ends <see cref="BashMarks"/> where Passenger's environment gave bash a PROMPT_COMMAND, which its children
+    /// take as they would elsewhere, Passenger's function with it.</summary>
+    private const string BashExported = "export -f __passenger_marks\n";
+
+    /// <summary>bash's PROMPT_COMMAND running a variable's text first, before what it held (<paramref name="after"/>), a
+    /// separator between only where it held anything, so a startup file's own added after a separator of its own leaves a
+    /// command line bash reads.</summary>
+    internal static string BashFirst(string variable, string? after) => $"eval \"${variable}\"{(string.IsNullOrEmpty(after) ? "" : $";{after}")}";
+
+    /// <summary>bash's words taking <see cref="BashFirst"/>'s out of the start of PROMPT_COMMAND, with what separates it from
+    /// the rest.</summary>
+    internal static string BashTakeOut(string variable) => $$"""
+        PROMPT_COMMAND=${PROMPT_COMMAND#'eval "${{variable}}"'}
+        PROMPT_COMMAND=${PROMPT_COMMAND#"${PROMPT_COMMAND%%[![:space:];]*}"}
 
         """;
 
@@ -85,8 +103,8 @@ public static class ShellMarks
                 return (app, arguments);
             case ShellKind.Bash when !Runs(arguments, "-c"):
                 string? prompt = environment.TryGetValue("PROMPT_COMMAND", out string? set) ? set : inherited.GetValueOrDefault("PROMPT_COMMAND");
-                environment["PROMPT_COMMAND"] = BashPrompt + prompt;
-                environment[BashVariable] = BashMarks;
+                environment["PROMPT_COMMAND"] = BashFirst(BashVariable, prompt);
+                environment[BashVariable] = BashMarks + (string.IsNullOrEmpty(prompt) ? BashUnexported : BashExported);
                 return (app, arguments);
             case ShellKind.Fish when !Runs(arguments, "-c", "--command"):
                 return (app, [.. arguments, "-C", FishMarks]);

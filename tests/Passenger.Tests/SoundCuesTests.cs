@@ -157,7 +157,7 @@ public sealed class SoundCuesTests : IDisposable
         (string? program, string[] arguments) = kind switch
         {
             "zsh" => (Found("/bin/zsh", "zsh"), []),
-            "bash" => (Found("/bin/bash", "bash"), ["--norc", "--noprofile"]),
+            "bash" => (Found("/bin/bash", "bash"), ["--noprofile", "--rcfile", BashStartup()]),
             "fish" => (Programs.OnPath("fish"), ["--no-config"]),
             "pwsh" => (Programs.OnPath(OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh"), ["-NoLogo", "-NoProfile"]),
             "powershell" => (OperatingSystem.IsWindows() ? Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe") : null, ["-NoLogo", "-NoProfile"]),
@@ -181,6 +181,13 @@ public sealed class SoundCuesTests : IDisposable
             Run(window, shell, "echo first", answered);
             Run(window, shell, OperatingSystem.IsWindows() ? "cmd /c exit 3" : "false", answered);
             Assert.True(Failed(window) == (tells ? 1 : 0), $"A command failing in {kind} played its cue {Failed(window)} times, not {(tells ? "once" : "never, as it tells no run")}");
+            if (kind == "bash")
+            {
+                Run(window, shell, "echo \"saw $__seen\"; bash --norc --noprofile -i </dev/null", answered);
+                string[] said = ScreenLines(shell);
+                Assert.True(said.Contains("saw 1") && !said.Any(l => l.Contains("not found", StringComparison.Ordinal) || l.Contains("syntax error", StringComparison.Ordinal)),
+                    $"A startup file's PROMPT_COMMAND added after a separator of its own did not run reading the failure's status, or a bash started in the terminal could not run what it inherited:\n{string.Join('\n', said)}");
+            }
             Run(window, shell, string.Empty, answered);
             Run(window, shell, "echo second", answered);
             Assert.True(Failed(window) == (tells ? 1 : 0), $"An empty line and a command passing in {kind} played the failure's cue again");
@@ -197,6 +204,14 @@ public sealed class SoundCuesTests : IDisposable
         }
 
         static string? Found(string at, string name) => File.Exists(at) ? at : Programs.OnPath(name);
+
+        // A person's own PROMPT_COMMAND, added after a separator of its own as startup files add one, reading the status.
+        string BashStartup()
+        {
+            string file = Path.Combine(folder, "bashrc");
+            File.WriteAllText(file, "PROMPT_COMMAND=\"${PROMPT_COMMAND:+$PROMPT_COMMAND; }__seen=\\$?\"\n");
+            return file;
+        }
     }
 
     /// <summary>Types a command (or nothing) and presses Enter, then waits for the shell's next prompt, marked below the last,

@@ -43,15 +43,11 @@ public sealed record FirstOnPath(string Folder, string Variable, string Value, s
         unset __passenger_rest __passenger_at {{FolderVariable}} {{ValueVariable}}
         fi
         if [ -n "${BASH_VERSION-}" ]; then
-        PROMPT_COMMAND=${PROMPT_COMMAND#'{{BashPrompt}}'}
-        [ -n "$PROMPT_COMMAND" ] || unset PROMPT_COMMAND
+        {{ShellMarks.BashTakeOut(AgainVariable)}}[ -n "$PROMPT_COMMAND" ] || unset PROMPT_COMMAND
         fi
         unset {{AgainVariable}}
 
         """;
-
-    /// <summary>What bash's PROMPT_COMMAND begins with, which runs <see cref="Again"/>.</summary>
-    private const string BashPrompt = $"eval \"${AgainVariable}\";";
 
     /// <summary>Passenger's .zshenv: zsh's startup files are then the person's own, from their ZDOTDIR or the home, the
     /// shell's marks are set up (<see cref="ShellMarks"/>), and before the first prompt <see cref="Again"/> runs once.</summary>
@@ -110,7 +106,7 @@ public sealed record FirstOnPath(string Folder, string Variable, string Value, s
         else
         {
             string? prompt = environment.TryGetValue("PROMPT_COMMAND", out string? set) ? set : inherited.GetValueOrDefault("PROMPT_COMMAND");
-            environment["PROMPT_COMMAND"] = BashPrompt + prompt;
+            environment["PROMPT_COMMAND"] = ShellMarks.BashFirst(AgainVariable, prompt);
         }
     }
 }
