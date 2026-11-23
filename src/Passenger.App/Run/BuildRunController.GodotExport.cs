@@ -156,7 +156,7 @@ public sealed partial class BuildRunController
                 }
                 (string? notStarted, int code) = await GodotScripts.PuttingBackAsync(request.Folder, async () =>
                 {
-                    if (await session.Runner.StartAsync(plan.Program, plan.Arguments, request.Folder, environment) is { } unstarted)
+                    if (await session.Runner.StartAsync(plan.Program, plan.Arguments, request.Folder, GodotExecutables.EnvironmentOf(plan.Arguments, environment)) is { } unstarted)
                     {
                         return (unstarted, 0);
                     }

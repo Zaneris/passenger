@@ -6,8 +6,9 @@ namespace Passenger.UnitTests.Core;
 /// <summary>Where a dotnet run for a folder works: an SDK's command for a folder not trusted (every folder, in this process),
 /// or one under a global.json in a folder not trusted, works outside it, in the person's home, so that global.json never
 /// names the SDK that runs; a program's own run (by its path, or after exec) works in the folder, which no global.json
-/// chooses anything for. And what a tool's start is told of telemetry: an SDK's command and a helper running the person's
-/// MSBuild send none the person has not asked for, where a program's own run is left with the person's environment.</summary>
+/// chooses anything for. And what a tool's start is told of telemetry: an SDK's command, a helper running the person's
+/// MSBuild and Godot's editor send none the person has not asked for, where a program's own run is left with the person's
+/// environment.</summary>
 public sealed class DotnetFolderTests
 {
     private static readonly string Host = Path.GetFullPath(Path.Combine(Path.DirectorySeparatorChar.ToString(), "dotnet-folder-tests", "dotnet"));
@@ -43,10 +44,10 @@ public sealed class DotnetFolderTests
         Assert.Equal(string.Empty, ChildProcesses.DotnetCommand(Host, ["--version"], null).WorkingDirectory);
     }
 
-    /// <summary>Each telemetry switch an SDK's command, a question of it and a helper running the person's MSBuild start with is
-    /// the person's own where this process's environment sets it, else on; a question's the .NET SDK's on whatever is set, so
-    /// it ends with its answer. A program's own run starts with each as the person has it, and a value the person gave a
-    /// tool, or its inherited environment holds, stands.</summary>
+    /// <summary>Each telemetry switch an SDK's command, a question of it, a helper running the person's MSBuild and Godot's
+    /// editor, an export's too, start with is the person's own where this process's environment sets it, else on; a question's
+    /// the .NET SDK's on whatever is set, so it ends with its answer. A program's own run, a Godot game's too, starts with each
+    /// as the person has it, and a value the person gave a tool, or its inherited environment holds, stands.</summary>
     private void A_tools_start_sends_no_telemetry_the_person_has_not_asked_for_and_a_programs_own_run_is_left_as_the_person_has_it()
     {
         ProcessStartInfo question = ChildProcesses.DotnetQuestion(Host, ["--version"], Repository);
@@ -54,7 +55,9 @@ public sealed class DotnetFolderTests
             ("dotnet build", ChildProcesses.DotnetCommand(Host, ["build", "App.csproj"], Repository)),
             ("dotnet watch", ChildProcesses.DotnetCommand(Host, ["watch", "run", "--project", "App.csproj"], null)),
             ("dotnet --version, asked", question),
-            ("a helper running the persons MSBuild", ChildProcesses.NamingDotnet(new ProcessStartInfo(Host), Repository))])
+            ("a helper running the persons MSBuild", ChildProcesses.NamingDotnet(new ProcessStartInfo(Host), Repository)),
+            ("Godot's editor", Godot(["--path", Repository, "--editor"])),
+            ("Godot's export", Godot(["--headless", "--path", Repository, "--export-release", "Here", "Game.zip"]))])
         {
             foreach (string variable in TelemetryOptOuts.All)
             {
@@ -63,11 +66,14 @@ public sealed class DotnetFolderTests
                     $"{tool} started with {variable} {given ?? "unset"}, where {expected} keeps it from sending what the person never asked to send, or keeps the person's own");
             }
         }
-        ProcessStartInfo own = ChildProcesses.DotnetCommand(Host, ["exec", "--runtimeconfig", "App.runtimeconfig.json", "App.dll"], Repository);
-        foreach (string variable in TelemetryOptOuts.All)
+        foreach (ProcessStartInfo own in (ReadOnlySpan<ProcessStartInfo>)[
+            ChildProcesses.DotnetCommand(Host, ["exec", "--runtimeconfig", "App.runtimeconfig.json", "App.dll"], Repository), Godot(["--path", Repository, "res://main.tscn"])])
         {
-            string? given = own.Environment.TryGetValue(variable, out string? set) ? set : null;
-            Assert.True(given == Environment.GetEnvironmentVariable(variable), $"A program's own run started with {variable} {given}, which the person's environment does not set");
+            foreach (string variable in TelemetryOptOuts.All)
+            {
+                string? given = own.Environment.TryGetValue(variable, out string? set) ? set : null;
+                Assert.True(given == Environment.GetEnvironmentVariable(variable), $"A program's own run ({own.FileName}) started with {variable} {given}, which the person's environment does not set");
+            }
         }
 
         ProcessStartInfo kept = new(Host);
@@ -82,6 +88,9 @@ public sealed class DotnetFolderTests
             "Variables a tool is started with over its inherited environment lost the person's own value, or gave one over what the environment it inherits sets");
         Assert.True(TelemetryOptOuts.All.Where(v => v is not TelemetryOptOuts.Avalonia and not TelemetryOptOuts.DotnetCli).All(v => over.GetValueOrDefault(v) == TelemetryOptOuts.On),
             $"Variables a tool is started with over its inherited environment lack a telemetry switch neither sets: {string.Join(", ", over.Select(v => $"{v.Key}={v.Value}"))}");
+
+        static ProcessStartInfo Godot(string[] arguments) =>
+            ChildProcesses.Command(Path.Combine(Path.GetDirectoryName(Host)!, "godot"), arguments, null, GodotExecutables.EnvironmentOf(arguments, new Dictionary<string, string>()));
     }
 
     /// <summary>A trusted folder takes what the host reads there only where the nearest global.json over it, whose sdk.paths

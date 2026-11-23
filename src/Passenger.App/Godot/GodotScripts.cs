@@ -100,10 +100,9 @@ public static class GodotScripts
             for (int tries = 1; ; tries++)
             {
                 int lsp = GodotPorts.Choose();
-                ProcessStartInfo editor = ChildProcesses.Command(found.Executable,
-                    [.. GodotLaunch.Chosen(setting)?.Arguments ?? [], GodotExecutables.Headless, .. recovering ? (string[])[GodotExecutables.RecoveryMode] : [], "--editor",
-                        "--path", project, "--lsp-port", lsp.ToString(System.Globalization.CultureInfo.InvariantCulture)],
-                    project, environment);
+                string[] arguments = [.. GodotLaunch.Chosen(setting)?.Arguments ?? [], GodotExecutables.Headless, .. recovering ? (string[])[GodotExecutables.RecoveryMode] : [],
+                    "--editor", "--path", project, "--lsp-port", lsp.ToString(System.Globalization.CultureInfo.InvariantCulture)];
+                ProcessStartInfo editor = ChildProcesses.Command(found.Executable, arguments, project, GodotExecutables.EnvironmentOf(arguments, environment));
                 try
                 {
                     return await LanguageSession.StartAsync(Start(editor, project, logFolder, lsp), cancel);
@@ -198,7 +197,8 @@ public static class GodotScripts
         {
             return null;
         }
-        ProcessStartInfo start = ChildProcesses.Command(godot, [.. leading, GodotExecutables.Headless, "--path", project, "--import"], project, environment);
+        string[] arguments = [.. leading, GodotExecutables.Headless, "--path", project, "--import"];
+        ProcessStartInfo start = ChildProcesses.Command(godot, arguments, project, GodotExecutables.EnvironmentOf(arguments, environment));
         ChildResult imported = await PuttingBackAsync(project, () => ChildProcesses.RunAsync(start, cancel: cancel), MadeFiles.Uids);
         return imported.Succeeded ? null
             : $"Godot could not import {PathNames.Shown(project, null)} as its editor does: it ended with {imported.Ended}";

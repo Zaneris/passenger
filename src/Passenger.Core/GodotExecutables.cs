@@ -118,14 +118,24 @@ public static partial class GodotExecutables
     /// <summary>What <see cref="HidGamepads"/> says of a driver turned off.</summary>
     public const string HidGamepadsOff = "0";
 
-    /// <summary>The environment of a Godot given these arguments, for a start that passes it on itself: as it stands, with
-    /// <see cref="HidGamepads"/> off where they run it headless and it does not say.</summary>
-    public static IReadOnlyDictionary<string, string> EnvironmentOf(IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string> environment) =>
-        !RunsHeadless(arguments) || environment.ContainsKey(HidGamepads) ? environment
-        : new Dictionary<string, string>(environment, StringComparer.Ordinal) { [HidGamepads] = HidGamepadsOff };
+    /// <summary>The environment of a Godot given these arguments, for its start: as it stands, with <see cref="HidGamepads"/>
+    /// off where they run it headless and it does not say, and where they run its editor (<see cref="RunsEditor"/>), whose
+    /// builds of a C# game inherit it, with the telemetry switches neither it nor this process sets
+    /// (<see cref="ChildProcesses.SendingNoTelemetry(IReadOnlyDictionary{string, string}?, Func{string, string?}?)"/>).</summary>
+    public static IReadOnlyDictionary<string, string> EnvironmentOf(IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string> environment)
+    {
+        IReadOnlyDictionary<string, string> given = RunsEditor(arguments) ? ChildProcesses.SendingNoTelemetry(environment) : environment;
+        return !RunsHeadless(arguments) || given.ContainsKey(HidGamepads) ? given
+            : new Dictionary<string, string>(given, StringComparer.Ordinal) { [HidGamepads] = HidGamepadsOff };
+    }
 
     /// <summary>Whether Godot given these arguments opens its editor on the project rather than its game.</summary>
     public static bool OpensEditor(IReadOnlyList<string> arguments) => EngineArguments(arguments).Any(IsEditorFlag);
+
+    /// <summary>Whether Godot given these arguments runs its editor, which builds a C# game itself: opening it, or an import,
+    /// an export or a build of the project's solutions, each of which Godot's command line runs in its editor.</summary>
+    public static bool RunsEditor(IReadOnlyList<string> arguments) =>
+        EngineArguments(arguments).Any(a => IsEditorFlag(a) || a is "--import" or "--build-solutions" or "--export-release" or "--export-debug" or "--export-pack" or "--export-patch");
 
     /// <summary>Godot's arguments without its flags that open the editor, for a launch that opens it itself, the game's own kept.</summary>
     public static IReadOnlyList<string> WithoutEditorFlags(IReadOnlyList<string> arguments) =>

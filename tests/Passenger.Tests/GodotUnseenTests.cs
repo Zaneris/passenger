@@ -46,15 +46,15 @@ public sealed class GodotUnseenTests : McpRig
     }
 
     /// <summary>A person's window runs the game with a window and its gamepads, one nobody sees runs it headless
-    /// once.</summary>
+    /// once; Godot's editor sends no telemetry unasked.</summary>
     [AvaloniaFact]
     public void A_persons_window_runs_a_godot_game_with_a_window()
     {
         Flow.StepApart<GodotUnseenTests>(nameof(A_persons_window_runs_the_game_with_a_window_and_one_nobody_sees_runs_it_headless_once),
             test => test.A_persons_window_runs_the_game_with_a_window_and_one_nobody_sees_runs_it_headless_once());
         OpenWindows.CloseAll();
-        Flow.StepApart<GodotUnseenTests>(nameof(A_game_planned_headless_goes_without_SDLs_HID_gamepads_and_one_in_a_persons_window_keeps_them),
-            test => test.A_game_planned_headless_goes_without_SDLs_HID_gamepads_and_one_in_a_persons_window_keeps_them());
+        Flow.StepApart<GodotUnseenTests>(nameof(A_game_planned_headless_goes_without_SDLs_HID_gamepads_one_in_a_persons_window_keeps_them_and_the_editor_sends_no_telemetry),
+            test => test.A_game_planned_headless_goes_without_SDLs_HID_gamepads_one_in_a_persons_window_keeps_them_and_the_editor_sends_no_telemetry());
     }
 
     /// <summary>An agent's own Passenger, started outside a test run (no PASSENGER_START), runs the game with no window though
@@ -137,8 +137,10 @@ public sealed class GodotUnseenTests : McpRig
     }
 
     /// <summary>A plan's environment reaches a game the debugger or the terminal starts: a window nobody sees plans its headless
-    /// game without SDL's HID gamepads, and a person's window leaves its game's alone.</summary>
-    private void A_game_planned_headless_goes_without_SDLs_HID_gamepads_and_one_in_a_persons_window_keeps_them()
+    /// game without SDL's HID gamepads, and a person's window leaves its game's alone. Godot's editor, whose builds of a C#
+    /// game inherit its environment, is planned with each telemetry switch on or as the person's environment sets it, the
+    /// game with none it lacked.</summary>
+    private void A_game_planned_headless_goes_without_SDLs_HID_gamepads_one_in_a_persons_window_keeps_them_and_the_editor_sends_no_telemetry()
     {
         foreach ((bool unseen, string? gamepads) in ((bool, string?)[])[(false, null), (true, GodotExecutables.HidGamepadsOff)])
         {
@@ -150,6 +152,18 @@ public sealed class GodotUnseenTests : McpRig
                 Assert.True(plan is not null, $"The game has no plan: {problem}");
                 Assert.True(plan.Environment.GetValueOrDefault(GodotExecutables.HidGamepads) == gamepads,
                     $"A window {(unseen ? "nobody sees" : "of a person's")} planned Godot with {string.Join(' ', plan.Arguments)} and the environment {string.Join(", ", plan.Environment)}");
+                Assert.True(!plan.Environment.Keys.Intersect(TelemetryOptOuts.All, StringComparer.OrdinalIgnoreCase).Any(),
+                    $"The game, the person's own program, was planned with a telemetry switch the person's environment does not set: {string.Join(", ", plan.Environment)}");
+                RunConfiguration editor = window.Configurations.Single(c => c.Generated && c.GodotEditor);
+                (LaunchPlan? editing, string? unplanned) = Ui.Await(window.Builds.ResolvePlanAsync(editor, null), "the editor's plan", TimeSpan.FromMinutes(1));
+                Assert.True(editing is not null, $"Godot's editor has no plan: {unplanned}");
+                foreach (string variable in TelemetryOptOuts.All)
+                {
+                    string expected = Environment.GetEnvironmentVariable(variable) ?? TelemetryOptOuts.On;
+                    string? given = editing.Environment.GetValueOrDefault(variable) ?? Environment.GetEnvironmentVariable(variable);
+                    Assert.True(given == expected, $"Godot's editor was planned with {variable} {given ?? "unset"}, so a build of the game it runs "
+                        + $"{(expected == TelemetryOptOuts.On ? "sends what the person never asked to send" : "loses the person's own value")}: {string.Join(", ", editing.Environment)}");
+                }
             }
             finally
             {
