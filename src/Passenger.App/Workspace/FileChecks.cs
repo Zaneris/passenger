@@ -1,5 +1,6 @@
 using Passenger.App.CSharp;
 using Passenger.App.Endpoints;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Languages;
 using Passenger.Roslyn.Extension;
@@ -12,7 +13,10 @@ namespace Passenger.App.Workspace;
 /// <summary>Each open file Passenger reads for itself marked where it cannot use what the file says, as it opens and again
 /// once typing pauses: an .editorconfig's sections that match no file because their glob cannot be used (a range in
 /// reverse order), and its keys nothing reads or values their keys do not take (<see cref="EditorConfigKnown"/>, checked
-/// again as the server's projects change); a .slnx that is not well-formed XML where its reader stopped. A UI-thread object.</summary>
+/// again as the server's projects change); a .gitattributes' values git reads by nothing; a .gitignore's lines that ignore
+/// nothing in the working tree, match only tracked files or are taken back by a later line, as git answers for the file
+/// saved (checked again as the working tree changes); a .slnx that is not well-formed XML where its reader stopped. A
+/// UI-thread object.</summary>
 internal sealed class FileChecks(Func<CSharpService?> csharp, Func<Git?> repository) : OpenFileChecks<FileChecks.Check>(Settle)
 {
     /// <summary>How long typing pauses before the file is checked again.</summary>
@@ -26,6 +30,7 @@ internal sealed class FileChecks(Func<CSharpService?> csharp, Func<Git?> reposit
             async (path, text) => await EditorConfigMarksAsync(csharp(), path, text.ToString())),
         new(path => Language.ForPath(path) == Language.GitAttributes, "Passenger's reading of its attributes",
             async (_, text) => GitAttributesMarks(text.ToString(), repository() is { } git ? await git.DriversAsync() : null)),
+        new(GitIgnoreAssist.IsGitIgnore, GitIgnoreChecker, async (path, text) => await GitIgnoreMarksAsync(repository(), path, text)),
         new(path => Path.GetExtension(path).Equals(".slnx", StringComparison.OrdinalIgnoreCase), "Passenger's reading of the solution", (path, text) => Task.FromResult(SolutionMarks(path, text))),
         new(HttpFile.Is, "Passenger's reading of its requests", (path, text) => Task.FromResult(RequestMarks(path, text))),
     ];
@@ -67,6 +72,45 @@ internal sealed class FileChecks(Func<CSharpService?> csharp, Func<Git?> reposit
             }
         }
         return [.. marks.OrderBy(m => m.Range.Start)];
+    }
+
+    /// <summary>The working tree changed, which what a .gitignore's lines ignore is read against.</summary>
+    public void WorkingTreeChanged() => Changed(kind => kind.Checker == GitIgnoreChecker);
+
+    private const string GitIgnoreChecker = "Git's reading of its lines";
+
+    /// <summary>A .gitignore's lines as git answers for the file saved (none while the text differs from it): one taken back
+    /// by a later line, or matching only tracked files, a warning; one ignoring nothing in the working tree faded.</summary>
+    private static async Task<IReadOnlyList<Marker>> GitIgnoreMarksAsync(Git? git, string path, TextSnapshot text)
+    {
+        string? saved = await BackgroundWork.Run(() => FileText.Load(path)?.Text);
+        if (git is null || saved?.ReplaceLineEndings("\n") != text.ToString().ReplaceLineEndings("\n") || await git.IgnoreReadingAsync(path) is not { } reading)
+        {
+            return [];
+        }
+        List<Marker> marks = [];
+        for (int line = 0; line < text.LineCount; line++)
+        {
+            TextRange written = TextRange.Trimmed(text, TextRange.FromBounds(text.GetLine(line).Start, text.GetLine(line).End));
+            string pattern = text.GetText(written.Start, written.Length);
+            if (pattern.Length == 0 || pattern.StartsWith('#'))
+            {
+                continue;
+            }
+            IgnoreLineAnswer? answer = reading.Of(line + 1);
+            if (answer is { Decides.Count: > 0 })
+            {
+                continue;
+            }
+            (MarkerKind kind, string why) = answer switch
+            {
+                { UndoneBy: { } by } => (MarkerKind.Warning, $"Ignores nothing: line {by} takes back everything it ignores"),
+                { Tracked.Count: > 0 } => (MarkerKind.Warning, string.Join(". ", GitIgnoreAssist.Said(pattern, answer))),
+                _ => (MarkerKind.Unnecessary, pattern.StartsWith('!') ? "Keeps nothing in the working tree" : "Ignores nothing in the working tree"),
+            };
+            marks.Add(new Marker(written, kind, why));
+        }
+        return marks;
     }
 
     /// <summary>A .gitattributes' values git reads by nothing: an eol other than lf or crlf, a diff or merge driver neither

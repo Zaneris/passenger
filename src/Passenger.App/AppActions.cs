@@ -649,6 +649,11 @@ public static class AppActions
     public const string CompareWithBranch = "app.vcs.compareWithBranch";
     public const string CompareWithRevision = "app.vcs.compareWithRevision";
 
+    // A file or folder added to the repository's .gitignore, and the ignore file's line deciding whether git ignores one:
+    // no keys of Rider's.
+    public const string AddToGitIgnore = "app.vcs.addToGitIgnore";
+    public const string GoToIgnoringLine = "app.vcs.goToIgnoringLine";
+
     // Rider's Local History (LocalHistory.ShowHistory, LocalHistory.ShowProjectHistory, RecentChanges and
     // LocalHistory.PutLabel): its Visual Studio keymaps give none of them keys, and take Recent Changes' Alt+Shift+C off.
     public const string ShowLocalHistory = "app.localHistory.show";

@@ -7,7 +7,8 @@ namespace Passenger.Vcs;
 /// <summary>A file a commit makes for git, deleted once git is done with it whatever came of the commit: its message
 /// (<c>commit -F</c>), or the data Passenger's gpg has gpg sign (<see cref="Signed"/>), written once under a name nothing
 /// had, only the person's to read on macOS and Linux from its making, so a program that opens it a moment after (a
-/// scanner, an indexer) stands in no write's way; or an index of its own in the git folder, which git writes. A deletion
+/// scanner, an indexer) stands in no write's way; an index of its own in the git folder, which git writes; or an ignore
+/// file at its place in a tree of its own, which git reads as a work tree's (<see cref="Ignoring"/>). A deletion
 /// Windows refuses while another program holds the file is made again apart from the commit, which neither waits for it
 /// nor fails for it.</summary>
 internal sealed class CommitFile : IDisposable
@@ -21,6 +22,9 @@ internal sealed class CommitFile : IDisposable
     /// <summary>The file and what goes with it.</summary>
     private readonly string[] files;
 
+    /// <summary>The tree of its own it was written in, which goes with it; null for none.</summary>
+    private string? tree;
+
     /// <summary>Whether a deletion refused is left to the end of the operation that made it (<see cref="DeleteSigned"/>),
     /// as this process ends with its answer.</summary>
     private readonly bool leftToOperation;
@@ -33,6 +37,31 @@ internal sealed class CommitFile : IDisposable
 
     /// <summary>Where git reads or writes it.</summary>
     public string Path => files[0];
+
+    /// <summary>The tree of its own an ignore file was written in (<see cref="Ignoring"/>).</summary>
+    public string Tree => tree ?? throw new InvalidOperationException($"{Path} was written in no tree of its own");
+
+    /// <summary>An ignore file's lines at its path from a tree's top (<paramref name="relative"/>), written whole in a tree of
+    /// its own in the temporary folder, for git to read as a work tree's; one whose write fails is deleted, and the failure
+    /// thrown.</summary>
+    public static CommitFile Ignoring(string relative, string lines)
+    {
+        string root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"passenger-ignoring-{Guid.NewGuid():N}");
+        string path = System.IO.Path.Combine(root, relative.Replace('/', System.IO.Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
+        CommitFile file;
+        try
+        {
+            file = Written(path, Encoding.UTF8.GetBytes(lines), leftToOperation: false);
+        }
+        catch (Exception unwritten) when (unwritten is IOException or UnauthorizedAccessException)
+        {
+            Directory.Delete(root, recursive: true);
+            throw;
+        }
+        file.tree = root;
+        return file;
+    }
 
     /// <summary>A commit's message, written whole in a file of its own in the temporary folder; one whose write fails is
     /// deleted, and the failure thrown.</summary>
@@ -84,6 +113,17 @@ internal sealed class CommitFile : IDisposable
             else
             {
                 Delete(file);
+            }
+        }
+        if (tree is not null)
+        {
+            try
+            {
+                Directory.Delete(tree, recursive: true);
+            }
+            catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
+            {
+                PassengerLog.Write($"An ignore file's tree was left at {tree}: {refused.Message}");
             }
         }
     }

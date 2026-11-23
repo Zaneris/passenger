@@ -481,7 +481,7 @@ public partial class MainWindow
             && session.Vcs.Repository?.IsInside(versioned) == true)
         {
             List<MenuEntry> git = node.Kind == NodeKind.File ? [Item(A.CompareWithRevision), Item(A.CompareWithBranch)] : [];
-            git.Add(Item(A.ShowHistory));
+            git.AddRange([Item(A.ShowHistory), separator, Item(A.AddToGitIgnore), Item(A.GoToIgnoringLine)]);
             if (!histories)
             {
                 entries.Add(separator);

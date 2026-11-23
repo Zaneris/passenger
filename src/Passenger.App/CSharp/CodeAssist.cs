@@ -87,7 +87,7 @@ public sealed class CodeAssist
         GDScriptAssist gdscript = new(context, completion, parameterInfo, navigation, actions);
         parameterInfo.Own = gdscript;
         context.Languages = new LanguageAssists(new LinkAssist(context), new HttpAssist(context, navigation), new EditorConfigAssist(context, completion, navigation),
-            new GitAttributesAssist(context, completion), new MSBuildAssist(context, popups, completion), xaml,
+            new GitAttributesAssist(context, completion), new GitIgnoreAssist(context, completion), new MSBuildAssist(context, popups, completion), xaml,
             new ComposeAssist(context, popups, completion, navigation, actions), new SettingsAssist(context, completion, navigation),
             new CssClassAssist(context, completion, navigation), gdscript, new WebAssist(context, popups, completion, parameterInfo, actions),
             new GodotShaderAssist(context, completion, navigation, csharp), new GodotAssist(context, popups, completion, navigation, actions, csharp),
@@ -483,11 +483,12 @@ public sealed class CodeAssist
         set => context.Languages.EditorConfig.Indexed = value;
     }
 
-    /// <summary>The open folder's repository, whose configuration declares a .gitattributes' drivers.</summary>
+    /// <summary>The open folder's repository, whose configuration declares a .gitattributes' drivers and which says what a
+    /// .gitignore's lines ignore.</summary>
     public Func<Passenger.Vcs.Git?>? Repository
     {
         get => context.Languages.GitAttributes.Repository;
-        set => context.Languages.GitAttributes.Repository = value;
+        set => context.Languages.GitAttributes.Repository = context.Languages.GitIgnore.Repository = value;
     }
 
     /// <summary>What an .editorconfig's readers take of it, with what Roslyn's server read of it where it answers, which its
@@ -733,7 +734,8 @@ public sealed class CodeAssist
             {
                 // .http requests, Godot scenes' paths, shaders' names, features' steps and an .editorconfig's keys are read with no language server.
                 WhyNot = action => (http && this.context.Languages.Http.IsHttpFile(action.File) || godot && IsGodotScene(action.File)
-                    || config && action.File?.Language is { } language && (language == Passenger.Languages.Language.EditorConfig || language == Passenger.Languages.Language.GitAttributes)
+                    || config && action.File is { } own && (own.Language == Passenger.Languages.Language.EditorConfig || own.Language == Passenger.Languages.Language.GitAttributes
+                        || GitIgnoreAssist.IsGitIgnore(own.Path))
                     || shader && action.File is { } file && GodotFileKinds.IsShader(file.Path)
                     || gherkin && action.File is { } feature && Passenger.App.Bdd.FeatureChecks.IsFeature(feature.Path) ? null
                     : gdscript && CodeActions.IsGDScript(action.File) ? action.ReadOnlyWhy

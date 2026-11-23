@@ -68,10 +68,14 @@ internal abstract class OpenFileChecks<TKept>(TimeSpan settle) : IDisposable whe
 
     /// <summary>What the open files are read against changed: each checked again once such changes and its typing pause,
     /// held as its check meanwhile.</summary>
-    public void Changed()
+    public void Changed() => Changed(_ => true);
+
+    /// <summary>What the open files it keeps <paramref name="which"/> of are read against changed: each of them checked again
+    /// once such changes and its typing pause.</summary>
+    protected void Changed(Func<TKept, bool> which)
     {
         UiThread.Check();
-        foreach (Followed followed in documents.Values)
+        foreach (Followed followed in documents.Values.Where(f => which(f.Kept)))
         {
             followed.Pause.Restart();
         }

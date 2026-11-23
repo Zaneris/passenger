@@ -20,6 +20,7 @@ public partial class MainWindow
         Add(AppActions.CompareWithRevision, "Compare with Revision…", context => IdeErrors.Observe(ShowCompareWithRevisionAsync(Target(context, fileOnly: true)!)), 3, fileOnly: true);
         Add(AppActions.CompareWithBranch, "Compare with Branch or Tag…", context => IdeErrors.Observe(ShowCompareWithBranchAsync(Target(context, fileOnly: true)!)), 4, fileOnly: true);
         Add(AppActions.ShowHistory, "Show History", context => IdeErrors.Observe(ShowHistoryAsync(Target(context, fileOnly: false)!)), 5, fileOnly: false);
+        AddGitIgnoreActions();
         actions!.Add(new IdeAction(AppActions.ShowHistoryForSelection, "Show History for Selection…", "Git", context =>
         {
             (int first, int last) = SelectedLines(context.Editor);

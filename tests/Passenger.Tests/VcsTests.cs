@@ -164,8 +164,8 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>Create Git Repository and Add to .gitignore as one flow, each step the check one test made in an
     /// instance of its own: a new repository leaving build output out of the changes, Add to .gitignore keeping a
     /// file's byte order mark, Windows line breaks and an unsaved edit, making the file as its .editorconfig asks with
-    /// Undo and Redo putting back the same bytes, and having git ignore the chosen file and no other whatever its name
-    /// holds.</summary>
+    /// Undo and Redo putting back the same bytes, having git ignore the chosen file and no other whatever its name
+    /// holds, and a .gitignore read as git reads it, from the Explorer's Add to .gitignore and Go to Ignoring Line.</summary>
     [AvaloniaFact]
     public void A_new_repository_and_gitignore_leave_out_what_the_person_chose_keeping_the_files_bytes()
     {
@@ -173,6 +173,7 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("add to gitignore keeps the files byte order mark its windows line breaks and an unsaved edit to it", t => t.Add_to_gitignore_keeps_the_files_byte_order_mark_its_windows_line_breaks_and_an_unsaved_edit_to_it());
         Flow.StepApart<VcsTests>("add to gitignore making the file as its editorconfig asks and Undo then Redo put it back in the same bytes", t => t.Add_to_gitignore_making_the_file_as_its_editorconfig_asks_and_Undo_then_Redo_put_it_back_in_the_same_bytes());
         Flow.StepApart<VcsTests>("add to gitignore has git ignore the chosen file and no other whatever its name holds", t => t.Add_to_gitignore_has_git_ignore_the_chosen_file_and_no_other_whatever_its_name_holds());
+        Flow.StepApart<VcsTests>("the explorer adds to gitignore and goes to the ignoring line and a gitignore says what each line ignores as git answers", t => t.The_explorer_adds_to_gitignore_and_goes_to_the_ignoring_line_and_a_gitignore_says_what_each_line_ignores_as_git_answers());
     }
 
     /// <summary>A diff's window as one flow, each step the check one test made in an instance of its own: the IDE's
@@ -1761,6 +1762,57 @@ public sealed partial class VcsTests : IDisposable
                 $"Redo of Add to .gitignore, undone {(open ? "open" : "closed")}, wrote {(File.Exists(ignore) ? Convert.ToHexString(File.ReadAllBytes(ignore)) : "nothing")}, not {Convert.ToHexString(made)}: {window.Status}");
         }
         window.Close();
+    }
+
+    /// <summary>The Explorer's Git menu adds an unversioned file to .gitignore and goes to the line ignoring a file, saying
+    /// it; the open .gitignore says on hover what a line ignores, fades a line ignoring nothing, marks one a later line takes
+    /// back, and completes an untracked folder, each as git answers.</summary>
+    private void The_explorer_adds_to_gitignore_and_goes_to_the_ignoring_line_and_a_gitignore_says_what_each_line_ignores_as_git_answers()
+    {
+        string root = PathNames.Canonical(folder);
+        string ignore = Path.Combine(root, ".gitignore");
+        File.WriteAllText(ignore, "*.log\nnothing-here\n*.tmp\n!keep.tmp\n");
+        foreach (string name in (string[])["a.log", "keep.tmp", "notes.txt", "scratch/x.dat"])
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(root, name))!);
+            File.WriteAllText(Path.Combine(root, name), "scratch\n");
+        }
+        MainWindow window = Open();
+        Ui.Landed(() => window.Vcs.Changes.Any(c => c.Name == "notes.txt"), "the unversioned file listed");
+        Ui.ChooseFromRowMenu(window, Row(window, Path.Combine(root, "notes.txt")), "Git", "Add to .gitignore");
+        Ui.WaitFor(() => File.ReadAllText(ignore).EndsWith("\n/notes.txt\n", StringComparison.Ordinal), () => $"notes.txt added to .gitignore: {window.Status}");
+
+        Ui.ChooseFromRowMenu(window, Row(window, Path.Combine(root, "a.log")), "Git", "Go to Ignoring Line");
+        Ui.WaitFor(() => window.Status == "a.log is ignored by line 1 of .gitignore (*.log)", () => $"Go to Ignoring Line said: {window.Status}");
+        Passenger.App.Workspace.OpenDocument shown = window.EditorArea.Active!;
+        Assert.Equal(ignore, shown.Path);
+
+        string[] marked = ["Unnecessary nothing-here = Ignores nothing in the working tree", "Warning *.tmp = Ignores nothing: line 4 takes back everything it ignores"];
+        Ui.WaitFor(() => Marked().SequenceEqual(marked), () => $"The .gitignore's marks are {string.Join("; ", Marked())}");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        window.MouseMove(editor.TranslatePoint(editor.PointOf(1) + new Avalonia.Point(1, editor.LineHeight / 2), window)!.Value, Avalonia.Input.RawInputModifiers.None);
+        Ui.WaitFor(() => window.Assist.HoverText?.Contains("Ignores 1 path here: a.log", StringComparison.Ordinal) == true, () => $"The card on *.log says {window.Assist.HoverText}");
+        window.MouseMove(new Avalonia.Point(1, 1), Avalonia.Input.RawInputModifiers.None);
+
+        editor.Selections = SelectionSet.Single(editor.Document.Snapshot.Length);
+        window.KeyTextInput("scr");
+        Ui.Run(window, AppActions.Complete);
+        Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "scratch/", () => $"Completion lists {string.Join(", ", window.Assist.CompletionLabels)} for scr");
+        Ui.Press(window, "ENTER");
+        Assert.EndsWith("\nscratch/", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+
+        IEnumerable<string> Marked() => shown.Markers.Select(m => $"{m.Kind} {shown.Text.Snapshot.GetText(m.Range.Start, m.Range.Length)} = {m.Message}");
+    }
+
+    /// <summary>The Explorer's row of a path, revealed.</summary>
+    private static Passenger.App.Explorer.ExplorerNode Row(MainWindow window, string path)
+    {
+        window.ExplorerView.Reveal(path);
+        Ui.Settle();
+        return window.ExplorerView.Tree.Rows.FirstOrDefault(r => r.Path is { } at && PathNames.Same(at, path))
+            ?? throw new InvalidOperationException($"The Explorer shows no row of {path}: [{string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => r.Name))}]");
     }
 
     /// <summary>Undo or Redo of the window's last command of files, run in the Solution view with Shop.cs's row chosen.</summary>

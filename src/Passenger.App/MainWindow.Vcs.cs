@@ -193,6 +193,7 @@ public partial class MainWindow
             if (session == next)
             {
                 OnVcsChanged();
+                next.FileChecks.WorkingTreeChanged();
             }
         };
         vcs.ConflictsFound += (_, _) =>

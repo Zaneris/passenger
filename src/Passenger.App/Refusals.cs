@@ -996,6 +996,9 @@ public static class Refusals
     /// <summary>Add to .gitignore on a file Git tracks, where only an unversioned one is ignored.</summary>
     public const string Tracked = "Git tracks this file: only an unversioned file is added to .gitignore";
 
+    /// <summary>Add to .gitignore on what the Commit window does not list as unversioned: tracked, or ignored already.</summary>
+    public const string NotUnversioned = "Git tracks it or ignores it already: only an unversioned file or folder is added to .gitignore";
+
     /// <summary>Compare with Local on a file the commit deleted.</summary>
     public const string DeletedByCommit = "The commit deleted this file, so it holds none to compare";
 

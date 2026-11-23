@@ -101,14 +101,14 @@ internal abstract class LanguageAssist
 }
 
 /// <summary>The languages' own answers, asked in one order by every command: an address written in a comment or a string, an .http file's routes, an
-/// .editorconfig's keys, a .gitattributes' attributes, an MSBuild file's,
+/// .editorconfig's keys, a .gitattributes' attributes, a .gitignore's paths, an MSBuild file's,
 /// XAML's, a compose file's, a settings file's configuration, a page's stylesheets' classes, a GDScript's own reading
 /// while Godot's server has not started, a web language's, a Godot shader's, a Godot scene's, a .feature file's (and a C# step
 /// definition's steps), then C#'s, Razor's and any file left; the first that answers is the command's.</summary>
-internal sealed class LanguageAssists(LinkAssist links, HttpAssist http, EditorConfigAssist editorConfig, GitAttributesAssist gitAttributes, MSBuildAssist msbuild, XamlAssist xaml, ComposeAssist compose, SettingsAssist settings,
+internal sealed class LanguageAssists(LinkAssist links, HttpAssist http, EditorConfigAssist editorConfig, GitAttributesAssist gitAttributes, GitIgnoreAssist gitIgnore, MSBuildAssist msbuild, XamlAssist xaml, ComposeAssist compose, SettingsAssist settings,
     CssClassAssist classes, GDScriptAssist gdscript, WebAssist web, GodotShaderAssist shaders, GodotAssist godot, GherkinAssist gherkin, CSharpAssist csharp)
 {
-    private readonly IReadOnlyList<LanguageAssist> ladder = [links, http, editorConfig, gitAttributes, msbuild, xaml, compose, settings, classes, gdscript, web, shaders, godot, gherkin, csharp];
+    private readonly IReadOnlyList<LanguageAssist> ladder = [links, http, editorConfig, gitAttributes, gitIgnore, msbuild, xaml, compose, settings, classes, gdscript, web, shaders, godot, gherkin, csharp];
 
     public GherkinAssist Gherkin => gherkin;
 
@@ -123,6 +123,8 @@ internal sealed class LanguageAssists(LinkAssist links, HttpAssist http, EditorC
     public EditorConfigAssist EditorConfig => editorConfig;
 
     public GitAttributesAssist GitAttributes => gitAttributes;
+
+    public GitIgnoreAssist GitIgnore => gitIgnore;
 
     public MSBuildAssist MSBuild => msbuild;
 
