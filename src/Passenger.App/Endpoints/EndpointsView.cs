@@ -198,7 +198,7 @@ public sealed class EndpointsView : DockPanel
         {
             List<string> paths = [.. Workspace.FileIndex.Walk(folder).Select(p => Path.Combine(folder, p))];
             List<HttpFile> read = [.. paths.Where(HttpFile.Is).Order(StringComparer.OrdinalIgnoreCase).Select(TryRead).OfType<HttpFile>()];
-            List<string> envFiles = [.. paths.Where(p => Path.GetFileName(p) is HttpVariables.PublicFile or HttpVariables.PrivateFile)];
+            List<string> envFiles = [.. paths.Where(HttpVariables.IsEnvFile)];
             return (read, HttpVariables.Environments(envFiles).ToList());
         });
         if (read != reads)

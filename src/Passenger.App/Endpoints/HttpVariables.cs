@@ -6,17 +6,24 @@ using Passenger.Core;
 namespace Passenger.App.Endpoints;
 
 /// <summary>The environments of an .http file: <c>http-client.env.json</c> beside it or in a folder over it up to the
-/// open folder, its <c>http-client.private.env.json</c> laid over it, each an object of environments
-/// (<c>{"dev": {"host": "localhost:5000"}}</c>), and the <c>$shared</c> one that every environment starts from.</summary>
+/// open folder, the private files beside it laid over it (<c>http-client.private.env.json</c>, then
+/// <c>http-client.env.json.user</c>), each an object of environments (<c>{"dev": {"host": "localhost:5000"}}</c>), and
+/// the <c>$shared</c> one that every environment starts from.</summary>
 public static partial class HttpVariables
 {
     public const string PublicFile = "http-client.env.json";
-    public const string PrivateFile = "http-client.private.env.json";
+    private const string PrivateFile = "http-client.private.env.json";
+    private const string UserFile = "http-client.env.json.user";
     private const string Shared = "$shared";
 
+    /// <summary>A folder's env files in the order they are laid, each over those before it.</summary>
+    private static readonly string[] EnvFiles = [PublicFile, PrivateFile, UserFile];
+
+    /// <summary>Whether a file is an env file, whichever.</summary>
+    public static bool IsEnvFile(string path) => EnvFiles.Contains(Path.GetFileName(path), StringComparer.Ordinal);
+
     /// <summary>Whether a change to this file changes what the Endpoints window shows or sends.</summary>
-    public static bool Matters(string path) =>
-        HttpFile.Is(path) || Path.GetFileName(path) is PublicFile or PrivateFile;
+    public static bool Matters(string path) => HttpFile.Is(path) || IsEnvFile(path);
 
     /// <summary>The environments named in the folder's env files, in the order first written.</summary>
     public static IReadOnlyList<string> Environments(IEnumerable<string> envFiles)
@@ -36,12 +43,12 @@ public static partial class HttpVariables
     }
 
     /// <summary>The env files that hold for an .http file: the nearest folder's from it up to the root that has any, in the
-    /// person's folders (<see cref="FoldersUp"/>), the public first and the private over it.</summary>
+    /// person's folders (<see cref="FoldersUp"/>), the public first and the private ones over it.</summary>
     public static IReadOnlyList<string> FilesFor(string httpFile, string? root)
     {
         foreach (string folder in Path.GetDirectoryName(httpFile) is { } start ? FoldersUp.From(start) : [])
         {
-            string[] found = [.. new[] { PublicFile, PrivateFile }.Select(n => FoldersUp.Found(folder, n)).OfType<string>().Where(File.Exists)];
+            string[] found = [.. EnvFiles.Select(n => FoldersUp.Found(folder, n)).OfType<string>().Where(File.Exists)];
             if (found.Length > 0)
             {
                 return found;
@@ -55,7 +62,7 @@ public static partial class HttpVariables
     }
 
     /// <summary>Every variable a request of this file sees in an environment: <c>$shared</c>'s, then the environment's,
-    /// which win over any env file's <c>$shared</c>, the private file's winning over the public's in each, then the file's
+    /// which win over any env file's <c>$shared</c>, the private files' winning over the public's in each, then the file's
     /// own (<c>@name = value</c>), which win.</summary>
     public static Dictionary<string, string> For(HttpFile file, string? environment, string? root)
     {

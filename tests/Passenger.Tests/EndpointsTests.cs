@@ -88,8 +88,10 @@ public sealed class EndpointsTests : IDisposable
     private void Test_sends_the_request_as_written_and_holds_its_answer_to_the_files_criteria()
     {
         string folder = Folder();
-        // $shared is what an environment leaves out, the private file's too: the public file's dev names the host.
+        // $shared fills only what every environment leaves out, and Visual Studio's private file's dev names the host.
         File.WriteAllText(Path.Combine(folder, "http-client.private.env.json"), """{ "$shared": { "base": "http://shared.invalid" } }""");
+        File.WriteAllText(Path.Combine(folder, "http-client.env.json"), """{ "dev": { "base": "http://public.invalid" } }""");
+        File.WriteAllText(Path.Combine(folder, "http-client.env.json.user"), $$"""{ "dev": { "base": "{{api.Root}}" } }""");
         MainWindow window = Open(folder);
         window.ShowToolWindow(ToolWindowIds.Endpoints);
         Ui.WaitFor(() => window.Endpoints.Requests.Count == 3, "the requests");
