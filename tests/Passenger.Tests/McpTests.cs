@@ -2040,8 +2040,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>vcs_status with the path of a file whose only change is its line separators says which changed on how many
-    /// lines, and of one whose only change is its mode (where git keeps modes) says the mode as git's diff does, where each
-    /// answered no changes.</summary>
+    /// lines, then git's own diff, each CR in it, where git stores the breaks as they are, and of one whose only change is
+    /// its mode (where git keeps modes) says the mode as git's diff does, where each answered no changes.</summary>
     private async Task An_agents_diff_of_a_file_changed_only_in_its_line_separators_or_its_mode_says_what_changed()
     {
         string repository = TestFolders.Create("mcp-separators-");
@@ -2056,7 +2056,11 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         }
 
         await using McpClient client = await Start(["--mcp", repository], languageServer: false);
-        Assert.Equal("Line separators changed: 3 lines from LF to CRLF", (await Call(client, McpTools.VcsStatus, new() { ["path"] = "lines.txt" })).GetString());
+        // Git applies a diff of lines a CR ends only where it holds each CR.
+        string gits = GitsDiff(await TestGit.RunAsync(repository, "diff", "--", "lines.txt"));
+        string said = (await Call(client, McpTools.VcsStatus, new() { ["path"] = "lines.txt" })).GetString()!;
+        Assert.True(said == $"Line separators changed: 3 lines from LF to CRLF\n{gits}",
+            $"vcs_status of lines.txt, its LF breaks now CRLF, which git stores as they are, is not its words then git's own diff:\n{said}\ngit's:\n{gits}");
         if (!OperatingSystem.IsWindows())
         {
             Assert.Equal("old mode 100644\nnew mode 100755", (await Call(client, McpTools.VcsStatus, new() { ["path"] = "run.sh" })).GetString());

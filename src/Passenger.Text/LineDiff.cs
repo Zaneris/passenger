@@ -109,11 +109,12 @@ public static class LineDiff
     /// <summary>The difference as `git diff` prints it: a header naming the file where it was (<paramref name="from"/>, for
     /// one renamed) and where it is, /dev/null on a side with no file (<paramref name="before"/> or <paramref name="after"/>
     /// null), then each hunk with three lines of context around it, hunks whose context touches merged into one, and a last
-    /// line with no break marked so.</summary>
-    public static string Unified(string? before, string? after, string name, string? from = null, int context = 3)
+    /// line with no break marked so. With <paramref name="carriageReturns"/>, a CR ending a line is part of it, as git
+    /// compares a file whose breaks it stores as they are, not alike whichever of LF and CRLF ends a line.</summary>
+    public static string Unified(string? before, string? after, string name, string? from = null, int context = 3, bool carriageReturns = false)
     {
-        string[] a = Compared(before);
-        string[] b = Compared(after);
+        string[] a = Compared(before, carriageReturns);
+        string[] b = Compared(after, carriageReturns);
         IReadOnlyList<DiffHunk> hunks = Hunks(a, b);
         if (hunks.Count == 0)
         {
@@ -162,8 +163,12 @@ public static class LineDiff
         return text.ToString();
 
         // A last line with no break keeps a '\n', which no other line holds, so it differs from one with a break, as in git.
-        static string[] Compared(string? text)
+        static string[] Compared(string? text, bool carriageReturns)
         {
+            if (carriageReturns)
+            {
+                return [.. WholeLines(text ?? string.Empty).Select(line => line.EndsWith('\n') ? line[..^1] : line + "\n")];
+            }
             string[] lines = Lines(text ?? string.Empty);
             if (text is { Length: > 0 } && text[^1] != '\n')
             {

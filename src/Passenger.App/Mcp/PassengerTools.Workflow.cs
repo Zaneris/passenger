@@ -132,11 +132,11 @@ public sealed partial class PassengerTools
         (string diff, string? separators) = await BackgroundWork.Run(() =>
         {
             string? mine = texts.Text(full) ?? (File.Exists(full) ? string.Empty : null);
-            return (LineDiff.Unified(head, mine, name, from), LineDiff.SeparatorChanges(head ?? string.Empty, mine ?? string.Empty, breaksAlike));
+            return (LineDiff.Unified(head, mine, name, from, carriageReturns: !breaksAlike), LineDiff.SeparatorChanges(head ?? string.Empty, mine ?? string.Empty, breaksAlike));
         }, cancel);
         // What git's index holds of it, where it holds a change the person or a tool staged.
         string? staged = change is { HoldsStaged: true } && await Session.Vcs.IndexTextAsync(full) is { } index
-            ? await BackgroundWork.Run(() => LineDiff.Unified(head, index, name, from), cancel) : null;
+            ? await BackgroundWork.Run(() => LineDiff.Unified(head, index, name, from, carriageReturns: !breaksAlike), cancel) : null;
         return Joined(mode, encoding, separators, diff.Length == 0 ? null : diff, staged is { Length: > 0 } ? $"Staged, git's index against the last commit:\n{staged}" : null);
 
         string Named(string path) => Session.Folder is { } folder && PathNames.Relative(path, folder) is { } below ? below : path;
