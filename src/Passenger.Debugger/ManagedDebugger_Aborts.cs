@@ -53,42 +53,62 @@ public partial class ManagedDebugger
     /// <summary>How many of a thread's innermost frames the engine's log names for an evaluation past its time.</summary>
     private const int FramesTold = 12;
 
+    /// <summary>How many of a thread's innermost native frames the engine's log names where it stands outside managed code.</summary>
+    private const int NativeFramesTold = 10;
+
     /// <summary>Where each thread of the held program stands, an evaluation's own first, the runtime's own threads among them,
     /// which hold still with the rest: what an evaluation past its time waits on, if anything, one of the others holds, and
-    /// the runtime's frames among theirs (a type's initializer, a JIT compilation) say what.</summary>
+    /// the runtime's frames among theirs (a type's initializer, a JIT compilation) say what. A thread with no name of the
+    /// program's is named as the system names it, and on Windows one standing outside managed code by its native frames too,
+    /// which say what it waits in (a lock, a sleep, a read) where its managed frames end.</summary>
     private string WhereThreadsStand(ICorDebugThread evaluating)
     {
         int id = evaluating.Id;
-        string said = $"The evaluation on thread {id} is past its time, and the threads stand so:\n{WhereThreadStands(evaluating)}";
+        List<ICorDebugThread> threads = [evaluating];
+        string? unlisted = null;
         try
         {
-            return string.Join('\n', evaluating.Process.EnumerateThreads().Where(thread => thread.Id != id).Select(WhereThreadStands).Prepend(said));
+            threads.AddRange(evaluating.Process.EnumerateThreads().Where(thread => thread.Id != id));
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {
-            return $"{said}\n  The other threads could not be listed: {error.Message}";
+            unlisted = $"  The other threads could not be listed: {error.Message}";
         }
+        int? processId = evaluating.Process.TryGetID(out uint known) is Cor.S_OK ? (int)known : null;
+        List<(int Id, string Told, bool Native)> stood = [.. threads.Select(thread => WhereThreadStands(thread, processId))];
+        IReadOnlyDictionary<int, IReadOnlyList<string>> natively = OperatingSystem.IsWindows() && processId is { } program
+            ? NativeStacks.Of(program, [.. stood.Where(s => s.Native).Select(s => s.Id)], NativeFramesTold)
+            : new Dictionary<int, IReadOnlyList<string>>();
+        IEnumerable<string> lines = stood.Select(s => natively.TryGetValue(s.Id, out IReadOnlyList<string>? frames)
+            ? $"{s.Told}\n    natively: {string.Join(" < ", frames)}"
+            : s.Told);
+        return string.Join('\n', lines.Append(unlisted).OfType<string>().Prepend($"The evaluation on thread {id} is past its time, and the threads stand so:"));
     }
 
-    /// <summary>A thread's name, its states and its innermost frames, or why they could not be read.</summary>
-    private string WhereThreadStands(ICorDebugThread thread)
+    /// <summary>A thread's name, its states and its innermost frames, or why they could not be read, and whether it stands
+    /// outside managed code.</summary>
+    private (int Id, string Told, bool Native) WhereThreadStands(ICorDebugThread thread, int? processId)
     {
         int id = thread.Id;
         try
         {
             string user = thread.TryGetUserState(out CorDebugUserState state) is Cor.S_OK ? state.ToString() : "user state unread";
             string debug = thread.TryGetDebugState(out CorDebugThreadState held) is Cor.S_OK ? held.ToString() : "debug state unread";
-            IEnumerable<string> frames = thread.EnumerateChains()
-                .SelectMany(chain => chain.IsManaged ? chain.EnumerateFrames().Select(FrameTold) : ["[Native code]"]);
-            string name = thread.GetThreadNameOrNull() ?? (_leftRunning.Contains(id) ? "the runtime's tiering worker" : "no name");
+            List<string> frames = [.. thread.EnumerateChains()
+                .SelectMany(chain => chain.IsManaged ? chain.EnumerateFrames().Select(FrameTold) : [NativeCode])];
+            string name = thread.GetThreadNameOrNull() ?? (_leftRunning.Contains(id) ? "the runtime's tiering worker"
+                : processId is { } program && RuntimeThreads.SystemName(program, id) is { Length: > 0 } system ? $"named \"{system}\" by the system" : "no name");
             string start = AtItsFirstInstruction(thread) ? ", at its first instruction" : "";
-            return $"  {id} ({name}, {user}, {debug}{start}): {string.Join(" < ", frames.Take(FramesTold))}";
+            return (id, $"  {id} ({name}, {user}, {debug}{start}): {string.Join(" < ", frames.Take(FramesTold))}", frames.FirstOrDefault() is null or NativeCode);
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {
-            return $"  {id}: not read: {error.Message}";
+            return (id, $"  {id}: not read: {error.Message}", false);
         }
     }
+
+    /// <summary>What the frames a thread stands in outside managed code are told as.</summary>
+    private const string NativeCode = "[Native code]";
 
     /// <summary>The method an evaluation on a thread runs, the program held: its frame where the evaluation began, named as
     /// the call stack names it; null where no code of its own runs there (the runtime making an object) or the frames cannot

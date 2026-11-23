@@ -166,7 +166,7 @@ public partial class ManagedDebugger
     {
         try
         {
-            return thread.TryGetActiveFrame(out ICorDebugFrame? leaf) is Cor.S_OK && leaf is not null ? FrameTold(leaf) : "[Native code]";
+            return thread.TryGetActiveFrame(out ICorDebugFrame? leaf) is Cor.S_OK && leaf is not null ? FrameTold(leaf) : NativeCode;
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {

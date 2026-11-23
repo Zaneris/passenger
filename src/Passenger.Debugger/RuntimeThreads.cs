@@ -54,6 +54,11 @@ internal sealed partial class RuntimeThreads(int processId)
     private (ulong Start, ulong End)? workerStart;
     private bool workerStartRead;
 
+    /// <summary>The name the system keeps for a thread of a program, as the runtime or the program gave it: on Windows and
+    /// Linux; null elsewhere, or where it can't be read.</summary>
+    public static string? SystemName(int processId, int threadId) =>
+        OperatingSystem.IsWindows() ? NameOnWindows(processId, threadId) : OperatingSystem.IsLinux() ? NameOnLinux(processId, threadId) : null;
+
     /// <summary>Whether a thread of the program is the runtime's tiering worker.</summary>
     public bool IsTieringWorker(ICorDebugProcess process, ICorDebugThread thread) =>
         OperatingSystem.IsWindows() ? NameOnWindows(ProcessId, thread.Id) is { } name && TieringWorkerNames.Contains(name)
