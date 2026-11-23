@@ -5,6 +5,7 @@ using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Testing;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
@@ -37,10 +38,13 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
     }
 
     /// <summary>A project on the platform alone shows its tests from code and Run All reports each outcome; a project's run
-    /// settings reach its tests on MSTest's runner and on one that reads none.</summary>
+    /// settings reach its tests on MSTest's runner and on one that reads none; a run with coverage measures a VSTest
+    /// project's and a platform project's tests over one library as one.</summary>
     [AvaloniaFact]
     public void A_project_on_the_platform_is_shown_from_code_run_whole_and_given_its_run_settings()
     {
+        Flow.StepApart("a run with coverage of a vstest and a platform project marks the lines both ran in the gutter counts them in the coverage window and exports them",
+            () => new TestingPlatformCoverageTests(restored), t => t.A_run_with_coverage_of_a_vstest_and_a_platform_project_marks_the_lines_both_ran_counts_them_and_exports_them());
         Flow.StepApart("an xUnit v3 project on the platform alone shows its tests from code and Run All reports pass, fail and skip with output and times",
             () => new TestingPlatformTests(restored), t => t.An_xunit_v3_project_on_the_platform_alone_shows_its_tests_from_code_and_run_all_reports_pass_fail_and_skip_with_output_and_times());
         Flow.StepApart("a project's run settings reach its tests on MSTest's runner and their variables those of a runner that reads none",
@@ -212,6 +216,105 @@ public sealed class TestingPlatformSettingsTests : TestingPlatformFolders
         {
             Assert.True(Method(window, test)!.State == TestState.Passed, $"{test} ran without what its project's run settings say:\n{Method(window, test)!.Details}");
         }
+        window.Close();
+    }
+}
+
+/// <summary>Coverage measured as a run of tests runs, a step of <see cref="TestingPlatformTests"/>' flow: a VSTest project's
+/// tests through Coverlet's collector and a platform project's under Coverlet's console, both over one library, whose
+/// branches the two runs take together.</summary>
+public sealed class TestingPlatformCoverageTests : TestingPlatformFolders
+{
+    /// <summary>The library both projects test: a method each runs, one whose two branches each runs one of and whose last
+    /// line one leaves a branch of untaken, and one neither runs.</summary>
+    private const string Measured =
+        "namespace Shapes;\n\npublic static class Measure\n{\n    public static int Twice(int value) => value * 2;\n\n" +
+        "    public static int Sign(int value)\n    {\n        if (value > 0)\n        {\n            return 1;\n        }\n        return value < 0 ? -1 : 0;\n    }\n\n" +
+        "    public static int Never(int value)\n    {\n        return value - 1;\n    }\n}\n";
+
+    public TestingPlatformCoverageTests(RestoredFolders restored)
+        : base(restored)
+    {
+    }
+
+    internal void A_run_with_coverage_of_a_vstest_and_a_platform_project_marks_the_lines_both_ran_counts_them_and_exports_them()
+    {
+        string solution = NewFolder();
+        string shapes = Write(solution, "Shapes/Measure.cs", Measured);
+        Write(solution, "Shapes/Shapes.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
+        const string Library = "  <ItemGroup>\n    <ProjectReference Include=\"../Shapes/Shapes.csproj\" />\n  </ItemGroup>\n</Project>";
+        Write(solution, "Vs.Tests/Vs.Tests.csproj",
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n" +
+            $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
+            $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n{Library}\n");
+        Write(solution, "Vs.Tests/MeasureTests.cs",
+            "using Xunit;\n\nnamespace Vs.Tests;\n\npublic class MeasureTests\n{\n    [Fact]\n    public void Doubles() => Assert.Equal(4, Shapes.Measure.Twice(2));\n\n" +
+            "    [Fact]\n    public void Signs_a_positive() => Assert.Equal(1, Shapes.Measure.Sign(5));\n}\n");
+        Write(solution, "Store.Tests/Store.Tests.csproj",
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <OutputType>Exe</OutputType>\n" +
+            "    <EnableMSTestRunner>true</EnableMSTestRunner>\n  </PropertyGroup>\n  <ItemGroup>\n" +
+            $"    <PackageReference Include=\"MSTest.TestFramework\" Version=\"{TestPackages.MSTestRunner}\" />\n    <PackageReference Include=\"MSTest.TestAdapter\" Version=\"{TestPackages.MSTestRunner}\" />\n  </ItemGroup>\n{Library}\n");
+        Write(solution, "Store.Tests/SignTests.cs",
+            "using Microsoft.VisualStudio.TestTools.UnitTesting;\n\nnamespace Store.Tests;\n\n[TestClass]\npublic class SignTests\n{\n" +
+            "    [TestMethod]\n    public void Signs_a_negative() => Assert.AreEqual(-1, Shapes.Measure.Sign(-5));\n}\n");
+        Write(solution, "Suite.slnx", "<Solution>\n  <Project Path=\"Shapes/Shapes.csproj\" />\n  <Project Path=\"Vs.Tests/Vs.Tests.csproj\" />\n  <Project Path=\"Store.Tests/Store.Tests.csproj\" />\n</Solution>\n");
+        Restore.Run(Path.Combine(solution, "Suite.slnx"));
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        window.OpenFile(shapes);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Tree(window);
+        Ui.WaitFor(() => Method(window, "Doubles") is not null && Method(window, "Signs_a_negative") is not null, "both projects' tests read from the code");
+
+        Assert.True(window.Perform(AppActions.CoverAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy && window.Tests.Coverage is not null, () => $"the run with coverage: {window.BottomPanel.Tests.Status}", TimeSpan.FromSeconds(300));
+        Assert.True(window.BottomPanel.Tests.Status.EndsWith("; 70% of lines (7 of 10) covered", StringComparison.Ordinal),
+            $"The run with coverage did not say what both projects' tests ran of the library's ten lines of code: {window.BottomPanel.Tests.Status}\n{string.Join("\n", window.Tests.Unmeasured)}");
+        EditorGutter gutter = editor.Gutter!;
+        CoveredLines lines = gutter.Coverage.Lines!;
+        // Lines from zero: Twice's, Sign's if (one branch each project's), Sign's last (its zero never) and Never's.
+        Assert.Equal(CoverageState.Covered, lines.At(4)?.State);
+        Assert.True(lines.At(8) is { State: CoverageState.Covered, Branches: 2, BranchesTaken: 2 },
+            $"Sign's if, each of whose branches one project's test took, was not marked whole: {lines.At(8)}, so the two runs' branches were not taken together");
+        Assert.True(lines.At(12) is { State: CoverageState.Partial, Branches: 2, BranchesTaken: 1 }, $"Sign's last line, whose zero no test takes, was marked {lines.At(12)}");
+        Assert.Equal(CoverageState.Missed, lines.At(17)?.State);
+        Assert.Null(lines.At(5));
+        Assert.True(gutter.Coverage.Width(new Passenger.Editor.GutterFont(8, 16)) > 0, "The gutter took no room for the file's coverage");
+
+        // The Coverage window came forward with the run's figures, the library alone measured.
+        Ui.WaitFor(() => window.DockHost.IsShown(ToolWindowIds.Coverage), "the Coverage window brought forward by the run");
+        CoverageView view = window.CoverageWindow;
+        Assert.Equal("70% of lines (7 of 10), 75% of branches (3 of 4) run.", view.Summary);
+        view.ExpandAll();
+        Ui.Settle();
+        Assert.Equal(["Shapes 70% 7 of 10 75%", "  Shapes 70% 7 of 10 75%", "    Measure 70% 7 of 10 75%", "      Never 0% 0 of 3 —", "      Sign 100% 6 of 6 75%", "      Twice 100% 1 of 1 —"],
+            view.Rows.Select(r => $"{new string(' ', r.Depth * 2)}{r.Node.Name} {CoverageCounts.Percent(r.Node.Counts.LineRate)} {r.Node.Counts.LinesRun} of {r.Node.Counts.Lines} {CoverageCounts.Percent(r.Node.Counts.BranchRate)}"));
+        view.Sort(1);
+        Assert.Equal("Never", view.Rows[3].Node.Name);
+        view.Filter = "Twice";
+        Ui.Settle();
+        Assert.Equal(["Shapes", "Shapes", "Measure", "Twice"], view.Rows.Select(r => r.Node.Name));
+        view.Filter = string.Empty;
+
+        // The marks keep to their code as lines are typed above it.
+        editor.Focus();
+        Ui.PlaceAfter(editor, "public static class Measure\n{");
+        Ui.Press(window, "ENTER");
+        Assert.Null(lines.At(4));
+        Assert.Equal(CoverageState.Covered, lines.At(5)?.State);
+        Assert.Equal(CoverageState.Missed, lines.At(18)?.State);
+
+        // Exported as one Cobertura report, where the person names.
+        string exported = Path.Combine(solution, "coverage.cobertura.xml");
+        window.PickCoverageExport = () => Task.FromResult<string?>(exported);
+        Assert.True(window.Perform(AppActions.ExportCoverage));
+        Ui.WaitFor(() => File.Exists(exported), () => $"the coverage exported: the window said {window.Status}");
+        System.Xml.Linq.XElement report = System.Xml.Linq.XDocument.Load(exported).Root!;
+        Assert.Equal(("0.7", "0.75"), ((string?)report.Attribute("line-rate"), (string?)report.Attribute("branch-rate")));
+        Assert.Equal(shapes, (string?)report.Descendants("class").Single(c => (string?)c.Attribute("name") == "Shapes.Measure").Attribute("filename"));
+
+        Assert.True(window.Perform(AppActions.ClearCoverage));
+        Assert.Null(gutter.Coverage.Lines);
+        Assert.Empty(view.Rows);
         window.Close();
     }
 }

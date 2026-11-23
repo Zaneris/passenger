@@ -23,8 +23,9 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
     /// <summary>Runs each game's tests in as few runs of it as GoDotTest takes them (<see cref="GoDotTests.Runs"/>), a game at
     /// a time, outcomes told as each run ends.</summary>
     public async Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
-        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default)
+        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CoverageRun? coverage = null, CancellationToken cancel = default)
     {
+        coverage?.Missed("GoDotTest's tests run inside the game, whose code Godot's own .NET host loads where Coverlet cannot measure it");
         RunSummary? summary = null;
         foreach (IGrouping<string, TestItem> project in tests.GroupBy(t => t.Project, StringComparer.Ordinal))
         {

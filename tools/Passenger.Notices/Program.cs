@@ -85,6 +85,12 @@ public sealed class Inputs
     /// <summary>MAUI's previewer's .deps.json files.</summary>
     public List<string> MauiPreviewDeps { get; } = [];
 
+    /// <summary>Coverlet's packages carried under coverage/, as Id/Version, and their .deps.json files, which name what they
+    /// carry of others' (whose nuspecs they do not carry).</summary>
+    public List<string> CoveragePackages { get; } = [];
+
+    public List<string> CoverageDeps { get; } = [];
+
     /// <summary>Roslyn's server package's folder, and the folder its server is in.</summary>
     public string? Server { get; private set; }
 
@@ -148,6 +154,12 @@ public sealed class Inputs
                 case "mauipreview":
                     inputs.MauiPreviewDeps.Add(value);
                     break;
+                case "coveragePackage":
+                    inputs.CoveragePackages.Add(value);
+                    break;
+                case "coverage":
+                    inputs.CoverageDeps.Add(value);
+                    break;
                 case "server":
                     inputs.Server = value;
                     break;
@@ -182,6 +194,7 @@ public static class Place
     public const string Debugger = "debugger/";
     public const string Host = "host/";
     public const string MauiPreview = "mauipreview/";
+    public const string Coverage = "coverage/";
     public const string Server = "roslyn/";
     public const string Web = "web/";
     public const string Tools = "the container tools";
@@ -195,10 +208,10 @@ public sealed class Entry(string id, string version)
 
     public string Version => version;
 
-    /// <summary>The app first, then debugger/, host/, mauipreview/ and roslyn/.</summary>
+    /// <summary>The app first, then debugger/, host/, mauipreview/, coverage/ and roslyn/.</summary>
     public SortedSet<string> Places { get; } = new(Comparer<string>.Create((a, b) => Order(a).CompareTo(Order(b))));
 
-    private static int Order(string place) => Array.IndexOf([Place.App, Place.Debugger, Place.Host, Place.MauiPreview, Place.Server, Place.Web, Place.Tools], place);
+    private static int Order(string place) => Array.IndexOf([Place.App, Place.Debugger, Place.Host, Place.MauiPreview, Place.Coverage, Place.Server, Place.Web, Place.Tools], place);
 
     public string Copyright { get; set; } = "";
 
@@ -252,6 +265,15 @@ public static partial class NoticesFile
                 Restored(id, version, path, Place.MauiPreview);
             }
         }
+        foreach (string package in inputs.CoveragePackages)
+        {
+            string[] parts = package.Split('/');
+            Restored(parts[0], parts[1], null, Place.Coverage);
+        }
+        if (inputs.CoverageDeps.Count > 0)
+        {
+            Inside(Place.Coverage, inputs.CoverageDeps, Table(inputs.Notices, Place.Coverage, problems), "Coverlet");
+        }
         foreach (string deps in inputs.ToolsDeps)
         {
             foreach ((string id, string version, string? path) in Dependencies(deps))
@@ -262,24 +284,8 @@ public static partial class NoticesFile
         if (inputs.Server is { } server)
         {
             Package(Path.GetFullPath(server), Place.Server);
-            Dictionary<string, (string Licence, string Copyright)> table = ServerTable(inputs.Notices, problems);
-            foreach (string deps in Directory.EnumerateFiles(inputs.ServerFolder ?? server, "*.deps.json", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
-            {
-                foreach ((string id, string version, string? _) in Dependencies(deps).Where(d => !inputs.ServerLeftOut.Contains(d.Id)))
-                {
-                    if (!table.TryGetValue(id, out (string Licence, string Copyright) row))
-                    {
-                        problems.Add($"Roslyn's server carries {id} {version}, which THIRD_PARTY_NOTICES.md's \"Inside roslyn/\" table does not name: add it with the licence and copyright its package states");
-                        continue;
-                    }
-                    Entry entry = Add(id, version, Place.Server);
-                    if (entry.Licence.Length == 0)
-                    {
-                        entry.Copyright = row.Copyright;
-                        (entry.Licence, entry.Text) = licences.Stated(row.Licence);
-                    }
-                }
-            }
+            Inside(Place.Server, Directory.EnumerateFiles(inputs.ServerFolder ?? server, "*.deps.json", SearchOption.AllDirectories).Order(StringComparer.Ordinal),
+                Table(inputs.Notices, Place.Server, problems), "Roslyn's server", inputs.ServerLeftOut);
         }
         foreach (string modules in inputs.NodeModules)
         {
@@ -323,7 +329,8 @@ public static partial class NoticesFile
             named below, each part under its own licence:
 
             1. Packages: each with where Passenger carries it (the app; its debugger, under debugger/; its project host,
-               under host/; its .NET MAUI previewer, under mauipreview/; Roslyn's language server, under roslyn/; the
+               under host/; its .NET MAUI previewer, under mauipreview/; Coverlet, which measures a test run's coverage,
+               under coverage/; Roslyn's language server, under roslyn/; the
                npm packages of the JavaScript, TypeScript, HTML, CSS and JSON language servers, under web/), the
                copyright its package states, and the full text of its licence.
             2. The notices the packages carry of their own.
@@ -370,6 +377,28 @@ public static partial class NoticesFile
             text.Append(Invariant($"{title}:\n\n{Read(path)}\n"));
         }
         return text.ToString();
+
+        // The packages a carried program's .deps.json files name, each with what its row of the place's table says.
+        void Inside(string place, IEnumerable<string> depsFiles, Dictionary<string, (string Licence, string Copyright)> table, string carrier, ISet<string>? leftOut = null)
+        {
+            foreach (string deps in depsFiles)
+            {
+                foreach ((string id, string version, string? _) in Dependencies(deps).Where(d => leftOut?.Contains(d.Id) != true))
+                {
+                    if (!table.TryGetValue(id, out (string Licence, string Copyright) row))
+                    {
+                        problems.Add($"{carrier} carries {id} {version}, which THIRD_PARTY_NOTICES.md's \"Inside {place}\" table does not name: add it with the licence and copyright its package states");
+                        continue;
+                    }
+                    Entry entry = Add(id, version, place);
+                    if (entry.Licence.Length == 0)
+                    {
+                        entry.Copyright = row.Copyright;
+                        (entry.Licence, entry.Text) = licences.Stated(row.Licence);
+                    }
+                }
+            }
+        }
 
         // A package the restore put in the package folder, by the path its .deps.json gives or by its id and version.
         void Restored(string id, string version, string? path, string place)
@@ -555,9 +584,9 @@ public static partial class NoticesFile
         }
     }
 
-    /// <summary>THIRD_PARTY_NOTICES.md's "Inside roslyn/" table: each package it names, with the licence and copyright its
-    /// row gives. The server's package carries these, but not their nuspecs.</summary>
-    private static Dictionary<string, (string Licence, string Copyright)> ServerTable(string notices, List<string> problems)
+    /// <summary>THIRD_PARTY_NOTICES.md's "Inside" table of a place (roslyn/, coverage/): each package it names, with the
+    /// licence and copyright its row gives. What is carried there carries these, but not their nuspecs.</summary>
+    private static Dictionary<string, (string Licence, string Copyright)> Table(string notices, string place, List<string> problems)
     {
         Dictionary<string, (string, string)> table = new(StringComparer.OrdinalIgnoreCase);
         bool inside = false;
@@ -565,7 +594,7 @@ public static partial class NoticesFile
         {
             if (line.StartsWith('#'))
             {
-                inside = line.StartsWith("### Inside `roslyn/`", StringComparison.Ordinal);
+                inside = line.StartsWith($"### Inside `{place}`", StringComparison.Ordinal);
                 continue;
             }
             if (!inside || !line.StartsWith("| `", StringComparison.Ordinal))
@@ -575,7 +604,7 @@ public static partial class NoticesFile
             string[] cells = [.. line.Split('|').Skip(1).SkipLast(1).Select(c => c.Trim())];
             if (cells.Length != 3)
             {
-                problems.Add($"THIRD_PARTY_NOTICES.md: a row of the \"Inside roslyn/\" table has {cells.Length} cells, not three: {line}");
+                problems.Add($"THIRD_PARTY_NOTICES.md: a row of the \"Inside {place}\" table has {cells.Length} cells, not three: {line}");
                 continue;
             }
             foreach (Match id in Backticked().Matches(cells[0]))
@@ -585,7 +614,7 @@ public static partial class NoticesFile
         }
         if (table.Count == 0)
         {
-            problems.Add("THIRD_PARTY_NOTICES.md has no \"### Inside `roslyn/`\" table of the packages Roslyn's server carries");
+            problems.Add($"THIRD_PARTY_NOTICES.md has no \"### Inside `{place}`\" table of the packages carried there");
         }
         return table;
     }

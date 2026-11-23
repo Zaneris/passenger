@@ -192,7 +192,7 @@
     <None Include="../../docs/release-notes/*.md" Link="release-notes/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
-  <Target Name="NoticeInputs" DependsOnTargets="ResolvePackageAssets;ResolveRuntimePackAssets;IncludeDebugAdapter;IncludeProjectHost;IncludeMauiPreview">
+  <Target Name="NoticeInputs" DependsOnTargets="ResolvePackageAssets;ResolveRuntimePackAssets;IncludeDebugAdapter;IncludeProjectHost;IncludeMauiPreview;FindCoverlet">
     <MSBuild Projects="../../tools/Passenger.Notices/Passenger.Notices.csproj" Targets="GetTargetPath"
              RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
       <Output TaskParameter="TargetOutputs" ItemName="NoticesTool" />
@@ -217,6 +217,7 @@
       <NoticeDebuggerDeps Include="$(DebugAdapterFolder)*.deps.json" />
       <NoticeHostDeps Include="$(ProjectHostFolder)*.deps.json" />
       <NoticeMauiPreviewDeps Include="$(MauiPreviewFolder)*.deps.json" />
+      <NoticeCoverageDeps Include="$(CoverletCollector)*.deps.json;$(CoverletConsole)*.deps.json" />
       <NoticesServerPackage Include="@(NoticesServer->WithMetadataValue('Kind', 'package'))" />
       <NoticeServerDeps Include="%(NoticesServerPackage.Folder)**/*.deps.json" />
       <NoticeWebStamp Include="@(NoticesWeb->'%(Stamp)')" />
@@ -235,6 +236,8 @@
       <NoticeLine Include="@(NoticeDebuggerDeps->'debugger=%(FullPath)')" />
       <NoticeLine Include="@(NoticeHostDeps->'host=%(FullPath)')" />
       <NoticeLine Include="@(NoticeMauiPreviewDeps->'mauipreview=%(FullPath)')" />
+      <NoticeLine Include="coveragePackage=coverlet.collector/$(CoverletVersion);coveragePackage=coverlet.console/$(CoverletVersion)" />
+      <NoticeLine Include="@(NoticeCoverageDeps->'coverage=%(FullPath)')" />
       <NoticeLine Include="@(NoticesServerPackage->'server=%(Identity)')" />
       <NoticeLine Include="@(NoticesServerPackage->'serverFolder=%(Folder)')" />
       <NoticeLine Include="@(NoticesServer->WithMetadataValue('Kind', 'leftOut')->'serverLeftOut=%(Identity)')" />
@@ -246,7 +249,7 @@
   </Target>
 
   <Target Name="WriteNotices" DependsOnTargets="NoticeInputs"
-          Inputs="$(NoticesArguments);@(NoticesTool);@(NoticeText);@(NoticeDebuggerDeps);@(NoticeHostDeps);@(NoticeMauiPreviewDeps);@(NoticeServerDeps);@(NoticeWebStamp)" Outputs="$(NoticesFile)">
+          Inputs="$(NoticesArguments);@(NoticesTool);@(NoticeText);@(NoticeDebuggerDeps);@(NoticeHostDeps);@(NoticeMauiPreviewDeps);@(NoticeCoverageDeps);@(NoticeServerDeps);@(NoticeWebStamp)" Outputs="$(NoticesFile)">
     <Exec Command="&quot;$(NoticesHost)&quot; &quot;@(NoticesTool)&quot; &quot;$(NoticesArguments)&quot;" />
   </Target>
 
@@ -301,6 +304,35 @@
     <ItemGroup>
       <WpfInspectorFile Include="@(WpfInspectorAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(WpfInspectorAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />
       <None Include="@(WpfInspectorFile)" Link="inspector/wpf/%(WpfInspectorFile.Filename)%(WpfInspectorFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Coverlet becomes this project's output under coverage/: its VSTest data collector (collector/, the .NET 8 build, which
+       loads into a test host of .NET 8 on) and its console (console/, the .NET 10 build, run on Passenger's own runtime),
+       which a run with coverage gives the tests (Testing/CoverageRun.cs), never their projects. Its documentation and the
+       tool's own settings are left out, and its Windows-only assemblies outside a Windows build, whose folder is dotted
+       (runtimes/win/lib/net8.0), which codesign takes for a bundle among a Mac app's code. -->
+  <ItemGroup>
+    <PackageDownload Include="coverlet.collector;coverlet.console" Version="[$(CoverletVersion)]" />
+  </ItemGroup>
+
+  <Target Name="FindCoverlet">
+    <PropertyGroup>
+      <CoverletCollector>$([MSBuild]::EnsureTrailingSlash('$(NuGetPackageRoot)'))coverlet.collector/$(CoverletVersion)/build/net8.0/</CoverletCollector>
+      <CoverletConsole>$([MSBuild]::EnsureTrailingSlash('$(NuGetPackageRoot)'))coverlet.console/$(CoverletVersion)/tools/net10.0/any/</CoverletConsole>
+      <CoverletWindows Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">true</CoverletWindows>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(CoverletCollector)coverlet.collector.dll') Or !Exists('$(CoverletConsole)coverlet.console.dll')"
+           Text="Coverlet $(CoverletVersion) is not at $(CoverletCollector) and $(CoverletConsole), or its packages' layout has changed; restore first." />
+  </Target>
+
+  <Target Name="IncludeCoverlet" BeforeTargets="AssignTargetPaths" DependsOnTargets="FindCoverlet">
+    <ItemGroup>
+      <CoverletFile Include="$(CoverletCollector)**/*" Exclude="$(CoverletCollector)**/*.xml;$(CoverletCollector)**/*.targets" Carried="collector/" />
+      <CoverletFile Include="$(CoverletConsole)**/*" Exclude="$(CoverletConsole)**/*.xml" Carried="console/" />
+      <CoverletFile Remove="@(CoverletFile)" Condition="'$(CoverletWindows)' != 'true' And $([System.String]::Copy('%(RecursiveDir)').StartsWith('runtimes'))" />
+      <None Include="@(CoverletFile)" Link="coverage/%(CoverletFile.Carried)%(CoverletFile.RecursiveDir)%(CoverletFile.Filename)%(CoverletFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
   </Target>

@@ -332,24 +332,26 @@ public sealed class TestController : IAsyncDisposable
 
     /// <summary>Runs tests: these rows' (all when none), after a build and a look for the tests built since, so a test
     /// the code declares runs once it has been built.</summary>
-    public Task<string?> RunAsync(string workspace, IEnumerable<TestNode>? rows = null, bool debug = false, bool build = true, string prefix = "") =>
-        RunChoiceAsync(workspace, new Choice(rows?.ToList(), null, null), debug, build, prefix);
+    public Task<string?> RunAsync(string workspace, IEnumerable<TestNode>? rows = null, bool debug = false, bool build = true, string prefix = "", bool cover = false) =>
+        RunChoiceAsync(workspace, new Choice(rows?.ToList(), null, null), debug, build, prefix, cover);
 
     /// <summary>Runs the tree's methods a match takes as they stand once the build and the look for the tests it built have
     /// ended, the test projects' changed files read first: a test written since the tree was last made, or one only a
     /// runner finds, runs with them. <paramref name="none"/> says what is said when it takes none, given why the tests of
     /// the projects concerned could not be found (null where they were).</summary>
-    public Task<string?> RunMatchingAsync(string workspace, Func<TestNode, bool> match, Func<string?, string> none, bool debug = false) =>
-        RunChoiceAsync(workspace, new Choice(null, Methods(match), none), debug, build: true, prefix: string.Empty);
+    public Task<string?> RunMatchingAsync(string workspace, Func<TestNode, bool> match, Func<string?, string> none, bool debug = false, bool cover = false) =>
+        RunChoiceAsync(workspace, new Choice(null, Methods(match), none), debug, build: true, prefix: string.Empty, cover);
 
     /// <summary>Runs the rows a pick takes from the tree's methods as they stand once the build and the look for the tests it
     /// built have ended (<see cref="RunMatchingAsync"/>): a data row of a method alone, as an outline's example row.</summary>
-    public Task<string?> RunPickedAsync(string workspace, Func<IReadOnlyList<TestNode>, List<TestNode>> pick, Func<string?, string> none, bool debug = false) =>
-        RunChoiceAsync(workspace, new Choice(null, pick, none), debug, build: true, prefix: string.Empty);
+    public Task<string?> RunPickedAsync(string workspace, Func<IReadOnlyList<TestNode>, List<TestNode>> pick, Func<string?, string> none, bool debug = false, bool cover = false) =>
+        RunChoiceAsync(workspace, new Choice(null, pick, none), debug, build: true, prefix: string.Empty, cover);
 
     private static Func<IReadOnlyList<TestNode>, List<TestNode>> Methods(Func<TestNode, bool> match) => methods => [.. methods.Where(match)];
 
-    private async Task<string?> RunChoiceAsync(string workspace, Choice choice, bool debug, bool build, string prefix)
+    /// <summary>Runs a choice of tests; with <paramref name="cover"/>, their coverage measured (<see cref="Coverage"/>), which a
+    /// debugged run's never is.</summary>
+    private async Task<string?> RunChoiceAsync(string workspace, Choice choice, bool debug, bool build, string prefix, bool cover = false)
     {
         UiThread.Check();
         if (IsBusy)
@@ -429,6 +431,7 @@ public sealed class TestController : IAsyncDisposable
             lastRun = chosen ?? [];
             RunMethods = methods;
             RunOutcomes = [];
+            CoverageRun? coverage = cover && !debug ? await BackgroundWork.Run(CoverageRun.Begin, stop.Token) : null;
             working?.Say($"{prefix}Running {Plural.Of(tests.Count, "test")}…");
             DateTimeOffset began = DateTimeOffset.Now;
             Tree.Begin(tests);
@@ -482,6 +485,7 @@ public sealed class TestController : IAsyncDisposable
                         debugger: debug ? new DebugLauncher(this) : null,
                         environment: group.First().Environment,
                         godot: godotStart,
+                        coverage: coverage,
                         cancel: stop.Token);
                     RunSummary part = await PuttingBackAsync(GdUnit4Installs(its), Run);
                     summary = summary is null ? part : summary.And(part);
@@ -497,7 +501,16 @@ public sealed class TestController : IAsyncDisposable
                 await Task.WhenAll(aspireRuns.Select(aspire => aspire.DisposeAsync().AsTask()));
             }
             RunOutcomes = summary.Outcomes;
-            Summary = prefix + Tally(summary) + (UnfoundIn(chosen) is { } unseen ? $"; {unseen}" : string.Empty);
+            string covered = string.Empty;
+            if (coverage is not null)
+            {
+                working?.Say($"{prefix}Reading the tests' coverage…");
+                Action<string> said = UiThread.Marshal(log);
+                CoverageReport report = await BackgroundWork.Run(() => coverage.Read(said));
+                Measured(report, coverage.Unmeasured);
+                covered = report.Files.Count == 0 ? "; no coverage was measured" : $"; {report.Counts.LinesSaid} covered";
+            }
+            Summary = prefix + Tally(summary) + covered + (UnfoundIn(chosen) is { } unseen ? $"; {unseen}" : string.Empty);
             Message?.Invoke(this, Summary);
             if (!summary.Canceled)
             {
@@ -590,6 +603,40 @@ public sealed class TestController : IAsyncDisposable
     }
 
     private bool holdingWork;
+
+    /// <summary>The last coverage measured, by the last run with coverage; null before one, or once cleared.</summary>
+    public CoverageReport? Coverage { get; private set; }
+
+    /// <summary>What the last coverage measured left out, each with why.</summary>
+    public IReadOnlyList<string> Unmeasured { get; private set; } = [];
+
+    /// <summary>The coverage measured changed: a run with coverage ended, or it was cleared.</summary>
+    public event EventHandler? CoverageChanged;
+
+    /// <summary>Takes a run's coverage in, what it left out said in the run's output.</summary>
+    private void Measured(CoverageReport report, IReadOnlyList<string> unmeasured)
+    {
+        foreach (string why in unmeasured)
+        {
+            log(why);
+        }
+        Coverage = report;
+        Unmeasured = unmeasured;
+        CoverageChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Lets go of the coverage measured, its marks with it.</summary>
+    public void ClearCoverage()
+    {
+        UiThread.Check();
+        if (Coverage is null)
+        {
+            return;
+        }
+        Coverage = null;
+        Unmeasured = [];
+        CoverageChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <summary>The last run's tests again, after a build.</summary>
     public Task<string?> RerunAsync(string workspace) =>

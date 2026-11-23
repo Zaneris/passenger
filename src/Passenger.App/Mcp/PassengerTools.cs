@@ -1959,12 +1959,18 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "by the runner its build asks for (Microsoft Testing Platform for xUnit v3, MSTest's and NUnit's runners and TUnit; a Godot game's GUT " +
         "and GoDotTest in Godot; VSTest for the rest). With debug, under the debugger: a stop in a test comes back, and debug_continue goes on. Returns the tally and " +
         "every failure with its message and stack trace; a failed Reqnroll or SpecFlow scenario's steps each with how it went, one that did not pass with the " +
-        "definition its text binds, its arguments, what was said and the stack's frames in the folder.")]
+        "definition its text binds, its arguments, what was said and the stack's frames in the folder. With coverage, measures which lines and branches the tests ran " +
+        "(Coverlet, never added to a project): the share of lines and branches, and each file's, least covered first, with its lines never run and those with a branch never taken.")]
     public Task<TestRunInfo> TestsRun(
         string? filter = null,
-        bool debug = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
+        bool debug = false,
+        bool coverage = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         string folder = Session.Folder ?? throw new InvalidOperationException(Refusals.NoFolder);
+        if (coverage && debug)
+        {
+            throw new ArgumentException(Refusals.CoverageDebugged);
+        }
         Testing.TestController tests = Session.Tests;
         AgentCall.Say(filter is null ? "Building and running every test" : $"Building and running the tests whose names contain '{filter}'");
         AgentCall.Follow(window.Actions.Work, AppActions.Build);
@@ -1972,9 +1978,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         // Those the code declares found first, as tests_list waits for them; looked at every 50 ms, as the finder raises nothing as it is done.
         await Until(() => !tests.IsLooking, TestsLookLimit, cancel);
         // Matched once built: a test written a moment ago, or one only a runner finds, is among them.
-        Task<string?> run = filter is null ? tests.RunAsync(folder, null, debug)
+        Task<string?> run = filter is null ? tests.RunAsync(folder, null, debug, cover: coverage)
             : tests.RunMatchingAsync(folder, m => m.FullName is { } name && name.Contains(filter, StringComparison.Ordinal),
-                unfound => $"No test's name contains '{filter}'" + (unfound is null ? string.Empty : $": {unfound}"), debug);
+                unfound => $"No test's name contains '{filter}'" + (unfound is null ? string.Empty : $": {unfound}"), debug, coverage);
         if (debug)
         {
             // A debugged test's stop comes back to the agent; looked at every 50 ms: no pause of the test host is told.
@@ -1991,8 +1997,53 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new InvalidOperationException(WithBuildErrors(problem, built.Ended));
         }
-        return TestInfo(tests, await StepsOfAsync([.. tests.RunOutcomes.Where(o => o.State == Testing.TestState.Failed)], cancel));
+        TestRunInfo ran = TestInfo(tests, await StepsOfAsync([.. tests.RunOutcomes.Where(o => o.State == Testing.TestState.Failed)], cancel));
+        return coverage && tests.Coverage is { } measured ? ran with { Coverage = CoverageOf(measured, tests.Unmeasured, Room(ran)) } : ran;
     });
+
+    /// <summary>A run's coverage as tests_run answers it: what it came to, then each file's, least covered first, its lines
+    /// never run as stretches ("12-15", the lines between that hold no code taken in) and those with a branch never taken, as
+    /// many files as <paramref name="room"/> holds.</summary>
+    private CoverageInfo CoverageOf(Testing.CoverageReport measured, IReadOnlyList<string> unmeasured, int room)
+    {
+        List<CoveredFile> files = [];
+        foreach ((string path, IReadOnlyList<Testing.CoveredLine> lines) in measured.Files)
+        {
+            Testing.CoverageCounts counts = lines.Aggregate(default(Testing.CoverageCounts), (c, l) => c.Plus(l));
+            List<string> missed = [];
+            for (int at = 0; at < lines.Count; at++)
+            {
+                if (lines[at].State != Testing.CoverageState.Missed)
+                {
+                    continue;
+                }
+                int from = at;
+                while (at + 1 < lines.Count && lines[at + 1].State == Testing.CoverageState.Missed)
+                {
+                    at++;
+                }
+                missed.Add(at == from ? $"{lines[from].Line}" : $"{lines[from].Line}-{lines[at].Line}");
+            }
+            List<string> partial = [.. lines.Where(l => l.State == Testing.CoverageState.Partial).Select(l => $"{l.Line} ({l.BranchesTaken} of {l.Branches} branches)")];
+            files.Add(new CoveredFile(Relative(path), counts.LinesSaid, counts.Branches == 0 ? null : counts.BranchesSaid)
+            {
+                NeverRun = missed.Count == 0 ? null : string.Join(", ", missed),
+                BranchesNotTaken = partial.Count == 0 ? null : string.Join(", ", partial),
+                Rate = counts.LineRate ?? 1,
+            });
+        }
+        files = [.. files.OrderBy(f => f.Rate).ThenBy(f => f.Path, StringComparer.Ordinal)];
+        CoverageInfo info = new(measured.Files.Count == 0 ? "No coverage was measured" : $"{measured.Counts.LinesSaid} and {measured.Counts.BranchesSaid} run", [])
+        {
+            Unmeasured = unmeasured.Count == 0 ? null : unmeasured,
+        };
+        int kept = AgentAnswers.Fitting(files, Size, room - Size(info));
+        return info with
+        {
+            Files = kept == files.Count ? files : [.. files.Take(kept)],
+            More = kept == files.Count ? null : AgentAnswers.More(files.Count - kept, "file", "tests_run with a filter measures fewer tests' coverage"),
+        };
+    }
 
     [McpServerTool(Name = McpTools.TestsList, Title = "The unit tests", ReadOnly = true), Description(
         "The tests the Unit Tests window shows (from code, and their runner once built), each with its full name, state from " +
@@ -4563,8 +4614,34 @@ public sealed record TestRunInfo(string Summary, IReadOnlyList<TestFailure> Fail
     /// <summary>How many more failed tests were left out, and how to read them.</summary>
     public string? More { get; init; }
 
+    /// <summary>What a run with coverage measured.</summary>
+    public CoverageInfo? Coverage { get; init; }
+
     /// <summary>What of the failed scenarios' steps an answer of many left out.</summary>
     public string? StepsLeftOut { get; init; }
+}
+
+/// <summary>A run's coverage: what its lines and branches came to, each file's least covered first, and what it did not
+/// measure, with why.</summary>
+public sealed record CoverageInfo(string Summary, IReadOnlyList<CoveredFile> Files)
+{
+    public IReadOnlyList<string>? Unmeasured { get; init; }
+
+    /// <summary>How many more files were left out, and how to read them.</summary>
+    public string? More { get; init; }
+}
+
+/// <summary>A file's coverage: its lines and branches run, its lines never run as stretches, and those with a branch never
+/// taken.</summary>
+public sealed record CoveredFile(string Path, string Lines, string? Branches)
+{
+    public string? NeverRun { get; init; }
+
+    public string? BranchesNotTaken { get; init; }
+
+    /// <summary>The share of its lines run, which orders the files and is not said.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public double Rate { get; init; }
 }
 
 public sealed record TestFailure(string Test, string? Location, string Details)

@@ -118,6 +118,7 @@ public partial class MainWindow : IdeWindow
         AddRoutes();
         AddSteps();
         AddStepLibrary();
+        AddCoverage();
         AddRequestMarks();
         AddRequests();
         AddMigrations();

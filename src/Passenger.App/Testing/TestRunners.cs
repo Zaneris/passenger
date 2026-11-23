@@ -66,7 +66,7 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
     /// <summary>Runs tests, VSTest's, the platform's, GUT's then GoDotTest's, each by the runner that found them; a run
     /// stopped stops there.</summary>
     public async Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
-        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default)
+        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CoverageRun? coverage = null, CancellationToken cancel = default)
     {
         RunSummary? summary = null;
         foreach (ITestRunner runner in new ITestRunner?[] { vsTest, platform, gut, goDot }.OfType<ITestRunner>())
@@ -77,7 +77,7 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
             {
                 continue;
             }
-            RunSummary part = await runner.RunAsync(its, outcomes, log, debugger, environment, godot, cancel);
+            RunSummary part = await runner.RunAsync(its, outcomes, log, debugger, environment, godot, coverage, cancel);
             summary = summary is null ? part : summary.And(part);
             if (part.Canceled)
             {

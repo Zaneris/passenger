@@ -570,6 +570,23 @@ public sealed class OpenDocument : Observable
 
     private IReadOnlyList<Testing.StepMark> stepMarks = [];
 
+    /// <summary>The coverage a run measured, marked on the file's lines and carried with its text; null for none. Marks set
+    /// in place of others let the others go.</summary>
+    public Testing.CoveredLines? Coverage
+    {
+        get => coverage;
+        set
+        {
+            Testing.CoveredLines? was = coverage;
+            if (Set(ref coverage, value))
+            {
+                was?.Clear();
+            }
+        }
+    }
+
+    private Testing.CoveredLines? coverage;
+
     /// <summary>The run icons beside what a run configuration runs from it: a program's entry point, a launch profile, a
     /// compose file's services, a Dockerfile's image.</summary>
     public IReadOnlyList<RunMark> RunMarks

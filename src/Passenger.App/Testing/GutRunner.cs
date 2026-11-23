@@ -25,8 +25,9 @@ public sealed class GutRunner(Func<string, IReadOnlyList<TestItem>>? declared = 
 
     /// <summary>Runs each project's tests in one run of GUT, a project at a time, outcomes told as each run ends.</summary>
     public async Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
-        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default)
+        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CoverageRun? coverage = null, CancellationToken cancel = default)
     {
+        coverage?.Missed("GUT's tests run GDScript, which coverage does not measure");
         RunSummary? summary = null;
         foreach (IGrouping<string, TestItem> project in tests.GroupBy(t => t.Project, StringComparer.Ordinal))
         {

@@ -109,7 +109,7 @@ internal static class RiderKeymaps
     };
 
     /// <summary>The keys plugins' descriptors add, by keymap and action, or put in place of all the keymap had for it
-    /// (replace-all): Rider's own (intellij.rider.xml).</summary>
+    /// (replace-all): Rider's own (intellij.rider.xml) and dotCover's.</summary>
     private static readonly (string Keymap, string Action, string Keys, bool ReplaceAll)[] Descriptors =
     [
         ("Visual Studio", "CloneCaretAboveWithVirtualSpace", "alt shift UP", false),
@@ -119,7 +119,18 @@ internal static class RiderKeymaps
         (Default, "RiderOpenSolution", "control shift O", false),
         (MacOS, "RiderOpenSolution", "control shift O", true),
         ("VSCode", "RiderOpenSolution", "control K , control O", true),
+        (Default, CoverAll, "control SEMICOLON , K", true),
+        (Default, CoverAll, "control SEMICOLON , control K", false),
+        (MacOS, CoverAll, "meta SEMICOLON , K", true),
+        (MacOS, CoverAll, "meta SEMICOLON , meta K", false),
+        ("Visual Studio", CoverAll, "control U , K", true),
+        ("Visual Studio", CoverAll, "control U , control K", false),
+        ("Visual Studio OSX", CoverAll, "meta U , K", true),
+        ("Visual Studio OSX", CoverAll, "meta U , meta K", false),
     ];
+
+    /// <summary>dotCover's Cover All Tests from Solution.</summary>
+    public const string CoverAll = "RiderDotCoverUnitTestCoverSolutionAction";
 
     /// <summary>The keymap of Rider's that a preset is on this platform.</summary>
     public static string Of(KeymapPreset preset) => (preset, OperatingSystem.IsMacOS()) switch

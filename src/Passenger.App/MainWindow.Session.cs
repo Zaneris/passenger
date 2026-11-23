@@ -316,6 +316,7 @@ public partial class MainWindow
             }
         };
         BindTests(next);
+        BindCoverage(next);
         BindDebug(next);
         profiler?.Rebind();
         liveTree?.Bind(next);

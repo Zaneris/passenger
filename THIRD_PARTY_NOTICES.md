@@ -10,7 +10,7 @@ the solution restores, Roslyn's language server carries, the container tools car
 
 What `just publish` carries for macOS, Windows and Linux: the app, the debugger beside it under `debugger/`, the
 project host under `host/` (MSBuild's evaluation in a process of its own, run on the .NET it carries with the installed
-SDK's MSBuild, of which it carries nothing), the .NET MAUI previewer under `mauipreview/` (its own process, on that .NET), Roslyn's language server under `roslyn/` and Passenger's own extension to
+SDK's MSBuild, of which it carries nothing), the .NET MAUI previewer under `mauipreview/` (its own process, on that .NET), Coverlet under `coverage/` (what measures a test run's coverage, listed below), Roslyn's language server under `roslyn/` and Passenger's own extension to
 it under `roslyn-extension/` (compiled against the server's assemblies and carrying none), the JavaScript, TypeScript,
 HTML, CSS, JSON, Dockerfile and YAML language servers' npm packages under `web/` (listed below), on Windows what Velopack's installer
 adds to it (`just package-win`), and in the Linux archive Passenger's own launcher, install script, desktop entry and
@@ -47,6 +47,7 @@ out; dbgshim's musl Linux natives are the container tools' (below), which the ap
 | `Cucumber.Messages` | the Gherkin reader's message types | MIT | Copyright © Cucumber Ltd, TechTalk |
 | `Cucumber.CucumberExpressions` | a step definition's Cucumber Expression matched to a step's text | MIT | Copyright © Cucumber Ltd, Gaspar Nagy |
 | `roslyn-language-server.osx-arm64`, `roslyn-language-server.osx-x64`, `roslyn-language-server.win-x64`, `roslyn-language-server.win-arm64`, `roslyn-language-server.linux-x64`, `roslyn-language-server.linux-arm64` | Roslyn's language server, one per system, copied under `roslyn/` with the package's own `ThirdPartyNotices.rtf`, less four assemblies under Visual Studio's terms; what it carries is listed below | MIT | © Microsoft Corporation. All rights reserved. |
+| `coverlet.collector`, `coverlet.console` | Coverlet, which measures which lines and branches a run of tests ran, under `coverage/`: its VSTest data collector, which a VSTest run with coverage is given, and its console, which a Microsoft.Testing.Platform application runs under for one; neither is ever added to a project; what they carry is listed below | MIT | (c) 2018 Toni Solarin-Sodara |
 | `StreamJsonRpc` | JSON-RPC with the language server, the debug adapter and Microsoft.Testing.Platform's test hosts | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.VisualStudio.Threading.Only` | StreamJsonRpc's, whose NonConcurrentSynchronizationContext keeps the language server's and the test hosts' messages in order, and whose JoinableTaskFactory runs async work to its end where a caller must stay synchronous | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.VisualStudio.Validation` | StreamJsonRpc's | MIT | © Microsoft Corporation. All rights reserved. |
@@ -74,6 +75,18 @@ out; dbgshim's musl Linux natives are the container tools' (below), which the ap
 | `ZLinq` | the debugger's queries | MIT | © Cysharp, Inc. |
 | `Velopack` | the Windows install's hooks, which register and remove the file types Passenger opens as it is installed, updated and uninstalled, and its updates: the UpdateManager that downloads a newer release's package from its feed and checks its size and SHA-256 | MIT | Copyright © Velopack Ltd. All rights reserved. |
 | `vpk` | in the Windows installer, Velopack's own programs, written in Rust with open-source crates: `Setup.exe` (the installer itself), and in the install `Update.exe` (which installs an update once Passenger has closed, and uninstalls it from Settings > Apps) and a `Passenger.exe` that starts `current\Passenger.exe` | MIT | Copyright © Velopack Ltd. All rights reserved. |
+
+### Inside `coverage/`
+
+Coverlet's collector and console carry these packages' assemblies beside their own (and Coverlet's own `coverlet.core`,
+built with them under its MIT), at the versions their `.deps.json` files name. What each package says of itself on
+nuget.org:
+
+| Package | Licence | Copyright |
+|---|---|---|
+| `Microsoft.Bcl.AsyncInterfaces`, `Microsoft.Bcl.Cryptography`, `Microsoft.Extensions.DependencyInjection`, `Microsoft.Extensions.DependencyInjection.Abstractions`, `Microsoft.Extensions.DependencyModel`, `Microsoft.Extensions.FileSystemGlobbing`, `Microsoft.TestPlatform.ObjectModel`, `System.CommandLine`, `System.Formats.Asn1`, `System.IO.Pipelines`, `System.Security.Cryptography.Pkcs`, `System.Text.Encodings.Web`, `System.Text.Json` | MIT | © Microsoft Corporation. All rights reserved. |
+| `NuGet.Frameworks`, `NuGet.Versioning` | Apache-2.0 | © Microsoft Corporation. All rights reserved. |
+| `Mono.Cecil` | MIT | no copyright line; its author: Jb Evain |
 
 ### Inside `roslyn/`
 

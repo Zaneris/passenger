@@ -74,6 +74,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     public async Task An_agents_test_runs_answer_what_each_came_to_held_to_what_an_answer_carries()
     {
         await Flow.StepApartAsync("an agents run of a passing test after a failure answers no failure of a test it did not run", () => new McpTests(restored), t => t.An_agents_run_of_a_passing_test_after_a_failure_answers_no_failure_of_a_test_it_did_not_run());
+        await Flow.StepApartAsync("an agents run with coverage answers what its tests ran of the code and each files lines never run", () => new McpTests(restored), t => t.An_agents_run_with_coverage_answers_what_its_tests_ran_of_the_code_and_each_files_lines_never_run());
         await Flow.StepApartAsync("an agents unit test actions answer what the run came to", () => new McpTests(restored), t => t.An_agents_unit_test_actions_answer_what_the_run_came_to());
         await Flow.StepApartAsync("an agents test written and run at once by its classs name runs and its failure is told", () => new McpTests(restored), t => t.An_agents_test_written_and_run_at_once_by_its_classs_name_runs_and_its_failure_is_told());
         await Flow.StepApartAsync("an agents run of a failing test that wrote 200000 lines answers its last lines and says the rest was left out", () => new McpTests(restored), t => t.An_agents_run_of_a_failing_test_that_wrote_200000_lines_answers_its_last_lines_and_says_the_rest_was_left_out());
@@ -552,6 +553,47 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(four.GetProperty("failures").GetArrayLength() == 0, $"A run of one passing test answered failures of tests it did not run, as if they had failed in it: {four}");
         JsonElement failed = Assert.Single((await Call(client, McpTools.TestsList, new() { ["state"] = "failed" })).EnumerateArray());
         Assert.Equal("Sums.Tests.SumTests.Two_and_two_make_five", failed.GetProperty("test").GetString());
+    }
+
+    /// <summary>tests_run with coverage answers what the tests ran of the code they test: the share of its lines and branches,
+    /// and its file's lines never run as one stretch and the line whose branch no test took; with debug as well it is refused,
+    /// saying why.</summary>
+    private async Task An_agents_run_with_coverage_answers_what_its_tests_ran_of_the_code_and_each_files_lines_never_run()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-coverage-"));
+        DeleteAtEnd(folder);
+        await TestFolders.PrepareAsync(async () =>
+        {
+            TestFolders.Write(folder, "Sums/Sums.csproj",
+                $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
+            TestFolders.Write(folder, "Sums/Sum.cs",
+                "namespace Sums;\n\npublic static class Sum\n{\n    public static int Of(int a, int b) => a + b;\n\n" +
+                "    public static int Clamped(int value) => value > 9 ? 9 : value;\n\n" +
+                "    public static int Halved(int value)\n    {\n        int half = value / 2;\n        return half;\n    }\n}\n");
+            TestFolders.Write(folder, "Sums.Tests/Sums.Tests.csproj",
+                $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n" +
+                $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
+                $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n" +
+                "  <ItemGroup>\n    <ProjectReference Include=\"../Sums/Sums.csproj\" />\n  </ItemGroup>\n</Project>\n");
+            TestFolders.Write(folder, "Sums.Tests/SumTests.cs",
+                "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class SumTests\n{\n    [Fact]\n    public void Adds() => Assert.Equal(4, Sums.Sum.Of(2, 2));\n\n" +
+                "    [Fact]\n    public void Clamps() => Assert.Equal(9, Sums.Sum.Clamped(12));\n}\n");
+            TestFolders.Write(folder, "Sums.slnx", "<Solution>\n  <Project Path=\"Sums/Sums.csproj\" />\n  <Project Path=\"Sums.Tests/Sums.Tests.csproj\" />\n</Solution>\n");
+            await Restore.RunAsync(Path.Combine(folder, "Sums.slnx"));
+        }, folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        JsonElement run = await Call(client, McpTools.TestsRun, new() { ["coverage"] = true });
+        Assert.StartsWith("Tests passed: 2, failed: 0 of 2", run.GetProperty("summary").GetString(), StringComparison.Ordinal);
+        JsonElement coverage = run.GetProperty("coverage");
+        Assert.True(coverage.GetProperty("summary").GetString() == "33% of lines (2 of 6) and 50% of branches (1 of 2) run",
+            $"tests_run with coverage did not say what the tests ran of Sum's six lines of code: {run}");
+        JsonElement file = Assert.Single(coverage.GetProperty("files").EnumerateArray());
+        Assert.Equal(Path.Combine("Sums", "Sum.cs"), file.GetProperty("path").GetString());
+        Assert.True(file.GetProperty("neverRun").GetString() == "10-13" && file.GetProperty("branchesNotTaken").GetString() == "7 (1 of 2 branches)",
+            $"tests_run with coverage did not name Halved's lines as never run and Clamped's line as a branch never taken: {file}");
+
+        CallToolResult both = await Result(client, McpTools.TestsRun, new() { ["coverage"] = true, ["debug"] = true });
+        Assert.True(both.IsError == true && Text(both).Contains(Refusals.CoverageDebugged, StringComparison.Ordinal), $"tests_run with coverage and debug answered: {Text(both)}");
     }
 
     /// <summary>The Unit Tests actions an agent runs through ide_action answer what the run came to, as tests_run's tally says

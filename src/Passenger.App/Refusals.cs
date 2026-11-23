@@ -1033,6 +1033,16 @@ public static class Refusals
     /// <summary>A test's Go to Source where its runner gave no file for it.</summary>
     public const string TestUnplaced = "The test's runner gives no file for it";
 
+    /// <summary>The Coverage window's Go to Source on a project's or a namespace's row, or a type's whose file the report's
+    /// paths did not lead to.</summary>
+    public const string CoverageUnplaced = "The coverage report names no file of this row's on this machine";
+
+    /// <summary>Clear Coverage and Export Coverage before a run with coverage, or once it is cleared.</summary>
+    public const string NoCoverage = "No coverage is measured: Run All Tests with Coverage measures it";
+
+    /// <summary>tests_run asked to debug and measure coverage at once.</summary>
+    public const string CoverageDebugged = "Coverage is not measured while debugging: a debugged test host runs its code as built, for breakpoints and Hot Reload";
+
     /// <summary>A stack frame's Go to Source where its code has no source the debugger knows (no symbols, or code the
     /// runtime made).</summary>
     public const string FrameUnplaced = "The frame has no source file the debugger knows";

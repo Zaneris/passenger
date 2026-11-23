@@ -181,7 +181,7 @@ public partial class MainWindow
             words: [OperatingSystem.IsMacOS() ? "Exit" : "Quit"]);
         Add(A.FindAction, "Find Action…", "IDE", _ => ShowFindAction(), menu: ("Help", 0, 0));
 
-        // Unit Tests, Problems, the Explorer and the Step Library take Find's keys for their filters, a console its text.
+        // Unit Tests, Problems, the Explorer, the Step Library and Coverage take Find's keys for their filters, a console its text.
         Add(A.Find, "Find", "IDE", c =>
         {
             if (c.ToolWindow?.Id == ToolWindowIds.Tests)
@@ -200,6 +200,10 @@ public partial class MainWindow
             {
                 StepLibraryWindow.FocusFilter();
             }
+            else if (c.ToolWindow?.Id == ToolWindowIds.Coverage)
+            {
+                CoverageWindow.FocusFilter();
+            }
             else if (c.ToolWindow?.Id == ToolWindowIds.Aspire)
             {
                 actions!.Run(A.AspireLogFind, c);
@@ -216,7 +220,7 @@ public partial class MainWindow
             {
                 Editors.ShowFind(replace: false);
             }
-        }, c => c.ToolWindow?.Id is ToolWindowIds.Tests or ToolWindowIds.Problems or ToolWindowIds.StepLibrary || c.ToolWindow?.Id == ToolWindowIds.Explorer && Explorer.Tree.Root is not null || ConsoleFind(c) is not null
+        }, c => c.ToolWindow?.Id is ToolWindowIds.Tests or ToolWindowIds.Problems or ToolWindowIds.StepLibrary or ToolWindowIds.Coverage || c.ToolWindow?.Id == ToolWindowIds.Explorer && Explorer.Tree.Root is not null || ConsoleFind(c) is not null
             || DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 0));
         Add(A.Replace, "Replace", "IDE", c => (DiffWindowOf(c) is { } window ? (Action<bool>)window.ShowFind : Editors.ShowFind)(true),
             c => DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 1));
@@ -494,6 +498,12 @@ public partial class MainWindow
         Add(A.RerunTests, "Rerun Unit Tests", "Unit Tests", _ => RunTests(() => session.Tests.RerunAsync(Folder!)), NeedsTestBuild, ("Tests", 1, 0));
         Add(A.RerunFailedTests, "Rerun Failed Tests", "Unit Tests", _ => RunTests(() => session.Tests.RerunFailedAsync(Folder!)), NeedsTestBuild, ("Tests", 1, 1));
         Add(A.StopTests, "Stop Unit Tests", "Unit Tests", _ => session.Tests.Stop(), NothingRunning, ("Tests", 1, 2));
+        Add(A.CoverTests, "Run Unit Tests with Coverage", "Unit Tests", c => CoverTests(() => RunTestsInContext(c, debug: false, cover: true)), NoTestHere,
+            ("Tests", 0, 4), works: A.RunTests);
+        Add(A.CoverAllTests, "Run All Tests with Coverage", "Unit Tests", _ => CoverTests(() => RunTests(() => session.Tests.RunAsync(Folder!, cover: true))),
+            c => NeedsTestBuild(c) ?? session.Tests.NeverRuns(), ("Tests", 0, 5), works: A.RunTests);
+        Add(A.ExportCoverage, "Export Coverage as Cobertura…", "Unit Tests", _ => IdeErrors.Observe(ExportCoverageAsync()), Measured, ("Tests", 1, 3));
+        Add(A.ClearCoverage, "Clear Coverage", "Unit Tests", _ => session.Tests.ClearCoverage(), Measured, ("Tests", 1, 4));
 
         // Where the Explorer has the keys, its rows say what to run, never the editor's caret.
         string? NoTestHere(ActionContext context) => NeedsTestBuild(context)
@@ -503,6 +513,8 @@ public partial class MainWindow
 
         // Stop is disabled with no run to end, its toolbar's button and its menu item alike.
         string? NothingRunning(ActionContext context) => NeedsFolder(context) ?? (session.Tests.IsBusy ? null : "No unit tests are running");
+
+        string? Measured(ActionContext context) => NeedsFolder(context) ?? (session.Tests.Coverage is null ? Refusals.NoCoverage : null);
     }
 
     /// <summary>The projects holding tests chosen in the Explorer, while it has the keys (<see cref="TestProjectsOf"/>).</summary>

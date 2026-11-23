@@ -520,6 +520,14 @@ public static class AppActions
     public const string RerunFailedTests = "app.tests.rerunFailed";
     public const string StopTests = "app.tests.stop";
     public const string ShowTests = "app.showTests";
+
+    // Coverage, measured by a run of tests: Rider's Cover All Tests from Solution (its dotCover descriptor's keys, Ctrl+U, K in
+    // its Visual Studio keymaps and Ctrl+;, K in IntelliJ's, which VS Code's take from their parents); the rest have none.
+    public const string CoverTests = "app.tests.cover";
+    public const string CoverAllTests = "app.tests.coverAll";
+    public const string ClearCoverage = "app.tests.clearCoverage";
+    public const string ExportCoverage = "app.tests.exportCoverage";
+    public const string ShowCoverage = "app.showCoverage";
     public const string ShowStructure = "app.showStructure";
 
     // Editor splits: Rider's, from the tab's menu (no keys in its Visual Studio keymaps).
@@ -856,6 +864,7 @@ public static class AppActions
                 .Bind(DebugTests, "meta U , D", "meta U , meta D")
                 .Bind(RerunTests, "meta U , U", "meta U , meta U")
                 .Bind(RerunFailedTests, "meta U , F", "meta U , meta F")
+                .Bind(CoverAllTests, "meta U , K", "meta U , meta K")
                 .Bind(ShowTests, "meta 8")
                 .Bind(ShowStructure, "meta alt F", "control alt F")
                 .Bind(MaximizeToolWindow, "meta shift QUOTE")
@@ -990,6 +999,7 @@ public static class AppActions
             .Bind(DebugTests, "control U , D", "control U , control D")
             .Bind(RerunTests, "control U , U", "control U , control U")
             .Bind(RerunFailedTests, "control U , F", "control U , control F")
+            .Bind(CoverAllTests, "control U , K", "control U , control K")
             .Bind(ShowTests, "alt 8")
             .Bind(ShowStructure, "control alt F")
             .Bind(MaximizeToolWindow, "control shift QUOTE")
@@ -1150,6 +1160,7 @@ public static class AppActions
                 .Bind(RerunTests, "meta SEMICOLON , T", "meta SEMICOLON , meta T")
                 .Bind(RerunFailedTests, "meta SEMICOLON , F", "meta SEMICOLON , meta F")
                 .Bind(StopTests, "meta SEMICOLON , S", "meta SEMICOLON , meta S")
+                .Bind(CoverAllTests, "meta SEMICOLON , K", "meta SEMICOLON , meta K")
                 .Bind(ShowTests, "meta alt 8")
                 .Bind(ShowStructure, "meta 7")
                 .Bind(SplitRight, "meta BACK_SLASH")
@@ -1268,6 +1279,7 @@ public static class AppActions
             .Bind(RerunTests, "control SEMICOLON , T", "control SEMICOLON , control T")
             .Bind(RerunFailedTests, "control SEMICOLON , F", "control SEMICOLON , control F")
             .Bind(StopTests, "control SEMICOLON , S", "control SEMICOLON , control S")
+            .Bind(CoverAllTests, "control SEMICOLON , K", "control SEMICOLON , control K")
             .Bind(ShowTests, "alt shift 8")
             .Bind(ShowStructure, "alt 7")
             .Bind(SplitRight, "control BACK_SLASH")
@@ -1410,6 +1422,7 @@ public static class AppActions
                 .Bind(RerunTests, "meta SEMICOLON , T", "meta SEMICOLON , meta T")
                 .Bind(RerunFailedTests, "meta SEMICOLON , F", "meta SEMICOLON , meta F")
                 .Bind(StopTests, "meta SEMICOLON , S", "meta SEMICOLON , meta S")
+                .Bind(CoverAllTests, "meta SEMICOLON , K", "meta SEMICOLON , meta K")
                 .Bind(OpenInNewWindow, "shift F4")
                 .Bind(IncreaseFontSize, "control shift PERIOD")
                 .Bind(DecreaseFontSize, "control shift COMMA")
@@ -1532,6 +1545,7 @@ public static class AppActions
             .Bind(RerunTests, "control SEMICOLON , T", "control SEMICOLON , control T")
             .Bind(RerunFailedTests, "control SEMICOLON , F", "control SEMICOLON , control F")
             .Bind(StopTests, "control SEMICOLON , S", "control SEMICOLON , control S")
+            .Bind(CoverAllTests, "control SEMICOLON , K", "control SEMICOLON , control K")
             .Bind(OpenInNewWindow, "shift F4")
             .Bind(IncreaseFontSize, "alt shift PERIOD")
             .Bind(DecreaseFontSize, "alt shift COMMA")

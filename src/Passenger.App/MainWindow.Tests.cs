@@ -176,6 +176,8 @@ public partial class MainWindow
         }
         ShowToolWindow(ToolWindowIds.Tests);
         ProjectSession running = session;
+        bool covering = coverageAsked;
+        coverageAsked = false;
         IdeErrors.Observe(Go());
 
         async Task Go()
@@ -196,6 +198,7 @@ public partial class MainWindow
                 Say(problem, StatusPlace.Window(Dock, ToolWindowIds.Tests));
                 Bottom.Tests.Status = problem;
             }
+            ShowMeasured(covering && problem is null, running);
         }
     }
 
@@ -224,6 +227,7 @@ public partial class MainWindow
         menu.Items.Add(ToolWindows.ListMenus.Item($"Run '{name}'", () => RunTestsAt(chosen, document.Path, debug: false)));
         menu.Items.Add(ToolWindows.ListMenus.Item($"Debug '{name}'", () => RunTestsAt(chosen, document.Path, debug: true)));
         menu.Items.Add(ToolWindows.ListMenus.Item($"Run '{name}' Until Failure", () => RunTestsAt(chosen, document.Path, debug: false, untilFailure: true)));
+        menu.Items.Add(ToolWindows.ListMenus.Item($"Run '{name}' with Coverage", () => RunTestsAt(chosen, document.Path, debug: false, cover: true)));
         TestMarkMenu = menu;
         menu.Placement = Avalonia.Controls.PlacementMode.Pointer;
         menu.ShowAt(editor, showAtPointer: true);
@@ -235,11 +239,11 @@ public partial class MainWindow
     /// <summary>Run (or Debug) Unit Tests in context: the Unit Tests window's chosen rows when it has the keys, the
     /// projects chosen in the Explorer (a solution folder's, those under it) when it has them, else the test method or
     /// class at the editor's caret, an outline's example row alone where the caret is on it, as its mark's menu runs it.</summary>
-    private void RunTestsInContext(ActionContext context, bool debug, bool untilFailure = false)
+    private void RunTestsInContext(ActionContext context, bool debug, bool untilFailure = false, bool cover = false)
     {
         if (!untilFailure && ChosenProjects(context) is { } projects)
         {
-            RunProjectTests(projects, Explorer.Selected?.Name ?? "the projects chosen", debug);
+            RunProjectTests(projects, Explorer.Selected?.Name ?? "the projects chosen", debug, cover);
             return;
         }
         if (ChosenTests(context) is { } chosen)
@@ -249,17 +253,17 @@ public partial class MainWindow
                 RunUntilFailure(chosen);
                 return;
             }
-            RunTests(() => session.Tests.RunAsync(Folder!, chosen, debug));
+            RunTests(() => session.Tests.RunAsync(Folder!, chosen, debug, cover: cover));
             return;
         }
         if (!untilFailure && context.File is { } feature && testGutter.RowAt(feature, context.Caret.Line) is ({ } outline, { } row))
         {
-            RunRowAt(outline, row, testGutter.RowsOf(feature), feature.Path, debug);
+            RunRowAt(outline, row, testGutter.RowsOf(feature), feature.Path, debug, cover);
             return;
         }
         if (TestAtCaret(context) is { } test && context.File is { } file)
         {
-            RunTestsAt(test, file.Path, debug, untilFailure);
+            RunTestsAt(test, file.Path, debug, untilFailure, cover);
         }
     }
 
@@ -287,7 +291,7 @@ public partial class MainWindow
     /// them once the run's build has ended and its tests are found: a test only a runner finds (an attribute of the
     /// project's own) runs with them, and a base type's tests as every derived type's, which the runner says are on its
     /// lines of the file.</summary>
-    private void RunTestsAt(Testing.DeclaredPlace place, string path, bool debug, bool untilFailure = false)
+    private void RunTestsAt(Testing.DeclaredPlace place, string path, bool debug, bool untilFailure = false, bool cover = false)
     {
         (string type, string? method) = (place.Type, place.Method);
         if (Folder is null)
@@ -303,7 +307,7 @@ public partial class MainWindow
         {
             if (!untilFailure)
             {
-                return await running.Tests.RunMatchingAsync(workspace, Matches, None, debug);
+                return await running.Tests.RunMatchingAsync(workspace, Matches, None, debug, cover);
             }
             string? stopped = await running.Tests.RunUntilFailureAsync(workspace, Matches, None);
             if (session == running && !running.IsEnded && running.Tests.FirstFailed(running.Tests.RunMethods) is { } failed)
@@ -324,7 +328,7 @@ public partial class MainWindow
     /// <summary>Runs (or debugs) one example row of an outline: the row of the outline's test, as the tree has it once the
     /// run's build has ended and its tests are found, whose arguments are the row's.</summary>
     private void RunRowAt(Testing.DeclaredPlace outline, Passenger.Workspace.Gherkin.ExampleRow row, IReadOnlyList<Passenger.Workspace.Gherkin.ExampleRow> rows,
-        string path, bool debug)
+        string path, bool debug, bool cover = false)
     {
         if (Folder is null)
         {
@@ -336,7 +340,7 @@ public partial class MainWindow
         RunTests(() => running.Tests.RunPickedAsync(workspace, methods => [.. methods
             .Where(test => test.Places.Any(at => PathNames.Same(at.Path, path) && outline.Holds(compiled is null ? at.Line : Testing.TestGutter.EditorLine(compiled, at.Line))))
             .SelectMany(test => test.Children.Where(c => c.Item is not null && Testing.TestGutter.Ran(c, row, rows)))],
-            unfound => Refusals.NoTestOf($"{outline.Method} [{row.Shown}]", unfound), debug));
+            unfound => Refusals.NoTestOf($"{outline.Method} [{row.Shown}]", unfound), debug, cover));
     }
 
     /// <summary>A test host a runner would start, started under the debugger as a plan of its own (the runner built it, and

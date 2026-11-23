@@ -25,6 +25,9 @@
          up to Passenger's is given one built against its own platform's interfaces. A move of Passenger's Avalonia adds
          the version it leaves, and any between where the platform changed. -->
     <AvaloniaCarriedVersions>$(AvaloniaOldestVersion);12.1.0;12.1.2;12.1.6</AvaloniaCarriedVersions>
+    <!-- Coverlet, which measures a test run's coverage, downloaded rather than referenced and carried under coverage/ (its
+         VSTest data collector and its console, Passenger.App.csproj), so its version is a property: the newest. -->
+    <CoverletVersion>10.1.1</CoverletVersion>
     <!-- The MVVM Toolkit at the version Avalonia's MVVM template above writes, downloaded for the tests' package cache, so
          an app of theirs restores with its generators and reaches no feed. -->
     <CommunityToolkitMvvmVersion>8.4.2</CommunityToolkitMvvmVersion>

@@ -95,6 +95,7 @@ public sealed class TestsView : DockPanel
             ListMenus.Keyed("Run", AppActions.RunTests, () => RunRequested?.Invoke(this, false)),
             ListMenus.Keyed("Debug", AppActions.DebugTests, () => RunRequested?.Invoke(this, true)),
             ListMenus.Keyed("Run Until Failure", AppActions.RunTestsUntilFailure, () => UntilFailureRequested?.Invoke(this, EventArgs.Empty)),
+            ListMenus.Keyed("Run with Coverage", AppActions.CoverTests, () => Request(AppActions.CoverTests)),
             new Separator(),
             ListMenus.Source(() => GoToRequested?.Invoke(this, chosen), chosen.Path is null ? Refusals.TestUnplaced : null),
         ]);
@@ -161,6 +162,7 @@ public sealed class TestsView : DockPanel
             ToolButtons.Of(AppActions.RunAllTests, IconKeys.Run, "Run All Tests", Request),
             ToolButtons.Of(AppActions.RunTests, IconKeys.RunOutline, "Run Selected Tests", Request),
             ToolButtons.Of(AppActions.DebugTests, IconKeys.Debug, "Debug Selected Tests", Request),
+            ToolButtons.Of(AppActions.CoverAllTests, IconKeys.Coverage, "Run All Tests with Coverage", Request),
             ToolButtons.Of(AppActions.RerunFailedTests, IconKeys.Rerun, "Rerun Failed Tests", Request),
             stop);
         Children.Add(leftBar);

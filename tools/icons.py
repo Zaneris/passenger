@@ -150,6 +150,10 @@ ICONS = [
     ("Filter", "Filter", "20_regular"),
     # The Step Library window's stripe button: the shelf of steps a project's features may be written in.
     ("StepLibrary", "Library", "20_regular"),
+    # The Coverage window's stripe button: the share of the code a run of tests ran.
+    ("Coverage", "Data Pie", "20_regular"),
+    # What a window writes out to a file a person names for another tool (the Coverage window's Cobertura report).
+    ("Export", "Arrow Export Up", "20_regular"),
     # A project by what it builds, wherever a project is listed, where no window's icon says it.
     ("FunctionsApp", "Flash", "20_regular"),
     ("MauiApp", "Phone Laptop", "20_regular"),

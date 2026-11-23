@@ -228,7 +228,7 @@ public sealed class VsTestRunner : ITestRunner
     /// project's run settings run with them, the environment given set in the test hosts VSTest starts as the settings'
     /// EnvironmentVariables are.</summary>
     public async Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
-        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default)
+        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CoverageRun? coverage = null, CancellationToken cancel = default)
     {
         // xUnit gives a test the same id in each target framework's assembly: its assembly tells them apart.
         Dictionary<(Guid, string), TestItem> running = [];
@@ -246,6 +246,12 @@ public sealed class VsTestRunner : ITestRunner
         {
             bool headless = group.Key.Game && PassengerApp.ShowsNoWindow;
             IReadOnlyList<string> arguments = group.Key.Game ? godot?.Arguments ?? [] : [];
+            // A Godot game's tests run in Godot, and a debugged host's code stays as built for the debugger and Hot Reload.
+            CoverageRun? measured = coverage is not null && (group.Key.Game || debugger is not null) ? null : coverage;
+            if (coverage is not null && measured is null)
+            {
+                coverage.Missed(group.Key.Game ? "GdUnit4's tests run in Godot, where coverage is not measured" : "A debugged run's coverage is not measured");
+            }
             // Debugged with Hot Reload, each test assembly's host is started for it and its own hook, one at a time.
             List<(List<TestCase> Cases, TestHostReload? Reload)> parts = debugger is not null && !group.Key.Game
                 ? [.. group.GroupBy(c => c.Source, StringComparer.Ordinal)
@@ -259,8 +265,8 @@ public sealed class VsTestRunner : ITestRunner
                 {
                     given![name] = value;
                 }
-                string settings = await BackgroundWork.Run(() => Settings(given, log, group.Key.File, arguments, headless), cancel);
-                RunSummary part = await RunWith(cases, settings, running, outcomes, log, debugger, environment, cancel, reload);
+                string settings = await BackgroundWork.Run(() => Settings(given, log, group.Key.File, arguments, headless, measured), cancel);
+                RunSummary part = await RunWith(cases, settings, running, outcomes, log, debugger, environment, measured, cancel, reload);
                 summary = summary is null ? part : summary.And(part);
                 if (stopped = part.Canceled)
                 {
@@ -277,12 +283,12 @@ public sealed class VsTestRunner : ITestRunner
 
     /// <summary>Runs test cases with these settings (<see cref="RunAsync"/>).</summary>
     private async Task<RunSummary> RunWith(List<TestCase> chosen, string settings, Dictionary<(Guid, string), TestItem> running, Action<IReadOnlyList<TestOutcome>> outcomes,
-        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string>? environment, CancellationToken cancel, TestHostReload? reload = null)
+        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string>? environment, CoverageRun? coverage, CancellationToken cancel, TestHostReload? reload = null)
     {
         DebugLauncher? launcher = debugger is null ? null : new DebugLauncher(debugger, environment, reload);
         try
         {
-            return await RunWith(chosen, settings, running, outcomes, log, launcher, cancel);
+            return await RunWith(chosen, settings, running, outcomes, log, launcher, coverage, cancel);
         }
         finally
         {
@@ -295,9 +301,9 @@ public sealed class VsTestRunner : ITestRunner
     }
 
     private async Task<RunSummary> RunWith(List<TestCase> chosen, string settings, Dictionary<(Guid, string), TestItem> running, Action<IReadOnlyList<TestOutcome>> outcomes,
-        Action<string>? log, DebugLauncher? debugger, CancellationToken cancel)
+        Action<string>? log, DebugLauncher? debugger, CoverageRun? coverage, CancellationToken cancel)
     {
-        Run handler = new(running, outcomes, log);
+        Run handler = new(running, outcomes, log, coverage);
         VsTestConsoleWrapper session = console;
         long began = Stopwatch.GetTimestamp();
         // Not held: a debugged run waits here while stopped at a breakpoint.
@@ -390,11 +396,12 @@ public sealed class VsTestRunner : ITestRunner
     /// <summary>A run's settings: the project's run settings file's, if it names one, with VSTest's design mode, as an IDE
     /// runs it, and the environment, each variable an element as VSTest reads them, over the file's of the same name; a name
     /// XML cannot hold is left out and said, as is a file that cannot be read; GdUnit4's Godot given <paramref name="godot"/>
-    /// ahead of the settings' own parameters, and run headless where <paramref name="headless"/> says. A worker's: it reads
-    /// the file.</summary>
-    private static string Settings(IReadOnlyDictionary<string, string>? environment, Action<string>? log, string? file, IReadOnlyList<string> godot, bool headless)
+    /// ahead of the settings' own parameters, and run headless where <paramref name="headless"/> says; with Coverlet's collector
+    /// where a run's coverage is measured. A worker's: it reads the file.</summary>
+    private static string Settings(IReadOnlyDictionary<string, string>? environment, Action<string>? log, string? file, IReadOnlyList<string> godot, bool headless,
+        CoverageRun? coverage = null)
     {
-        if (environment is not { Count: > 0 } && file is null && !headless && godot.Count == 0)
+        if (environment is not { Count: > 0 } && file is null && !headless && godot.Count == 0 && coverage is null)
         {
             return RunSettings;
         }
@@ -429,6 +436,7 @@ public sealed class VsTestRunner : ITestRunner
         {
             GdUnit4Settings.Given(root, godot, headless);
         }
+        coverage?.Into(root);
         return root.ToString(SaveOptions.DisableFormatting);
 
         static XElement Child(XElement parent, string name)
@@ -619,7 +627,8 @@ public sealed class VsTestRunner : ITestRunner
         public void HandleRawMessage(string rawMessage) => Raw(rawMessage);
     }
 
-    private sealed class Run(IReadOnlyDictionary<(Guid, string), TestItem> running, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log) : ITestRunEventsHandler
+    private sealed class Run(IReadOnlyDictionary<(Guid, string), TestItem> running, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log, CoverageRun? coverage)
+        : ITestRunEventsHandler
     {
         private readonly List<TestOutcome> all = [];
 
@@ -678,6 +687,14 @@ public sealed class VsTestRunner : ITestRunner
         public void HandleTestRunComplete(TestRunCompleteEventArgs testRunCompleteArgs, TestRunChangedEventArgs? lastChunkArgs, ICollection<AttachmentSet>? runContextAttachments, ICollection<string>? executorUris)
         {
             HandleTestRunStatsChange(lastChunkArgs);
+            // Coverlet's collector names a report of each test host's run among the run's attachments, by its own name.
+            foreach (UriDataAttachment attachment in coverage is null ? [] : runContextAttachments?.SelectMany(set => set.Attachments) ?? [])
+            {
+                if (attachment.Uri.IsAbsoluteUri && attachment.Uri.IsFile && Path.GetFileName(attachment.Uri.LocalPath).Equals("coverage.json", StringComparison.OrdinalIgnoreCase))
+                {
+                    coverage!.Wrote(attachment.Uri.LocalPath);
+                }
+            }
             if (BrokenRuns.Told(testRunCompleteArgs.Error) is { } error)
             {
                 log?.Invoke(error);
