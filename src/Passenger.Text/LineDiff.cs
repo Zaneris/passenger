@@ -108,11 +108,12 @@ public static class LineDiff
 
     /// <summary>The difference as `git diff` prints it: a header naming the file where it was (<paramref name="from"/>, for
     /// one renamed) and where it is, /dev/null on a side with no file (<paramref name="before"/> or <paramref name="after"/>
-    /// null), then each hunk with three lines of context around it, hunks whose context touches merged into one.</summary>
+    /// null), then each hunk with three lines of context around it, hunks whose context touches merged into one, and a last
+    /// line with no break marked so.</summary>
     public static string Unified(string? before, string? after, string name, string? from = null, int context = 3)
     {
-        string[] a = Lines(before ?? string.Empty);
-        string[] b = Lines(after ?? string.Empty);
+        string[] a = Compared(before);
+        string[] b = Compared(after);
         IReadOnlyList<DiffHunk> hunks = Hunks(a, b);
         if (hunks.Count == 0)
         {
@@ -140,25 +141,49 @@ public static class LineDiff
                 DiffHunk hunk = hunks[k];
                 for (; at < hunk.OldStart; at++)
                 {
-                    text.Append(' ').Append(a[at]).Append('\n');
+                    Line(' ', a[at]);
                 }
                 for (int line = hunk.OldStart; line < hunk.OldStart + hunk.OldCount; line++)
                 {
-                    text.Append('-').Append(a[line]).Append('\n');
+                    Line('-', a[line]);
                 }
                 for (int line = hunk.NewStart; line < hunk.NewStart + hunk.NewCount; line++)
                 {
-                    text.Append('+').Append(b[line]).Append('\n');
+                    Line('+', b[line]);
                 }
                 at = hunk.OldStart + hunk.OldCount;
             }
             for (; at < oldTo; at++)
             {
-                text.Append(' ').Append(a[at]).Append('\n');
+                Line(' ', a[at]);
             }
             i = j + 1;
         }
         return text.ToString();
+
+        // A last line with no break keeps a '\n', which no other line holds, so it differs from one with a break, as in git.
+        static string[] Compared(string? text)
+        {
+            string[] lines = Lines(text ?? string.Empty);
+            if (text is { Length: > 0 } && text[^1] != '\n')
+            {
+                lines[^1] += "\n";
+            }
+            return lines;
+        }
+
+        void Line(char sign, string line)
+        {
+            text.Append(sign);
+            if (line.EndsWith('\n'))
+            {
+                text.Append(line.AsSpan(0, line.Length - 1)).Append("\n\\ No newline at end of file\n");
+            }
+            else
+            {
+                text.Append(line).Append('\n');
+            }
+        }
 
         // A hunk's lines from 1 as git writes them: one alone without its count, none as the line before them.
         static string Range(int from, int to) => (to - from) switch

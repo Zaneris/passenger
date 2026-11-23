@@ -1774,7 +1774,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>A renamed file's diff names where it was and where it is, a new file's and a deleted one's are git's own,
-    /// from /dev/null and to it; vcs_commit takes a folder's path as every change under it, the untracked folder vcs_status
+    /// from /dev/null and to it, as are those of files whose last line has no break; vcs_commit takes a folder's path as every change under it, the untracked folder vcs_status
     /// lists as one entry and a tracked folder's new file among them, the rest left; and Push run as an action where the
     /// repository has no remote answers why it did not push.</summary>
     private async Task An_agent_reads_a_renames_two_paths_commits_a_folders_changes_by_its_path_and_hears_why_push_did_not_go()
@@ -1785,7 +1785,11 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         TestFolders.Write(repository, "Old.txt", "old\n");
         TestFolders.Write(repository, "Lib/Shelf.txt", "shelf\n");
         TestFolders.Write(repository, "Gone.txt", "one\ntwo\nthree\n");
+        TestFolders.Write(repository, "Open.txt", "one\ntwo");
+        TestFolders.Write(repository, "Kept.txt", "first\nlast");
         await TestGit.InitAsync(repository);
+        File.WriteAllText(Path.Combine(repository, "Open.txt"), "one\ntwo\nthree");
+        File.WriteAllText(Path.Combine(repository, "Kept.txt"), "First\nlast");
         File.Delete(Path.Combine(repository, "Gone.txt"));
         await TestGit.RunAsync(repository, "mv", "Old.txt", "Renamed.txt");
         File.WriteAllText(Path.Combine(repository, "Renamed.txt"), "renamed\n");
@@ -1803,6 +1807,13 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         string gitsGone = GitsDiff(await TestGit.RunAsync(repository, "diff", "--", "Gone.txt"));
         Assert.True(gone == gitsGone, $"The diff of Gone.txt deleted, which git apply is to take as its deletion, is not git's own:\n{gone}\ngit's:\n{gitsGone}");
         string added = (await Call(client, McpTools.VcsStatus, new() { ["path"] = "Lib/Added.txt" })).GetString()!;
+        // Git applies a diff touching a last line with no break only where it says so after the line, changed or not.
+        foreach (string open in (string[])["Open.txt", "Kept.txt"])
+        {
+            string ours = (await Call(client, McpTools.VcsStatus, new() { ["path"] = open })).GetString()!;
+            string gits = GitsDiff(await TestGit.RunAsync(repository, "diff", "--", open));
+            Assert.True(ours == gits, $"The diff of {open}, whose last line has no break, which git apply is to take, is not git's own:\n{ours}\ngit's:\n{gits}");
+        }
         // An agent's paths are the system's, as every tool answers them.
         JsonElement fresh = Assert.Single((await Call(client, McpTools.VcsStatus)).GetProperty("changes").EnumerateArray(),
             c => c.GetProperty("path").GetString() == "Fresh" + Path.DirectorySeparatorChar);
@@ -1814,7 +1825,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("A\tLib/Added.txt\nM\tLib/Shelf.txt", (await TestGit.RunAsync(repository, "show", "--name-status", "--format=", "HEAD")).Trim());
         string gitsAdded = GitsDiff(await TestGit.RunAsync(repository, "show", "--format=", "HEAD", "--", "Lib/Added.txt"));
         Assert.True(added == gitsAdded, $"The diff of Lib/Added.txt, new, which git apply is to take as making it, is not git's own:\n{added}\ngit's:\n{gitsAdded}");
-        Assert.Equal(["Gone.txt deleted", "Notes.txt modified", "Renamed.txt renamed"], (await Call(client, McpTools.VcsStatus)).GetProperty("changes").EnumerateArray()
+        Assert.Equal(["Gone.txt deleted", "Kept.txt modified", "Notes.txt modified", "Open.txt modified", "Renamed.txt renamed"], (await Call(client, McpTools.VcsStatus)).GetProperty("changes").EnumerateArray()
             .Select(c => $"{c.GetProperty("path").GetString()} {c.GetProperty("kind").GetString()}").Order(StringComparer.Ordinal));
         CallToolResult nothing = await Result(client, McpTools.VcsCommit, new() { ["message"] = "Nothing", ["paths"] = new[] { "Lib" } });
         Assert.True(nothing.IsError == true && Text(nothing).Contains("Lib has no changes to commit", StringComparison.Ordinal),
