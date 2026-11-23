@@ -925,6 +925,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
         List<CommitGroup> filled = [];
         List<CommitBranch> under = [];
         staging = vcs.HoldsStaged;
+        // Set before the rows' depths move, as a row shown hears its depth change and shows its folder by it.
+        grouped = vcs.GroupsByDirectory;
         Group(MergeConflicts, [.. changes.Where(c => c.Kind is ChangeKind.Conflicted).OrderBy(c => c.Path, StringComparer.Ordinal).Select(c => Row(c, false))]);
         IEnumerable<FileChange> tracked = changes.Where(c => c.Kind is not (ChangeKind.Unversioned or ChangeKind.Conflicted)).OrderBy(c => c.Path, StringComparer.Ordinal);
         if (staging)
@@ -941,7 +943,6 @@ public sealed class CommitView : DockPanel, IOwnKeys
 
         groups = filled;
         branches = under;
-        grouped = vcs.GroupsByDirectory;
         foreach (CommitBranch branch in branches)
         {
             branch.IsExpanded = !closed.Contains(branch.Key);
