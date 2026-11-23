@@ -1347,14 +1347,10 @@ public sealed partial class CodeEditor
     /// <summary>A line's text in its colours, each stretch of one look (neighbouring runs whose kinds are drawn alike, and
     /// the plain text between them) one run, and plain blanks between them in the look of the run before (indentation in
     /// the look after) where that draws a blank as plain text does, so a line is as few glyph runs as it has looks: what
-    /// each frame records, shapes and draws again for every line on screen. Neighbouring runs come from two copies of the
-    /// line in turn, so each is shaped on its own: the formatter shapes runs of one string together and splits the result,
-    /// leaving each buffer it splits to its finalizer, with the pooled arrays it holds. The formatter asks for its runs in
-    /// order, so the search for the run at a place goes on from the last one found rather than from the first.</summary>
+    /// each frame records, shapes and draws again for every line on screen. The formatter asks for its runs in order, so
+    /// the search for the run at a place goes on from the last one found rather than from the first.</summary>
     private sealed class ColouredRuns(string text, LineRun[] runs, TextRunProperties plain, Func<TokenKind, TextRunProperties> colour) : ITextSource
     {
-        private char[]? copy;
-        private int made;
         private int next;
         private int asked;
 
@@ -1367,7 +1363,6 @@ public sealed partial class CodeEditor
             if (textSourceIndex < asked)
             {
                 next = 0;
-                made = 0;
             }
             asked = textSourceIndex;
             int i = Past(next, textSourceIndex);
@@ -1395,12 +1390,7 @@ public sealed partial class CodeEditor
                 end = stop;
             }
             next = i;
-            if ((made++ & 1) == 0)
-            {
-                return new TextCharacters(text.AsMemory(textSourceIndex, end - textSourceIndex), look);
-            }
-            copy ??= text.ToCharArray();
-            return new TextCharacters(copy.AsMemory(textSourceIndex, end - textSourceIndex), look);
+            return new TextCharacters(text.AsMemory(textSourceIndex, end - textSourceIndex), look);
         }
 
         /// <summary>Whether the text from one place to another is spaces and tabs alone.</summary>

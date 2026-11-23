@@ -14,9 +14,9 @@ using Passenger.Languages.CSharp;
 namespace Passenger.Tests;
 
 /// <summary>A fling through a long C# file leaves the collector little to promote: each line laid out in one run for each
-/// look, blanks adding none, each run shaped on its own so the formatter splits no buffer it would leave to its
-/// finalizer, and the colours and hints of rows scrolled past let go while they are young, a long file keeping what a
-/// short one does. Counts, not times; collections forced and finalizers counted, so run alone.</summary>
+/// look, blanks adding none, no shaped buffer left to the finalizer, and the colours and hints of rows scrolled past let
+/// go while they are young, a long file keeping what a short one does. Counts, not times; collections forced and
+/// finalizers counted, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class FlingTests
 {
@@ -80,7 +80,7 @@ public sealed class FlingTests
         Assert.True(editor.RunsFormatted - runs > 4L * flung, $"The fling through {flung} lines laid out only {editor.RunsFormatted - runs} runs: its lines were not of many colours");
         int left = batches.Sum();
         Assert.True(left <= flung / 10,
-            $"A fling through {flung} lines of several colours left the finalizer {left} objects ({string.Join(", ", batches)} by each batch of frames; {finalized.Named()}), where its lines' layouts leave it none: each buffer the formatter splits waits for it, "
+            $"A fling through {flung} lines of several colours left the finalizer {left} objects ({string.Join(", ", batches)} by each batch of frames; {finalized.Named()}), where its lines' layouts leave it none: a shaped buffer left to it "
             + "is promoted with what it holds, and takes the pooled arrays it shares out of the pool");
     }
 
