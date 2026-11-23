@@ -44,7 +44,7 @@
   <PropertyGroup>
     <!-- Built for this machine whatever platform is published (Passenger.Lsp removes its RuntimeIdentifier), so its
          restore downloads this machine's server even where a publish for another platform restores it. -->
-    <RoslynServerFor>$([System.Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier)</RoslynServerFor>
+    <RoslynServerFor>$(NETCoreSdkRuntimeIdentifier)</RoslynServerFor>
   </PropertyGroup>
   <Import Project="../Passenger.Lsp/RoslynServer.targets" />
 

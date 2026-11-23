@@ -1,12 +1,13 @@
 <Project>
   <!-- Microsoft's server (MIT, built in the Roslyn repo), one package per platform at RoslynServerVersion
        (Directory.Packages.props). Only the platform being built is downloaded. The platform is the project's own
-       RoslynServerFor, else the publish's, else this machine's, named as the packages are: a .NET built by a Linux distribution names its own (ubuntu.24.04-x64,
+       RoslynServerFor, else the publish's, else the SDK's (this machine's, which Visual Studio's MSBuild on .NET Framework
+       reads too), named as the packages are: a .NET built by a Linux distribution names its own (ubuntu.24.04-x64,
        alpine.3.22-x64), for which there is no package. Passenger.Lsp carries the server; Passenger.Roslyn.Extension is
        compiled against the assemblies it carries, so both find it here. -->
   <PropertyGroup>
     <RoslynServerFor Condition="'$(RoslynServerFor)' == ''">$(RuntimeIdentifier)</RoslynServerFor>
-    <RoslynServerFor Condition="'$(RoslynServerFor)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier)</RoslynServerFor>
+    <RoslynServerFor Condition="'$(RoslynServerFor)' == ''">$(NETCoreSdkRuntimeIdentifier)</RoslynServerFor>
     <RoslynServerArchitecture>$([System.Text.RegularExpressions.Regex]::Replace($(RoslynServerFor), '^.*-', ''))</RoslynServerArchitecture>
     <RoslynServerRid Condition="$(RoslynServerFor.StartsWith('win'))">win-$(RoslynServerArchitecture)</RoslynServerRid>
     <RoslynServerRid Condition="$(RoslynServerFor.StartsWith('osx'))">osx-$(RoslynServerArchitecture)</RoslynServerRid>
