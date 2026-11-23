@@ -430,7 +430,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
     }
 
     /// <summary>File Structure on a JSON file lists its keys, nested under the objects they are in, as its server outlines
-    /// them, and a key chosen is where the caret goes.</summary>
+    /// them, each with the badge of its value's kind, and a key chosen is where the caret goes.</summary>
     private void File_structure_lists_a_JSON_files_keys_and_goes_to_the_one_chosen()
     {
         SkipWithoutNode();
@@ -443,7 +443,10 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         Ui.WaitFor(() => structure.IsSettled && structure.Rows.Any(r => r.Name == "build"), "package.json's outline, its scripts' keys among it");
         SymbolRow scripts = structure.Rows.First(r => r.Name == "scripts");
         Assert.Equal(0, scripts.Depth);
-        Assert.Equal(1, structure.Rows.First(r => r.Name == "build").Depth);
+        SymbolRow build = structure.Rows.First(r => r.Name == "build");
+        Assert.Equal(1, build.Depth);
+        Assert.True(SymbolPopup.Badge(build.Kind) != SymbolPopup.Badge(SymbolRow.HeadingKind),
+            $"The build script's key, a string, wears a Markdown heading's badge ({SymbolPopup.Badge(build.Kind).Letter}) in File Structure and the navigation bar");
         window.KeyTextInput("build");
         Ui.WaitFor(() => structure.IsSettled && structure.Rows.Select(r => r.Name).SequenceEqual(["scripts", "build"]), () => $"the outline filtered to the build script in its object, not [{string.Join(", ", structure.Rows.Select(r => r.Name))}]");
         Ui.Press(window, "DOWN");

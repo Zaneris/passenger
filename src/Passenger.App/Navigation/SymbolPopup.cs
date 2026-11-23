@@ -33,11 +33,12 @@ public sealed record SymbolRow(string Name, string? Detail, string? Where, Symbo
     /// <summary>A file, not a symbol: shown with its file icon (Go to Everything's files, a scene's script).</summary>
     public const SymbolKind FileKind = default;
 
-    /// <summary>A node of a Godot scene.</summary>
-    public const SymbolKind NodeKind = SymbolKind.Object;
+    /// <summary>A node of a Godot scene: a kind of Passenger's own, past the protocol's, so no server's symbol is taken for one.</summary>
+    public const SymbolKind NodeKind = (SymbolKind)101;
 
-    /// <summary>A heading of a Markdown file.</summary>
-    public const SymbolKind HeadingKind = SymbolKind.String;
+    /// <summary>A heading of a Markdown file, a kind of Passenger's own as <see cref="NodeKind"/> is: a JSON or YAML string's
+    /// key is the protocol's String.</summary>
+    public const SymbolKind HeadingKind = (SymbolKind)102;
 }
 
 /// <summary>A query over symbols, answered as it is typed (a moment after the last key, the previous answer given
