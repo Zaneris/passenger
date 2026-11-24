@@ -216,9 +216,30 @@ public static class SqlText
         {
             if (first >= 0 && last >= first)
             {
-                statements.Add((tokens[first].Start, tokens[last].End));
+                statements.Add((tokens[first].Start, Through(tokens[last].End, last + 1 < tokens.Count ? tokens[last + 1].Start : sql.Length)));
             }
             first = -1;
+        }
+
+        // The strings after a statement's last word are its own (WHERE a = 'x'), the comments after them not.
+        int Through(int end, int before)
+        {
+            int through = end;
+            for (int i = end; i < before;)
+            {
+                if (char.IsWhiteSpace(sql[i]))
+                {
+                    i++;
+                    continue;
+                }
+                if (Skipped(sql, i, kind) is not { } past)
+                {
+                    break;
+                }
+                through = sql[i] is '-' or '/' or '#' ? through : past;
+                i = past;
+            }
+            return through;
         }
     }
 

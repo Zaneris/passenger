@@ -16,8 +16,8 @@ public sealed class SqlTextTests
     {
         Cases.Each(new (string Holds, DatabaseKind Kind, string Sql, string[] Runs)[]
         {
-            ("statements end at their semicolons, blank ones passed over", DatabaseKind.Sqlite,
-                "SELECT 1;\n;\n  SELECT 2 ;SELECT 3", ["SELECT 1", "SELECT 2", "SELECT 3"]),
+            ("statements end at their semicolons, blank ones passed over, the last with the string it ends in", DatabaseKind.Sqlite,
+                "SELECT 1;\n;\n  SELECT 2 ;SELECT 3 = 'x' -- y", ["SELECT 1", "SELECT 2", "SELECT 3 = 'x'"]),
             ("a semicolon in a string, a quoted name or a comment ends nothing", DatabaseKind.Postgres,
                 "SELECT 'a;b', \"c;d\" -- e;f\nFROM t /* g; /* nested; */ h; */; SELECT 2",
                 ["SELECT 'a;b', \"c;d\" -- e;f\nFROM t /* g; /* nested; */ h; */", "SELECT 2"]),
