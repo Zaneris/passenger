@@ -51,8 +51,12 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         this.console = console;
         this.takesInput = takesInput;
         ownNodes = builds && !OperatingSystem.IsWindows() ? $"-builds-{Interlocked.Increment(ref runnersOfBuilds)}" : null;
+        tellLine = line => Line?.Invoke(this, line);
         console.Written += OnWritten;
     }
+
+    /// <summary>Tells <see cref="Line"/> a line: made once, as every batch of output is split by it.</summary>
+    private readonly Action<string> tellLine;
 
     private void OnWritten(object? sender, ConsoleWritten written)
     {
@@ -533,28 +537,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
             UiThread.Post(() => OutputReceived?.Invoke(this, output));
         });
 
-    /// <summary>The longest line told whole; a longer one is told in pieces, so what a program writes with no line end
-    /// is never held whole, nor copied again with each batch, while someone listens.</summary>
-    private const int LongestLine = 16 * 1024;
-
-    /// <summary>Tells each line a stream's stretch of a batch ends, at '\n' or a lone '\r' (the console has made "\r\n" one
-    /// '\n'), after what that stream began before it in <paramref name="partialLine"/>.</summary>
-    private void Lines(ReadOnlySpan<char> text, StringBuilder partialLine)
-    {
-        ReadOnlySpan<char> rest = text;
-        while (rest.Length > 0)
-        {
-            int end = rest.IndexOfAny('\n', '\r');
-            int taken = Math.Min(end < 0 ? rest.Length : end, LongestLine - partialLine.Length);
-            partialLine.Append(rest[..taken]);
-            if (taken == end || partialLine.Length == LongestLine)
-            {
-                Line?.Invoke(this, partialLine.ToString());
-                partialLine.Clear();
-            }
-            rest = rest[(taken == end ? taken + 1 : taken)..];
-        }
-    }
+    private void Lines(ReadOnlySpan<char> text, StringBuilder partialLine) => ConsoleLines.Split(text, partialLine, tellLine);
 }
 
 public sealed record ProcessOutput(string Text, bool IsError);

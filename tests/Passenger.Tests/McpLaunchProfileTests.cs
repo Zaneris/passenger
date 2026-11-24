@@ -28,7 +28,7 @@ public sealed class McpLaunchProfileTests : McpRig, IClassFixture<RestoredFolder
         JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = "Both", ["waitSeconds"] = 120 });
         string status = ran.GetProperty("status").GetString()!;
         string output = ran.GetProperty("output").GetString()!;
-        Assert.True(status == "Running Both: Api: second and Worker, each in a tab of the Terminal window. Api: second ended with exit code 0; Worker ended with exit code 3",
+        Assert.True(status == "Running Both: Api: second and Worker, each in a tab of the Run window. Api: second ended with exit code 0; Worker ended with exit code 3",
             $"run of the profile did not say how each of its projects ended: {ran}");
         int[] places = [.. ((string[])["Api: second:\n", "Api says second", "Worker:\n", "Worker up"]).Select(said => output.IndexOf(said, StringComparison.Ordinal))];
         Assert.True(places[0] >= 0 && places.SequenceEqual(places.Order()),

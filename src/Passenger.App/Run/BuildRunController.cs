@@ -300,7 +300,7 @@ public sealed partial class BuildRunController
     public bool IsBuilding => building is not null;
 
     /// <summary>Whether a program Run started runs, in the Run window or the terminal, or an AppHost it started.</summary>
-    public bool IsRunning => session.Aspire.IsRunning || RunsInConsole || copyRuns.Any(c => c.Run.IsRunning);
+    public bool IsRunning => session.Aspire.IsRunning || RunsInConsole || copyRuns.Any(c => c.Run.IsRunning) || partRuns.Any(p => p.IsRunning);
 
     /// <summary>The copies of a Godot game Run runs side by side, each in a tab of the Terminal window, by its configuration's
     /// name (<see cref="GameCopies"/>): Stop ends them together.</summary>
@@ -1091,6 +1091,9 @@ public sealed partial class BuildRunController
     /// its last run kept goes as another run takes the console.</summary>
     public void ShowInRun(RunDashboard? shown)
     {
+        // The console comes back in place of a run of several parts' tabs, those of parts still running kept for Stop.
+        EndPartRuns(ended: true);
+        parts.Views.RunWindow.ShowParts([]);
         if (parts.Views.RunWindow.Dashboard is { Kept: true } kept && kept != shown)
         {
             kept.Dispose();
@@ -1751,7 +1754,7 @@ public sealed partial class BuildRunController
     /// <summary>Whether Run runs the Godot game of configuration <paramref name="name"/>, or the copy of one so named, or a
     /// multi-project configuration's project of that name, with Hot Reload through the debugger.</summary>
     public bool RunsGameWithHotReload(string name) =>
-        (RunsOwnProgram(name) && session.RunPlan is { Godot: not null, GodotEditor: false } || copyRuns.Any(c => c.Run.Name == name))
+        (RunsOwnProgram(name) && session.RunPlan is { Godot: not null, GodotEditor: false } || copyRuns.Any(c => c.Run.Name == name) || partRuns.Any(p => p.Name == name && p.Project is not null))
         && session.Debug.Running.Any(r => r.Name == name);
 
     /// <summary>Restarts the Godot game Run runs with Hot Reload so the edits Hot Reload could not apply run: built and started
@@ -1762,6 +1765,11 @@ public sealed partial class BuildRunController
         if (!RunsGameWithHotReload(name))
         {
             return false;
+        }
+        if (partRuns.FirstOrDefault(p => p.Name == name && p.Project is not null) is { } part)
+        {
+            parts.Say($"Hot Reload: restarting {name} to apply the changes");
+            return await RestartPartAsync(part);
         }
         if (copyRuns.FirstOrDefault(c => c.Run.Name == name) is { Run: { } copy } run)
         {
@@ -3147,10 +3155,11 @@ public sealed partial class BuildRunController
         Task ran = session.RunProgram.IsRunning ? session.RunProgram.Ended : Task.CompletedTask;
         session.RunProgram.Stop();
         Task copies = EndCopyRunsAsync();
+        Task partsRun = EndPartRunsAsync();
         session.Profiled?.Kill();
         session.Builder.Stop();
         Task played = parts.StopInGodotEditor?.Invoke() ?? Task.CompletedTask;
-        return Task.WhenAll(containers, aspire, ran, copies, played);
+        return Task.WhenAll(containers, aspire, ran, copies, partsRun, played);
     }
 
     /// <summary>Rerun's stop: Run's own start under way and the program it started (in the Run window or the terminal, or its
@@ -3162,6 +3171,7 @@ public sealed partial class BuildRunController
         IdeErrors.Observe(session.StopContainersAsync());
         session.RunProgram.Stop();
         IdeErrors.Observe(EndCopyRunsAsync());
+        IdeErrors.Observe(EndPartRunsAsync());
     }
 
     /// <summary>Whether a run of a configuration is up: Run's program (in the Run window or the terminal) or container run,
@@ -3170,6 +3180,7 @@ public sealed partial class BuildRunController
     public bool IsRunningConfiguration(string name) =>
         RunsInConsole && (Containers?.Plan.Name ?? ran) == name
         || copyRuns.Any(c => c.Configuration == name && c.Run.IsRunning)
+        || partRuns.Any(p => p.Run == name && p.IsRunning)
         || session.Debug.CopiesOf(name).Any(c => debugged.ContainsKey(c.Tab.Name) || profileTabs.ContainsKey(c.Tab.Name))
         || session.Profiled is { Run.HasExited: false } profiled && profiled.Name == name;
 

@@ -270,12 +270,13 @@ public static class RunsFile
     };
 
     /// <summary>The name a part goes by where it names none of its own: a .NET project's file name and launch profile, a
-    /// script's package folder and script, an install's package folder, a command's program.</summary>
-    public static string NameOf(RunPart part) => part.Name.Length > 0 ? part.Name : part.Kind switch
+    /// script's package and script, an install's package (by the name <paramref name="packageOf"/> gives a package.json, else
+    /// its folder's), a command's program.</summary>
+    public static string NameOf(RunPart part, Func<string, string?>? packageOf = null) => part.Name.Length > 0 ? part.Name : part.Kind switch
     {
         RunPartKind.Project => part.LaunchProfile.Length > 0 ? $"{Path.GetFileNameWithoutExtension(part.Project)}: {part.LaunchProfile}" : Path.GetFileNameWithoutExtension(part.Project),
-        RunPartKind.Script => $"{PackageName(part.Project)}: {part.Script}",
-        RunPartKind.Install => $"{PackageName(part.Project)}: install",
+        RunPartKind.Script => $"{packageOf?.Invoke(part.Project) ?? PackageName(part.Project)}: {part.Script}",
+        RunPartKind.Install => $"{packageOf?.Invoke(part.Project) ?? PackageName(part.Project)}: install",
         _ => ProgramOf(part.Command) is { Length: > 0 } program ? Path.GetFileNameWithoutExtension(program) : "command",
     };
 

@@ -3,7 +3,9 @@
 A run of several parts starts what an app needs together, set up once in Edit Configurations (Add New Configuration ›
 Several Parts) and started by one Run or Debug: .NET projects, a package.json script run by its own package manager, a
 package's dependencies installed by it, and commands. Each part starts once the one before it is ready, and Stop ends
-them all.
+them all. Each part not debugged has a tab of its own in the Run window (or the Terminal window, where its .NET project's
+configuration runs in the terminal), saying where it stands; a tab's Rerun restarts its part alone, the others running
+on, and its Stop ends that part alone. Debug debugs each .NET project set to Start, each in a Debug tab of its own.
 
 Where a run holds only .NET projects of the solution, each with nothing but its action and launch profile, it is kept in
 the solution's `.slnLaunch` (the person's own in `.slnLaunch.user`), as Visual Studio writes and reads it. Any other run

@@ -65,6 +65,9 @@ public partial class MainWindow
     /// <summary>The program Run last started, when it runs in the terminal; null when the last ran in the Run window.</summary>
     public TerminalRun? RunInTerminal => session.InTerminal;
 
+    /// <summary>The parts of runs of several parts in tabs of the Run window, in the order they started.</summary>
+    public IReadOnlyList<PartRun> RunParts => buildRun.PartRuns;
+
     /// <summary>The copies of a Godot game Run runs, each in its tab of the Terminal window.</summary>
     public IReadOnlyList<TerminalRun> RunCopies => buildRun.CopyRuns;
 

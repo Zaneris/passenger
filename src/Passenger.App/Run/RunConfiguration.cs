@@ -323,6 +323,10 @@ public sealed record RunConfiguration
             {
                 return $"{name} waits for a line of its output but says no pattern for it";
             }
+            if (start.Ready == ReadyWhen.Listening && start.ReadyText.Length == 0 && start.Kind != RunPartKind.Project)
+            {
+                return $"{name} waits for something to listen but names no address";
+            }
             if (start.Kind != RunPartKind.Project)
             {
                 continue;

@@ -206,7 +206,7 @@ public sealed class SolutionLaunchTests : IDisposable
             "A part's action, launch profile or script is not read as written, so the run starts what its file does not say");
         Assert.True(web[3].Command == "redis-server --port 6380" && web[3].Folder == At("tools") && web[3].Environment.Count == 2 && web[3].Environment["B"] == "2",
             "A command's folder or variables are not read as written");
-        Assert.Equal(["web: install", "web: build:watch", "Api: https", "redis-server"], web.Select(RunsFile.NameOf));
+        Assert.Equal(["web: install", "web: build:watch", "Api: https", "redis-server"], web.Select(p => RunsFile.NameOf(p)));
         Assert.True(web.All(p => p.Unread is null) && runs[1].Parts.All(p => p.Unread is not null),
             "A part of a kind or readiness Passenger does not know is not said to be one, so its run would start something else");
         Assert.False(web.All(p => p.FitsSolutionLaunch), "A run of a script and a command is taken for one Visual Studio's file can hold");

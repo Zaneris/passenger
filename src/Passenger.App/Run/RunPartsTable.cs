@@ -63,7 +63,7 @@ public sealed class RunPartsTable : EditableTable
     public static readonly IReadOnlyList<string> ActionWords = ["Start", "Start without debugging", "None"];
 
     /// <summary>Each readiness's words, in <see cref="ReadyWhen"/>'s order.</summary>
-    public static readonly IReadOnlyList<string> ReadyWords = ["Started", "Ended with 0", "A line matches", "Listening"];
+    public static readonly IReadOnlyList<string> ReadyWords = ["Started", "Exited OK", "Prints a line", "Listening"];
 
     private const string DefaultProfile = "Default";
 
@@ -72,6 +72,7 @@ public sealed class RunPartsTable : EditableTable
     /// <summary>How a folder a part names is shown in a field, and read from one: relative to the open folder.</summary>
     private Func<string, string> shown = path => path;
     private Func<string?, string> full = path => path ?? string.Empty;
+    private Func<RunPart, string> nameOf = part => RunsFile.NameOf(part);
 
     /// <summary>Its columns: the part, its action (wide enough for its longest), its readiness, and its buttons.</summary>
     public RunPartsTable()
@@ -85,16 +86,17 @@ public sealed class RunPartsTable : EditableTable
     /// <paramref name="profilesOf"/> lists a project's launch profiles, <paramref name="shownAs"/> and <paramref name="fullFrom"/>
     /// write a folder for a field and read one back.</summary>
     public void Set(IReadOnlyList<RunPart> parts, IReadOnlyList<ProjectModel> projects, Func<ProjectModel, IReadOnlyList<string>> profilesOf,
-        Func<string, string> shownAs, Func<string?, string> fullFrom) => Setting(() =>
+        Func<string, string> shownAs, Func<string?, string> fullFrom, Func<RunPart, string>? named = null) => Setting(() =>
     {
         shown = shownAs;
         full = fullFrom;
+        nameOf = named ?? (part => RunsFile.NameOf(part));
         rows.Clear();
         Table.Children.Clear();
         foreach (RunPart part in parts)
         {
             ProjectModel? project = part.Kind == RunPartKind.Project ? projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, part.Project)) : null;
-            Add(part, part.Kind == RunPartKind.Project ? project?.Name : RunsFile.NameOf(part), project is null ? [] : profilesOf(project), part);
+            Add(part, part.Kind == RunPartKind.Project ? project?.Name : nameOf(part), project is null ? [] : profilesOf(project), part);
         }
         foreach (ProjectModel project in projects.Where(p => !parts.Any(s => s.Kind == RunPartKind.Project && Core.PathNames.Same(s.Project, p.Path))))
         {
@@ -108,7 +110,7 @@ public sealed class RunPartsTable : EditableTable
     public void AddPart(RunPart part)
     {
         int at = rows.FindLastIndex(r => r.Was is not null || r.Part.Kind != RunPartKind.Project) + 1;
-        Row row = Add(part, RunsFile.NameOf(part), [], part, at);
+        Row row = Add(part, nameOf(part), [], part, at);
         row.Details.IsChecked = true;
         Ends();
         SayInstead(null);
@@ -284,7 +286,7 @@ public sealed class RunPartsTable : EditableTable
                     (p, t) => p with { Folder = t.Trim().Length > 0 ? full(t.Trim()) : string.Empty })));
                 break;
         }
-        form.Children.Add(FormRows.Of("Name", Field("Name", part.Name, RunsFile.NameOf(part with { Name = string.Empty }), (p, t) => p with { Name = t.Trim() })));
+        form.Children.Add(FormRows.Of("Name", Field("Name", part.Name, nameOf(part with { Name = string.Empty }), (p, t) => p with { Name = t.Trim() })));
         Control line = FormRows.Of("Pattern", Typed("Pattern", row.Line, "A regular expression a line of its output matches", typed => row.Line = typed));
         Control address = FormRows.Of("Address", Typed("Address", row.Address, part.Kind == RunPartKind.Project ? "Where its host says it listens" : "http://localhost:5173",
             typed => row.Address = typed.Trim()));

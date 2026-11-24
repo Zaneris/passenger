@@ -30,6 +30,9 @@ public sealed class NodeScriptsTests
         OpenWindows.CloseAll();
         Flow.Step(nameof(A_scripts_arguments_reach_its_package_manager_word_for_word_through_cmds_operators_and_variables_in_the_Run_window_and_the_Terminal),
             A_scripts_arguments_reach_its_package_manager_word_for_word_through_cmds_operators_and_variables_in_the_Run_window_and_the_Terminal);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_run_of_several_parts_installs_with_the_packages_manager_then_starts_each_script_once_the_one_before_is_ready),
+            A_run_of_several_parts_installs_with_the_packages_manager_then_starts_each_script_once_the_one_before_is_ready);
     }
 
     private void A_pnpm_monorepos_packages_show_their_manager_and_each_script_runs_with_pnpm_in_the_Run_window_until_stopped()
@@ -152,6 +155,47 @@ public sealed class NodeScriptsTests
 
         static string Shown(TerminalRun run) =>
             string.Join('\n', run.Session.Screen.Scrollback.Select(l => l.Text()).Concat(run.Session.Screen.Lines.Select(l => l.Text())));
+    }
+
+    /// <summary>A run of several parts in the folder's passenger-runs.json: the package's install, then its dev script, which
+    /// the part after it waits for until it says what it runs, then its build script, each by pnpm (a stand-in saying what it
+    /// was given) in a tab of the Run window of its own, named by the package's name.</summary>
+    private void A_run_of_several_parts_installs_with_the_packages_manager_then_starts_each_script_once_the_one_before_is_ready()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("node-parts-"));
+        string tools = Path.Combine(folder, "tools");
+        string node = TestFolders.StandIn(tools, "node", "echo v22.12.0", "echo v22.12.0");
+        TestFolders.StandIn(tools, "pnpm", "echo stand-in pnpm %*", "echo \"stand-in pnpm $*\"");
+        TestFolders.Write(folder, "package.json", """{ "name": "site", "scripts": { "dev": "vite", "build": "vite build" } }""");
+        TestFolders.Write(folder, "pnpm-lock.yaml", "lockfileVersion: '9.0'\n");
+        TestFolders.Write(folder, Passenger.Workspace.RunsFile.FileName, """
+            { "passengerRuns": 1, "runs": [ { "name": "Site", "parts": [
+              { "install": "package.json" },
+              { "script": "dev", "package": "package.json", "readyWhen": { "line": "pnpm.*dev" } },
+              { "script": "build", "package": "package.json" }
+            ] } ] }
+            """);
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, Autosaves = false };
+        window.Show();
+        try
+        {
+            window.ApplySettings(window.Settings with { NodeInterpreter = node });
+            window.OpenFolder(folder);
+            Ui.WaitFor(() => window.SelectConfiguration("Site"), () => $"the folder's run to be listed ({string.Join(", ", window.Configurations.Select(c => c.Name))})");
+            Ui.Launched(window, window.RunAsync(), "the run's parts in the Run window");
+            Ui.WaitFor(() => window.RunParts.Select(p => p.Name).SequenceEqual(["site: install", "site: dev", "site: build"]) && window.RunParts.All(p => !p.IsRunning)
+                    && window.RunParts[2].Runner.Shown().ToString().Contains("stand-in pnpm run build", StringComparison.Ordinal),
+                () => $"each part to run by pnpm in its own tab, in turn ({string.Join("; ", window.RunParts.Select(p => $"{p.Name} {p.Said}: {p.Runner.Shown()}"))}; {window.Status})");
+            Assert.True(window.RunParts[0].Runner.Shown().ToString().Contains("stand-in pnpm install", StringComparison.Ordinal)
+                && window.RunParts[1].Runner.Shown().ToString().Contains("stand-in pnpm run dev", StringComparison.Ordinal),
+                $"The install or the dev script was not run by the package's own manager: {string.Join("; ", window.RunParts.Select(p => p.Runner.Shown().ToString()))}");
+            Assert.True(window.Status == "Running Site: site: install, site: dev and site: build, each in a tab of the Run window", $"The status bar says {window.Status}");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
     }
 
     [AvaloniaFact]

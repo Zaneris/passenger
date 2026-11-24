@@ -2,18 +2,27 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
+using Passenger.App.Run;
 using Passenger.App.Telemetry;
 
 namespace Passenger.App.ToolWindows;
 
 /// <summary>The Run window: its console, and while its run collects logs and traces (<see cref="Dashboard"/>), the run's
-/// Telemetry beside it, Console and Telemetry tabs over the two; with no records to show, the console alone.</summary>
+/// Telemetry beside it, Console and Telemetry tabs over the two; with no records to show, the console alone. While a run of
+/// several parts is the last started, a tab of each part's own console in their place (<see cref="ShowParts"/>), each saying
+/// where its part stands.</summary>
 public sealed class RunPane : DockPanel
 {
     private readonly Border tabBar;
     /// <summary>The Console and Telemetry tabs, the latter's key true.</summary>
     private readonly ToolTabs.Strip<bool> tabs = new() { Margin = new Thickness(Gaps.Normal, 0) };
     private RunDashboard? dashboard;
+
+    /// <summary>The tabs of a run of several parts, a part's console each.</summary>
+    private readonly ToolTabs.Strip<PartRun> partTabs = new() { Margin = new Thickness(Gaps.Normal, 0) };
+    private readonly Border partBar;
+    private readonly Panel consoles;
+    private readonly List<PartRun> parts = [];
 
     public RunPane(OutputView console)
     {
@@ -27,7 +36,78 @@ public sealed class RunPane : DockPanel
         tabBar.IsVisible = false;
         Telemetry.IsVisible = false;
         Children.Add(tabBar);
-        Children.Add(new Panel { Children = { console, Telemetry } });
+        partTabs.Chosen += (_, part) => ShowPart(part);
+        partBar = ToolBars.Top(new ScrollViewer { Content = partTabs, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled });
+        partBar[DockProperty] = Dock.Top;
+        partBar.IsVisible = false;
+        Children.Add(partBar);
+        consoles = new Panel { Children = { console, Telemetry } };
+        Children.Add(consoles);
+    }
+
+    /// <summary>The parts whose consoles it shows, in their order; none while the console shows.</summary>
+    public IReadOnlyList<PartRun> Parts => parts;
+
+    /// <summary>The part whose console is shown, or null while the console is.</summary>
+    public PartRun? ShownPart => parts.Count > 0 && partTabs.HasChoice ? partTabs.Choice : null;
+
+    /// <summary>Shows a run of several parts' consoles, a tab of each in their order, the first chosen; none puts the console
+    /// (and its Telemetry) back.</summary>
+    public void ShowParts(IReadOnlyList<PartRun> shown)
+    {
+        foreach (PartRun part in parts)
+        {
+            part.StateChanged -= OnStateChanged;
+            consoles.Children.Remove(part.Console);
+        }
+        parts.Clear();
+        partTabs.Clear();
+        foreach (PartRun part in shown)
+        {
+            parts.Add(part);
+            TextBlock state = new() { Text = part.Said, Classes = { StyleClasses.Muted } };
+            partTabs.Add(part, new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Children = { new TextBlock { Text = part.Name }, state } },
+                name: $"runPart{part.Place}Tab");
+            part.StateChanged += OnStateChanged;
+            part.Console.IsVisible = false;
+            consoles.Children.Add(part.Console);
+        }
+        partBar.IsVisible = parts.Count > 0;
+        if (parts.Count > 0)
+        {
+            tabBar.IsVisible = false;
+            ShowPart(parts[0]);
+        }
+        else
+        {
+            Console.IsVisible = true;
+            Follow();
+        }
+    }
+
+    /// <summary>Shows a part's console, its tab chosen.</summary>
+    public void ShowPart(PartRun part)
+    {
+        if (!parts.Contains(part))
+        {
+            return;
+        }
+        partTabs.Choice = part;
+        Console.IsVisible = false;
+        Telemetry.IsVisible = false;
+        foreach (PartRun each in parts)
+        {
+            each.Console.IsVisible = each == part;
+        }
+    }
+
+    /// <summary>A part's tab says where it stands now.</summary>
+    private void OnStateChanged(object? sender, EventArgs e)
+    {
+        if (sender is PartRun part && parts.Contains(part) && partTabs[part].Content is StackPanel { Children: [_, TextBlock state] })
+        {
+            state.Text = part.Said;
+        }
     }
 
     public OutputView Console { get; }
@@ -55,7 +135,7 @@ public sealed class RunPane : DockPanel
     {
         TelemetrySource? source = dashboard?.Telemetry;
         Telemetry.Source = source;
-        tabBar.IsVisible = source is not null;
+        tabBar.IsVisible = source is not null && parts.Count == 0;
         if (source is null)
         {
             Show(telemetry: false);
@@ -65,6 +145,10 @@ public sealed class RunPane : DockPanel
     /// <summary>Shows the Telemetry tab, or the console.</summary>
     public void Show(bool telemetry)
     {
+        if (parts.Count > 0)
+        {
+            return;
+        }
         bool shown = telemetry && Telemetry.Source is not null;
         tabs.Choice = shown;
         Console.IsVisible = !shown;

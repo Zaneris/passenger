@@ -163,13 +163,16 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         Index = configuration.RunRead?.Index ?? -1,
     };
 
+    /// <summary>The name a part goes by (<see cref="RunsFile.NameOf"/>), a script's or install's package by its own name.</summary>
+    public string NameOf(RunPart part) => RunsFile.NameOf(part, manifest => Packages.FirstOrDefault(p => PathNames.Same(p.Manifest, manifest))?.Name);
+
     /// <summary>A part as an agent is told it: a .NET project by its file's name, its action and launch profile ("Api Start in
     /// https"), any other by its name and kind, then the wait it makes for the parts after it.</summary>
-    public static string Said(RunPart part)
+    public string Said(RunPart part)
     {
         string what = part.Kind == RunPartKind.Project
             ? $"{(part.Name.Length > 0 ? part.Name : Path.GetFileNameWithoutExtension(part.Project))} {part.Action?.ToString() ?? "(unknown action)"}{(part.LaunchProfile.Length > 0 ? $" in {part.LaunchProfile}" : string.Empty)}"
-            : $"{RunsFile.NameOf(part)} ({RunPartsTable.KindWords(part.Kind)}{(part.Action == ProjectLaunchAction.None ? ", None" : string.Empty)})";
+            : $"{NameOf(part)} ({RunPartsTable.KindWords(part.Kind)}{(part.Action == ProjectLaunchAction.None ? ", None" : string.Empty)})";
         string ready = part.Ready switch
         {
             ReadyWhen.Exited => ", next once it ends with 0",
