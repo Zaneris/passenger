@@ -5,7 +5,8 @@ namespace Passenger.UnitTests.Vcs;
 /// <summary>What Git reads of git's answers and gives it, apart from any git: the working tree's top as rev-parse names
 /// it, a space it ends with kept, a path as git takes it, a backslash a letter of its name off Windows, why git did not
 /// start, why its output could not be read, a tag's name, a tag and a tag's push as git takes and writes them,
-/// worktrees as git lists them, and remotes as git's config writes them.</summary>
+/// worktrees as git lists them, remotes as git's config writes them, and a stretch's authors from a blame carried
+/// through the edits since.</summary>
 public class GitTests
 {
     [Fact]
@@ -17,7 +18,33 @@ public class GitTests
         ("a read of gits output that failed is a failure in the systems words never git missing nor unstarted", A_read_of_gits_output_that_failed_is_a_failure_in_the_systems_words_never_git_missing_nor_unstarted),
         ("a tags name is refused where git refuses it and a tag and a push its remote refused are read as git writes them", A_tags_name_is_refused_where_git_refuses_it_and_a_tag_and_a_push_its_remote_refused_are_read_as_git_writes_them),
         ("worktrees are read as git lists them and a new ones folder goes beside the main one named for its branch", Worktrees_are_read_as_git_lists_them_and_a_new_ones_folder_goes_beside_the_main_one_named_for_its_branch),
-        ("remotes are read with their urls as gits config writes them and a name or url git takes no remote by is refused", Remotes_are_read_with_their_urls_as_gits_config_writes_them_and_a_name_or_url_git_takes_no_remote_by_is_refused));
+        ("remotes are read with their urls as gits config writes them and a name or url git takes no remote by is refused", Remotes_are_read_with_their_urls_as_gits_config_writes_them_and_a_name_or_url_git_takes_no_remote_by_is_refused),
+        ("a stretchs authors are its committers from a blame carried through edits that marks the lines they touched not committed", A_stretchs_authors_are_its_committers_from_a_blame_carried_through_edits_that_marks_the_lines_they_touched_not_committed));
+
+    /// <summary>A blame carried through edits keeps each untouched line's commit where the line went, a line an edit touched
+    /// or made not committed yet, taken in only as it is read; a stretch's authors are its committers, the one of most lines
+    /// first with how many others, its newest commit the latest, and a stretch of no commit says so.</summary>
+    private void A_stretchs_authors_are_its_committers_from_a_blame_carried_through_edits_that_marks_the_lines_they_touched_not_committed()
+    {
+        BlameLine ada = new(new string('a', 40), "Ada", DateTimeOffset.FromUnixTimeSeconds(100), "First");
+        BlameLine grace = new(new string('b', 40), "Grace", DateTimeOffset.FromUnixTimeSeconds(200), "Second");
+        Passenger.Text.TextDocument document = new("one\ntwo\nthree\nfour\n");
+        Passenger.App.Vcs.CarriedBlame carried = new([ada, grace, ada, ada], document.Snapshot);
+        document.Changed += (_, change) => carried.Follow(change);
+        Passenger.Text.TextSnapshot before = document.Snapshot;
+        // A line put in above the second, and the fourth typed into.
+        document.Edit([new Passenger.Text.TextEdit(before.GetLineStart(1), 0, "new\n"), new Passenger.Text.TextEdit(before.GetLineStart(3) + 2, 0, "x")],
+            Passenger.Text.SelectionSet.Single(0), Passenger.Text.SelectionSet.Single(0));
+        IReadOnlyList<BlameLine> now = carried.Now(document.Snapshot) ?? throw new InvalidOperationException("The blame carried no further than the text blamed");
+        string read = string.Join(", ", now.Select(l => l.IsCommitted ? l.Author : "-"));
+        Assert.True(read == "Ada, -, Grace, Ada, -", $"The blame carried through the edits reads \"{read}\", not \"Ada, -, Grace, Ada, -\"");
+
+        StretchAuthors? whole = BlameAuthors.Of(now, 0, 4);
+        Assert.True(whole is { Label: "Ada +1", IsCommitted: true } && whole.Latest == grace,
+            $"Lines 1 to 5's authors are {whole?.Label} with {whole?.Latest.Summary} newest, not Ada +1 with Second");
+        Assert.True(BlameAuthors.Of(now, 1, 1) is { Label: BlameAuthors.NotCommitted, IsCommitted: false }, "A stretch of no commit names an author");
+        Assert.Null(BlameAuthors.Of(now, 7, 9));
+    }
 
     private void The_working_trees_top_and_gits_folder_keep_the_spaces_their_names_begin_or_end_with()
     {

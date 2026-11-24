@@ -284,6 +284,7 @@ public partial class MainWindow
     private void Bind(ProjectSession next)
     {
         session = next;
+        signposts?.Bind(next.Vcs);
         // The tool windows follow what the folder holds, before anything of the session shows one.
         Dock.Serve();
         next.HoldsChanged += (_, _) =>
@@ -636,6 +637,13 @@ public partial class MainWindow
             service.ProjectsLoaded += (_, _) => RoutesProjectsLoaded(service);
             service.StateChanged += (_, _) => StepsServerChanged(service);
             service.ProjectsLoaded += (_, _) => StepsServerChanged(service, loaded: true);
+            service.ProjectsLoaded += (_, _) =>
+            {
+                if (service == session.CSharp)
+                {
+                    signposts?.Recount();
+                }
+            };
             service.StateChanged += (_, _) =>
             {
                 // Ready, as it loaded the folder's projects: the open AppHosts' resources are read from it once.

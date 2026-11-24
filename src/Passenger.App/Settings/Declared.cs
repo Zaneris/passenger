@@ -253,6 +253,22 @@ public static class Declared
     public static readonly ToggleSetting TypeHints = new(s => s.TypeHints, (s, v) => s with { TypeHints = v },
         new(D.EditorPage, "Show type name hints", "inlay hints type names var lambda parameters new inferred"));
 
+    public static readonly ToggleSetting Signposts = new(s => s.Signposts, (s, v) => s with { Signposts = v },
+        new(D.EditorPage, "Show signposts above types and members", "signposts code vision lens usages references implementations overrides inheritors authors git blame hints above declarations",
+            "A row above each C# type and member says how many places use it, what implements or overrides it, and who changed it most; "
+            + "a press shows them. The language server searches the solution for those on screen as typing and scrolling pause, "
+            + "which in a large solution takes processor time, and Git blames each open file once, again as it is saved."));
+
+    public static readonly ToggleSetting SignpostUsages = new(s => s.SignpostUsages, (s, v) => s with { SignpostUsages = v },
+        new(D.EditorPage, "Signposts: usages", "signposts usages references count") { When = new(s => s.Signposts, "Signposts are off") });
+
+    public static readonly ToggleSetting SignpostInheriting = new(s => s.SignpostInheriting, (s, v) => s with { SignpostInheriting = v },
+        new(D.EditorPage, "Signposts: implementations and overrides", "signposts implementations overrides inheritors interface abstract virtual")
+        { When = new(s => s.Signposts, "Signposts are off") });
+
+    public static readonly ToggleSetting SignpostAuthors = new(s => s.SignpostAuthors, (s, v) => s with { SignpostAuthors = v },
+        new(D.EditorPage, "Signposts: authors", "signposts authors git blame last changed who") { When = new(s => s.Signposts, "Signposts are off") });
+
     public static readonly ToggleSetting SoftWrapIndent = new(s => s.SoftWrapIndent, (s, v) => s with { SoftWrapIndent = v },
         new(D.EditorPage, "Use the original line's indent for wrapped fragments", "soft wrap wrapped indent indentation fragments"));
 

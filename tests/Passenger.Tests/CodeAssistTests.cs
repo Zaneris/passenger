@@ -111,8 +111,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>Find Usages groups, previews and keeps each search, lists each place once and gives its results the
-    /// keys; Show Usages hands them to the Find window; a file another program has just written lists its caller; and
-    /// the call hierarchy finds callers at a use in another file and a record's positional property.</summary>
+    /// keys; Show Usages hands them to the Find window; a file another program has just written lists its caller; the
+    /// call hierarchy finds callers at a use in another file and a record's positional property; and the signposts above
+    /// each type and member count what uses and implements it.</summary>
     [AvaloniaFact]
     public void Usages_and_callers_are_listed_once_each_given_the_keys_and_followed_into_a_file_just_written()
     {
@@ -121,6 +122,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("Find Usages gives its results the keys, so Down and Enter open the next usage", () => new CodeAssistTests(project), t => t.Find_usages_gives_its_results_the_keys_so_Down_and_Enter_open_the_next_usage());
         Flow.StepApart("Find Usages in a file another program has just written lists the caller it wrote beside it", () => new CodeAssistTests(project), t => t.Find_usages_in_a_file_another_program_has_just_written_lists_the_caller_it_wrote_beside_it());
         Flow.StepApart("the call hierarchy at a use in another file and at a record's positional property shows its callers", () => new CodeAssistTests(project), t => t.Call_hierarchy_at_a_use_in_another_file_and_at_a_records_positional_property_shows_its_callers());
+        Flow.StepApart("signposts above each type and member count what uses and implements it, a press shows them and Settings turns them off", () => new CodeAssistTests(project), t => t.Signposts_above_each_type_and_member_count_what_uses_and_implements_it_a_press_shows_them_and_settings_turns_them_off());
     }
 
     /// <summary>Reformat Code of a method, on save as one step of Undo or turned off, changes only its own file and
@@ -1115,6 +1117,53 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>Show Usages, from its keys, lists the usages Find Usages finds in a popup under the caret, framed as every
     /// popup is, the declaration first with what each does and the usage in its line; Enter goes to the one chosen, and its
     /// link hands the usages to the Find window.</summary>
+    private void Signposts_above_each_type_and_member_count_what_uses_and_implements_it_a_press_shows_them_and_settings_turns_them_off()
+    {
+        MainWindow window = project.Open("Shapes.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string Said(int line) => string.Join(" / ", editor.RowsAbove.Where(r => editor.Document.Snapshot.GetLineFromOffset(r.Offset) == line).SelectMany(r => r.Words).Select(w => w.Text));
+        Ui.WaitFor(() => Said(0) == "1 usage / 1 implementation" && Said(2) == "no usages / 1 implementation",
+            () => $"the signposts counted: IShape's says '{Said(0)}' and Sides' '{Said(2)}', where they say '1 usage / 1 implementation' and 'no usages / 1 implementation'");
+        Assert.True(Said(5) == "no usages" && Said(7) == "no usages", $"Square's signpost says '{Said(5)}' and its Sides' '{Said(7)}', where nothing uses either");
+        Assert.True(Math.Abs(editor.PointOf(0).Y + editor.ScrollOffset.Y - editor.LineHeight) < 0.5, "IShape's declaration is not a row lower for its signpost");
+
+        Ui.Click(editor, editor.RowAbovePoint(2, 0, 1) ?? throw new InvalidOperationException("Sides' signpost is not drawn"));
+        Ui.WaitFor(() => editor.CaretPosition.Line == 7, () => $"Go to Implementation from Sides' signpost: the caret is on line {editor.CaretPosition.Line + 1}");
+        Ui.Click(editor, editor.RowAbovePoint(0, 0, 0) ?? throw new InvalidOperationException("IShape's signpost is not drawn"));
+        Ui.WaitFor(() => window.Popup is UsagesPopup || editor.CaretPosition.Line == 5,
+            () => $"Show Usages from IShape's signpost: the caret is on line {editor.CaretPosition.Line + 1} and the popup is {window.Popup?.GetType().Name ?? "none"}");
+        Assert.True(window.Popup is not UsagesPopup listed || listed.Rows.Count == 1,
+            $"Show Usages from IShape's signpost lists {(window.Popup as UsagesPopup)?.Rows.Count} places, where its signpost counts 1 use");
+        Ui.Press(window, "ESCAPE");
+
+        Assert.True(window.Settings.Signposts, "Signposts are off by default");
+        Passenger.App.Settings.SettingsDialog settingsDialog = window.ShowSettings();
+        Ui.Settle();
+        settingsDialog.Query = "signposts";
+        Ui.Settle();
+        Assert.Contains("Show signposts above types and members", settingsDialog.Shown);
+        settingsDialog.Change(s => s with { Signposts = false });
+        Ui.Settle();
+        Assert.True(editor.RowsAbove.Count == 0 && window.Settings.Signposts, "Turned off in Settings, not yet applied, the signposts still stood above the code");
+        settingsDialog.Close();
+        Ui.WaitFor(() => Said(0) == "1 usage / 1 implementation", () => $"IShape's signpost back as Settings closed: '{Said(0)}'");
+
+        AppSettings before = window.Settings;
+        try
+        {
+            window.ApplySettings(before with { SignpostUsages = false });
+            Ui.WaitFor(() => Said(0) == "1 implementation", () => $"IShape's signpost without its usages says '{Said(0)}'");
+            window.ApplySettings(before with { Signposts = false });
+            Ui.Settle();
+            Assert.True(editor.RowsAbove.Count == 0 && Math.Abs(editor.PointOf(0).Y + editor.ScrollOffset.Y) < 0.5, "Signposts turned off left rows above the code");
+        }
+        finally
+        {
+            window.ApplySettings(before);
+            window.Close();
+        }
+    }
+
     private void Show_usages_lists_them_in_a_popup_under_the_caret_goes_to_the_one_chosen_and_hands_them_to_the_find_window()
     {
         MainWindow window = project.Open("Loop.cs");

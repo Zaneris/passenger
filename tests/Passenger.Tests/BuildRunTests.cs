@@ -1773,11 +1773,10 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// <summary>Over a character's left half, in the window, its line scrolled into view first.</summary>
     private static Point At(MainWindow window, CodeEditor editor, int offset)
     {
-        int line = editor.Document.Snapshot.GetLineFromOffset(offset);
         Point top = editor.PointOf(offset);
         if (top.Y < 0 || top.Y + editor.LineHeight > editor.Bounds.Height - 20)
         {
-            editor.ScrollTo(new Vector(0, Math.Max(0, (line * editor.LineHeight) - (editor.Bounds.Height / 3))));
+            editor.ScrollTo(new Vector(0, Math.Max(0, editor.ScrollOffset.Y + top.Y - (editor.Bounds.Height / 3))));
             Ui.Settle();
             top = editor.PointOf(offset);
         }

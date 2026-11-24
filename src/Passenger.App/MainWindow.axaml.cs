@@ -354,6 +354,7 @@ public partial class MainWindow : IdeWindow
             ? bindingValues!.HoverAt(shown, offset)
             : await session.Debug.HoverAt(offset, cancel);
         assist.GutterWords = line => Editors.Active is { } beside ? GutterWordsOf(beside, line) : null;
+        AddSignposts();
         assist.AnnotationCard = (annotation, card) => Editors.Active is { } annotated
             && (session.Debug.PinCard(annotated, annotation, card) || godotValues is { } live && live.Card(annotated, annotation, card));
         // Passenger's own fixes: bindings, compose names, Aspire, configuration and localized keys, Godot's checks; each language's own come from its assist.

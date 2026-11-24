@@ -135,6 +135,7 @@ public partial class MainWindow
             FollowTerminalLook(panel, next, visualSettings);
         }
         session.CSharp?.Hints = (next.ParameterHints, next.TypeHints);
+        signposts?.Follow(next);
         session.Debug.ShowsElapsed = next.ShowElapsedAtStops;
         visualSettings = next;
     }

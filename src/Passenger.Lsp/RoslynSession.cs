@@ -1031,6 +1031,12 @@ public sealed class LspDocument : IDisposable
     public Task<Roslyn.Extension.CallFound> CompletionCallAsync(int offset, CancellationToken cancel = default) =>
         ExtensionAsync<Roslyn.Extension.CallFound>(Roslyn.Extension.Handlers.CompletionCall, new Roslyn.Extension.CallAsked(PlaceOf(offset)), cancel);
 
+    /// <summary>The counts of the signposts above declarations whose names stand at offsets of the text as it stands, in one
+    /// request (<see cref="Roslyn.Extension.SignpostsAsked"/>): each one's own usages and what inherits from it, as asked.</summary>
+    public async Task<IReadOnlyList<Roslyn.Extension.SignpostCount>> SignpostsAsync(IReadOnlyList<int> names, bool usages, bool inheriting, CancellationToken cancel = default) =>
+        (await ExtensionAsync<Roslyn.Extension.SignpostsFound>(Roslyn.Extension.Handlers.Signposts,
+            new Roslyn.Extension.SignpostsAsked([.. names.Select(PlaceOf)], usages, inheriting), cancel).ConfigureAwait(false)).Counts;
+
     /// <summary>An offset as the extension's messages give a place.</summary>
     public Roslyn.Extension.Place PlaceOf(int offset)
     {

@@ -1591,7 +1591,12 @@ public sealed partial class VcsTests : IDisposable
         Assert.Equal("Not committed yet", shop.GutterAnnotations[0]);
 
         CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.Click(editor, new Point(10, (5 * editor.LineHeight) + (editor.LineHeight / 2) - editor.ScrollOffset.Y), settle: false);
+        // The signposts' authors read the blame Annotate shows: the field's newest commit, the first, chosen by a press on it.
+        Ui.WaitFor(() => editor.RowsAbove.Count == 3 && editor.RowsAbove[1].Words[^1].Text == "Passenger Tests",
+            () => $"the field's signpost naming its author: {string.Join(", ", editor.RowsAbove.SelectMany(r => r.Words).Select(w => w.Text))}");
+        Ui.Click(editor, editor.RowAbovePoint(3, 0, editor.RowsAbove[1].Words.Count - 1)!.Value, settle: false);
+        Ui.Landed(() => window.GitLog.Selected?.Hash == first, "the field's newest commit chosen in the log from its signpost");
+        Ui.Click(editor, new Point(10, editor.PointOf(editor.Document.Snapshot.GetLineStart(5)).Y + (editor.LineHeight / 2)), settle: false);
         Ui.Landed(() => window.GitLog.Selected?.Hash == twice, "the commit chosen in the log");
 
         Task closing = window.ToggleAnnotationsAsync(shop);

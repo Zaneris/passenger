@@ -105,6 +105,11 @@ public sealed class CodeAssist
                         quickInfo.ShowAnnotation(annotation, e.Point);
                         return;
                     }
+                    if (e.Above is { } above)
+                    {
+                        quickInfo.ShowAbove(above, e.Point);
+                        return;
+                    }
                     IdeErrors.Observe(e.Hint is { } hint ? quickInfo.ShowHint(hint, e.Point) : quickInfo.Show(e.Offset, e.Point));
                 }
             };
@@ -420,6 +425,13 @@ public sealed class CodeAssist
     {
         get => quickInfo.GutterWords;
         set => quickInfo.GutterWords = value;
+    }
+
+    /// <summary>What a rest over a word of a row above a line says (<see cref="QuickInfo.AboveWords"/>).</summary>
+    public Func<RowAboveWord, string?>? AboveWords
+    {
+        get => quickInfo.AboveWords;
+        set => quickInfo.AboveWords = value;
     }
 
     /// <summary>The window's JavaScript, TypeScript, HTML, CSS and JSON, for a web file shown.</summary>

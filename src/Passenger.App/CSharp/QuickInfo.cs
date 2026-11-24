@@ -90,6 +90,9 @@ internal sealed class QuickInfo
     /// state); null where it says nothing.</summary>
     public Func<int, IReadOnlyList<string>?>? GutterWords { get; set; }
 
+    /// <summary>What a word of a row above a line says more of (a commit's), null where it says nothing.</summary>
+    public Func<RowAboveWord, string?>? AboveWords { get; set; }
+
     /// <summary>Whether a card of a value is in use: it has the keys, its menu is open, or a value is being typed in it.</summary>
     public bool ValuesInUse => hoverCard.IsVisible && hoverCard.Values is { } values && (hoverCard.IsKeyboardFocusWithin || values.IsInUse);
 
@@ -465,6 +468,23 @@ internal sealed class QuickInfo
         }
         hoverCard.IsVisible = true;
         popups.Place(hoverCard, new Point(point.X, Editor.PointOf(text.GetLineStart(annotation.Line)).Y), above: false);
+    }
+
+    /// <summary>The card for a word of a row above a line the pointer rests on (<see cref="AboveWords"/>), hung under the
+    /// row; none where it says nothing.</summary>
+    public void ShowAbove(RowAboveWord word, Point point)
+    {
+        hovering?.Cancel();
+        ForgetValues();
+        hoverCard.Clear();
+        if (AboveWords?.Invoke(word) is not { Length: > 0 } words || completing())
+        {
+            hoverCard.IsVisible = false;
+            return;
+        }
+        hoverCard.AddText(words);
+        hoverCard.IsVisible = true;
+        popups.Place(hoverCard, new Point(point.X, point.Y - (Editor.LineHeight / 2)), above: false);
     }
 
     /// <summary>The card for what the gutter shows beside a line the pointer rests on (<see cref="GutterWords"/>), hung under

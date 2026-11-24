@@ -761,9 +761,14 @@ public sealed class VcsController : IDisposable
                 }
             }
         }
-        foreach (OpenDocument document in documents.Keys)
+        foreach ((OpenDocument document, Tracked tracked) in documents)
         {
             IdeErrors.Observe(MarkAsync(document));
+            // Its lines' commits moved with HEAD.
+            if (tracked.Annotated || tracked.Wanted)
+            {
+                IdeErrors.Observe(BlameAsync(document));
+            }
         }
 
         static async Task<StoredBytes?> BytesOfAsync(Task<IReadOnlyDictionary<string, byte[]?>> bytes, string path, string origin)
@@ -781,20 +786,33 @@ public sealed class VcsController : IDisposable
         {
             return;
         }
-        Tracked tracked = new(new Debounce(Editors.TypingPauses.ChangeBars, () => MarkAsync(document)), new Debounce(BlameDelay, () => BlameAsync(document)));
-        tracked.OnChanged = (_, _) =>
+        Tracked tracked = new(new Debounce(Editors.TypingPauses.ChangeBars, () => MarkAsync(document)), new Debounce(BlameDelay, () =>
+        {
+            Relabel(document);
+            return Task.CompletedTask;
+        }));
+        tracked.OnChanged = (_, change) =>
         {
             // Outside a working tree a file has no bars to move; once one is found, every open file's are worked out.
             if (git is not null)
             {
                 tracked.Marks.Restart();
             }
+            tracked.Blame?.Follow(change);
+            tracked.Collecting?.Add(change);
             if (tracked.Annotated)
             {
                 tracked.Reblame.Restart();
             }
         };
-        tracked.OnSaved = (_, _) => IdeErrors.Observe(ReadAsync());
+        tracked.OnSaved = (_, _) =>
+        {
+            IdeErrors.Observe(ReadAsync());
+            if (tracked.Annotated || tracked.Wanted)
+            {
+                IdeErrors.Observe(BlameAsync(document));
+            }
+        };
         document.Text.Changed += tracked.OnChanged;
         document.Saved += tracked.OnSaved;
         documents[document] = tracked;
@@ -815,8 +833,33 @@ public sealed class VcsController : IDisposable
         }
     }
 
-    /// <summary>The blame an annotated file shows, line by line, or null when it shows none.</summary>
-    public IReadOnlyList<BlameLine>? BlameOf(OpenDocument document) => documents.GetValueOrDefault(document)?.Blame;
+    /// <summary>A file's one blame, which its annotations and its signposts' authors read, line by line as its text stands
+    /// (<see cref="CarriedBlame"/>), or null while it has none: blamed while annotated or wanted, again as it is saved or
+    /// HEAD moves.</summary>
+    public IReadOnlyList<BlameLine>? BlameOf(OpenDocument document) => documents.GetValueOrDefault(document)?.Blame?.Now(document.Text.Snapshot);
+
+    /// <summary>Raised on the window's thread as a file's blame lands.</summary>
+    public event EventHandler<OpenDocument>? Blamed;
+
+    /// <summary>Has a file blamed and kept so while its signposts want its authors, or lets go of that.</summary>
+    public void WantBlame(OpenDocument document, bool wanted)
+    {
+        UiThread.Check();
+        if (!documents.TryGetValue(document, out Tracked? tracked) || tracked.Wanted == wanted)
+        {
+            return;
+        }
+        tracked.Wanted = wanted;
+        if (wanted && tracked.Blame is null)
+        {
+            IdeErrors.Observe(BlameAsync(document));
+        }
+        else if (!wanted && !tracked.Annotated)
+        {
+            tracked.Blame = null;
+            tracked.Blaming++;
+        }
+    }
 
     /// <summary>Whether a file's annotations are open, its blame shown or on its way.</summary>
     public bool IsAnnotated(OpenDocument document) => documents.GetValueOrDefault(document)?.Annotated == true;
@@ -848,40 +891,62 @@ public sealed class VcsController : IDisposable
     private static void Unannotate(OpenDocument document, Tracked tracked)
     {
         tracked.Annotated = false;
-        tracked.Blame = null;
-        tracked.Blaming++;
         tracked.Reblame.Stop();
         document.GutterAnnotations = [];
+        if (!tracked.Wanted)
+        {
+            tracked.Blame = null;
+            tracked.Blaming++;
+        }
     }
 
-    /// <summary>Blames the file's text as it is now and shows it, unless annotations closed, another blame began or the
-    /// text changed meanwhile (the pause after that edit blames it again). False only when git said it does not track
-    /// the file, which closes them.</summary>
+    /// <summary>Blames the file's text as it is now, kept and carried through its edits from then on (annotations shown from
+    /// it), unless neither its annotations nor its signposts want it any more or another blame began. False only when git
+    /// said it does not track the file, which closes its annotations.</summary>
     private async Task<bool> BlameAsync(OpenDocument document)
     {
-        if (!documents.TryGetValue(document, out Tracked? tracked) || !tracked.Annotated)
+        if (!documents.TryGetValue(document, out Tracked? tracked) || !(tracked.Annotated || tracked.Wanted))
         {
             return true;
         }
         int blaming = ++tracked.Blaming;
         TextSnapshot text = document.Text.Snapshot;
+        List<DocumentChangedEventArgs> collecting = tracked.Collecting = [];
         IReadOnlyList<BlameLine>? lines = git is { } repository ? await repository.BlameAsync(document.Path, await StoredAsync(document, text)) : null;
         if (blaming != tracked.Blaming)
         {
             return true;
         }
+        tracked.Collecting = null;
         if (lines is null)
         {
-            Unannotate(document, tracked);
-            return false;
-        }
-        if (!ReferenceEquals(text, document.Text.Snapshot))
-        {
+            tracked.Blame = null;
+            if (tracked.Annotated)
+            {
+                Unannotate(document, tracked);
+                return false;
+            }
             return true;
         }
-        tracked.Blame = lines;
-        document.GutterAnnotations = Labels(lines);
+        // The edits made while git blamed are carried from the text it read.
+        CarriedBlame carried = new(lines, text);
+        foreach (DocumentChangedEventArgs change in collecting)
+        {
+            carried.Follow(change);
+        }
+        tracked.Blame = carried;
+        Relabel(document);
+        Blamed?.Invoke(this, document);
         return true;
+    }
+
+    /// <summary>An annotated file's labels from its blame carried to its text as it stands.</summary>
+    private void Relabel(OpenDocument document)
+    {
+        if (documents.TryGetValue(document, out Tracked? tracked) && tracked.Annotated && BlameOf(document) is { } lines)
+        {
+            document.GutterAnnotations = Labels(lines);
+        }
     }
 
     /// <summary>A file's text as its save would write it (its encoding, byte order mark and CR breaks), off the window's
@@ -2780,7 +2845,14 @@ public sealed class VcsController : IDisposable
         public int Generation { get; set; }
         public Compared? Last { get; set; }
         public bool Annotated { get; set; }
-        public IReadOnlyList<BlameLine>? Blame { get; set; }
+
+        /// <summary>Whether its signposts want its authors, which keeps it blamed.</summary>
+        public bool Wanted { get; set; }
+
+        /// <summary>The changes made while git blames it, carried from the text it read once the blame lands.</summary>
+        public List<DocumentChangedEventArgs>? Collecting { get; set; }
+
+        public CarriedBlame? Blame { get; set; }
 
         /// <summary>The newest blame's number: one that lands under another was overtaken, or annotations closed.</summary>
         public int Blaming { get; set; }

@@ -60,6 +60,7 @@ public static class Handlers
     public const string StepBindings = "Passenger.Roslyn.Extension.StepBindings";
     public const string EditorConfigKeys = "Passenger.Roslyn.Extension.EditorConfigKeys";
     public const string EditorConfigValues = "Passenger.Roslyn.Extension.EditorConfigValues";
+    public const string Signposts = "Passenger.Roslyn.Extension.Signposts";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -68,7 +69,7 @@ public static class Handlers
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, SymbolContainers, WrittenPlaces,
         ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames, GeneratedMembers,
         MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover,
-        CompletionCall, StepBindings, EditorConfigKeys, EditorConfigValues,
+        CompletionCall, StepBindings, EditorConfigKeys, EditorConfigValues, Signposts,
     ];
 }
 
@@ -387,6 +388,18 @@ public sealed record ComponentAsked([property: JsonPropertyName("path")] string 
 /// <summary>The class a Razor component's file makes, and its name's span in the C# Razor generates of the file, where the
 /// server takes the class; both null for a file of no project's.</summary>
 public sealed record ComponentFound([property: JsonPropertyName("symbol")] NamedSymbol? Symbol, [property: JsonPropertyName("name")] UriSpan? Name);
+
+/// <summary>The declarations of a document whose signposts are asked for, each by where its name stands, and whether their
+/// usages and what inherits from them are counted.</summary>
+public sealed record SignpostsAsked([property: JsonPropertyName("at")] IReadOnlyList<Place> At, [property: JsonPropertyName("usages")] bool Usages,
+    [property: JsonPropertyName("inheriting")] bool Inheriting);
+
+/// <summary>Each declaration's counts, in the order asked.</summary>
+public sealed record SignpostsFound([property: JsonPropertyName("counts")] IReadOnlyList<SignpostCount> Counts);
+
+/// <summary>A declaration's own usages, those of what implements or overrides it left out, and how many implement, override
+/// or derive from it; null where it was not asked, or nothing may.</summary>
+public sealed record SignpostCount([property: JsonPropertyName("usages")] int? Usages, [property: JsonPropertyName("inheriting")] int? Inheriting);
 
 /// <summary>Where the caret is: what a describing message asks about.</summary>
 public sealed record Caret([property: JsonPropertyName("at")] Place At);

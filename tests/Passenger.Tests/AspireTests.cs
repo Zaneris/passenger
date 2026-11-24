@@ -1037,7 +1037,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         Assert.True(line >= 0, $"No AddProject declaration for {resource}");
         Ui.WaitFor(() => document.RunMarks.Any(mark => mark.Line == line), $"the {resource} run gutter mark");
         Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
-        editor.ScrollTo(new Vector(0, Math.Max(0, line * editor.LineHeight - editor.Bounds.Height / 3)));
+        editor.ScrollTo(new Vector(0, Math.Max(0, editor.ScrollOffset.Y + editor.PointOf(document.Text.Snapshot.GetLineStart(line)).Y - editor.Bounds.Height / 3)));
         Ui.WaitFor(() => editor.IsEffectivelyVisible && editor.RunMarks.Any(mark => mark.Line == line)
             && editor.PointOf(document.Text.Snapshot.GetLineStart(line)).Y >= 0
             && editor.PointOf(document.Text.Snapshot.GetLineStart(line)).Y + editor.LineHeight < editor.Bounds.Height,
