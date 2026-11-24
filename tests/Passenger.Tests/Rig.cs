@@ -3115,7 +3115,8 @@ public static class TestGpgKeys
     }
 
     /// <summary>The run's gpg-agent, as <paramref name="program"/> starts it next, logging what it does to a file in the run's
-    /// GnuPG home, named in the form the program reads a path; that file, which a failed key's making quotes.</summary>
+    /// GnuPG home, named in the form the program reads a path; that file, which a failed key's making quotes with the keys
+    /// stored there.</summary>
     internal static string AgentLogged(string program)
     {
         string home = Environment.GetEnvironmentVariable("GNUPGHOME")!;
@@ -3125,18 +3126,28 @@ public static class TestGpgKeys
         return log;
     }
 
-    /// <summary>What the run's gpg-agent logged, to follow a failure's words.</summary>
+    /// <summary>What the run's gpg-agent logged and the keys it stored, to follow a failure's words: its log says only that
+    /// a protection is corrupted, where the key's file shows how the agent wrote its salt and nonce.</summary>
     internal static string AgentSaid(string log)
     {
+        string keys = Path.Combine(Path.GetDirectoryName(log)!, "private-keys-v1.d");
         try
         {
-            return $"\nThe run's gpg-agent logged:\n{File.ReadAllText(log)}";
+            string stored = Directory.Exists(keys)
+                ? string.Concat(Directory.EnumerateFiles(keys, "*.key").Select(key => $"\n{Path.GetFileName(key)}:\n{KeyText(File.ReadAllBytes(key))}"))
+                : " no key";
+            return $"\nThe run's gpg-agent logged:\n{File.ReadAllText(log)}\nIt stored:{stored}";
         }
         catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
         {
-            return $"\nThe run's gpg-agent's log was not read: {unread.Message}";
+            return $"\nThe run's gpg-agent's log or keys were not read: {unread.Message}";
         }
     }
+
+    /// <summary>A key file's bytes as text, each byte but printable ASCII and a line break as \xHH: the agent writes a salt or
+    /// nonce of printable bytes raw, inside quotes.</summary>
+    private static string KeyText(byte[] file) =>
+        string.Concat(file.Select(b => b is (>= 0x20 and < 0x7f) or (byte)'\n' ? ((char)b).ToString() : $"\\x{b:X2}"));
 
     /// <summary>A GnuPG program's start, its home the run's in the form the program reads it (Git for Windows' own MSYS one
     /// takes only /c/…).</summary>
