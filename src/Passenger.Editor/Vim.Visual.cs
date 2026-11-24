@@ -924,6 +924,12 @@ public sealed partial class Vim
             return Ended(text, r, inner, n);
         }
         VimSpan own = OwnLine(text, next);
+        if (!inner && text[after] is ' ' or '\t' && VimTextObjects.Of(text, after, "s", inner: true, 2 * n, breakEnds) is { } units
+            && OwnLine(text, units).End is var whole && whole > own.End && LastWordAfterBlanks(text, own.End, whole))
+        {
+            // Over white to a sentence closing its text or paragraph unmarked, as takes it whole, a last word after a blank too.
+            own = own with { End = whole };
+        }
         if (own.End == own.Start && VimMotions.NextSentenceStart(text, own.Start) < text.Length)
         {
             return own.Start > r.Cursor ? r with { Cursor = own.Start } : null;
@@ -936,6 +942,25 @@ public sealed partial class Vim
         }
         // Of the empty lines ending the text, the last is none to go to.
         return own.End > after ? r with { Cursor = VimMotions.StepBack(text, own.End) } : Ended(text, r, inner, n);
+    }
+
+    /// <summary>Whether the text from <paramref name="from"/> to <paramref name="to"/> is white, blanks and line breaks
+    /// but no empty line, then one character.</summary>
+    private static bool LastWordAfterBlanks(TextSnapshot text, int from, int to)
+    {
+        int last = VimMotions.StepBack(text, to);
+        if (last <= from || text[last] is ' ' or '\t' or '\n' or '\r')
+        {
+            return false;
+        }
+        for (int at = from; at < last; at++)
+        {
+            if (text[at] is not (' ' or '\t' or '\n' or '\r') || (at > from && VimMotions.LineOf(text, at).Length == 0))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>The last of the blanks opening a line, on through lines of blanks alone into the next line's.</summary>
