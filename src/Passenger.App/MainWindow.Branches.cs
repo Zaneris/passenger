@@ -32,6 +32,11 @@ public partial class MainWindow
         panel.OpenWorktreeRequested += (_, asked) => OpenWorktree(asked.Worktree, asked.NewWindow);
         panel.RemoveWorktreeRequested += (_, worktree) => IdeErrors.Observe(RemoveWorktreeAsync(worktree));
         panel.WhyNotRemoveWorktree = WhyNotRemoveWorktree;
+        panel.PushToRequested += (_, branch) => IdeErrors.Observe(ShowPushToAsync(branch));
+        panel.AddRemoteRequested += (_, _) => IdeErrors.Observe(EditRemoteAsync(null));
+        panel.ManageRemotesRequested += (_, _) => ShowRemotes();
+        panel.EditRemoteRequested += (_, name) => IdeErrors.Observe(EditRemoteNamedAsync(name, EditRemoteAsync));
+        panel.RemoveRemoteRequested += (_, name) => IdeErrors.Observe(EditRemoteNamedAsync(name, AskRemoveRemoteAsync));
         panel.FavoritesChanged += (_, favorites) => session.State?.GitBranches.Set(favorites);
     }
 

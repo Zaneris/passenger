@@ -1196,6 +1196,29 @@ public sealed class VcsController : IDisposable
             : Report(fetched.Succeeded, fetched.Succeeded ? "Fetched" : $"Fetch failed: {fetched.Message}");
     }
 
+    /// <summary>One remote's branches fetched, from its menu in the branches panel.</summary>
+    public async Task<VcsOutcome> FetchRemoteAsync(string remote)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return Report(false, NoRepository);
+        }
+        if (WhyNotRemote is { } untrusted)
+        {
+            return Report(false, untrusted);
+        }
+        if (!Begin(AppActions.Fetch, $"Fetching {remote}…", out Working? work, stoppable: true))
+        {
+            return Report(false, UnderWay(AppActions.Fetch));
+        }
+        using Working? held = work;
+        GitResult? fetched = await RemoteAsync(work, (stopping, asker) => repository.FetchRemoteAsync(remote, stopping, asker));
+        await RefreshAsync();
+        return fetched is null ? Report(false, "Fetch stopped")
+            : Report(fetched.Succeeded, fetched.Succeeded ? $"Fetched {remote}" : $"Fetch failed: {fetched.Message}");
+    }
+
     /// <summary>Begins an operation's work in the window, saying its first stage: false when one of its kind is under way
     /// already. Only what goes to a remote is <paramref name="stoppable"/>: Stop ends git there, which leaves the tree
     /// as it was, where ending a change to the tree could leave it halfway.</summary>
@@ -1855,6 +1878,141 @@ public sealed class VcsController : IDisposable
         await RefreshAsync();
         return pushed is null ? Report(false, "Push stopped")
             : Report(pushed.Succeeded, pushed.Succeeded ? $"Pushed {branch.Name}" : $"Push failed: {pushed.Message}");
+    }
+
+    /// <summary>The remotes with their URLs, in git's order; none outside a working tree.</summary>
+    public async Task<IReadOnlyList<RemoteInfo>> RemoteUrlsAsync() => git is { } repository ? await repository.RemoteUrlsAsync() : [];
+
+    /// <summary>A URL as Passenger shows it anywhere: a password or token it holds masked (<see cref="ContainerSecrets"/>).</summary>
+    public static string UrlShown(string url) => ContainerSecrets.InSaid(url);
+
+    /// <summary>Add Remote… and Edit Remote…'s plan carried out, held as Manage Remotes…'s work: a new remote added, then its
+    /// branches fetched where planned; one there renamed (its branches here and those tracking them following) and given
+    /// its new URL, each only where it changed; told in words that say what it means here.</summary>
+    public async Task<VcsOutcome> SaveRemoteAsync(RemotePlan plan)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return Report(false, NoRepository);
+        }
+        if (plan.Fetch && WhyNotRemote is { } untrusted)
+        {
+            return Report(false, untrusted);
+        }
+        if (!Begin(AppActions.ManageRemotes, plan.Was is null ? $"Adding the remote {plan.Name}…" : $"Changing the remote {plan.Was}…", out Working? work, stoppable: plan.Fetch))
+        {
+            return Report(false, UnderWay(AppActions.ManageRemotes));
+        }
+        using Working? held = work;
+        return await OneAtATimeAsync(async () =>
+        {
+            string url = UrlShown(plan.Url);
+            if (plan.Was is null)
+            {
+                GitResult added = await repository.AddRemoteAsync(plan.Name, plan.Url);
+                if (!added.Succeeded)
+                {
+                    await RefreshAsync();
+                    return Report(false, $"The remote {plan.Name} was not added: {added.Message}");
+                }
+                string done = $"Added the remote {plan.Name}, at {url}";
+                if (!plan.Fetch)
+                {
+                    await RefreshAsync();
+                    return Report(true, $"{done}: Fetch brings its branches in");
+                }
+                work?.Say($"Fetching {plan.Name}…");
+                GitResult? fetched = await RemoteAsync(work, (stopping, asker) => repository.FetchRemoteAsync(plan.Name, stopping, asker));
+                await RefreshAsync();
+                return fetched is null ? Report(false, $"{done}, but its fetch was stopped")
+                    : fetched.Succeeded ? Report(true, $"{done} and fetched its branches")
+                    : Report(false, $"{done}, but its branches were not fetched: {fetched.Message}");
+            }
+            List<string> said = [];
+            string name = plan.Was;
+            if (plan.Name != plan.Was)
+            {
+                GitResult renamed = await repository.RenameRemoteAsync(plan.Was, plan.Name);
+                if (!renamed.Succeeded)
+                {
+                    await RefreshAsync();
+                    return Report(false, $"The remote {plan.Was} was not renamed: {renamed.Message}");
+                }
+                name = plan.Name;
+                said.Add($"Renamed the remote {plan.Was} to {plan.Name}, its branches here and those tracking them following");
+            }
+            if ((await repository.RemoteUrlsAsync()).FirstOrDefault(r => r.Name == name) is { } stands && stands.Url != plan.Url)
+            {
+                GitResult repointed = await repository.SetRemoteUrlAsync(name, plan.Url);
+                await RefreshAsync();
+                return repointed.Succeeded
+                    ? Report(true, string.Join("; ", [.. said, $"{(said.Count == 0 ? $"The remote {name}" : "it")} fetches from and pushes to {url} now"]))
+                    : Report(false, string.Join("; ", [.. said, $"{(said.Count == 0 ? $"The remote {name}" : "its")} URL was not changed: {repointed.Message}"]));
+            }
+            await RefreshAsync();
+            return Report(true, said.Count > 0 ? said[0] : $"The remote {name} is as it was");
+        }, refused => refused);
+    }
+
+    /// <summary>The local branches that track a remote's branch.</summary>
+    public async Task<IReadOnlyList<string>> TrackingAsync(string remote) =>
+        [.. (await LocalBranchesAsync()).Where(b => b.UpstreamRemote == remote).Select(b => b.Name)];
+
+    /// <summary>Remove Remote…, once the person agreed: the remote forgotten with its branches here, the local branches that
+    /// tracked it tracking nothing; the repository it named keeps everything.</summary>
+    public async Task<VcsOutcome> RemoveRemoteAsync(string name)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return Report(false, NoRepository);
+        }
+        if (!Begin(AppActions.ManageRemotes, $"Removing the remote {name}…", out Working? work))
+        {
+            return Report(false, UnderWay(AppActions.ManageRemotes));
+        }
+        using Working? held = work;
+        return await OneAtATimeAsync(async () =>
+        {
+            IReadOnlyList<string> tracking = await TrackingAsync(name);
+            GitResult removed = await repository.RemoveRemoteAsync(name);
+            await RefreshAsync();
+            string untracked = tracking.Count == 0 ? string.Empty : $"; {Plural.Listed(tracking)} {(tracking.Count == 1 ? "tracks" : "track")} nothing now";
+            return removed.Succeeded ? Report(true, $"Removed the remote {name} and its branches here{untracked}: the repository it named keeps everything")
+                : Report(false, $"The remote {name} was not removed: {removed.Message}");
+        }, refused => refused);
+    }
+
+    /// <summary>What pushing a local branch to a remote's branch would send, as the remote was last fetched; none outside a
+    /// working tree.</summary>
+    public async Task<PushPreview?> PushPreviewAsync(string branch, string remote, string remoteBranch) =>
+        git is { } repository ? await repository.PushPreviewAsync(branch, remote, remoteBranch) : null;
+
+    /// <summary>Push to…'s plan carried out, held as Push's work: the branch pushed to the remote's branch named, whatever
+    /// it tracks, tracking that one from then on where planned.</summary>
+    public async Task<VcsOutcome> PushToAsync(PushPlan plan)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return Report(false, NoRepository);
+        }
+        if (WhyNotRemote is { } untrusted)
+        {
+            return Report(false, untrusted);
+        }
+        if (!Begin(AppActions.Push, $"Pushing {plan.Branch} to {plan.Remote}…", out Working? work, stoppable: true))
+        {
+            return Report(false, UnderWay(AppActions.Push));
+        }
+        using Working? held = work;
+        GitResult? pushed = await RemoteAsync(work, (stopping, asker) => repository.PushToAsync(plan, stopping, asker));
+        await RefreshAsync();
+        string there = $"{plan.Remote}/{plan.RemoteBranch}";
+        return pushed is null ? Report(false, "Push stopped")
+            : !pushed.Succeeded ? Report(false, $"{plan.Branch} was not pushed to {there}: {pushed.Message}")
+            : Report(true, $"Pushed {plan.Branch} to {there}{(plan.Track ? $", which it tracks from now on" : string.Empty)}");
     }
 
     /// <summary>The files that differ between a branch or tag and the working tree.</summary>

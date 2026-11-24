@@ -139,6 +139,12 @@ public sealed class BranchesPanel : DockPanel
         {
             { Branch: { } branch } => Menu(branch),
             { Worktree: { } worktree } => WorktreeMenu(worktree),
+            { Kind: BranchNodeKind.Remote } remote => RemoteMenu(remote.Title),
+            { Kind: BranchNodeKind.Group, Key: "remote" } =>
+            [
+                ListMenus.Item("Add Remote…", () => AddRemoteRequested?.Invoke(this, EventArgs.Empty)),
+                ListMenus.Item("Manage Remotes…", () => ManageRemotesRequested?.Invoke(this, EventArgs.Empty)),
+            ],
             _ => [],
         });
         search = SearchBox.Of("Filter branches and tags");
@@ -229,6 +235,19 @@ public sealed class BranchesPanel : DockPanel
 
     public event EventHandler<WorktreeInfo>? RemoveWorktreeRequested;
 
+    /// <summary>A local branch to push to any remote, asked for in the Push dialog.</summary>
+    public event EventHandler<BranchInfo>? PushToRequested;
+
+    public event EventHandler? AddRemoteRequested;
+
+    public event EventHandler? ManageRemotesRequested;
+
+    /// <summary>A remote, by its name, to rename or give another URL in the Edit Remote dialog.</summary>
+    public event EventHandler<string>? EditRemoteRequested;
+
+    /// <summary>A remote, by its name, to remove once the person agrees.</summary>
+    public event EventHandler<string>? RemoveRemoteRequested;
+
     /// <summary>A branch was marked or unmarked as a favourite, for the folder to keep.</summary>
     public event EventHandler<GitBranchesState>? FavoritesChanged;
 
@@ -285,6 +304,7 @@ public sealed class BranchesPanel : DockPanel
             string? notUpdated = WhyNotUpdate(branch);
             Add("Update", () => IdeErrors.Observe(vcs.UpdateBranchAsync(branch)), notUpdated);
             Add("Push…", () => IdeErrors.Observe(vcs.PushBranchAsync(branch)), vcs.WhyNotRemote);
+            Add("Push to…", () => PushToRequested?.Invoke(this, branch), vcs.WhyNotRemote);
             Separate();
             Add("Rename…", () => RenameRequested?.Invoke(this, branch));
         }
@@ -323,6 +343,15 @@ public sealed class BranchesPanel : DockPanel
             ListMenus.Item("Remove Worktree…", () => RemoveWorktreeRequested?.Invoke(this, worktree), WhyNotRemove(worktree)),
         ];
     }
+
+    /// <summary>The menu of a remote here: fetch its branches, rename it or give it another URL, or remove it.</summary>
+    public IReadOnlyList<Control> RemoteMenu(string remote) =>
+    [
+        ListMenus.Item("Fetch", () => IdeErrors.Observe(vcs.FetchRemoteAsync(remote)), vcs.WhyNotRemote),
+        new Separator(),
+        ListMenus.Item("Edit Remote…", () => EditRemoteRequested?.Invoke(this, remote)),
+        ListMenus.Item("Remove Remote…", () => RemoveRemoteRequested?.Invoke(this, remote)),
+    ];
 
     /// <summary>Why a working tree cannot be removed: the main one holds the repository itself, git keeps a locked one, and
     /// one a window shows is closed there first.</summary>
@@ -484,6 +513,11 @@ public sealed class BranchesPanel : DockPanel
             Fill(node, [.. byRemote.Select(b => (b, b.Name[(byRemote.Key.Length + 1)..]))], 2);
             remote.Children.Add(node);
         }
+        // A remote not fetched yet, or with no branches, is listed too, so its menu is there to fetch or change it.
+        foreach (string bare in Remotes.Where(r => text.Length == 0 && remote.Children.All(c => c.Title != r)))
+        {
+            remote.Children.Add(Group(BranchNodeKind.Remote, bare, $"remote/{bare}", 1, true));
+        }
         Sort(remote.Children);
         BranchNode tags = Group(BranchNodeKind.Group, "Tags", "tags", 0, false);
         Fill(tags, [.. Branches.Where(b => b.Kind == RefKind.Tag && Keep(b)).Select(b => (b, b.Name))], 1);
@@ -493,7 +527,7 @@ public sealed class BranchesPanel : DockPanel
             .Select(w => new BranchNode(BranchNodeKind.Worktree, w.Name, $"worktree/{w.Folder}", 1, worktree: w)));
         foreach (BranchNode group in (BranchNode[])[local, remote, tags, worktrees])
         {
-            if (group.Children.Count > 0 || (text.Length == 0 && (group == local || group == worktrees)))
+            if (group.Children.Count > 0 || (text.Length == 0 && (group == local || group == remote || group == worktrees)))
             {
                 made.Add(group);
             }

@@ -669,6 +669,11 @@ public static class AppActions
     public const string NewTag = "app.vcs.newTag";
     public const string NewWorktree = "app.vcs.newWorktree";
 
+    // Rider's Git.Configure.Remotes, Manage Remotes…, and Push to a remote other than the upstream (its Push dialog's
+    // target): no keys in any of its keymaps.
+    public const string ManageRemotes = "app.vcs.manageRemotes";
+    public const string PushTo = "app.vcs.pushTo";
+
     // Rider's Vcs.ShowTabbedFileHistory, Vcs.ShowHistoryForBlock, Git.CompareWithBranch and Compare.Selected: no keys in
     // its Visual Studio keymaps or their parents.
     public const string ShowHistory = "app.vcs.showHistory";

@@ -840,6 +840,7 @@ public partial class MainWindow
         Add(AppActions.NewTag, "New Tag…", context => IdeErrors.Observe(ShowNewTagAsync(
             (context.Focused as Visual)?.FindAncestorOfType<ToolWindows.GitLogView>(includeSelf: true)?.Selected?.Hash ?? "HEAD")), new("Git", 0, 5));
         Add(AppActions.NewWorktree, "New Worktree…", _ => IdeErrors.Observe(ShowNewWorktreeAsync(null)), new("Git", 0, 6), whyNot: () => session.Vcs.WhyNotNewWorktree);
+        AddRemoteActions();
         Add(AppActions.Stash, "Stash Changes…", _ => ShowStash(), new("Git", 1, 0), whyNot: () => session.Vcs.WhyNotStash);
         Add(AppActions.Unstash, "Unstash Changes…", context => IdeErrors.Observe(ShowUnstashAsync()), new("Git", 1, 1));
         Add(AppActions.ShowDiff, "Show Diff", context => IdeErrors.Observe(ShowDiffAsync(context.File!.Path)), new("Git", 2, 0), onFile: true);

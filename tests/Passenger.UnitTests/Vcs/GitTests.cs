@@ -4,8 +4,8 @@ namespace Passenger.UnitTests.Vcs;
 
 /// <summary>What Git reads of git's answers and gives it, apart from any git: the working tree's top as rev-parse names
 /// it, a space it ends with kept, a path as git takes it, a backslash a letter of its name off Windows, why git did not
-/// start, why its output could not be read, a tag's name, a tag and a tag's push as git takes and writes them, and
-/// worktrees as git lists them.</summary>
+/// start, why its output could not be read, a tag's name, a tag and a tag's push as git takes and writes them,
+/// worktrees as git lists them, and remotes as git's config writes them.</summary>
 public class GitTests
 {
     [Fact]
@@ -16,7 +16,8 @@ public class GitTests
         ("git is said not installed only where the system found no file to run", Git_is_said_not_installed_only_where_the_system_found_no_file_to_run),
         ("a read of gits output that failed is a failure in the systems words never git missing nor unstarted", A_read_of_gits_output_that_failed_is_a_failure_in_the_systems_words_never_git_missing_nor_unstarted),
         ("a tags name is refused where git refuses it and a tag and a push its remote refused are read as git writes them", A_tags_name_is_refused_where_git_refuses_it_and_a_tag_and_a_push_its_remote_refused_are_read_as_git_writes_them),
-        ("worktrees are read as git lists them and a new ones folder goes beside the main one named for its branch", Worktrees_are_read_as_git_lists_them_and_a_new_ones_folder_goes_beside_the_main_one_named_for_its_branch));
+        ("worktrees are read as git lists them and a new ones folder goes beside the main one named for its branch", Worktrees_are_read_as_git_lists_them_and_a_new_ones_folder_goes_beside_the_main_one_named_for_its_branch),
+        ("remotes are read with their urls as gits config writes them and a name or url git takes no remote by is refused", Remotes_are_read_with_their_urls_as_gits_config_writes_them_and_a_name_or_url_git_takes_no_remote_by_is_refused));
 
     private void The_working_trees_top_and_gits_folder_keep_the_spaces_their_names_begin_or_end_with()
     {
@@ -97,5 +98,28 @@ public class GitTests
         Assert.Equal(Path.Combine(Path.GetTempPath(), "shop-feature-login"), Worktrees.Beside(main, "feature/login"));
         Assert.Equal("A branch cannot be named HEAD", RefNames.WhyNot("HEAD", "branch"));
         Assert.Null(RefNames.WhyNot("HEAD", "tag"));
+    }
+
+    /// <summary>`git config -z --get-regexp` of remote.*.url and remote.*.pushurl as git 2.54 writes it: a key and its value
+    /// on two lines, each entry ended by a NUL, a remote's name holding a dot read whole, the first URL of several kept, and
+    /// a remote its config names no URL for listed with none; and the names and URLs Add Remote… refuses.</summary>
+    private void Remotes_are_read_with_their_urls_as_gits_config_writes_them_and_a_name_or_url_git_takes_no_remote_by_is_refused()
+    {
+        string config = "remote.origin.url\nhttps://example.invalid/shop.git\0remote.origin.pushurl\nssh://git@example.invalid/shop.git\0"
+            + "remote.up.stream.url\n/src/upstream\0remote.up.stream.url\n/src/second\0";
+        Assert.Equal(
+            [
+                new RemoteInfo("origin", "https://example.invalid/shop.git", "ssh://git@example.invalid/shop.git"),
+                new RemoteInfo("up.stream", "/src/upstream"),
+                new RemoteInfo("bare", string.Empty),
+            ], Remotes.Read(["origin", "up.stream", "bare"], config));
+        Assert.Null(Remotes.WhyNot("backup", ["origin"]));
+        Assert.Null(Remotes.WhyNot("team/backup", ["origin"]));
+        Assert.Equal("There is a remote named origin already", Remotes.WhyNot("origin", ["origin"]));
+        Assert.Equal("A remote's name cannot hold a space", Remotes.WhyNot("my remote", []));
+        Assert.Equal("A remote's name cannot begin with a dash", Remotes.WhyNot("-x", []));
+        Assert.NotNull(Remotes.WhyNotUrl(string.Empty));
+        Assert.NotNull(Remotes.WhyNotUrl(" https://example.invalid/shop.git"));
+        Assert.Null(Remotes.WhyNotUrl("git@example.invalid:team/shop.git"));
     }
 }

@@ -165,6 +165,7 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("push to a remote that asks for a login asks the person and goes once they sign in", t => t.Push_to_a_remote_that_asks_for_a_login_asks_the_person_and_goes_once_they_sign_in());
         Flow.StepApart<VcsTests>("push of a new branch goes to the only remote whatever its name and asks which of several", t => t.Push_of_a_new_branch_goes_to_the_only_remote_whatever_its_name_and_asks_which_of_several());
         Flow.StepApart<VcsTests>("a checkout asked for while update project pulls is refused as git busy and the update lands", t => t.A_checkout_asked_for_while_update_project_pulls_is_refused_as_git_busy_and_the_update_lands());
+        Flow.StepApart<VcsTests>("remotes are added pushed to renamed repointed and removed as their dialogs said a token in a url masked", t => t.Remotes_are_added_pushed_to_renamed_repointed_and_removed_as_their_dialogs_said_a_token_in_a_url_masked());
     }
 
     /// <summary>Create Git Repository and Add to .gitignore as one flow, each step the check one test made in an
@@ -1378,6 +1379,148 @@ public sealed partial class VcsTests : IDisposable
         Ui.Landed(() => window.Status == "Pushed second", "the push to the remote chosen, other");
         Assert.Equal(Git("rev-parse", "second").Trim(), TestGit.Run(other, "rev-parse", "second").Trim());
         Assert.Equal("other/second", Git("rev-parse", "--abbrev-ref", "second@{upstream}").Trim());
+        window.Close();
+    }
+
+    /// <summary>Manage Remotes… adds a remote and fetches it, Push to… sends a branch that tracks origin to it, saying first
+    /// which commits it sends and that the branch keeps tracking origin, Edit Remote… renames it and gives it another URL,
+    /// and Remove Remote… asks first, naming the branch that goes: each as its dialog's preview said, in its words and git's.
+    /// A URL holding a token shows masked in the list, the preview, git's words and the status bar, and an edit leaving its
+    /// masked box alone keeps the URL whole; a remote never fetched is listed in the branches panel with its menu.</summary>
+    private void Remotes_are_added_pushed_to_renamed_repointed_and_removed_as_their_dialogs_said_a_token_in_a_url_masked()
+    {
+        string origin = TestFolders.Create("git-origin-");
+        string backup = TestFolders.Create("git-backup-");
+        string moved = TestFolders.Create("git-moved-");
+        foreach (string bare in (string[])[origin, backup, moved])
+        {
+            TestGit.Run(bare, "init", "-q", "--bare", "-b", "main");
+        }
+        Git("remote", "add", "origin", origin);
+        Git("push", "-q", "-u", "origin", "main");
+        File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 2", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Twice");
+        string first = GitHashes.Short(Git("rev-parse", "HEAD~1").Trim());
+        string twice = GitHashes.Short(Git("rev-parse", "HEAD").Trim());
+        MainWindow window = Open();
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+
+        Assert.True(window.Perform(AppActions.ManageRemotes), window.Status);
+        Ui.WaitFor(() => window.RemotesWindow is { IsVisible: true }, "the Remotes dialog");
+        RemotesDialog remotes = DialogButtonsTests.Check(window.RemotesWindow!);
+        Ui.Landed(() => remotes.Rows.Count == 1, "the remotes listed");
+        Assert.Equal((string[])["origin"], remotes.Rows.Select(r => r.Name));
+        Ui.Click(remotes.AddButton);
+        Ui.WaitFor(() => window.RemoteWindow is { IsVisible: true }, "the Add Remote dialog");
+        RemoteDialog adding = DialogButtonsTests.Check(window.RemoteWindow!);
+        Assert.Equal(string.Empty, adding.NameBox.Text);
+        adding.KeyTextInput("backup");
+        Ui.Click(adding.UrlBox);
+        adding.KeyTextInput(backup);
+        Ui.Settle();
+        Assert.Equal(
+            [
+                $"Adds the remote backup, which this repository fetches from and pushes to at {backup}.",
+                "Fetches its branches now: they come under Remote › backup in the Git log's branches, and nothing of yours changes.",
+            ], adding.WhatItDoes);
+        Assert.Equal($"git remote add backup {backup}\ngit fetch backup", adding.GitWords);
+        Ui.Click(adding.SaveButton);
+        Ui.Landed(() => window.RemoteWindow is null && !window.Vcs.IsBusy && remotes.Rows.Count == 2, "the remote added, fetched and listed");
+        Assert.Contains($"Added the remote backup, at {backup} and fetched its branches", said);
+        Assert.Equal(backup, Git("remote", "get-url", "backup").Trim());
+
+        Assert.True(window.Perform(AppActions.PushTo), window.Status);
+        Ui.WaitFor(() => window.PushWindow is { IsVisible: true }, "the Push dialog");
+        PushDialog pushing = DialogButtonsTests.Check(window.PushWindow!);
+        Assert.Equal("backup", pushing.RemoteBox.SelectedItem);
+        Ui.Landed(() => pushing.GitWords.Length > 0, "what a push to backup sends");
+        Assert.Equal(
+            [
+                $"Makes the branch main on backup, sending 2 commits ({twice} Twice, {first} First) it lacks, as last fetched.",
+                "main keeps tracking origin/main.",
+            ], pushing.WhatItDoes);
+        Assert.Equal("git push backup main", pushing.GitWords);
+        Ui.Click(pushing.PushButton);
+        Ui.Landed(() => window.PushWindow is null && !window.Vcs.IsBusy, "the push to backup");
+        Assert.Contains("Pushed main to backup/main", said);
+        Assert.Equal(Git("rev-parse", "main").Trim(), TestGit.Run(backup, "rev-parse", "main").Trim());
+        Assert.Equal("origin/main", Git("rev-parse", "--abbrev-ref", "main@{upstream}").Trim());
+
+        Ui.Landed(() => remotes.Rows.Count == 2, "the remotes read again");
+        remotes.Chosen = remotes.Rows.Single(r => r.Name == "backup");
+        Ui.Click(remotes.EditButton);
+        Ui.WaitFor(() => window.RemoteWindow is { IsVisible: true }, "the Edit Remote dialog");
+        RemoteDialog editing = DialogButtonsTests.Check(window.RemoteWindow!);
+        Assert.Equal("backup", editing.NameBox.Text);
+        editing.NameBox.SelectAll();
+        editing.KeyTextInput("mirror");
+        Ui.Click(editing.UrlBox);
+        editing.UrlBox.SelectAll();
+        editing.KeyTextInput(moved);
+        Ui.Settle();
+        Assert.Equal(
+            [
+                "Renames backup to mirror: its 1 branch here becomes mirror/….",
+                $"Fetches from and pushes to {moved} from now on, in place of {backup}; its branches here stay as last fetched until it is fetched again.",
+                "The repository it names is not changed.",
+            ], editing.WhatItDoes);
+        Assert.Equal($"git remote rename backup mirror\ngit remote set-url mirror {moved}", editing.GitWords);
+        Ui.Click(editing.SaveButton);
+        Ui.Landed(() => window.RemoteWindow is null && !window.Vcs.IsBusy, "the remote renamed and given its new URL");
+        Assert.Contains($"Renamed the remote backup to mirror, its branches here and those tracking them following; it fetches from and pushes to {moved} now", said);
+        Assert.Equal(moved, Git("remote", "get-url", "mirror").Trim());
+        Git("rev-parse", "--verify", "-q", "refs/remotes/mirror/main");
+
+        const string Token = "s3cret-token";
+        string url = $"https://alice:{Token}@example.invalid/shop.git";
+        Ui.Click(remotes.AddButton);
+        Ui.WaitFor(() => window.RemoteWindow is { IsVisible: true }, "the Add Remote dialog again");
+        RemoteDialog secret = DialogButtonsTests.Check(window.RemoteWindow!);
+        secret.KeyTextInput("hosted");
+        Ui.Click(secret.UrlBox);
+        secret.KeyTextInput(url);
+        secret.ThenBox.SelectedIndex = 1;
+        Ui.Settle();
+        Assert.DoesNotContain(Token, string.Join('\n', [.. secret.WhatItDoes, secret.GitWords]));
+        Assert.Equal("git remote add hosted https://alice:••••••@example.invalid/shop.git", secret.GitWords);
+        Ui.Click(secret.SaveButton);
+        Ui.Landed(() => window.RemoteWindow is null && !window.Vcs.IsBusy && remotes.Rows.Count == 3, "the remote with a token added and listed");
+        Assert.Equal(url, Git("remote", "get-url", "hosted").Trim());
+        Assert.DoesNotContain(said, s => s.Contains(Token, StringComparison.Ordinal));
+        Assert.Equal("https://alice:••••••@example.invalid/shop.git", RemotesDialog.Said(remotes.Rows.Single(r => r.Name == "hosted")));
+        remotes.Chosen = remotes.Rows.Single(r => r.Name == "hosted");
+        Ui.Click(remotes.EditButton);
+        Ui.WaitFor(() => window.RemoteWindow is { IsVisible: true }, "the Edit Remote dialog of the URL with a token");
+        RemoteDialog masked = DialogButtonsTests.Check(window.RemoteWindow!);
+        Assert.Equal("https://alice:••••••@example.invalid/shop.git", masked.UrlBox.Text);
+        masked.KeyTextInput("server");
+        Ui.Settle();
+        Assert.Equal("git remote rename hosted server", masked.GitWords);
+        Ui.Click(masked.SaveButton);
+        Ui.Landed(() => window.RemoteWindow is null && !window.Vcs.IsBusy, "the remote with a token renamed");
+        Assert.Equal(url, Git("remote", "get-url", "server").Trim());
+
+        window.Perform(AppActions.ShowGit);
+        BranchesPanel panel = window.GitBranches;
+        Ui.Landed(() => panel.Rows.Any(r => r.Title == "server"), "the remote never fetched in the branches panel");
+        Assert.Equal(["Fetch", "Edit Remote…", "Remove Remote…"], panel.RemoteMenu("server").OfType<MenuItem>().Select(i => i.Header as string));
+
+        List<string> asked = [];
+        window.Confirm = (title, text, _) =>
+        {
+            asked.Add($"{title}: {text}");
+            return Task.FromResult(true);
+        };
+        Ui.Landed(() => remotes.Rows.Any(r => r.Name == "mirror"), "the remotes read again after the rename");
+        remotes.Chosen = remotes.Rows.Single(r => r.Name == "mirror");
+        Ui.Click(remotes.RemoveButton);
+        Ui.Landed(() => !window.Vcs.IsBusy && remotes.Rows.All(r => r.Name != "mirror"), "the remote removed and the list read again");
+        Assert.Equal([$"Remove Remote: Remove the remote mirror? Its 1 branch here goes with it. The repository at {moved} keeps everything: "
+            + "adding the remote again and fetching brings its branches back."], asked);
+        Assert.Contains("Removed the remote mirror and its branches here: the repository it named keeps everything", said);
+        Assert.Equal(["origin", "server"], Git("remote").Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        remotes.Close();
         window.Close();
     }
 
