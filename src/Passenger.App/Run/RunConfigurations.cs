@@ -6,9 +6,10 @@ using Passenger.Workspace;
 namespace Passenger.App.Run;
 
 /// <summary>A folder's run configurations: those its projects generate, each with the person's changes put over it, then
-/// its solution's multi-project launch profiles (read from the files beside it, <see cref="SolutionLaunch"/>, the files
-/// their store), then the person's own (kept with the folder's state, their projects relative to the folder there), and the
-/// one chosen in the toolbar, which Run, Debug and Profile launch. A UI-thread object of its <see cref="ProjectSession"/>.</summary>
+/// its runs of several parts the team keeps (its solution's multi-project launch profiles, read from the files beside it,
+/// <see cref="SolutionLaunch"/>, then the folder's <see cref="RunsFile"/>, the files their store), then the person's own
+/// (kept with the folder's state, their paths relative to the folder there), and the one chosen in the toolbar, which Run,
+/// Debug and Profile launch. A UI-thread object of its <see cref="ProjectSession"/>.</summary>
 public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? workspace = null)
 {
     private List<RunConfiguration> own = [];
@@ -35,7 +36,14 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
     /// <summary>The solution's multi-project launch profiles, the team's file's then the person's, as last read.</summary>
     public IReadOnlyList<RunConfiguration> Profiles { get; private set; } = [];
 
-    /// <summary>Why a file of the solution's launch profiles could not be read as it was last, each; none when each read.</summary>
+    /// <summary>The runs of several parts the folder's <see cref="RunsFile"/> holds, as last read.</summary>
+    public IReadOnlyList<RunConfiguration> FileRuns { get; private set; } = [];
+
+    /// <summary>Every run of several parts: the solution's launch profiles, the folder's file's, then the person's own.</summary>
+    public IReadOnlyList<RunConfiguration> Several => [.. Profiles, .. FileRuns, .. own.Where(c => c.IsMultiple)];
+
+    /// <summary>Why a file of the solution's launch profiles, or the folder's file of runs, could not be read as it was last,
+    /// each; none when each read.</summary>
     public IReadOnlyList<string> ProfileProblems { get; private set; } = [];
 
     /// <summary>The solution whose launch profiles are read beside it (a solution filter's own solution), or null with none open.</summary>
@@ -94,8 +102,10 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
     {
         this.projects = projects;
         IReadOnlyList<RunConfiguration> generated = [.. RunConfiguration.Generate(projects, workspace?.Invoke(), SingleFileAppHosts, Packages).Select(Edited)];
-        (Profiles, ProfileProblems) = Solution is { } solution ? Read(solution, [.. generated.Select(g => g.Name), .. own.Select(o => o.Name)]) : ([], []);
-        All = [.. generated, .. Profiles, .. own];
+        (Profiles, IReadOnlyList<string> problems) = Solution is { } solution ? Read(solution, [.. generated.Select(g => g.Name), .. own.Select(o => o.Name)]) : ([], []);
+        (FileRuns, string? fileProblem) = folder is not null ? ReadRuns(folder, [.. generated.Select(g => g.Name), .. Profiles.Select(p => p.Name), .. own.Select(o => o.Name)]) : ([], null);
+        ProfileProblems = fileProblem is null ? problems : [.. problems, fileProblem];
+        All = [.. generated, .. Profiles, .. FileRuns, .. own];
         // With none picked, an AppHost's before its services', which it runs as the person means.
         Chosen = All.FirstOrDefault(c => string.Equals(c.Name, keep, StringComparison.OrdinalIgnoreCase)) ?? All.FirstOrDefault(c => c.Aspire) ?? All.FirstOrDefault();
         Changed?.Invoke(this, EventArgs.Empty);
@@ -117,13 +127,66 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         return (profiles, problems);
     }
 
+    /// <summary>The folder's runs of several parts as configurations, each named as its file names it unless another
+    /// configuration is (<paramref name="taken"/>), which its file's name for it stays; with why the file does not read.</summary>
+    private static (IReadOnlyList<RunConfiguration> Runs, string? Problem) ReadRuns(string folder, IEnumerable<string> taken)
+    {
+        (IReadOnlyList<RunsFileRun> read, string? problem) = RunsFile.Read(folder);
+        HashSet<string> names = new(taken, StringComparer.OrdinalIgnoreCase);
+        List<RunConfiguration> runs = [];
+        foreach (RunsFileRun run in read)
+        {
+            string name = RunConfiguration.UniqueName(run.Name, names);
+            names.Add(name);
+            runs.Add(OfRun(run) with { Name = name });
+        }
+        return (runs, problem);
+    }
+
+    /// <summary>A run of the folder's file as the configuration that starts its parts.</summary>
+    public static RunConfiguration OfRun(RunsFileRun run) => new()
+    {
+        Name = run.Name,
+        Kind = RunKind.Projects,
+        Starts = [.. run.Parts],
+        Shared = true,
+        RunRead = run,
+    };
+
+    /// <summary>A run of several parts as the folder's file is to hold it: under its file's name for it unless renamed since
+    /// it was read (<paramref name="shown"/>, the name it was listed by then), and its place in the file where it was read
+    /// from it.</summary>
+    public static RunsFileRun ToRun(RunConfiguration configuration, string? shown) => new(
+        configuration.RunRead is { } read && configuration.Name == shown ? read.Name : configuration.Name, [.. configuration.Starts])
+    {
+        Read = configuration.RunRead?.Read,
+        Index = configuration.RunRead?.Index ?? -1,
+    };
+
+    /// <summary>A part as an agent is told it: a .NET project by its file's name, its action and launch profile ("Api Start in
+    /// https"), any other by its name and kind, then the wait it makes for the parts after it.</summary>
+    public static string Said(RunPart part)
+    {
+        string what = part.Kind == RunPartKind.Project
+            ? $"{(part.Name.Length > 0 ? part.Name : Path.GetFileNameWithoutExtension(part.Project))} {part.Action?.ToString() ?? "(unknown action)"}{(part.LaunchProfile.Length > 0 ? $" in {part.LaunchProfile}" : string.Empty)}"
+            : $"{RunsFile.NameOf(part)} ({RunPartsTable.KindWords(part.Kind)}{(part.Action == ProjectLaunchAction.None ? ", None" : string.Empty)})";
+        string ready = part.Ready switch
+        {
+            ReadyWhen.Exited => ", next once it ends with 0",
+            ReadyWhen.Line => $", next once a line matches {part.ReadyText}",
+            ReadyWhen.Listening => part.ReadyText.Length > 0 ? $", next once {part.ReadyText} listens" : ", next once its host has started",
+            _ => string.Empty,
+        };
+        return part.Unread is { } unread ? $"{what}: {unread}" : what + ready;
+    }
+
     /// <summary>A launch profile as the configuration that starts its projects.</summary>
     public static RunConfiguration OfProfile(SolutionLaunchProfile profile) => new()
     {
         Name = profile.Name,
         Kind = RunKind.Projects,
         LaunchProfile = profile.Name,
-        Starts = [.. profile.Projects.Select(p => new ProjectStart(p.Project, p.Action, p.DebugTarget ?? string.Empty) { Launch = p })],
+        Starts = [.. profile.Projects.Select(p => new RunPart(p.Project, p.Action, p.DebugTarget ?? string.Empty) { Launch = p })],
         Shared = profile.Shared,
         Launch = profile,
     };
@@ -144,10 +207,10 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         Index = configuration.Launch is { } was && was.Shared == configuration.Shared ? was.Index : -1,
     };
 
-    /// <summary>The configuration a multi-project configuration starts one of its projects as: its launch profile's (the
+    /// <summary>The configuration a run of several parts starts one of its .NET projects as: its launch profile's (the
     /// person's changes to it put over it), or for none named the first of the project's own that runs here, as dotnet run
     /// takes its first; null with why where there is none.</summary>
-    public (RunConfiguration? Configuration, string? WhyNot) ProjectOf(ProjectStart start)
+    public (RunConfiguration? Configuration, string? WhyNot) ProjectOf(RunPart start)
     {
         string name = Path.GetFileNameWithoutExtension(start.Project);
         if (projects.FirstOrDefault(p => p.Exists && PathNames.Same(p.Path, start.Project)) is not { } project)
@@ -223,7 +286,8 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
     public void Set(IReadOnlyList<RunConfiguration> mine, IReadOnlyList<RunConfiguration> generated, string? chosen, IReadOnlyList<ProjectModel> projects)
     {
         UiThread.Check();
-        own = [.. mine.Select(c => c with { Generated = false, Unsupported = null, Origin = null, Source = null })];
+        // The person's own runs of several parts are written with the team's (SetOwnRuns).
+        own = [.. mine.Where(c => !c.IsMultiple).Select(c => c with { Generated = false, Unsupported = null, Origin = null, Source = null }), .. own.Where(c => c.IsMultiple)];
         foreach (RunConfiguration each in generated)
         {
             Change(each.Name, each.Source is { } source ? ConfigurationEdit.Between(source, each) : null);
@@ -231,6 +295,16 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         picked |= chosen is not null;
         preferred = chosen ?? preferred ?? Chosen?.Name;
         Configure(projects, preferred);
+        Write();
+    }
+
+    /// <summary>Takes the person's own runs of several parts, those neither Visual Studio's <c>.slnLaunch.user</c> nor the
+    /// folder's file keeps, as Edit Configurations writes the runs; kept with the folder's state.</summary>
+    public void SetOwnRuns(IReadOnlyList<RunConfiguration> runs)
+    {
+        UiThread.Check();
+        own = [.. own.Where(c => !c.IsMultiple), .. runs.Select(c => c with { Generated = false, Unsupported = null, Origin = null, Source = null, Launch = null, RunRead = null, Shared = false })];
+        Configure(projects, picked ? preferred : null);
         Write();
     }
 
@@ -367,6 +441,7 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         Dockerfile = Relative(configuration.Dockerfile),
         Context = Relative(configuration.Context),
         ServiceProjects = configuration.ServiceProjects.ToDictionary(p => p.Key, p => Relative(p.Value)),
+        Starts = [.. configuration.Starts.Select(s => s with { Project = Relative(s.Project), Folder = Relative(s.Folder) })],
     };
 
     private RunConfiguration FromStore(RunConfiguration configuration) => folder is null ? configuration : configuration with
@@ -378,6 +453,7 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         Dockerfile = Full(configuration.Dockerfile),
         Context = Full(configuration.Context),
         ServiceProjects = configuration.ServiceProjects.ToDictionary(p => p.Key, p => Full(p.Value)),
+        Starts = [.. configuration.Starts.Select(s => s with { Project = Full(s.Project), Folder = Full(s.Folder) })],
     };
 
     private string Relative(string path) => folder is not null && path.Length > 0 && PathNames.Relative(path, folder) is { } relative ? relative : path;

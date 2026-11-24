@@ -331,7 +331,7 @@ public sealed class FolderWatcher : WatchedTree
         }
         projects |= IsReadFor(path);
         launchProfiles |= Path.GetFileName(path.AsSpan()).Equals(Run.LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase)
-            || path.EndsWith(".run.json", StringComparison.OrdinalIgnoreCase) || SolutionLaunch.IsFile(path);
+            || path.EndsWith(".run.json", StringComparison.OrdinalIgnoreCase) || SolutionLaunch.IsFile(path) || RunsFile.IsFile(path);
     }
 
     /// <summary>A path's names but its last.</summary>

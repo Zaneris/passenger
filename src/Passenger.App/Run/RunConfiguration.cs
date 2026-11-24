@@ -19,8 +19,9 @@ public enum ConsoleKind
 /// <summary>What a run configuration launches: a .NET project on this machine, a Compose application, one project's
 /// Dockerfile, or a project as the .NET SDK makes its container (<c>EnableSdkContainerSupport</c>), each container kind
 /// run by the person's engine from Passenger's own build of its .NET services (<see cref="Containers.ContainerRun"/>); or
-/// several of the solution's projects on this machine together, as a multi-project launch profile beside the solution
-/// says (<see cref="SolutionLaunch"/>); or a Node package's script, run with its package manager (<see cref="NodeProjects"/>).</summary>
+/// a run of several parts on this machine together (<see cref="RunPart"/>), kept in Visual Studio's multi-project launch
+/// profile beside the solution where it can hold them (<see cref="SolutionLaunch"/>), else in the folder's
+/// <see cref="RunsFile"/>; or a Node package's script, run with its package manager (<see cref="NodeProjects"/>).</summary>
 public enum RunKind
 {
     Project,
@@ -29,16 +30,6 @@ public enum RunKind
     SdkContainer,
     Projects,
     Script,
-}
-
-/// <summary>One project a multi-project configuration starts: its file (canonical), what Run and Debug do with it (null for
-/// an action Passenger does not know, which keeps the configuration from starting), and the launch profile of its own it
-/// starts in (empty for its default).</summary>
-public sealed record ProjectStart(string Project, ProjectLaunchAction? Action, string LaunchProfile)
-{
-    /// <summary>It as its file held it when read, which a change is written over; null for one not written yet.</summary>
-    [JsonIgnore]
-    public SolutionLaunchProject? Launch { get; init; }
 }
 
 /// <summary>What a Compose configuration does with one .NET service: run it, debug it, or leave it unstarted.</summary>
@@ -208,18 +199,27 @@ public sealed record RunConfiguration
     /// <c>-v</c>), as a launch profile's DockerfileRunArguments or containerRunArguments give them.</summary>
     public string RunArguments { get; init; } = string.Empty;
 
-    /// <summary>A multi-project configuration's projects in the order they start, each with what Run and Debug do with it
-    /// and the launch profile it starts in.</summary>
-    public List<ProjectStart> Starts { get; init; } = [];
+    /// <summary>A run of several parts' parts in the order they start, each with what Run and Debug do with it.</summary>
+    public List<RunPart> Starts { get; init; } = [];
 
-    /// <summary>For a multi-project configuration, whether the team shares it in the solution's <c>.slnLaunch</c>, rather
-    /// than keeping it in the person's own <c>.slnLaunch.user</c>.</summary>
+    /// <summary>For a run of several parts, whether the team shares it (in the solution's <c>.slnLaunch</c>, else the folder's
+    /// <see cref="RunsFile"/>), rather than the person keeping it (in <c>.slnLaunch.user</c>, else with their own
+    /// configurations).</summary>
     public bool Shared { get; init; } = true;
 
-    /// <summary>For a multi-project configuration, the profile as its file held it when read, which a change is written over;
-    /// null for one not written yet.</summary>
+    /// <summary>For a run of several parts, the profile as Visual Studio's file held it when read, which a change is written
+    /// over; null for one not read from it.</summary>
     [JsonIgnore]
     public SolutionLaunchProfile? Launch { get; init; }
+
+    /// <summary>For a run of several parts, it as the folder's <see cref="RunsFile"/> held it when read; null for one not read
+    /// from it.</summary>
+    [JsonIgnore]
+    public RunsFileRun? RunRead { get; init; }
+
+    /// <summary>For a run of several parts, whether Visual Studio's <c>.slnLaunch</c> can hold it, beside a solution: each part
+    /// a .NET project with nothing of its own but its action and launch profile (<see cref="RunPart.FitsSolutionLaunch"/>).</summary>
+    public bool FitsSolutionLaunch(string? solution) => solution is not null && Starts.All(s => s.FitsSolutionLaunch);
 
     /// <summary>Whether it runs containers rather than programs on this machine.</summary>
     [JsonIgnore]
@@ -229,7 +229,7 @@ public sealed record RunConfiguration
     [JsonIgnore]
     public bool IsScript => Kind == RunKind.Script;
 
-    /// <summary>Whether it starts several of the solution's projects together, as a multi-project launch profile says.</summary>
+    /// <summary>Whether it is a run of several parts started together.</summary>
     [JsonIgnore]
     public bool IsMultiple => Kind == RunKind.Projects;
 
@@ -289,30 +289,55 @@ public sealed record RunConfiguration
             ? AspireAppHosts.SingleFileWhyNot(Project, projects.Select(project => project.Path)) : null)
         ?? (!IsContainer && Program.Length == 0 && projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, Project)) is { } project ? project.RunsOnlyOnWindows(Framework) : null);
 
-    /// <summary>Why a multi-project configuration cannot start here among these projects: it starts none, or one it starts is
-    /// not loaded, runs only on Windows, or takes an action Passenger does not know; null when it can.</summary>
+    /// <summary>Why a run of several parts cannot start here among these projects: it starts none, or a part it starts cannot
+    /// be read, or is a .NET project that is not loaded, runs only on Windows, is an AppHost, or takes an action Passenger
+    /// does not know; null when it can.</summary>
     private string? WhyNotStarted(IEnumerable<ProjectModel> projects)
     {
-        List<ProjectStart> starting = [.. Starts.Where(s => s.Action != ProjectLaunchAction.None)];
+        List<RunPart> starting = [.. Starts.Where(s => s.Action != ProjectLaunchAction.None)];
         if (starting.Count == 0)
         {
-            return "it starts no project: each is set to None";
+            return "it starts no part: each is set to None";
         }
         List<ProjectModel> loaded = [.. projects];
-        foreach (ProjectStart start in starting)
+        foreach (RunPart start in starting)
         {
-            string name = Path.GetFileNameWithoutExtension(start.Project);
+            string name = RunsFile.NameOf(start);
+            if (start.Unread is { } unread)
+            {
+                return $"{name}: {unread}";
+            }
             if (start.Action is null)
             {
                 return $"its action for {name} is one Passenger does not know";
             }
+            if (start.Kind == RunPartKind.Command && start.Command.Trim().Length == 0)
+            {
+                return $"{name} names no command to run";
+            }
+            if (start.Kind == RunPartKind.Script && start.Script.Length == 0)
+            {
+                return $"{name} names no script of its package.json to run";
+            }
+            if (start.Ready == ReadyWhen.Line && start.ReadyText.Length == 0)
+            {
+                return $"{name} waits for a line of its output but says no pattern for it";
+            }
+            if (start.Kind != RunPartKind.Project)
+            {
+                continue;
+            }
             if (loaded.FirstOrDefault(p => p.Exists && Core.PathNames.Same(p.Path, start.Project)) is not { } project)
             {
-                return $"{name} is not loaded";
+                return $"{Path.GetFileNameWithoutExtension(start.Project)} is not loaded";
+            }
+            if (project.IsAspireHost)
+            {
+                return $"{project.Name} is an AppHost, which starts its resources itself: run its own configuration";
             }
             if (project.RunsOnlyOnWindows(string.Empty) is { } windows)
             {
-                return $"{name}: {windows}";
+                return $"{project.Name}: {windows}";
             }
         }
         return null;
@@ -531,13 +556,29 @@ public sealed record RunConfiguration
         Context = Context ?? string.Empty,
         BuildArguments = BuildArguments ?? string.Empty,
         RunArguments = RunArguments ?? string.Empty,
-        Starts = [.. (Starts ?? []).Where(s => s is not null && !string.IsNullOrWhiteSpace(s.Project)).Select(s => s with { LaunchProfile = s.LaunchProfile ?? string.Empty })],
+        Starts = [.. (Starts ?? []).Where(s => s is not null && (s.Kind == RunPartKind.Command || !string.IsNullOrWhiteSpace(s.Project))).Select(Clamped)],
+    };
+
+    /// <summary>A part's values brought into range, as <see cref="Clamped()"/> brings the configuration's.</summary>
+    private static RunPart Clamped(RunPart part) => part with
+    {
+        Kind = Enum.IsDefined(part.Kind) ? part.Kind : RunPartKind.Command,
+        LaunchProfile = part.LaunchProfile ?? string.Empty,
+        Script = part.Script ?? string.Empty,
+        Command = part.Command ?? string.Empty,
+        Folder = part.Folder ?? string.Empty,
+        Arguments = part.Arguments ?? string.Empty,
+        Environment = (part.Environment ?? []).Where(v => !string.IsNullOrEmpty(v.Key)).ToDictionary(v => v.Key, v => v.Value ?? string.Empty),
+        Ready = Enum.IsDefined(part.Ready) ? part.Ready : ReadyWhen.Started,
+        ReadyText = part.ReadyText ?? string.Empty,
+        Browser = part.Browser ?? string.Empty,
+        Name = part.Name ?? string.Empty,
     };
 
     /// <summary>A deep enough copy to edit in Edit Configurations without touching the one it came from.</summary>
     public RunConfiguration Copied() => this with
     {
-        Starts = [.. Starts],
+        Starts = [.. Starts.Select(s => s with { Environment = new Dictionary<string, string>(s.Environment) })],
         Environment = new Dictionary<string, string>(Environment),
         LinkedAppHosts = [.. LinkedAppHosts],
         ComposeFiles = [.. ComposeFiles],
@@ -583,7 +624,7 @@ public sealed record RunConfigurationsState : IStateDocument<RunConfigurationsSt
     private static void Edited(JsonObject document) => document["edits"] ??= new JsonObject();
 
     /// <summary>One without a name is left out, as is a second of the same name, a project, Dockerfile or SDK container
-    /// configuration without its project and a Compose one without its files; a kind, console, mode or service action this
+    /// configuration without its project, a Compose one without its files and a run of several parts without parts; a kind, console, mode or service action this
     /// build does not know is the default. A change to a generated one that is no object of fields is left out.</summary>
     public RunConfigurationsState Clamped()
     {
@@ -596,7 +637,13 @@ public sealed record RunConfigurationsState : IStateDocument<RunConfigurationsSt
                 continue;
             }
             RunConfiguration clamped = configuration.Clamped();
-            if ((clamped.Kind == RunKind.Compose ? clamped.ComposeFiles.Count == 0 : string.IsNullOrWhiteSpace(clamped.Project)) || !names.Add(clamped.Name))
+            bool empty = clamped.Kind switch
+            {
+                RunKind.Compose => clamped.ComposeFiles.Count == 0,
+                RunKind.Projects => clamped.Starts.Count == 0,
+                _ => string.IsNullOrWhiteSpace(clamped.Project),
+            };
+            if (empty || !names.Add(clamped.Name))
             {
                 continue;
             }

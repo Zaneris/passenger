@@ -4475,9 +4475,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 : session.BuildChoices.Offered.Where(o => !o.Is(built)).Select(o => o.Key).ToList() is { Count: > 0 } others
                     ? $"{built.Key} (ide_action {AppActions.ChooseBuildConfiguration} with input {Plural.Either(others)} switches it)"
                     : built.Key,
-            MultiProject = session.Configurations.Profiles.Count > 0 || session.Configurations.ProfileProblems.Count > 0
-                ? [.. session.Configurations.Profiles.Select(p => $"{p.Name}: {string.Join(", ", p.Starts.Select(s => $"{Path.GetFileNameWithoutExtension(s.Project)} {s.Action?.ToString() ?? "(unknown action)"}"
-                    + (s.LaunchProfile.Length > 0 ? $" in {s.LaunchProfile}" : string.Empty)))}"),
+            MultiProject = session.Configurations.Several.Count > 0 || session.Configurations.ProfileProblems.Count > 0
+                ? [.. session.Configurations.Several.Select(p => $"{p.Name}: {string.Join(", ", p.Starts.Select(RunConfigurations.Said))}"),
                     .. session.Configurations.ProfileProblems]
                 : null,
         };

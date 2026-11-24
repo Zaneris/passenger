@@ -167,51 +167,7 @@ public static class SolutionLaunch
         {
             return (null, "does not hold a list of profiles");
         }
-        Dictionary<int, JsonObject> byIndex = [];
-        List<int> read = [];
-        bool[] taken = new bool[profiles.Count];
-        for (int p = 0; p < profiles.Count; p++)
-        {
-            if (profiles[p] is { Read: not null, Index: >= 0 } was && was.Index < root.Items.Count && byIndex.TryAdd(was.Index, values[p]))
-            {
-                read.Add(was.Index);
-                taken[p] = true;
-            }
-        }
-        // A new profile goes after the last read: one before a profile read, or those read in another order, is another order.
-        bool inOrder = read.SequenceEqual(read.Order()) && taken.SkipWhile(t => t).All(t => !t);
-        if (!inOrder)
-        {
-            return (JsonText.Laid(new JsonArray([.. values]), JsonText.ItemUnit(text, root), eol), null);
-        }
-        string written = text;
-        string unit = JsonText.ItemUnit(written, root);
-        // From the last item to the first, each read again where it stands now: those before it are where they were.
-        for (int i = root.Items.Count - 1; i >= 0; i--)
-        {
-            JsonText.Node now = new JsonText.Reader(written).Document();
-            JsonText.Layout layout = new(written, unit);
-            JsonText.Node item = now.Items[i];
-            string itemText = written[item.Start..item.End];
-            if (!byIndex.TryGetValue(i, out JsonObject? value))
-            {
-                if (IsProfile(itemText))
-                {
-                    written = layout.Remove(now, i);
-                }
-            }
-            else if (!Holds(itemText, value))
-            {
-                written = layout.RewriteLaid(item, value);
-            }
-        }
-        for (int p = read.Count; p < profiles.Count; p++)
-        {
-            // Those read are the first, in order: the rest are new here.
-            JsonText.Node now = new JsonText.Reader(written).Document();
-            written = new JsonText.Layout(written, unit).AppendLaid(now, values[p]);
-        }
-        return (written, null);
+        return JsonText.ItemsInPlace(text, [], [.. profiles.Select((p, i) => (p is { Read: not null } ? p.Index : -1, values[i]))], IsProfile, Holds);
     }
 
     /// <summary>A file of profiles following files and folders moved or renamed, as a save writes it: each project it names

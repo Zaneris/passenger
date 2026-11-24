@@ -66,8 +66,12 @@ public sealed partial class BuildRunController
         }
         List<(RunConfiguration Configuration, LaunchPlan Plan, bool Debugged)> starts = [];
         HashSet<string> named = new(StringComparer.Ordinal);
-        foreach (ProjectStart start in chosen.Starts.Where(s => s.Action != ProjectLaunchAction.None))
+        foreach (RunPart start in chosen.Starts.Where(s => s.Action != ProjectLaunchAction.None))
         {
+            if (start.Kind != RunPartKind.Project)
+            {
+                return $"{chosen.Name} cannot start {RunsFile.NameOf(start)}: only its .NET projects start for now";
+            }
             (RunConfiguration? configuration, string? unmade) = session.Configurations.ProjectOf(start);
             if (configuration is null)
             {

@@ -3,10 +3,11 @@ using Passenger.Workspace;
 
 namespace Passenger.UnitTests.Workspace;
 
-/// <summary>Visual Studio's multi-project launch profiles read as its files write them, and written back so Visual Studio
-/// reads them again: the files' names beside a solution, each project's path from the solution's folder, its action and
-/// launch profile; a profile left alone keeps every character, a changed one keeps what Passenger does not model, a new one
-/// is laid out as Visual Studio lays out the file, and a file that does not read is never written over.</summary>
+/// <summary>Runs of several parts as their files hold them, read and written back: Visual Studio's multi-project launch
+/// profiles (the files' names beside a solution, each project's path from the solution's folder, its action and launch
+/// profile) and a folder's passenger-runs.json (each part's kind, readiness and variables); a profile or run left alone keeps
+/// every character, a changed one keeps what Passenger does not model, a new one is laid out as its file lays them out, and
+/// a file that does not read is never written over.</summary>
 public sealed class SolutionLaunchTests : IDisposable
 {
     private readonly string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
@@ -31,7 +32,8 @@ public sealed class SolutionLaunchTests : IDisposable
         [
             "{ \"Name\": \"x\" }",
             "[ { \"Name\": ",
-        ], (test, row) => test.A_file_that_is_no_list_of_profiles_says_why_and_is_never_written_over(row))));
+        ], (test, row) => test.A_file_that_is_no_list_of_profiles_says_why_and_is_never_written_over(row))),
+        ("a folders runs are read with each parts kind readiness and variables and a part or format it cannot read says why", test => test.A_folders_runs_are_read_with_each_parts_kind_readiness_and_variables_and_a_part_or_format_it_cannot_read_says_why()));
 
     private void A_solutions_profiles_are_its_name_with_slnLaunch_and_the_persons_own_with_user_after(string solution)
     {
@@ -87,7 +89,8 @@ public sealed class SolutionLaunchTests : IDisposable
         ("a new file is written as Visual Studio writes one and an item that is no profile is kept", test => test.A_new_file_is_written_as_Visual_Studio_writes_one_and_an_item_that_is_no_profile_is_kept()),
         ("a profile moved from the persons file to the teams keeps its members and both files are read beside the solution", test => test.A_profile_moved_from_the_persons_file_to_the_teams_keeps_its_members_and_both_files_are_read_beside_the_solution()),
         ("a project renamed or moved is named where it went in the separator it was written with every other character kept", test => test.A_project_renamed_or_moved_is_named_where_it_went_in_the_separator_it_was_written_with_every_other_character_kept()),
-        ("the solution moved names each project from its new folder and a file that does not read is left alone", test => test.The_solution_moved_names_each_project_from_its_new_folder_and_a_file_that_does_not_read_is_left_alone()));
+        ("the solution moved names each project from its new folder and a file that does not read is left alone", test => test.The_solution_moved_names_each_project_from_its_new_folder_and_a_file_that_does_not_read_is_left_alone()),
+        ("runs written back keep what is unchanged a new file is format 1 and a moved package is followed", test => test.Runs_written_back_keep_what_is_unchanged_a_new_file_is_format_1_and_a_moved_package_is_followed()));
 
     private void Profiles_written_back_unchanged_keep_every_character()
     {
@@ -176,6 +179,63 @@ public sealed class SolutionLaunchTests : IDisposable
         Assert.Equal(Written.Replace("Api\\\\Api.csproj", "..\\\\Api\\\\Api.csproj", StringComparison.Ordinal), moved);
         Assert.Null(SolutionLaunch.Moved("[ { \"Name\": ", root, root, [(At("Api"), At("Gateway"))]));
         Assert.Null(SolutionLaunch.Moved("{ \"Name\": \"x\" }", root, root, [(At("Api"), At("Gateway"))]));
+    }
+
+    /// <summary>A folder's runs as a person writes them: a comment, a step, a script waiting for a line, a project and a
+    /// command with its folder and variables, and a member Passenger does not model.</summary>
+    private const string Runs = "{\n  // ours\n  \"passengerRuns\": 1,\n  \"runs\": [\n    {\n      \"name\": \"Web\",\n      \"parts\": [\n"
+        + "        { \"install\": \"web/package.json\", \"readyWhen\": \"exited\" },\n"
+        + "        { \"script\": \"build:watch\", \"package\": \"web/package.json\", \"readyWhen\": { \"line\": \"built in\" } },\n"
+        + "        { \"project\": \"Api/Api.csproj\", \"launchProfile\": \"https\", \"action\": \"startWithoutDebugging\", \"readyWhen\": \"listening\", \"kept\": 1 },\n"
+        + "        { \"command\": \"redis-server --port 6380\", \"folder\": \"tools\", \"environment\": { \"A\": \"1\", \"B\": 2 }, \"readyWhen\": { \"listening\": \"localhost:6380\" } }\n"
+        + "      ]\n    },\n    {\n      \"name\": \"Odd\",\n      \"parts\": [ { \"lambda\": \"x\" }, { \"command\": \"x\", \"readyWhen\": \"soon\" } ]\n    }\n  ]\n}\n";
+
+    private void A_folders_runs_are_read_with_each_parts_kind_readiness_and_variables_and_a_part_or_format_it_cannot_read_says_why()
+    {
+        Assert.True(RunsFile.PathIn(root) == Path.Combine(root, "passenger-runs.json") && RunsFile.IsFile(RunsFile.PathIn(root)),
+            "A folder's runs are not looked for in passenger-runs.json at its top, so the team's are never found");
+        (IReadOnlyList<RunsFileRun> runs, string? problem) = RunsFile.Parse(Runs, root);
+        Assert.Null(problem);
+        Assert.Equal(["Web", "Odd"], runs.Select(r => r.Name));
+        IReadOnlyList<RunPart> web = runs[0].Parts;
+        Assert.Equal([RunPartKind.Install, RunPartKind.Script, RunPartKind.Project, RunPartKind.Command], web.Select(p => p.Kind));
+        Assert.Equal([At("web", "package.json"), At("web", "package.json"), At("Api", "Api.csproj"), string.Empty], web.Select(p => p.Project));
+        Assert.Equal([ReadyWhen.Exited, ReadyWhen.Line, ReadyWhen.Listening, ReadyWhen.Listening], web.Select(p => p.Ready));
+        Assert.Equal([string.Empty, "built in", string.Empty, "localhost:6380"], web.Select(p => p.ReadyText));
+        Assert.True(web[2] is { Action: ProjectLaunchAction.StartWithoutDebugging, LaunchProfile: "https" } && web[1].Script == "build:watch",
+            "A part's action, launch profile or script is not read as written, so the run starts what its file does not say");
+        Assert.True(web[3].Command == "redis-server --port 6380" && web[3].Folder == At("tools") && web[3].Environment.Count == 2 && web[3].Environment["B"] == "2",
+            "A command's folder or variables are not read as written");
+        Assert.Equal(["web: install", "web: build:watch", "Api: https", "redis-server"], web.Select(RunsFile.NameOf));
+        Assert.True(web.All(p => p.Unread is null) && runs[1].Parts.All(p => p.Unread is not null),
+            "A part of a kind or readiness Passenger does not know is not said to be one, so its run would start something else");
+        Assert.False(web.All(p => p.FitsSolutionLaunch), "A run of a script and a command is taken for one Visual Studio's file can hold");
+        (IReadOnlyList<RunsFileRun> later, string? refused) = RunsFile.Parse("{ \"passengerRuns\": 2, \"runs\": [] }", root);
+        Assert.True(later.Count == 0 && refused is not null, "A file of a later format is read as this one");
+        Assert.True(RunsFile.Parse("{ \"runs\": [", root).Problem is not null && RunsFile.Written("[ 1 ]", [], root).Problem is not null,
+            "A file that does not read as runs is not said to, or is written over");
+    }
+
+    private void Runs_written_back_keep_what_is_unchanged_a_new_file_is_format_1_and_a_moved_package_is_followed()
+    {
+        (IReadOnlyList<RunsFileRun> runs, _) = RunsFile.Parse(Runs, root);
+        Assert.Equal(Runs, RunsFile.Written(Runs, runs, root).Text);
+        RunsFileRun web = runs[0] with { Parts = [.. runs[0].Parts.Select((p, i) => i == 2 ? p with { Action = ProjectLaunchAction.Start, Environment = new() { ["X"] = "y" } } : p)] };
+        string? changed = RunsFile.Written(Runs, [web, runs[1]], root).Text;
+        Assert.True(changed is not null && changed.Contains("\"kept\": 1", StringComparison.Ordinal) && !changed.Contains("startWithoutDebugging", StringComparison.Ordinal)
+            && changed.Contains("\"X\": \"y\"", StringComparison.Ordinal) && changed.Contains("// ours", StringComparison.Ordinal)
+            && changed.Contains("{ \"lambda\": \"x\" }", StringComparison.Ordinal),
+            $"A changed run lost what Passenger does not model, a comment or a run it left alone:\n{changed}");
+        Assert.Equal(runs[0].Parts.Select(p => p.Kind), RunsFile.Parse(changed!, root).Runs[0].Parts.Select(p => p.Kind));
+
+        RunsFileRun made = new("Up", [new RunPart(At("Api", "Api.csproj"), ProjectLaunchAction.Start, string.Empty),
+            new RunPart(string.Empty, ProjectLaunchAction.Start, string.Empty) { Kind = RunPartKind.Command, Command = "make watch", Ready = ReadyWhen.Line, ReadyText = "ready" }]);
+        Assert.Equal("{\n  \"passengerRuns\": 1,\n  \"runs\": [\n    {\n      \"name\": \"Up\",\n      \"parts\": [\n        {\n          \"project\": \"Api/Api.csproj\"\n        },\n"
+            + "        {\n          \"command\": \"make watch\",\n          \"readyWhen\": {\n            \"line\": \"ready\"\n          }\n        }\n      ]\n    }\n  ]\n}\n",
+            RunsFile.Written(null, [made], root).Text);
+
+        string? moved = RunsFile.Moved(Runs, root, [(At("web"), At("apps", "web")), (At("Api", "Api.csproj"), At("Api", "Gateway.csproj"))]);
+        Assert.Equal(Runs.Replace("\"web/package.json\"", "\"apps/web/package.json\"", StringComparison.Ordinal).Replace("Api/Api.csproj", "Api/Gateway.csproj", StringComparison.Ordinal), moved);
     }
 
     private string At(params string[] parts) => PathNames.Canonical(Path.GetFullPath(Path.Combine([root, .. parts])));

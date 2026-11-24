@@ -359,6 +359,11 @@ public partial class MainWindow
                 naming.Add((Now(launches), false, path => SolutionLaunch.Move(path, before, after, moved)));
             }
         }
+        if (Folder is { } top)
+        {
+            // The folder's runs name their parts' projects, packages and folders from its top, which stays.
+            naming.Add((RunsFile.PathIn(top), false, path => RunsFile.Move(path, moved)));
+        }
         foreach (ProjectModel project in session.Workspace?.Projects ?? [])
         {
             string now = Now(project.Path);

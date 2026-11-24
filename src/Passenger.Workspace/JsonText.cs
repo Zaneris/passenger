@@ -151,6 +151,93 @@ public static class JsonText
         }
     }
 
+    /// <summary>The text with the array a path of members names (the root for none) holding these items in order, each with
+    /// its place as read (-1 for new): one read kept where it <paramref name="holds"/> its value, else written in its place,
+    /// one left out taken out where <paramref name="isItem"/> takes it for one of the list, a new one put last, each laid out
+    /// as the file lays its items; the array written anew where those read come in another order, made where the path lacks
+    /// it. Null with why for a text that does not read as JSON or whose path is no array.</summary>
+    public static (string? Text, string? Problem) ItemsInPlace(string text, IReadOnlyList<string> path, IReadOnlyList<(int Read, JsonObject Value)> items,
+        Func<string, bool> isItem, Func<string, JsonObject, bool> holds)
+    {
+        (Node? root, Node? array, int reached, string? problem) = Located(text, path);
+        if (root is null || array is null)
+        {
+            return (null, problem);
+        }
+        string eol = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        string unit = path.Count == 0 ? ItemUnit(text, array) : Unit(text, root);
+        JsonArray Whole() => new([.. items.Select(i => (JsonNode)i.Value.DeepClone())]);
+        if (reached < path.Count)
+        {
+            JsonNode made = Whole();
+            for (int j = path.Count - 1; j > reached; j--)
+            {
+                made = new JsonObject { [path[j]] = made };
+            }
+            return (new Layout(text, unit).Add(array, path[reached], made), null);
+        }
+        Dictionary<int, JsonObject> byIndex = [];
+        List<int> read = [];
+        bool[] taken = new bool[items.Count];
+        for (int p = 0; p < items.Count; p++)
+        {
+            if (items[p].Read is >= 0 and int at && at < array.Items.Count && byIndex.TryAdd(at, items[p].Value))
+            {
+                read.Add(at);
+                taken[p] = true;
+            }
+        }
+        // A new item goes after the last read: one before an item read, or those read in another order, is another order.
+        if (!read.SequenceEqual(read.Order()) || !taken.SkipWhile(t => t).All(t => !t))
+        {
+            return path.Count == 0 ? (Laid(Whole(), unit, eol), null) : (new Layout(text, unit).RewriteLaid(array, Whole()), null);
+        }
+        string written = text;
+        // From the last item to the first, each read again where it stands now: those before it are where they were.
+        for (int i = array.Items.Count - 1; i >= 0; i--)
+        {
+            Node now = Located(written, path).Holder!;
+            Layout layout = new(written, unit);
+            Node item = now.Items[i];
+            string itemText = written[item.Start..item.End];
+            if (!byIndex.TryGetValue(i, out JsonObject? value))
+            {
+                if (isItem(itemText))
+                {
+                    written = layout.Remove(now, i);
+                }
+            }
+            else if (!holds(itemText, value))
+            {
+                written = layout.RewriteLaid(item, value);
+            }
+        }
+        for (int p = read.Count; p < items.Count; p++)
+        {
+            // Those read are the first, in order: the rest are new here.
+            written = new Layout(written, unit).AppendLaid(Located(written, path).Holder!, items[p].Value);
+        }
+        return (written, null);
+    }
+
+    /// <summary>The array a path of members names as <see cref="ArrayAt"/> finds it, or for no path the root, which is to be one.</summary>
+    private static (Node? Root, Node? Holder, int Reached, string? Problem) Located(string text, IReadOnlyList<string> path)
+    {
+        if (path.Count > 0)
+        {
+            return ArrayAt(text, path);
+        }
+        try
+        {
+            Node root = new Reader(text).Document();
+            return root.Kind == Kind.Array ? (root, root, 0, null) : (null, null, 0, "its root is not a list");
+        }
+        catch (FormatException unreadable)
+        {
+            return (null, null, 0, $"it does not read as JSON: {unreadable.Message}");
+        }
+    }
+
     /// <summary>The text's root and the array a path of members from it names, or the object holding the first member the
     /// path lacks, with how many of the path's members it reached; no root, with why, when the text does not read as JSON,
     /// its root or a member on the path is no object, or the last no array.</summary>

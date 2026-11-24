@@ -91,12 +91,13 @@ public partial class MainWindow
     public RunConfigurationsDialog ShowRunConfigurations()
     {
         RunConfigurations configurations = session.Configurations;
-        RunConfigurationsDialog dialog = new([.. configurations.All.Where(c => c.Generated)], configurations.Own, [.. session.RunProjects.Where(p => p.Exists && (p.IsRunnable || p.GodotFolder is not null))],
+        RunConfigurationsDialog dialog = new([.. configurations.All.Where(c => c.Generated)], [.. configurations.Own.Where(c => !c.IsMultiple)], [.. session.RunProjects.Where(p => p.Exists && (p.IsRunnable || p.GodotFolder is not null))],
             configurations.Chosen?.Name, (mine, generated, chosen) => configurations.Set(mine, generated, chosen, Projects), buildRun.IsRunningConfiguration,
-            configurations.Profiles, configurations.Solution, configurations.ProfileProblems, session.BuildChoices.Offered, session.BuildChoices.Chosen)
+            configurations.Several, configurations.Solution, configurations.ProfileProblems, session.BuildChoices.Offered, session.BuildChoices.Chosen)
         {
             Folder = Folder,
             WriteProfiles = WriteLaunchProfilesAsync,
+            Packages = configurations.Packages,
             GodotSetting = settings.GodotExecutable,
             BrowserSetting = settings.Browser,
             ReadServices = ReadServices(Projects, Engine),
@@ -157,47 +158,61 @@ public partial class MainWindow
         return (now, null);
     }
 
-    /// <summary>Edit Configurations' multi-project configurations as it leaves them written into the solution's launch profile
-    /// files (the team's <c>.slnLaunch</c> and the person's <c>.slnLaunch.user</c>, saved first if open, taken in after), in
-    /// Visual Studio's format: each profile unchanged kept as written, one changed written in its place, one removed taken out,
-    /// one new put last, what Passenger does not model kept; one command Undo takes back whole. The configurations as read
-    /// again once the files have landed, or why not.</summary>
+    /// <summary>Edit Configurations' runs of several parts as it leaves them, each where it is kept: one Visual Studio's format
+    /// holds (<see cref="RunConfiguration.FitsSolutionLaunch"/>) in the solution's <c>.slnLaunch</c> or <c>.slnLaunch.user</c>,
+    /// any other in the folder's <see cref="RunsFile"/> where shared, else with the person's own configurations; each file saved
+    /// first if open, written as text where each run stands, and taken in after, as one command Undo takes back whole. The
+    /// runs as read again once the files have landed, or why not.</summary>
     public async Task<(IReadOnlyList<RunConfiguration>? Profiles, string? Problem)> WriteLaunchProfilesAsync(IReadOnlyList<RunConfiguration> profiles)
     {
         RunConfigurations configurations = session.Configurations;
-        if (configurations.Solution is not { } solution)
+        if (Folder is not { } top)
         {
-            return (null, Refusals.NoSolutionForProfiles);
+            return (null, Refusals.NoFolder);
         }
-        IReadOnlyList<RunConfiguration> before = configurations.Profiles;
-        string folder = Path.GetDirectoryName(solution)!;
-        string[] files = [SolutionLaunch.SharedFile(solution), SolutionLaunch.UserFile(solution)];
-        // Each file's text as written now, or why it cannot be; null for one left as it is.
-        (string? Text, string? Problem) Written(string file, bool shared)
+        string? solution = configurations.Solution;
+        IReadOnlyList<RunConfiguration> before = configurations.Several;
+        List<RunConfiguration> launched = [.. profiles.Where(p => p.FitsSolutionLaunch(solution))];
+        List<RunConfiguration> filed = [.. profiles.Where(p => !p.FitsSolutionLaunch(solution) && p.Shared)];
+        List<RunConfiguration> own = [.. profiles.Where(p => !p.FitsSolutionLaunch(solution) && !p.Shared)];
+        // Each file with how its text is written now, or why it cannot be; null for one left as it is.
+        List<(string File, Func<string?, (string? Text, string? Problem)> Write, bool Holds)> files = [];
+        if (solution is not null)
         {
-            List<SolutionLaunchProfile> kept = [.. profiles.Where(p => p.Shared == shared)
-                .Select(p => RunConfigurations.ToProfile(p, before.FirstOrDefault(b => b.Launch is not null && ReferenceEquals(b.Launch, p.Launch))?.Name))];
-            FileText? had = File.Exists(file) ? FileText.Load(file) ?? throw new IOException($"{Path.GetFileName(file)} is not a text file") : null;
-            if (had is null && kept.Count == 0)
+            string folder = Path.GetDirectoryName(solution)!;
+            foreach ((string file, bool shared) in (ReadOnlySpan<(string, bool)>)[(SolutionLaunch.SharedFile(solution), true), (SolutionLaunch.UserFile(solution), false)])
+            {
+                List<SolutionLaunchProfile> kept = [.. launched.Where(p => p.Shared == shared)
+                    .Select(p => RunConfigurations.ToProfile(p, before.FirstOrDefault(b => b.Launch is not null && ReferenceEquals(b.Launch, p.Launch))?.Name))];
+                files.Add((file, had => SolutionLaunch.Written(had, kept, folder), kept.Count > 0));
+            }
+        }
+        List<RunsFileRun> runs = [.. filed.Select(r => RunConfigurations.ToRun(r, before.FirstOrDefault(b => b.RunRead is not null && ReferenceEquals(b.RunRead, r.RunRead))?.Name))];
+        files.Add((RunsFile.PathIn(top), had => RunsFile.Written(had, runs, top), runs.Count > 0));
+        (string? Text, string? Problem) Written((string File, Func<string?, (string? Text, string? Problem)> Write, bool Holds) each)
+        {
+            FileText? had = File.Exists(each.File) ? FileText.Load(each.File) ?? throw new IOException($"{Path.GetFileName(each.File)} is not a text file") : null;
+            if (had is null && !each.Holds)
             {
                 return (null, null);
             }
-            (string? text, string? problem) = SolutionLaunch.Written(had?.Text, kept, folder);
-            return problem is not null ? (null, $"{Path.GetFileName(file)} {problem}") : (text == had?.Text ? null : text, null);
+            (string? text, string? problem) = each.Write(had?.Text);
+            return problem is not null ? (null, problem.StartsWith(RunsFile.FileName, StringComparison.Ordinal) ? problem : $"{Path.GetFileName(each.File)} {problem}")
+                : (text == had?.Text ? null : text, null);
         }
-        List<string> changing = [];
+        List<(string File, Func<string?, (string? Text, string? Problem)> Write, bool Holds)> changing = [];
         try
         {
-            for (int i = 0; i < files.Length; i++)
+            foreach ((string File, Func<string?, (string? Text, string? Problem)> Write, bool Holds) each in files)
             {
-                (string? text, string? problem) = Written(files[i], i == 0);
+                (string? text, string? problem) = Written(each);
                 if (problem is not null)
                 {
                     return (null, problem);
                 }
                 if (text is not null)
                 {
-                    changing.Add(files[i]);
+                    changing.Add(each);
                 }
             }
         }
@@ -205,42 +220,45 @@ public partial class MainWindow
         {
             return (null, unread.Message);
         }
-        if (changing.Count == 0)
+        if (changing.Count > 0)
         {
-            return (configurations.Profiles, null);
-        }
-        using CommandHistory.Recording made = Editors.Commands.Record("Change Launch Profiles");
-        string? refused = await ChangeFileAsync(changing, () =>
-        {
-            // Read again as the change writes: what was open was saved first.
-            foreach (string file in changing)
+            using CommandHistory.Recording made = Editors.Commands.Record("Change Runs of Several Parts");
+            string? refused = await ChangeFileAsync([.. changing.Select(c => c.File)], () =>
             {
-                (string? text, string? problem) = Written(file, file == files[0]);
-                if (problem is not null)
+                // Read again as the change writes: what was open was saved first.
+                foreach ((string File, Func<string?, (string? Text, string? Problem)> Write, bool Holds) each in changing)
                 {
-                    return problem;
+                    (string? text, string? problem) = Written(each);
+                    if (problem is not null)
+                    {
+                        return problem;
+                    }
+                    if (text is null)
+                    {
+                        continue;
+                    }
+                    if (File.Exists(each.File))
+                    {
+                        FileText.SaveOver(each.File, FileText.Load(each.File) ?? throw new IOException($"{Path.GetFileName(each.File)} is not a text file"), text);
+                    }
+                    else
+                    {
+                        FileText.SaveNew(each.File, text);
+                    }
                 }
-                if (text is null)
-                {
-                    continue;
-                }
-                if (File.Exists(file))
-                {
-                    FileText.SaveOver(file, FileText.Load(file) ?? throw new IOException($"{Path.GetFileName(file)} is not a text file"), text);
-                }
-                else
-                {
-                    FileText.SaveNew(file, text);
-                }
+                return null;
+            }, made);
+            if (refused is not null)
+            {
+                return (null, $"The runs could not be written: {await made.TakenBackAsync(refused)}");
             }
-            return null;
-        }, made);
-        if (refused is not null)
+        }
+        if (own.Count > 0 || configurations.Own.Any(c => c.IsMultiple))
         {
-            return (null, $"The launch profiles could not be written: {await made.TakenBackAsync(refused)}");
+            configurations.SetOwnRuns(own);
         }
         configurations.Configure(Projects);
-        return (configurations.Profiles, null);
+        return (configurations.Several, null);
     }
 
     /// <summary>Why Save as Launch Profile cannot save the configuration it would (the one chosen in Edit Configurations
