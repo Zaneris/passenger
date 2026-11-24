@@ -221,7 +221,7 @@ only the projects it names.
 
 Razor and Blazor files get C# and HTML help together, and a class attribute completes from every stylesheet the page
 uses. Project files complete their properties, items and package versions, with each property's evaluated value.
-JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles and YAML go through their language servers on Node.js, Bun or Deno,
+JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles and YAML go through their language servers on Node.js or Bun,
 the project's own ESLint, Prettier, Oxlint, Oxfmt and Biome checking, fixing and formatting as it asks. Twelve looks of
 its own, each dark and light, and every file with an icon in each look's colours.
 
@@ -287,7 +287,7 @@ needs:
   Passenger says what is missing and installs one in a step, once you agree; its own language server, project host and
   debugger run on the .NET it carries, whatever the machine has;
 - **Git**, for version control;
-- **Node.js**, or **Bun** or **Deno** for a folder that uses one, for JavaScript, TypeScript, HTML, CSS, JSON,
+- **Node.js**, or **Bun** for a folder that uses it, for JavaScript, TypeScript, HTML, CSS, JSON,
   Dockerfiles and YAML; C#, XAML, GDScript and shaders do without them;
 - for Godot games, **Godot 4** (its .NET build for C#), found from `GODOT`, the PATH or your applications, or named in
   Settings › Godot; Passenger is tested on Godot 4.7 and 4.8's betas;
