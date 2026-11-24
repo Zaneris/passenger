@@ -94,6 +94,11 @@ public partial class MainWindow
             IdeErrors.Observe(CloseSolutionLetGoAsync());
             return "The solution closes once you answer whether to stop the containers of the runs Detach let go of";
         }
+        if (AsksOfDatabase)
+        {
+            IdeErrors.Observe(CloseSolutionDatabaseAsync());
+            return "The solution closes once you answer whether to write or drop its database changes not yet written";
+        }
         if (!Autosave())
         {
             const string unsaved = "The solution was not closed: a changed file could not be saved";

@@ -979,7 +979,8 @@ public sealed class CellGrid : Control, IOwnKeys
             context.FillRectangle(Spot((row, column)) == currentMatch ? colours.SearchCurrent : colours.SearchMatch, place);
         }
         bool number = table!.IsNumber(row, column);
-        if (Text(row, column, place.Width, plain, number ? colours.Number : colours.Text) is { } text)
+        // A number on a change's ground stands as numbers do, in the text's colour, which every such ground is read with.
+        if (Text(row, column, place.Width, plain, number && table.MarkOf(row, column) == CellMark.None ? colours.Number : colours.Text) is { } text)
         {
             DrawText(context, text, place, number);
         }

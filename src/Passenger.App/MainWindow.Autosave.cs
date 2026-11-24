@@ -65,8 +65,8 @@ public partial class MainWindow
     /// <summary>Saves before anything else hears of the close (but a close refused to an agent's input, <see
     /// cref="CloseRefused"/>, or asked about first, <see cref="ConfirmFirst"/>); a file that cannot be written keeps the window
     /// open and asks whether to make it writable or close without it (<see cref="CloseUnsavedAsync"/>). A save still landing
-    /// holds the close until it has (<see cref="CloseLandedAsync"/>), and a program Hot Reload changed that it would stop is
-    /// asked about (<see cref="CloseHeldAsync"/>), as are the containers of runs Detach let go of (<see cref="CloseLetGoAsync"/>).</summary>
+    /// holds the close until it has (<see cref="CloseLandedAsync"/>); programs Hot Reload changed, runs Detach let go of and
+    /// database changes not written are asked about (<see cref="CloseHeldAsync"/>, <see cref="CloseLetGoAsync"/>, <see cref="CloseDatabaseAsync"/>).</summary>
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         if (CloseRefused())
@@ -106,6 +106,13 @@ public partial class MainWindow
         {
             e.Cancel = true;
             IdeErrors.Observe(CloseLetGoAsync(quit));
+            return;
+        }
+        // A table's changes not submitted and a console's open transaction: written, or dropped, as the person answers.
+        if (e.CloseReason != WindowCloseReason.OSShutdown && AsksOfDatabase)
+        {
+            e.Cancel = true;
+            IdeErrors.Observe(CloseDatabaseAsync(quit));
             return;
         }
         quitting = quit;

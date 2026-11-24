@@ -274,6 +274,9 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>The consoles holding a transaction open.</summary>
+    public IReadOnlyList<SqlConsole> OpenTransactions => [.. consoles.Values.Where(c => c.InTransaction)];
+
     /// <summary>Whether a connection's consoles hold a transaction open.</summary>
     public bool InTransaction(DatabaseSource source) => consoles.Values.Any(c => c.Connection == source.Id && c.InTransaction);
 

@@ -677,6 +677,15 @@ public static class Refusals
     /// <summary>A cell of a column read as true or false written with other words.</summary>
     public static string NotTrueOrFalse(string text) => $"'{text}' is neither true nor false";
 
+    /// <summary>A table's Previous Page on its first page.</summary>
+    public const string NoPreviousPage = "This is the first page";
+
+    /// <summary>A table's Next Page on its last page.</summary>
+    public const string NoNextPage = "This is the last page";
+
+    /// <summary>A table's Stop with nothing of it being read or written.</summary>
+    public const string DatabaseNotReading = "Nothing of this table is being read or written";
+
     /// <summary>Submit or Revert with a table's changes all written or reverted.</summary>
     public const string NoPendingChanges = "No changes are pending";
 

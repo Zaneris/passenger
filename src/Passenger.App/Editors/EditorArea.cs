@@ -377,6 +377,9 @@ public sealed partial class EditorArea : UserControl
 
     private IEnumerable<EditorGroup> AllGroups => frames.SelectMany(f => f.Groups);
 
+    /// <summary>What every tab of every editor window shows, each once: files, diffs, tool windows and tables.</summary>
+    public IEnumerable<OpenDocument> TabDocuments => AllGroups.SelectMany(g => g.Tabs).Select(t => t.Document).Distinct();
+
     private EditorFrame ActiveFrame => FrameOf(activeGroup) ?? main;
 
     private EditorFrame? FrameOf(EditorGroup group) => frames.FirstOrDefault(f => f.Groups.Contains(group));

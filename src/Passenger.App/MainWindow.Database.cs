@@ -348,23 +348,125 @@ public partial class MainWindow
     private async Task<bool> AskProductionAsync(string title, string question, string yes) =>
         !AgentsOwn && Mcp.AgentCall.Current is null && await new ConfirmDialog(title, question, yes) { EnterAgrees = false }.ShowDialog<bool>(this);
 
+    private const string WriteAndCommit = "Write and Commit";
+    private const string DiscardChanges = "Discard";
+
+    /// <summary>Whether the window asks the person, closed, about its database changes not written.</summary>
+    private bool askingDatabase;
+
+    /// <summary>Whether leaving the folder asks first about what it holds of its databases unwritten: a table's changes not
+    /// submitted, a console's transaction open, and a person there to answer.</summary>
+    private bool AsksOfDatabase => !Unseen && !AgentsOwn && database is { } controller && (PendingTables().Count > 0 || controller.OpenTransactions.Count > 0);
+
+    private List<DatabaseTableTab> PendingTables() => [.. Editors.TabDocuments.Select(d => d.DatabaseTable).OfType<DatabaseTableTab>().Where(t => !t.Edits.IsEmpty)];
+
+    /// <summary>Asks, <paramref name="leaving"/> the folder, whether to submit its tables' changes and commit its consoles'
+    /// transactions, or discard and roll them back: true to go on once that is done, false for Cancel or a write refused
+    /// (said where it was refused).</summary>
+    private async Task<bool> DatabaseAskedAsync(string leaving)
+    {
+        ProjectSession asked = session;
+        List<DatabaseTableTab> tables = PendingTables();
+        IReadOnlyList<SqlConsole> consoles = database?.OpenTransactions ?? [];
+        if (tables.Count == 0 && consoles.Count == 0)
+        {
+            return true;
+        }
+        string held = Plural.Listed([.. tables.Select(t => $"{t.Table}'s {t.Edits.Said.Replace(" pending", string.Empty, StringComparison.Ordinal)}"),
+            .. consoles.Select(c => $"the transaction open in {Path.GetFileName(c.Path)}")]);
+        string? answer = await Choose("Database Changes Not Written", $"{Containers.ContainerSecrets.InSaid(held)} would be lost {leaving}.\n\n"
+            + "Write and Commit submits the tables' changes and commits the transactions; Discard drops the changes and rolls the transactions back.",
+            [WriteAndCommit, DiscardChanges], null);
+        if (answer is null || session != asked || database is not { } controller)
+        {
+            return false;
+        }
+        bool write = answer == WriteAndCommit;
+        foreach (DatabaseTableTab table in tables)
+        {
+            if (write)
+            {
+                await table.SubmitAsync();
+            }
+            else
+            {
+                table.Discard();
+            }
+        }
+        foreach (SqlConsole console in consoles)
+        {
+            await controller.EndTransactionAsync(console, write);
+        }
+        return session == asked && tables.All(t => t.Edits.IsEmpty) && consoles.All(c => !c.InTransaction);
+    }
+
+    /// <summary>The window was closed holding database changes not written: asked, it closes (a quit it held carrying on)
+    /// once they are written or dropped, or stays open, the quit given up (<see cref="PassengerApp.Answered"/>).</summary>
+    private async Task CloseDatabaseAsync(bool quit)
+    {
+        if (askingDatabase)
+        {
+            return;
+        }
+        askingDatabase = true;
+        ClosesLater = true;
+        bool goOn;
+        try
+        {
+            goOn = await DatabaseAskedAsync(quit ? "as Passenger quits" : "as the window closes");
+        }
+        finally
+        {
+            askingDatabase = false;
+            ClosesLater = false;
+        }
+        if (quit)
+        {
+            PassengerApp.Answered(carryOn: goOn);
+        }
+        else if (goOn)
+        {
+            CloseAsAnswered();
+        }
+    }
+
+    /// <summary>Close Solution once its database changes not written are answered for.</summary>
+    private async Task CloseSolutionDatabaseAsync()
+    {
+        if (await DatabaseAskedAsync("as the solution closes"))
+        {
+            CloseSolution();
+        }
+    }
+
+    /// <summary>Another folder opened here over database changes not written: asked, it opens once answered, else not at all.</summary>
+    private async Task OpenDatabaseAsync(string path, string folder, Action? opened)
+    {
+        if (await DatabaseAskedAsync($"as {Path.GetFileName(folder)} opens here"))
+        {
+            await OpenFolder(path, opened: opened);
+        }
+    }
+
     /// <summary>Asks before a tab that holds what its close would lose (a table's changes not submitted, a console's open
-    /// transaction) closes, closing it once answered; false where the tab may close now, a console letting go of its
-    /// connection as it does.</summary>
+    /// transaction) closes, closing it once answered, as leaving the folder asks (<see cref="DatabaseAskedAsync"/>); false
+    /// where the tab may close now, a console letting go of its connection as it does.</summary>
     private bool AsksBeforeClosingDatabase(Editors.EditorGroup group, Workspace.OpenDocument document)
     {
         if (database is not { } controller)
         {
             return false;
         }
-        if (document.DatabaseTable is { Edits.IsEmpty: false } table)
+        // Nobody is at a Passenger nobody sees, or an agent's own, to answer: what the tab holds goes with it.
+        bool asks = !Unseen && !AgentsOwn;
+        if (asks && document.DatabaseTable is { Edits.IsEmpty: false } table)
         {
             IdeErrors.Observe(CloseTableAsync(group, document, table));
             return true;
         }
         if (document.Language == Languages.Language.Sql && controller.ConsoleOf(document.Path) is { } console)
         {
-            if (console.InTransaction)
+            if (asks && console.InTransaction)
             {
                 IdeErrors.Observe(CloseConsoleAsync(group, document, console));
                 return true;

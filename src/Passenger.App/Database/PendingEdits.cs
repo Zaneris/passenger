@@ -141,7 +141,19 @@ public sealed class PendingTable(DatabaseRows page, PendingEdits edits, bool edi
 
     private static string Shown(string? text) => ContainerSecrets.InSaid(text ?? "NULL");
 
-    public override bool IsNumber(int row, int column) => IsRead(row) && MarkOf(row, column) == CellMark.None && Page.IsNumber(row, column);
+    /// <summary>Whether a cell holds a number: as read, or as written where its column holds numbers and the words read as one,
+    /// so a value waiting stands where its column's numbers do.</summary>
+    public override bool IsNumber(int row, int column)
+    {
+        string? written = IsRead(row) ? KeyOf(row) is { } key && Edits.Changed.TryGetValue(key, out ChangedRow? changed) && changed.Written.TryGetValue(column, out string? text) ? text : null
+            : AddedAt(row) is { } added && added.Written.TryGetValue(column, out string? given) ? given : null;
+        if (written is null)
+        {
+            return IsRead(row) && Page.IsNumber(row, column);
+        }
+        return double.TryParse(written, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out _)
+            && Enumerable.Range(0, Page.RowCount).Any(r => Page.IsNumber(r, column));
+    }
 
     public override CellValue ValueOf(int row, int column) => IsRead(row) ? Page.ValueOf(row, column) : new CellValue(CellKind.Text);
 

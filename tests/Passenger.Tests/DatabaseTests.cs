@@ -106,13 +106,11 @@ public sealed class DatabaseTests
                 Ui.Settle();
                 Assert.Single(window.EditorArea.Groups.SelectMany(g => g.Tabs), t => t.Document.DatabaseTable is not null);
                 Tab<ComboBox>(window, "DatabaseFilterColumn").SelectedItem = "Name";
-                Tab<TextBox>(window, "DatabaseFilterValue").Text = "product 10";
-                Ui.Click(Tab<Button>(window, "DatabaseApplyFilter"));
+                Filter(window, "product 10");
                 Ui.WaitFor(() => Data(window)?.Rows?.RowCount == 7, "Products whose names hold product 10");
-                Tab<TextBox>(window, "DatabaseFilterValue").Text = "%";
-                Ui.Click(Tab<Button>(window, "DatabaseApplyFilter"));
+                Filter(window, "%");
                 Ui.WaitFor(() => Data(window)?.Rows?.RowCount == 0, "a filter's % taken as itself");
-                Ui.Click(Tab<Button>(window, "DatabaseClearFilter"));
+                Filter(window, string.Empty);
                 Ui.WaitFor(() => Data(window)?.Rows?.RowCount == 100, "Products unfiltered");
             });
             Flow.Step("cells written, rows added and deleted wait as changes, Undo and Redo stepping through them, until Submit writes them as one", () =>
@@ -136,6 +134,17 @@ public sealed class DatabaseTests
                 Ui.Press(window, "ENTER");
                 Assert.Equal(CellMark.Added, data.Shown.RowMark(100));
                 Assert.Equal("Added", data.Shown.Cell(100, 1));
+                Assert.True(data.Shown.IsNumber(100, 0), "An added row's Id does not stand where its column's numbers do");
+                ShrinkingRow bar = Tab<ShrinkingRow>(window, "DatabaseTableBar");
+                window.Width = 1800;
+                Ui.Settle();
+                Assert.DoesNotContain(bar.Children, ShrinkingRow.HasGone);
+                window.Width = MainWindow.SmallestWidth;
+                Ui.Settle();
+                Assert.Contains(bar.Children, ShrinkingRow.HasGone);
+                Assert.True(bar.Bounds.Height < 2 * Tab<Button>(window, "DatabaseTableMore").Bounds.Height, $"The table's bar stands {bar.Bounds.Height} high, in rows, at the window's narrowest");
+                window.Width = 1200;
+                Ui.Settle();
                 Assert.True(window.Perform(Passenger.Editor.EditorActions.Undo), "Undo did not run in the table");
                 Assert.Equal(string.Empty, data.Shown.Cell(100, 1));
                 Assert.True(window.Perform(Passenger.Editor.EditorActions.Redo), "Redo did not run in the table");
@@ -167,6 +176,10 @@ public sealed class DatabaseTests
                 Assert.Equal("Changed elsewhere", Scalar(folder, "SELECT Name FROM Products WHERE Id=1"));
                 Assert.Equal("Product 2", Scalar(folder, "SELECT Name FROM Products WHERE Id=2"));
                 Assert.False(data.Edits.IsEmpty, "The changes refused were dropped");
+                Assert.NotNull(window.CloseSolution());
+                Ui.ClickButton(Question(window), "Cancel");
+                Ui.Settle();
+                Assert.True(window.Folder is not null && !data.Edits.IsEmpty, "Close Solution dropped the table's changes not written");
                 Assert.False(window.EditorArea.CloseTab(window.EditorArea.ActiveGroup, data.Document), "The tab closed with changes not written");
                 Ui.ClickButton(Question(window), "Discard");
                 Ui.WaitFor(() => window.EditorArea.Groups.SelectMany(g => g.Tabs).All(t => t.Document.DatabaseTable is null), "the table's tab closed");
@@ -245,6 +258,10 @@ public sealed class DatabaseTests
                 Assert.False(sql.InTransaction, $"COMMIT run in the console left its transaction open: {sql.Said}");
                 Assert.Equal("held", Scalar(folder, "SELECT Note FROM Products WHERE Id=2"));
                 Run(window, "UPDATE Products SET Note='kept' WHERE Id=2");
+                window.Close();
+                Ui.ClickButton(Question(window), "Cancel");
+                Ui.Settle();
+                Assert.True(window.IsVisible && sql.InTransaction, "Closing the window dropped the console's open transaction");
                 Passenger.App.Workspace.OpenDocument console = window.EditorArea.Active!;
                 Assert.False(window.EditorArea.CloseTab(window.EditorArea.ActiveGroup, console), "The console closed with its transaction open");
                 Ui.ClickButton(Question(window), "Commit");
@@ -253,11 +270,12 @@ public sealed class DatabaseTests
             });
             Flow.Step("a connection marked production asks before a statement that changes data, and one marked read-only refuses it", () =>
             {
+                ListBox tree = Explorer(window).GetVisualDescendants().OfType<ListBox>().Single(l => l.Name == "DatabaseTree");
                 Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
-                Assert.True(window.Perform(AppActions.DatabaseProduction), "Production Connection did not run");
+                Ui.ChooseFromMenu(tree, "Production");
                 Assert.Equal(DatabaseMark.Production, window.Database.Sources.Single(s => s.Name == "Shop").Mark);
                 Assert.Equal(DatabaseMark.Production, Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop").Mark);
-                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Ui.ChooseFromMenu(tree, "Open SQL Console");
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console is not null, "Shop's console");
                 Assert.Equal(DatabaseMark.Production, window.EditorArea.MarkOf!(window.EditorArea.Active!));
                 Assert.Contains("production", Tab<Banner>(window, "ConsoleMark").Said, StringComparison.Ordinal);
@@ -337,10 +355,11 @@ public sealed class DatabaseTests
         }
     }
 
-    /// <summary>A window on the folder keeping its state in <paramref name="settings"/>, as a person's does.</summary>
+    /// <summary>A window on the folder keeping its state in <paramref name="settings"/>, seen, as a person's is, so what would
+    /// lose a table's changes or a transaction asks.</summary>
     private static MainWindow Open(string folder, string settings)
     {
-        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false, Unseen = false };
         window.Show();
         window.KeepLayout();
         window.OpenFolder(folder);
@@ -366,6 +385,16 @@ public sealed class DatabaseTests
         Explorer(window).Choose(node);
         Ui.Await(Explorer(window).ToggleAsync(node), $"{title} to open");
         Assert.True(node.IsExpanded, $"{title} did not open: {window.Database.Said}");
+    }
+
+    /// <summary>Filters the table's rows by the words given, as Enter in the filter's box does, on a bar narrow enough to
+    /// have let go of its Apply.</summary>
+    private static void Filter(MainWindow window, string words)
+    {
+        TextBox value = Tab<TextBox>(window, "DatabaseFilterValue");
+        value.Text = words;
+        value.Focus();
+        Ui.Press(window, "ENTER");
     }
 
     /// <summary>Writes a cell as the person does: chosen, opened for writing, its text and Enter.</summary>

@@ -148,6 +148,10 @@ public partial class MainWindow
             {
                 return OpenLetGoAsync(path, opening, opened);
             }
+            if (opener is null && AsksOfDatabase)
+            {
+                return OpenDatabaseAsync(path, opening, opened);
+            }
             if (!LeaveFolder())
             {
                 return Task.CompletedTask;

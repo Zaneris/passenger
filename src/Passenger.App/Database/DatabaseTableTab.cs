@@ -391,11 +391,20 @@ public sealed class DatabaseTableTab : IDisposable
             sort = wanted is { } by && rows is { } read ? (read.Columns[by.Column], by.Descending) : null;
             IdeErrors.Observe(LoadAsync(0, filter));
         };
-        ToolFlow bar = new() { Margin = new Thickness(Gaps.Normal, Gaps.Hair), Spacing = Gaps.Small };
+        Button more = ToolButtons.Of(IconKeys.More, "More");
+        more.Name = "DatabaseTableMore";
+        more.Click += (_, _) => MoreMenu().ShowAt(more);
+        // One row: the filter's fields narrow first, then the parts go whole from the last back, each still in More's menu.
+        columns[ShrinkingRow.LeastProperty] = 64;
+        value[ShrinkingRow.LeastProperty] = 80;
+        ShrinkingRow.SetKeepsWidth(comparison, true);
+        ShrinkingRow bar = new() { Name = "DatabaseTableBar", Margin = new Thickness(Gaps.Normal, Gaps.Hair), Spacing = Gaps.Small, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
         foreach (Control control in new Control[] { refresh, previous, next, cancel, ToolBars.Rule(), add, delete, submit, revert, ToolBars.Rule(), columns, comparison, value, apply, clear })
         {
+            ShrinkingRow.SetGoesWhole(control, true);
             bar.Children.Add(control);
         }
+        bar.Children.Add(more);
         Border top = ToolBars.OverEditor(bar);
         DockPanel page = new();
         DockPanel.SetDock(top, Dock.Top);
@@ -420,6 +429,38 @@ public sealed class DatabaseTableTab : IDisposable
             {
                 IdeErrors.Observe(LoadAsync(0, new DatabaseFilter(column, value.Text ?? string.Empty, op)));
             }
+        }
+
+        // Every part of the bar as an item, so what a narrow bar lets go of is still a click away.
+        MenuFlyout MoreMenu()
+        {
+            string? idle = operation is null && Valid ? null : Refusals.DatabaseBusy;
+            MenuFlyout menu = new() { Placement = Avalonia.Controls.PlacementMode.BottomEdgeAlignedRight };
+            foreach (Control item in new Control[]
+            {
+                ListMenus.Item("Read Again", () => IdeErrors.Observe(LoadAsync(rows?.Offset ?? 0, filter)), idle, IconKeys.Rerun),
+                ListMenus.Item("Previous Page", () => IdeErrors.Observe(LoadAsync(Math.Max(0, (rows?.Offset ?? 0) - DatabaseClient.PageSize), filter)),
+                    idle ?? (rows?.Offset > 0 ? null : Refusals.NoPreviousPage), IconKeys.ArrowUp),
+                ListMenus.Item("Next Page", () => IdeErrors.Observe(LoadAsync((rows?.Offset ?? 0) + DatabaseClient.PageSize, filter)),
+                    idle ?? (rows?.More == true ? null : Refusals.NoNextPage), IconKeys.ArrowDown),
+                ListMenus.Item("Stop", () => operation?.Cancel(), operation is null ? Refusals.DatabaseNotReading : null, IconKeys.Stop),
+                new Separator(),
+                ListMenus.Keyed("Add Row", AppActions.DatabaseAddRow, () => request(AppActions.DatabaseAddRow), WhyNotAddRow),
+                ListMenus.Keyed("Delete Rows", AppActions.DatabaseDeleteRows, () => request(AppActions.DatabaseDeleteRows), WhyNotDeleteRows),
+                ListMenus.Keyed("Submit Changes", AppActions.DatabaseSubmit, () => request(AppActions.DatabaseSubmit), WhyNotSubmit),
+                ListMenus.Keyed("Revert Changes", AppActions.DatabaseRevert, () => request(AppActions.DatabaseRevert), WhyNotRevert),
+                new Separator(),
+                ListMenus.Item("Apply Filter", Apply, idle, IconKeys.Filter),
+                ListMenus.Item("Clear Filter", () =>
+                {
+                    value.Text = string.Empty;
+                    IdeErrors.Observe(LoadAsync());
+                }, idle, IconKeys.Close),
+            })
+            {
+                menu.Items.Add(item);
+            }
+            return menu;
         }
 
         void Paint()
