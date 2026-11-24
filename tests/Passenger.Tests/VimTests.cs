@@ -382,7 +382,8 @@ public sealed partial class VimTests
                     }
                     else
                     {
-                        keys.AddRange(Motion(random, text, Counted(random)));
+                        // Now and then a column (|), which may stand past a short line's end.
+                        keys.AddRange(random.Next(8) == 0 ? Each(random.Next(1, 13).ToString(CultureInfo.InvariantCulture) + "|") : Motion(random, text, Counted(random)));
                     }
                 }
                 if (random.Next(4) > 0)
@@ -395,7 +396,13 @@ public sealed partial class VimTests
                     }
                     else if (does is "c" or "I" or "A" or "C" or "S")
                     {
-                        keys.AddRange(Typing(random));
+                        string[] typed = [.. Typing(random)];
+                        keys.AddRange(typed);
+                        if (does is "I" or "A" && !typed.Contains(VimKeys.Enter) && random.Next(3) == 0)
+                        {
+                            // . makes an I or A again over a stretch of the same size from where it is pressed.
+                            keys.AddRange(Each(Pick(random, [".", "j.", "k.", "w.", "$.", "0.", "2."])));
+                        }
                     }
                 }
                 else
