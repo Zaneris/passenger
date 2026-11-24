@@ -40,7 +40,7 @@ public partial class MainWindow
         Editors.Opened += (_, document) => checks.Attach(document);
         Editors.Closed += (_, document) => checks.Detach(document);
         controller.Changed += (_, _) => checks.SchemaChanged();
-        Editors.MarkOf = document => document.DatabaseTable is { } table ? controller.Find(table.Connection)?.Mark ?? DatabaseMark.None
+        Editors.MarkOf = document => document.DatabaseTab is { } table ? controller.Find(table.Connection)?.Mark ?? DatabaseMark.None
             : document.Language == Languages.Language.Sql && controller.ConsoleOf(document.Path) is { Connection: { } id } ? controller.Find(id)?.Mark ?? DatabaseMark.None
             : DatabaseMark.None;
         Editors.AsksBeforeClosing = AsksBeforeClosingDatabase;
@@ -103,12 +103,14 @@ public partial class MainWindow
         Add(AppActions.DatabaseOpenTable, "Open Table Data", OpenDatabaseTableAsync,
             () => databaseExplorer?.Chosen is not { Table: not null } chosen ? Refusals.NoDatabaseTable : WhyNotOpened(chosen.Source) ?? PersonsOwn());
         Add(AppActions.DatabaseRefresh, "Refresh Database Connections", controller.RefreshAsync, () => Folder is null ? Refusals.NoFolder : null);
-        Add(AppActions.DatabaseConsole, "Open SQL Console", OpenSqlConsoleAsync,
+        Add(AppActions.DatabaseConsole, "Open SQL Console", () => OpenSqlConsoleAsync(),
             () => ChosenConnection() is not { } chosen ? Refusals.NoDatabaseConnection : WhyNotOpened(chosen) ?? PersonsOwn());
         Add(AppActions.DatabaseShowDdl, "Show DDL", ShowDdlAsync, WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 0));
         Add(AppActions.DatabaseScriptCreate, "Generate Create Script", () => ScriptIntoConsoleAsync(DdlScript.Create), WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 1));
         Add(AppActions.DatabaseScriptAlter, "Generate Alter Script", () => ScriptIntoConsoleAsync(DdlScript.Alter), WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 2));
         Add(AppActions.DatabaseScriptDrop, "Generate Drop Script", () => ScriptIntoConsoleAsync(DdlScript.Drop), WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 3));
+        Add(AppActions.DatabaseDiagram, "Show Schema Diagram", ShowDiagramAsync, WhyNotSchema, menu: new MenuPlace("Tools/Database", 6, 0));
+        Add(AppActions.DatabaseCompare, "Compare Schemas…", CompareSchemasAsync, WhyNotSchema, menu: new MenuPlace("Tools/Database", 6, 1));
         actions!.Add(new IdeAction(AppActions.DatabaseRun, "Run Statement", "Database", _ => IdeErrors.Observe(RunSqlAsync()))
         {
             WhyNot = _ => Editors.Active is not { Language: var language } || language != Languages.Language.Sql ? Refusals.NoSqlFile
@@ -230,6 +232,8 @@ public partial class MainWindow
         }
 
         string? WhyNotObject() => databaseExplorer?.Chosen is not { Target: not null } chosen ? Refusals.NoDatabaseObject : WhyNotOpened(chosen.Source) ?? PersonsOwn();
+
+        string? WhyNotSchema() => databaseExplorer?.Chosen is not { Kind: not DatabaseNodeKind.Note } chosen ? Refusals.NoDatabaseConnection : WhyNotOpened(chosen.Source) ?? PersonsOwn();
 
         string? PersonsOwn() => AgentsOwn || Mcp.AgentCall.Current is not null ? Refusals.AsksThePerson : null;
     }
@@ -366,27 +370,88 @@ public partial class MainWindow
         {
             return;
         }
-        await OpenSqlConsoleAsync();
-        if (Editors.Active is not { } console || controller.ConsoleOf(console.Path)?.Connection != source.Id)
+        await IntoConsoleAsync(source, node.Database, text);
+    }
+
+    /// <summary>Writes a script at the end of a connection's console, opened, chosen there and never run, so the person reads
+    /// it before running it: into another database than the connection's after its USE, or a comment saying so.</summary>
+    private async Task IntoConsoleAsync(DatabaseSource source, string within, string text)
+    {
+        await OpenSqlConsoleAsync(source);
+        if (Editors.Active is not { } console || database?.ConsoleOf(console.Path) is not { Connection: var id } shown || id != source.Id)
         {
             return;
         }
-        string elsewhere = node.Database == source.Database || source.Kind == DatabaseKind.Sqlite ? string.Empty : source.Kind switch
+        string elsewhere = within == source.Database || source.Kind == DatabaseKind.Sqlite ? string.Empty : source.Kind switch
         {
-            DatabaseKind.SqlServer => $"USE {DatabaseClient.Quote(source.Kind, node.Database)}\nGO\n",
-            DatabaseKind.MySql => $"USE {DatabaseClient.Quote(source.Kind, node.Database)};\n",
-            _ => $"-- Of database {node.Database}, which this console's connection does not open\n",
+            DatabaseKind.SqlServer => $"USE {DatabaseClient.Quote(source.Kind, within)}\nGO\n",
+            DatabaseKind.MySql => $"USE {DatabaseClient.Quote(source.Kind, within)};\n",
+            _ => $"-- Of database {within}, which this console's connection does not open\n",
         };
-        if (controller.ConsoleOf(console.Path) is { } shown)
-        {
-            WriteIntoConsole(shown, elsewhere + text);
-        }
+        WriteIntoConsole(shown, elsewhere + text);
     }
 
-    /// <summary>Opens the chosen connection's console, a .sql file kept with the folder's state, made as first opened.</summary>
-    private async Task OpenSqlConsoleAsync()
+    /// <summary>The database and schema a chosen row stands in: its own, else its connection's database and that database's
+    /// usual schema (PostgreSQL's public, SQL Server's dbo, MySQL's the database itself, SQLite's file its one schema).</summary>
+    private static (string Database, string Schema) SchemaOf(DatabaseNode node)
     {
-        if (ChosenConnection() is not { } source || session.Folder is not { } folder || database is not { } controller)
+        string within = node.Database is { Length: > 0 } named ? named : node.Source.Database;
+        string schema = node.Source.Kind switch
+        {
+            DatabaseKind.MySql => within,
+            DatabaseKind.Sqlite => string.Empty,
+            _ => node.Schema is { Length: > 0 } own ? own : node.Source.Kind == DatabaseKind.SqlServer ? "dbo" : "public",
+        };
+        return (within, schema);
+    }
+
+    /// <summary>Shows the chosen schema's tables and foreign keys as a diagram among the editors, read anew each time.</summary>
+    private async Task ShowDiagramAsync()
+    {
+        if (databaseExplorer?.Chosen is not { } node || database is not { } controller)
+        {
+            return;
+        }
+        (string within, string schema) = SchemaOf(node);
+        string named = schema.Length > 0 ? schema : within;
+        if (await controller.ReadAsync(node.Source, $"Reading {named}'s tables…", cancel => SchemaReads.ReadAsync(node.Source.In(within), schema, cancel)) is not { } shape)
+        {
+            return;
+        }
+        foreach (Workspace.OpenDocument shown in Editors.TabDocuments.Where(d => d.DatabaseTab is SchemaDiagramTab diagram && diagram.Matches(node.Source, within, shape.Schema)).ToList())
+        {
+            Editors.Close(shown);
+        }
+        SchemaDiagramTab tab = new(node.Source, within, shape);
+        Editors.Activate(tab.Document);
+    }
+
+    /// <summary>Compares the chosen schema with one the person picks of the same kind of database, and writes the script that
+    /// makes that one as the chosen one is into its connection's console, chosen and never run.</summary>
+    private async Task CompareSchemasAsync()
+    {
+        if (databaseExplorer?.Chosen is not { } node || database is not { } controller)
+        {
+            return;
+        }
+        (string within, string schema) = SchemaOf(node);
+        DatabaseSource source = node.Source;
+        SchemaCompareDialog dialog = new(source, within, schema, [.. controller.Sources.Where(s => s.Kind == source.Kind)]);
+        if (await dialog.ShowDialog<SchemaCompareDialog.Answer?>(this) is not { } answer
+            || await controller.CompareAsync(source.In(within), schema, answer.Target.In(answer.Database), answer.Schema) is not { Count: > 0 } differences)
+        {
+            return;
+        }
+        string from = schema.Length > 0 && schema != within ? $"{within}.{schema} of {source.Name}" : $"{within} of {source.Name}";
+        string to = answer.Schema.Length > 0 && answer.Schema != answer.Database ? $"{answer.Database}.{answer.Schema} of {answer.Target.Name}" : $"{answer.Database} of {answer.Target.Name}";
+        await IntoConsoleAsync(answer.Target, answer.Database, SchemaCompare.Script(source.Kind, differences, from, to));
+    }
+
+    /// <summary>Opens the chosen connection's console, or <paramref name="of"/>'s, a .sql file kept with the folder's state, made
+    /// as first opened.</summary>
+    private async Task OpenSqlConsoleAsync(DatabaseSource? of = null)
+    {
+        if ((of ?? ChosenConnection()) is not { } source || session.Folder is not { } folder || database is not { } controller)
         {
             return;
         }

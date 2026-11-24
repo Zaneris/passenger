@@ -24,7 +24,9 @@ namespace Passenger.Tests;
 /// copied as inserts and run again, a CSV imported into a new table and a refused row writing nothing, a production
 /// connection asking before an UPDATE, a connection made through an SSH bastion with its SSL verified, and a found one
 /// given a client certificate and a tunnel through ~/.ssh/config's jump host, signed in by the agent, its statement stopped
-/// through it, each through its own driver. Skipped, naming the image, where the engine lacks it, as it is never pulled.</summary>
+/// through it, the schema drawn as a diagram, and a second server's schema (SQL Server's a second database) compared with it
+/// and made as it is by the script, each through its own driver. Skipped, naming the image, where the engine lacks it, as it
+/// is never pulled.</summary>
 public sealed class DatabaseServersTests
 {
     private const string Password = "Passenger-db-7c1d";
@@ -63,6 +65,7 @@ public sealed class DatabaseServersTests
         };
         string ssh = name + "ssh";
         string inner = name + "inner";
+        string second = name + "target";
         string? runsSshHome = Environment.GetEnvironmentVariable(SshFiles.HomeVariable);
         string agentSocket = Path.Combine(TestRun.Temporary, "agent" + ((int)kind).ToString(CultureInfo.InvariantCulture));
         Process? agent = null;
@@ -78,6 +81,10 @@ public sealed class DatabaseServersTests
                 Docker.Run("cp", Path.Combine(certificates, "mssql.conf"), $"{name}:/var/opt/mssql/mssql.conf");
             }
             Docker.Run("start", name);
+            if (kind != DatabaseKind.SqlServer)
+            {
+                Docker.Run(["run", "-d", "--name", second, "--label", Docker.RunLabel, "-p", $"127.0.0.1::{port}", .. environment.SelectMany(e => new[] { "-e", e }), image]);
+            }
             // The bastion forwards to the server, signing in with a password, or for PostgreSQL a key of the test's own.
             string sshd = Path.Combine(certificates, "sshd", "sshd_config.d");
             Directory.CreateDirectory(sshd);
@@ -113,6 +120,12 @@ public sealed class DatabaseServersTests
             };
             Ui.WaitFor(() => Made(kind, connection), $"{image} to take connections and hold the shop's tables", TimeSpan.FromMinutes(3));
             Certified(kind, name, connection);
+            string target = kind switch
+            {
+                DatabaseKind.SqlServer => new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connection) { InitialCatalog = "target" }.ConnectionString,
+                _ => connection.Replace($"Port={published}", $"Port={Published(second, port)}", StringComparison.Ordinal),
+            };
+            Ui.WaitFor(() => MadeOtherwise(kind, target), "the second schema to take connections and hold its tables", TimeSpan.FromMinutes(3));
             string folder = TestFolders.Create("database-server");
             TestFolders.Write(folder, "Shop.csproj", TestProjects.Console());
             TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
@@ -123,7 +136,7 @@ public sealed class DatabaseServersTests
                 DatabaseKind.MySql => "Server=db;Port=3306;Database=shop;User ID=certified",
                 _ => $"Server=db,1433;Initial Catalog=shop;User ID=sa;Password={Password}",
             };
-            TestFolders.Write(folder, "appsettings.json", $$$"""{"ConnectionStrings":{"Shop":"{{{connection}}}","Behind":"{{{behindDb}}}"}}""");
+            TestFolders.Write(folder, "appsettings.json", $$$"""{"ConnectionStrings":{"Shop":"{{{connection}}}","Behind":"{{{behindDb}}}","Target":"{{{target}}}"}}""");
             MainWindow window = Ui.OpenFolder(folder, languageServer: false);
             try
             {
@@ -420,6 +433,37 @@ public sealed class DatabaseServersTests
                 Assert.True(window.Perform(AppActions.DatabaseRunStop), "Stop Statement did not run");
                 Ui.PumpUntil(() => !jumped.Running && Said(kind, connection, running) == "0", $"{sleeping} stopped on the server", TimeSpan.FromSeconds(20));
                 Assert.Equal("Stopped.", jumped.Said);
+
+                // The schema's diagram draws its tables, and a line for orders' foreign key to products.
+                Execute(kind, connection, "CREATE TABLE orders (id int PRIMARY KEY, product_id int, qty int NOT NULL, FOREIGN KEY (product_id) REFERENCES products(id))");
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
+                Assert.True(window.Perform(AppActions.DatabaseDiagram), "Show Schema Diagram did not run");
+                Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTab is SchemaDiagramTab { Shown.Boxes.Count: > 0 }, () => window.Database.Said);
+                SchemaDiagramTab diagram = (SchemaDiagramTab)window.EditorArea.Active!.DatabaseTab!;
+                Assert.Subset(diagram.Shown!.Boxes.Select(b => b.Table.Name).ToHashSet(), new HashSet<string> { "products", "orders", "items" });
+                Assert.Contains(diagram.Shown.Lines, l => l.From == "orders" && l.To == "products");
+                Assert.True(diagram.Shown.Boxes.Single(b => b.Table.Name == "orders").X > diagram.Shown.Boxes.Single(b => b.Table.Name == "products").X, "orders stands left of products, which it refers to");
+
+                // The second schema compared with it takes the script that makes it as this one is, run from its console, and then holds the same.
+                List<DatabaseSource> kinds = [.. window.Database.Sources.Where(s => s.Kind == kind)];
+                SchemaCompareDialog compare = CompareWith(window, kinds.FindIndex(s => s.Name == "Target"));
+                Ui.ClickButton(compare, "Compare");
+                Ui.WaitFor(() => !window.Database.Busy && window.EditorArea.Active?.Name == "Target.sql" && window.EditorArea.CodeEditor.Document.Snapshot.ToString().Contains("-- Makes", StringComparison.Ordinal),
+                    () => window.Database.Said, TimeSpan.FromMinutes(1));
+                string script = window.EditorArea.CodeEditor.Document.Snapshot.ToString();
+                foreach (string made in (string[])["orders", "items", "price", "legacy", "cheap", "note"])
+                {
+                    Assert.Contains(made, script, StringComparison.Ordinal);
+                }
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the target's console");
+                SqlConsole applying = window.EditorArea.ActiveGroup.Console!.Console!;
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run the script");
+                Ui.WaitFor(() => !applying.Running && applying.Results.Count > 0, () => applying.Said, TimeSpan.FromMinutes(1));
+                Assert.True(applying.Results.All(r => r.Error is null), $"{applying.Said} running {applying.Results.LastOrDefault()?.Statement}");
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
+                compare = CompareWith(window, kinds.FindIndex(s => s.Name == "Target"));
+                Ui.ClickButton(compare, "Compare");
+                Ui.WaitFor(() => !window.Database.Busy && window.Database.Said.Contains("holds the same", StringComparison.Ordinal), () => window.Database.Said, TimeSpan.FromMinutes(1));
             }
             finally
             {
@@ -435,8 +479,42 @@ public sealed class DatabaseServersTests
                 agent.Dispose();
             }
             File.Delete(agentSocket);
-            Docker.Remove(name, ssh, inner);
+            Docker.Remove(name, ssh, inner, second);
             Docker.Ask(["network", "rm", name]);
+        }
+    }
+
+    /// <summary>Compare Schemas… on the chosen row, its dialog's target the connection at <paramref name="at"/>.</summary>
+    private static SchemaCompareDialog CompareWith(MainWindow window, int at)
+    {
+        Assert.True(window.Perform(AppActions.DatabaseCompare), "Compare Schemas did not run");
+        Ui.WaitFor(() => window.OwnedWindows.OfType<SchemaCompareDialog>().Any(d => d.IsVisible), "the compare dialog");
+        SchemaCompareDialog dialog = window.OwnedWindows.OfType<SchemaCompareDialog>().Single(d => d.IsVisible);
+        dialog.GetVisualDescendants().OfType<ComboBox>().Single(c => c.Name == "CompareTarget").SelectedIndex = at;
+        return dialog;
+    }
+
+    private static int Published(string container, int port) =>
+        int.Parse(Docker.Run("port", container, port.ToString(CultureInfo.InvariantCulture)).Trim().Split(':')[^1], CultureInfo.InvariantCulture);
+
+    /// <summary>Whether the second schema takes a connection, making its tables the first time it does: products with a name
+    /// shorter, no price and a note, and a table the shop lacks.</summary>
+    private static bool MadeOtherwise(DatabaseKind kind, string connection)
+    {
+        try
+        {
+            if (kind == DatabaseKind.SqlServer)
+            {
+                Execute(kind, new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connection) { InitialCatalog = "master", ConnectTimeout = 3 }.ConnectionString,
+                    "IF DB_ID('target') IS NULL CREATE DATABASE target");
+            }
+            Execute(kind, connection, "CREATE TABLE products (id int PRIMARY KEY, name varchar(20) NOT NULL, note varchar(20))");
+            Execute(kind, connection, "CREATE TABLE legacy (id int PRIMARY KEY)");
+            return true;
+        }
+        catch (DbException)
+        {
+            return false;
         }
     }
 

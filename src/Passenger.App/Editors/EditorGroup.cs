@@ -576,7 +576,7 @@ public sealed class EditorGroup : DockPanel
     /// <summary>What shows in the editor's place for a tab that is no text to edit: a diff, an asset's preview, or release
     /// notes rendered.</summary>
     private Control PreviewOf(OpenDocument document) =>
-        document.DatabaseTable is { } table ? table.Make() : document.Tool is { } tool ? tool.Make() : document.Diff is { } diff ? diff.Make() : document.Asset is { } asset ? new AssetPreviewControl(asset) : new ReleaseNotesView(document, area.Browse);
+        document.DatabaseTab is { } database ? database.Make() : document.Tool is { } tool ? tool.Make() : document.Diff is { } diff ? diff.Make() : document.Asset is { } asset ? new AssetPreviewControl(asset) : new ReleaseNotesView(document, area.Browse);
 
     /// <summary>The diff this group shows while it shows a diff's tab, else null.</summary>
     public Vcs.DiffView? Diff => preview as Vcs.DiffView;
@@ -601,7 +601,7 @@ public sealed class EditorGroup : DockPanel
     }
 
     /// <summary>Whether the editor shows the file, rather than a view of its own in the editor's place.</summary>
-    private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes && document.Diff is null && document.Tool is null && document.DatabaseTable is null;
+    private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes && document.Diff is null && document.Tool is null && document.DatabaseTab is null;
 
     /// <summary>Gives the keys to what shows the file: a diff's file's side, its preview or rendered notes, which its keys
     /// move through, else the editor; given them as by Tab (<paramref name="method"/>), it draws the ring round it. False
@@ -776,7 +776,7 @@ public sealed class EditorGroup : DockPanel
     private void ShowBanner(OpenDocument document)
     {
         // A diff's own bar says what it is, and a tool window is no file.
-        bool file = document is { Diff: null, Tool: null, DatabaseTable: null };
+        bool file = document is { Diff: null, Tool: null, DatabaseTab: null };
         bool conflicted = file && document.InConflict;
         string[] said = [.. new[] { document.IsReadOnly && file ? document.Origin : null, conflicted ? Conflicted : null, document.Notice, document.EncodingWarning }.OfType<string>()];
         banner.Say(said.Length > 0 ? string.Join("  ·  ", said) : null);
@@ -1041,7 +1041,7 @@ public sealed class EditorGroup : DockPanel
             name.Text = document.Title;
             icon.DataKey = document.IconKey;
             icon.ForegroundKey = document.IconBrushKey;
-            ToolTip.SetTip(border, document.Tool is not null || document.DatabaseTable is not null ? document.Title
+            ToolTip.SetTip(border, document.Tool is not null || document.DatabaseTab is not null ? document.Title
                 : document.Follows ? $"{document.Path}\n\nFollows the file chosen in the Commit window; pin the tab or edit in it to keep it" : document.Path);
             border.Classes.Set(StyleClasses.Follows, document.Follows);
             border.Classes.Set(StyleClasses.Modified, document.IsModified || document.HasPending);

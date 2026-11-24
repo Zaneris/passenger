@@ -12,7 +12,7 @@ namespace Passenger.App.Database;
 /// written, rows added (in the empty row last) and rows deleted are held as changes not yet written, marked as a diff marks
 /// its lines, until Submit writes them in one transaction or Revert drops them; Undo and Redo step through them meanwhile.
 /// A row is found again by its primary key, so a table without one, or a connection marked read-only, takes no change.</summary>
-public sealed class DatabaseTableTab : IDisposable
+public sealed class DatabaseTableTab : IDatabaseTab
 {
     private readonly DatabaseController owner;
     private readonly ActionWork work;
@@ -57,6 +57,8 @@ public sealed class DatabaseTableTab : IDisposable
     public DatabaseTable Table { get; }
     public string Database { get; }
     public string Title => Containers.ContainerSecrets.InSaid($"{Table.Name} · {Now.Name}");
+
+    public string ShownAs => "a database table";
 
     /// <summary>The page last read.</summary>
     public DatabaseRows? Rows => rows;

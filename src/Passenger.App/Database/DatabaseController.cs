@@ -753,6 +753,29 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         return result;
     }
 
+    /// <summary>Reads two schemas, the source's and the target's, and what makes the target as the source is: none where
+    /// they hold the same; null where a read failed or was stopped, said in <see cref="Said"/>.</summary>
+    public async Task<IReadOnlyList<SchemaDifference>?> CompareAsync(DatabaseSource source, string sourceSchema, DatabaseSource target, string targetSchema)
+    {
+        IReadOnlyList<SchemaDifference>? found = null;
+        await (RunAsync(AppActions.DatabaseCompare, $"Comparing {source.Name} with {target.Name}…", async cancel =>
+        {
+            SchemaShape from = await BackgroundWork.Run(() => SchemaReads.ReadAsync(source, sourceSchema, cancel), cancel);
+            SchemaShape to = await BackgroundWork.Run(() => SchemaReads.ReadAsync(target, targetSchema, cancel), cancel);
+            cancel.ThrowIfCancellationRequested();
+            connected.Add(source.Id);
+            connected.Add(target.Id);
+            found = SchemaCompare.Differences(from, to);
+            Said = found.Count == 0 ? $"{Named(target, targetSchema)} holds the same tables, keys, indexes and views as {Named(source, sourceSchema)}."
+                : $"{Plural.Of(found.Count, "difference")} from {Named(source, sourceSchema)}: {target.Name}'s console holds the script that makes {Named(target, targetSchema)} the same.";
+            return true;
+        }, source) ?? Task.CompletedTask);
+        return found;
+
+        static string Named(DatabaseSource connection, string schema) =>
+            ContainerSecrets.InSaid(schema.Length > 0 && schema != connection.Database ? $"{connection.Database} · {schema} of {connection.Name}" : $"{connection.Database} of {connection.Name}");
+    }
+
     /// <summary>Runs one read at a time under a <see cref="Working"/>, saying what it came to; null where another runs.</summary>
     private Task? RunAsync(string action, string stage, Func<CancellationToken, Task<bool>> run, DatabaseSource? source = null)
     {

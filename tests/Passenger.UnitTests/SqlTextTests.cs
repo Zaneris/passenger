@@ -8,8 +8,9 @@ namespace Passenger.UnitTests;
 /// run does to its database, which read-only and production connections hold it to; the parameters each database's driver
 /// takes in it; the names its connection's schema does not hold; each database's plan read as one tree; its layout by
 /// Reformat Code, comments and strings kept; rows written as each database's inserts; what an import makes of a file's
-/// text: a new column's type, a value of a column's type, and which column each of the file's goes into; and a tunnel's
-/// host as ssh's configuration and known hosts files say of it.</summary>
+/// text: a new column's type, a value of a column's type, and which column each of the file's goes into; a tunnel's
+/// host as ssh's configuration and known hosts files say of it; and two schemas compared into the script that makes one
+/// as the other is, in each database's SQL, and a schema laid out as a diagram.</summary>
 public sealed class SqlTextTests
 {
     [Fact]
@@ -254,5 +255,41 @@ public sealed class SqlTextTests
             ("a key revoked is refused, though a line knows it", $"j* ssh-ed25519 {known}\n@revoked * ssh-ed25519 {known}", "jump", 22, KnownHostKey.Revoked),
             ("another kind's key leaves the host unknown", $"jump ssh-rsa {other}", "jump", 22, KnownHostKey.Unknown),
         }, row => Assert.Equal(row.Said, KnownHosts.Judge(row.Text, row.Host, row.Port, "ssh-ed25519", key)), row => row.Holds);
+        TableShape products = new("products", [new("id", "integer", false), new("name", "varchar(40)", false), new("price", "numeric(6,2)", true)], ["id"], [], []);
+        TableShape orders = new("orders", [new("id", "integer", false), new("product_id", "integer", true)], ["id"],
+            [new ForeignKeyShape("orders_product", ["product_id"], "products", ["id"])], []);
+        TableShape had = new("products", [new("id", "integer", false), new("name", "varchar(20)", false), new("note", "text", true)], ["id"], [], [new IndexShape("named", false, ["name"])]);
+        TableShape legacy = new("legacy", [new("id", "integer", false)], ["id"], [], []);
+        Cases.Each(new (string Holds, DatabaseKind Kind, string Schema, string[] Statements)[]
+        {
+            ("PostgreSQL: keys dropped first, tables made, columns added, changed and dropped, indexes, keys added, views, tables dropped last",
+                DatabaseKind.Postgres, "public",
+                ["CREATE TABLE \"public\".\"orders\" (\n  \"id\" integer NOT NULL,\n  \"product_id\" integer,\n  PRIMARY KEY (\"id\")\n)",
+                    "ALTER TABLE \"public\".\"products\" ALTER COLUMN \"name\" TYPE varchar(40)", "ALTER TABLE \"public\".\"products\" ADD COLUMN \"price\" numeric(6,2)",
+                    "ALTER TABLE \"public\".\"products\" DROP COLUMN \"note\"", "DROP INDEX \"public\".\"named\"",
+                    "ALTER TABLE \"public\".\"orders\" ADD CONSTRAINT \"orders_product\" FOREIGN KEY (\"product_id\") REFERENCES \"public\".\"products\" (\"id\")",
+                    "CREATE VIEW \"public\".\"cheap\" AS SELECT id FROM products", "DROP TABLE \"public\".\"legacy\""]),
+            ("MySQL: a column changed whole, its key's index dropped on its table, a view made or replaced", DatabaseKind.MySql, "shop",
+                ["CREATE TABLE `shop`.`orders` (\n  `id` integer NOT NULL,\n  `product_id` integer,\n  PRIMARY KEY (`id`)\n)",
+                    "ALTER TABLE `shop`.`products` MODIFY COLUMN `name` varchar(40) NOT NULL", "ALTER TABLE `shop`.`products` ADD COLUMN `price` numeric(6,2)",
+                    "ALTER TABLE `shop`.`products` DROP COLUMN `note`", "DROP INDEX `named` ON `shop`.`products`",
+                    "ALTER TABLE `shop`.`orders` ADD CONSTRAINT `orders_product` FOREIGN KEY (`product_id`) REFERENCES `shop`.`products` (`id`)",
+                    "CREATE OR REPLACE VIEW `shop`.`cheap` AS SELECT id FROM products", "DROP TABLE `shop`.`legacy`"]),
+            ("SQLite: what it cannot change in place said as a comment", DatabaseKind.Sqlite, "",
+                ["CREATE TABLE \"orders\" (\n  \"id\" integer NOT NULL,\n  \"product_id\" integer,\n  PRIMARY KEY (\"id\")\n)",
+                    "-- SQLite cannot change the column name in place: make the table again with it as the source has it", "ALTER TABLE \"products\" ADD COLUMN \"price\" numeric(6,2)",
+                    "ALTER TABLE \"products\" DROP COLUMN \"note\"", "DROP INDEX \"named\"", "-- SQLite cannot add the foreign key orders_product to a table: make the table again with it",
+                    "CREATE VIEW \"cheap\" AS SELECT id FROM products", "DROP TABLE \"legacy\""]),
+        }, row =>
+        {
+            string view = row.Kind == DatabaseKind.Sqlite ? "CREATE VIEW cheap AS SELECT id FROM products" : "SELECT id FROM products";
+            IReadOnlyList<SchemaDifference> found = SchemaCompare.Differences(new SchemaShape(row.Kind, row.Schema, [products, orders], [new ViewShape("cheap", view)]),
+                new SchemaShape(row.Kind, row.Schema, [had, legacy], []));
+            Assert.Equal(row.Statements, found.SelectMany(d => d.Statements));
+            Assert.Empty(SchemaCompare.Differences(new SchemaShape(row.Kind, row.Schema, [products], []), new SchemaShape(row.Kind, row.Schema, [products with { Columns = [.. products.Columns.Reverse()] }], [])));
+        }, row => row.Holds);
+        (IReadOnlyList<DiagramBox> boxes, IReadOnlyList<DiagramLine> lines) = DiagramLayout.Place(new SchemaShape(DatabaseKind.Postgres, "public", [orders, products], []), _ => 100);
+        Assert.Equal(["products 0,0", "orders 156,0"], boxes.Select(b => $"{b.Table.Name} {b.X},{b.Y}"));
+        Assert.Equal([(156d, 61d), (128d, 61d), (128d, 37d), (100d, 37d)], Assert.Single(lines).Points);
     }
 }

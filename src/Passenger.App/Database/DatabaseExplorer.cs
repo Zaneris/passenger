@@ -415,6 +415,11 @@ public sealed class DatabaseExplorer : DockPanel
             items.Add(ListMenus.Keyed("Import Data…", AppActions.DatabaseImport, () => Request(AppActions.DatabaseImport),
                 controller.Find(node.Source.Id) is { Mark: DatabaseMark.ReadOnly } readOnly ? Refusals.ReadOnlyConnection(readOnly.Name) : null));
         }
+        if (node.Kind is DatabaseNodeKind.Connection or DatabaseNodeKind.Database or DatabaseNodeKind.Schema)
+        {
+            items.Add(ListMenus.Keyed("Show Schema Diagram", AppActions.DatabaseDiagram, () => Request(AppActions.DatabaseDiagram)));
+            items.Add(ListMenus.Keyed("Compare Schemas…", AppActions.DatabaseCompare, () => Request(AppActions.DatabaseCompare)));
+        }
         if (node.Target is not null)
         {
             items.Add(ListMenus.Keyed("Show DDL", AppActions.DatabaseShowDdl, () => Request(AppActions.DatabaseShowDdl)));

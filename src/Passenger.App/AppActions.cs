@@ -223,6 +223,9 @@ public static class AppActions
     // format: no key of Rider's for any.
     public const string DatabaseExport = "app.database.export";
     public const string DatabaseImport = "app.database.import";
+    // A schema's tables drawn as a diagram, and two schemas compared into a script: no key of Rider's for either.
+    public const string DatabaseDiagram = "app.database.diagram";
+    public const string DatabaseCompare = "app.database.compare";
     public const string CopyAsCsv = "app.table.copyAsCsv";
     public const string CopyAsTsv = "app.table.copyAsTsv";
     public const string CopyAsJson = "app.table.copyAsJson";

@@ -1387,7 +1387,7 @@ public partial class MainWindow : IdeWindow
     {
         string? named = Folder is not { } folder ? null : session.Workspace?.Name ?? Path.GetFileName(folder);
         OpenDocument? shown = Editors.ShownInMain;
-        Title = shown is null ? named ?? "Welcome to Passenger" : $"{(named is null ? "" : named + " – ")}{(shown.Tool is null && shown.DatabaseTable is null ? shown.Name : shown.Title)}";
+        Title = shown is null ? named ?? "Welcome to Passenger" : $"{(named is null ? "" : named + " – ")}{(shown.Tool is null && shown.DatabaseTab is null ? shown.Name : shown.Title)}";
         FollowInDiscord();
     }
 
@@ -1395,7 +1395,7 @@ public partial class MainWindow : IdeWindow
     /// reports under way (its projects loading, and how far) whenever there is some.</summary>
     private string LanguageLabel()
     {
-        if (Editors.Active?.DatabaseTable is not null) { return "Database"; }
+        if (Editors.Active?.DatabaseTab is not null) { return "Database"; }
         // A diff's tab names no language of its own, nor a tool window's.
         string language = Editors.Active is { Diff: null, Tool: null } file ? file.Language.Name : string.Empty;
         if (Editors.Active is { Diff: null, Tool: null } active && Web.WebLanguages.LanguageOf(active.Path) is not null)
