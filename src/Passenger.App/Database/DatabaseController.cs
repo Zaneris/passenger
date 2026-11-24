@@ -753,6 +753,29 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         return result;
     }
 
+    /// <summary>What a diagram's places are kept by: its connection's history key, its database and its schema.</summary>
+    public static string DiagramKey(DatabaseSource source, string database, string schema) => $"{source.HistoryKey}|{database}|{schema}";
+
+    /// <summary>Where the person left a diagram's boxes, by table.</summary>
+    public IReadOnlyDictionary<string, (double X, double Y)> DiagramPlaces(string key) =>
+        State.Diagrams.GetValueOrDefault(key) is { } spots ? spots.ToDictionary(s => s.Key, s => (s.Value.X, s.Value.Y)) : new Dictionary<string, (double X, double Y)>();
+
+    /// <summary>Keeps where the person left a diagram's boxes, none forgetting the diagram's.</summary>
+    public void KeepDiagramPlaces(string key, IReadOnlyDictionary<string, (double X, double Y)> places)
+    {
+        UiThread.Check();
+        Dictionary<string, Dictionary<string, DiagramSpot>> diagrams = new(State.Diagrams);
+        if (places.Count == 0)
+        {
+            diagrams.Remove(key);
+        }
+        else
+        {
+            diagrams[key] = places.ToDictionary(p => p.Key, p => new DiagramSpot(p.Value.X, p.Value.Y));
+        }
+        SetState((State with { Diagrams = diagrams }).Clamped());
+    }
+
     /// <summary>Reads two schemas, the source's and the target's, and what makes the target as the source is: none where
     /// they hold the same; null where a read failed or was stopped, said in <see cref="Said"/>.</summary>
     public async Task<IReadOnlyList<SchemaDifference>?> CompareAsync(DatabaseSource source, string sourceSchema, DatabaseSource target, string targetSchema)

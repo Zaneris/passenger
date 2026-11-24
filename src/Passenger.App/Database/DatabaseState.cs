@@ -23,6 +23,9 @@ public sealed record DatabaseState : IStateDocument<DatabaseState>
     /// <summary>The SSL and tunnels given connections the folder's files name, by <see cref="DatabaseSource.FoundKey"/>.</summary>
     public Dictionary<string, FoundSetting> FoundSettings { get; init; } = [];
 
+    /// <summary>Where the person left a diagram's boxes, by its connection, database and schema (<see cref="DatabaseController.DiagramKey"/>) and table.</summary>
+    public Dictionary<string, Dictionary<string, DiagramSpot>> Diagrams { get; init; } = [];
+
     /// <summary>The values each console's parameters were last given, by its file and the parameter's name.</summary>
     public Dictionary<string, Dictionary<string, string>> Parameters { get; init; } = [];
 
@@ -50,6 +53,8 @@ public sealed record DatabaseState : IStateDocument<DatabaseState>
         FoundSettings = (FoundSettings ?? []).Where(f => f.Key.Length > 0 && f.Value is not null)
             .Select(f => KeyValuePair.Create(f.Key, f.Value with { Over = f.Value.Over ?? string.Empty, Tunnel = Usable(f.Value.Tunnel) ? f.Value.Tunnel : null }))
             .Where(f => f.Value.Over.Length > 0 || f.Value.Tunnel is not null).Take(500).ToDictionary(),
+        Diagrams = (Diagrams ?? []).Where(d => d.Key.Length > 0 && d.Value is not null).Take(200)
+            .ToDictionary(d => d.Key, d => d.Value.Where(s => s.Key.Length > 0 && s.Value is { X: var x, Y: var y } && double.IsFinite(x) && double.IsFinite(y)).Take(1000).ToDictionary()),
         Parameters = (Parameters ?? []).Where(p => p.Key.Length > 0 && p.Value is not null).Take(500)
             .ToDictionary(p => p.Key, p => p.Value.Where(v => v.Key.Length > 0 && v.Value is not null).Take(100).ToDictionary()),
         History = (History ?? []).Where(h => h.Key.Length > 0 && h.Value is not null).Take(200)
@@ -60,6 +65,9 @@ public sealed record DatabaseState : IStateDocument<DatabaseState>
 /// <summary>A connection the folder's files name given SSL settings of its own (connection string keys laid over its own,
 /// without their secrets) and a tunnel.</summary>
 public sealed record FoundSetting(string Over, SshTunnel? Tunnel);
+
+/// <summary>Where the person left a table's box in a diagram, in the diagram's units.</summary>
+public sealed record DiagramSpot(double X, double Y);
 
 /// <summary>A statement or batch run on a connection, when, and what it came to.</summary>
 public sealed record SqlRan(string Statement, DateTime At, string Outcome, bool Failed = false);

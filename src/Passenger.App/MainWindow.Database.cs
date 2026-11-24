@@ -310,20 +310,24 @@ public partial class MainWindow
         }
     }
 
-    private async Task OpenDatabaseTableAsync()
+    private Task OpenDatabaseTableAsync() =>
+        databaseExplorer?.Chosen is { Table: { } table } node ? OpenTableAsync(node.Source, node.Database, table) : Task.CompletedTask;
+
+    /// <summary>Opens a table's rows among the editors, or the tab already showing them.</summary>
+    private async Task OpenTableAsync(DatabaseSource source, string within, DatabaseTable table)
     {
-        if (databaseExplorer?.Chosen is not { Table: { } table } node || database is not { } controller)
+        if (database is not { } controller)
         {
             return;
         }
         Workspace.OpenDocument? existing = Editors.Groups.SelectMany(g => g.Tabs).Select(t => t.Document)
-            .FirstOrDefault(d => d.DatabaseTable?.Matches(node.Source, node.Database, table) == true);
+            .FirstOrDefault(d => d.DatabaseTable?.Matches(source, within, table) == true);
         if (existing is not null)
         {
             Editors.Activate(existing);
             return;
         }
-        DatabaseTableTab tab = new(controller, work, node.Source, node.Database, table, action => Request(action), AskProductionAsync);
+        DatabaseTableTab tab = new(controller, work, source, within, table, action => Request(action), AskProductionAsync);
         Editors.Activate(tab.Document);
         await tab.LoadAsync();
     }
@@ -413,16 +417,23 @@ public partial class MainWindow
             return;
         }
         (string within, string schema) = SchemaOf(node);
+        DatabaseSource source = node.Source;
         string named = schema.Length > 0 ? schema : within;
-        if (await controller.ReadAsync(node.Source, $"Reading {named}'s tables…", cancel => SchemaReads.ReadAsync(node.Source.In(within), schema, cancel)) is not { } shape)
+        Func<Task<SchemaShape?>> read = () => controller.ReadAsync(source, $"Reading {named}'s tables…", cancel => SchemaReads.ReadAsync(source.In(within), schema, cancel));
+        if (Editors.TabDocuments.FirstOrDefault(d => d.DatabaseTab is SchemaDiagramTab diagram && diagram.Matches(source, within, source.Kind == DatabaseKind.Sqlite ? string.Empty : schema))
+            is { DatabaseTab: SchemaDiagramTab open })
+        {
+            Editors.Activate(open.Document);
+            await open.ReadAgainAsync();
+            return;
+        }
+        if (await read() is not { } shape)
         {
             return;
         }
-        foreach (Workspace.OpenDocument shown in Editors.TabDocuments.Where(d => d.DatabaseTab is SchemaDiagramTab diagram && diagram.Matches(node.Source, within, shape.Schema)).ToList())
-        {
-            Editors.Close(shown);
-        }
-        SchemaDiagramTab tab = new(node.Source, within, shape);
+        string key = DatabaseController.DiagramKey(source, within, shape.Schema);
+        SchemaDiagramTab tab = new(source, within, shape, read, table => IdeErrors.Observe(OpenTableAsync(source, within, new DatabaseTable(shape.Schema, table.Name))),
+            () => controller.DiagramPlaces(key), places => controller.KeepDiagramPlaces(key, places));
         Editors.Activate(tab.Document);
     }
 

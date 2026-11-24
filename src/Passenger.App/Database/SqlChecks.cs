@@ -6,9 +6,11 @@ public readonly record struct SqlProblem(int Start, int End, string Message);
 /// <summary>A console's SQL read against its connection's schema as last read (<see cref="SqlCatalog"/>): each table or
 /// view it names after FROM, JOIN, UPDATE or an INSERT's INTO, and each column it names after a table's name or alias and
 /// a dot, or alone where the statement's tables are all known (a SELECT's item, a condition's left side, a SET's target, an
-/// ORDER or GROUP BY's item, an INSERT's column list). Names it can't be sure of are passed over: a CTE's, a table the SQL
-/// makes, a derived table's, a function's, a variable's, another database's or schema's the schema read holds none of, and
-/// the system's own; each database's case read as it reads it (PostgreSQL folding a name not quoted to lower case).</summary>
+/// ORDER or GROUP BY's item, an INSERT's column list). The SQL's earlier statements are read as the schema they leave: a
+/// table made with its columns, a column added, renamed or dropped, a table renamed or dropped. Names it can't be sure of are
+/// passed over: a CTE's, a view the SQL makes, a table made after, a derived table's, a function's, a variable's, another
+/// database's or schema's the schema read holds none of, and the system's own; each database's case read as it reads it
+/// (PostgreSQL folding a name not quoted to lower case).</summary>
 public static class SqlChecks
 {
     /// <summary>The words that end a table's name where an alias would stand.</summary>
@@ -29,16 +31,139 @@ public static class SqlChecks
     {
         List<SqlProblem> found = [];
         HashSet<string> made = Made(text, kind);
+        SqlCatalog now = catalog;
         foreach ((int start, int end) in SqlText.Statements(text, kind))
         {
             string statement = text[start..end];
-            foreach (SqlProblem problem in Statement(statement, kind, catalog, made))
+            foreach (SqlProblem problem in Statement(statement, kind, now, made))
             {
                 found.Add(problem with { Start = problem.Start + start, End = problem.End + start });
             }
+            now = After(statement, kind, now);
         }
         return [.. found.OrderBy(p => p.Start)];
     }
+
+    /// <summary>The schema as a statement leaves it: a table made with its columns (those of its list that are no key or
+    /// constraint), a column added, renamed or dropped, a table renamed or dropped; any other statement leaves it as it was.</summary>
+    private static SqlCatalog After(string sql, DatabaseKind kind, SqlCatalog catalog)
+    {
+        List<SqlText.Token> tokens = SqlText.Tokens(sql, kind);
+        if (tokens.Count < 3 || tokens[0].Quoted)
+        {
+            return catalog;
+        }
+        List<SqlTableInfo> tables = [.. catalog.Tables];
+        int at = 1;
+        while (at < tokens.Count && !tokens[at].Quoted && tokens[at].Word is "OR" or "REPLACE" or "TEMP" or "TEMPORARY" or "UNLOGGED" or "GLOBAL" or "LOCAL")
+        {
+            at++;
+        }
+        if (at >= tokens.Count || tokens[at].Word != "TABLE" || tokens[0].Word is not ("CREATE" or "ALTER" or "DROP"))
+        {
+            return catalog;
+        }
+        at++;
+        while (at < tokens.Count && !tokens[at].Quoted && tokens[at].Word is "IF" or "NOT" or "EXISTS" or "ONLY")
+        {
+            at++;
+        }
+        if (Named(sql, tokens, kind, ref at, catalog) is not { } name)
+        {
+            return catalog;
+        }
+        int index = tables.FindIndex(t => Same(name.Schema, t.Schema, kind) && Same(name.Name, t.Name, kind));
+        switch (tokens[0].Word)
+        {
+            case "CREATE" when at < tokens.Count && tokens[at].Word == "(":
+                int depth = tokens[at].Depth;
+                List<(string Name, string Type)> columns = [];
+                for (int item = at + 1; item < tokens.Count && tokens[item].Depth >= depth; item++)
+                {
+                    bool starts = tokens[item - 1].Word == "(" && item - 1 == at || tokens[item - 1].Word == "," && tokens[item - 1].Depth == depth;
+                    if (starts && IsName(sql, tokens, item) && (tokens[item].Quoted || tokens[item].Word is not ("PRIMARY" or "FOREIGN" or "UNIQUE" or "CHECK"
+                        or "CONSTRAINT" or "KEY" or "INDEX" or "EXCLUDE" or "PERIOD" or "FULLTEXT" or "SPATIAL")))
+                    {
+                        columns.Add((Folded(sql, tokens[item], kind, keep: true), item + 1 < tokens.Count ? tokens[item + 1].Word.ToLowerInvariant() : string.Empty));
+                    }
+                }
+                if (index >= 0)
+                {
+                    tables.RemoveAt(index);
+                }
+                tables.Add(new SqlTableInfo(name.Schema, name.Name, columns));
+                break;
+            case "DROP":
+                if (index >= 0)
+                {
+                    tables.RemoveAt(index);
+                }
+                break;
+            case "ALTER" when index >= 0:
+                SqlTableInfo table = tables[index];
+                List<(string Name, string Type)> now = [.. table.Columns];
+                string renamed = table.Name;
+                for (int t = at; t < tokens.Count; t++)
+                {
+                    if (tokens[t].Depth != tokens[at].Depth || tokens[t].Quoted || t != at && tokens[t - 1].Word != ",")
+                    {
+                        continue;
+                    }
+                    int c = t + 1;
+                    while (c < tokens.Count && !tokens[c].Quoted && tokens[c].Word is "COLUMN" or "IF" or "NOT" or "EXISTS")
+                    {
+                        c++;
+                    }
+                    bool column = c < tokens.Count && IsName(sql, tokens, c) && (tokens[c].Quoted || tokens[c].Word is not ("CONSTRAINT" or "PRIMARY" or "FOREIGN" or "UNIQUE"
+                        or "CHECK" or "INDEX" or "KEY" or "DEFAULT" or "TO"));
+                    if (tokens[t].Word == "ADD" && column)
+                    {
+                        now.Add((Folded(sql, tokens[c], kind, keep: true), c + 1 < tokens.Count ? tokens[c + 1].Word.ToLowerInvariant() : string.Empty));
+                    }
+                    else if (tokens[t].Word == "DROP" && column)
+                    {
+                        now.RemoveAll(o => Same(sql, tokens[c], o.Name, kind));
+                    }
+                    else if (tokens[t].Word == "RENAME" && column && c + 2 < tokens.Count && tokens[c + 1].Word == "TO" && IsName(sql, tokens, c + 2))
+                    {
+                        int was = now.FindIndex(o => Same(sql, tokens[c], o.Name, kind));
+                        if (was >= 0)
+                        {
+                            now[was] = (Folded(sql, tokens[c + 2], kind, keep: true), now[was].Type);
+                        }
+                    }
+                    else if (tokens[t].Word == "RENAME" && c < tokens.Count && tokens[c].Word == "TO" && IsName(sql, tokens, c + 1))
+                    {
+                        renamed = Folded(sql, tokens[c + 1], kind, keep: true);
+                    }
+                }
+                tables[index] = new SqlTableInfo(table.Schema, renamed, now);
+                break;
+        }
+        return new SqlCatalog(tables);
+    }
+
+    /// <summary>A table's schema and name written from <paramref name="at"/>, moving past them; the catalog's usual schema
+    /// where it names none.</summary>
+    private static (string Schema, string Name)? Named(string sql, List<SqlText.Token> tokens, DatabaseKind kind, ref int at, SqlCatalog catalog)
+    {
+        if (at >= tokens.Count || !IsName(sql, tokens, at))
+        {
+            return null;
+        }
+        string first = Folded(sql, tokens[at], kind, keep: true);
+        if (at + 2 < tokens.Count && tokens[at + 1].Word == "." && IsName(sql, tokens, at + 2))
+        {
+            string second = Folded(sql, tokens[at + 2], kind, keep: true);
+            at += 3;
+            return (first, second);
+        }
+        at++;
+        return (catalog.Usual, first);
+    }
+
+    private static bool Same(string one, string other, DatabaseKind kind) =>
+        string.Equals(one, other, kind == DatabaseKind.Postgres ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The tables and views the SQL makes (CREATE TABLE, VIEW), by their names folded as the database folds them.</summary>
     private static HashSet<string> Made(string text, DatabaseKind kind)
@@ -142,11 +267,16 @@ public static class SqlChecks
             }
             SqlTableInfo? table = null;
             string name = Folded(sql, tokens[last], kind);
-            if (parts.Count == 1 && (named.Contains(name) || made.Contains(name)) || parts.Count > 2 || Systems(name))
+            if (parts.Count == 1 && named.Contains(name) || parts.Count > 2 || Systems(name))
             {
                 unsure = true;
             }
             else if (parts.Count == 2 && !catalog.Tables.Any(c => Same(sql, tokens[parts[0]], c.Schema, kind)))
+            {
+                unsure = true;
+            }
+            else if (catalog.Tables.FirstOrDefault(c => Same(sql, tokens[last], c.Name, kind) && (parts.Count == 1 || Same(sql, tokens[parts[0]], c.Schema, kind))) is not { } known
+                && parts.Count == 1 && made.Contains(name))
             {
                 unsure = true;
             }
@@ -306,9 +436,11 @@ public static class SqlChecks
         || name.StartsWith("pragma_", StringComparison.OrdinalIgnoreCase) || name.StartsWith("sys", StringComparison.OrdinalIgnoreCase)
         || name.Equals("dual", StringComparison.OrdinalIgnoreCase) || name.StartsWith("information_schema", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>A name as the database keeps it: a quoted one as written, one not quoted folded as the database folds it.</summary>
-    private static string Folded(string sql, SqlText.Token token, DatabaseKind kind) =>
-        token.Quoted ? token.Word : kind == DatabaseKind.Postgres ? sql[token.Start..token.End].ToLowerInvariant() : sql[token.Start..token.End].ToUpperInvariant();
+    /// <summary>A name as the database keeps it: a quoted one as written, one not quoted folded as the database folds it, or
+    /// with <paramref name="keep"/> as written where the database keeps a name's case as written (all but PostgreSQL).</summary>
+    private static string Folded(string sql, SqlText.Token token, DatabaseKind kind, bool keep = false) =>
+        token.Quoted ? token.Word : kind == DatabaseKind.Postgres ? sql[token.Start..token.End].ToLowerInvariant()
+            : keep ? sql[token.Start..token.End] : sql[token.Start..token.End].ToUpperInvariant();
 
     /// <summary>Whether a name written is the one the schema holds, as the database compares them.</summary>
     private static bool Same(string sql, SqlText.Token token, string actual, DatabaseKind kind) => kind == DatabaseKind.Postgres

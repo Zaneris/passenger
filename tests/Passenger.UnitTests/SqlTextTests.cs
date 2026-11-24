@@ -104,6 +104,13 @@ public sealed class SqlTextTests
                 + "SELECT COUNT(*) AS total FROM Products ORDER BY total; SELECT name FROM sqlite_schema", []),
             ("a table the SQL makes, a schema the schema read holds none of, and the system's passed over", DatabaseKind.Postgres,
                 "CREATE TABLE made (a int); SELECT a FROM made; SELECT * FROM information_schema.tables; SELECT relname FROM pg_class", []),
+            ("an earlier statement's schema: a column added known after it, a table made known by its columns, a column dropped unknown", DatabaseKind.Sqlite,
+                "SELECT Price FROM Products; ALTER TABLE Products ADD COLUMN Price numeric; SELECT Price FROM Products; "
+                + "CREATE TABLE Shipments (Id int, Sent date, PRIMARY KEY (Id)); SELECT Sent, Lost FROM Shipments; ALTER TABLE Products DROP COLUMN Note; SELECT Note FROM Products",
+                ["Price", "Lost", "Note"]),
+            ("a column renamed, by PostgreSQL's folding", DatabaseKind.Postgres, "ALTER TABLE products RENAME COLUMN name TO title; SELECT title, name FROM products", ["name"]),
+            ("a schema's table named whole, quoted", DatabaseKind.Postgres,
+                "ALTER TABLE \"public\".\"products\" ADD COLUMN \"price\" numeric(6,2);\nCREATE VIEW \"public\".\"cheap\" AS SELECT products.id FROM products WHERE products.price < 3 AND price > 1", []),
         }, row => Assert.Equal(row.Marked, SqlChecks.Of(row.Sql, row.Kind, row.Kind == DatabaseKind.Postgres ? served : shop).Select(p => row.Sql[p.Start..p.End])), row => row.Holds);
         Cases.Each(new (string Holds, Func<PlanStep> Read, string[] Steps, string? Costliest)[]
         {
@@ -288,8 +295,69 @@ public sealed class SqlTextTests
             Assert.Equal(row.Statements, found.SelectMany(d => d.Statements));
             Assert.Empty(SchemaCompare.Differences(new SchemaShape(row.Kind, row.Schema, [products], []), new SchemaShape(row.Kind, row.Schema, [products with { Columns = [.. products.Columns.Reverse()] }], [])));
         }, row => row.Holds);
+        TableShape keyed = new("notes", [new("id", "int", false), new("code", "varchar(10)", false), new("flag", "int", false, "((0))")], ["id"], [], []) { PrimaryKeyName = "PK_a" };
+        TableShape keyedThere = new("notes", [new("id", "int", false), new("code", "varchar(10)", false), new("flag", "int", false, "((1))")], ["code"], [], [])
+        {
+            PrimaryKeyName = "PK_b",
+            DefaultNames = new Dictionary<string, string> { ["flag"] = "DF_flag" },
+        };
+        Cases.Each(new (string Holds, DatabaseKind Kind, SchemaShape Source, SchemaShape Target, string[] Statements)[]
+        {
+            ("SQL Server: a default dropped by its constraint's name and added again, a primary key dropped and added, a sequence, routine and trigger made or altered",
+                DatabaseKind.SqlServer,
+                new SchemaShape(DatabaseKind.SqlServer, "dbo", [keyed], [])
+                {
+                    Sequences = [new SequenceShape("numbers", "bigint", "1000", "1", "1", "9999", false)],
+                    Routines = [new RoutineShape("add_one", "FUNCTION", "CREATE FUNCTION add_one(@x int) RETURNS int AS BEGIN RETURN @x + 1 END")],
+                    Triggers = [new TriggerShape("stamp", "notes", "CREATE TRIGGER stamp ON notes AFTER UPDATE AS SET NOCOUNT ON")],
+                },
+                new SchemaShape(DatabaseKind.SqlServer, "dbo", [keyedThere], [])
+                {
+                    Sequences = [new SequenceShape("numbers", "bigint", "1000", "2", "1", "9999", false)],
+                    Triggers = [new TriggerShape("stamp", "notes", "CREATE OR ALTER TRIGGER [dbo].[stamp] ON notes AFTER UPDATE AS SET NOCOUNT ON")],
+                },
+                ["ALTER SEQUENCE [dbo].[numbers] INCREMENT BY 1 MINVALUE 1 MAXVALUE 9999 NO CYCLE",
+                    "ALTER TABLE [dbo].[notes] DROP CONSTRAINT [DF_flag]", "ALTER TABLE [dbo].[notes] ADD DEFAULT ((0)) FOR [flag]",
+                    "ALTER TABLE [dbo].[notes] DROP CONSTRAINT [PK_b]", "ALTER TABLE [dbo].[notes] ADD CONSTRAINT [PK_a] PRIMARY KEY ([id])",
+                    "CREATE OR ALTER FUNCTION [dbo].[add_one](@x int) RETURNS int AS BEGIN RETURN @x + 1 END"]),
+            ("PostgreSQL: a primary key dropped by its name and added in one statement, a routine replaced, a trigger replaced, a sequence made and one dropped",
+                DatabaseKind.Postgres,
+                new SchemaShape(DatabaseKind.Postgres, "public", [keyed with { Columns = [.. keyed.Columns.Take(2)] }], [])
+                {
+                    Sequences = [new SequenceShape("numbers", "bigint", "1000", "1", "1", "9999", false)],
+                    Routines = [new RoutineShape("keep()", "FUNCTION", "CREATE OR REPLACE FUNCTION public.keep() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$")],
+                    Triggers = [new TriggerShape("stamp", "notes", "CREATE TRIGGER stamp BEFORE UPDATE ON public.notes FOR EACH ROW EXECUTE FUNCTION keep()")],
+                },
+                new SchemaShape(DatabaseKind.Postgres, "public", [keyedThere with { Columns = [.. keyedThere.Columns.Take(2)] }], [])
+                {
+                    Sequences = [new SequenceShape("old", "bigint", "1", "1", "1", "9999", false)],
+                },
+                ["CREATE SEQUENCE \"public\".\"numbers\" AS bigint START WITH 1000 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9999 NO CYCLE",
+                    "ALTER TABLE \"public\".\"notes\" DROP CONSTRAINT \"PK_b\", ADD PRIMARY KEY (\"id\")",
+                    "CREATE OR REPLACE FUNCTION public.keep() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
+                    "CREATE OR REPLACE TRIGGER stamp BEFORE UPDATE ON public.notes FOR EACH ROW EXECUTE FUNCTION keep()", "DROP SEQUENCE \"public\".\"old\""]),
+            ("MySQL: a primary key changed in one statement, a trigger said again from its parts under the target's names", DatabaseKind.MySql,
+                new SchemaShape(DatabaseKind.MySql, "shop", [keyed with { Columns = [.. keyed.Columns.Take(2)] }], [])
+                {
+                    Triggers = [new TriggerShape("stamp", "notes", "BEFORE UPDATE FOR EACH ROW SET NEW.code = NEW.code")],
+                },
+                new SchemaShape(DatabaseKind.MySql, "shop", [keyedThere with { Columns = [.. keyedThere.Columns.Take(2)] }], []),
+                ["ALTER TABLE `shop`.`notes` DROP PRIMARY KEY, ADD PRIMARY KEY (`id`)",
+                    "CREATE TRIGGER `shop`.`stamp` BEFORE UPDATE ON `shop`.`notes` FOR EACH ROW SET NEW.code = NEW.code"]),
+        }, row =>
+        {
+            Assert.Equal(row.Statements, SchemaCompare.Differences(row.Source, row.Target).SelectMany(d => d.Statements));
+            Assert.Empty(SchemaCompare.Differences(row.Source, row.Source));
+        }, row => row.Holds);
         (IReadOnlyList<DiagramBox> boxes, IReadOnlyList<DiagramLine> lines) = DiagramLayout.Place(new SchemaShape(DatabaseKind.Postgres, "public", [orders, products], []), _ => 100);
         Assert.Equal(["products 0,0", "orders 156,0"], boxes.Select(b => $"{b.Table.Name} {b.X},{b.Y}"));
         Assert.Equal([(156d, 61d), (128d, 61d), (128d, 37d), (100d, 37d)], Assert.Single(lines).Points);
+        TableShape reviews = new("reviews", [new("id", "integer", false), new("product_id", "integer", true)], ["id"], [new ForeignKeyShape("reviews_product", ["product_id"], "products", ["id"])], []);
+        (_, IReadOnlyList<DiagramLine> shared) = DiagramLayout.Place(new SchemaShape(DatabaseKind.Postgres, "public", [orders, products, reviews], []), _ => 100);
+        Assert.Equal([125d, 131d], shared.Select(l => l.Points[1].X).Order());
+        (IReadOnlyList<DiagramBox> left, IReadOnlyList<DiagramLine> moved) = DiagramLayout.Place(new SchemaShape(DatabaseKind.Postgres, "public", [orders, products], []), _ => 100,
+            new Dictionary<string, (double X, double Y)> { ["orders"] = (400, 300) });
+        Assert.Equal((400d, 300d), (left.Single(b => b.Table.Name == "orders").X, left.Single(b => b.Table.Name == "orders").Y));
+        Assert.Equal([(400d, 361d), (128d, 361d), (128d, 37d), (100d, 37d)], Assert.Single(moved).Points);
     }
 }

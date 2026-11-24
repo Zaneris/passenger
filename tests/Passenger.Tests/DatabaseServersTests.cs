@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -434,29 +435,73 @@ public sealed class DatabaseServersTests
                 Ui.PumpUntil(() => !jumped.Running && Said(kind, connection, running) == "0", $"{sleeping} stopped on the server", TimeSpan.FromSeconds(20));
                 Assert.Equal("Stopped.", jumped.Said);
 
-                // The schema's diagram draws its tables, and a line for orders' foreign key to products.
+                // The diagram draws tables and foreign keys, zooms, keeps a box where it was dragged, opens a table, and reads again.
                 Execute(kind, connection, "CREATE TABLE orders (id int PRIMARY KEY, product_id int, qty int NOT NULL, FOREIGN KEY (product_id) REFERENCES products(id))");
-                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
-                Assert.True(window.Perform(AppActions.DatabaseDiagram), "Show Schema Diagram did not run");
-                Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTab is SchemaDiagramTab { Shown.Boxes.Count: > 0 }, () => window.Database.Said);
-                SchemaDiagramTab diagram = (SchemaDiagramTab)window.EditorArea.Active!.DatabaseTab!;
-                Assert.Subset(diagram.Shown!.Boxes.Select(b => b.Table.Name).ToHashSet(), new HashSet<string> { "products", "orders", "items" });
-                Assert.Contains(diagram.Shown.Lines, l => l.From == "orders" && l.To == "products");
-                Assert.True(diagram.Shown.Boxes.Single(b => b.Table.Name == "orders").X > diagram.Shown.Boxes.Single(b => b.Table.Name == "products").X, "orders stands left of products, which it refers to");
+                SchemaDiagramTab diagram = Diagram(window);
+                DiagramCanvas canvas = diagram.Shown!;
+                Assert.Subset(canvas.Panel.Boxes.Select(b => b.Table.Name).ToHashSet(), new HashSet<string> { "products", "orders", "items" });
+                Assert.Contains(canvas.Panel.Lines, l => l.From == "orders" && l.To == "products");
+                Assert.True(canvas.Panel.Boxes.Single(b => b.Table.Name == "orders").X > canvas.Panel.Boxes.Single(b => b.Table.Name == "products").X, "orders stands right of products, which it refers to");
+                canvas.ZoomIn();
+                Assert.True(canvas.Zoom > 1, $"Zoom In left the diagram at {canvas.Zoom}");
+                canvas.ActualSize();
+                Ui.Settle();
+                Rect title = canvas.Shown("orders")!.Value;
+                Point grabbed = canvas.TranslatePoint(new Point(title.X + 30, title.Y + 10), window)!.Value;
+                Ui.Drag(window, grabbed, grabbed + new Vector(40, 120));
+                Ui.Settle();
+                Assert.True(canvas.Places.TryGetValue("orders", out (double X, double Y) left), "The orders box dragged was not kept where it was left");
+                DiagramBox laid = canvas.Panel.Boxes.Single(b => b.Table.Name == "orders");
+                Assert.True((title.X + 40, title.Y + 120) == (laid.X + canvas.Offset.X, laid.Y + canvas.Offset.Y),
+                    $"The orders box stands at {laid} with the diagram at {canvas.Offset} × {canvas.Zoom}, dragged from {title} to be left at {left}");
+                Assert.Equal(laid.X, canvas.Panel.Lines.Single(l => l.From == "orders").Points[0].X);
+                window.EditorArea.Close(diagram.Document);
+                diagram = Diagram(window);
+                Assert.Equal(left, (diagram.Shown!.Panel.Boxes.Single(b => b.Table.Name == "orders").X, diagram.Shown.Panel.Boxes.Single(b => b.Table.Name == "orders").Y));
+                diagram.Shown.Chosen = "orders";
+                diagram.Shown.Focus();
+                Ui.Press(window, "ENTER");
+                Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTable is { Reading: false, Table.Name: "orders" }, () => window.Database.Said);
+                window.EditorArea.Activate(diagram.Document);
+                Execute(kind, connection, "CREATE TABLE shipments (id int PRIMARY KEY, order_id int, FOREIGN KEY (order_id) REFERENCES orders(id))");
+                Ui.Click(window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "DatabaseDiagramReadAgain"));
+                Ui.WaitFor(() => diagram.Shown.Panel.Boxes.Any(b => b.Table.Name == "shipments"), () => window.Database.Said);
+                Assert.Contains(diagram.Shown.Panel.Lines, l => l.From == "shipments" && l.To == "orders");
 
-                // The second schema compared with it takes the script that makes it as this one is, run from its console, and then holds the same.
+                // A second schema compared with it takes the script that makes it the same, objects, keys and defaults too, and is.
+                Execute(kind, connection, "CREATE SEQUENCE invoice_numbers START WITH 1000");
+                Execute(kind, connection, kind switch
+                {
+                    DatabaseKind.Postgres => "CREATE FUNCTION add_one(x int) RETURNS int LANGUAGE sql AS 'SELECT x + 1'",
+                    DatabaseKind.MySql => "CREATE FUNCTION add_one(x int) RETURNS int DETERMINISTIC RETURN x + 1",
+                    _ => "CREATE FUNCTION add_one(@x int) RETURNS int AS BEGIN RETURN @x + 1 END",
+                });
+                Execute(kind, connection, "CREATE TABLE notes (id int NOT NULL, code varchar(10) NOT NULL, flag int DEFAULT 0 NOT NULL, PRIMARY KEY (id))");
+                Execute(kind, target, "CREATE TABLE notes (id int NOT NULL, code varchar(10) NOT NULL, flag int DEFAULT 1 NOT NULL, PRIMARY KEY (code))");
                 List<DatabaseSource> kinds = [.. window.Database.Sources.Where(s => s.Kind == kind)];
                 SchemaCompareDialog compare = CompareWith(window, kinds.FindIndex(s => s.Name == "Target"));
                 Ui.ClickButton(compare, "Compare");
                 Ui.WaitFor(() => !window.Database.Busy && window.EditorArea.Active?.Name == "Target.sql" && window.EditorArea.CodeEditor.Document.Snapshot.ToString().Contains("-- Makes", StringComparison.Ordinal),
                     () => window.Database.Said, TimeSpan.FromMinutes(1));
                 string script = window.EditorArea.CodeEditor.Document.Snapshot.ToString();
-                foreach (string made in (string[])["orders", "items", "price", "legacy", "cheap", "note"])
+                foreach (string made in (string[])["orders", "items", "price", "legacy", "cheap", "note", "invoice_numbers", "add_one", "stamp", "PRIMARY KEY", "flag"])
                 {
                     Assert.Contains(made, script, StringComparison.Ordinal);
                 }
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the target's console");
                 SqlConsole applying = window.EditorArea.ActiveGroup.Console!.Console!;
+                // The console's checks read the script's earlier statements as the schema they leave: only a name none makes is marked.
+                Passenger.App.Workspace.OpenDocument checking = window.EditorArea.Active!;
+                CodeEditor writing = window.EditorArea.CodeEditor;
+                writing.Select(new TextRange(script.Length, script.Length));
+                window.KeyTextInput("\nSELECT nope FROM products;");
+                Ui.WaitFor(() => checking.Markers.Any(m => m.Message.Contains("nope", StringComparison.Ordinal)),
+                    () => $"nope marked, where the marks are {string.Join("; ", checking.Markers.Select(m => m.Message))}", TimeSpan.FromMinutes(1));
+                Assert.True(checking.Markers.All(m => m.Message.Contains("nope", StringComparison.Ordinal)),
+                    $"The script's own names were marked: {string.Join("; ", checking.Markers.Select(m => $"{m.Message} at {m.Range.Start}"))} in {checking.Text.Snapshot}");
+                writing.Select(new TextRange(script.Length, writing.Document.Snapshot.Length));
+                Ui.Press(window, "BACKSPACE");
+                writing.Select(new TextRange(0, writing.Document.Snapshot.Length));
                 Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run the script");
                 Ui.WaitFor(() => !applying.Running && applying.Results.Count > 0, () => applying.Said, TimeSpan.FromMinutes(1));
                 Assert.True(applying.Results.All(r => r.Error is null), $"{applying.Said} running {applying.Results.LastOrDefault()?.Statement}");
@@ -482,6 +527,15 @@ public sealed class DatabaseServersTests
             Docker.Remove(name, ssh, inner, second);
             Docker.Ask(["network", "rm", name]);
         }
+    }
+
+    /// <summary>Show Schema Diagram on the shop's connection, waited for until its boxes are laid out.</summary>
+    private static SchemaDiagramTab Diagram(MainWindow window)
+    {
+        window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
+        Assert.True(window.Perform(AppActions.DatabaseDiagram), "Show Schema Diagram did not run");
+        Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTab is SchemaDiagramTab { Shown.Panel.Boxes.Count: > 0 }, () => window.Database.Said);
+        return (SchemaDiagramTab)window.EditorArea.Active!.DatabaseTab!;
     }
 
     /// <summary>Compare Schemas… on the chosen row, its dialog's target the connection at <paramref name="at"/>.</summary>
