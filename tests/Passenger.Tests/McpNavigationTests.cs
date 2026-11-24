@@ -831,21 +831,30 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent reads the dependency map a level at a time, as the compiler binds the code: the projects, a project's
     /// namespaces, a namespace's types with where each is written, and each edge to the id of what is used, counted by kind,
-    /// the top-level statements' call of Helper.Twice among them; an id no answer gave is refused, saying so.</summary>
+    /// the top-level statements' call of Helper.Twice among them, an edge breaking the folder's layer rules marked so; an id
+    /// no answer gave is refused, saying so.</summary>
     private async Task An_agent_reads_the_dependency_map_a_level_at_a_time_down_to_what_each_type_calls()
     {
         await TakeFolderAsync();
+        // Shout's namespace a layer of its own, let use nothing else, so its call of Helper breaks the rules.
+        Write("Layered/Shout.cs", "namespace Layered;\n\nstatic class Shout\n{\n    public static int Loud() => Helper.Twice(2);\n}\n");
+        Write("passenger-layers.json", "{\n  \"passengerLayers\": 1,\n  \"layers\": [\n    { \"name\": \"Loud\", \"namespaces\": [\"Layered.*\"] },\n"
+            + "    { \"name\": \"Rest\", \"namespaces\": [\"**\"] }\n  ]\n}\n");
         await using McpClient client = await Start(["--mcp", Folder]);
         JsonElement sum = Assert.Single((await Call(client, McpTools.Dependencies)).GetProperty("nodes").EnumerateArray());
         Assert.Equal("Sum", sum.GetProperty("name").GetString());
-        JsonElement global = Assert.Single((await Call(client, McpTools.Dependencies, new() { ["node"] = sum.GetProperty("id").GetString() })).GetProperty("nodes").EnumerateArray());
+        JsonElement spaces = await Call(client, McpTools.Dependencies, new() { ["node"] = sum.GetProperty("id").GetString() });
+        JsonElement global = spaces.GetProperty("nodes").EnumerateArray().Single(n => n.GetProperty("name").GetString() == "<global namespace>");
+        JsonElement loud = Assert.Single(spaces.GetProperty("edges").EnumerateArray());
+        Assert.True(loud.GetProperty("from").GetString()!.EndsWith("|Layered", StringComparison.Ordinal) && loud.TryGetProperty("broken", out JsonElement broken) && broken.GetBoolean(),
+            $"Layered's call of Helper answered as not breaking the rules: {loud.GetRawText()}");
         JsonElement types = await Call(client, McpTools.Dependencies, new() { ["node"] = global.GetProperty("id").GetString() });
         Assert.Equal(["Helper class Helper.cs:1", "Program class Program.cs:1"], types.GetProperty("nodes").EnumerateArray()
             .Select(n => $"{n.GetProperty("name").GetString()} {n.GetProperty("kind").GetString()} {n.GetProperty("path").GetString()}:{n.GetProperty("line").GetInt32()}"));
         JsonElement call = Assert.Single(types.GetProperty("edges").EnumerateArray());
         Assert.True(call.GetProperty("from").GetString()!.EndsWith("|T:Program", StringComparison.Ordinal)
             && call.GetProperty("to").GetString()!.EndsWith("|M:Helper.Twice(System.Int32)", StringComparison.Ordinal)
-            && call.GetProperty("kinds").GetProperty("calls").GetInt32() == 1, $"the top-level statements' edge was {call.GetRawText()}");
+            && call.GetProperty("kinds").GetProperty("calls").GetInt32() == 1 && !call.TryGetProperty("broken", out _), $"the top-level statements' edge was {call.GetRawText()}");
         CallToolResult refused = await Result(client, McpTools.Dependencies, new() { ["node"] = "nowhere" });
         Assert.True(refused.IsError == true && Text(refused).Contains("No node 'nowhere'", StringComparison.Ordinal), $"a node no answer gave answered: {Text(refused)}");
     }

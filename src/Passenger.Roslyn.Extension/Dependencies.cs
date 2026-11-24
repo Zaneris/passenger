@@ -9,7 +9,7 @@ namespace Passenger.Roslyn.Extension;
 public sealed class Dependencies : IExtensionWorkspaceMessageHandler<DependenciesAsked, DependenciesFound>
 {
     public Task<DependenciesFound> ExecuteAsync(DependenciesAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken) =>
-        DependencyMap.LevelAsync(context.Solution, message.Of, ChosenFrameworksHandler.Unchosen(context.Solution, message.Frameworks), cancellationToken);
+        DependencyMap.LevelAsync(context.Solution, message.Of, ChosenFrameworksHandler.Unchosen(context.Solution, message.Frameworks), message.Rules, cancellationToken);
 }
 
 /// <summary>The map's node of a place in a document (<see cref="DependencyPlace"/>), which the map opens on.</summary>

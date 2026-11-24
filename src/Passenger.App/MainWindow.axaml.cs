@@ -362,7 +362,7 @@ public partial class MainWindow : IdeWindow
         // Passenger's own fixes: bindings, compose names, Aspire, configuration and localized keys, layer rules, Godot's checks; each language's own come from its assist.
         assist.EditorFixes = (file, offset) => [.. Passenger.App.LiveTree.BindingErrors.Fixes(file, offset, session.FailedBindings.Select(b => b.Failure)),
             .. session.Web?.Checks.Fixes(file, offset) ?? [], .. assist.AspireFixes(file, offset), .. assist.ComposeReadFixes(file, offset), .. MigrationFixes(file, offset),
-            .. assist.ConfigurationFixes(file, offset), .. assist.LocalizationFixes(file, offset), .. assist.LayerFixes(file, offset), .. assist.GodotFixes(file, offset, session.GodotMarks),
+            .. assist.ConfigurationFixes(file, offset), .. assist.LocalizationFixes(file, offset), .. assist.LayerFixes(file, offset), .. ProjectLayerFixes(file, offset), .. assist.GodotFixes(file, offset, session.GodotMarks),
             .. MobileFixes(file, offset), .. PackageFixes(file, offset)];
         assist.AskValue = AskValueAsync;
         assist.ConfirmFix = (title, text, yes) => Confirm(title, text, yes);

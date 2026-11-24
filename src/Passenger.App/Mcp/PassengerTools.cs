@@ -769,7 +769,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "A level of the solution's dependency map, as the compiler binds the code: with no node, the C# projects and their " +
         "references; with a node's id, a project's namespaces, a namespace's types or a type's members. Each edge goes from a " +
         "node to the id of what it uses (a namespace's to a namespace, a type's or member's to a type or member), counted by " +
-        "kind: calls, inherits, implements, fieldType, parameterType, attribute, uses, references.")]
+        "kind: calls, inherits, implements, fieldType, parameterType, attribute, uses, references; broken where it breaks the " +
+        "folder's layer rules (passenger-layers.json).")]
     public Task<DependencyLevel> Dependencies(string? node = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         await SettledServer(cancel);
@@ -781,7 +782,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         Roslyn.Extension.DependenciesFound found = await csharp.DependenciesAsync(node);
         DependencyNodeInfo[] nodes = [.. found.Nodes.Select(n => new DependencyNodeInfo(n.Id, n.Name, n.Kind, n.Path is { } path ? Relative(path) : null,
             n.Path is { } at && n.At is { } place ? ServerPlaces.PositionOf(Editors, at, new LspPosition(place.Line, place.Character)).Line + 1 : null, n.Expands ? true : null))];
-        DependencyEdgeInfo[] edges = [.. found.Edges.Select(e => new DependencyEdgeInfo(e.From, e.To[^1], e.Kinds))];
+        DependencyEdgeInfo[] edges = [.. found.Edges.Select(e => new DependencyEdgeInfo(e.From, e.To[^1], e.Kinds, e.Broken ? true : null))];
         return HeldDependencies(new DependencyLevel(nodes, edges));
     });
 
@@ -4724,8 +4725,9 @@ public sealed record DependencyLevel(IReadOnlyList<DependencyNodeInfo> Nodes, IR
 /// <summary>A node of the map: its id, name and kind, where it is written, and whether a level stands below it.</summary>
 public sealed record DependencyNodeInfo(string Id, string Name, string Kind, string? Path, int? Line, bool? Opens);
 
-/// <summary>An edge of the map: the node that uses, the id of what it uses, and how many uses of each kind.</summary>
-public sealed record DependencyEdgeInfo(string From, string To, IReadOnlyDictionary<string, int> Kinds);
+/// <summary>An edge of the map: the node that uses, the id of what it uses, how many uses of each kind, and whether it breaks
+/// the folder's layer rules (none where it doesn't).</summary>
+public sealed record DependencyEdgeInfo(string From, string To, IReadOnlyDictionary<string, int> Kinds, bool? Broken = null);
 
 /// <summary>A build's answer: MSBuild's last lines only when it failed, since a build that succeeded has nothing in them
 /// an agent acts on (output of build has them).</summary>

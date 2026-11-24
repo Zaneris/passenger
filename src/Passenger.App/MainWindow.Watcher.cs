@@ -194,6 +194,11 @@ public partial class MainWindow
         {
             session.CSharp?.ConfigurationChanged();
         }
+        // C# files written on disk: the dependency map asks its open levels again once the code rests.
+        if (changes.Paths.Any(p => Languages.Language.ForPath(p) == Languages.Language.CSharp))
+        {
+            dependencyMap?.CodeMoved();
+        }
         // The folder's layer rules written, made or deleted: read again, and every open C# file checked against them.
         if (changes.Lost || changes.Paths.Any(p => Path.GetFileName(p) == Roslyn.Extension.LayerRules.FileName))
         {

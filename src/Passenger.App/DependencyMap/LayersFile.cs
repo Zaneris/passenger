@@ -44,6 +44,14 @@ public static class LayersFile
         }
     }
 
+    /// <summary>What a use breaking the rules says, wherever it is marked: the layers, what is used, and what the using layer
+    /// may use.</summary>
+    public static string Said(LayerRules rules, string from, string to, string used)
+    {
+        IReadOnlyList<string> may = rules.Layers.FirstOrDefault(l => l.Name == from)?.MayUse ?? [];
+        return $"The {from} layer may not use the {to} layer, which {used} is in: {LayerRules.FileName} lets it use {(may.Count == 0 ? "no other layer" : Plural.Listed(may))}";
+    }
+
     /// <summary>A file's text with one layer let use another (added to its mayUse), written as JSON is written indented;
     /// null where the text has no such layer or it may already.</summary>
     public static string? LetUse(string text, string from, string to)

@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Roslyn.Extension;
 
 namespace Passenger.App.DependencyMap;
@@ -28,15 +29,15 @@ public sealed record MapEdgeRow(MapEdge Edge, bool Out, MapNode Chosen, bool Bro
     /// <summary>The node at the other end.</summary>
     public MapNode Other => Out ? Edge.To : Edge.From;
 
-    /// <summary>The row's words: which way, the other end, the node below the chosen one it is of where it is, and the uses
-    /// by kind.</summary>
+    /// <summary>The row's words: which way, the other end, the node below the chosen one it is of where it is, whether it
+    /// breaks the layer rules, and the uses by kind.</summary>
     public string Words
     {
         get
         {
             MapNode own = Out ? Edge.From : Edge.To;
             string way = own == Chosen ? (Out ? "Uses" : "Used by") : $"{own.Name} {(Out ? "uses" : "used by")}";
-            return $"{way} {Other.Name}: {MapPicture.KindsOf(Edge)}{(Broken ? ", breaking the layer rules" : string.Empty)}";
+            return $"{way} {Other.Name}{(Broken ? ", breaking the layer rules" : string.Empty)}: {MapPicture.KindsOf(Edge)}";
         }
     }
 }
@@ -63,8 +64,12 @@ public sealed class DependencyMapView : DockPanel
     /// <summary>Asks a level of the map: the projects for null.</summary>
     private Func<string?, Task<DependenciesFound>>? ask;
 
+    /// <summary>Every level open asked again once the code has rested (<see cref="CodeMoved"/>).</summary>
+    private readonly Debounce following;
+
     public DependencyMapView()
     {
+        following = new Debounce(Editors.TypingPauses.DependencyMap, RefreshAsync);
         Picture = new MapPicture();
         Picture.Chose += (_, node) => Choose(node, fromPicture: true);
         Picture.Toggled += (_, node) => Toggle(node);
@@ -140,7 +145,7 @@ public sealed class DependencyMapView : DockPanel
         lists.SetPresentation(stack: true, onlySecond: false);
         side.Children.Add(lists);
         Panel drawn = new() { Children = { Picture, placeholder } };
-        Children.Add(new PaneSplit(side, drawn, "1*,1,3*"));
+        Children.Add(new PaneSplit(side, drawn, "2*,1,3*"));
         placeholder.Text = "The map shows here once the C# language server has read the solution";
     }
 
@@ -152,6 +157,9 @@ public sealed class DependencyMapView : DockPanel
 
     /// <summary>The menu of the kinds of edge shown.</summary>
     public FilterMenu Kinds => kinds;
+
+    /// <summary>The list of the chosen node's edges.</summary>
+    public ListBox EdgeList => edgeList;
 
     /// <summary>A node whose code to go to.</summary>
     public event EventHandler<MapNode>? GoToRequested;
@@ -165,21 +173,15 @@ public sealed class DependencyMapView : DockPanel
     /// <summary>The edges shown, as the picture draws them.</summary>
     public IReadOnlyList<MapEdge> ShownEdges => shown;
 
-    /// <summary>The folder's layer rules, whose broken edges the map draws in the error's colour; none while it has none.</summary>
-    public LayerRules? Rules
+    /// <summary>The folder's layer rules changed: the levels open are asked again, as the extension judges each edge by the
+    /// rules it is asked with.</summary>
+    public void RulesChanged()
     {
-        get => rules;
-        set
+        if (graph.HasRoots)
         {
-            rules = value;
-            if (graph.HasRoots)
-            {
-                Redraw();
-            }
+            IdeErrors.Observe(RefreshAsync());
         }
     }
-
-    private LayerRules? rules;
 
     private IReadOnlySet<MapEdge> broken = new HashSet<MapEdge>();
 
@@ -257,6 +259,7 @@ public sealed class DependencyMapView : DockPanel
         {
             return;
         }
+        int was = taken;
         if (!await LevelAsync(null))
         {
             return;
@@ -269,17 +272,80 @@ public sealed class DependencyMapView : DockPanel
                 await LevelAsync(still);
             }
         }
-        Redraw();
+        // A level that came back as it was is left as it stands: the picture is drawn again only where one changed.
+        if (taken != was)
+        {
+            Redraw();
+        }
     }
 
-    /// <summary>A level asked and taken in; false, said, where it could not be read.</summary>
+    /// <summary>The code changed: every level open asked again once it settles, if the map has been read, and while it is
+    /// shown, else as it is shown next; the extension reads again only the documents the change reached.</summary>
+    public void CodeMoved()
+    {
+        if (!graph.HasRoots || ask is null)
+        {
+            return;
+        }
+        if (inSight)
+        {
+            following.Restart();
+        }
+        else
+        {
+            stale = true;
+        }
+    }
+
+    /// <summary>Whether the map is in a window's tree, where a person may look at it.</summary>
+    private bool inSight;
+
+    /// <summary>Whether the code changed while the map was not shown.</summary>
+    private bool stale;
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        inSight = true;
+        if (stale)
+        {
+            stale = false;
+            following.Restart();
+        }
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        inSight = false;
+        if (following.IsWaiting)
+        {
+            following.Stop();
+            stale = true;
+        }
+    }
+
+    /// <summary>Each level's last answer as it came, by the node it was asked of (the empty string for the projects').</summary>
+    private readonly Dictionary<string, string> answers = new(StringComparer.Ordinal);
+
+    /// <summary>How many answers have been taken in that differed from the last of their level.</summary>
+    private int taken;
+
+    /// <summary>A level asked and taken in where it differs from its last answer; false, said, where it could not be read.</summary>
     private async Task<bool> LevelAsync(MapNode? of)
     {
         reading++;
         try
         {
             DependenciesFound found = await ask!(of?.Id);
-            graph.Take(of, found);
+            string said = System.Text.Json.JsonSerializer.Serialize(found);
+            string key = of?.Id ?? string.Empty;
+            if (answers.GetValueOrDefault(key) != said || (of is null ? !graph.HasRoots : !graph.HasLevel(of)))
+            {
+                answers[key] = said;
+                graph.Take(of, found);
+                taken++;
+            }
             placeholder.IsVisible = false;
             return true;
         }
@@ -340,7 +406,7 @@ public sealed class DependencyMapView : DockPanel
     /// <summary>The picture laid out and the tree listed again for what is open and the kinds shown.</summary>
     private void Redraw()
     {
-        shown = graph.Shown(kind => !hidden.Contains(kind), rules);
+        shown = graph.Shown(kind => !hidden.Contains(kind));
         broken = shown.Where(e => e.Broken).ToHashSet();
         Picture.Show(graph, shown, broken);
         ListRows();
@@ -438,6 +504,8 @@ public sealed class DependencyMapView : DockPanel
             name.Text = row.Node.Name;
             (IReadOnlyList<MapEdge> uses, IReadOnlyList<MapEdge> used) = MapGraph.Crossing(row.Node, shown);
             detail.Text = $"{row.Node.Kind} · uses {Numbers.Said(uses.Count)} · used by {Numbers.Said(used.Count)}";
+            // Cut short where the pane is narrow, as a list's rows are, the whole row is its tip.
+            ToolTip.SetTip(line, $"{row.Node.Name}: {detail.Text}");
         });
     }
 
@@ -445,6 +513,10 @@ public sealed class DependencyMapView : DockPanel
     {
         TextBlock words = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(Gaps.Normal, 0) };
         Border line = new() { Height = ListRow.Height, Child = words };
-        return line.Showing<MapEdgeRow>(row => words.Text = row.Words);
+        return line.Showing<MapEdgeRow>(row =>
+        {
+            words.Text = row.Words;
+            ToolTip.SetTip(line, row.Words);
+        });
     }
 }

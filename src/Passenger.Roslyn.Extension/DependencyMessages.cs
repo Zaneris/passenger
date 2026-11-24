@@ -5,10 +5,12 @@ namespace Passenger.Roslyn.Extension;
 // The dependency map's messages to Passenger's extension in Roslyn's server, compiled into both.
 
 /// <summary>A level of the dependency map asked for: the children of a node (<see cref="DependencyIds"/>), the solution's
-/// projects for none, each multi-targeted project read in the framework chosen for it, by its file.</summary>
+/// projects for none, each multi-targeted project read in the framework chosen for it, by its file, and the folder's layer
+/// rules its edges are judged by (none for a folder with none).</summary>
 public sealed record DependenciesAsked(
     [property: JsonPropertyName("of")] string? Of,
-    [property: JsonPropertyName("frameworks")] IReadOnlyDictionary<string, string> Frameworks);
+    [property: JsonPropertyName("frameworks")] IReadOnlyDictionary<string, string> Frameworks,
+    [property: JsonPropertyName("rules")] LayerRules? Rules = null);
 
 /// <summary>A level of the map: its nodes, and what each of them depends on, every edge from one of them (or, for a type's
 /// members, from the type itself) to the path of ids of what it depends on, from its project down as far as the level reads
@@ -28,12 +30,13 @@ public sealed record DependencyNode(
     [property: JsonPropertyName("at")] Place? At,
     [property: JsonPropertyName("expands")] bool Expands);
 
-/// <summary>What one node depends on: the ids from the project down of what it uses, and how many times by each kind
-/// (<see cref="DependencyKinds"/>).</summary>
+/// <summary>What one node depends on: the ids from the project down of what it uses, how many times by each kind
+/// (<see cref="DependencyKinds"/>), and whether any of those uses breaks the layer rules asked with.</summary>
 public sealed record DependencyEdge(
     [property: JsonPropertyName("from")] string From,
     [property: JsonPropertyName("to")] IReadOnlyList<string> To,
-    [property: JsonPropertyName("kinds")] IReadOnlyDictionary<string, int> Kinds);
+    [property: JsonPropertyName("kinds")] IReadOnlyDictionary<string, int> Kinds,
+    [property: JsonPropertyName("broken")] bool Broken = false);
 
 /// <summary>A place's node on the map asked for (<see cref="Caret"/>): the ids from the project down of the symbol at the
 /// caret, else of the declaration around it, else of the document's first type; none in a document of no project's.</summary>

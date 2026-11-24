@@ -448,17 +448,63 @@ public sealed class MSBuildDocument : IDisposable
             }, $"Package '{id}' {version}{through} has a known {gravest.Severity.ToString().ToLowerInvariant()} severity vulnerability, {gravest.Address}")
             : null;
 
-    /// <summary>The evaluation's problems in this file placed on its lines, with the advisories, in the text as it stands and
-    /// its markup.</summary>
+    /// <summary>The evaluation's problems in this file placed on its lines, with the advisories and the references breaking the
+    /// folder's layer rules, in the text as it stands and its markup.</summary>
     private void Show(TextSnapshot text, XmlTree tree, IReadOnlyList<Marker> advisories)
     {
         if (disposed)
         {
             return;
         }
+        shownAdvisories = advisories;
         IEnumerable<Marker> found = diagnostics.Select(d => Marker.Coded(RangeOf(text, tree, d), d.Error ? MarkerKind.Error : MarkerKind.Warning, d.Code, Plain(d.Message)));
+        LayersBroken = LayerMarks(tree);
         // Text typed at a problem's start goes before it.
-        Document.Markers = [.. found.Concat(advisories).Select(m => m with { Range = Clamped(m.Range, text.Length), StartGravity = AnchorGravity.After })];
+        Document.Markers = [.. found.Concat(advisories).Concat(LayersBroken.Select(b => b.Mark))
+            .Select(m => m with { Range = Clamped(m.Range, text.Length), StartGravity = AnchorGravity.After })];
+    }
+
+    /// <summary>The advisories last shown, which the marks are shown with again as the layer rules change.</summary>
+    private IReadOnlyList<Marker> shownAdvisories = [];
+
+    /// <summary>The file's references to projects the folder's layer rules keep its project's layer from using, as last shown:
+    /// each marked on its include, with the layer of the project and that of the one it references.</summary>
+    public IReadOnlyList<(Marker Mark, string From, string To)> LayersBroken { get; private set; } = [];
+
+    /// <summary>The folder's layer rules changed: the file's marks shown again with its references held to them, as its text
+    /// was last evaluated.</summary>
+    internal void LayersChanged()
+    {
+        if (EvaluatedVersion is { } version && version == Document.Text.Version && parsed is { } kept && kept.Version == version)
+        {
+            Show(Document.Text.Snapshot, kept.Tree, shownAdvisories);
+        }
+    }
+
+    /// <summary>A project file's references to projects in a layer its own may not use, by the rules, each project placed by
+    /// its name and its file (<see cref="Roslyn.Extension.LayerRules.Breaks(string, string, string, string)"/>).</summary>
+    private IReadOnlyList<(Marker Mark, string From, string To)> LayerMarks(XmlTree tree)
+    {
+        if (service.Layers?.Invoke() is not { } rules || Project is not { } project || !PathNames.Same(project, Document.Path)
+            || rules.Of(Path.GetFileNameWithoutExtension(project), string.Empty, project) is not { } user)
+        {
+            return [];
+        }
+        List<(Marker, string, string)> found = [];
+        foreach (XmlElement element in tree.Elements.Where(e => e.LocalName == MSBuildNames.ProjectReference && MSBuildSyntax.RoleOf(e) == MSBuildRole.Item))
+        {
+            if (element.Attribute("Include") is not { HasValue: true } include)
+            {
+                continue;
+            }
+            string referenced = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(project)!, ItemPaths.Unescaped(include.Value.Trim()).Replace('\\', '/')));
+            string name = Path.GetFileNameWithoutExtension(referenced);
+            if (rules.Of(name, string.Empty, referenced) is { } used && Roslyn.Extension.LayerRules.Breaks(user, used))
+            {
+                found.Add((new Marker(include.ValueRange, MarkerKind.Warning, DependencyMap.LayersFile.Said(rules, user.Name, used.Name, name)), user.Name, used.Name));
+            }
+        }
+        return found;
     }
 
     /// <summary>A range held inside a text of a length.</summary>

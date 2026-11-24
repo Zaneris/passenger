@@ -81,6 +81,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         Flow.StepApart("the card over a name says its evaluated value and where it was set and go to declaration goes there", () => new ProjectFileHelpTests(shop), t => t.The_card_over_a_name_says_its_evaluated_value_and_where_it_was_set_and_go_to_declaration_goes_there());
         Flow.StepApart("an item elements card counts the files come into and gone from the folders its wildcards walk with nothing typed", () => new ProjectFileHelpTests(shop), t => t.An_item_elements_card_counts_the_files_come_into_and_gone_from_the_folders_its_wildcards_walk_with_nothing_typed());
         Flow.StepApart("the evaluations errors are marked on their lines as typed and listed in problems", () => new ProjectFileHelpTests(shop), t => t.The_evaluations_errors_are_marked_on_their_lines_as_typed_and_listed_in_problems());
+        Flow.StepApart("a project reference breaking the folders layer rules is marked on its include and its fix lets the layer use the other", () => new ProjectFileHelpTests(shop), t => t.A_project_reference_breaking_the_folders_layer_rules_is_marked_on_its_include_and_its_fix_lets_the_layer_use_the_other());
         Flow.StepApart("directory packages props completes versions marks a vulnerable one and takes a new references version", () => new ProjectFileHelpTests(shop), t => t.Directory_packages_props_completes_versions_marks_a_vulnerable_one_and_takes_a_new_references_version());
         Flow.StepApart("a new references version goes beside the others in a directory packages props holding line breaks only roslyn counts", () => new ProjectFileHelpTests(shop), t => t.A_new_references_version_goes_beside_the_others_in_a_directory_packages_props_holding_line_breaks_only_roslyn_counts());
         Flow.StepApart("a project file saved has the solution view and the language server take what it says now", () => new ProjectFileHelpTests(shop), t => t.A_project_file_saved_has_the_solution_view_and_the_language_server_take_what_it_says_now());
@@ -353,6 +354,36 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         Assert.Equal("MSB4236: The SDK 'Microsoft.NET.Sdk.Nowhere' specified could not be found.", MarkerOn(editor, document, "Microsoft.NET.Sdk.Nowhere").Message);
         Ui.WaitFor(() => window.BottomPanel.Problems.FileProblems.Count(p => p.Severity == ProblemSeverity.Error) == 1, "Problems listing the one error the evaluation stopped on");
         window.Close();
+    }
+
+    /// <summary>The folder's passenger-layers.json puts App and Core in layers of their own, App let use no other: App's
+    /// project file's reference to Core is marked on its include, saying which layers it breaks, and its fix lets App use
+    /// Core in the file, after which the mark goes.</summary>
+    private void A_project_reference_breaking_the_folders_layer_rules_is_marked_on_its_include_and_its_fix_lets_the_layer_use_the_other()
+    {
+        Write("passenger-layers.json", "{\n  \"passengerLayers\": 1,\n  \"layers\": [\n    { \"name\": \"App\", \"projects\": [\"App\"] },\n"
+            + "    { \"name\": \"Core\", \"projects\": [\"Core\"] }\n  ]\n}\n");
+        Write("App/App.csproj", Project.Replace("<ProjectReference Include=\"../\" />", "<ProjectReference Include=\"../Core/Core.csproj\" />", StringComparison.Ordinal));
+        MainWindow window = Open("App/App.csproj");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        const string Broken = "The App layer may not use the Core layer, which Core is in: passenger-layers.json lets it use no other layer";
+        Ui.WaitFor(() => document.Markers.Any(m => m.Message == Broken), () => $"the reference to Core marked, the file's marks [{string.Join("; ", document.Markers.Select(m => m.Message))}]");
+        Assert.Equal(Broken, MarkerOn(editor, document, "../Core/Core.csproj").Message);
+
+        Ui.PlaceAfter(editor, "../Core/Co");
+        Ui.Run(window, AppActions.QuickFix);
+        const string Fix = "Let App Use Core in passenger-layers.json";
+        Ui.WaitFor(() => window.Assist.Offered.Contains(Fix), () => $"the reference's fix among [{string.Join(", ", window.Assist.Offered)}]");
+        for (int i = 0; i < window.Assist.Offered.ToList().IndexOf(Fix); i++)
+        {
+            Ui.Press(window, "DOWN");
+        }
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => document.Markers.All(m => m.Message != Broken), () => $"the mark gone once App may use Core, the file reading {File.ReadAllText(shop.PathOf("passenger-layers.json"))}");
+        window.Close();
+        Write("App/App.csproj", Project);
+        File.Delete(shop.PathOf("passenger-layers.json"));
     }
 
     private void Directory_packages_props_completes_versions_marks_a_vulnerable_one_and_takes_a_new_references_version()

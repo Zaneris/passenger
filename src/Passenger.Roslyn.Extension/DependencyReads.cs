@@ -30,20 +30,21 @@ internal static class DependencyMap
     public const string GlobalNamespace = "<global namespace>";
 
     /// <summary>The level below a node (<see cref="DependencyIds"/>), the projects for none, over the solution's C# projects
-    /// but those <paramref name="unchosen"/> (a multi-targeted project's frameworks not chosen).</summary>
-    public static async Task<DependenciesFound> LevelAsync(Solution solution, string? asked, IReadOnlySet<ProjectId> unchosen, CancellationToken cancel)
+    /// but those <paramref name="unchosen"/> (a multi-targeted project's frameworks not chosen), each edge broken where one of
+    /// its uses breaks <paramref name="rules"/>.</summary>
+    public static async Task<DependenciesFound> LevelAsync(Solution solution, string? asked, IReadOnlySet<ProjectId> unchosen, LayerRules? rules, CancellationToken cancel)
     {
         Chosen chosen = Chosen.Of(solution, unchosen);
         if (asked is null)
         {
-            return chosen.Projects();
+            return chosen.Projects(rules);
         }
         if (DependencyIds.Read(asked) is not { } of || !chosen.ByPath.TryGetValue(of.Project, out Project? project))
         {
             return new DependenciesFound([], []);
         }
         IReadOnlyList<DocumentDependencies> read = await Reads.OfAsync(project, project.Documents, ReadAsync, cancel).ConfigureAwait(false);
-        Level level = new(of.Project, read, chosen);
+        Level level = new(of.Project, read, chosen, rules);
         return of.Level switch
         {
             0 => level.Namespaces(),
@@ -117,7 +118,7 @@ internal static class DependencyMap
                 INamedTypeSymbol owner = used as INamedTypeSymbol ?? used.ContainingType;
                 if (rules.Of(own, NamespaceOf(user), document.FilePath) is { } from && owner.ContainingAssembly?.Name is { } assembly
                     && projects.TryGetValue(assembly, out string? project)
-                    && rules.Of(project, NamespaceOf(owner), owner.Locations.FirstOrDefault(l => l.IsInSource)?.SourceTree?.FilePath) is { } to
+                    && rules.Of(project, NamespaceOf(owner), FileOf(owner)) is { } to
                     && LayerRules.Breaks(from, to))
                 {
                     LinePositionSpan at = text.Lines.GetLinePositionSpan(span);
@@ -177,6 +178,9 @@ internal static class DependencyMap
     /// <summary>A symbol's id, its documentation id where it has one.</summary>
     internal static string IdOf(ISymbol symbol) => symbol.GetDocumentationCommentId() ?? symbol.ToDisplayString();
 
+    /// <summary>The file a type is first declared in; none for one declared in no file.</summary>
+    internal static string? FileOf(INamedTypeSymbol type) => type.Locations.FirstOrDefault(l => l.IsInSource)?.SourceTree?.FilePath;
+
     /// <summary>A type's namespace by its full name, the global namespace's empty.</summary>
     internal static string NamespaceOf(INamedTypeSymbol type) => type.ContainingNamespace is { IsGlobalNamespace: false } space ? space.ToDisplayString() : string.Empty;
 
@@ -209,8 +213,9 @@ internal static class DependencyMap
             return chosen;
         }
 
-        /// <summary>The projects, each with the projects it references.</summary>
-        public DependenciesFound Projects()
+        /// <summary>The projects, each with the projects it references, a reference broken where the rules put the two projects
+        /// in layers the one may not use the other of.</summary>
+        public DependenciesFound Projects(LayerRules? rules)
         {
             List<DependencyNode> nodes = [];
             List<DependencyEdge> edges = [];
@@ -222,7 +227,8 @@ internal static class DependencyMap
                 {
                     if (solution.GetProject(reference.ProjectId)?.FilePath is { } other && ByPath.ContainsKey(other) && !PathNames.Same(other, path) && referenced.Add(other))
                     {
-                        edges.Add(new DependencyEdge(DependencyIds.Project(path), [DependencyIds.Project(other)], new Dictionary<string, int> { [DependencyKinds.References] = 1 }));
+                        edges.Add(new DependencyEdge(DependencyIds.Project(path), [DependencyIds.Project(other)], new Dictionary<string, int> { [DependencyKinds.References] = 1 },
+                            rules is not null && rules.Breaks(Path.GetFileNameWithoutExtension(path), path, Path.GetFileNameWithoutExtension(other), other)));
                     }
                 }
             }
@@ -230,8 +236,10 @@ internal static class DependencyMap
         }
     }
 
-    /// <summary>A project's levels, put together from its documents' reads.</summary>
-    private sealed class Level(string project, IReadOnlyList<DocumentDependencies> read, Chosen chosen)
+    /// <summary>A project's levels, put together from its documents' reads, each edge broken where one of its uses breaks
+    /// the rules: the code using placed by its project, its type's namespace and its document, the code used by its project,
+    /// its namespace and the file its type is first declared in.</summary>
+    private sealed class Level(string project, IReadOnlyList<DocumentDependencies> read, Chosen chosen, LayerRules? rules)
     {
         /// <summary>Each type declared, at its first declaration, by its id.</summary>
         private readonly Dictionary<string, DeclaredType> types = Declared(read);
@@ -245,7 +253,7 @@ internal static class DependencyMap
             {
                 if (types.TryGetValue(use.FromType, out DeclaredType? from) && chosen.PathOfAssembly.TryGetValue(use.ToAssembly, out string? to))
                 {
-                    edges.Add(DependencyIds.Namespace(project, from.Namespace), [DependencyIds.Project(to), DependencyIds.Namespace(to, use.ToNamespace)], use);
+                    edges.Add(DependencyIds.Namespace(project, from.Namespace), [DependencyIds.Project(to), DependencyIds.Namespace(to, use.ToNamespace)], use, Breaks(use, from.Namespace));
                 }
             }
             return new DependenciesFound(nodes, edges.Listed());
@@ -261,7 +269,7 @@ internal static class DependencyMap
             {
                 if (types.TryGetValue(use.FromType, out DeclaredType? from) && from.Namespace == space && To(use) is { } to)
                 {
-                    edges.Add(DependencyIds.Type(project, use.FromType), to, use);
+                    edges.Add(DependencyIds.Type(project, use.FromType), to, use, Breaks(use, from.Namespace));
                 }
             }
             return new DependenciesFound(nodes, edges.Listed());
@@ -276,11 +284,18 @@ internal static class DependencyMap
             {
                 if (use.FromType == type && To(use) is { } to)
                 {
-                    edges.Add(use.FromMember is { } member ? DependencyIds.Member(project, member) : DependencyIds.Type(project, type), to, use);
+                    edges.Add(use.FromMember is { } member ? DependencyIds.Member(project, member) : DependencyIds.Type(project, type), to, use,
+                        Breaks(use, types.GetValueOrDefault(type)?.Namespace ?? string.Empty));
                 }
             }
             return new DependenciesFound(nodes, edges.Listed());
         }
+
+        /// <summary>Whether a use of a type of a namespace breaks the rules.</summary>
+        private bool Breaks(Use use, string space) =>
+            rules is not null && chosen.PathOfAssembly.TryGetValue(use.ToAssembly, out string? to)
+            && rules.Of(Path.GetFileNameWithoutExtension(project), space, use.FromFile) is { } user
+            && rules.Of(Path.GetFileNameWithoutExtension(to), use.ToNamespace, use.ToFile) is { } used && LayerRules.Breaks(user, used);
 
         /// <summary>The ids from its project down to the member of what a use names, none where the project building it is not
         /// one the map shows.</summary>
@@ -309,12 +324,14 @@ internal static class DependencyMap
         }
     }
 
-    /// <summary>A level's edges as they are added, each pair of ends once with its count of each kind.</summary>
+    /// <summary>A level's edges as they are added, each pair of ends once with its count of each kind, broken where any use
+    /// of it is.</summary>
     private sealed class Edges
     {
         private readonly Dictionary<string, (string From, IReadOnlyList<string> To, Dictionary<string, int> Kinds)> byEnds = new(StringComparer.Ordinal);
+        private readonly HashSet<string> broken = new(StringComparer.Ordinal);
 
-        public void Add(string from, IReadOnlyList<string> to, Use use)
+        public void Add(string from, IReadOnlyList<string> to, Use use, bool breaks)
         {
             // A use of what stands inside the node itself is no edge of its level.
             if (to.Contains(from))
@@ -327,9 +344,13 @@ internal static class DependencyMap
                 byEnds[key] = edge = (from, to, new Dictionary<string, int>(StringComparer.Ordinal));
             }
             edge.Kinds[use.Kind] = edge.Kinds.GetValueOrDefault(use.Kind) + use.Count;
+            if (breaks)
+            {
+                broken.Add(key);
+            }
         }
 
-        public IReadOnlyList<DependencyEdge> Listed() => [.. byEnds.Values.Select(e => new DependencyEdge(e.From, e.To, e.Kinds))];
+        public IReadOnlyList<DependencyEdge> Listed() => [.. byEnds.Select(e => new DependencyEdge(e.Value.From, e.Value.To, e.Value.Kinds, broken.Contains(e.Key)))];
     }
 
     /// <summary>A type a document declares: its id, its name, its kind, its namespace, and where its name is written.</summary>
@@ -338,9 +359,14 @@ internal static class DependencyMap
     /// <summary>A member a document declares, of a type by its id.</summary>
     private sealed record DeclaredMember(string Type, string Id, string Name, string Kind, string? Path, Place At);
 
-    /// <summary>Uses in a type's code, or one of its members', of a type or member of the solution's: by the assembly
-    /// declaring it, its namespace, its type and its member, how, and how many times.</summary>
-    private sealed record Use(string FromType, string? FromMember, string ToAssembly, string ToNamespace, string ToType, string? ToMember, string Kind, int Count);
+    /// <summary>Uses in a type's code, or one of its members', in a document, of a type or member of the solution's: by the
+    /// assembly declaring it, its namespace, its type, the file its type is first declared in and its member, how, and how
+    /// many times.</summary>
+    private sealed record Use(string FromType, string? FromMember, string? FromFile, string ToAssembly, string ToNamespace, string ToType, string? ToFile, string? ToMember,
+        string Kind, int Count);
+
+    /// <summary>What a document's uses are counted by: all of a <see cref="Use"/> but its count.</summary>
+    private readonly record struct UseKey(string FromType, string? FromMember, string ToAssembly, string ToNamespace, string ToType, string? ToFile, string? ToMember, string Kind);
 
     private sealed record DocumentDependencies(IReadOnlyList<DeclaredType> Types, IReadOnlyList<DeclaredMember> Members, IReadOnlyList<Use> Uses)
     {
@@ -353,7 +379,7 @@ internal static class DependencyMap
     {
         private readonly List<DeclaredType> types = [];
         private readonly List<DeclaredMember> members = [];
-        private readonly Dictionary<(string, string?, string, string, string, string?, string), int> uses = [];
+        private readonly Dictionary<UseKey, int> uses = [];
 
         /// <summary>Told of each use as it is read: where it is written, the type whose code uses, and what it uses.</summary>
         public Action<TextSpan, INamedTypeSymbol, ISymbol>? Heard { get; init; }
@@ -382,7 +408,7 @@ internal static class DependencyMap
         }
 
         public DocumentDependencies Found() => new(types, members,
-            [.. uses.Select(u => new Use(u.Key.Item1, u.Key.Item2, u.Key.Item3, u.Key.Item4, u.Key.Item5, u.Key.Item6, u.Key.Item7, u.Value))]);
+            [.. uses.Select(u => new Use(u.Key.FromType, u.Key.FromMember, path, u.Key.ToAssembly, u.Key.ToNamespace, u.Key.ToType, u.Key.ToFile, u.Key.ToMember, u.Key.Kind, u.Value))]);
 
         public override void Visit(SyntaxNode? node)
         {
@@ -540,7 +566,7 @@ internal static class DependencyMap
             {
                 return;
             }
-            (string, string?, string, string, string, string?, string) key = (IdOf(type!), member is null ? null : IdOf(member), assembly, NamespaceOf(owner), IdOf(owner),
+            UseKey key = new(IdOf(type!), member is null ? null : IdOf(member), assembly, NamespaceOf(owner), IdOf(owner), FileOf(owner),
                 target is INamedTypeSymbol ? null : IdOf(target), kind);
             uses[key] = uses.GetValueOrDefault(key) + 1;
         }

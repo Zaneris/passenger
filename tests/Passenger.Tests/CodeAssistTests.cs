@@ -3048,9 +3048,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>Show Dependency Map in a method opens the map among the editors down to it, the project, its namespace, its
     /// type and the method chosen, in the tree as in the picture; its edges say what it uses by kind as the compiler binds
-    /// the code (a call, a parameter's type), an open node counting what crosses it from below; the types beside it say
-    /// what they implement; a kind hidden leaves its edges out; Enter on a tree row and a double click on a node go to its
-    /// code.</summary>
+    /// the code (a call, a parameter's type), an open node counting what crosses it from below, a row cut short whole in its
+    /// tip; the types beside it say what they implement; a kind hidden leaves its edges out; Enter on a tree row and a
+    /// double click on a node go to its code; and an edit's new call shows once typing rests.</summary>
     private void The_dependency_map_opens_at_the_caret_and_reads_its_nodes_and_edges_as_the_compiler_binds_them()
     {
         MainWindow window = project.Open("Gauges.cs");
@@ -3065,6 +3065,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 .Select(r => $"{new string(' ', r.Depth * 2)}{r.Node.Name} {r.Node.Kind}")]);
         Assert.Equal(["Uses Dial: calls 1, parameter types 1", "Uses IGauge: calls 1, parameter types 1"], [.. map.EdgeRows.Select(e => e.Words)]);
         Assert.True(map.Picture.Boxes.ContainsKey(map.Chosen!), "the method chosen stands in the picture");
+        // A row the side pane's width cuts short says itself whole in its tip.
+        Assert.Equal("Both(Dial, IGauge): method · uses 2 · used by 0", TipOf(Ui.Row(map.Tree, map.Rows.Single(r => r.Node == map.Chosen))));
+        Assert.Equal("Uses Dial: calls 1, parameter types 1", TipOf(Ui.Row(map.EdgeList, map.EdgeRows[0])));
         MapNode readings = map.Chosen!.Parent!;
         map.Choose(readings, fromPicture: false);
         Assert.Equal(["Both(Dial, IGauge) uses Dial: calls 1, parameter types 1", "Both(Dial, IGauge) uses IGauge: calls 1, parameter types 1"],
@@ -3091,7 +3094,19 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.DoubleClick(map.Picture, map.Picture.Shown(dial)!.Value.Center);
         Ui.WaitFor(() => window.EditorArea.Active?.Name == "Gauges.cs" && window.EditorArea.CodeEditor.CaretPosition.Line == 5,
             () => $"a double click on Dial going to its declaration, not {window.EditorArea.Active?.Name}:{window.EditorArea.CodeEditor.CaretPosition.Line + 1}");
+
+        // The map follows an edit made while it was out of sight: Both made to call Area.Of, read again as the map shows.
+        map.Choose(map.Rows.Single(r => r.Node.Name == "Both(Dial, IGauge)").Node, fromPicture: false);
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "any.Read()");
+        window.KeyTextInput(" + Area.Of(1, 1)");
+        window.ShowToolWindow(ToolWindowIds.DependencyMap);
+        Ui.WaitFor(() => map.EdgeRows.Any(e => e.Words == "Uses Area: calls 1"),
+            () => $"the map following Both's call of Area.Of, its edges [{string.Join("; ", map.EdgeRows.Select(e => e.Words))}]");
+        window.OpenFile(project.PathOf("Gauges.cs"));
+        Ui.Press(window, "meta Z");
         window.Close();
+
+        static string? TipOf(Control row) => row.GetVisualDescendants().Prepend(row).OfType<Control>().Select(c => ToolTip.GetTip(c)).OfType<string>().FirstOrDefault();
     }
 
     /// <summary>Typing on into an open completion list narrows it off the UI thread in the rows the list has: as each letter

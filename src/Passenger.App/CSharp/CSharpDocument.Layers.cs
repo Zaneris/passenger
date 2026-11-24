@@ -1,3 +1,4 @@
+using Passenger.App.DependencyMap;
 using Passenger.Lsp;
 using Passenger.Roslyn.Extension;
 using Passenger.Text;
@@ -35,16 +36,9 @@ public sealed partial class CSharpDocument
             Range = new LspRange(new LspPosition(b.Start.Line, b.Start.Character), new LspPosition(b.End.Line, b.End.Character)),
             Severity = DiagnosticSeverity.Warning,
             Source = LayersDiagnosticSource,
-            Message = Said(rules, b),
+            Message = LayersFile.Said(rules, b.From, b.To, b.Used),
             Data = DataOf(new LayerMark(b.From, b.To)),
         })];
-
-        static string Said(LayerRules rules, LayerBreak broken)
-        {
-            IReadOnlyList<string> may = rules.Layers.FirstOrDefault(l => l.Name == broken.From)?.MayUse ?? [];
-            string lets = may.Count == 0 ? "no other layer" : Core.Plural.Listed(may);
-            return $"The {broken.From} layer may not use the {broken.To} layer, which {broken.Used} is in: {LayerRules.FileName} lets it use {lets}";
-        }
     }
 
     /// <summary>The layers the file's warnings say a use breaks the rules between, on a server's line of the text as it stands

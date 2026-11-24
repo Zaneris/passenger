@@ -242,6 +242,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 : Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<Passenger.Packages.TransitiveUse>>>(new Dictionary<string, IReadOnlyList<Passenger.Packages.TransitiveUse>>()),
             ReadDeprecations = Packages.DeprecationsReadAsync,
             Deprecated = Packages.DeprecationOf,
+            Layers = () => Layers,
         };
         DesignTimeBuilds = new ProjectBuilds(LoadOrderAsync, () => Workspace);
     }

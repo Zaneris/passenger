@@ -1057,7 +1057,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Assert.Null(window.Actions.Run(AppActions.ShowDependencyMap));
         DependencyMapView map = window.DependencyMapWindow;
         Ui.WaitFor(() => map.Chosen?.Name == "Shown()" && !map.IsReading, () => $"the map chosen at Order.Shown, not {map.Chosen?.Name ?? "nothing"} ({map.Said})");
-        Assert.Equal(["Uses Shop.Screens: calls 1, breaking the layer rules"], map.EdgeRows.Select(e => e.Words));
+        Assert.Equal(["Uses Shop.Screens, breaking the layer rules: calls 1"], map.EdgeRows.Select(e => e.Words));
         Assert.Single(map.Picture.Broken);
         window.OpenFile(project.PathOf("Order.cs"));
         Ui.Settle();

@@ -632,6 +632,7 @@ public partial class MainWindow
         if (service is not null)
         {
             service.ReadLayersAgain = ReadLayers;
+            service.ProjectsLoaded += (_, _) => dependencyMap?.CodeMoved();
             service.StateChanged += (_, _) => status.ShowLanguage(LanguageLabel());
             service.StateChanged += (_, _) => usages.Refresh();
             service.StateChanged += (_, _) => OutlineWhenUnseen();

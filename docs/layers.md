@@ -3,7 +3,9 @@
 A folder's `passenger-layers.json`, at its top, puts the code into layers and says which layer's code may use which.
 Passenger checks every open C# file against it as you write: a use of code in a layer its own may not use is a warning
 where it is written, listed in Problems, whose fix (Show Context Actions) lets the one layer use the other in the file.
-The Dependency Map draws each edge that breaks the rules in the error's colour, and its list of a node's edges says so.
+An open project file's reference to a project in a layer its own may not use is marked on its `Include` the same way,
+with the same fix. The Dependency Map draws each edge that breaks the rules in the error's colour, and its list of a
+node's edges says so; an agent's `dependencies` answer marks such an edge `broken`.
 
 ## Format 1
 
@@ -32,4 +34,5 @@ The Dependency Map draws each edge that breaks the rules in the error's colour, 
 
 A use is what the compiler binds: a type named anywhere in the code, a member called or read, a base type, an attribute,
 an operator. The code using is placed by its project, its type's namespace and the file it is written in; the code used
-by its project, its type's namespace and the file its type is first declared in.
+by its project, its type's namespace and the file its type is first declared in. A project reference places each project by its name and its
+file alone, so only layers holding projects by `projects` or `folders` judge it.

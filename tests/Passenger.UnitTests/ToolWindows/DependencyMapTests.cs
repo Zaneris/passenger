@@ -64,13 +64,17 @@ public sealed class DependencyMapTests
         ProjectId core = Add(workspace, "Core", Core, [], ("Core.cs", CoreCode));
         Add(workspace, "App", App, [new ProjectReference(core)], ("Square.cs", AppCode));
         Document square = workspace.CurrentSolution.Projects.Single(p => p.Name == "App").Documents.Single();
-        IReadOnlyList<LayerBreak> broken = await DependencyMap.BrokenAsync(square, new LayerRules("/shop", [
-            new Layer("App", ["App"], [], [], []),
-            new Layer("Core", ["Core"], [], [], []),
-        ]), Cancel);
+        LayerRules apart = new("/shop", [new Layer("App", ["App"], [], [], []), new Layer("Core", ["Core"], [], [], [])]);
+        IReadOnlyList<LayerBreak> broken = await DependencyMap.BrokenAsync(square, apart, Cancel);
         Assert.Equal(["4:1 MarkAttribute", "5:22 Base", "5:28 IShape", "7:12 Base", "7:24 Base.Base()", "11:11 Base", "11:21 IShape", "16:27 Base"],
             broken.Select(b => $"{b.Start.Line}:{b.Start.Character} {b.Used}"));
         Assert.All(broken, b => Assert.Equal(("App", "Core"), (b.From, b.To)));
+
+        // The map's edges judged by the same rules: App's reference to Core, and each of Shop.App's types' uses of Core's.
+        Solution solution = workspace.CurrentSolution;
+        Assert.True(Assert.Single((await DependencyMap.LevelAsync(solution, null, new HashSet<ProjectId>(), apart, Cancel)).Edges).Broken, "App's reference to Core marked broken");
+        DependenciesFound types = await DependencyMap.LevelAsync(solution, DependencyIds.Namespace(App, "Shop.App"), new HashSet<ProjectId>(), apart, Cancel);
+        Assert.All(types.Edges, e => Assert.True(e.Broken == (e.To[0] == DependencyIds.Project(Core)), $"{e.From} -> {e.To[^1]} marked broken {e.Broken}"));
     }
 
     private static async Task ReadsEachKindAsync()
@@ -80,21 +84,21 @@ public sealed class DependencyMapTests
         Add(workspace, "App", App, [new ProjectReference(core)], ("Square.cs", AppCode));
         Solution solution = workspace.CurrentSolution;
 
-        DependenciesFound projects = await DependencyMap.LevelAsync(solution, null, new HashSet<ProjectId>(), Cancel);
+        DependenciesFound projects = await DependencyMap.LevelAsync(solution, null, new HashSet<ProjectId>(), null, Cancel);
         Assert.Equal(["App", "Core"], projects.Nodes.Select(n => n.Name));
         Assert.Equal([$"{DependencyIds.Project(App)} -> {DependencyIds.Project(Core)}: references 1"], projects.Edges.Select(Said));
 
-        DependenciesFound spaces = await DependencyMap.LevelAsync(solution, DependencyIds.Project(App), new HashSet<ProjectId>(), Cancel);
+        DependenciesFound spaces = await DependencyMap.LevelAsync(solution, DependencyIds.Project(App), new HashSet<ProjectId>(), null, Cancel);
         Assert.Equal(["Shop.App"], spaces.Nodes.Select(n => n.Name));
         DependencyEdge across = Assert.Single(spaces.Edges);
         Assert.Equal([DependencyIds.Project(Core), DependencyIds.Namespace(Core, "Shop.Core")], across.To);
 
-        DependenciesFound types = await DependencyMap.LevelAsync(solution, DependencyIds.Namespace(App, "Shop.App"), new HashSet<ProjectId>(), Cancel);
+        DependenciesFound types = await DependencyMap.LevelAsync(solution, DependencyIds.Namespace(App, "Shop.App"), new HashSet<ProjectId>(), null, Cancel);
         Assert.Equal(["Helper", "Square"], types.Nodes.Select(n => n.Name));
         Assert.Equal(["Helper -> Base: parameterType 1", "Square -> Base: calls 1, fieldType 1, inherits 1, parameterType 1", "Square -> Helper: calls 1",
             "Square -> IShape: implements 1, parameterType 1", "Square -> MarkAttribute: attribute 1"], ByType(types));
 
-        DependenciesFound members = await DependencyMap.LevelAsync(solution, DependencyIds.Type(App, "T:Shop.App.Square"), new HashSet<ProjectId>(), Cancel);
+        DependenciesFound members = await DependencyMap.LevelAsync(solution, DependencyIds.Type(App, "T:Shop.App.Square"), new HashSet<ProjectId>(), null, Cancel);
         Assert.Equal(["Make(IShape)", "Sides()", "kept"], members.Nodes.Select(n => n.Name).Order(StringComparer.Ordinal));
         Assert.Contains($"{DependencyIds.Member(App, "M:Shop.App.Square.Sides")} -> {DependencyIds.Member(App, "M:Shop.App.Helper.Four(Shop.Core.Base)")}: calls 1",
             members.Edges.Select(Said));

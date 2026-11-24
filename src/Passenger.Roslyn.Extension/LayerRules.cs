@@ -25,6 +25,10 @@ public sealed record LayerRules(
     /// <summary>Whether code in one layer using code in another breaks the rules: neither the same layer nor one it may use.</summary>
     public static bool Breaks(Layer from, Layer to) => from != to && !from.MayUse.Contains(to.Name, StringComparer.Ordinal);
 
+    /// <summary>Whether a project's reference to another breaks the rules, each project placed by its name and its file.</summary>
+    public bool Breaks(string project, string file, string referenced, string referencedFile) =>
+        Of(project, string.Empty, file) is { } user && Of(referenced, string.Empty, referencedFile) is { } used && Breaks(user, used);
+
     /// <summary>A file's folder from the rules' folder in forward slashes; null for one outside it.</summary>
     private string? Within(string file)
     {

@@ -440,9 +440,10 @@ public sealed partial class RoslynSession : IAsyncDisposable, IDocumentHost
 
     /// <summary>A level of the dependency map (Passenger's extension's <see cref="Roslyn.Extension.DependenciesAsked"/>): the
     /// children of a node and what each depends on, the solution's projects for none, each multi-targeted project read in the
-    /// framework <paramref name="frameworks"/> chooses for its file.</summary>
-    public Task<Roslyn.Extension.DependenciesFound> DependenciesAsync(string? of, IReadOnlyDictionary<string, string> frameworks, CancellationToken cancel = default) =>
-        ExtensionAsync<Roslyn.Extension.DependenciesFound>(Roslyn.Extension.Handlers.Dependencies, new Roslyn.Extension.DependenciesAsked(of, frameworks), cancel);
+    /// framework <paramref name="frameworks"/> chooses for its file, each edge judged by the folder's layer rules.</summary>
+    public Task<Roslyn.Extension.DependenciesFound> DependenciesAsync(string? of, IReadOnlyDictionary<string, string> frameworks, Roslyn.Extension.LayerRules? rules,
+        CancellationToken cancel = default) =>
+        ExtensionAsync<Roslyn.Extension.DependenciesFound>(Roslyn.Extension.Handlers.Dependencies, new Roslyn.Extension.DependenciesAsked(of, frameworks, rules), cancel);
 
     /// <summary>What the symbols declared at places the server named are in (Passenger's extension's <see
     /// cref="Roslyn.Extension.ContainersAsked"/>), in order, as <see cref="SymbolsNamedAsync"/> names a symbol's container: a

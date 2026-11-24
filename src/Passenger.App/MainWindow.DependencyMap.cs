@@ -2,9 +2,11 @@ using Passenger.App.CSharp;
 using Passenger.App.DependencyMap;
 using Passenger.App.Editors;
 using Passenger.App.Explorer;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Lsp;
 using Passenger.Roslyn.Extension;
+using Passenger.Text;
 
 namespace Passenger.App;
 
@@ -22,7 +24,7 @@ public partial class MainWindow
     {
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.DependencyMap, "Dependency Map", IconKeys.DependencyMap, () =>
         {
-            dependencyMap = new DependencyMapView { Rules = session.Layers };
+            dependencyMap = new DependencyMapView();
             dependencyMap.GoToRequested += (_, node) => GoToMapNode(node);
             dependencyMap.Failed += (_, why) => status.Text = why;
             return dependencyMap;
@@ -31,6 +33,14 @@ public partial class MainWindow
             Serves = ToolWindowServes.EveryFolder,
             InEditorAtFirst = true,
         });
+        // The code changing anywhere: an open C# file typed in, the server's projects loaded, C# files written on disk.
+        Editors.Opened += (_, document) =>
+        {
+            if (document.Language == Languages.Language.CSharp)
+            {
+                document.Text.Changed += (_, _) => dependencyMap?.CodeMoved();
+            }
+        };
         actions!.Add(new IdeAction(AppActions.ShowDependencyMap, "Show Dependency Map", "IDE", context => IdeErrors.Observe(ShowDependencyMapAsync(context)))
         {
             WhyNot = _ => session.CSharp is null ? Refusals.Sentence(Refusals.CSharpNotRunning) : null,
@@ -149,10 +159,22 @@ public partial class MainWindow
         }
         of.Layers = rules;
         of.CSharp?.LayersChanged();
-        if (dependencyMap is not null)
+        of.MSBuild.LayersChanged();
+        dependencyMap?.RulesChanged();
+    }
+
+    /// <summary>The fixes of an open project file's references breaking the folder's layer rules on an offset's line: the
+    /// project's layer let use the other's, as a C# file's broken use is fixed.</summary>
+    private IReadOnlyList<CSharp.EditorFix> ProjectLayerFixes(OpenDocument file, int offset)
+    {
+        if (session.MSBuild.For(file) is not { LayersBroken.Count: > 0 } project || session.Layers is not { } rules)
         {
-            dependencyMap.Rules = rules;
+            return [];
         }
+        TextSnapshot text = file.Text.Snapshot;
+        int line = text.GetLineFromOffset(Math.Min(offset, text.Length));
+        return assist.LetUseFixes(rules, [.. project.LayersBroken.Where(b => b.Mark.Range.Start <= text.Length && text.GetLineFromOffset(b.Mark.Range.Start) == line)
+            .Select(b => (b.Mark.Range, b.From, b.To))]);
     }
 
     /// <summary>Goes to where a node of the map is written: a project's file, else the declaration's name.</summary>

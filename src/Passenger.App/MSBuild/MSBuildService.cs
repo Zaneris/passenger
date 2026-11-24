@@ -40,6 +40,19 @@ public sealed class MSBuildService(Func<string?> folder, Func<WorkspaceModel?> w
     /// <summary>A package version's deprecation as read, its session's packages'; null where none is known.</summary>
     public Func<string, string, Deprecation?>? Deprecated { get; set; }
 
+    /// <summary>The folder's layer rules as they stand, its session's, which a project's references to others are held to.</summary>
+    public Func<Roslyn.Extension.LayerRules?>? Layers { get; set; }
+
+    /// <summary>The folder's layer rules changed: each open project file marks its references by them again.</summary>
+    public void LayersChanged()
+    {
+        UiThread.Check();
+        foreach (MSBuildDocument document in documents.Values)
+        {
+            document.LayersChanged();
+        }
+    }
+
     /// <summary>Something to say in the status bar: why a project could not be evaluated, or a feed did not answer.</summary>
     public event EventHandler<string>? Message;
 
