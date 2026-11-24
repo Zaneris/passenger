@@ -76,10 +76,11 @@ public sealed class DebugSession
     private string? dataSent;
     private readonly Dictionary<int, DataBreakpoint> dataById = [];
 
-    /// <summary>The function breakpoints (the property breakpoints' and XAML Binding Errors') as last sent, and the
-    /// breakpoint each is by the id the debugger gave it.</summary>
+    /// <summary>The function breakpoints (the property breakpoints', the method breakpoints' and XAML Binding Errors') as last
+    /// sent, and the breakpoint each is by the id the debugger gave it.</summary>
     private string functionsSent = string.Empty;
     private readonly Dictionary<int, PropertyBreakpoint> propertyById = [];
+    private readonly Dictionary<int, MethodBreakpoint> methodById = [];
     private int? bindingErrorsId;
 
     /// <summary>The function breakpoints' last request, until its answer (their new ids) has been read.</summary>
@@ -235,6 +236,7 @@ public sealed class DebugSession
         breakpoints.ExceptionsChanged += OnExceptionsChanged;
         breakpoints.DataChanged += OnDataChanged;
         breakpoints.PropertiesChanged += OnFunctionsChanged;
+        breakpoints.MethodsChanged += OnFunctionsChanged;
         breakpoints.BindingErrorsChanged += OnFunctionsChanged;
     }
 
@@ -1107,7 +1109,8 @@ public sealed class DebugSession
             [.. built.Take(response.Breakpoints.Count), .. unbuilt]);
     }
 
-    /// <summary>A breakpoint as the debugger is asked for it (<see cref="Asked"/>).</summary>
+    /// <summary>A breakpoint as the debugger is asked for it (<see cref="Asked"/>), with its key, the key of the one it waits
+    /// for, and whether it is temporary.</summary>
     private DapSourceBreakpoint Request(string path, LineBreakpoint breakpoint) =>
         Asked(path, breakpoint.Line, breakpoint.Attribute, breakpoint.Column ?? breakpoint.AttributeColumn) with
         {
@@ -1115,6 +1118,9 @@ public sealed class DebugSession
             HitCondition = breakpoint.HitCondition,
             LogMessage = breakpoint.LogMessage,
             Suspend = breakpoint.Suspend,
+            Key = breakpoint.Key,
+            WaitFor = breakpoint.WaitsFor?.Key,
+            Temporary = breakpoint.Temporary ? true : null,
         };
 
     /// <summary>A line (from zero) of a file, or a lambda's or an attribute's column (from zero) on it, as the debugger is
@@ -1186,7 +1192,8 @@ public sealed class DebugSession
     /// <summary>What a file's breakpoints ask of the debugger, at their built lines, to tell a change worth sending.</summary>
     private string Signature(string path) => breakpoints.Muted ? "muted" :
         Signatures.Of([.. breakpoints.In(path).Where(b => b.Enabled).Select(b => Signatures.Of(
-            lines.IsBuilt(path, b.Line) ? $"{lines.ToBuilt(path, b.Line)}" : $"new {b.Line}", b.Attribute, b.Column ?? b.AttributeColumn, b.Condition, b.HitCondition, b.LogMessage, b.Suspend))]);
+            lines.IsBuilt(path, b.Line) ? $"{lines.ToBuilt(path, b.Line)}" : $"new {b.Line}", b.Attribute, b.Column ?? b.AttributeColumn, b.Condition, b.HitCondition, b.LogMessage, b.Suspend,
+            b.Key, b.WaitsFor?.Key, b.Temporary))]);
 
     /// <summary>The exception breakpoints that are on, as the protocol's exception options, but those whose scenarios never stop
     /// (<see cref="ExceptionBreakpoint.Inactive"/>), which no debugger is to stop at; none while muted, so no exception stops
@@ -1302,11 +1309,14 @@ public sealed class DebugSession
     /// <summary>XAML Binding Errors when it is on; never while muted.</summary>
     private BindingErrorBreakpoint? BindingErrorsSending() => !breakpoints.Muted && breakpoints.BindingErrors.Enabled ? breakpoints.BindingErrors : null;
 
-    /// <summary>Sends the function breakpoints, which replace those sent before. A property breakpoint is one on the method
-    /// the inspector in the app calls at a watched property's change, its condition naming the breakpoint first; its hit count
-    /// is the inspector's, which counts only its own property's changes, and one the inspector cannot read is refused here, as
-    /// a line's is. XAML Binding Errors is one on the method each failed binding calls, its condition and log message
-    /// reading the failure as <c>$bindingError</c>, the method's parameter.</summary>
+    /// <summary>The method breakpoints that are on; none while muted.</summary>
+    private List<MethodBreakpoint> MethodsSending() => breakpoints.Muted ? [] : [.. breakpoints.Methods.Where(m => m.Enabled)];
+
+    /// <summary>Sends the function breakpoints, which replace those sent before: the property breakpoints, the method
+    /// breakpoints, then XAML Binding Errors. A property breakpoint is one on the method the inspector in the app calls at a
+    /// watched property's change, its condition naming the breakpoint first, its hit count the inspector's (one it cannot read
+    /// refused here, as a line's is). XAML Binding Errors is one on the method each failed binding calls, its condition and log
+    /// message reading the failure as <c>$bindingError</c>, the method's parameter.</summary>
     private async Task SendFunctionBreakpointsAsync()
     {
         List<(PropertyBreakpoint, BreakpointStatus, string?)> said = [];
@@ -1323,8 +1333,10 @@ public sealed class DebugSession
             }
         }
         BindingErrorBreakpoint? bindingErrors = BindingErrorsSending();
+        List<MethodBreakpoint> methods = MethodsSending();
         functionsSent = FunctionSignature();
-        List<DapFunctionBreakpoint> requests = [.. sending.Select(p => new DapFunctionBreakpoint(Inspector.Wire.Changed, EngineCondition(p), null, p.LogMessage, p.Suspend))];
+        List<DapFunctionBreakpoint> requests = [.. sending.Select(p => new DapFunctionBreakpoint(Inspector.Wire.Changed, EngineCondition(p), null, p.LogMessage, p.Suspend)),
+            .. methods.Select(m => new DapFunctionBreakpoint(m.Name, m.Condition, m.HitCondition, m.LogMessage, m.Suspend, m.Key, m.WaitsFor?.Key, m.Temporary ? true : null))];
         if (bindingErrors is not null)
         {
             requests.Add(new DapFunctionBreakpoint(Inspector.Wire.Failed, BindingErrorTerms(bindingErrors.Condition), bindingErrors.HitCondition,
@@ -1338,10 +1350,12 @@ public sealed class DebugSession
         catch (DapException refused)
         {
             breakpoints.ReportProperties(this, [.. said, .. sending.Select(p => (p, BreakpointStatus.Invalid, (string?)refused.Reason))]);
+            breakpoints.ReportMethods(this, [.. methods.Select(_ => (BreakpointStatus.Invalid, (string?)refused.Reason))], methods);
             breakpoints.ReportBindingErrors(this, bindingErrors is null ? BreakpointStatus.Unknown : BreakpointStatus.Invalid, bindingErrors is null ? null : refused.Reason);
             return;
         }
         propertyById.Clear();
+        methodById.Clear();
         bindingErrorsId = null;
         for (int i = 0; i < Math.Min(sending.Count, response.Breakpoints.Count); i++)
         {
@@ -1353,9 +1367,21 @@ public sealed class DebugSession
             said.Add((sending[i], answer.Verified ? BreakpointStatus.Bound : answer.Reason == BreakpointReasons.Failed ? BreakpointStatus.Invalid : BreakpointStatus.Unknown, answer.Message));
         }
         breakpoints.ReportProperties(this, said);
-        if (bindingErrors is not null && response.Breakpoints.Count > sending.Count)
+        List<(BreakpointStatus, string?)> methodsSaid = [];
+        for (int i = 0; i < methods.Count && sending.Count + i < response.Breakpoints.Count; i++)
         {
-            DapBreakpoint answer = response.Breakpoints[sending.Count];
+            DapBreakpoint answer = response.Breakpoints[sending.Count + i];
+            if (answer.Id is int id)
+            {
+                methodById[id] = methods[i];
+            }
+            (BreakpointStatus status, string? message, _) = Status(answer);
+            methodsSaid.Add((status, message));
+        }
+        breakpoints.ReportMethods(this, methodsSaid, methods);
+        if (bindingErrors is not null && response.Breakpoints.Count > sending.Count + methods.Count)
+        {
+            DapBreakpoint answer = response.Breakpoints[sending.Count + methods.Count];
             bindingErrorsId = answer.Id;
             ReportBindingErrors(answer);
         }
@@ -1429,7 +1455,8 @@ public sealed class DebugSession
 
     private string FunctionSignature()
     {
-        List<object?> sending = [.. PropertiesSending().Select(p => Signatures.Of(p.Id, p.Condition, p.HitCondition, p.LogMessage, p.Suspend))];
+        List<object?> sending = [.. PropertiesSending().Select(p => Signatures.Of(p.Id, p.Condition, p.HitCondition, p.LogMessage, p.Suspend)),
+            .. MethodsSending().Select(m => Signatures.Of("method", m.Name, m.Condition, m.HitCondition, m.LogMessage, m.Suspend, m.Key, m.WaitsFor?.Key, m.Temporary))];
         if (BindingErrorsSending() is { } b)
         {
             sending.Add(Signatures.Of("binding", b.Condition, b.HitCondition, b.LogMessage, b.Suspend));
@@ -1452,7 +1479,7 @@ public sealed class DebugSession
             case DapEvents.Stopped when disconnected is null:
                 StoppedEvent stopped = body.Read<StoppedEvent>();
                 if (stopped.Reason == StopReasons.Breakpoint && !functionsAnswered.IsCompleted
-                    && stopped.HitBreakpointIds?.Any(id => !byId.ContainsKey(id) && !propertyById.ContainsKey(id) && id != bindingErrorsId) == true)
+                    && stopped.HitBreakpointIds?.Any(id => !byId.ContainsKey(id) && !propertyById.ContainsKey(id) && !methodById.ContainsKey(id) && id != bindingErrorsId) == true)
                 {
                     IdeErrors.Observe(TakeStopAfter(functionsAnswered, stopped));
                     break;
@@ -1461,7 +1488,15 @@ public sealed class DebugSession
                 break;
             case DapEvents.Breakpoint:
                 BreakpointEvent changed = body.Read<BreakpointEvent>();
-                if (changed.Breakpoint.Id is int id && byId.TryGetValue(id, out LineBreakpoint? breakpoint))
+                if (changed.Reason == EventReasons.Removed)
+                {
+                    // A temporary breakpoint that took its hit goes, from every session.
+                    if (changed.Breakpoint.Id is int gone && (byId.GetValueOrDefault(gone) ?? (CodeBreakpoint?)methodById.GetValueOrDefault(gone)) is { } spent)
+                    {
+                        breakpoints.Remove(spent);
+                    }
+                }
+                else if (changed.Breakpoint.Id is int id && byId.TryGetValue(id, out LineBreakpoint? breakpoint))
                 {
                     breakpoints.Report(this, breakpoint.Path, [Status(breakpoint.Path, changed.Breakpoint)], [breakpoint]);
                 }
@@ -1469,6 +1504,11 @@ public sealed class DebugSession
                 {
                     (BreakpointStatus status, string? message, _) = Status(changed.Breakpoint);
                     breakpoints.ReportProperty(this, property, status, message);
+                }
+                else if (changed.Breakpoint.Id is int methodId && methodById.TryGetValue(methodId, out MethodBreakpoint? method))
+                {
+                    (BreakpointStatus status, string? message, _) = Status(changed.Breakpoint);
+                    breakpoints.ReportMethod(this, method, status, message);
                 }
                 else if (changed.Breakpoint.Id is int bound && bound == bindingErrorsId)
                 {
@@ -1573,6 +1613,7 @@ public sealed class DebugSession
         breakpoints.ExceptionsChanged -= OnExceptionsChanged;
         breakpoints.DataChanged -= OnDataChanged;
         breakpoints.PropertiesChanged -= OnFunctionsChanged;
+        breakpoints.MethodsChanged -= OnFunctionsChanged;
         breakpoints.BindingErrorsChanged -= OnFunctionsChanged;
         // What its debugger said goes, and its data breakpoints, each on a member of one of its objects.
         if (!Quiet)

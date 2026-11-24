@@ -12,9 +12,14 @@ namespace Passenger.App.Debugging;
 /// end.</summary>
 public abstract class Breakpoint
 {
+    private static int lastKey;
+
     /// <summary>What each session's debugger last said of it, by the session, with how many lines below its own a line
     /// breakpoint bound.</summary>
     private readonly Dictionary<object, (BreakpointStatus Status, string? Message, int? Line)> said = [];
+
+    /// <summary>The debuggers' number for it, by which one waiting for it names it: never another breakpoint's.</summary>
+    public int Key { get; } = Interlocked.Increment(ref lastKey);
 
     public bool Enabled { get; internal set; } = true;
     public string? Condition { get; internal set; }
@@ -70,10 +75,22 @@ public abstract class Breakpoint
     public abstract string Location { get; }
 }
 
+/// <summary>A breakpoint placed in code, on a line or on a method: a temporary one is taken away once it takes a hit (its
+/// condition held and its hit count met), so it stops, or logs, once; one waiting for another passes over its hits until
+/// that one has taken a hit in the same run, and from then on takes them as any breakpoint does.</summary>
+public abstract class CodeBreakpoint : Breakpoint
+{
+    /// <summary>Taken away once it takes a hit.</summary>
+    public bool Temporary { get; internal set; }
+
+    /// <summary>The breakpoint whose hit it waits for, or null for none.</summary>
+    public CodeBreakpoint? WaitsFor { get; internal set; }
+}
+
 /// <summary>A line breakpoint (lines from zero), carried with its file's text while it is open; in Avalonia XAML, on one
 /// attribute of the line when it names one, at the column its name begins (<see cref="XamlBreakpoints"/>); in C#, inside
 /// a lambda written on the line when it has a column (<see cref="LambdaBreakpoints"/>).</summary>
-public sealed class LineBreakpoint(string path, int line, string? attribute = null, int? column = null) : Breakpoint
+public sealed class LineBreakpoint(string path, int line, string? attribute = null, int? column = null) : CodeBreakpoint
 {
     public string Path { get; internal set; } = path;
 
@@ -97,6 +114,26 @@ public sealed class LineBreakpoint(string path, int line, string? attribute = nu
 
     public override string Location => $"{System.IO.Path.GetFileName(Path)}:{Line + 1}{(Column is int at ? $":{at + 1}" : string.Empty)}"
         + (Attribute is { } on ? $" {on}" : string.Empty);
+}
+
+/// <summary>A method breakpoint: a .NET method by its name as C# writes it (Name, Type.Name or Namespace.Type.Name, a
+/// generic one's arity as Name&lt;T&gt;, and its parameters' types where only one overload is meant), stopping as each
+/// method it names begins, in every module loaded and loaded later. Set at a method's declaration in the editor, it keeps
+/// that line of its file (from zero), carried with the file's text as a line breakpoint's is, where the gutter marks it.</summary>
+public sealed class MethodBreakpoint(string name, string? path = null, int line = 0) : CodeBreakpoint
+{
+    /// <summary>The method's name as the debugger is asked for it.</summary>
+    public string Name { get; } = name;
+
+    /// <summary>The file it was set in, or null for one set by its name alone.</summary>
+    public string? Path { get; internal set; } = path;
+
+    /// <summary>The line its method is declared on in <see cref="Path"/>.</summary>
+    public int Line => At.Line;
+
+    internal AnchoredLine At { get; } = new(line);
+
+    public override string Location => Name;
 }
 
 /// <summary>A CLR exception breakpoint: an exception type by its full name, or "Any exception", which every folder has
@@ -224,6 +261,9 @@ public sealed record BreakpointsState : IStateDocument<BreakpointsState>
     /// <summary>The GDScript Errors breakpoint; none kept is on.</summary>
     public KeptScriptErrorBreakpoint? ScriptErrors { get; init; }
 
+    /// <summary>The method breakpoints, in the order they were set.</summary>
+    public List<KeptMethodBreakpoint>? Methods { get; init; }
+
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
 
     /// <summary>One without a file is left out, and a line before the first is the first; an exception type kept twice is
@@ -232,6 +272,7 @@ public sealed record BreakpointsState : IStateDocument<BreakpointsState>
     {
         Breakpoints = [.. (Breakpoints ?? []).Where(b => b is { Path.Length: > 0 }).Select(b => b with { Line = Math.Max(0, b.Line), Column = b.Column is >= 0 ? b.Column : null })],
         Exceptions = Exceptions is null ? null : [.. Exceptions.Where(e => e is not null && e.Type is null or { Length: > 0 }).DistinctBy(e => e.Type ?? string.Empty)],
+        Methods = Methods is null ? null : [.. Methods.Where(m => m is { Name.Length: > 0 }).Select(m => m with { Line = Math.Max(0, m.Line) }).DistinctBy(m => m.Name.Trim())],
     };
 }
 
@@ -247,6 +288,34 @@ public sealed record KeptBreakpoint(string Path, int Line)
     public string? Condition { get; init; }
     public string? HitCondition { get; init; }
     public string? LogMessage { get; init; }
+    public bool Temporary { get; init; }
+    public KeptWaitFor? WaitsFor { get; init; }
+}
+
+/// <summary>A method breakpoint as kept: its method's name, the file and line (from zero) it was set at, if any, and what it
+/// does.</summary>
+public sealed record KeptMethodBreakpoint(string Name)
+{
+    public string? Path { get; init; }
+    public int Line { get; init; }
+    public bool Enabled { get; init; } = true;
+    public bool Suspend { get; init; } = true;
+    public string? Condition { get; init; }
+    public string? HitCondition { get; init; }
+    public string? LogMessage { get; init; }
+    public bool Temporary { get; init; }
+    public KeptWaitFor? WaitsFor { get; init; }
+}
+
+/// <summary>The breakpoint another waits for, as kept: a line breakpoint by its file and line (from zero), with its XAML
+/// attribute or lambda's column where it has one, or a method breakpoint by its method's name.</summary>
+public sealed record KeptWaitFor
+{
+    public string? Path { get; init; }
+    public int Line { get; init; }
+    public string? Attribute { get; init; }
+    public int? Column { get; init; }
+    public string? Method { get; init; }
 }
 
 /// <summary>An exception breakpoint as kept: its type (none for "Any exception"), what it does and its "Suspend
@@ -285,14 +354,15 @@ public sealed record KeptScriptErrorBreakpoint
     public string? LogMessage { get; init; }
 }
 
-/// <summary>Every breakpoint: the line breakpoints by file, the CLR exception breakpoints, XAML Binding Errors, GDScript Errors and the
-/// session's data and property breakpoints. A breakpoint in an open file moves with the text around it by an anchor in it,
-/// so an edit above it leaves it on its line; one whose line is deleted lands where the deletion did, and two on one line
-/// become one.
+/// <summary>Every breakpoint: the line breakpoints by file, the method breakpoints, the CLR exception breakpoints, XAML Binding
+/// Errors, GDScript Errors and the session's data and property breakpoints. A breakpoint in an open file moves with the text
+/// around it by an anchor in it, so an edit above it leaves it on its line; one whose line is deleted lands where the deletion
+/// did, and two on one line become one. One taken away takes with it what others wait for, so those wait no more.
 /// Muted, none of them stops the program, though each keeps whether it is on.</summary>
 public sealed class BreakpointStore
 {
     private readonly Dictionary<string, List<LineBreakpoint>> byPath = new(StringComparer.Ordinal);
+    private readonly List<MethodBreakpoint> methods = [];
     private readonly List<ExceptionBreakpoint> exceptions = [new(null)];
     private readonly List<DataBreakpoint> data = [];
     private readonly List<PropertyBreakpoint> properties = [];
@@ -306,6 +376,16 @@ public sealed class BreakpointStore
 
     /// <summary>The property breakpoints changed: added, removed, muted, what one does, or what the debugger said.</summary>
     public event EventHandler? PropertiesChanged;
+
+    /// <summary>The method breakpoints changed: added, removed, muted, moved, what one does, or what the debugger said. One set
+    /// in a file raises <see cref="Changed"/> for its file too.</summary>
+    public event EventHandler? MethodsChanged;
+
+    /// <summary>The method breakpoints, in the order they were set.</summary>
+    public IReadOnlyList<MethodBreakpoint> Methods => methods;
+
+    /// <summary>The method breakpoints set in a file, which its gutter marks.</summary>
+    public IEnumerable<MethodBreakpoint> MethodsIn(string path) => methods.Where(m => m.Path == path);
 
     /// <summary>The property breakpoints of the session, in the order they were set.</summary>
     public IReadOnlyList<PropertyBreakpoint> Properties => properties;
@@ -353,6 +433,20 @@ public sealed class BreakpointStore
             Condition = b.Condition,
             HitCondition = b.HitCondition,
             LogMessage = b.LogMessage,
+            Temporary = b.Temporary,
+            WaitsFor = Kept(b.WaitsFor),
+        })],
+        Methods = [.. methods.Select(m => new KeptMethodBreakpoint(m.Name)
+        {
+            Path = m.Path,
+            Line = m.Line,
+            Enabled = m.Enabled,
+            Suspend = m.Suspend,
+            Condition = m.Condition,
+            HitCondition = m.HitCondition,
+            LogMessage = m.LogMessage,
+            Temporary = m.Temporary,
+            WaitsFor = Kept(m.WaitsFor),
         })],
         Exceptions = [.. exceptions.Select(e => new KeptExceptionBreakpoint(e.Type)
         {
@@ -385,26 +479,85 @@ public sealed class BreakpointStore
         },
     };
 
-    /// <summary>Sets the breakpoints a folder kept, beside those there are; a line with one already keeps it. The exception
-    /// breakpoints are the folder's own.</summary>
+    /// <summary>The breakpoint one waits for as it is kept.</summary>
+    private static KeptWaitFor? Kept(CodeBreakpoint? waited) => waited switch
+    {
+        LineBreakpoint line => new KeptWaitFor { Path = line.Path, Line = line.Line, Attribute = line.Attribute, Column = line.At.Column },
+        MethodBreakpoint method => new KeptWaitFor { Method = method.Name },
+        _ => null,
+    };
+
+    /// <summary>The breakpoint set that a kept one waits for names, if there is one.</summary>
+    private CodeBreakpoint? Found(KeptWaitFor? waited) => waited switch
+    {
+        { Method: { } name } => FindMethod(name),
+        { Path: { } path } => In(path).FirstOrDefault(b => b.Line == waited.Line && b.Attribute == waited.Attribute && b.At.Column == waited.Column),
+        _ => null,
+    };
+
+    /// <summary>Sets the breakpoints a folder kept, beside those there are; a line with one already keeps it, and a method
+    /// named already keeps its own. What each waits for is found among them once all are set. The exception breakpoints are
+    /// the folder's own.</summary>
     public void Restore(BreakpointsState kept)
     {
+        List<(CodeBreakpoint Breakpoint, KeptWaitFor WaitsFor)> waiting = [];
         foreach (IGrouping<string, KeptBreakpoint> file in kept.Breakpoints.GroupBy(b => b.Path))
         {
             List<LineBreakpoint> list = For(file.Key);
             foreach (KeptBreakpoint breakpoint in file.Where(b => list.All(there => there.Line != b.Line || there.Attribute != b.Attribute || there.At.Column != b.Column)))
             {
-                list.Add(Anchored(new LineBreakpoint(breakpoint.Path, breakpoint.Line, breakpoint.Attribute, breakpoint.Column)
+                LineBreakpoint restored = Anchored(new LineBreakpoint(breakpoint.Path, breakpoint.Line, breakpoint.Attribute, breakpoint.Column)
                 {
                     Enabled = breakpoint.Enabled,
                     Suspend = breakpoint.Suspend,
                     Condition = breakpoint.Condition,
                     HitCondition = breakpoint.HitCondition,
                     LogMessage = breakpoint.LogMessage,
-                }));
+                    Temporary = breakpoint.Temporary,
+                });
+                list.Add(restored);
+                if (breakpoint.WaitsFor is { } waits)
+                {
+                    waiting.Add((restored, waits));
+                }
             }
             Sort(list);
-            Changed?.Invoke(this, file.Key);
+        }
+        foreach (KeptMethodBreakpoint breakpoint in kept.Methods ?? [])
+        {
+            if (FindMethod(breakpoint.Name) is not null)
+            {
+                continue;
+            }
+            MethodBreakpoint restored = Anchored(new MethodBreakpoint(breakpoint.Name.Trim(), breakpoint.Path, breakpoint.Line)
+            {
+                Enabled = breakpoint.Enabled,
+                Suspend = breakpoint.Suspend,
+                Condition = breakpoint.Condition,
+                HitCondition = breakpoint.HitCondition,
+                LogMessage = breakpoint.LogMessage,
+                Temporary = breakpoint.Temporary,
+            });
+            methods.Add(restored);
+            if (breakpoint.WaitsFor is { } waits)
+            {
+                waiting.Add((restored, waits));
+            }
+        }
+        foreach ((CodeBreakpoint breakpoint, KeptWaitFor waits) in waiting)
+        {
+            if (Found(waits) is { } found && CanWaitFor(breakpoint, found))
+            {
+                breakpoint.WaitsFor = found;
+            }
+        }
+        foreach (string path in kept.Breakpoints.Select(b => b.Path).Concat((kept.Methods ?? []).Select(m => m.Path).OfType<string>()).Distinct(StringComparer.Ordinal))
+        {
+            Changed?.Invoke(this, path);
+        }
+        if (kept.Methods is { Count: > 0 })
+        {
+            MethodsChanged?.Invoke(this, EventArgs.Empty);
         }
         if (kept.Exceptions is { } keptExceptions)
         {
@@ -440,6 +593,42 @@ public sealed class BreakpointStore
         }
     }
 
+    /// <summary>Adds the breakpoints a file of them held (Import) beside those there are: a line or method with one already,
+    /// and an exception type with one already ("Any exception" always), keeps its own as it is. How many it added.</summary>
+    public int Import(BreakpointsState file)
+    {
+        int before = All.Count() + methods.Count + exceptions.Count;
+        Restore(file with { Exceptions = null, BindingErrors = null, ScriptErrors = null });
+        bool added = false;
+        foreach (KeptExceptionBreakpoint kept in file.Exceptions ?? [])
+        {
+            if (kept.Type is not { } type || FindException(type) is not null)
+            {
+                continue;
+            }
+            ExceptionBreakpoint exception = new(type.Trim())
+            {
+                Enabled = kept.Enabled,
+                Suspend = kept.Suspend,
+                Condition = kept.Condition,
+                HitCondition = kept.HitCondition,
+                LogMessage = kept.LogMessage,
+                Scenarios = (kept.ThrownInUserCode ? ExceptionScenarios.ThrownInUserCode : 0)
+                    | (kept.ThrownInExternalCode ? ExceptionScenarios.ThrownInExternalCode : 0)
+                    | (kept.HandledInUserCode ? ExceptionScenarios.HandledInUserCode : 0)
+                    | (kept.HandledInExternalCode ? ExceptionScenarios.HandledInExternalCode : 0)
+                    | (kept.Unhandled ? ExceptionScenarios.Unhandled : 0),
+            };
+            exceptions.Add(exception);
+            added = true;
+        }
+        if (added)
+        {
+            ExceptionsChanged?.Invoke(this, EventArgs.Empty);
+        }
+        return All.Count() + methods.Count + exceptions.Count - before;
+    }
+
     /// <summary>GDScript Errors as kept, or as a folder's is at first (on).</summary>
     private void SetScriptErrors(KeptScriptErrorBreakpoint kept)
     {
@@ -473,6 +662,20 @@ public sealed class BreakpointStore
             byPath[path].Clear();
             Changed?.Invoke(this, path);
         }
+        if (methods.Count > 0)
+        {
+            List<string> placed = [.. methods.Select(m => m.Path).OfType<string>().Distinct(StringComparer.Ordinal)];
+            foreach (MethodBreakpoint method in methods)
+            {
+                method.At.Detach();
+            }
+            methods.Clear();
+            foreach (string path in placed)
+            {
+                Changed?.Invoke(this, path);
+            }
+            MethodsChanged?.Invoke(this, EventArgs.Empty);
+        }
         exceptions.Clear();
         exceptions.Add(new ExceptionBreakpoint(null));
         ExceptionsChanged?.Invoke(this, EventArgs.Empty);
@@ -496,6 +699,7 @@ public sealed class BreakpointStore
         ExceptionsChanged?.Invoke(this, EventArgs.Empty);
         DataChanged?.Invoke(this, EventArgs.Empty);
         PropertiesChanged?.Invoke(this, EventArgs.Empty);
+        MethodsChanged?.Invoke(this, EventArgs.Empty);
         BindingErrorsChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -537,6 +741,10 @@ public sealed class BreakpointStore
         if (exceptions.Aggregate(false, (any, e) => e.Forget(session) | any) | ScriptErrors.Forget(session))
         {
             ExceptionsChanged?.Invoke(this, EventArgs.Empty);
+        }
+        if (methods.Aggregate(false, (any, m) => m.Forget(session) | any))
+        {
+            RaiseMethods();
         }
         if (BindingErrors.Forget(session))
         {
@@ -615,13 +823,15 @@ public sealed class BreakpointStore
     public void Toggle(string path, int line)
     {
         List<LineBreakpoint> list = For(path);
-        Unanchor(list.Where(b => b.Line == line));
+        List<LineBreakpoint> there = [.. list.Where(b => b.Line == line)];
+        Unanchor(there);
         if (list.RemoveAll(b => b.Line == line) == 0)
         {
             list.Add(Anchored(new LineBreakpoint(path, line)));
             Sort(list);
         }
         Changed?.Invoke(this, path);
+        WaitNoMore(there);
     }
 
     /// <summary>Sets a breakpoint on the XAML attribute whose name begins at a column (from zero) of a line, or removes the
@@ -629,7 +839,8 @@ public sealed class BreakpointStore
     public void ToggleAttribute(string path, int line, string attribute, int column)
     {
         List<LineBreakpoint> list = For(path);
-        if (OnAttribute(path, line, attribute, column) is { } existing)
+        LineBreakpoint? existing = OnAttribute(path, line, attribute, column);
+        if (existing is not null)
         {
             list.Remove(existing);
             existing.At.Detach();
@@ -640,6 +851,7 @@ public sealed class BreakpointStore
             Sort(list);
         }
         Changed?.Invoke(this, path);
+        WaitNoMore(existing is null ? [] : [existing]);
     }
 
     /// <summary>The breakpoint on the XAML attribute whose name begins at a column (from zero) of a line: each one's attribute
@@ -681,12 +893,14 @@ public sealed class BreakpointStore
             return;
         }
         List<LineBreakpoint> list = For(path);
+        List<LineBreakpoint> removed = [];
         foreach (LineBreakpoint breakpoint in lost)
         {
             if (list.Any(b => b.Line == breakpoint.Line && !b.OnPart))
             {
                 list.Remove(breakpoint);
                 breakpoint.At.Detach();
+                removed.Add(breakpoint);
             }
             else
             {
@@ -695,6 +909,7 @@ public sealed class BreakpointStore
         }
         Sort(list);
         Changed?.Invoke(this, path);
+        WaitNoMore(removed);
     }
 
     /// <summary>A file's breakpoints in order: by line, a line's own before its attributes' and its lambdas', those by their
@@ -777,6 +992,138 @@ public sealed class BreakpointStore
         Changed?.Invoke(this, path);
     }
 
+    /// <summary>Sets a temporary breakpoint on a line, taken away once it takes a hit, or removes those on that line.</summary>
+    public void ToggleTemporary(string path, int line)
+    {
+        if (In(path).Any(b => b.Line == line))
+        {
+            Toggle(path, line);
+            return;
+        }
+        List<LineBreakpoint> list = For(path);
+        list.Add(Anchored(new LineBreakpoint(path, line) { Temporary = true }));
+        Sort(list);
+        Changed?.Invoke(this, path);
+    }
+
+    /// <summary>The method breakpoint on a method by its name, set if there is none, at the line (from zero) of a file where
+    /// it is declared when it is set from there.</summary>
+    public MethodBreakpoint AddMethod(string name, string? path = null, int line = 0)
+    {
+        if (FindMethod(name) is { } existing)
+        {
+            return existing;
+        }
+        MethodBreakpoint added = Anchored(new MethodBreakpoint(name.Trim(), path, line));
+        methods.Add(added);
+        RaiseMethods(path);
+        return added;
+    }
+
+    /// <summary>Sets a method breakpoint on a method by its name, declared at a line (from zero) of a file, or removes the one
+    /// on it.</summary>
+    public void ToggleMethod(string name, string path, int line)
+    {
+        if (FindMethod(name) is { } existing)
+        {
+            Remove(existing);
+        }
+        else
+        {
+            AddMethod(name, path, line);
+        }
+    }
+
+    /// <summary>The method breakpoint on a method by its name, if one is set.</summary>
+    public MethodBreakpoint? FindMethod(string name) => methods.FirstOrDefault(m => string.Equals(m.Name, name.Trim(), StringComparison.Ordinal));
+
+    /// <summary>Whether a breakpoint may wait for another: never itself, nor one that waits, however far along, for it, which
+    /// would leave both waiting for good.</summary>
+    public static bool CanWaitFor(CodeBreakpoint breakpoint, CodeBreakpoint waited)
+    {
+        for (CodeBreakpoint? at = waited; at is not null; at = at.WaitsFor)
+        {
+            if (ReferenceEquals(at, breakpoint))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>Makes a breakpoint temporary or not, and what it waits for (null for nothing); one it cannot wait for
+    /// (<see cref="CanWaitFor"/>) is refused.</summary>
+    public void Arrange(CodeBreakpoint breakpoint, bool temporary, CodeBreakpoint? waitsFor)
+    {
+        if (waitsFor is not null && !CanWaitFor(breakpoint, waitsFor))
+        {
+            throw new ArgumentException($"{breakpoint.Location} cannot wait for {waitsFor.Location}, which waits for it");
+        }
+        if (breakpoint.Temporary == temporary && ReferenceEquals(breakpoint.WaitsFor, waitsFor))
+        {
+            return;
+        }
+        breakpoint.Temporary = temporary;
+        breakpoint.WaitsFor = waitsFor;
+        Raise(breakpoint);
+    }
+
+    /// <summary>Breakpoints taken away: those waiting for one of them wait for nothing from now on.</summary>
+    private void WaitNoMore(IReadOnlyCollection<Breakpoint> gone)
+    {
+        if (gone.Count == 0)
+        {
+            return;
+        }
+        foreach (CodeBreakpoint waiting in All.Concat<CodeBreakpoint>(methods).Where(b => b.WaitsFor is { } waited && gone.Contains(waited)).ToList())
+        {
+            waiting.WaitsFor = null;
+            Raise(waiting);
+        }
+    }
+
+    /// <summary>The method breakpoints changed, and the file of one set in it.</summary>
+    private void RaiseMethods(string? path = null)
+    {
+        if (path is not null)
+        {
+            Changed?.Invoke(this, path);
+        }
+        MethodsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Records what a session's debugger said of the method breakpoints sent, in the order they were sent; those not
+    /// sent (off, or muted) go back to unknown.</summary>
+    public void ReportMethods(object session, IReadOnlyList<(BreakpointStatus Status, string? Message)> reports, IReadOnlyList<MethodBreakpoint> sent)
+    {
+        foreach (MethodBreakpoint breakpoint in methods)
+        {
+            int at = -1;
+            for (int i = 0; i < sent.Count; i++)
+            {
+                if (ReferenceEquals(sent[i], breakpoint))
+                {
+                    at = i;
+                    break;
+                }
+            }
+            (BreakpointStatus status, string? message) = at >= 0 && at < reports.Count ? reports[at] : (BreakpointStatus.Unknown, null);
+            breakpoint.Tell(session, status, message);
+        }
+        foreach (string path in methods.Select(m => m.Path).OfType<string>().Distinct(StringComparer.Ordinal))
+        {
+            Changed?.Invoke(this, path);
+        }
+        MethodsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Records what a session's debugger said of one method breakpoint since it was sent (bound as a module loaded).</summary>
+    public void ReportMethod(object session, MethodBreakpoint breakpoint, BreakpointStatus status, string? message)
+    {
+        breakpoint.Tell(session, status, message);
+        RaiseMethods(breakpoint.Path);
+    }
+
     /// <summary>Removes a breakpoint; "Any exception" stays, turned off by its box instead, as XAML Binding Errors
     /// is.</summary>
     public void Remove(Breakpoint breakpoint)
@@ -785,6 +1132,13 @@ public sealed class BreakpointStore
         {
             line.At.Detach();
             Changed?.Invoke(this, line.Path);
+            WaitNoMore([line]);
+        }
+        else if (breakpoint is MethodBreakpoint method && methods.Remove(method))
+        {
+            method.At.Detach();
+            RaiseMethods(method.Path);
+            WaitNoMore([method]);
         }
         else if (breakpoint is ExceptionBreakpoint { IsAny: false } exception && exceptions.Remove(exception))
         {
@@ -907,6 +1261,13 @@ public sealed class BreakpointStore
             Changed?.Invoke(this, path);
             Changed?.Invoke(this, moved);
         }
+        foreach (MethodBreakpoint method in methods.Where(m => m.Path is { } path && PathNames.Within(path, from)).ToList())
+        {
+            string was = method.Path!;
+            method.Path = PathNames.Moved(was, from, to);
+            Changed?.Invoke(this, was);
+            RaiseMethods(method.Path);
+        }
         foreach (string path in open.Keys.Where(p => PathNames.Within(p, from)).ToList())
         {
             open.Remove(path, out TextDocument? text);
@@ -922,6 +1283,10 @@ public sealed class BreakpointStore
         {
             breakpoint.At.Attach(text);
         }
+        foreach (MethodBreakpoint method in MethodsIn(path))
+        {
+            method.At.Attach(text);
+        }
     }
 
     /// <summary>A file closed: its breakpoints stay on the lines they were carried to.</summary>
@@ -929,6 +1294,10 @@ public sealed class BreakpointStore
     {
         open.Remove(path);
         Unanchor(In(path));
+        foreach (MethodBreakpoint method in MethodsIn(path))
+        {
+            method.At.Detach();
+        }
     }
 
     /// <summary>The session ended with files still open, which the next session follows: every file is let go as if
@@ -944,6 +1313,15 @@ public sealed class BreakpointStore
     /// <summary>Reads the lines of a file's breakpoints after an edit to it, their anchors having carried them.</summary>
     public void Follow(string path)
     {
+        bool methodsMoved = false;
+        foreach (MethodBreakpoint method in MethodsIn(path))
+        {
+            methodsMoved |= method.At.Follow();
+        }
+        if (methodsMoved)
+        {
+            RaiseMethods(path);
+        }
         if (!byPath.TryGetValue(path, out List<LineBreakpoint>? list) || list.Count == 0)
         {
             return;
@@ -956,17 +1334,28 @@ public sealed class BreakpointStore
         if (moved)
         {
             List<LineBreakpoint> unique = [.. list.GroupBy(b => (b.Line, b.Attribute, b.At.Column)).Select(g => g.First())];
-            Unanchor(list.Except(unique));
+            List<LineBreakpoint> merged = [.. list.Except(unique)];
+            Unanchor(merged);
             Sort(unique);
             list.Clear();
             list.AddRange(unique);
             Changed?.Invoke(this, path);
+            WaitNoMore(merged);
         }
     }
 
     private LineBreakpoint Anchored(LineBreakpoint breakpoint)
     {
         if (open.TryGetValue(breakpoint.Path, out TextDocument? text))
+        {
+            breakpoint.At.Attach(text);
+        }
+        return breakpoint;
+    }
+
+    private MethodBreakpoint Anchored(MethodBreakpoint breakpoint)
+    {
+        if (breakpoint.Path is { } path && open.TryGetValue(path, out TextDocument? text))
         {
             breakpoint.At.Attach(text);
         }
@@ -994,6 +1383,10 @@ public sealed class BreakpointStore
         else if (breakpoint is PropertyBreakpoint)
         {
             PropertiesChanged?.Invoke(this, EventArgs.Empty);
+        }
+        else if (breakpoint is MethodBreakpoint method)
+        {
+            RaiseMethods(method.Path);
         }
         else if (breakpoint is BindingErrorBreakpoint)
         {

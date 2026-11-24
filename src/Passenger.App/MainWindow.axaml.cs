@@ -274,7 +274,8 @@ public partial class MainWindow : IdeWindow
                 {
                     ShowGutterMenu(editor, active, LineBreakpointChoices(active, parsed.Text, click.Line, lambdas));
                 }
-                else if (session.Debug.Breakpoints.In(active.Path).FirstOrDefault(b => b.Line == click.Line) is { } breakpoint)
+                else if ((session.Debug.Breakpoints.In(active.Path).FirstOrDefault(b => b.Line == click.Line)
+                    ?? (Debugging.CodeBreakpoint?)session.Debug.Breakpoints.MethodsIn(active.Path).FirstOrDefault(m => m.Line == click.Line)) is { } breakpoint)
                 {
                     ShowBreakpointPopup(breakpoint);
                 }
@@ -1201,11 +1202,13 @@ public partial class MainWindow : IdeWindow
         await (session.CSharp?.UnloadAsync([project]) ?? Task.CompletedTask);
     }
 
-    /// <summary>A breakpoint's properties beside its line in the gutter, its condition ready to type.</summary>
-    public void ShowBreakpointPopup(Debugging.LineBreakpoint breakpoint)
+    /// <summary>A breakpoint's properties beside its line in the gutter (a method breakpoint's, its method's), its condition
+    /// ready to type.</summary>
+    public void ShowBreakpointPopup(Debugging.CodeBreakpoint breakpoint)
     {
         CodeEditor editor = Editors.CodeEditor;
-        Point at = popups.PointIn(editor, editor.GutterPoint(breakpoint.Line)) ?? new Point(100, 100);
+        int line = breakpoint is Debugging.MethodBreakpoint method ? method.Line : ((Debugging.LineBreakpoint)breakpoint).Line;
+        Point at = popups.PointIn(editor, editor.GutterPoint(line)) ?? new Point(100, 100);
         Debugging.BreakpointPopup popup = new(breakpoint, session.Debug.Breakpoints, actions!.Shortcut(AppActions.ViewBreakpoints));
         popup.Closed += (_, more) =>
         {
@@ -1301,12 +1304,24 @@ public partial class MainWindow : IdeWindow
         window.Closed += (_, show) =>
         {
             popups.Close();
-            if (show is not null)
+            if (show is Debugging.LineBreakpoint line)
             {
-                NavigateTo(show.Path, new TextPosition(show.Line, show.Column ?? 0));
+                NavigateTo(line.Path, new TextPosition(line.Line, line.Column ?? 0));
+            }
+            else if (show is Debugging.MethodBreakpoint { Path: { } path } method)
+            {
+                NavigateTo(path, new TextPosition(method.Line, 0));
             }
         };
+        window.ExportRequested += (_, _) => IdeErrors.Observe(ExportBreakpointsAsync());
+        window.ImportRequested += (_, _) => IdeErrors.Observe(ImportThenRefill());
         popups.Show(window);
+
+        async Task ImportThenRefill()
+        {
+            await ImportBreakpointsAsync();
+            window.Refill();
+        }
     }
 
     /// <summary>The exception types Add CLR Exception Breakpoints offers: the solution's own, as the language server finds

@@ -1072,6 +1072,9 @@ public static class Refusals
     /// <summary>Go to Source on a breakpoint that stands on no line (an exception's, a binding error's, a script error's).</summary>
     public const string BreakpointOnNoLine = "The breakpoint stands on no line";
 
+    /// <summary>Why Toggle Method Breakpoint cannot run where the caret is.</summary>
+    public const string NoMethodAtCaret = "No C# method is declared at the caret";
+
     /// <summary>Remove on a breakpoint the debugger always keeps (every exception, binding errors, script errors), which
     /// is turned off rather than removed.</summary>
     public const string BreakpointKept = "The debugger always keeps this breakpoint: turn it off instead";

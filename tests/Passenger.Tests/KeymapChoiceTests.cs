@@ -476,7 +476,7 @@ public sealed class KeymapChoiceTests : IDisposable
 
     /// <summary>Duplicate, Compare Files, Show Diff, Parameter Info and its overloads' steps, Toggle Case, Generate, Clone
     /// Caret, the moves, Context Help (with External Documentation's), Show Usages, Quick Evaluate Expression, Open Solution,
-    /// Open File and Run All Tests with Coverage have in each keymap the keys and gestures Rider's of that preset here resolves them to
+    /// Open File, Run All Tests with Coverage and Toggle Temporary Breakpoint have in each keymap the keys and gestures Rider's of that preset here resolves them to
     /// (<see cref="RiderKeymaps"/>), the Mac's Cmd+Up and Down too in Visual Studio's and IntelliJ IDEA's. A key Rider gives
     /// several by place has one action, the rest taking it there (<see cref="AppActions.KeysIn"/>); New is New Item.</summary>
     private void Each_keymaps_keys_for_Duplicate_Parameter_Info_Toggle_Case_and_Generate_are_those_Riders_keymap_resolves_them_to()
@@ -503,7 +503,7 @@ public sealed class KeymapChoiceTests : IDisposable
                 (AppActions.ShowUsages, "ShowUsages", []), (AppActions.QuickEvaluate, "QuickEvaluateExpression", []),
                 (AppActions.OpenSolution, "RiderOpenSolution", []), (AppActions.OpenFile, "OpenFile", []),
                 (AppActions.NextOverload, "MethodOverloadSwitchDown", []), (AppActions.PreviousOverload, "MethodOverloadSwitchUp", []),
-                (AppActions.CoverAllTests, RiderKeymaps.CoverAll, []),
+                (AppActions.CoverAllTests, RiderKeymaps.CoverAll, []), (AppActions.ToggleTemporaryBreakpoint, "ToggleTemporaryLineBreakpoint", []),
             ];
             foreach ((string action, string riders, string[] besides) in checks)
             {

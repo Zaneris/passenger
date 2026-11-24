@@ -5,7 +5,8 @@ namespace Passenger.App.Debugging;
 /// <summary>A breakpoint's state in words, the same wherever it is said (the gutter's hover, Problems, an agent's
 /// breakpoint_set and debug_state): off, muted, set while nothing is debugged (where a C# line runs no code, the line it
 /// moves to), bound, moved to the nearest line with code, pending until a module holding its code loads, or not bound and
-/// why, the debugger's words saying how to put it right; then the condition, hit count and message it carries.</summary>
+/// why, the debugger's words saying how to put it right; then the condition, hit count and message it carries, and whether
+/// it is temporary or waits for another.</summary>
 public static class BreakpointStates
 {
     /// <summary>A breakpoint's state in a word or two: "bound", "moved to line 14", "pending", "not bound", "off", "muted"
@@ -43,7 +44,8 @@ public static class BreakpointStates
     /// where it moves), the debugger's words of it (why it is not bound, or where it stops), then what it carries.</summary>
     public static IReadOnlyList<string> Words(Breakpoint breakpoint, bool debugging, bool muted, Unrun? unrun = null)
     {
-        string kind = breakpoint.Suspend ? "Breakpoint" : "Tracepoint";
+        string kind = (breakpoint is MethodBreakpoint ? "Method " : string.Empty) + (breakpoint.Suspend ? "breakpoint" : "tracepoint");
+        kind = char.ToUpperInvariant(kind[0]) + kind[1..];
         string state = StateOf(breakpoint, debugging, muted);
         List<string> words = [state switch
         {
@@ -75,6 +77,14 @@ public static class BreakpointStates
         else if (!breakpoint.Suspend)
         {
             words.Add("Logs \"Breakpoint reached\" and goes on");
+        }
+        if (breakpoint is CodeBreakpoint { WaitsFor: { } waited })
+        {
+            words.Add($"Waits for {waited.Location} to be hit first");
+        }
+        if (breakpoint is CodeBreakpoint { Temporary: true })
+        {
+            words.Add("Temporary: removed once hit");
         }
         return words;
     }

@@ -37,9 +37,11 @@ internal static class RiderKeymaps
             ["Switcher"] = ["ctrl TAB", "ctrl shift TAB"],
             ["MethodOverloadSwitchUp"] = ["control UP"],
             ["MethodOverloadSwitchDown"] = ["control DOWN"],
+            ["ToggleTemporaryLineBreakpoint"] = ["control shift alt F8"],
         }),
         [MacOS] = (Default, new()
         {
+            ["ToggleTemporaryLineBreakpoint"] = ["shift meta alt BACK_SLASH", "meta shift alt F8"],
             ["MethodOverloadSwitchUp"] = ["alt UP"],
             ["MethodOverloadSwitchDown"] = ["alt DOWN"],
             ["Switcher"] = ["ctrl TAB", "ctrl shift TAB"],

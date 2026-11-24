@@ -136,7 +136,8 @@ public sealed class ListKeysTests : IDisposable
             Assert.True(breakpoints.Chosen == first && KeyedRow(breakpoints) == first,
                 $"The Breakpoints window opened with {breakpoints.Chosen?.Location ?? "nothing"} chosen and the keys on {Keys(breakpoints)}, not on {first.Location}'s row");
 
-            Ui.Click(breakpoints.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Add CLR Exception Breakpoints"));
+            Ui.Click(breakpoints.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Add Breakpoint"));
+            Ui.Choose(breakpoints.AddMenu, BreakpointsWindow.AddExceptions);
             Assert.True(TopLevel.GetTopLevel(breakpoints)?.FocusManager?.GetFocusedElement() is TextBox, $"Add CLR Exception Breakpoints opened with the keys on {Keys(breakpoints)}, not in its search");
             window.KeyTextInput("Passenger.NoSuchException");
             Ui.Press(window, "ENTER");

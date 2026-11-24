@@ -479,6 +479,13 @@ public static class AppActions
 
     // The debugger's, on the active editor and the session.
     public const string ToggleBreakpoint = "app.debug.toggleBreakpoint";
+
+    // Rider's ToggleTemporaryLineBreakpoint, which every keymap takes from $default's Ctrl+Alt+Shift+F8 or Mac OS X 10.5+'s
+    // Cmd+Alt+Shift+F8 and Cmd+Alt+Shift+\.
+    public const string ToggleTemporaryBreakpoint = "app.debug.toggleTemporaryBreakpoint";
+
+    // A method breakpoint on the method at the caret, which Rider's keymaps give no keys.
+    public const string ToggleMethodBreakpoint = "app.debug.toggleMethodBreakpoint";
     public const string ToggleBreakpointEnabled = "app.debug.toggleBreakpointEnabled";
     public const string MuteBreakpoints = "app.debug.muteBreakpoints";
     public const string Resume = "app.debug.resume";
@@ -609,6 +616,10 @@ public static class AppActions
     // The breakpoints' windows, the window's to show.
     public const string EditBreakpoint = "app.breakpoints.edit";
     public const string ViewBreakpoints = "app.breakpoints.view";
+
+    // A folder's breakpoints written to a file, and a file's added, which Rider's keymaps give no keys.
+    public const string ExportBreakpoints = "app.breakpoints.export";
+    public const string ImportBreakpoints = "app.breakpoints.import";
 
     // Version control: Git over the open folder's working tree.
     public const string ShowCommit = "app.vcs.showCommit";
@@ -841,6 +852,7 @@ public static class AppActions
                 .Bind(ShowDebug, "meta 5")
                 .Bind(ShowProblems, "meta 6")
                 .Bind(ToggleBreakpoint, "F9")
+                .Bind(ToggleTemporaryBreakpoint, "meta alt shift F8", "meta alt shift BACK_SLASH")
                 .Bind(ToggleBreakpointEnabled, "meta F9")
                 .Bind(Resume, "F5")
                 .Bind(Pause, "meta PAUSE", "shift meta P")
@@ -976,6 +988,7 @@ public static class AppActions
             .Bind(ShowDebug, "alt 5")
             .Bind(ShowProblems, "alt 6")
             .Bind(ToggleBreakpoint, "F9")
+            .Bind(ToggleTemporaryBreakpoint, "control alt shift F8")
             .Bind(ToggleBreakpointEnabled, "control F9")
             .Bind(Resume, "F5")
             .Bind(Pause, "control PAUSE", "shift control P")
@@ -1142,6 +1155,7 @@ public static class AppActions
                 .Bind(NextError, "alt F8")
                 .Bind(PreviousError, "shift F8", "alt shift F8")
                 .Bind(ToggleBreakpoint, "F9")
+                .Bind(ToggleTemporaryBreakpoint, "meta alt shift F8", "meta alt shift BACK_SLASH")
                 .Bind(Resume, "F5")
                 .Bind(Pause, "F6")
                 .Bind(StepOver, "F10")
@@ -1262,6 +1276,7 @@ public static class AppActions
             .Bind(NextError, "alt F8")
             .Bind(PreviousError, "alt shift F8", "shift F8")
             .Bind(ToggleBreakpoint, "F9")
+            .Bind(ToggleTemporaryBreakpoint, "control alt shift F8")
             .Bind(Resume, "F5")
             .Bind(Pause, "F6")
             .Bind(StepOver, "F10")
@@ -1402,6 +1417,7 @@ public static class AppActions
                 .Bind(NextError, "F2")
                 .Bind(PreviousError, "shift F2")
                 .Bind(ToggleBreakpoint, "meta F8")
+                .Bind(ToggleTemporaryBreakpoint, "meta alt shift F8", "meta alt shift BACK_SLASH")
                 .Bind(Resume, "meta alt R", "F9")
                 .Bind(StepOver, "F8")
                 .Bind(StepInto, "F7")
@@ -1524,6 +1540,7 @@ public static class AppActions
             .Bind(NextError, "F2")
             .Bind(PreviousError, "shift F2")
             .Bind(ToggleBreakpoint, "control F8")
+            .Bind(ToggleTemporaryBreakpoint, "control alt shift F8")
             .Bind(Resume, "F9")
             .Bind(StepOver, "F8")
             .Bind(StepInto, "F7")

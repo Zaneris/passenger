@@ -2227,8 +2227,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "and Xaml); GDScript Errors (scriptErrors: a debugged Godot game stops at a script error, on by default); or Break When " +
         "Value Changes on control's property (as app_details names it) in the app debugged, for the " +
         "session, condition reading newValue, oldValue and control. condition is a C# bool (GDScript in .gd); hitCondition \"==3\", \">=2\" or " +
-        "\"%2\"; logMessage (\"count is {count}\", \\{ for a brace) is written each hit; suspend false makes a tracepoint. Bound at once while " +
-        "debugging.")]
+        "\"%2\"; logMessage (\"count is {count}\", \\{ for a brace) is written each hit; suspend false makes a tracepoint. Or on a method " +
+        "(method: Name, Type.Name or Namespace.Type.Name(int, string) for one overload), stopping as it begins. A line or method " +
+        "breakpoint takes temporary (removed once hit) and waitFor, another's place (\"Program.cs:12\") or method, whose hit it waits " +
+        "for. Bound at once while debugging.")]
     public Task<IReadOnlyList<BreakpointInfo>> SetBreakpoint(
         string? path = null,
         int? line = null,
@@ -2246,13 +2248,38 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         [Description("thrownInUserCode, thrownInExternalCode, handledInUserCode, handledInExternalCode, unhandled: it stops when " +
             "one of each, thrown and handled, holds")] IReadOnlyList<string>? scenarios = null,
         bool remove = false,
+        string? method = null,
+        bool temporary = false,
+        string? waitFor = null,
         CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
+        BreakpointStore store = Session.Debug.Breakpoints;
+        if ((temporary || waitFor is not null) && (remove || bindingErrors || scriptErrors || control is not null || property is not null || exception is not null))
+        {
+            throw new ArgumentException("temporary and waitFor take a line or method breakpoint");
+        }
+        if (method is { Length: > 0 })
+        {
+            if (remove)
+            {
+                if (store.FindMethod(method) is { } there)
+                {
+                    store.Remove(there);
+                }
+            }
+            else
+            {
+                MethodBreakpoint named = store.AddMethod(method);
+                store.Update(named, enabled: true, suspend, condition, hitCondition, logMessage);
+                store.Arrange(named, temporary, WaitedFor(waitFor));
+            }
+            await InTheProgram(cancel);
+            return MethodBreakpointsInfo();
+        }
         if (remove)
         {
             return await RemoveBreakpoint(path, line, attribute, column, exception, bindingErrors, scriptErrors, control, property, cancel);
         }
-        BreakpointStore store = Session.Debug.Breakpoints;
         if (bindingErrors || scriptErrors)
         {
             store.Update(scriptErrors ? store.ScriptErrors : store.BindingErrors, enabled: true, suspend, condition, hitCondition, logMessage);
@@ -2289,6 +2316,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         LineBreakpoint set = column is int inside ? (await LambdaBreakpointAsync(full, at, inside, set: true))! : store.Set(full, at, attribute is { Length: > 0 } ? attribute : null);
         store.Update(set, enabled: true, suspend, condition, hitCondition, logMessage);
+        store.Arrange(set, temporary, WaitedFor(waitFor));
         await InTheProgram(cancel);
         Passenger.Languages.CSharp.ParsedText? parsed = Session.Debug.IsDebugging || !readable ? null : await LambdaBreakpoints.ParsedAsync(Editors, full);
         // An open file's parse only as its text stands: its lines may have moved since.
@@ -2441,7 +2469,48 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     }
 
     private Task<IReadOnlyList<BreakpointInfo>> ListBreakpoints(CancellationToken cancel) =>
-        OnUi(cancel, () => Task.FromResult<IReadOnlyList<BreakpointInfo>>([.. Breakpoints(null), .. DataBreakpoints(), .. ExceptionBreakpoints()]));
+        OnUi(cancel, () => Task.FromResult<IReadOnlyList<BreakpointInfo>>([.. Breakpoints(null), .. MethodBreakpointsInfo(), .. DataBreakpoints(), .. ExceptionBreakpoints()]));
+
+    /// <summary>The line or method breakpoint breakpoint_set's waitFor names: a method breakpoint by its method, else a line
+    /// breakpoint by its file and line from one ("Program.cs:12"), the line's own before its parts'.</summary>
+    private CodeBreakpoint? WaitedFor(string? waitFor)
+    {
+        if (waitFor is not { Length: > 0 } named)
+        {
+            return null;
+        }
+        BreakpointStore store = Session.Debug.Breakpoints;
+        if (store.FindMethod(named) is { } method)
+        {
+            return method;
+        }
+        int colon = named.LastIndexOf(':');
+        if (colon > 0 && int.TryParse(named.AsSpan(colon + 1), out int line))
+        {
+            string path = Named(named[..colon]);
+            if (store.In(path).Where(b => b.Line == line - 1).OrderBy(b => b.OnPart).FirstOrDefault() is { } there)
+            {
+                return there;
+            }
+        }
+        throw new ArgumentException($"No breakpoint is at {named} for this one to wait for: set it first (debug_state of breakpoints lists those there are)");
+    }
+
+    /// <summary>The breakpoint one waits for as waitFor names it: a line's file from the folder and line from one, or a method.</summary>
+    private string? WaitPlace(CodeBreakpoint? waited) => waited switch
+    {
+        LineBreakpoint line => $"{Relative(line.Path)}:{line.Line + 1}",
+        MethodBreakpoint method => method.Name,
+        _ => null,
+    };
+
+    private IReadOnlyList<BreakpointInfo> MethodBreakpointsInfo()
+    {
+        DebugController debugger = Session.Debug;
+        return [.. debugger.Breakpoints.Methods.Select(m => new BreakpointInfo(m.Path is { } path ? Relative(path) : null, m.Path is null ? null : m.Line + 1, m.Enabled,
+            BreakpointStates.StateOf(m, debugger.IsDebugging, debugger.Breakpoints.Muted), m.Condition, m.HitCondition, m.LogMessage, m.Suspend,
+            m.Status == BreakpointStatus.Bound ? null : m.Message, Method: m.Name, Temporary: m.Temporary ? true : null, WaitsFor: WaitPlace(m.WaitsFor)))];
+    }
 
     [McpServerTool(Name = McpTools.DebugStart, Title = "Debug a configuration", Destructive = true), Description(
         "Builds and launches a configuration under the debugger, as Debug does, and waits for a stop, its end, an Avalonia " +
@@ -2821,7 +2890,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "The debugger's state and, while paused, the stop: its reason, the thread's frames and the chosen frame's variables, " +
         "and in an Avalonia app the binding values of the .axaml files open in the editor. With several programs debugged, " +
         "sessions names them. With reference (a variable's, debug_evaluate's or an earlier answer's), the members, elements " +
-        "or locals behind it. of breakpoints: every breakpoint (line, data and property, exception with its scenarios, XAML " +
+        "or locals behind it. of breakpoints: every breakpoint (line, method, data and property, exception with its scenarios, XAML " +
         "Binding Errors), each with whether the debugger took it; while Mute Breakpoints (ide_action " +
         "app.debug.muteBreakpoints) is on, none stops. of processes: the .NET programs here and in running containers the " +
         "debugger can attach to, program being the .dll the dotnet host runs (a container's id 0 until debug_attach puts " +
@@ -3544,7 +3613,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             .Select(b => new BreakpointInfo(Relative(b.Path), b.Line + 1, b.Enabled, BreakpointStates.StateOf(b, debugger.IsDebugging, debugger.Breakpoints.Muted), b.Condition,
                 b.HitCondition, b.LogMessage, b.Suspend, b.Status == BreakpointStatus.Bound ? null
                     : b.Message ?? BreakpointStates.Moves(b, debugger.IsDebugging, debugger.Breakpoints.Muted, BreakpointStates.UnrunAt(parsed, b)),
-                Attribute: b.Attribute, Column: b.Column + 1))];
+                Attribute: b.Attribute, Column: b.Column + 1, Temporary: b.Temporary ? true : null, WaitsFor: WaitPlace(b.WaitsFor)))];
     }
 
     private IReadOnlyList<BreakpointInfo> DataBreakpoints() =>
@@ -4559,7 +4628,7 @@ public sealed record RunResult(bool StillRunning, int? ExitCode, string Status, 
 /// TextBlock#Counter", and the element's @id).</summary>
 public sealed record BreakpointInfo(string? Path, int? Line, bool Enabled, string Status, string? Condition, string? HitCondition, string? LogMessage, bool Suspend,
     string? Message, string? Exception = null, IReadOnlyList<string>? Scenarios = null, string? Data = null, string? Attribute = null, string? Property = null,
-    bool? BindingErrors = null, string? Control = null, int? Column = null, bool? ScriptErrors = null);
+    bool? BindingErrors = null, string? Control = null, int? Column = null, bool? ScriptErrors = null, string? Method = null, bool? Temporary = null, string? WaitsFor = null);
 
 public sealed record VariableInfo(string Name, string Value, string? Type, int Reference)
 {

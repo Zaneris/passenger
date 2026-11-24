@@ -9,13 +9,23 @@ using Passenger.Dap;
 namespace Passenger.App.Debugging;
 
 /// <summary>What a breakpoint does, as its popup and the Breakpoints window edit it: on or off, whether it stops, its
-/// condition and hit count, and a message to log; for an exception breakpoint, "Suspend If", where the exception was
-/// thrown and where it is handled. Enter submits, Escape gives up. A hit count the debugger cannot read, or a log message it
-/// would misread, is said under its field as it is typed; the debugger refuses it in the same words.</summary>
+/// condition and hit count, and a message to log; for a line or method breakpoint, whether it is removed once hit and the
+/// breakpoint it waits for; for an exception breakpoint, "Suspend If", where the exception was thrown and where it is
+/// handled. Enter submits, Escape gives up. A hit count the debugger cannot read, or a log message it would misread, is said
+/// under its field as it is typed; the debugger refuses it in the same words.</summary>
 public sealed class BreakpointProperties : UserControl
 {
+    /// <summary>What Wait for shows for a breakpoint that waits for none.</summary>
+    public const string WaitsForNone = "No other breakpoint";
+
     private readonly CheckBox enabled = new() { Content = "Enabled" };
     private readonly CheckBox suspend = new() { Content = "Suspend execution" };
+    private readonly CheckBox temporary = new() { Content = "Remove once hit" };
+    private readonly ComboBox waitFor = new FormDropDown();
+    private readonly Grid waitForRow;
+
+    /// <summary>The breakpoints Wait for offers, in its order: none first.</summary>
+    private List<CodeBreakpoint?> waitChoices = [null];
     private readonly TextBox condition = Field("A C# condition: count > 2");
     private readonly TextBox hitCount = Field("Stop on hits: ==3, >=2, %2");
     private readonly TextBlock hitCountProblem = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(0, Gaps.Small, 0, 0) };
@@ -39,8 +49,10 @@ public sealed class BreakpointProperties : UserControl
                 FormRows.Of("Condition", condition),
                 new StackPanel { Children = { FormRows.Of("Hit count", hitCount), FormRows.Of(null, hitCountProblem) } },
                 new StackPanel { Children = { FormRows.Of("Log message", log), FormRows.Of(null, logProblem) } },
+                (waitForRow = FormRows.Of("Wait for", waitFor)),
             },
         };
+        ToolTip.SetTip(waitFor, "Its hits are passed over until this breakpoint is hit in the same run");
         hitCountProblem.Classes.Add(StyleClasses.Error);
         logProblem.Classes.Add(StyleClasses.Error);
         inactive.Classes.Add(StyleClasses.Error);
@@ -73,7 +85,7 @@ public sealed class BreakpointProperties : UserControl
         Content = new StackPanel
         {
             Spacing = Gaps.Normal,
-            Children = { Row(enabled, suspend), fields, suspendIf },
+            Children = { Row(enabled, suspend, temporary), fields, suspendIf },
         };
         foreach (TextBox box in new[] { condition, hitCount, log })
         {
@@ -91,11 +103,21 @@ public sealed class BreakpointProperties : UserControl
 
     private CheckBox[] Scenarios => [thrownInUserCode, thrownInExternalCode, handledInUserCode, handledInExternalCode, unhandled];
 
-    public void Show(Breakpoint breakpoint)
+    /// <summary>A breakpoint's properties, Wait for offering every other line and method breakpoint of the store it may wait
+    /// for.</summary>
+    public void Show(Breakpoint breakpoint, BreakpointStore store)
     {
         Breakpoint = breakpoint;
         enabled.IsChecked = breakpoint.Enabled;
         suspend.IsChecked = breakpoint.Suspend;
+        temporary.IsVisible = waitForRow.IsVisible = breakpoint is CodeBreakpoint;
+        if (breakpoint is CodeBreakpoint code)
+        {
+            temporary.IsChecked = code.Temporary;
+            waitChoices = [null, .. store.All.Concat<CodeBreakpoint>(store.Methods).Where(b => b != code && BreakpointStore.CanWaitFor(code, b))];
+            waitFor.ItemsSource = waitChoices.Select(b => b?.Location ?? WaitsForNone).ToList();
+            waitFor.SelectedIndex = Math.Max(0, waitChoices.IndexOf(code.WaitsFor));
+        }
         condition.Text = breakpoint.Condition ?? string.Empty;
         // A property breakpoint's condition reads the change it stops at, and XAML Binding Errors' the failed binding.
         condition.PlaceholderText = breakpoint switch
@@ -135,6 +157,19 @@ public sealed class BreakpointProperties : UserControl
             || Blank(hitCount.Text)?.Trim() != breakpoint.HitCondition || Blank(log.Text) != breakpoint.LogMessage)
         {
             store.Update(breakpoint, on, stops, condition.Text, hitCount.Text, log.Text);
+        }
+        // One it was to wait for that went meanwhile is waited for no more.
+        if (breakpoint is CodeBreakpoint code)
+        {
+            CodeBreakpoint? waited = waitChoices.ElementAtOrDefault(waitFor.SelectedIndex);
+            bool stands = waited switch
+            {
+                null => true,
+                LineBreakpoint line => store.In(line.Path).Contains(line),
+                MethodBreakpoint method => store.Methods.Contains(method),
+                _ => false,
+            };
+            store.Arrange(code, temporary.IsChecked == true, stands && (waited is null || BreakpointStore.CanWaitFor(code, waited)) ? waited : null);
         }
         if (breakpoint is ExceptionBreakpoint exception)
         {
@@ -201,9 +236,9 @@ public sealed class BreakpointProperties : UserControl
 /// way to the Breakpoints window. The changes stand when it closes, however it closes.</summary>
 public sealed class BreakpointPopup : UserControl
 {
-    public BreakpointPopup(LineBreakpoint breakpoint, BreakpointStore store, string? moreShortcut)
+    public BreakpointPopup(CodeBreakpoint breakpoint, BreakpointStore store, string? moreShortcut)
     {
-        Properties.Show(breakpoint);
+        Properties.Show(breakpoint, store);
         Button remove = new() { Content = "Remove" };
         Button more = new() { Content = moreShortcut is null ? "More" : $"More ({moreShortcut})" };
         Button done = new() { Content = "Done", Classes = { StyleClasses.Primary } };
@@ -260,14 +295,21 @@ public sealed class BreakpointPopup : UserControl
     }
 }
 
-/// <summary>The Breakpoints window: the line breakpoints (XAML's among them) under ".NET Line Breakpoints", the session's
-/// data breakpoints under "Data Breakpoints", its property breakpoints under "Avalonia Property Breakpoints", the
-/// exception breakpoints under "CLR Exception Breakpoints" ("Any exception" first) and the binding errors' one under
-/// "XAML Binding Errors", each turned on or off by its box, and the chosen one's properties beside the list. + adds an
-/// exception breakpoint by its type, offering the exception types that match what is typed (Add CLR Exception
-/// Breakpoints); − removes the chosen one. Double-click (or Go to Source) shows a line breakpoint's line.</summary>
+/// <summary>The Breakpoints window: the line breakpoints (XAML's among them) under ".NET Line Breakpoints", the method
+/// breakpoints under ".NET Method Breakpoints", the session's data breakpoints under "Data Breakpoints", its property
+/// breakpoints under "Avalonia Property Breakpoints", the exception breakpoints under "CLR Exception Breakpoints" ("Any
+/// exception" first) and the binding errors' one under "XAML Binding Errors", each turned on or off by its box, and the
+/// chosen one's properties beside the list. + adds a method breakpoint by its method's name, or an exception breakpoint by
+/// its type, offering the exception types that match what is typed (Add CLR Exception Breakpoints); − removes the chosen
+/// one. Double-click (or Go to Source) shows a line breakpoint's line, or the method a method breakpoint was set at. Import
+/// and Export read and write the breakpoints as a file (<see cref="BreakpointFiles"/>).</summary>
 public sealed class BreakpointsWindow : UserControl
 {
+    /// <summary>The words of the + menu's two kinds.</summary>
+    public const string AddMethod = "Method Breakpoint…";
+
+    public const string AddExceptions = "CLR Exception Breakpoints…";
+
     private readonly BreakpointStore store;
     private readonly Func<Task<IReadOnlyList<string>>> exceptionTypes;
     private readonly ListBox list = new() { Classes = { StyleClasses.Tree } };
@@ -280,15 +322,31 @@ public sealed class BreakpointsWindow : UserControl
     private readonly StackPanel addPane;
     private readonly TextBox typed = SearchBox.Of("Search exception types", "An exception type: InvalidOperationException");
     private readonly ListBox found = new() { Classes = { StyleClasses.Tree }, Height = 210 };
+    private readonly StackPanel methodPane;
+    private readonly TextBox method = new() { PlaceholderText = "A method: Calculator.Add, or Calculator.Add(int, int)" };
+    private readonly Button add = ToolButtons.Of(IconKeys.Add, "Add Breakpoint");
     private IReadOnlyList<string> known = [];
 
     public BreakpointsWindow(BreakpointStore store, Breakpoint? chosen, Func<Task<IReadOnlyList<string>>> exceptionTypes)
     {
         this.store = store;
         this.exceptionTypes = exceptionTypes;
-        Button add = ToolButtons.Of(IconKeys.Add, "Add CLR Exception Breakpoints");
         Button done = new() { Content = "Done", Classes = { StyleClasses.Primary } };
-        add.Click += (_, _) => ShowAdd();
+        Button import = new() { Content = "Import…" };
+        Button export = new() { Content = "Export…" };
+        ToolTip.SetTip(import, "Adds the breakpoints a file of them holds");
+        ToolTip.SetTip(export, "Writes every line, method and exception breakpoint to a file");
+        import.Click += (_, _) =>
+        {
+            properties.Apply(store);
+            ImportRequested?.Invoke(this, EventArgs.Empty);
+        };
+        export.Click += (_, _) =>
+        {
+            properties.Apply(store);
+            ExportRequested?.Invoke(this, EventArgs.Empty);
+        };
+        add.Click += (_, _) => ShowAddMenu();
         removeTool.Click += (_, _) => RemoveChosen();
         remove.Click += (_, _) => RemoveChosen();
         goTo.Click += (_, _) => GoTo();
@@ -312,7 +370,7 @@ public sealed class BreakpointsWindow : UserControl
         });
         ToolWindows.ListMenus.Attach(list, () => Chosen is not { } breakpoint ? [] :
         [
-            ToolWindows.ListMenus.Source(GoTo, breakpoint is LineBreakpoint ? null : Refusals.BreakpointOnNoLine),
+            ToolWindows.ListMenus.Source(GoTo, breakpoint is LineBreakpoint or MethodBreakpoint { Path: not null } ? null : Refusals.BreakpointOnNoLine),
             ToolWindows.ListMenus.Item(breakpoint.Enabled ? "Disable" : "Enable", () =>
             {
                 store.Update(breakpoint, !breakpoint.Enabled, breakpoint.Suspend, breakpoint.Condition, breakpoint.HitCondition, breakpoint.LogMessage);
@@ -341,6 +399,21 @@ public sealed class BreakpointsWindow : UserControl
         addType.Click += (_, _) => AddChosenType();
         StackPanel answers = DialogFooter.Popup(addType, ShowChosen);
         answers.HorizontalAlignment = HorizontalAlignment.Right;
+
+        // Add Method Breakpoint, in the window: Enter adds the method named.
+        method.AddHandler(KeyDownEvent, OnMethodKeyDown, RoutingStrategies.Tunnel);
+        Button addMethod = new() { Content = "Add", Classes = { StyleClasses.Primary } };
+        addMethod.Click += (_, _) => AddTypedMethod();
+        StackPanel methodAnswers = DialogFooter.Popup(addMethod, ShowChosen);
+        methodAnswers.HorizontalAlignment = HorizontalAlignment.Right;
+        TextBlock methodNote = FormRows.Note();
+        methodNote.Text = "Stops as each method of that name begins, in every module loaded; its parameters' types name one overload.";
+        methodPane = new StackPanel
+        {
+            Spacing = Gaps.Normal,
+            IsVisible = false,
+            Children = { new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = "Add Method Breakpoint" }, method, methodNote, methodAnswers },
+        };
         addPane = new StackPanel
         {
             Spacing = Gaps.Normal,
@@ -366,9 +439,11 @@ public sealed class BreakpointsWindow : UserControl
         };
         Grid.SetColumn(chosenPane, 1);
         Grid.SetColumn(addPane, 1);
+        Grid.SetColumn(methodPane, 1);
         body.Children.Add(listSide);
         body.Children.Add(chosenPane);
         body.Children.Add(addPane);
+        body.Children.Add(methodPane);
         Content = new Border
         {
             Classes = { StyleClasses.Popup },
@@ -385,7 +460,7 @@ public sealed class BreakpointsWindow : UserControl
                         Children =
                         {
                             Docked(new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { goTo, done } }, Dock.Right),
-                            remove,
+                            new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { remove, import, export } },
                         },
                     },
                 },
@@ -395,8 +470,20 @@ public sealed class BreakpointsWindow : UserControl
         Fill(chosen);
     }
 
-    /// <summary>The window is done with: closed, or a breakpoint's line to show.</summary>
-    public event EventHandler<LineBreakpoint?>? Closed;
+    /// <summary>The window is done with: closed, or a line or method breakpoint's place to show.</summary>
+    public event EventHandler<CodeBreakpoint?>? Closed;
+
+    /// <summary>Import… was pressed: the breakpoints of a file the person picks are to be added.</summary>
+    public event EventHandler? ImportRequested;
+
+    /// <summary>Export… was pressed: the breakpoints are to be written to a file the person names.</summary>
+    public event EventHandler? ExportRequested;
+
+    /// <summary>The + menu while it is open, for a test to choose in.</summary>
+    public ContextMenu? AddMenu { get; private set; }
+
+    /// <summary>The breakpoints as they stand now listed again, the one chosen kept: after an import.</summary>
+    public void Refill() => Fill(Chosen);
 
     public Breakpoint? Chosen => (list.SelectedItem as ListBoxItem)?.Tag as Breakpoint;
 
@@ -413,11 +500,65 @@ public sealed class BreakpointsWindow : UserControl
         Closed?.Invoke(this, null);
     }
 
+    /// <summary>The + menu, of the kinds of breakpoint it adds.</summary>
+    private void ShowAddMenu()
+    {
+        AddMenu?.Close();
+        ContextMenu menu = new()
+        {
+            ItemsSource = (Control[])[ToolWindows.ListMenus.Item(AddMethod, ShowAddMethod), ToolWindows.ListMenus.Item(AddExceptions, ShowAdd)],
+            Placement = Avalonia.Controls.PlacementMode.BottomEdgeAlignedLeft,
+        };
+        AddMenu = menu;
+        menu.Closed += (_, _) => AddMenu = AddMenu == menu ? null : AddMenu;
+        menu.Open(add);
+    }
+
+    /// <summary>Opens Add Method Breakpoint.</summary>
+    private void ShowAddMethod()
+    {
+        properties.Apply(store);
+        chosenPane.IsVisible = false;
+        addPane.IsVisible = false;
+        methodPane.IsVisible = true;
+        method.Text = string.Empty;
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => method.Focus(), Avalonia.Threading.DispatcherPriority.Loaded);
+    }
+
+    /// <summary>Adds the method named, and shows its properties.</summary>
+    private void AddTypedMethod()
+    {
+        if (method.Text is not { } text || text.Trim().Length == 0)
+        {
+            return;
+        }
+        MethodBreakpoint added = store.AddMethod(text);
+        methodPane.IsVisible = false;
+        Fill(added);
+        ListKeys.Hold(list);
+    }
+
+    private void OnMethodKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            AddTypedMethod();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            ShowChosen();
+            ListKeys.Hold(list);
+            e.Handled = true;
+        }
+    }
+
     /// <summary>Opens Add CLR Exception Breakpoints, the exception types read as it opens.</summary>
     private void ShowAdd()
     {
         properties.Apply(store);
         chosenPane.IsVisible = false;
+        methodPane.IsVisible = false;
         addPane.IsVisible = true;
         typed.Text = string.Empty;
         ShowFound();
@@ -498,11 +639,12 @@ public sealed class BreakpointsWindow : UserControl
     private void ShowChosen()
     {
         addPane.IsVisible = false;
+        methodPane.IsVisible = false;
         chosenPane.IsVisible = true;
         if (Chosen is { } breakpoint)
         {
             title.Text = breakpoint.Location;
-            properties.Show(breakpoint);
+            properties.Show(breakpoint, store);
             properties.IsVisible = true;
         }
         else
@@ -513,7 +655,7 @@ public sealed class BreakpointsWindow : UserControl
         bool removable = Chosen is { } chosen && Removable(chosen);
         remove.IsEnabled = removable;
         removeTool.IsEnabled = removable;
-        goTo.IsEnabled = Chosen is LineBreakpoint;
+        goTo.IsEnabled = Chosen is LineBreakpoint or MethodBreakpoint { Path: not null };
     }
 
     /// <summary>Takes the chosen breakpoint out, the keys going on to the row chosen next where the list had them, as its
@@ -537,10 +679,10 @@ public sealed class BreakpointsWindow : UserControl
 
     private void GoTo()
     {
-        if (Chosen is LineBreakpoint breakpoint)
+        if (Chosen is LineBreakpoint or MethodBreakpoint { Path: not null })
         {
             properties.Apply(store);
-            Closed?.Invoke(this, breakpoint);
+            Closed?.Invoke(this, (CodeBreakpoint)Chosen);
         }
     }
 
@@ -558,6 +700,14 @@ public sealed class BreakpointsWindow : UserControl
                 {
                     list.Items.Add(Item(breakpoint));
                 }
+            }
+        }
+        if (store.Methods.Count > 0)
+        {
+            list.Items.Add(Group(".NET Method Breakpoints"));
+            foreach (MethodBreakpoint breakpoint in store.Methods)
+            {
+                list.Items.Add(Item(breakpoint));
             }
         }
         if (store.Data.Count > 0)
@@ -608,11 +758,13 @@ public sealed class BreakpointsWindow : UserControl
                 store.Update(breakpoint, on.IsChecked == true, breakpoint.Suspend, breakpoint.Condition, breakpoint.HitCondition, breakpoint.LogMessage);
                 if (Chosen == breakpoint)
                 {
-                    properties.Show(breakpoint);
+                    properties.Show(breakpoint, store);
                 }
             }
         };
-        string what = breakpoint.LogMessage is { } message ? $"logs {message}" : breakpoint.Condition is { } condition ? $"when {condition}" : breakpoint.Suspend ? string.Empty : "does not stop";
+        string what = breakpoint.LogMessage is { } message ? $"logs {message}" : breakpoint.Condition is { } condition ? $"when {condition}"
+            : breakpoint is CodeBreakpoint { WaitsFor: { } waited } ? $"after {waited.Location}" : breakpoint is CodeBreakpoint { Temporary: true } ? "once"
+            : breakpoint.Suspend ? string.Empty : "does not stop";
         return new ListBoxItem
         {
             Tag = breakpoint,

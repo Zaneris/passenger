@@ -311,7 +311,8 @@ public sealed class DialogButtonsTests : IDisposable
         {
             Ui.Run(window, AppActions.ViewBreakpoints);
             BreakpointsWindow breakpoints = Assert.IsType<BreakpointsWindow>(window.Popup);
-            Ui.Click(breakpoints.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Add CLR Exception Breakpoints"));
+            Ui.Click(breakpoints.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Add Breakpoint"));
+            Ui.Choose(breakpoints.AddMenu, BreakpointsWindow.AddExceptions);
             InPlatformOrder(window, "Add CLR Exception Breakpoints", Shown(breakpoints, "Add"), Shown(breakpoints, "Cancel"));
             breakpoints.Close();
             Ui.Settle();

@@ -27,11 +27,12 @@ public enum LineMarkKind
 }
 
 /// <summary>A mark on a line (from zero) of a file. A breakpoint with a condition or hit count shows a question mark on its
-/// dot, one that does not stop (a tracepoint) is amber, and a muted one (Mute Breakpoints) is grey. A breakpoint on part of
-/// its line (an XAML attribute) has that <see cref="Range"/> tinted rather than the whole line, and its dot only where the
-/// line has no breakpoint of its own.</summary>
+/// dot, a temporary one a 1, one waiting for another a chevron, one that does not stop (a tracepoint) is amber, and a muted
+/// one (Mute Breakpoints) is grey. A breakpoint on part of its line (an XAML attribute) has that <see cref="Range"/> tinted
+/// rather than the whole line, and its dot only where the line has no breakpoint of its own. A method breakpoint, on the
+/// line declaring its method, is a diamond, which tints nothing and gives way to the line's own dot.</summary>
 public readonly record struct LineMark(int Line, LineMarkKind Kind, bool Conditional = false, bool Tracepoint = false, bool Muted = false,
-    TextRange? Range = null);
+    TextRange? Range = null, bool Temporary = false, bool Waiting = false, bool Method = false);
 
 /// <summary>The debugger's marks as the gutter draws them: a breakpoint's dot over its line's number, the execution point's
 /// arrow right of it, and the tints of their lines, each looked up once a frame for the lines on screen.</summary>
@@ -70,8 +71,9 @@ public sealed class DebugMarks
                 executing.Add(mark.Line);
                 continue;
             }
-            // The line's own breakpoint gives the dot over one on a part of it.
-            if (!breakpoints.TryGetValue(mark.Line, out LineMark there) || (there.Range is not null && mark.Range is null))
+            // The line's own breakpoint gives the dot over one on a part of it, and over a method's diamond.
+            if (!breakpoints.TryGetValue(mark.Line, out LineMark there) || (there.Range is not null && mark.Range is null && !mark.Method)
+                || (there.Method && !mark.Method))
             {
                 breakpoints[mark.Line] = mark;
             }
@@ -115,37 +117,51 @@ public sealed class DebugMarks
         }
     }
 
-    /// <summary>Whether a breakpoint tints what it is on: one that stops and can.</summary>
-    private static bool Tinted(LineMark mark) => !mark.Tracepoint && !mark.Muted && mark.Kind is LineMarkKind.Breakpoint or LineMarkKind.BreakpointBound;
+    /// <summary>Whether a breakpoint tints what it is on: one that stops and can, at a line of its own.</summary>
+    private static bool Tinted(LineMark mark) => !mark.Tracepoint && !mark.Muted && !mark.Method && mark.Kind is LineMarkKind.Breakpoint or LineMarkKind.BreakpointBound;
 
-    /// <summary>A breakpoint's dot, centred at a point: filled when set, with a tick once bound, a ring when it cannot bind
-    /// or is off; a question mark on it for a condition, amber for a tracepoint, grey muted.</summary>
+    /// <summary>A breakpoint's dot (a method breakpoint's diamond), centred at a point: filled when set, with a tick once bound,
+    /// a ring when it cannot bind or is off; a chevron on it while it waits for another, else a 1 for a temporary one, else a
+    /// question mark for a condition; amber for a tracepoint, grey muted.</summary>
     public static void DrawBreakpoint(GutterFrame frame, LineMark mark, double x, double y)
     {
-        DrawingContext context = frame.Context;
         double radius = Math.Min(frame.LineHeight - 6, 14) / 2;
-        Point centre = new(x, y);
         string fillKey = mark.Muted ? TokenKeys.Editor_BreakpointMuted : mark.Tracepoint ? TokenKeys.Editor_Tracepoint : TokenKeys.Editor_Breakpoint;
         IBrush fill = frame.Brush(fillKey);
         if (mark.Muted && mark.Kind == LineMarkKind.BreakpointDisabled)
         {
-            context.DrawEllipse(null, frame.Pen(fillKey, 1.5), centre, radius - 0.75, radius - 0.75);
+            Dot(frame, mark, null, frame.Pen(fillKey, 1.5), x, y, radius - 0.75);
             return;
         }
-        if (mark.Conditional && mark.Kind is LineMarkKind.Breakpoint or LineMarkKind.BreakpointBound)
+        if (mark.Kind is LineMarkKind.Breakpoint or LineMarkKind.BreakpointBound && (mark.Waiting || mark.Temporary || mark.Conditional))
         {
-            context.DrawEllipse(fill, null, centre, radius, radius);
-            TextLine question = frame.Label("?", TokenKeys.Editor_Background, 0.75, bold: true);
-            question.Draw(context, new Point(x - question.WidthIncludingTrailingWhitespace / 2, y - question.Height / 2));
+            Dot(frame, mark, fill, null, x, y, radius);
+            if (mark.Waiting)
+            {
+                GutterShape chevron = new(nameof(LineMark.Waiting), radius);
+                if (!frame.TryShape(chevron, out StreamGeometry? waits))
+                {
+                    waits = frame.AddShape(chevron);
+                    using StreamGeometryContext path = waits.Open();
+                    path.BeginFigure(new Point(-radius * 0.2, -radius * 0.42), false);
+                    path.LineTo(new Point(radius * 0.25, 0));
+                    path.LineTo(new Point(-radius * 0.2, radius * 0.42));
+                    path.EndFigure(false);
+                }
+                frame.DrawShape(waits, null, frame.Pen(TokenKeys.Editor_Background, 1.6, PenLineCap.Round, PenLineJoin.Round), x, y);
+                return;
+            }
+            TextLine label = frame.Label(mark.Temporary ? "1" : "?", TokenKeys.Editor_Background, 0.75, bold: true);
+            label.Draw(frame.Context, new Point(x - label.WidthIncludingTrailingWhitespace / 2, y - label.Height / 2));
             return;
         }
         switch (mark.Kind)
         {
             case LineMarkKind.Breakpoint:
-                context.DrawEllipse(fill, null, centre, radius, radius);
+                Dot(frame, mark, fill, null, x, y, radius);
                 break;
             case LineMarkKind.BreakpointBound:
-                context.DrawEllipse(fill, null, centre, radius, radius);
+                Dot(frame, mark, fill, null, x, y, radius);
                 GutterShape key = new(nameof(LineMarkKind.BreakpointBound), radius);
                 if (!frame.TryShape(key, out StreamGeometry? tick))
                 {
@@ -159,12 +175,36 @@ public sealed class DebugMarks
                 frame.DrawShape(tick, null, frame.Pen(TokenKeys.Editor_Background, 1.6, PenLineCap.Round, PenLineJoin.Round), x, y);
                 break;
             case LineMarkKind.BreakpointInvalid:
-                context.DrawEllipse(null, frame.Pen(fillKey, 1.5), centre, radius - 0.75, radius - 0.75);
+                Dot(frame, mark, null, frame.Pen(fillKey, 1.5), x, y, radius - 0.75);
                 break;
             default:
-                context.DrawEllipse(null, frame.Pen(TokenKeys.Editor_LineNumber, 1.5), centre, radius - 0.75, radius - 0.75);
+                Dot(frame, mark, null, frame.Pen(TokenKeys.Editor_LineNumber, 1.5), x, y, radius - 0.75);
                 break;
         }
+    }
+
+    /// <summary>A breakpoint's own shape of a radius: a method breakpoint's diamond, any other's circle.</summary>
+    private static void Dot(GutterFrame frame, LineMark mark, IBrush? fill, IPen? pen, double x, double y, double radius)
+    {
+        if (!mark.Method)
+        {
+            frame.Context.DrawEllipse(fill, pen, new Point(x, y), radius, radius);
+            return;
+        }
+        GutterShape key = new(nameof(LineMark.Method), radius);
+        if (!frame.TryShape(key, out StreamGeometry? diamond))
+        {
+            diamond = frame.AddShape(key);
+            using StreamGeometryContext path = diamond.Open();
+            // A little past the circle's radius, so the diamond inks about as much as a dot.
+            double reach = radius * 1.2;
+            path.BeginFigure(new Point(0, -reach), true);
+            path.LineTo(new Point(reach, 0));
+            path.LineTo(new Point(0, reach));
+            path.LineTo(new Point(-reach, 0));
+            path.EndFigure(true);
+        }
+        frame.DrawShape(diamond, fill, pen, x, y);
     }
 
     /// <summary>The execution point's arrow, from a column's left edge.</summary>

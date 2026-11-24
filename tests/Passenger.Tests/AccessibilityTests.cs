@@ -586,9 +586,13 @@ public sealed class AccessibilityTests : IDisposable
         Named(new GitQuestionDialog(new GitQuestion(GitQuestionKind.Passphrase, "Enter passphrase for key '/keys/id': ", "/keys/id"), null), "Passphrase");
         Named(new CommitSigningDialog(new SigningSetup(false, SigningFormat.Ssh, null), null, Path.Combine(folder, "allowed_signers")), "Key");
         Named(new CloneDialog(folder), "URL", "Directory");
+        BreakpointStore store = new();
         BreakpointProperties breakpoint = new();
-        breakpoint.Show(new ExceptionBreakpoint("System.InvalidOperationException"));
+        breakpoint.Show(new ExceptionBreakpoint("System.InvalidOperationException"), store);
         Named(new Window { Title = "Breakpoints", Width = 640, SizeToContent = SizeToContent.Height, Content = breakpoint }, "Condition", "Hit count", "Log message");
+        BreakpointProperties line = new();
+        line.Show(store.Set(Path.Combine(folder, "Program.cs"), 3), store);
+        Named(new Window { Title = "Breakpoint", Width = 640, SizeToContent = SizeToContent.Height, Content = line }, "Condition", "Hit count", "Log message", "Wait for", "Remove once hit");
     }
 
     /// <summary>The refactorings that ask their options in a dialog, as a screen reader meets each: every field named by the

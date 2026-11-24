@@ -142,8 +142,9 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
     /// <summary>Conditions typed into a breakpoint's popup, a tracepoint logging and running on, Run to Cursor past a
     /// false condition or a tracepoint, the Breakpoints window listing, turning off, adding and keeping exception
-    /// breakpoints, an exception breakpoint stopping by its type, its condition and its handler options, and Mute
-    /// letting a run pass every breakpoint until unmuted.</summary>
+    /// breakpoints, an exception breakpoint stopping by its type, its condition and its handler options, Mute letting a run
+    /// pass every breakpoint until unmuted, a temporary breakpoint and one waiting for another, method breakpoints, and the
+    /// breakpoints exported to a file and imported again.</summary>
     [AvaloniaFact]
     public async Task A_breakpoints_condition_tracepoint_exception_type_and_mute_decide_where_a_run_stops()
     {
@@ -201,6 +202,157 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             OpenWindows.CloseAll();
             return Task.CompletedTask;
         });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a temporary breakpoint stops once and goes and one waiting for a tracepoint stops only after it", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_temporary_breakpoint_stops_once_and_goes_and_one_waiting_for_a_tracepoint_stops_only_after_it();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a method breakpoint set at its declaration stops as each call begins", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_method_breakpoint_set_at_its_declaration_stops_as_each_call_begins();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("breakpoints exported to a file come back as they were when imported", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Breakpoints_exported_to_a_file_come_back_as_they_were_when_imported();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>A temporary breakpoint set by its action stops at the loop's first turn and is gone from the gutter; a
+    /// breakpoint whose popup has it wait for a tracepoint that holds at the third turn passes the turns before it by and
+    /// stops at the third and fourth, the tracepoint going on.</summary>
+    private void A_temporary_breakpoint_stops_once_and_goes_and_one_waiting_for_a_tracepoint_stops_only_after_it()
+    {
+        Write("Program.cs", "int total = 0;\nfor (int i = 1; i <= 4; i++)\n{\n    total += i;\n    Console.WriteLine($\"at {i}\");\n    total -= 0;\n}\n"
+            + "Console.WriteLine($\"total {total}\");\n");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(3, 4));
+        Ui.Run(window, AppActions.ToggleTemporaryBreakpoint);
+        Assert.Contains(new LineMark(3, LineMarkKind.Breakpoint, Temporary: true), editor.LineMarks);
+
+        editor.GoTo(new TextPosition(4, 4));
+        Ui.Run(window, AppActions.EditBreakpoint);
+        BreakpointPopup tracepoint = Assert.IsType<BreakpointPopup>(window.Popup);
+        Ui.Settle();
+        window.KeyTextInput("i == 3");
+        Ui.Click(tracepoint.GetVisualDescendants().OfType<CheckBox>().First(c => (c.Content as string) == "Suspend execution"));
+        Ui.Click(Button(tracepoint, "Done"));
+        editor.GoTo(new TextPosition(5, 4));
+        Ui.Run(window, AppActions.EditBreakpoint);
+        BreakpointPopup waiting = Assert.IsType<BreakpointPopup>(window.Popup);
+        Ui.Settle();
+        ComboBox waitFor = waiting.GetVisualDescendants().OfType<ComboBox>().Single();
+        Assert.Equal([BreakpointProperties.WaitsForNone, "Program.cs:4", "Program.cs:5"], waitFor.Items.OfType<string>());
+        waitFor.SelectedItem = "Program.cs:5";
+        Ui.Click(Button(waiting, "Done"));
+        LineBreakpoint traced = window.Debugger.Breakpoints.In(Program).Single(b => b.Line == 4);
+        Assert.Same(traced, window.Debugger.Breakpoints.In(Program).Single(b => b.Line == 5).WaitsFor);
+        Assert.Contains(new LineMark(5, LineMarkKind.Breakpoint, Waiting: true), editor.LineMarks);
+
+        StartDebugging(window);
+        WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Paused && Value(window, "i") is not null, "the temporary breakpoint's stop");
+        Assert.Equal("1", Value(window, "i"));
+        Ui.WaitFor(() => window.Debugger.Breakpoints.In(Program).All(b => b.Line != 3), "the temporary breakpoint gone once it stopped");
+        Assert.DoesNotContain(editor.LineMarks, m => m.Line == 3 && m.Kind != LineMarkKind.ExecutionPoint);
+        foreach (string turn in new[] { "3", "4" })
+        {
+            Ui.Run(window, AppActions.Resume);
+            WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Paused && Value(window, "i") is not null, $"the waiting breakpoint's stop at turn {turn}");
+            Assert.True(Value(window, "i") == turn && window.BottomPanel.Debug.Frames[0].Line == 6,
+                $"The program stopped at line {window.BottomPanel.Debug.Frames[0].Line} with i {Value(window, "i")}, where the breakpoint waiting for the tracepoint stops at line 6 on turn {turn}");
+        }
+        Ui.Run(window, AppActions.Resume);
+        WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Ended, "the program to run to its end");
+        Assert.Contains("total 10", window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>Toggle Method Breakpoint at a method's declaration marks the line with a diamond and stops as each call of the
+    /// method begins, with its arguments; the Breakpoints window lists it by its name, and the action again takes it away.</summary>
+    private void A_method_breakpoint_set_at_its_declaration_stops_as_each_call_begins()
+    {
+        Write("Program.cs", "int total = Sum.Add(1, 2) + Sum.Add(3, 4);\nConsole.WriteLine($\"total {total}\");\n\nstatic class Sum\n{\n"
+            + "    public static int Add(int a, int b)\n    {\n        return a + b;\n    }\n}\n");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(5, 24));
+        Assert.True(window.Perform(AppActions.ToggleMethodBreakpoint), $"Toggle Method Breakpoint did not run: {Ui.Said(window)}");
+        MethodBreakpoint add = Assert.Single(window.Debugger.Breakpoints.Methods);
+        Assert.Equal(("Sum.Add(int, int)", 5), (add.Name, add.Line));
+        Assert.Contains(new LineMark(5, LineMarkKind.Breakpoint, Method: true), editor.LineMarks);
+        editor.GoTo(new TextPosition(1, 0));
+        Assert.Equal(Refusals.NoMethodAtCaret, window.Actions.WhyNot(AppActions.ToggleMethodBreakpoint, window.Actions.Context()));
+
+        StartDebugging(window);
+        foreach (string a in new[] { "1", "3" })
+        {
+            WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Paused && Value(window, "a") is not null, $"the method breakpoint's stop with a {a}");
+            Assert.True(Value(window, "a") == a && window.BottomPanel.Debug.Frames[0].Line == 7,
+                $"The program stopped at line {window.BottomPanel.Debug.Frames[0].Line} with a {Value(window, "a")}, where Add's breakpoint stops as its call with a {a} begins");
+            Assert.Contains(new LineMark(5, LineMarkKind.BreakpointBound, Method: true), editor.LineMarks);
+            Ui.Run(window, AppActions.Resume);
+        }
+        WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Ended, "the program to run to its end");
+
+        BreakpointsWindow breakpoints = OpenBreakpoints(window);
+        Assert.Contains("Sum.Add(int, int)", breakpoints.Listed.Select(b => b.Location));
+        breakpoints.Close();
+        editor.GoTo(new TextPosition(7, 8));
+        Assert.True(window.Perform(AppActions.ToggleMethodBreakpoint), $"Toggle Method Breakpoint did not run: {Ui.Said(window)}");
+        Assert.Empty(window.Debugger.Breakpoints.Methods);
+        window.Close();
+    }
+
+    /// <summary>A temporary line breakpoint, a method breakpoint added by its name in the Breakpoints window and a line
+    /// breakpoint waiting for it, exported to a file, are each set again as they were once taken away and the file imported;
+    /// imported again, it adds nothing.</summary>
+    private void Breakpoints_exported_to_a_file_come_back_as_they_were_when_imported()
+    {
+        string exported = Path.Combine(PathNames.Canonical(Fresh()), "breakpoints.json");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        window.PickBreakpointsExport = () => Task.FromResult<string?>(exported);
+        window.PickBreakpointsImport = () => Task.FromResult<string?>(exported);
+        editor.GoTo(new TextPosition(3, 4));
+        Ui.Run(window, AppActions.ToggleTemporaryBreakpoint);
+        BreakpointsWindow breakpoints = OpenBreakpoints(window);
+        Ui.Click(breakpoints.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Add Breakpoint"));
+        Ui.Choose(breakpoints.AddMenu, BreakpointsWindow.AddMethod);
+        window.KeyTextInput("Program.Main");
+        Ui.Press(window, "Enter");
+        MethodBreakpoint main = Assert.IsType<MethodBreakpoint>(breakpoints.Chosen);
+        Assert.Equal("Program.Main", main.Name);
+        breakpoints.Close();
+        editor.GoTo(new TextPosition(5, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        BreakpointStore store = window.Debugger.Breakpoints;
+        store.Arrange(store.In(Program).Single(b => b.Line == 5), temporary: false, main);
+
+        breakpoints = OpenBreakpoints(window);
+        Ui.Click(Button(breakpoints, "Export…"));
+        Ui.WaitFor(() => File.Exists(exported), "the breakpoints exported");
+        string text = File.ReadAllText(exported);
+        Assert.Contains("\"file\": \"Program.cs\"", text, StringComparison.Ordinal);
+        Assert.Contains("\"temporary\": true", text, StringComparison.Ordinal);
+        Assert.Contains("\"method\": \"Program.Main\"", text, StringComparison.Ordinal);
+        breakpoints.Close();
+
+        foreach (CodeBreakpoint set in store.All.Concat<CodeBreakpoint>(store.Methods).ToList())
+        {
+            store.Remove(set);
+        }
+        Assert.True(window.Perform(AppActions.ImportBreakpoints), $"Import Breakpoints did not run: {Ui.Said(window)}");
+        Ui.WaitFor(() => store.Methods.Count == 1, () => $"the file's breakpoints imported: {Ui.Said(window)}");
+        Assert.Equal([(3, true, null), (5, false, "Program.Main")], store.In(Program).Select(b => (b.Line, b.Temporary, b.WaitsFor?.Location)));
+        Assert.True(window.Perform(AppActions.ImportBreakpoints), $"Import Breakpoints did not run: {Ui.Said(window)}");
+        Ui.WaitFor(() => Ui.Said(window).Contains("held no breakpoint that is not set already", StringComparison.Ordinal), () => $"the second import adding nothing: {Ui.Said(window)}");
+        Assert.Equal(2, store.In(Program).Count);
+        window.Close();
     }
 
     /// <summary>Step Over from a floated Debug window, dragging the execution arrow past a loop, Smart Step Into
@@ -1605,7 +1757,8 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// Enter on the type it offers first, which is then the one chosen.</summary>
     private static ExceptionBreakpoint AddException(MainWindow window, BreakpointsWindow breakpoints, string typed, string type)
     {
-        Ui.Click(breakpoints.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Add CLR Exception Breakpoints"));
+        Ui.Click(breakpoints.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Add Breakpoint"));
+        Ui.Choose(breakpoints.AddMenu, BreakpointsWindow.AddExceptions);
         window.KeyTextInput(typed);
         Ui.WaitFor(() => breakpoints.Offered.FirstOrDefault() == type, $"{type} offered first for \"{typed}\", not [{string.Join(", ", breakpoints.Offered.Take(5))}]");
         Ui.Press(window, "Enter");

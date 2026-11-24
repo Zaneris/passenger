@@ -1873,7 +1873,15 @@ public sealed class DebugController : IDisposable
                 d.Breakpoints.Toggle(c.File!.Path, c.Caret.Line);
             }
         }, (_, c) => Refusals.NeedsLines(c), new("Run", 2, 0));
-        Add(AppActions.ToggleBreakpointEnabled, "Toggle Breakpoint Enabled", (d, c) => d.Breakpoints.ToggleEnabled(c.File!.Path, c.Caret.Line), (_, c) => Refusals.NeedsLines(c), new("Run", 2, 1));
+        // Taken away once it takes a hit, so it stops (or logs) once.
+        Add(AppActions.ToggleTemporaryBreakpoint, "Toggle Temporary Breakpoint", (d, c) => d.Breakpoints.ToggleTemporary(c.File!.Path, c.Caret.Line),
+            (_, c) => Refusals.NeedsLines(c), new("Run", 2, 1));
+        Add(AppActions.ToggleMethodBreakpoint, "Toggle Method Breakpoint", (d, c) =>
+        {
+            MethodBreakpoints.Method method = MethodAtCaret(c)!.Value;
+            d.Breakpoints.ToggleMethod(method.Name, c.File!.Path, method.Line);
+        }, (_, c) => Refusals.NeedsLines(c) ?? (MethodAtCaret(c) is null ? Refusals.NoMethodAtCaret : null), new("Run", 2, 2));
+        Add(AppActions.ToggleBreakpointEnabled, "Toggle Breakpoint Enabled", (d, c) => d.Breakpoints.ToggleEnabled(c.File!.Path, c.Caret.Line), (_, c) => Refusals.NeedsLines(c), new("Run", 2, 3));
         Add(AppActions.Resume, "Resume Program", (d, c) =>
         {
             if (!d.IsDebugging)
@@ -1913,7 +1921,7 @@ public sealed class DebugController : IDisposable
         // Every breakpoint stays as it is, and none stops the program until it is chosen again.
         actions.Add(new IdeAction(AppActions.MuteBreakpoints, "Mute Breakpoints", "Debug", _ => current().Breakpoints.SetMuted(!current().Breakpoints.Muted))
         {
-            Menus = [new("Run", 2, 4)],
+            Menus = [new("Run", 2, 6)],
             IsChecked = _ => current().Breakpoints.Muted,
         });
 
@@ -1926,6 +1934,13 @@ public sealed class DebugController : IDisposable
     public static (string Name, TextPosition At)? AttributeAtCaret(ActionContext context) =>
         context.File is { } file && XamlBreakpoints.Compiled(file.Path)
             ? XamlBreakpoints.AttributeAt(file.Text.Snapshot, file.Text.Snapshot.GetOffset(context.Caret))
+            : null;
+
+    /// <summary>The C# method whose declaration holds the caret, which Toggle Method Breakpoint sets a breakpoint on; null
+    /// elsewhere.</summary>
+    public static MethodBreakpoints.Method? MethodAtCaret(ActionContext context) =>
+        context.File?.Syntax?.Current is { } parsed && ReferenceEquals(parsed.Text, context.File.Text.Snapshot)
+            ? MethodBreakpoints.At(parsed, parsed.Text.GetOffset(context.Caret))
             : null;
 
     /// <summary>The C# lambda the caret is in whose body begins on the caret's line after its code does
@@ -2188,6 +2203,13 @@ public sealed class DebugController : IDisposable
                 }
             }
         }
+        foreach (MethodBreakpoint breakpoint in Breakpoints.Methods)
+        {
+            if (breakpoint.Path is { } path && BreakpointStates.Problem(breakpoint, debugging, Breakpoints.Muted) is { } why)
+            {
+                problems.Add(new Problem(ProblemSeverity.Warning, $"{why} ({breakpoint.Name})", null, path, new TextPosition(breakpoint.Line, 0), null));
+            }
+        }
         return problems;
     }
 
@@ -2202,6 +2224,11 @@ public sealed class DebugController : IDisposable
         foreach (LineBreakpoint breakpoint in Breakpoints.In(path).Where(b => b.Line == line))
         {
             words.AddRange(BreakpointStates.Words(breakpoint, IsDebugging, Breakpoints.Muted, IsDebugging ? null : BreakpointStates.UnrunAt(parsed, breakpoint)));
+        }
+        foreach (MethodBreakpoint breakpoint in Breakpoints.MethodsIn(path).Where(m => m.Line == line))
+        {
+            words.Add(breakpoint.Name);
+            words.AddRange(BreakpointStates.Words(breakpoint, IsDebugging, Breakpoints.Muted));
         }
         return words.Count == 0 ? null : words;
     }
@@ -3362,23 +3389,29 @@ public sealed class DebugController : IDisposable
         TextSnapshot text = document.Text.Snapshot;
         ParsedText? parsed = Breakpoints.In(document.Path).Any(b => b.Column is not null) && document.Syntax?.Current is { } current
             && ReferenceEquals(current.Text, text) ? current : null;
-        List<LineMark> marks = [.. Breakpoints.In(document.Path).Select(b => new LineMark(b.Line, b switch
+        List<LineMark> marks = [.. Breakpoints.In(document.Path).Select(b => new LineMark(b.Line, KindOf(b), Conditional: b.Condition is not null || b.HitCondition is not null,
+            Tracepoint: !b.Suspend, Muted: muted,
+            // An attribute's or a lambda's breakpoint tints the attribute or the lambda; nothing once it is edited away.
+            Range: b.Attribute is { } attribute ? XamlBreakpoints.AttributeRange(text, b.Line, attribute, b.AttributeColumn) ?? new TextRange(0, 0)
+                : b.Column is int column ? (parsed is not null && LambdaBreakpoints.Of(parsed, b.Line, column) is { } lambda ? LambdaBreakpoints.Tinted(text, lambda) : new TextRange(0, 0))
+                : null,
+            Temporary: b.Temporary, Waiting: b.WaitsFor is not null)),
+            .. Breakpoints.MethodsIn(document.Path).Where(m => m.Line < text.LineCount).Select(m => new LineMark(m.Line, KindOf(m), Conditional: m.Condition is not null || m.HitCondition is not null,
+                Tracepoint: !m.Suspend, Muted: muted, Temporary: m.Temporary, Waiting: m.WaitsFor is not null, Method: true))];
+        if (executionPoint is { } point && point.Path == document.Path)
+        {
+            marks.Add(new LineMark(Current(point.Path, point.Line), LineMarkKind.ExecutionPoint));
+        }
+        document.LineMarks = marks;
+
+        LineMarkKind KindOf(Breakpoint b) => b switch
         {
             { Enabled: false } => LineMarkKind.BreakpointDisabled,
             _ when muted => LineMarkKind.Breakpoint,
             { Status: BreakpointStatus.Bound } when debugging => LineMarkKind.BreakpointBound,
             { Status: BreakpointStatus.Invalid } when debugging => LineMarkKind.BreakpointInvalid,
             _ => LineMarkKind.Breakpoint,
-        }, Conditional: b.Condition is not null || b.HitCondition is not null, Tracepoint: !b.Suspend, Muted: muted,
-            // An attribute's or a lambda's breakpoint tints the attribute or the lambda; nothing once it is edited away.
-            Range: b.Attribute is { } attribute ? XamlBreakpoints.AttributeRange(text, b.Line, attribute, b.AttributeColumn) ?? new TextRange(0, 0)
-                : b.Column is int column ? (parsed is not null && LambdaBreakpoints.Of(parsed, b.Line, column) is { } lambda ? LambdaBreakpoints.Tinted(text, lambda) : new TextRange(0, 0))
-                : null))];
-        if (executionPoint is { } point && point.Path == document.Path)
-        {
-            marks.Add(new LineMark(Current(point.Path, point.Line), LineMarkKind.ExecutionPoint));
-        }
-        document.LineMarks = marks;
+        };
     }
 
     /// <summary>Carries the stop shown in a file through an edit to it: the arrow and the frames' rows from the built lines.
