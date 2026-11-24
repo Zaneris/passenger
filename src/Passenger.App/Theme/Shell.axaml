@@ -1470,6 +1470,7 @@
     <Style Selector="Button.firstStartTile">
         <Setter Property="Padding" Value="8" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="VerticalAlignment" Value="Stretch" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="VerticalContentAlignment" Value="Top" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.CardRadius}" />
@@ -1495,8 +1496,12 @@
         <Setter Property="Orientation" Value="Horizontal" />
         <Setter Property="Spacing" Value="6" />
     </Style>
-    <Style Selector="Button.firstStartTile StackPanel.firstStartCaption">
+    <Style Selector="Grid.firstStartCaption">
         <Setter Property="Margin" Value="2,12,2,0" />
+    </Style>
+    <!-- A tile's tick before its name, a gap after it only while it shows. -->
+    <Style Selector="Grid.firstStartCaption > PathIcon.firstStartCheck">
+        <Setter Property="Margin" Value="0,0,6,0" />
     </Style>
     <Style Selector="PathIcon.firstStartCheck">
         <Setter Property="Width" Value="14" />
@@ -1513,7 +1518,8 @@
         <Setter Property="Margin" Value="2,2,2,2" />
         <Setter Property="Foreground" Value="{DynamicResource Passenger.TextMuted}" />
     </Style>
-    <!-- The small choice under Dark and Light to follow the system: a quiet button, ringed in the accent while in force. -->
+    <!-- A small choice under the tiles (following the system's dark or light, Vim mode over the keymaps): a quiet button,
+         ringed in the accent while in force. -->
     <Style Selector="Button.firstStartSystem">
         <Setter Property="Margin" Value="0,20,0,0" />
         <Setter Property="Padding" Value="12,0" />

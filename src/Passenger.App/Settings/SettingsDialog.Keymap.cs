@@ -195,6 +195,21 @@ public sealed partial class SettingsDialog
         }
     }
 
+    /// <summary>A shortcut as the Keymap page shows it, in a box of its own, which the first start's keymaps show too.</summary>
+    public static Border KeyBox(string keys)
+    {
+        Border box = new()
+        {
+            Classes = { StyleClasses.Box },
+            Padding = new Thickness(Gaps.Small, 0),
+            Margin = new Thickness(0, Gaps.Hair, Gaps.Tight, Gaps.Hair),
+            // Wrapped after a chord's first key where a narrow place has no room for both.
+            Child = new TextBlock { Classes = { StyleClasses.Caption }, Text = keys, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap },
+        };
+        box.Bind(Border.BackgroundProperty, box.GetResourceObservable(TokenKeys.Selected));
+        return box;
+    }
+
     /// <summary>Whether a search's words find the keymap's choice at the Keymap page's top.</summary>
     private static bool FindsKeymapChoice(string[] words) => words.Length > 0
         && words.All(w => KeymapWords.Contains(w, StringComparison.OrdinalIgnoreCase)
@@ -366,9 +381,7 @@ public sealed partial class SettingsDialog
                 row.Keys.Children.Clear();
                 foreach (string keys in shown)
                 {
-                    Border box = new() { Classes = { StyleClasses.Box }, Padding = new Thickness(Gaps.Small, 0), Margin = new Thickness(0, Gaps.Hair, Gaps.Tight, Gaps.Hair), Child = new TextBlock { Classes = { StyleClasses.Caption }, Text = keys, VerticalAlignment = VerticalAlignment.Center } };
-                    box.Bind(Border.BackgroundProperty, box.GetResourceObservable(TokenKeys.Selected));
-                    row.Keys.Children.Add(box);
+                    row.Keys.Children.Add(KeyBox(keys));
                 }
                 int option = options.FindIndex(o => o.Page == KeymapPage && o.Action == id);
                 options[option] = options[option] with { Words = $"{KeymapPage} {row.Action.Title} {RowWords(row.Action, shown)}" };

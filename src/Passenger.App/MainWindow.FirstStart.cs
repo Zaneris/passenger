@@ -1,14 +1,15 @@
 using Avalonia.Controls;
 using Passenger.App.Updates;
+using Passenger.Editor;
 using Passenger.App.Welcome;
 
 namespace Passenger.App;
 
-/// <summary>The first start's question of the theme and of dark or light (<see cref="FirstStartView"/>), over the person's
-/// window before anything else when the state it keeps is new, or when a start an agent made of a new state left it to the
-/// person; never in a window nobody sees or that keeps no settings. Each answer is a change of the window's settings, put in
-/// force at once and kept as Settings keeps it. While it shows, the title bar holds only the window's own buttons and
-/// nothing under the page takes the keys.</summary>
+/// <summary>The first start's question of the theme, of dark or light and of the keymap (<see cref="FirstStartView"/>), over
+/// the person's window before anything else when the state it keeps is new, or when a start an agent made of a new state left
+/// it to the person; never in a window nobody sees or that keeps no settings. Each answer is a change of the window's
+/// settings, put in force at once and kept as Settings keeps it. While it shows, the title bar holds only the window's own
+/// buttons and nothing under the page takes the keys.</summary>
 public partial class MainWindow
 {
     private FirstStartView? firstStart;
@@ -53,7 +54,7 @@ public partial class MainWindow
         {
             return shown;
         }
-        FirstStartView page = new(() => settingsStore.Effective, change => settingsStore.Update(change));
+        FirstStartView page = new(() => settingsStore.Effective, change => settingsStore.Update(change), id => actions![id]?.Title ?? id);
         page.Ended += (_, _) => EndFirstStart();
         Grid.SetRow(page, 1);
         Grid.SetRowSpan(page, 2);
@@ -66,7 +67,7 @@ public partial class MainWindow
         ToolbarEnd.IsVisible = false;
         Rows.Children.Add(page);
         firstStart = page;
-        IdeErrors.Write("First start: the theme and dark or light asked");
+        IdeErrors.Write("First start: the theme, dark or light and the keymap asked");
         return page;
     }
 
@@ -86,7 +87,7 @@ public partial class MainWindow
         }
         ToolbarStart.IsVisible = true;
         ToolbarEnd.IsVisible = true;
-        IdeErrors.Write($"First start: {settings.Look?.Shown ?? "Passenger"}, {settings.Theme}");
+        IdeErrors.Write($"First start: {settings.Look?.Shown ?? "Passenger"}, {settings.Theme}, {DefaultKeymaps.NameOf(settings.Keymap)}{(settings.VimMode ? " with Vim mode" : "")}");
         if (Editors.Active is not null)
         {
             FocusEditor();

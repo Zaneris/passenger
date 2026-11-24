@@ -15,11 +15,11 @@ using Passenger.Core;
 namespace Passenger.App.Welcome;
 
 /// <summary>The first start's question, laid over the window before anything else: the theme, chosen from large pictures of
-/// Passenger in each (its own and every theme it carries), then dark or light, chosen from pictures of the theme just chosen
-/// in each, or the system's by a small choice under them. A click or Enter chooses, put in force at once through
-/// <c>change</c>, so the page itself is drawn in it; the arrow keys move between the choices, Back returns to the themes,
-/// and Escape or Keep the Defaults ends it keeping what is in force. Every key is the page's while it shows, so nothing of
-/// the IDE under it runs.</summary>
+/// Passenger in each (its own and every theme it carries); dark or light, chosen from pictures of the theme just chosen in
+/// each, or the system's by a small choice under them; then the keymap, from a tile of each Settings offers showing its own
+/// keys for a few actions, Vim mode over it a small choice under them. A click or Enter chooses, put in force at once through
+/// <c>change</c>, so the page is drawn in it; the arrow keys move between the choices, Back returns to the question before,
+/// and Escape or Keep the Defaults ends it keeping what is in force. Every key is the page's while it shows.</summary>
 public sealed class FirstStartView : UserControl, IOwnKeys
 {
     /// <summary>The gap between two tiles.</summary>
@@ -28,6 +28,7 @@ public sealed class FirstStartView : UserControl, IOwnKeys
 
     private readonly Func<AppSettings> now;
     private readonly Action<Func<AppSettings, AppSettings>> change;
+    private readonly Func<string, string> titleOf;
     private readonly Dictionary<string, Bitmap> pictures = [];
     private readonly TextBlock title = new() { Classes = { StyleClasses.WelcomeTitle } };
     private readonly TextBlock about = new() { Classes = { StyleClasses.WelcomeSubtitle }, TextWrapping = TextWrapping.Wrap };
@@ -35,13 +36,17 @@ public sealed class FirstStartView : UserControl, IOwnKeys
     private readonly Button system;
     private readonly PathIcon systemChosen = new() { Classes = { StyleClasses.FirstStartCheck } };
     private readonly TextBlock systemWords = new() { VerticalAlignment = VerticalAlignment.Center };
+    private readonly Button vim;
+    private readonly PathIcon vimChosen = new() { Classes = { StyleClasses.FirstStartCheck } };
     private readonly Button back = new() { Classes = { StyleClasses.Link, StyleClasses.FirstStartQuiet }, Content = "Back" };
     private readonly Button keep = new() { Classes = { StyleClasses.Link, StyleClasses.FirstStartQuiet }, Content = "Keep the Defaults" };
 
-    public FirstStartView(Func<AppSettings> now, Action<Func<AppSettings, AppSettings>> change)
+    /// <param name="titleOf">An action's title, as the window's actions name it.</param>
+    public FirstStartView(Func<AppSettings> now, Action<Func<AppSettings, AppSettings>> change, Func<string, string> titleOf)
     {
         this.now = now;
         this.change = change;
+        this.titleOf = titleOf;
         Classes.Add(StyleClasses.FirstStart);
         Focusable = true;
         KeyboardNavigation.SetTabNavigation(this, KeyboardNavigationMode.Cycle);
@@ -60,14 +65,21 @@ public sealed class FirstStartView : UserControl, IOwnKeys
             Content = new StackPanel { Classes = { StyleClasses.FirstStartCaption }, Children = { systemChosen, systemWords } },
         };
         system.Click += (_, _) => ChooseVariant(ThemeChoice.System);
-        back.Click += (_, _) => Show(Screen.Theme);
+        vimChosen.Bind(PathIcon.DataProperty, vimChosen.GetResourceObservable(IconKeys.Check));
+        vim = new Button
+        {
+            Classes = { StyleClasses.FirstStartSystem },
+            Content = new StackPanel { Classes = { StyleClasses.FirstStartCaption }, Children = { vimChosen, new TextBlock { Text = "Vim mode over these keys", VerticalAlignment = VerticalAlignment.Center } } },
+        };
+        vim.Click += (_, _) => ToggleVim();
+        back.Click += (_, _) => Show(Shown == Screen.Keymap ? Screen.DarkOrLight : Screen.Theme);
         keep.Click += (_, _) => End();
         DockPanel foot = new() { Classes = { StyleClasses.FirstStartFoot } };
         DockPanel.SetDock(keep, Dock.Right);
         foot.Children.Add(keep);
         foot.Children.Add(back);
 
-        StackPanel page = new() { Classes = { StyleClasses.FirstStartPage }, Children = { hero, tiles, system, foot } };
+        StackPanel page = new() { Classes = { StyleClasses.FirstStartPage }, Children = { hero, tiles, system, vim, foot } };
         // As tall as the view at least, so the page stands in its middle; on a shorter view it scrolls.
         Panel middle = new() { Children = { page } };
         ScrollViewer scroller = new() { Content = middle };
@@ -104,12 +116,16 @@ public sealed class FirstStartView : UserControl, IOwnKeys
         Show(Screen.Theme);
     }
 
-    /// <summary>The page's two questions.</summary>
+    /// <summary>The page's three questions.</summary>
     public enum Screen
     {
         Theme,
         DarkOrLight,
+        Keymap,
     }
+
+    /// <summary>The actions whose keys a keymap's tile shows.</summary>
+    private static readonly string[] KeysShown = [AppActions.FindAction, AppActions.GoToFile, AppActions.SaveAll];
 
     /// <summary>A theme offered: Passenger's own (<see cref="Theme"/> null) or one it carries, its name and what it is like
     /// in a few words.</summary>
@@ -125,16 +141,19 @@ public sealed class FirstStartView : UserControl, IOwnKeys
     /// <summary>The question shown.</summary>
     public Screen Shown { get; private set; }
 
-    /// <summary>The tiles shown, in their order: the themes', or Dark and Light.</summary>
+    /// <summary>The tiles shown, in their order: the themes', Dark and Light, or the keymaps'.</summary>
     public IReadOnlyList<Button> Tiles => [.. tiles.Children.OfType<Button>()];
 
     /// <summary>The small choice under Dark and Light to follow the system's dark or light.</summary>
     public Button SystemChoice => system;
 
-    /// <summary>The way back from dark or light to the themes.</summary>
+    /// <summary>The small choice under the keymaps to turn Vim mode on or off over the one chosen.</summary>
+    public Button VimChoice => vim;
+
+    /// <summary>The way back to the question before.</summary>
     public Button Back => back;
 
-    /// <summary>The page ended, by a choice of dark or light, Escape or Keep the Defaults.</summary>
+    /// <summary>The page ended, by a choice of keymap, Escape or Keep the Defaults.</summary>
     public event EventHandler? Ended;
 
     public bool TakesKey(KeyEventArgs e) => true;
@@ -174,11 +193,25 @@ public sealed class FirstStartView : UserControl, IOwnKeys
         Show(Screen.DarkOrLight);
     }
 
-    /// <summary>Dark, light or the system's chosen: put in force and kept, which ends the page.</summary>
+    /// <summary>Dark, light or the system's chosen: put in force and kept, then the keymap asked.</summary>
     public void ChooseVariant(ThemeChoice choice)
     {
         change(settings => settings with { Theme = choice });
+        Show(Screen.Keymap);
+    }
+
+    /// <summary>A keymap chosen: put in force and kept, Vim mode as the small choice left it, which ends the page.</summary>
+    public void ChooseKeymap(Passenger.Editor.KeymapPreset keymap)
+    {
+        change(settings => settings with { Keymap = keymap });
         End();
+    }
+
+    /// <summary>Vim mode turned on or off over the keymaps, in force at once, the keys staying on the choice.</summary>
+    public void ToggleVim()
+    {
+        change(settings => settings with { VimMode = !settings.VimMode });
+        Fill();
     }
 
     /// <summary>The page ends, keeping what is in force.</summary>
@@ -203,7 +236,7 @@ public sealed class FirstStartView : UserControl, IOwnKeys
                 Add(Tile(look.Name, look.Words, look.Picture(dark), look.Theme == settings.Look, () => ChooseLook(look)));
             }
         }
-        else
+        else if (Shown == Screen.DarkOrLight)
         {
             Look look = Looks.FirstOrDefault(l => l.Theme == settings.Look) ?? Looks[0];
             title.Text = "Dark or light";
@@ -211,11 +244,65 @@ public sealed class FirstStartView : UserControl, IOwnKeys
             Add(Tile("Dark", null, look.Picture(dark: true), settings.Theme == ThemeChoice.Dark, () => ChooseVariant(ThemeChoice.Dark)));
             Add(Tile("Light", null, look.Picture(dark: false), settings.Theme == ThemeChoice.Light, () => ChooseVariant(ThemeChoice.Light)));
         }
+        else
+        {
+            title.Text = "Your keys";
+            about.Text = $"Choose the keys your hands know. {SettingsDialog.PlaceOfPage(SettingsDialog.KeymapPage)} changes them and any shortcut "
+                + $"at any time, and {SettingsDialog.PlaceOfPage(SettingsDialog.EditorPage)} turns Vim mode on or off.";
+            foreach (Passenger.Editor.KeymapPreset keymap in SettingsDialog.KeymapChoices)
+            {
+                Add(Tile(KnownAs(keymap), PresetWords(keymap), null, settings.Keymap == keymap, () => ChooseKeymap(keymap), KeysOf(settings with { Keymap = keymap })));
+            }
+        }
         system.IsVisible = Shown == Screen.DarkOrLight;
         systemWords.Text = SystemWords();
         systemChosen.IsVisible = settings.Theme == ThemeChoice.System;
         system.Classes.Set(StyleClasses.Chosen, systemChosen.IsVisible);
-        back.IsVisible = Shown == Screen.DarkOrLight;
+        vim.IsVisible = Shown == Screen.Keymap;
+        vimChosen.IsVisible = settings.VimMode;
+        vim.Classes.Set(StyleClasses.Chosen, settings.VimMode);
+        back.IsVisible = Shown != Screen.Theme;
+    }
+
+    /// <summary>A keymap's name as people know it, whatever the system.</summary>
+    private static string KnownAs(Passenger.Editor.KeymapPreset keymap) => keymap switch
+    {
+        Passenger.Editor.KeymapPreset.VSCode => "VS Code",
+        Passenger.Editor.KeymapPreset.IntelliJ => "IntelliJ IDEA",
+        Passenger.Editor.KeymapPreset.Emacs => "Emacs",
+        _ => "Visual Studio",
+    };
+
+    /// <summary>Which of a keymap's own it is on this system, where they differ: Visual Studio for Mac's on the Mac.</summary>
+    private static string PresetWords(Passenger.Editor.KeymapPreset keymap) => (keymap, OperatingSystem.IsMacOS()) switch
+    {
+        (Passenger.Editor.KeymapPreset.VisualStudio, true) => "Visual Studio for Mac's keys",
+        (Passenger.Editor.KeymapPreset.VisualStudio, false) => "Visual Studio's keys",
+        (Passenger.Editor.KeymapPreset.VSCode, true) => "VS Code's keys on macOS",
+        (Passenger.Editor.KeymapPreset.VSCode, false) => "VS Code's keys",
+        (Passenger.Editor.KeymapPreset.IntelliJ, true) => "IntelliJ IDEA's keys on macOS",
+        (Passenger.Editor.KeymapPreset.IntelliJ, false) => "IntelliJ IDEA's keys",
+        _ => "Emacs's keys on every system",
+    };
+
+    /// <summary>A keymap's own keys for <see cref="KeysShown"/>, each action's name over its first shortcut in a box as the
+    /// Keymap page shows it.</summary>
+    private StackPanel KeysOf(AppSettings with)
+    {
+        Passenger.Editor.Keymap keymap = AppActions.Keymap(with);
+        StackPanel keys = new() { Margin = new Thickness(Gaps.Normal), Spacing = Gaps.Small };
+        foreach (string action in KeysShown)
+        {
+            StackPanel one = new() { Children = { new TextBlock { Classes = { StyleClasses.FirstStartWords }, Text = titleOf(action), TextWrapping = TextWrapping.Wrap } } };
+            if (keymap.ShortcutsFor(action).FirstOrDefault() is { } first)
+            {
+                Border box = SettingsDialog.KeyBox(first.Display());
+                box.HorizontalAlignment = HorizontalAlignment.Left;
+                one.Children.Add(box);
+            }
+            keys.Children.Add(one);
+        }
+        return keys;
     }
 
     private void Add(Button tile)
@@ -229,23 +316,29 @@ public sealed class FirstStartView : UserControl, IOwnKeys
         tiles.Children.Add(tile);
     }
 
-    /// <summary>A choice's tile: its picture, its name and a few words, marked when it is the one in force.</summary>
-    private Button Tile(string name, string? words, Uri picture, bool chosen, Action choose)
+    /// <summary>A choice's tile: its picture (or what stands in it, a keymap's keys), its name and a few words, marked when
+    /// it is the one in force.</summary>
+    private Button Tile(string name, string? words, Uri? picture, bool chosen, Action choose, Control? drawn = null)
     {
-        // Never wider than its pixels keep sharp.
-        Image image = new() { Source = Picture(picture), Stretch = Stretch.Uniform, MaxWidth = FirstStartPictures.Widest };
-        RenderOptions.SetBitmapInterpolationMode(image, BitmapInterpolationMode.HighQuality);
-        Border frame = new() { Classes = { StyleClasses.FirstStartPicture }, Child = image };
+        Border frame = new() { Classes = { StyleClasses.FirstStartPicture }, Child = drawn };
+        if (picture is not null)
+        {
+            // Never wider than its pixels keep sharp.
+            Image image = new() { Source = Picture(picture), Stretch = Stretch.Uniform, MaxWidth = FirstStartPictures.Widest };
+            RenderOptions.SetBitmapInterpolationMode(image, BitmapInterpolationMode.HighQuality);
+            frame.Child = image;
+        }
         PathIcon check = new() { Classes = { StyleClasses.FirstStartCheck }, IsVisible = chosen };
         check.Bind(PathIcon.DataProperty, check.GetResourceObservable(IconKeys.Check));
-        TextBlock named = new() { Classes = { StyleClasses.FirstStartName }, Text = name };
+        // The name wraps beside the tick where a narrow tile has no room for it on one line.
+        TextBlock named = new() { Classes = { StyleClasses.FirstStartName }, Text = name, TextWrapping = TextWrapping.Wrap, [Grid.ColumnProperty] = 1 };
         TextBlock said = new() { Classes = { StyleClasses.FirstStartWords }, Text = words, IsVisible = words is not null, TextWrapping = TextWrapping.Wrap };
         Button tile = new()
         {
             Classes = { StyleClasses.FirstStartTile },
             Content = new StackPanel
             {
-                Children = { frame, new StackPanel { Classes = { StyleClasses.FirstStartCaption }, Children = { check, named } }, said },
+                Children = { frame, new Grid { Classes = { StyleClasses.FirstStartCaption }, ColumnDefinitions = new ColumnDefinitions("Auto,*"), Children = { check, named } }, said },
             },
         };
         tile.Classes.Set(StyleClasses.Chosen, chosen);
@@ -290,7 +383,10 @@ public sealed class FirstStartView : UserControl, IOwnKeys
         (chosen ?? Tiles.FirstOrDefault() ?? (Control)this).Focus();
     }
 
-    /// <summary>Left and Right move between the tiles, Down to the system's choice under them and Up back; Escape ends the
+    /// <summary>The small choice under the tiles of the question shown: the system's, Vim mode's, or none.</summary>
+    private Button? Small => system.IsVisible ? system : vim.IsVisible ? vim : null;
+
+    /// <summary>Left and Right move between the tiles, Down to the small choice under them and Up back; Escape ends the
     /// page keeping what is in force. Enter and Space are the focused button's own.</summary>
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
@@ -312,10 +408,10 @@ public sealed class FirstStartView : UserControl, IOwnKeys
             case Key.Left or Key.Right or Key.Up when at < 0:
                 (shown.FirstOrDefault(t => t.Classes.Contains(StyleClasses.Chosen)) ?? shown[0]).Focus(NavigationMethod.Directional);
                 break;
-            case Key.Down when at >= 0 && system.IsVisible:
-                system.Focus(NavigationMethod.Directional);
+            case Key.Down when at >= 0 && Small is { } small:
+                small.Focus(NavigationMethod.Directional);
                 break;
-            case Key.Down when at < 0 && focused != system:
+            case Key.Down when at < 0 && focused != Small:
                 shown[0].Focus(NavigationMethod.Directional);
                 break;
             default:
