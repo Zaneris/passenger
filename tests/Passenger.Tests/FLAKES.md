@@ -30,6 +30,34 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-24
 
+- `EslintPrettierTests`' `Eslint_checks_and_fixes_as_its_server_says`, CI 45453743296 (Windows report shard 1), at
+  329200ec7: "Waited 225 s for the problem from the ESLint the project's .pnp.cjs places". **A bug in the IDE, on
+  Windows**: Yarn writes a Plug'n'Play package's location from the project's folder on its portable paths, which climb
+  from one drive to another ("../../../D:/…"), and YarnPnp joined it as a Windows path, which never leaves the project's
+  drive, and found a file's package by .NET's way to it, which across drives is the whole path; so ESLint, Prettier and
+  TypeScript in a package on another drive went unfound, as on CI's Windows runners, whose run folder holds the step's
+  project on C: and whose checkout holds the tests' packages it links to on D:, and as a Yarn 4 project on D: has its
+  global cache on C:. YarnPnp joins and climbs on the portable paths (9725401b0), YarnPnpTests holding it (1b88bab10);
+  the step passes on the Mac, and the Windows VM, with no Node.js and one drive, cannot run it.
+- `AspireCodeHelpTests`' `A_services_connections_are_completed_and_warned_of_by_the_AppHosts_graph_never_accusing_a_service_it_cannot_read`,
+  CI 45453743296 (Linux report shard 2, Windows report shard 1), at 329200ec7: "Completion, Show Context Actions or Go
+  to Declaration in a file no AppHost involves asked Passenger's extension for Aspire's help". **The test**: its step
+  refused any message to Passenger's extension about a document as Aspire's, and since a4da52ac2 (#2204) Show Context
+  Actions asks the extension in every C# file which interfaces lack the member at the caret (InterfacesLacking). The
+  step watches Aspire's own handlers alone (2f29d6039) and passes on the Mac. The class runs on no macOS job.
+- `UnseenAppsTests`' `A_program_a_passenger_nobody_sees_starts_never_reaches_the_screen_and_a_persons_window_starts_it_as_it_is`,
+  CI 45453743296 (Windows gate shard 1), at 329200ec7, in 53 ms: "Strings differ … "de.app/Contents/Developer\\Applications\\Simulator.a"".
+  **The test**: its step for a simulator's window, new in a64f55fab (#2218), compared the Simulator app's place, which
+  AppleTools joins with the system's separator, with a path in forward slashes. It reads that place below the developer
+  folder through PathNames.Relative (ce689b58f) and passes on the Mac.
+- `AboutMacOSRulesTests`' `A_report_class_that_reaches_macOSs_own_behaviour_is_marked_to_run_there_and_a_marked_one_reaches_it`,
+  CI 45453743296 (Linux gate shard 2, Windows gate shard 2), at 329200ec7: "FileBasedProgramsTests reaches macOS's own
+  behaviour, yet macOS's report lane passes it over: it asks whether it runs on macOS" and "UnseenAppsTests … it runs
+  an iOS simulator". **The tests**: FileBasedProgramsTests' .NET 10 step, new in d9662e171 (#2181), asked in the class's
+  own code whether it ran on macOS only to choose where to look for SDK installations, and UnseenAppsTests' step for a
+  simulator's window, new in a64f55fab (#2218), reaches AppleSimulators, macOS's alone. The first looks in every macOS
+  and Linux installer's folder that is there, staying off macOS's lane, and the second carries [AboutMacOS] (201bf9990);
+  the rule passes on the Mac.
 - `CommitSigningTests`' `A_gpg_keys_passphrase_is_asked_in_passengers_dialog_through_its_own_gpg_and_signs_the_commit`,
   CI 44538058686 (macOS report shard 4), at c461a1b79: "gpg made no key to sign with, exiting 2: … gpg: signing failed:
   Corrupted protection". **Outside the code**: GnuPG 2.5.24's gpg-agent writes a salt or nonce whose random bytes are
