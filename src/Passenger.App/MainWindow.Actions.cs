@@ -204,6 +204,10 @@ public partial class MainWindow
             {
                 CoverageWindow.FocusFilter();
             }
+            else if (c.ToolWindow?.Id == ToolWindowIds.Modules)
+            {
+                ModulesWindow.FocusFilter();
+            }
             else if (c.ToolWindow?.Id == ToolWindowIds.Aspire)
             {
                 actions!.Run(A.AspireLogFind, c);
@@ -220,7 +224,7 @@ public partial class MainWindow
             {
                 Editors.ShowFind(replace: false);
             }
-        }, c => c.ToolWindow?.Id is ToolWindowIds.Tests or ToolWindowIds.Problems or ToolWindowIds.StepLibrary or ToolWindowIds.Coverage || c.ToolWindow?.Id == ToolWindowIds.Explorer && Explorer.Tree.Root is not null || ConsoleFind(c) is not null
+        }, c => c.ToolWindow?.Id is ToolWindowIds.Tests or ToolWindowIds.Problems or ToolWindowIds.StepLibrary or ToolWindowIds.Coverage or ToolWindowIds.Modules || c.ToolWindow?.Id == ToolWindowIds.Explorer && Explorer.Tree.Root is not null || ConsoleFind(c) is not null
             || DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 0));
         Add(A.Replace, "Replace", "IDE", c => (DiffWindowOf(c) is { } window ? (Action<bool>)window.ShowFind : Editors.ShowFind)(true),
             c => DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 1));

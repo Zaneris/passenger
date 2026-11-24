@@ -123,7 +123,7 @@ public static class EvaluateContexts
 [IdentifierHome]
 public static class EventReasons
 {
-    /// <summary>A breakpoint bound, moved or given a message.</summary>
+    /// <summary>A breakpoint bound, moved or given a message; a module's symbols loaded.</summary>
     public const string Changed = "changed";
 
     /// <summary>A module loaded.</summary>

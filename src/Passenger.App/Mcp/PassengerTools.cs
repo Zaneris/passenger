@@ -2837,6 +2837,18 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     }
 
     /// <summary>The programs the debugger can attach to, each command line's secrets masked as Attach to Process shows them.</summary>
+    /// <summary>debug_state's modules: the program's own first, then the rest, each in the order it loaded.</summary>
+    private Task<object> DebugModules(string? session, CancellationToken cancel) => OnUi<object>(cancel, async () =>
+    {
+        DebugSession debugged = await Debugged(session);
+        if (debugged.ModulesUnlisted is { } why)
+        {
+            throw new InvalidOperationException(why);
+        }
+        return Held([.. debugged.Modules.OrderBy(m => m.IsUserCode != true).Select(m => new ModuleListing(m.Name, m.Version, m.SymbolStatus ?? DapSymbolStatus.None,
+            m.IsUserCode == true, m.IsOptimized == true, m.Path))], "module", "the program's own modules are listed first");
+    });
+
     private Task<IReadOnlyList<ProcessInfo>> DebugProcesses(CancellationToken cancel) => OnUi(cancel, async () =>
     {
         Func<string, string> masked = Passenger.App.Containers.ContainerSecrets.CommandLines();
@@ -2892,7 +2904,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "sessions names them. With reference (a variable's, debug_evaluate's or an earlier answer's), the members, elements " +
         "or locals behind it. of breakpoints: every breakpoint (line, method, data and property, exception with its scenarios, XAML " +
         "Binding Errors), each with whether the debugger took it; while Mute Breakpoints (ide_action " +
-        "app.debug.muteBreakpoints) is on, none stops. of processes: the .NET programs here and in running containers the " +
+        "app.debug.muteBreakpoints) is on, none stops. of modules: the program's, each with its version, symbols and Just My " +
+        "Code's verdict (userCode), as the Modules window lists them. of processes: the .NET programs here and in running containers the " +
         "debugger can attach to, program being the .dll the dotnet host runs (a container's id 0 until debug_attach puts " +
         "Passenger's tools in).")]
     public async Task<object> GetDebugState(string? session = null, string? of = null, int? reference = null, CancellationToken cancel = default) => (of, reference) switch
@@ -2901,7 +2914,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         (null or "stop", null) => await OnUi(cancel, () => DebugSnapshotAsync(session is null ? Unnamed() : TabFor(session)?.Session)),
         ("breakpoints", null) => await ListBreakpoints(cancel),
         ("processes", null) => await DebugProcesses(cancel),
-        (_, null) => throw new ModelContextProtocol.McpException($"No '{of}' to give; of takes stop (the default), breakpoints or processes"),
+        ("modules", null) => await DebugModules(session, cancel),
+        (_, null) => throw new ModelContextProtocol.McpException($"No '{of}' to give; of takes stop (the default), breakpoints, modules or processes"),
         _ => throw new ModelContextProtocol.McpException("A reference's members are the stop's: give reference or of, not both"),
     };
 
@@ -4645,6 +4659,10 @@ public sealed record VariableInfo(string Name, string Value, string? Type, int R
 
 /// <summary>A .NET program the debugger can attach to, as Attach to Process lists it, its command line's secrets masked.</summary>
 public sealed record ProcessInfo(int ProcessId, string Executable, string Program, string User, string CommandLine, string? Container = null);
+
+/// <summary>A module a debugged program loaded, as debug_state's modules lists it: its symbols' state, Just My Code's verdict
+/// and whether the runtime compiles it optimized; no path for one made as the program runs.</summary>
+public sealed record ModuleListing(string Name, string? Version, string Symbols, bool UserCode, bool Optimized, string? Path);
 
 /// <summary>Where the debugger is in a program, as the debug tools answer: its session's state (<see cref="Debugged"/>, null
 /// with none debugged or once it ended), said as <see cref="State"/>, and while paused the stop.</summary>

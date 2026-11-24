@@ -538,6 +538,9 @@ public static class AppActions
     public const string ClearCoverage = "app.tests.clearCoverage";
     public const string ExportCoverage = "app.tests.exportCoverage";
     public const string ShowCoverage = "app.showCoverage";
+
+    // The Modules window, which Rider's keymaps give no keys.
+    public const string ShowModules = "app.showModules";
     public const string ShowStructure = "app.showStructure";
 
     // Editor splits: Rider's, from the tab's menu (no keys in its Visual Studio keymaps).

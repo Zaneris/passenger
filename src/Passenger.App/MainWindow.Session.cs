@@ -318,6 +318,7 @@ public partial class MainWindow
         BindTests(next);
         BindCoverage(next);
         BindDebug(next);
+        BindModules(next);
         profiler?.Rebind();
         liveTree?.Bind(next);
         bindingValues?.Bind(next);

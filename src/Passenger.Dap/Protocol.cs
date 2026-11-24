@@ -558,7 +558,42 @@ public sealed record BreakpointEvent
 
 public sealed record ModuleEvent([IdentifierOf(typeof(EventReasons))][property: IdentifierOf(typeof(EventReasons))] string Reason, DapModule Module);
 
-public sealed record DapModule(string Id, string Name, string? Path = null);
+/// <summary>A module the program loaded, its id the debugger's own for the one load of it (one assembly in two load contexts
+/// is two modules); with the protocol's version, Just My Code's verdict (<see cref="IsUserCode"/>), whether its code runs
+/// optimized, where its symbols came from and its address.</summary>
+public sealed record DapModule(string Id, string Name, string? Path = null)
+{
+    public string? Version { get; init; }
+    public bool? IsUserCode { get; init; }
+    public bool? IsOptimized { get; init; }
+
+    /// <summary>Whether its symbols are loaded, in words (<see cref="DapSymbolStatus"/>).</summary>
+    [IdentifierOf(typeof(DapSymbolStatus))]
+    public string? SymbolStatus { get; init; }
+
+    /// <summary>The file its symbols were read from, or where they lie (in the assembly), where it has any.</summary>
+    public string? SymbolFilePath { get; init; }
+
+    public string? AddressRange { get; init; }
+
+    /// <summary>Passenger's own: made as the program runs (System.Reflection.Emit), with no file.</summary>
+    public bool? IsDynamic { get; init; }
+}
+
+/// <summary>Whether a module's symbols are loaded, its symbolStatus as Passenger's debug adapter says it and the IDE reads it,
+/// each written once.</summary>
+[IdentifierHome]
+public static class DapSymbolStatus
+{
+    /// <summary>Its own symbols, from a PDB beside it or inside it.</summary>
+    public const string Loaded = "Loaded";
+
+    /// <summary>Symbols the debugger made by decompiling it, which it had none of.</summary>
+    public const string Decompiled = "Decompiled";
+
+    /// <summary>None yet: a frame in it shows no source until it is decompiled.</summary>
+    public const string None = "Not loaded";
+}
 
 public sealed record ProcessEvent(string Name, int? SystemProcessId = null, bool? IsLocalProcess = null, string? StartMethod = null);
 

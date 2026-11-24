@@ -204,6 +204,11 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         JsonElement stop = await Call(client, McpTools.DebugStart);
         Assert.Equal(("Program.cs:4:5", "1"), (stop.GetProperty("location").GetString(), Local(stop, "i")));
         Assert.EndsWith(" since debugging began", stop.GetProperty("elapsed").GetString(), StringComparison.Ordinal);
+        JsonElement modules = await Call(client, McpTools.DebugState, new() { ["of"] = "modules" });
+        JsonElement first = modules.EnumerateArray().First();
+        Assert.True(first.GetProperty("name").GetString() == "Sum.dll" && first.GetProperty("userCode").GetBoolean() && first.GetProperty("symbols").GetString() == "Loaded"
+            && modules.EnumerateArray().Any(m => m.GetProperty("name").GetString() == "System.Private.CoreLib.dll" && !m.GetProperty("userCode").GetBoolean()),
+            $"debug_state of modules listed {modules}, where Sum.dll, user code with its symbols loaded, comes first and CoreLib is not user code");
         listed = await Call(client, McpTools.DebugState, new() { ["of"] = "breakpoints" });
         Assert.True(Listed(listed, 4) is null, $"The temporary breakpoint was still listed once it stopped: {listed}");
         stop = await Call(client, McpTools.DebugContinue);

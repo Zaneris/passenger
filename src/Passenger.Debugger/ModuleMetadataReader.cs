@@ -27,6 +27,12 @@ public partial class ModuleMetadataReader : IDisposable
     internal Guid Mvid => _mvid ??= _peMetadataReader.GetGuid(_peMetadataReader.GetModuleDefinition().Mvid);
     public bool HasSymbols => _pdbMetadataReader is not null;
 
+    /// <summary>The file its symbols were read from, or that they are embedded in the assembly; null with none.</summary>
+    public string? SymbolsFrom { get; private set; }
+
+    /// <summary>What <see cref="SymbolsFrom"/> says of symbols embedded in the assembly.</summary>
+    public const string Embedded = "embedded in the assembly";
+
     /// <summary>The pointer size the module is built for: CoreLib's is its runtime's.</summary>
     internal int PointerSize => _peReader?.PEHeaders.PEHeader?.Magic == PEMagic.PE32Plus ? 8 : 4;
 
@@ -272,6 +278,7 @@ public partial class ModuleMetadataReader : IDisposable
             provider = MetadataReaderProvider.FromPortablePdbStream(new FileStream(pdbPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete),
                 MetadataStreamOptions.PrefetchMetadata);
             SetPdbProvider(provider);
+            SymbolsFrom = pdbPath;
             return true;
         }
         catch (Exception error) when (Failures.OfReading(error))
@@ -375,6 +382,7 @@ public partial class ModuleMetadataReader : IDisposable
             if (codeViewData.Age == 1 && pdbId == expectedId)
             {
                 SetPdbProvider(provider);
+                SymbolsFrom = pdbPath;
                 return true;
             }
 
@@ -393,6 +401,7 @@ public partial class ModuleMetadataReader : IDisposable
         try
         {
             SetPdbProvider(_peReader!.ReadEmbeddedPortablePdbDebugDirectoryData(embeddedPdbEntry));
+            SymbolsFrom = Embedded;
             return true;
         }
         catch (Exception error) when (Failures.OfReading(error))

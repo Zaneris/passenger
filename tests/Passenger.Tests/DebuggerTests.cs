@@ -138,6 +138,45 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             OpenWindows.CloseAll();
             return Task.CompletedTask;
         });
+        await Flow.StepApartLivedAsync<DebuggerTests>("the modules window lists the stopped program's modules with their symbols and just my code's verdict", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.The_Modules_window_lists_the_stopped_programs_modules_with_their_symbols_and_Just_My_Codes_verdict();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>At a stop the Modules window lists the program's modules in the order they loaded, CoreLib first: the program's
+    /// own with its version, its symbols loaded from its PDB and Just My Code's verdict that it is user code, compiled
+    /// unoptimized, CoreLib not user code and compiled optimized; its filter narrows them and its Name title sorts them.</summary>
+    private void The_Modules_window_lists_the_stopped_programs_modules_with_their_symbols_and_Just_My_Codes_verdict()
+    {
+        MainWindow window = Open();
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(3, 4));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        StartDebugging(window);
+        WaitDebugging(window, () => Value(window, "i") == "1", "the stop");
+        Assert.True(window.Perform(AppActions.ShowModules), $"Modules did not show: {Ui.Said(window)}");
+        ModulesView modules = window.ModulesWindow;
+        Ui.WaitFor(() => modules.Rows.Any(m => m.Name == "Sum.dll"), () => $"Sum.dll listed, not {string.Join(", ", modules.Rows.Select(m => m.Name))} ({modules.Said})");
+        Assert.Equal("System.Private.CoreLib.dll", modules.Rows[0].Name);
+        DapModule own = modules.Rows.Single(m => m.Name == "Sum.dll");
+        Assert.True(own is { Version: "1.0.0.0", SymbolStatus: DapSymbolStatus.Loaded, IsUserCode: true, IsOptimized: false }
+            && own.Path?.EndsWith("Sum.dll", StringComparison.Ordinal) == true && own.SymbolFilePath?.EndsWith("Sum.pdb", StringComparison.Ordinal) == true,
+            $"Sum.dll was listed as {own}, where it is version 1.0.0.0, its symbols loaded from Sum.pdb, user code and compiled unoptimized");
+        DapModule coreLib = modules.Rows[0];
+        Assert.True(coreLib is { IsUserCode: false, IsOptimized: true } && coreLib.Version is { Length: > 0 },
+            $"CoreLib was listed as {coreLib}, where it is not user code and compiled optimized, with its version");
+        modules.Filter = "Sum.dll";
+        Ui.Settle();
+        Assert.Equal(["Sum.dll"], modules.Rows.Select(m => m.Name));
+        modules.Filter = string.Empty;
+        Ui.Settle();
+        modules.Sort(0);
+        Assert.Equal([.. modules.Rows.Select(m => m.Name).Order(StringComparer.OrdinalIgnoreCase)], modules.Rows.Select(m => m.Name));
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
     }
 
     /// <summary>Conditions typed into a breakpoint's popup, a tracepoint logging and running on, Run to Cursor past a

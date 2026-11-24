@@ -343,6 +343,23 @@ public sealed class DebugSession
     /// <summary>Whether the debugger can move where a paused thread goes on (Set Next Statement): Godot's GDScript one cannot.</summary>
     public bool MovesNextStatement { get; private set; }
 
+    private readonly List<DapModule> modules = [];
+
+    /// <summary>The modules the program has loaded and not unloaded, in the order its debugger told of them, each path as
+    /// the IDE names it.</summary>
+    public IReadOnlyList<DapModule> Modules => modules;
+
+    /// <summary>A module loaded, unloaded, or had its symbols loaded.</summary>
+    public event EventHandler? ModulesChanged;
+
+    /// <summary>Why the session's debugger tells of no modules, where it cannot; null where it does.</summary>
+    public string? ModulesUnlisted => Engine switch
+    {
+        DebugEngine.GDScript => "Godot's GDScript debugger loads scripts, not .NET modules: a C# game's own session lists its modules",
+        DebugEngine.WebAssembly => "The browser's .NET debugger tells of no modules",
+        _ => null,
+    };
+
     public int? ExitCode { get; private set; }
 
     /// <summary>The program's process, once the adapter has said which it is.</summary>
@@ -1554,6 +1571,31 @@ public sealed class DebugSession
                     }
                     processStarted.TrySetResult(processId);
                 }
+                break;
+            case DapEvents.Module:
+                ModuleEvent loaded = body.Read<ModuleEvent>();
+                DapModule module = loaded.Module with
+                {
+                    Path = loaded.Module.Path is { } path ? ToIde(path) : null,
+                    SymbolFilePath = loaded.Module.SymbolFilePath is { } symbols && Path.IsPathRooted(symbols) ? ToIde(symbols) : loaded.Module.SymbolFilePath,
+                };
+                int at = modules.FindIndex(m => m.Id == module.Id);
+                if (loaded.Reason == EventReasons.Removed)
+                {
+                    if (at >= 0)
+                    {
+                        modules.RemoveAt(at);
+                    }
+                }
+                else if (at >= 0)
+                {
+                    modules[at] = module;
+                }
+                else
+                {
+                    modules.Add(module);
+                }
+                ModulesChanged?.Invoke(this, EventArgs.Empty);
                 break;
             case DapEvents.Continued when State == DebugState.Paused:
                 // Gone on from its stop by itself (a Godot game's script, whose debugger did not let it go).

@@ -269,6 +269,8 @@ public partial class ManagedDebugger
         {
             EnableEditAndContinue(corModule, moduleInfo);
         }
+        // The user's code runs unoptimized (built so, or asked as it loads), as does one Edit and Continue was turned on for.
+        moduleInfo.CompiledOptimized = !(builtUnoptimized || isUserCode || moduleInfo.Editable);
         ModuleSet_Version++;
         TryBindEntryBreakpoint(moduleInfo);
 
@@ -284,7 +286,7 @@ public partial class ManagedDebugger
             _coreLibCame.TrySetResult();
         }
 
-        OnModuleLoaded?.Invoke(modulePath, Path.GetFileName(modulePath), modulePath);
+        OnModuleLoaded?.Invoke(Described(moduleInfo));
 
         if (metadataReader.HasSymbols)
         {
@@ -383,7 +385,7 @@ public partial class ManagedDebugger
             OnBreakpointChanged?.Invoke(breakpoint);
         }
 
-        OnModuleUnloaded?.Invoke(moduleInfo.ModulePath, moduleInfo.ModuleName, moduleInfo.ModulePath);
+        OnModuleUnloaded?.Invoke(Described(moduleInfo));
         Continue(clearVariables: false);
     }
 

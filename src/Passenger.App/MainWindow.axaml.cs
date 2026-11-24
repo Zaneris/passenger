@@ -871,6 +871,12 @@ public partial class MainWindow : IdeWindow
             ActionTitle = "Debug Tool Window",
             Tools = () => debugView?.HeaderTools,
         });
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Modules, "Modules", IconKeys.Reference, MakeModules, Docking.ToolAnchor.BottomLeft)
+        {
+            Serves = ToolWindowServes.EveryFolder,
+            Action = AppActions.ShowModules,
+            Menus = [new MenuPlace("Run", 1, 12)],
+        });
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Aspire, "Aspire", IconKeys.Aspire, MakeAspire, Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.AppHosts,

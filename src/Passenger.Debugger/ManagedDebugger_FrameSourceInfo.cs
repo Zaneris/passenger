@@ -125,6 +125,7 @@ public partial class ManagedDebugger
         if (module.MetadataReader.TryLoadSymbols(pdb))
         {
             module.SymbolsFromDecompiled = true;
+            OnModuleChanged?.Invoke(Described(module));
             return true;
         }
         _logger?.Invoke($"Decompiled symbols {pdb} did not load: deleted, to be made again");

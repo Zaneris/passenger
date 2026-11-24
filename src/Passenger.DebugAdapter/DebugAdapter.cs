@@ -308,8 +308,9 @@ public sealed class DebugAdapter
         debugger.OnTerminated += () => connection.SendEvent(DapEvents.Terminated, new TerminatedEvent(Failure: debugger.Failure));
         debugger.OnThreadStarted += threadId => connection.SendEvent(DapEvents.Thread, new ThreadEvent(EventReasons.Started, threadId));
         debugger.OnThreadExited += threadId => connection.SendEvent(DapEvents.Thread, new ThreadEvent(EventReasons.Exited, threadId));
-        debugger.OnModuleLoaded += (id, name, path) => connection.SendEvent(DapEvents.Module, new ModuleEvent(EventReasons.New, new DapModule(id, name, path)));
-        debugger.OnModuleUnloaded += (id, name, path) => connection.SendEvent(DapEvents.Module, new ModuleEvent(EventReasons.Removed, new DapModule(id, name, path)));
+        debugger.OnModuleLoaded += module => connection.SendEvent(DapEvents.Module, new ModuleEvent(EventReasons.New, module));
+        debugger.OnModuleChanged += module => connection.SendEvent(DapEvents.Module, new ModuleEvent(EventReasons.Changed, module));
+        debugger.OnModuleUnloaded += module => connection.SendEvent(DapEvents.Module, new ModuleEvent(EventReasons.Removed, module));
         debugger.OnProcessStarted += (processId, name) => connection.SendEvent(DapEvents.Process, new ProcessEvent(name, processId, IsLocalProcess: !Remote, StartMethod: DapCommands.Launch));
         debugger.OnAttached += processId => connection.SendEvent(DapEvents.Process, new ProcessEvent($"process {processId}", processId, IsLocalProcess: !Remote, StartMethod: DapCommands.Attach));
         debugger.OnOutput += (output, isStdError) => connection.SendEvent(DapEvents.Output, new OutputEvent(output, isStdError ? DapOutputCategories.Stderr : DapOutputCategories.Stdout));

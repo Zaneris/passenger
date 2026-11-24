@@ -225,8 +225,13 @@ public partial class ManagedDebugger
     public event Action? OnTerminated;
     public event Action<int>? OnThreadStarted;
     public event Action<int>? OnThreadExited;
-    public event Action<string, string, string>? OnModuleLoaded;
-    public event Action<string, string, string>? OnModuleUnloaded;
+    /// <summary>A module loaded, as <see cref="Described"/> says it.</summary>
+    public event Action<DapModule>? OnModuleLoaded;
+
+    /// <summary>A module's symbols loaded since it was told of (decompiled for a frame in it).</summary>
+    public event Action<DapModule>? OnModuleChanged;
+
+    public event Action<DapModule>? OnModuleUnloaded;
     // Output text, isError (true for stderr, false for stdout)
     public event Action<string, bool>? OnOutput;
     /// <summary>What the debugger itself has to tell the user, beside the program's output.</summary>

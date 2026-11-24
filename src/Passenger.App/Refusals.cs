@@ -1041,6 +1041,9 @@ public static class Refusals
     /// paths did not lead to.</summary>
     public const string CoverageUnplaced = "The coverage report names no file of this row's on this machine";
 
+    /// <summary>Copy Path on a module made as the program runs, or read from its memory alone.</summary>
+    public const string ModuleUnplaced = "The module has no file: the program made it, or the debugger read it from its memory";
+
     /// <summary>Clear Coverage and Export Coverage before a run with coverage, or once it is cleared.</summary>
     public const string NoCoverage = "No coverage is measured: Run All Tests with Coverage measures it";
 
