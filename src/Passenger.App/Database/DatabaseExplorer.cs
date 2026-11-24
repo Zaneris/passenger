@@ -234,6 +234,69 @@ public sealed class DatabaseExplorer : DockPanel
         }
     }
 
+    /// <summary>Reads again what a connection's database holds where the tree read it (a table made in it since): its row
+    /// closed, forgotten and opened again with the rows under it that were open; one not read yet is left to be read as it opens.</summary>
+    public async Task ReadAgainAsync(DatabaseSource source, string database)
+    {
+        DatabaseNode? found = Find(roots);
+        if (found is not { Children: not null })
+        {
+            return;
+        }
+        HashSet<string> open = [];
+        Opened(found.Children);
+        bool shown = found.IsExpanded;
+        if (shown)
+        {
+            found.IsExpanded = false;
+            rows.Close(found);
+        }
+        found.Children = null;
+        if (!shown)
+        {
+            return;
+        }
+        await ToggleAsync(found);
+        await OpenAgainAsync(found.Children ?? []);
+
+        DatabaseNode? Find(IEnumerable<DatabaseNode> nodes)
+        {
+            foreach (DatabaseNode node in nodes)
+            {
+                if (node.Source.Id == source.Id && (node.Kind == DatabaseNodeKind.Database && node.Database == database
+                    || node.Kind == DatabaseNodeKind.Connection && node.Source.Kind == DatabaseKind.Sqlite))
+                {
+                    return node;
+                }
+                if (Find(node.Children ?? []) is { } under)
+                {
+                    return under;
+                }
+            }
+            return null;
+        }
+
+        void Opened(IEnumerable<DatabaseNode> nodes)
+        {
+            foreach (DatabaseNode node in nodes.Where(n => n.IsExpanded))
+            {
+                open.Add(Key(node));
+                Opened(node.Children ?? []);
+            }
+        }
+
+        async Task OpenAgainAsync(IReadOnlyList<DatabaseNode> nodes)
+        {
+            foreach (DatabaseNode node in nodes.Where(n => n.Expands && !n.IsExpanded && open.Contains(Key(n))).ToList())
+            {
+                await ToggleAsync(node);
+                await OpenAgainAsync(node.Children ?? []);
+            }
+        }
+
+        static string Key(DatabaseNode node) => $"{node.Kind}|{node.Schema}|{node.Object}|{node.Title}";
+    }
+
     private async Task<List<DatabaseNode>?> ReadUnderAsync(DatabaseNode node)
     {
         DatabaseSource source = node.Source;
@@ -344,6 +407,13 @@ public sealed class DatabaseExplorer : DockPanel
         if (node.Table is not null)
         {
             items.Add(ListMenus.Open("Open Table Data", () => Request(AppActions.DatabaseOpenTable)));
+            items.Add(ListMenus.Keyed("Export Data…", AppActions.DatabaseExport, () => Request(AppActions.DatabaseExport)));
+        }
+        if (node.Kind is DatabaseNodeKind.Connection or DatabaseNodeKind.Database or DatabaseNodeKind.Schema or DatabaseNodeKind.Table
+            || node.Kind == DatabaseNodeKind.Group && node.Title == "Tables")
+        {
+            items.Add(ListMenus.Keyed("Import Data…", AppActions.DatabaseImport, () => Request(AppActions.DatabaseImport),
+                controller.Find(node.Source.Id) is { Mark: DatabaseMark.ReadOnly } readOnly ? Refusals.ReadOnlyConnection(readOnly.Name) : null));
         }
         if (node.Target is not null)
         {

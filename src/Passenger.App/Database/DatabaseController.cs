@@ -333,6 +333,129 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         return true;
     }
 
+    /// <summary>The next export held by a test (<see cref="HoldExport"/>): after how many rows, what it waits for, and told
+    /// of the export once it waits.</summary>
+    private (long At, Task Until, TaskCompletionSource<RowExport> Holding)? exportHeld;
+
+    /// <summary>Holds the next export once it has written <paramref name="rows"/> rows until <paramref name="until"/> ends,
+    /// for a test of what it holds meanwhile; done with the export once it is held.</summary>
+    public Task<RowExport> HoldExport(long rows, Task until)
+    {
+        TaskCompletionSource<RowExport> holding = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        exportHeld = (rows, until, holding);
+        return holding.Task;
+    }
+
+    /// <summary>Writes rows to a file as <paramref name="choice"/> says, read from the server as they come, under a
+    /// <see cref="Working"/> that says how many it has written and that Stop ends, the file left as it was then; what it
+    /// came to is said. Null once written, else why not.</summary>
+    public async Task<string?> ExportAsync(ExportSource source, ExportChoice choice)
+    {
+        UiThread.Check();
+        if (work.Begin(AppActions.DatabaseExport, $"Exporting {source.Title}…") is not { } started)
+        {
+            return ActionWork.Busy(work.Of(AppActions.DatabaseExport)!);
+        }
+        using Working working = started;
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(working.Stopping, lifetime.Token);
+        string file = Path.GetFileName(choice.Path);
+        bool ended = false;
+        (long At, Func<RowExport, Task> Hold)? hold = null;
+        if (exportHeld is { } held)
+        {
+            exportHeld = null;
+            hold = (held.At, export =>
+            {
+                held.Holding.TrySetResult(export);
+                return held.Until;
+            });
+        }
+        string said;
+        bool done = false;
+        try
+        {
+            long rows = await BackgroundWork.Run(() => RowExport.RunAsync(source, choice, written => UiThread.Post(() =>
+            {
+                if (!ended)
+                {
+                    working.Say($"Exporting {source.Title}: {Plural.Of(written, "row")} written…");
+                }
+            }), stop.Token, hold), stop.Token);
+            if (source.Held is null)
+            {
+                connected.Add(source.Connection.Id);
+            }
+            long size = await BackgroundWork.Run(() => new FileInfo(choice.Path).Length);
+            said = $"Exported {Plural.Of(rows, "row")} of {source.Title} to {file} ({Sizes.Said(size)})";
+            done = true;
+        }
+        catch (Exception stopped) when (stopped is OperationCanceledException || stopped is DbException && stop.IsCancellationRequested)
+        {
+            said = $"Export stopped: {file} is as it was";
+        }
+        catch (Exception error) when (error is DbException or IOException or UnauthorizedAccessException or InvalidOperationException or FormatException
+            or InvalidCastException or NotSupportedException or TimeoutException or System.Net.Sockets.SocketException)
+        {
+            said = $"{file} was not written: {ContainerSecrets.InSaid(error.Message, known: [source.Connection.ConnectionString])}";
+            IdeErrors.Write($"Database export failed: {said}");
+        }
+        ended = true;
+        working.Tell(done, said);
+        say(said);
+        return done ? null : said;
+    }
+
+    /// <summary>Writes a file's rows into a table as <paramref name="choice"/> maps them, in one transaction, under a
+    /// <see cref="Working"/> that says how many it has written and that Stop ends, nothing written then; what it came to is
+    /// said, a row refused by its number. Null once written, else why not.</summary>
+    public async Task<string?> ImportAsync(DatabaseSource source, ImportChoice choice)
+    {
+        UiThread.Check();
+        string file = Path.GetFileName(choice.File.Path);
+        if (work.Begin(AppActions.DatabaseImport, $"Importing {file} into {choice.Table}…") is not { } started)
+        {
+            return ActionWork.Busy(work.Of(AppActions.DatabaseImport)!);
+        }
+        using Working working = started;
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(working.Stopping, lifetime.Token);
+        bool ended = false;
+        string said;
+        bool done = false;
+        try
+        {
+            long rows = await BackgroundWork.Run(() => RowImport.RunAsync(source, choice, written => UiThread.Post(() =>
+            {
+                if (!ended)
+                {
+                    working.Say($"Importing {file} into {choice.Table}: {Plural.Of(written, "row")} written…");
+                }
+            }), stop.Token), stop.Token);
+            said = $"Imported {Plural.Of(rows, "row")} of {file} into {(choice.Made ? "the new table " : string.Empty)}{choice.Table}";
+            done = true;
+        }
+        catch (ImportRefused refused)
+        {
+            said = Refusals.RowRefused(refused.Row, file, ContainerSecrets.InSaid(refused.Message, known: [source.ConnectionString]));
+        }
+        catch (Exception stopped) when (stopped is OperationCanceledException || stopped is DbException && stop.IsCancellationRequested)
+        {
+            said = $"Import stopped: nothing of {file} was written";
+        }
+        catch (Exception error) when (error is DbException or IOException or UnauthorizedAccessException or InvalidOperationException or FormatException
+            or JsonException or TimeoutException or System.Net.Sockets.SocketException)
+        {
+            said = $"{file} was not imported: {ContainerSecrets.InSaid(error.Message, known: [source.ConnectionString])}";
+            IdeErrors.Write($"Database import failed: {said}");
+        }
+        ended = true;
+        connected.Add(source.Id);
+        catalogs.Remove(source.Id);
+        working.Tell(done, said);
+        say(said);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return done ? null : said;
+    }
+
     /// <summary>The connections kept for the folder, written as they change.</summary>
     private void Keep()
     {

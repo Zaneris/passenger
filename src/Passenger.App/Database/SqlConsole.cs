@@ -122,6 +122,7 @@ public sealed class SqlConsoleView : DockPanel
     private readonly TextBlock said = MutedText.Of(string.Empty);
     private readonly ToolTabs.Strip<int> tabs = new() { Name = "ConsoleTabs" };
     private readonly TextBox filter = SearchBox.Of("Filter rows", "Filter rows");
+    private readonly Button export;
     private readonly CellGrid grid = new() { Name = "ConsoleResults" };
     private readonly SelectableWords output = new() { Name = "ConsoleOutput", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(Gaps.Normal) };
     private readonly ScrollViewer outputPlace;
@@ -212,7 +213,9 @@ public sealed class SqlConsoleView : DockPanel
         filter.TextChanged += (_, _) => ShowTab();
         grid.SortRequested += (_, wanted) => grid.Table = wanted is { } by && grid.Table is { } table
             ? TableSort.By(table.Unsorted, by.Column, by.Descending) : grid.Table?.Unsorted;
-        Border strip = ToolBars.Top(new ToolFlow { Margin = new Thickness(Gaps.Normal, 0), Spacing = Gaps.Small, Children = { tabs, filter } });
+        export = ToolButtons.Of(AppActions.DatabaseExport, IconKeys.Export, "Export Data…", request);
+        export.Name = "ConsoleExport";
+        Border strip = ToolBars.Top(new ToolFlow { Margin = new Thickness(Gaps.Normal, 0), Spacing = Gaps.Small, Children = { tabs, filter, export } });
         Children.Add(bar);
         Children.Add(marked);
         Children.Add(strip);
@@ -338,6 +341,17 @@ public sealed class SqlConsoleView : DockPanel
     /// <summary>The grid of the result set shown.</summary>
     public CellGrid Grid => grid;
 
+    /// <summary>The result set whose tab is chosen, with the statement's run that read it and its tab's title; null on another tab.</summary>
+    public (SqlResult Result, DatabaseRows Rows, string Title)? ChosenResult
+    {
+        get
+        {
+            (SqlResult Result, DatabaseRows Rows)[] sets = [.. (shown?.Results ?? []).SelectMany(r => r.Sets.Select(s => (r, s)))];
+            int chosen = tabs.Choice;
+            return chosen > 0 && chosen <= sets.Length ? (sets[chosen - 1].Result, sets[chosen - 1].Rows, $"Result {chosen.ToString(CultureInfo.InvariantCulture)}") : null;
+        }
+    }
+
     /// <summary>Shows a console, following it as it runs; null lets go of the one shown.</summary>
     public void Show(SqlConsole? console)
     {
@@ -428,6 +442,7 @@ public sealed class SqlConsoleView : DockPanel
         historyPlace.IsVisible = chosen == HistoryTab;
         plan.IsVisible = chosen == PlanTab;
         filter.IsVisible = chosen > 0 || chosen == HistoryTab;
+        export.IsVisible = chosen > 0;
         filter.PlaceholderText = chosen == HistoryTab ? "Filter history" : "Filter rows";
         if (chosen == HistoryTab)
         {

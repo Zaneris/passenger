@@ -51,6 +51,8 @@
     <Compile Include="../../src/Passenger.App/Database/SqlCompletions.cs" Link="App/SqlCompletions.cs" />
     <Compile Include="../../src/Passenger.App/Database/SqlChecks.cs" Link="App/SqlChecks.cs" />
     <Compile Include="../../src/Passenger.App/Database/SqlPlans.cs" Link="App/SqlPlans.cs" />
+    <Compile Include="../../src/Passenger.App/Database/SqlInserts.cs" Link="App/SqlInserts.cs" />
+    <Compile Include="../../src/Passenger.App/Database/ImportTypes.cs" Link="App/ImportTypes.cs" />
     <Compile Include="../../src/Passenger.App/Containers/ComposeFiles.cs" Link="App/ComposeFiles.cs" />
     <Compile Include="../../src/Passenger.App/Containers/ComposeProjectFile.cs" Link="App/ComposeProjectFile.cs" />
     <Compile Include="../../src/Passenger.App/Containers/ServiceUrls.cs" Link="App/ServiceUrls.cs" />
@@ -333,6 +335,8 @@
     <Compile Include="../../src/Passenger.App/Tables/Workbook.cs" Link="App/Workbook.cs" />
     <Compile Include="../../src/Passenger.App/Tables/CellFormat.cs" Link="App/CellFormat.cs" />
     <Compile Include="../../src/Passenger.App/Tables/TableSort.cs" Link="App/TableSort.cs" />
+    <Compile Include="../../src/Passenger.App/Tables/RowWriters.cs" Link="App/RowWriters.cs" />
+    <Compile Include="../../src/Passenger.App/Tables/RowReaders.cs" Link="App/RowReaders.cs" />
   </ItemGroup>
 
   <!-- How the Endpoints window reads an .http file and an app's OpenAPI document, holds an answer to its criteria and its

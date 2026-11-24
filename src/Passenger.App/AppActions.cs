@@ -218,6 +218,14 @@ public static class AppActions
     // A connection marked read-only or production: no key of Rider's.
     public const string DatabaseReadOnly = "app.database.readOnly";
     public const string DatabaseProduction = "app.database.production";
+    // A table's or a result's rows written to a file, a file's read into a table, and a grid's chosen cells copied in a
+    // format: no key of Rider's for any.
+    public const string DatabaseExport = "app.database.export";
+    public const string DatabaseImport = "app.database.import";
+    public const string CopyAsCsv = "app.table.copyAsCsv";
+    public const string CopyAsTsv = "app.table.copyAsTsv";
+    public const string CopyAsJson = "app.table.copyAsJson";
+    public const string CopyAsInserts = "app.table.copyAsInserts";
     public const string MigrationsRefresh = "app.migrations.refresh";
     public const string AddMigration = "app.migrations.add";
     public const string RemoveLastMigration = "app.migrations.removeLast";

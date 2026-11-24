@@ -19,7 +19,12 @@ public partial class MainWindow
         Docking.ToolWindow shown = new(ToolWindowIds.Database, "Database", IconKeys.Database, () =>
         {
             DatabaseExplorer view = databaseExplorer = new DatabaseExplorer(controller, WhyNotOpened);
-            view.ActionRequested += (_, action) => Request(action);
+            // What the window asks runs where it was asked, on its chosen row, wherever the keys are.
+            view.ActionRequested += (_, action) =>
+            {
+                ActionContext now = actions!.Context();
+                Request(action, new ActionContext(now.File, now.Editor, view, Dock[ToolWindowIds.Database], now.Debugging));
+            };
             ActionButtons.ShowMarked(view, actions!);
             return view;
         }, Docking.ToolAnchor.RightTop)
@@ -142,6 +147,32 @@ public partial class MainWindow
         Table(AppActions.DatabaseDeleteRows, "Delete Rows", table => table.DeleteRows(), table => table.WhyNotDeleteRows, 3);
         Mark(AppActions.DatabaseReadOnly, "Read-Only Connection", DatabaseMark.ReadOnly);
         Mark(AppActions.DatabaseProduction, "Production Connection", DatabaseMark.Production);
+        actions!.Add(new IdeAction(AppActions.DatabaseExport, "Export Data…", "Database", context => IdeErrors.Observe(ExportDataAsync(context)))
+        {
+            WhyNot = context => WhyNotExport(context) ?? PersonsOwn(),
+            Menus = [new MenuPlace("Tools/Database", 5, 0)],
+            Words = ["CSV", "JSON", "SQL inserts", "Save Rows"],
+        });
+        actions!.Add(new IdeAction(AppActions.DatabaseImport, "Import Data…", "Database", context => IdeErrors.Observe(ImportDataAsync(context)))
+        {
+            WhyNot = context => WhyNotImport(context) ?? PersonsOwn(),
+            Menus = [new MenuPlace("Tools/Database", 5, 1)],
+            Words = ["CSV", "JSON", "Load Rows"],
+        });
+        foreach ((string id, string format) in Tables.CellGrid.CopyFormats)
+        {
+            actions!.Add(new IdeAction(id, $"Copy as {format}", "Edit", context =>
+            {
+                if (context.Focused is Tables.CellGrid grid)
+                {
+                    grid.Execute(id);
+                }
+            })
+            {
+                WhyNot = context => context.Focused is Tables.CellGrid grid ? grid.WhyNotCopy(id) : Refusals.NoTableCells,
+                Words = ["Copy Rows", "Copy Cells"],
+            });
+        }
 
         void Transaction(string id, string title, bool commit, int at)
         {
@@ -518,6 +549,200 @@ public partial class MainWindow
         Dictionary<string, string> values = boxes.ToDictionary(b => b.Name, b => b.Box.Text ?? string.Empty, StringComparer.Ordinal);
         controller.KeepParameters(console, values);
         return values;
+    }
+
+    /// <summary>What Export Data writes, by where it is asked: a table or view the Database window chooses (while it has the
+    /// keys, or nothing else is shown), the table shown, or the console's result shown.</summary>
+    private sealed record ExportFrom(DatabaseNode? Node, DatabaseTableTab? Table, SqlConsoleView? Console);
+
+    /// <summary>The choice the last export of the window made, which the next one offers again.</summary>
+    private ExportChoice? lastExport;
+
+    private ExportFrom? ExportOf(ActionContext context)
+    {
+        DatabaseNode? chosen = databaseExplorer?.Chosen is { Table: not null } node ? node : null;
+        if (context.ToolWindow?.Id == ToolWindowIds.Database && chosen is not null)
+        {
+            return new ExportFrom(chosen, null, null);
+        }
+        if (context.File?.DatabaseTable is { } table)
+        {
+            return new ExportFrom(null, table, null);
+        }
+        if (context.File?.Language == Languages.Language.Sql && Editors.ActiveGroup.Console is { ChosenResult: not null, Console.Connection: not null } console)
+        {
+            return new ExportFrom(null, null, console);
+        }
+        return chosen is null ? null : new ExportFrom(chosen, null, null);
+    }
+
+    private string? WhyNotExport(ActionContext context) => ExportOf(context) switch
+    {
+        null => Refusals.NothingToExport,
+        { Table: { } table } => table.Exported() is null ? Refusals.DatabaseBusy : null,
+        { Node: { } node } => WhyNotOpened(node.Source) ?? (database?.Busy == true ? Refusals.DatabaseBusy : null),
+        { Console.Console.Connection: { } id } => database?.Find(id) is { } source ? WhyNotOpened(source) : Refusals.NoDatabaseConnection,
+        _ => null,
+    };
+
+    /// <summary>Export Data: what it writes asked of the person with the format and file (<see cref="DatabaseExportDialog"/>),
+    /// then written there row by row (<see cref="DatabaseController.ExportAsync"/>), once the file may be written.</summary>
+    private async Task ExportDataAsync(ActionContext context)
+    {
+        if (ExportOf(context) is not { } from || database is not { } controller || session.Folder is not { } folder)
+        {
+            return;
+        }
+        ExportSource? source = null;
+        string stem = "result";
+        if (from.Node is { Table: { } table } node)
+        {
+            DatabaseSource within = node.Source.In(node.Database);
+            if (await controller.ReadAsync(node.Source, $"Reading {table}…", cancel => DatabaseClient.SchemaAsync(within, table, cancel)) is not { } schema)
+            {
+                return;
+            }
+            (string sql, List<(string Name, object? Value)> parameters) = DatabaseClient.Selecting(within.Kind, schema, null, null);
+            source = new ExportSource(within, table.ToString(), new InsertTarget(within.Kind, DatabaseClient.Full(within.Kind, table)))
+            {
+                Sql = sql,
+                Parameters = parameters,
+                Said = $"Every row of {table}, read from {within.Name} a row at a time.",
+            };
+            stem = table.Name;
+        }
+        else if (from.Table is { } shown)
+        {
+            source = shown.Exported();
+            stem = shown.Table.Name;
+        }
+        else if (from.Console is { ChosenResult: { } result, Console: { Connection: { } id } console } && controller.Find(id) is { } connection)
+        {
+            source = Exported(console, connection, result.Result, result.Rows, result.Title);
+            stem = source.Into.Table == "result" ? "result" : string.Concat(source.Into.Table.Where(c => c is not ('"' or '`' or '[' or ']')));
+        }
+        if (source is null)
+        {
+            return;
+        }
+        if (await new DatabaseExportDialog(source, folder, stem, lastExport).ShowDialog<ExportChoice?>(this) is not { } choice)
+        {
+            return;
+        }
+        lastExport = choice;
+        if (await WhyNotWrittenAsync(choice.Path) is { } why)
+        {
+            Refuse(why);
+            return;
+        }
+        if (await controller.ExportAsync(source, choice) is null)
+        {
+            Editors.Find(choice.Path)?.Reload();
+        }
+
+        // A result read whole is written as held; one cut short is run again where its statement only reads.
+        ExportSource Exported(SqlConsole console, DatabaseSource connection, SqlResult run, DatabaseRows rows, string title)
+        {
+            bool again = rows.More && SqlText.EffectOf(run.Statement, connection.Kind) == SqlEffect.Reads;
+            bool asks = SqlParameters.Of([run.Statement], connection.Kind)[0].Count > 0;
+            string said = !rows.More ? $"The {Plural.Of(rows.RowCount, "row")} of {title}."
+                : again ? $"Every row its statement returns, run again on {connection.Name} and read a row at a time: {Shortened(run.Statement)}"
+                : $"The first {Plural.Of(rows.RowCount, "row")} {title} holds: its statement changes data, so it is not run again.";
+            return new ExportSource(connection, title, rows.Into ?? new InsertTarget(connection.Kind, SqlInserts.TableOf(run.Statement, connection.Kind)))
+            {
+                Sql = run.Statement,
+                Held = again ? null : rows,
+                Values = again && asks ? controller.ParametersOf(console) : null,
+                Said = said,
+            };
+        }
+
+        static string Shortened(string statement) => statement.Length > 200 ? statement[..200] + "…" : statement;
+    }
+
+    /// <summary>Where Import Data writes, by where it is asked: the table shown (unless the Database window has the keys), else
+    /// the database of the window's chosen row, into its table or schema where it is one or under one.</summary>
+    private sealed record ImportTo(DatabaseSource Source, string Database, string Schema, DatabaseTable? Table);
+
+    private ImportTo? ImportOf(ActionContext context)
+    {
+        if (context.ToolWindow?.Id != ToolWindowIds.Database && context.File?.DatabaseTable is { } shown && database?.Find(shown.Connection) is { } connection)
+        {
+            return new ImportTo(connection, shown.Database, shown.Table.Schema, shown.Table);
+        }
+        return databaseExplorer?.Chosen is { Kind: not DatabaseNodeKind.Note } node && database?.Find(node.Source.Id) is { } source
+            ? new ImportTo(source, node.Database, node.Schema, node.Kind == DatabaseNodeKind.Table ? node.Table : null) : null;
+    }
+
+    private string? WhyNotImport(ActionContext context) => ImportOf(context) is not { } to ? Refusals.NothingToImportInto
+        : to.Source.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(to.Source.Name)
+        : WhyNotOpened(to.Source) ?? (database?.Busy == true ? Refusals.DatabaseBusy : null);
+
+    /// <summary>Import Data: the database's tables read, the file, the table and the columns asked of the person
+    /// (<see cref="DatabaseImportDialog"/>), asking first on a production connection, then the rows written
+    /// (<see cref="DatabaseController.ImportAsync"/>), the tree reading a new table and a tab of the table its rows again.</summary>
+    private async Task ImportDataAsync(ActionContext context)
+    {
+        if (ImportOf(context) is not { } to || database is not { } controller || session.Folder is not { } folder)
+        {
+            return;
+        }
+        DatabaseSource within = to.Source.In(to.Database);
+        if (await controller.ReadAsync(to.Source, $"Reading {to.Database}'s tables…", cancel => DatabaseClient.TablesAsync(within, cancel)) is not { } tables)
+        {
+            return;
+        }
+        DatabaseImportDialog dialog = new(within.Kind, folder, to.Schema, tables, to.Table,
+            (table, cancel) => BackgroundWork.Run(() => DatabaseClient.SchemaAsync(within, table, cancel), cancel));
+        if (await dialog.ShowDialog<ImportChoice?>(this) is not { } choice)
+        {
+            return;
+        }
+        string file = Path.GetFileName(choice.File.Path);
+        if (to.Source.Mark == DatabaseMark.Production && !await AskProductionAsync("Import into Production",
+            $"{to.Source.Name} is marked production. Write the rows of {file} into {(choice.Made ? "a new table " : string.Empty)}{choice.Table}?", "Import"))
+        {
+            return;
+        }
+        if (await controller.ImportAsync(within, choice) is not null)
+        {
+            return;
+        }
+        if (choice.Made)
+        {
+            await DatabaseExplorer.ReadAgainAsync(to.Source, to.Database);
+        }
+        foreach (DatabaseTableTab tab in Editors.TabDocuments.Select(d => d.DatabaseTable).OfType<DatabaseTableTab>()
+            .Where(t => t.Connection == to.Source.Id && t.Database == to.Database && t.Table == choice.Table && t.Edits.IsEmpty))
+        {
+            await tab.ReadAgainAsync();
+        }
+    }
+
+    /// <summary>Why a file the person named may not be written now: its folder gone, it open with changes not saved, it
+    /// read-only, or held by what the window's writes wait for (<see cref="Editors.EditorArea.ClearAsync"/>); null where it may.</summary>
+    private async Task<string?> WhyNotWrittenAsync(string path)
+    {
+        string name = Path.GetFileName(path);
+        string within = Path.GetDirectoryName(path) ?? path;
+        if (!await BackgroundWork.Run(() => Directory.Exists(within)))
+        {
+            return Refusals.NoFolderThere(PathNames.Shown(within, Folder));
+        }
+        string canonical = PathNames.Canonical(path);
+        if (Editors.Find(canonical) is { IsModified: true })
+        {
+            return Refusals.UnsavedThere(name);
+        }
+        if (Workspace.ReadOnlyFiles.Holds(canonical))
+        {
+            return Workspace.ReadOnlyFiles.Refused(canonical, name);
+        }
+        if (await BackgroundWork.Run(() => FileText.IsReadOnly(canonical)))
+        {
+            return Refusals.ReadOnly(name);
+        }
+        return await Editors.ClearAsync([canonical]);
     }
 
     /// <summary>Writes a statement at the end of a console's file shown, on a line of its own, chosen there and not run.</summary>

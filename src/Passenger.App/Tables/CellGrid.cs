@@ -18,9 +18,10 @@ namespace Passenger.App.Tables;
 /// A click chooses a cell, a drag or Shift a range, the header a column and the side a row; a header's edge is dragged to
 /// size its column, or double-clicked to fit it, and the arrow at a title's end (shown on the column sorted by, and on the
 /// title the pointer is over) sorts by its column, as the header's menu does. Copy writes the chosen cells as
-/// tab-separated lines, from the keys or the cells' menu, which a right-click opens on the cell under it (the chosen ones,
-/// when it falls among them). A table whose cells may be written (<see cref="Table.IsEditable"/>) is written in place: a
-/// cell opens for writing on Enter, F2, a double-click or a character typed, and Enter, Tab or a click away writes it.</summary>
+/// tab-separated lines, and Copy As as CSV, JSON or a database's SQL inserts, from the keys or the cells' menu, which a
+/// right-click opens on the cell under it (the chosen ones, when it falls among them). A table whose cells may be written
+/// (<see cref="Table.IsEditable"/>) is written in place: a cell opens for writing on Enter, F2, a double-click or a
+/// character typed, and Enter, Tab or a click away writes it.</summary>
 public sealed class CellGrid : Control, IOwnKeys
 {
     private const double RowHeight = ListRow.Height;
@@ -245,6 +246,7 @@ public sealed class CellGrid : Control, IOwnKeys
             Items =
             {
                 ListMenus.Keyed("Copy", EditorActions.Copy, () => Execute(EditorActions.Copy), cells ? null : Refusals.NoCells),
+                ListMenus.Sub("Copy As", [.. CopyFormats.Select(f => ListMenus.Keyed(f.Title, f.Action, () => Execute(f.Action), WhyNotCopy(f.Action)))]),
                 ListMenus.Keyed("Select All", EditorActions.SelectAll, () => Execute(EditorActions.SelectAll), cells ? null : Refusals.NoCells),
             },
         };
@@ -382,6 +384,42 @@ public sealed class CellGrid : Control, IOwnKeys
         return text.ToString();
     }
 
+    /// <summary>The formats Copy As writes the chosen cells in, each one of the window's actions, as its menu lists them.</summary>
+    public static readonly (string Action, string Title)[] CopyFormats =
+        [(AppActions.CopyAsCsv, "CSV"), (AppActions.CopyAsTsv, "Tab-Separated"), (AppActions.CopyAsJson, "JSON"), (AppActions.CopyAsInserts, "SQL Inserts")];
+
+    /// <summary>Why the chosen cells cannot be copied as <paramref name="action"/> asks: no cells, or inserts of a table that is
+    /// no database's; null where they can.</summary>
+    public string? WhyNotCopy(string action) => table is not { RowCount: > 0, ColumnCount: > 0 } ? Refusals.NoCells
+        : action == AppActions.CopyAsInserts && table.Inserts(TextWriter.Null, Environment.NewLine) is null ? Refusals.NoInsertTable : null;
+
+    /// <summary>The chosen cells' rows (the one standing empty for a new row left out) as Copy As writes them: CSV with their
+    /// columns' names first, tab-separated as Copy writes them, JSON objects, or SQL inserts into the table they came from;
+    /// null where <see cref="WhyNotCopy"/> says why not.</summary>
+    public string? CopiedAs(string action)
+    {
+        if (WhyNotCopy(action) is not null || table is not { } shown)
+        {
+            return null;
+        }
+        if (action == AppActions.CopyAsTsv)
+        {
+            return ChosenText();
+        }
+        (int top, int left, int bottom, int right) = Chosen;
+        string line = Environment.NewLine;
+        RowColumn[] columns = [.. Enumerable.Range(left, right - left + 1).Select(c => new RowColumn(shown.Header(c), shown.TypeOf(c)))];
+        IEnumerable<IReadOnlyList<object?>> rows = Enumerable.Range(top, bottom - top + 1).Where(r => !shown.IsNewRow(r))
+            .Select(r => (IReadOnlyList<object?>)[.. Enumerable.Range(left, right - left + 1).Select(c => shown.ValueAt(r, c))]);
+        Func<TextWriter, RowWriter> made = action switch
+        {
+            AppActions.CopyAsCsv => into => new CsvRows(into, ',', header: true, line),
+            AppActions.CopyAsJson => into => new JsonRows(into, line),
+            _ => into => shown.Inserts(into, line)!,
+        };
+        return Containers.ContainerSecrets.InSaid(RowWriter.Written(made, columns, rows));
+    }
+
     /// <summary>An editing action sent to the focused table: true when it acts.</summary>
     public bool Execute(string action)
     {
@@ -389,6 +427,12 @@ public sealed class CellGrid : Control, IOwnKeys
         {
             case EditorActions.Copy:
                 IdeErrors.Observe(Copy());
+                return true;
+            case AppActions.CopyAsCsv or AppActions.CopyAsTsv or AppActions.CopyAsJson or AppActions.CopyAsInserts:
+                if (CopiedAs(action) is { } copied)
+                {
+                    IdeErrors.Observe(Copy(copied));
+                }
                 return true;
             case EditorActions.SelectAll when table is not null:
                 Choose((0, 0), (table.RowCount - 1, table.ColumnCount - 1));
@@ -404,11 +448,11 @@ public sealed class CellGrid : Control, IOwnKeys
         return false;
     }
 
-    private async Task Copy()
+    private async Task Copy(string? text = null)
     {
         if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
         {
-            await Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(clipboard, ChosenText());
+            await Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(clipboard, text ?? ChosenText());
         }
     }
 

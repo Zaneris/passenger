@@ -17,8 +17,8 @@ namespace Passenger.Tests;
 
 /// <summary>The Database window over a folder's SQLite database: connections found without connecting, the explorer read as
 /// it is opened, a table's data among the editors, an object's DDL and scripts, a console's parameters, history, files run
-/// whole and SQL laid out, and a connection made by hand kept with its password in the system's credential store (the
-/// test run's own, in memory).</summary>
+/// whole and SQL laid out, rows copied, exported (a million of them streamed) and imported, and a connection made by hand
+/// kept with its password in the system's credential store (the test run's own, in memory).</summary>
 public sealed class DatabaseTests
 {
     [AvaloniaFact]
@@ -350,6 +350,180 @@ public sealed class DatabaseTests
                 Ui.WaitFor(() => window.EditorArea.CodeEditor.Document.Snapshot.ToString().StartsWith("SELECT", StringComparison.Ordinal), "the statement laid out");
                 Assert.Equal("SELECT Name,\n       'a;b'\nFROM Products -- kept\nWHERE Id = 1\n    AND Note IS NULL", window.EditorArea.CodeEditor.Document.Snapshot.ToString());
             });
+            Flow.Step("a table's chosen cells copy as CSV, tab-separated, JSON and SQL inserts, and the inserts pasted into its console add the rows again", () =>
+            {
+                Passenger.App.Workspace.OpenDocument console = window.EditorArea.Active!;
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "Products"));
+                Assert.True(window.Perform(AppActions.DatabaseOpenTable), "Open Table Data did not run");
+                Ui.WaitFor(() => Data(window) is { Reading: false, Rows.RowCount: 100 }, "Products' first page");
+                CellGrid grid = Tab<CellGrid>(window, "DatabaseTabResults");
+                grid.Focus();
+                grid.Choose((0, 0), (1, 2));
+                Assert.Equal("Id,Name,Note\n1,Changed elsewhere,\n2,Product 2,a note\n", grid.CopiedAs(AppActions.CopyAsCsv)?.ReplaceLineEndings("\n"));
+                Assert.Equal("1\tChanged elsewhere\tNULL\n2\tProduct 2\ta note\n", grid.CopiedAs(AppActions.CopyAsTsv)?.ReplaceLineEndings("\n"));
+                Assert.Equal("[\n  {\"Id\":1,\"Name\":\"Changed elsewhere\",\"Note\":null},\n  {\"Id\":2,\"Name\":\"Product 2\",\"Note\":\"a note\"}\n]\n",
+                    grid.CopiedAs(AppActions.CopyAsJson)?.ReplaceLineEndings("\n"));
+                grid.RaiseEvent(new Avalonia.Input.ContextRequestedEventArgs());
+                Ui.Settle();
+                Ui.Choose(grid.Menu, "Copy As", "SQL Inserts");
+                const string Inserts = "INSERT INTO \"Products\" (\"Id\", \"Name\", \"Note\") VALUES (1, 'Changed elsewhere', NULL);\n"
+                    + "INSERT INTO \"Products\" (\"Id\", \"Name\", \"Note\") VALUES (2, 'Product 2', 'a note');\n";
+                Ui.WaitFor(() => Ui.Clipboard(window)?.ReplaceLineEndings("\n") == Inserts, () => $"the rows as inserts on the clipboard, where it holds {Ui.Clipboard(window)}");
+                Sql(folder, "DELETE FROM Products WHERE Id IN (1, 2)");
+                window.EditorArea.Activate(console);
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console again");
+                CodeEditor editor = window.EditorArea.CodeEditor;
+                editor.Focus();
+                Assert.Equal(Refusals.NoTableCells, window.Actions.Run(AppActions.CopyAsJson));
+                editor.Select(new TextRange(0, editor.Document.Snapshot.Length));
+                Assert.True(window.Perform(EditorActions.Paste), "Paste did not run in the console");
+                Ui.WaitFor(() => editor.Document.Snapshot.ToString().ReplaceLineEndings("\n") == Inserts, () => editor.Document.Snapshot.ToString());
+                SqlConsole sql = window.EditorArea.ActiveGroup.Console!.Console!;
+                Assert.True(window.Perform(AppActions.DatabaseRunFile), "Run SQL File did not run");
+                Ui.WaitFor(() => !sql.Running && sql.Results is [{ Error: null }, { Error: null }], () => sql.Said);
+                Assert.Equal("Changed elsewhere", Scalar(folder, "SELECT Name FROM Products WHERE Id = 1"));
+                Assert.Equal("a note", Scalar(folder, "SELECT Note FROM Products WHERE Id = 2"));
+            });
+            Flow.Step("a table, a filtered table and a result export to CSV, JSON and SQL inserts, a million rows streamed holding a row at a time, and Stop leaves the file as it was", () =>
+            {
+                string exports = TestFolders.Create("database-exports-");
+                List<string> told = Told(window);
+                ListBox tree = Explorer(window).GetVisualDescendants().OfType<ListBox>().Single(l => l.Name == "DatabaseTree");
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "Products"));
+                Ui.ChooseFromMenu(tree, "Export Data…");
+                DatabaseExportDialog dialog = Dialog<DatabaseExportDialog>(window);
+                DialogButtonsTests.Check(dialog);
+                Assert.Contains("Every row of Products", dialog.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).OfType<string>().First(t => t.StartsWith("Every row", StringComparison.Ordinal)), StringComparison.Ordinal);
+                Field<ComboBox>(dialog, "ExportFormat").SelectedIndex = (int)ExportFormat.Inserts;
+                Assert.Contains("SQLite's SQL", dialog.Holds, StringComparison.Ordinal);
+                Field<TextBox>(dialog, "ExportTable").Text = "Copied";
+                Assert.Equal(".sql", Path.GetExtension(Field<TextBox>(dialog, "ExportFile").Text));
+                Field<TextBox>(dialog, "ExportFile").Text = Path.Combine(exports, "products.sql");
+                Ui.ClickButton(dialog, "Export");
+                Ui.WaitFor(() => told.Any(t => t.StartsWith("Exported 105 rows of Products to products.sql", StringComparison.Ordinal)), () => string.Join("; ", told));
+                Sql(folder, "CREATE TABLE Copied (Id INTEGER PRIMARY KEY, Name TEXT NOT NULL, Note TEXT);\n" + File.ReadAllText(Path.Combine(exports, "products.sql")));
+                Assert.Equal(105L, Count(folder, "Copied"));
+                Assert.Equal("a note", Scalar(folder, "SELECT Note FROM Copied WHERE Id = 2"));
+
+                window.EditorArea.Activate(window.EditorArea.Groups.SelectMany(g => g.Tabs).Select(t => t.Document).Single(d => d.DatabaseTable?.Table.Name == "Products"));
+                Tab<ComboBox>(window, "DatabaseFilterColumn").SelectedItem = "Name";
+                Filter(window, "product 1");
+                Ui.WaitFor(() => Data(window) is { Reading: false, Rows.RowCount: 16 }, "Products whose names hold product 1");
+                Tab<CellGrid>(window, "DatabaseTabResults").Focus();
+                Assert.True(window.Perform(AppActions.DatabaseExport), "Export Data did not run from the table");
+                dialog = Dialog<DatabaseExportDialog>(window);
+                Field<ComboBox>(dialog, "ExportFormat").SelectedIndex = (int)ExportFormat.Json;
+                Field<TextBox>(dialog, "ExportFile").Text = Path.Combine(exports, "products.json");
+                Ui.ClickButton(dialog, "Export");
+                Ui.WaitFor(() => told.Any(t => t.StartsWith("Exported 16 rows of Products to products.json", StringComparison.Ordinal)), () => string.Join("; ", told));
+                using (JsonDocument exported = JsonDocument.Parse(File.ReadAllText(Path.Combine(exports, "products.json"))))
+                {
+                    Assert.Equal(16, exported.RootElement.GetArrayLength());
+                    Assert.Equal("Product 10", exported.RootElement[0].GetProperty("Name").GetString());
+                }
+                Filter(window, string.Empty);
+
+                Sql(folder, "CREATE TABLE Big (Id INTEGER PRIMARY KEY, Name TEXT NOT NULL, Price REAL); WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 1000000) "
+                    + "INSERT INTO Big SELECT x, 'Item ' || x, x * 0.25 FROM n;");
+                window.EditorArea.Activate(window.EditorArea.Documents.Single(d => d.Name == "Shop.sql"));
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console again");
+                window.EditorArea.CodeEditor.Focus();
+                Run(window, "SELECT Id, Name, Price FROM Big ORDER BY Id");
+                SqlConsoleView view = window.EditorArea.ActiveGroup.Console!;
+                Assert.True(view.ChosenResult is { Rows.More: true }, "The million rows' result was not cut at its first rows");
+                TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                Task<RowExport> held = window.Database.HoldExport(500_000, release.Task);
+                Ui.Click(Tab<Button>(window, "ConsoleExport"));
+                dialog = Dialog<DatabaseExportDialog>(window);
+                Assert.Contains(dialog.GetVisualDescendants().OfType<TextBlock>(), t => t.Text?.StartsWith("Every row its statement returns, run again", StringComparison.Ordinal) == true);
+                string big = Path.Combine(exports, "big.csv");
+                Field<ComboBox>(dialog, "ExportFormat").SelectedIndex = (int)ExportFormat.Csv;
+                Field<TextBox>(dialog, "ExportFile").Text = big;
+                ExportUnsettled(dialog);
+                RowExport export = Ui.AwaitPumped(held, "the export held halfway");
+                Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.DatabaseExport)?.Stage.Contains("500,000 rows written", StringComparison.Ordinal) == true,
+                    "the export saying the rows it has written");
+                (long bytes, string most) = HeldBytes.Of(export, o => o is Avalonia.AvaloniaObject or Delegate or DatabaseSource);
+                Assert.True(bytes < 4 << 20, $"Halfway through a million rows the export holds {bytes:N0} bytes, the most in {most}: it holds rows it has written");
+                string writing = Assert.Single(Directory.GetFiles(exports, "*" + FileText.SaveSuffix));
+                TestContext.Current.TestOutputHelper?.WriteLine($"Halfway through a million rows the export held {bytes:N0} bytes (the most in {most}), {new FileInfo(writing).Length:N0} on disk");
+                Assert.True(new FileInfo(writing).Length > 8 << 20, $"Halfway through a million rows only {new FileInfo(writing).Length:N0} bytes are on disk: the rows are not written as they come");
+                Assert.False(File.Exists(big), "The file is there before the export has written it whole");
+                release.SetResult();
+                Ui.WaitFor(() => told.Any(t => t.StartsWith("Exported 1,000,000 rows of Result 1 to big.csv", StringComparison.Ordinal)), () => string.Join("; ", told), TimeSpan.FromMinutes(2));
+                Assert.Equal(1_000_001, File.ReadLines(big).LongCount());
+                Assert.Equal("Id,Name,Price", File.ReadLines(big).First());
+                Assert.Equal("1000000,Item 1000000,250000", File.ReadLines(big).Last());
+
+                long written = new FileInfo(big).Length;
+                TaskCompletionSource again = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                held = window.Database.HoldExport(100_000, again.Task);
+                Ui.Click(Tab<Button>(window, "ConsoleExport"));
+                dialog = Dialog<DatabaseExportDialog>(window);
+                Assert.Equal(exports, Path.GetDirectoryName(Field<TextBox>(dialog, "ExportFile").Text));
+                Field<TextBox>(dialog, "ExportFile").Text = big;
+                ExportUnsettled(dialog);
+                Ui.AwaitPumped(held, "the second export held");
+                Assert.True(window.Perform(AppActions.Stop), "Stop did not run while the export worked");
+                again.SetResult();
+                Ui.WaitFor(() => told.Contains("Export stopped: big.csv is as it was"), () => string.Join("; ", told));
+                Assert.Equal(written, new FileInfo(big).Length);
+                Assert.Empty(Directory.GetFiles(exports, "*" + FileText.SaveSuffix));
+            });
+            Flow.Step("a CSV imports into an existing table by its columns' names, a JSON file into a new table typed from its rows, and the first refused row writes nothing", () =>
+            {
+                string imports = TestFolders.Create("database-imports-");
+                List<string> told = Told(window);
+                File.WriteAllText(Path.Combine(imports, "more.csv"), "Name,Note,Id\r\n\"Imported, one\",\"has \"\"quotes\"\"\",900\r\nTwo,,901\r\n");
+                window.EditorArea.Activate(window.EditorArea.Groups.SelectMany(g => g.Tabs).Select(t => t.Document).Single(d => d.DatabaseTable?.Table.Name == "Products"));
+                Tab<CellGrid>(window, "DatabaseTabResults").Focus();
+                Assert.True(window.Perform(AppActions.DatabaseImport), "Import Data did not run from the table");
+                DatabaseImportDialog dialog = Dialog<DatabaseImportDialog>(window);
+                DialogButtonsTests.Check(dialog);
+                Assert.Equal("Products", Field<ComboBox>(dialog, "ImportInto").SelectedItem);
+                dialog.File = Path.Combine(imports, "more.csv");
+                Ui.WaitFor(() => !dialog.IsReading && dialog.Preview is not null && dialog.Columns.Count == 3, () => dialog.Problem);
+                Assert.Equal("Name, Note, Id", string.Join(", ", dialog.Columns.Select(c => c.Into)));
+                Assert.Equal("has \"quotes\"", dialog.Preview!.Rows[0][1]);
+                Ui.ClickButton(dialog, "Import");
+                Ui.WaitFor(() => told.Contains("Imported 2 rows of more.csv into Products"), () => string.Join("; ", told));
+                Assert.Equal("Imported, one", Scalar(folder, "SELECT Name FROM Products WHERE Id = 900"));
+                Assert.Equal("has \"quotes\"", Scalar(folder, "SELECT Note FROM Products WHERE Id = 900"));
+                Assert.Null(Value(folder, "SELECT Note FROM Products WHERE Id = 901"));
+
+                File.WriteAllText(Path.Combine(imports, "again.csv"), "Id,Name\n902,Fine\n900,Taken\n");
+                Assert.True(window.Perform(AppActions.DatabaseImport), "Import Data did not run again");
+                dialog = Dialog<DatabaseImportDialog>(window);
+                dialog.File = Path.Combine(imports, "again.csv");
+                Ui.WaitFor(() => !dialog.IsReading && dialog.Columns.Count == 2, () => dialog.Problem);
+                Ui.ClickButton(dialog, "Import");
+                Ui.WaitFor(() => told.Any(t => t.StartsWith("Row 2 of again.csv was refused, so nothing was written: ", StringComparison.Ordinal)), () => string.Join("; ", told));
+                Assert.Contains("UNIQUE", told[^1], StringComparison.Ordinal);
+                Assert.Null(Scalar(folder, "SELECT Name FROM Products WHERE Id = 902"));
+
+                File.WriteAllText(Path.Combine(imports, "stock.json"), """
+                    [{"code": "A1", "qty": 3, "price": 2.5, "when": "2024-05-01", "ok": true},
+                     {"code": "B2", "qty": 12, "price": 10, "when": "2024-06-30", "ok": false, "late": "yes"}]
+                    """);
+                ListBox tree = Explorer(window).GetVisualDescendants().OfType<ListBox>().Single(l => l.Name == "DatabaseTree");
+                Explorer(window).Choose(Explorer(window).Rows.First(r => r.Kind == DatabaseNodeKind.Group && r.Title == "Tables"));
+                Ui.ChooseFromMenu(tree, "Import Data…");
+                dialog = Dialog<DatabaseImportDialog>(window);
+                Assert.Equal(DatabaseImportDialog.NewTable, Field<ComboBox>(dialog, "ImportInto").SelectedItem);
+                dialog.File = Path.Combine(imports, "stock.json");
+                Ui.WaitFor(() => !dialog.IsReading && dialog.Columns.Count == 6, () => dialog.Problem);
+                Assert.Equal("stock", Field<TextBox>(dialog, "ImportTableName").Text);
+                Assert.Equal(["TEXT", "INTEGER", "REAL", "DATE", "BOOLEAN", "TEXT"], dialog.Columns.Select(c => c.Type));
+                Ui.ClickButton(dialog, "Import");
+                Ui.WaitFor(() => told.Contains("Imported 2 rows of stock.json into the new table stock"), () => string.Join("; ", told));
+                Ui.WaitFor(() => Explorer(window).Rows.Any(r => r.Kind == DatabaseNodeKind.Table && r.Title == "stock"), "the new table in the tree, the tree as it was open");
+                Assert.Equal(12L, Value(folder, "SELECT qty FROM stock WHERE code = 'B2'"));
+                Assert.Equal(0L, Value(folder, "SELECT ok FROM stock WHERE code = 'B2'"));
+                Assert.Null(Value(folder, "SELECT late FROM stock WHERE code = 'A1'"));
+                window.EditorArea.Activate(window.EditorArea.Documents.Single(d => d.Name == "Shop.sql"));
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console again");
+                window.EditorArea.CodeEditor.Focus();
+            });
             Flow.Step("a console in manual commit holds its transaction across statements until Commit or Rollback, and asks before it closes with one open", () =>
             {
                 SqlConsole sql = window.EditorArea.ActiveGroup.Console!.Console!;
@@ -543,6 +717,27 @@ public sealed class DatabaseTests
         Ui.WaitFor(() => !sql.Running, () => sql.Said);
     }
 
+    /// <summary>What each work of the window's tells it came to from now on, in turn.</summary>
+    private static List<string> Told(MainWindow window)
+    {
+        List<string> told = [];
+        window.Actions.Work.Told += (_, outcome) => told.Add(outcome.Said);
+        return told;
+    }
+
+    private static T Dialog<T>(MainWindow window) where T : Window
+    {
+        Ui.WaitFor(() => window.OwnedWindows.OfType<T>().Any(d => d.IsVisible), () => window.Status ?? string.Empty);
+        Ui.Settle();
+        return window.OwnedWindows.OfType<T>().Single(d => d.IsVisible);
+    }
+
+    /// <summary>Export pressed while the export it starts is held, which the test pumps through itself.</summary>
+    private static void ExportUnsettled(DatabaseExportDialog dialog) =>
+        Ui.Click(dialog.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Export"), settle: false);
+
+    private static T Field<T>(Window dialog, string name) where T : Control => dialog.GetVisualDescendants().OfType<T>().Single(c => c.Name == name);
+
     private static ConfirmDialog Confirm(MainWindow window)
     {
         Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible), () => window.Database.Said);
@@ -562,6 +757,17 @@ public sealed class DatabaseTests
         using SqliteCommand command = connection.CreateCommand();
         command.CommandText = sql;
         command.ExecuteNonQuery();
+    }
+
+    private static long Count(string folder, string table) => (long)Value(folder, $"SELECT COUNT(*) FROM {table}")!;
+
+    private static object? Value(string folder, string sql)
+    {
+        using SqliteConnection connection = new($"Data Source={Path.Combine(folder, "shop.db")};Pooling=False");
+        connection.Open();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = sql;
+        return command.ExecuteScalar() is { } value and not DBNull ? value : null;
     }
 
     private static string? Scalar(string folder, string sql)

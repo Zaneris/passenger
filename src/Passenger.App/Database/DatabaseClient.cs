@@ -64,12 +64,7 @@ internal static class DatabaseClient
         }
     }
 
-    internal static string Quote(DatabaseKind kind, string name) => kind switch
-    {
-        DatabaseKind.SqlServer => "[" + name.Replace("]", "]]", StringComparison.Ordinal) + "]",
-        DatabaseKind.MySql => "`" + name.Replace("`", "``", StringComparison.Ordinal) + "`",
-        _ => "\"" + name.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"",
-    };
+    internal static string Quote(DatabaseKind kind, string name) => SqlText.QuotedName(kind, name);
 
     internal static string Full(DatabaseKind kind, DatabaseTable table) =>
         (table.Schema.Length > 0 ? Quote(kind, table.Schema) + "." : string.Empty) + Quote(kind, table.Name);
@@ -163,19 +158,39 @@ internal static class DatabaseClient
         (string Column, bool Descending)? sort = null)
     {
         await using DbConnection connection = await OpenAsync(source, cancel);
+        (string sql, List<(string Name, object? Value)> parameters) = Selecting(source.Kind, schema, filter, sort);
+        parameters.Add(("@offset", offset));
+        parameters.Add(("@take", PageSize + 1));
+        sql += source.Kind == DatabaseKind.SqlServer ? " OFFSET @offset ROWS FETCH NEXT @take ROWS ONLY" : " LIMIT @take OFFSET @offset";
+        DatabaseRows rows = await ReadAsync(connection, sql, parameters, cancel, PageSize);
+        return new DatabaseRows(rows.Columns, rows.Rows, rows.More)
+        {
+            Schema = schema,
+            Offset = offset,
+            Types = rows.Types,
+            Into = new InsertTarget(source.Kind, Full(source.Kind, schema.Table)),
+            OrderedBy = sort is { } sorted ? (Array.IndexOf(rows.Columns, sorted.Column), sorted.Descending) : null,
+        };
+    }
+
+    /// <summary>A table's rows as a query reads them, filtered and sorted on the server, else in its primary key's order,
+    /// with the parameters it takes.</summary>
+    internal static (string Sql, List<(string Name, object? Value)> Parameters) Selecting(DatabaseKind kind, DatabaseSchema schema, DatabaseFilter? filter,
+        (string Column, bool Descending)? sort)
+    {
         if (sort is { } wanted && !schema.Columns.Any(c => c.Name == wanted.Column))
         {
             throw new InvalidOperationException("Choose a column of this table");
         }
-        string order = sort is { } by ? Quote(source.Kind, by.Column) + (by.Descending ? " DESC" : string.Empty)
-            : string.Join(",", schema.Columns.Where(c => c.Primary).Select(c => Quote(source.Kind, c.Name)));
-        List<(string Name, object? Value)> parameters = [("@offset", offset), ("@take", PageSize + 1)];
+        string order = sort is { } by ? Quote(kind, by.Column) + (by.Descending ? " DESC" : string.Empty)
+            : string.Join(",", schema.Columns.Where(c => c.Primary).Select(c => Quote(kind, c.Name)));
+        List<(string Name, object? Value)> parameters = [];
         string where = string.Empty;
         if (filter is not null)
         {
             if (!schema.Columns.Any(c => c.Name == filter.Column)) { throw new InvalidOperationException("Choose a column of this table"); }
-            string column = Quote(source.Kind, filter.Column);
-            string text = source.Kind switch
+            string column = Quote(kind, filter.Column);
+            string text = kind switch
             {
                 DatabaseKind.SqlServer => $"CONVERT(nvarchar(max), {column})",
                 DatabaseKind.MySql => $"CAST({column} AS CHAR)",
@@ -192,15 +207,7 @@ internal static class DatabaseClient
                 .Replace("_", "!_", StringComparison.Ordinal).Replace("[", "![", StringComparison.Ordinal) + "%" : filter.Value;
             parameters.Add(("@filter", value));
         }
-        string sql = $"SELECT * FROM {Full(source.Kind, schema.Table)}{where} ORDER BY {(order.Length == 0 ? "1" : order)}";
-        sql += source.Kind == DatabaseKind.SqlServer ? " OFFSET @offset ROWS FETCH NEXT @take ROWS ONLY" : " LIMIT @take OFFSET @offset";
-        DatabaseRows rows = await ReadAsync(connection, sql, parameters, cancel, PageSize);
-        return new DatabaseRows(rows.Columns, rows.Rows, rows.More)
-        {
-            Schema = schema,
-            Offset = offset,
-            OrderedBy = sort is { } sorted ? (Array.IndexOf(rows.Columns, sorted.Column), sorted.Descending) : null,
-        };
+        return ($"SELECT * FROM {Full(kind, schema.Table)}{where} ORDER BY {(order.Length == 0 ? "1" : order)}", parameters);
     }
 
     /// <summary>The databases of the connection's server; SQLite's main database alone.</summary>
@@ -321,7 +328,7 @@ internal static class DatabaseClient
                     {
                         if (reader.FieldCount > 0)
                         {
-                            DatabaseRows rows = await RowsAsync(reader, limit, cancel);
+                            DatabaseRows rows = await RowsAsync(reader, limit, cancel, new InsertTarget(source.Kind, SqlInserts.TableOf(run, source.Kind)));
                             sets.Add(rows);
                             if (rows.More)
                             {
@@ -595,13 +602,14 @@ internal static class DatabaseClient
     }
 
     /// <summary>SQLite runs in the calling thread's native code, which only its interrupt stops.</summary>
-    private static CancellationTokenRegistration Interrupt(DbConnection connection, CancellationToken cancel) =>
+    internal static CancellationTokenRegistration Interrupt(DbConnection connection, CancellationToken cancel) =>
         connection is SqliteConnection { Handle: { } handle } ? cancel.Register(() => SQLitePCL.raw.sqlite3_interrupt(handle)) : default;
 
     /// <summary>A reader's current result set, its first <paramref name="limit"/> rows and whether more follow.</summary>
-    private static async Task<DatabaseRows> RowsAsync(DbDataReader reader, int limit, CancellationToken cancel)
+    private static async Task<DatabaseRows> RowsAsync(DbDataReader reader, int limit, CancellationToken cancel, InsertTarget? into = null)
     {
         string[] columns = [.. Enumerable.Range(0, reader.FieldCount).Select(reader.GetName)];
+        string[] types = Types(reader);
         List<object?[]> rows = [];
         bool more = false;
         while (await reader.ReadAsync(cancel))
@@ -618,8 +626,21 @@ internal static class DatabaseClient
             }
             rows.Add(values);
         }
-        return new DatabaseRows(columns, [.. rows], more, reader.RecordsAffected);
+        return new DatabaseRows(columns, [.. rows], more, reader.RecordsAffected) { Types = types, Into = into };
     }
+
+    /// <summary>Each of a reader's columns' types as its database names them, empty where it names none.</summary>
+    internal static string[] Types(DbDataReader reader) => [.. Enumerable.Range(0, reader.FieldCount).Select(i =>
+    {
+        try
+        {
+            return reader.GetDataTypeName(i);
+        }
+        catch (Exception unnamed) when (unnamed is InvalidOperationException or NotSupportedException or IndexOutOfRangeException)
+        {
+            return string.Empty;
+        }
+    })];
 
     private static void Add(DbCommand command, string name, object? value)
     {

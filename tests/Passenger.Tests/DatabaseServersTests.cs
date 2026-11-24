@@ -15,8 +15,9 @@ namespace Passenger.Tests;
 /// <summary>The Database window against a server in a container of the test's own: its connection found in the folder's
 /// settings, its explorer down to a table's key column and trigger, the table's DDL as the server gives it, a console's
 /// statement run into a grid, its parameter asked for and kept in its history, completion of the table's columns, a table's
-/// changes submitted as one, a console's manual transaction rolled back and committed, and a production connection asking
-/// before an UPDATE, each through its own driver. Skipped, naming the image, where the engine lacks it,
+/// changes submitted as one, a console's manual transaction rolled back and committed, the table exported as CSV, its rows
+/// copied as inserts and run again, a CSV imported into a new table and a refused row writing nothing, and a production
+/// connection asking before an UPDATE, each through its own driver. Skipped, naming the image, where the engine lacks it,
 /// as it is never pulled.</summary>
 public sealed class DatabaseServersTests
 {
@@ -166,6 +167,63 @@ public sealed class DatabaseServersTests
                 Assert.Equal(["oolong", "coffee", "water"], Names(kind, connection));
                 window.GetVisualDescendants().OfType<ComboBox>().Single(c => c.Name == "ConsoleCommit").SelectedIndex = 0;
 
+                // The table exports as CSV read from the server; its rows copied as inserts and pasted into the console write them again.
+                List<string> told = [];
+                window.Actions.Work.Told += (_, outcome) => told.Add(outcome.Said);
+                ListBox tree = window.DatabaseExplorer.GetVisualDescendants().OfType<ListBox>().Single(l => l.Name == "DatabaseTree");
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "products"));
+                Ui.ChooseFromMenu(tree, "Export Data…");
+                Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseExportDialog>().Any(d => d.IsVisible), "the export dialog");
+                DatabaseExportDialog export = window.OwnedWindows.OfType<DatabaseExportDialog>().Single(d => d.IsVisible);
+                string exported = Path.Combine(folder, "products.csv");
+                export.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "ExportFile").Text = exported;
+                Ui.ClickButton(export, "Export");
+                Ui.WaitFor(() => told.Any(t => t.StartsWith("Exported 3 rows", StringComparison.Ordinal)), () => string.Join("; ", told), TimeSpan.FromMinutes(1));
+                Assert.Equal("id,name,price\r\n1,oolong,2.50\r\n2,coffee,3.50\r\n4,water,\r\n", File.ReadAllText(exported));
+                window.EditorArea.Activate(data.Document);
+                Ui.Await(data.ReadAgainAsync(), "products read again since the console changed them");
+                CellGrid shown = window.GetVisualDescendants().OfType<CellGrid>().Single(g => g.Name == "DatabaseTabResults");
+                shown.Focus();
+                shown.Choose((0, 0), (2, 2));
+                shown.RaiseEvent(new Avalonia.Input.ContextRequestedEventArgs());
+                Ui.Settle();
+                Ui.Choose(shown.Menu, "Copy As", "SQL Inserts");
+                Ui.WaitFor(() => Ui.Clipboard(window)?.Contains("'water', NULL);", StringComparison.Ordinal) == true, () => Ui.Clipboard(window) ?? "nothing on the clipboard");
+                Execute(kind, connection, "DELETE FROM products");
+                window.EditorArea.Activate(sql);
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console again");
+                editor.Focus();
+                editor.Select(new TextRange(0, editor.Document.Snapshot.Length));
+                Assert.True(window.Perform(EditorActions.Paste), "Paste did not run in the console");
+                Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("INSERT INTO", StringComparison.Ordinal), () => editor.Document.Snapshot.ToString());
+                Assert.True(window.Perform(AppActions.DatabaseRunFile), "Run SQL File did not run");
+                Ui.WaitFor(() => !console.Running && console.Results.Count > 0, () => console.Said, TimeSpan.FromMinutes(1));
+                Assert.True(console.Results.All(r => r.Error is null), console.Said);
+                Assert.Equal(["oolong", "coffee", "water"], Names(kind, connection));
+
+                // A CSV imports into a new table typed from its rows; a row its column's type refuses writes none of the next file.
+                File.WriteAllText(Path.Combine(folder, "items.csv"), "code,qty,price,made\nA1,3,2.5,2024-05-01\nB2,12,10,2024-06-30\n");
+                File.WriteAllText(Path.Combine(folder, "bad.csv"), "code,qty,price,made\nC3,7,1,2024-01-01\nD4,many,1,2024-01-01\n");
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.First(r => r.Kind == DatabaseNodeKind.Group && r.Title == "Tables"));
+                Ui.ChooseFromMenu(tree, "Import Data…");
+                Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseImportDialog>().Any(d => d.IsVisible), () => window.Database.Said, TimeSpan.FromMinutes(1));
+                DatabaseImportDialog import = window.OwnedWindows.OfType<DatabaseImportDialog>().Single(d => d.IsVisible);
+                import.File = Path.Combine(folder, "items.csv");
+                Ui.WaitFor(() => !import.IsReading && import.Columns.Count == 4, () => import.Problem);
+                Ui.ClickButton(import, "Import");
+                Ui.WaitFor(() => told.Any(t => t.StartsWith("Imported 2 rows of items.csv into the new table", StringComparison.Ordinal)), () => string.Join("; ", told), TimeSpan.FromMinutes(1));
+                Ui.WaitFor(() => window.DatabaseExplorer.Rows.Any(r => r.Kind == DatabaseNodeKind.Table && r.Title == "items"), "the new table in the tree");
+                Assert.Equal("15", Said(kind, connection, "SELECT SUM(qty) FROM items"));
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "items"));
+                Ui.ChooseFromMenu(tree, "Import Data…");
+                Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseImportDialog>().Any(d => d.IsVisible), () => window.Database.Said, TimeSpan.FromMinutes(1));
+                import = window.OwnedWindows.OfType<DatabaseImportDialog>().Single(d => d.IsVisible);
+                import.File = Path.Combine(folder, "bad.csv");
+                Ui.WaitFor(() => !import.IsReading && import.Columns.Count == 4 && import.Columns.All(c => c.Into is not null), () => import.Problem);
+                Ui.ClickButton(import, "Import");
+                Ui.WaitFor(() => told.Any(t => t.StartsWith("Row 2 of bad.csv was refused, so nothing was written: ", StringComparison.Ordinal)), () => string.Join("; ", told), TimeSpan.FromMinutes(1));
+                Assert.Equal("2", Said(kind, connection, "SELECT COUNT(*) FROM items"));
+
                 // A production connection asks before an UPDATE; a read-only one still reads, through the server's own read-only session.
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection));
                 Assert.True(window.Perform(AppActions.DatabaseProduction), "Production Connection did not run");
@@ -214,6 +272,15 @@ public sealed class DatabaseServersTests
         SqlConsole console = window.EditorArea.ActiveGroup.Console!.Console!;
         Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
         Ui.WaitFor(() => !console.Running, () => console.Said, TimeSpan.FromMinutes(1));
+    }
+
+    /// <summary>A query's one value as text, read on a connection of the test's own.</summary>
+    private static string? Said(DatabaseKind kind, string connection, string sql)
+    {
+        using DbConnection opened = Opened(kind, connection);
+        using DbCommand command = opened.CreateCommand();
+        command.CommandText = sql;
+        return Convert.ToString(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 
     /// <summary>The products' names in their ids' order, read on a connection of the test's own.</summary>

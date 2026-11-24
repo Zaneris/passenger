@@ -6,8 +6,9 @@ namespace Passenger.UnitTests;
 /// <summary>A console's SQL split into what runs, as each database reads it: a semicolon inside a string, a quoted name, a
 /// comment or a dollar quote ends nothing, a routine's body is one statement, and SQL Server's GO ends a batch; what each
 /// run does to its database, which read-only and production connections hold it to; the parameters each database's driver
-/// takes in it; the names its connection's schema does not hold; each database's plan read as one tree; and its layout by
-/// Reformat Code, comments and strings kept.</summary>
+/// takes in it; the names its connection's schema does not hold; each database's plan read as one tree; its layout by
+/// Reformat Code, comments and strings kept; rows written as each database's inserts; and what an import makes of a file's
+/// text: a new column's type, a value of a column's type, and which column each of the file's goes into.</summary>
 public sealed class SqlTextTests
 {
     [Fact]
@@ -159,5 +160,49 @@ public sealed class SqlTextTests
             Assert.Equal(row.Laid, SqlFormatter.Format(row.Sql, row.Kind));
             Assert.Equal(row.Laid, SqlFormatter.Format(row.Laid, row.Kind));
         }, row => row.Holds);
+        object?[] values = [null, true, "it's a \\ path", new byte[] { 10, 255 }, new DateTime(2024, 5, 1, 13, 45, 0), 2.5m];
+        Passenger.App.Tables.RowColumn[] columns = [new("id"), new("ok"), new("note"), new("data"), new("at"), new("price")];
+        Cases.Each(new (string Holds, DatabaseKind Kind, string Table, string Inserts)[]
+        {
+            ("PostgreSQL's names double-quoted, TRUE, its bytea's hex", DatabaseKind.Postgres, "\"public\".\"t\"",
+                "INSERT INTO \"public\".\"t\" (\"id\", \"ok\", \"note\", \"data\", \"at\", \"price\") VALUES (NULL, TRUE, 'it''s a \\ path', '\\x0aff'::bytea, '2024-05-01 13:45:00', 2.5);\n"),
+            ("MySQL's backticks and a backslash doubled in its strings", DatabaseKind.MySql, "`t`",
+                "INSERT INTO `t` (`id`, `ok`, `note`, `data`, `at`, `price`) VALUES (NULL, TRUE, 'it''s a \\\\ path', X'0AFF', '2024-05-01 13:45:00', 2.5);\n"),
+            ("SQL Server's brackets, N'' text, 1 for true and 0x bytes", DatabaseKind.SqlServer, "[dbo].[t]",
+                "INSERT INTO [dbo].[t] ([id], [ok], [note], [data], [at], [price]) VALUES (NULL, 1, N'it''s a \\ path', 0x0AFF, N'2024-05-01 13:45:00', 2.5);\n"),
+        }, row => Assert.Equal(row.Inserts, Passenger.App.Tables.RowWriter.Written(into => new SqlInserts(into, new InsertTarget(row.Kind, row.Table), "\n"), columns, [values])),
+            row => row.Holds);
+        Cases.Each(new (string Sql, string? Table)[]
+        {
+            ("SELECT * FROM public.\"Order Lines\" o WHERE o.id IN (SELECT id FROM x)", "public.\"Order Lines\""),
+            ("SELECT a FROM t JOIN u ON u.id = t.id", null),
+            ("SELECT a FROM t, u", null),
+            ("WITH c AS (SELECT 1) SELECT * FROM c", null),
+        }, row => Assert.Equal(row.Table, SqlText.OnlyTable(row.Sql, DatabaseKind.Postgres)), row => row.Sql);
+        Cases.Each(new (string Holds, DatabaseKind Kind, string?[] Values, string Type)[]
+        {
+            ("true and false", DatabaseKind.Postgres, ["true", null, "FALSE"], "boolean"),
+            ("whole numbers", DatabaseKind.SqlServer, ["1", "-20", ""], "bigint"),
+            ("numbers with their digits and places", DatabaseKind.MySql, ["12.5", "-1234.25", "7"], "DECIMAL(6,2)"),
+            ("dates", DatabaseKind.Sqlite, ["2024-05-01", "1999-12-31"], "DATE"),
+            ("dates and times, one with its zone", DatabaseKind.Postgres, ["2024-05-01 13:45:00", "2024-05-01T13:45:00Z"], "timestamptz"),
+            ("text where they agree on nothing else", DatabaseKind.SqlServer, ["1", "two"], "nvarchar(max)"),
+        }, row => Assert.Equal(row.Type, ImportTypes.Proposed(row.Values, row.Kind)), row => row.Holds);
+        Cases.Each(new (string Text, Type Type, object? Value)[]
+        {
+            ("yes", typeof(bool), true),
+            (" 42 ", typeof(int), 42),
+            ("2.50", typeof(decimal), 2.50m),
+            ("2024-05-01 13:45:00", typeof(DateTime), new DateTime(2024, 5, 1, 13, 45, 0, DateTimeKind.Utc)),
+            ("AQL/", typeof(byte[]), new byte[] { 1, 2, 255 }),
+            ("0x0aff", typeof(byte[]), new byte[] { 10, 255 }),
+            ("forty", typeof(int), null),
+            ("300", typeof(byte), null),
+        }, row => Assert.Equal(row.Value, ImportTypes.TryConvert(row.Text, row.Type, out object value) ? value : null), row => $"{row.Text} as {row.Type.Name}");
+        Cases.Each(new (string Holds, string[] File, bool Named, int?[] Into)[]
+        {
+            ("by name, case aside, a column the table lacks passed over", ["NAME", "id", "extra"], true, [1, 0, null]),
+            ("a file naming none by place, a name matched first", ["column1", "name", "column3"], false, [0, 1, 2]),
+        }, row => Assert.Equal(row.Into, ImportTypes.Mapped(row.File, ["id", "name", "price"], row.Named)), row => row.Holds);
     }
 }

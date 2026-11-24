@@ -50,6 +50,17 @@ public abstract class Table
     /// <summary>A cell as a sort compares it: a number, a date, text, or nothing.</summary>
     public abstract CellValue ValueOf(int row, int column);
 
+    /// <summary>A cell's value as a copy writes it (<see cref="RowWriter"/>): a number, a date, bytes or text as read, null
+    /// for none; the text shown where the table holds nothing else.</summary>
+    public virtual object? ValueAt(int row, int column) => Cell(row, column);
+
+    /// <summary>A column's type as its database names it, by which a copy writes its values; empty where none does.</summary>
+    public virtual string TypeOf(int column) => string.Empty;
+
+    /// <summary>A writer of its rows as SQL inserts into the table they came from, in their database's SQL; null where they
+    /// are no database's.</summary>
+    public virtual RowWriter? Inserts(TextWriter into, string lineBreak) => null;
+
     /// <summary>The table as its file has it, whatever order it is shown in.</summary>
     public virtual Table Unsorted => this;
 

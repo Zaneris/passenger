@@ -268,6 +268,34 @@ public static class SqlText
         return [.. batches.Where(b => Tokens(b, kind).Any(t => t.Word != ";")).Select(b => b.Trim())];
     }
 
+    /// <summary>The one table or view a plain SELECT reads, its name (a schema's too) as written; null where it reads none, or
+    /// more than one (a join, a list, a union's).</summary>
+    public static string? OnlyTable(string statement, DatabaseKind kind)
+    {
+        List<Token> tokens = Tokens(statement, kind);
+        int from = tokens.FindIndex(t => t is { Word: "FROM", Quoted: false, Depth: 0 });
+        if (tokens is not [{ Word: "SELECT", Quoted: false }, ..] || from < 0 || from + 1 >= tokens.Count
+            || tokens[from + 1] is { Quoted: false, Word: var word } && !char.IsLetter(word[0]) && word[0] != '_')
+        {
+            return null;
+        }
+        int last = from + 1;
+        while (last + 2 < tokens.Count && tokens[last + 1].Word == ".")
+        {
+            last += 2;
+        }
+        bool more = tokens.Skip(last + 1).Any(t => t is { Depth: 0, Quoted: false, Word: "JOIN" or "," or "FROM" or "UNION" or "INTERSECT" or "EXCEPT" });
+        return more ? null : statement[tokens[from + 1].Start..tokens[last].End];
+    }
+
+    /// <summary>A name quoted as the database quotes one: SQL Server's brackets, MySQL's backticks, else double quotes.</summary>
+    public static string QuotedName(DatabaseKind kind, string name) => kind switch
+    {
+        DatabaseKind.SqlServer => "[" + name.Replace("]", "]]", StringComparison.Ordinal) + "]",
+        DatabaseKind.MySql => "`" + name.Replace("`", "``", StringComparison.Ordinal) + "`",
+        _ => "\"" + name.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"",
+    };
+
     /// <summary>A statement without its closing semicolon, which some drivers refuse alone.</summary>
     private static string Trimmed(string statement) => statement.TrimEnd().TrimEnd(';').TrimEnd();
 

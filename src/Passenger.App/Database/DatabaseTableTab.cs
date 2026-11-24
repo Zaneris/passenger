@@ -90,6 +90,15 @@ public sealed class DatabaseTableTab : IDisposable
     public string? WhyNotRevert => Busy ?? (edits.IsEmpty ? Refusals.NoPendingChanges : null);
     public string? WhyNotAddRow => Busy ?? WhyNotEdited ?? (shown is null ? Refusals.DatabaseBusy : null);
     public string? WhyNotDeleteRows => Busy ?? WhyNotEdited ?? (ChosenRows().Count == 0 ? Refusals.NoRowChosen : null);
+    /// <summary>Why a file's rows may not be imported into the table: its connection marked read-only, or its columns not read yet.</summary>
+    public string? WhyNotImport => Now.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(Now.Name) : schema is null ? Refusals.DatabaseBusy : null;
+
+    /// <summary>The table's columns as last read, null until they are.</summary>
+    public DatabaseSchema? Schema => schema;
+
+    /// <summary>The connection as it stands now, opening the tab's database.</summary>
+    public DatabaseSource Source => Now;
+
     public string? WhyNotStep(bool redo) => Busy ?? ((redo ? undone : done).Count == 0 ? redo ? Refusals.NoPendingRedo : Refusals.NoPendingUndo : null);
 
     private void OnOwnerChanged(object? sender, EventArgs e)
@@ -115,6 +124,36 @@ public sealed class DatabaseTableTab : IDisposable
         filter = next;
         said = $"{Table} · rows {offset + (page.RowCount > 0 ? 1 : 0)}–{offset + page.RowCount}{(page.More ? " · more available" : string.Empty)}";
     });
+
+    /// <summary>Reads the page shown again, as its filter and sort read it.</summary>
+    public Task ReadAgainAsync() => LoadAsync(rows?.Offset ?? 0, filter);
+
+    /// <summary>The rows an export of the tab writes, every one of its table's as its filter and sort read them; null until
+    /// its columns are read.</summary>
+    public ExportSource? Exported()
+    {
+        if (schema is not { } read)
+        {
+            return null;
+        }
+        DatabaseSource source = Now;
+        (string sql, List<(string Name, object? Value)> parameters) = DatabaseClient.Selecting(source.Kind, read, filter, sort);
+        string which = filter switch
+        {
+            null => string.Empty,
+            { Operator: "Is NULL" } => $" whose {filter.Column} is NULL",
+            { Operator: "Is not NULL" } => $" whose {filter.Column} is not NULL",
+            { Operator: "Equals" } => $" whose {filter.Column} is '{filter.Value}'",
+            _ => $" whose {filter.Column} holds '{filter.Value}'",
+        };
+        string order = sort is { } by ? $", sorted by {by.Column}{(by.Descending ? " descending" : string.Empty)}" : string.Empty;
+        return new ExportSource(source, Table.ToString(), new InsertTarget(source.Kind, DatabaseClient.Full(source.Kind, Table)))
+        {
+            Sql = sql,
+            Parameters = parameters,
+            Said = $"Every row of {Table}{which}{order}, read from {source.Name} a row at a time.",
+        };
+    }
 
     /// <summary>Writes the changes in one transaction, asking first on a connection marked production, then reads the page again.</summary>
     public async Task SubmitAsync()
@@ -365,6 +404,7 @@ public sealed class DatabaseTableTab : IDisposable
         Button delete = ToolButtons.Of(AppActions.DatabaseDeleteRows, IconKeys.Clear, "Delete Rows", request);
         Button submit = ToolButtons.Of(AppActions.DatabaseSubmit, IconKeys.Commit, "Submit Changes", request);
         Button revert = ToolButtons.Of(AppActions.DatabaseRevert, IconKeys.Rollback, "Revert Changes", request);
+        Button export = ToolButtons.Of(AppActions.DatabaseExport, IconKeys.Export, "Export Data…", request);
         apply.Click += (_, _) => Apply();
         value.KeyDown += (_, e) =>
         {
@@ -399,7 +439,7 @@ public sealed class DatabaseTableTab : IDisposable
         value[ShrinkingRow.LeastProperty] = 80;
         ShrinkingRow.SetKeepsWidth(comparison, true);
         ShrinkingRow bar = new() { Name = "DatabaseTableBar", Margin = new Thickness(Gaps.Normal, Gaps.Hair), Spacing = Gaps.Small, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
-        foreach (Control control in new Control[] { refresh, previous, next, cancel, ToolBars.Rule(), add, delete, submit, revert, ToolBars.Rule(), columns, comparison, value, apply, clear })
+        foreach (Control control in new Control[] { refresh, previous, next, cancel, export, ToolBars.Rule(), add, delete, submit, revert, ToolBars.Rule(), columns, comparison, value, apply, clear })
         {
             ShrinkingRow.SetGoesWhole(control, true);
             bar.Children.Add(control);
@@ -444,6 +484,8 @@ public sealed class DatabaseTableTab : IDisposable
                 ListMenus.Item("Next Page", () => IdeErrors.Observe(LoadAsync((rows?.Offset ?? 0) + DatabaseClient.PageSize, filter)),
                     idle ?? (rows?.More == true ? null : Refusals.NoNextPage), IconKeys.ArrowDown),
                 ListMenus.Item("Stop", () => operation?.Cancel(), operation is null ? Refusals.DatabaseNotReading : null, IconKeys.Stop),
+                ListMenus.Keyed("Export Data…", AppActions.DatabaseExport, () => request(AppActions.DatabaseExport), schema is null ? Refusals.DatabaseBusy : null),
+                ListMenus.Keyed("Import Data…", AppActions.DatabaseImport, () => request(AppActions.DatabaseImport), WhyNotImport),
                 new Separator(),
                 ListMenus.Keyed("Add Row", AppActions.DatabaseAddRow, () => request(AppActions.DatabaseAddRow), WhyNotAddRow),
                 ListMenus.Keyed("Delete Rows", AppActions.DatabaseDeleteRows, () => request(AppActions.DatabaseDeleteRows), WhyNotDeleteRows),

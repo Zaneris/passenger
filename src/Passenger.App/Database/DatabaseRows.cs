@@ -109,6 +109,12 @@ public sealed class DatabaseRows(string[] columns, object?[][] rows, bool more =
     public DatabaseSchema? Schema { get; init; }
     public int Offset { get; init; }
 
+    /// <summary>Each column's type as its database names it, as the reader gave it.</summary>
+    public string[] Types { get; init; } = [];
+
+    /// <summary>The table its rows are written into as SQL inserts: the table read, or the one table its statement reads.</summary>
+    public InsertTarget? Into { get; init; }
+
     /// <summary>The column the server ordered the rows by, and which way, as its header's arrow shows.</summary>
     public (int Column, bool Descending)? OrderedBy { get; init; }
 
@@ -122,7 +128,7 @@ public sealed class DatabaseRows(string[] columns, object?[][] rows, bool more =
     public DatabaseRows Holding(string words) => new(Columns, [.. Enumerable.Range(0, RowCount).Where(r => Enumerable.Range(0, ColumnCount)
         .Any(c => Cell(r, c).Contains(words, StringComparison.OrdinalIgnoreCase))).Select(r => Rows[r])], More, Affected)
     {
-        Schema = Schema, from = this, holding = words,
+        Schema = Schema, Types = Types, Into = Into, from = this, holding = words,
     };
 
     /// <summary>Whether two filters are of one set by the same words, so a grid keeps its sort and place.</summary>
@@ -141,6 +147,12 @@ public sealed class DatabaseRows(string[] columns, object?[][] rows, bool more =
         DateTime date => new CellValue(CellKind.Date, date.Ticks),
         _ => new CellValue(CellKind.Text),
     };
+
+    public override object? ValueAt(int row, int column) => Rows[row][column];
+
+    public override string TypeOf(int column) => column < Types.Length ? Types[column] : string.Empty;
+
+    public override RowWriter? Inserts(TextWriter into, string lineBreak) => Into is { } target ? new SqlInserts(into, target, lineBreak) : null;
 
     public override bool IsEditable(int row, int column) => Schema is { } schema && schema.Columns.Any(c => c.Primary)
         && schema.Columns.Where(c => c.Primary).All(c => Array.IndexOf(Columns, c.Name) switch { < 0 => false, int key => Rows[row][key] is not null })

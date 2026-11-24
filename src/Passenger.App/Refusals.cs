@@ -719,6 +719,49 @@ public static class Refusals
     /// <summary>A change of a console's commit, or of its connection, while its transaction is open.</summary>
     public const string TransactionOpen = "Commit or roll back the open transaction first";
 
+    /// <summary>Copy as SQL Inserts of cells that are no database's (a CSV file's), whose table and SQL none says.</summary>
+    public const string NoInsertTable = "Only a database's rows are copied as SQL inserts";
+
+    /// <summary>Copy As with no table's cells having the keys.</summary>
+    public const string NoTableCells = "Choose a table's cells first";
+
+    /// <summary>Export Data with no table or view chosen, no table shown and no result of a console's shown.</summary>
+    public const string NothingToExport = "Choose a table or view, or show a table's data or a console's result, first";
+
+    /// <summary>Export Data with no file named to write.</summary>
+    public const string NoExportFile = "Name the file to write";
+
+    /// <summary>Export Data as SQL inserts with no table named for them to go into.</summary>
+    public const string NoInsertTableNamed = "Name the table the inserts go into";
+
+    /// <summary>Export Data into a folder that is not there.</summary>
+    public static string NoFolderThere(string folder) => $"{folder} is not there to write into";
+
+    /// <summary>Import Data with none of the file's columns going into the table.</summary>
+    public const string NoColumnImported = "Choose a column of the table for at least one of the file's columns";
+
+    /// <summary>Import Data with no file named to read.</summary>
+    public const string NoImportFile = "Name the file to read";
+
+    /// <summary>Import Data into a new table with no name for it.</summary>
+    public const string NoNewTableNamed = "Name the new table";
+
+    /// <summary>Import Data with nothing chosen to import into: no connection, database, schema or table.</summary>
+    public const string NothingToImportInto = "Choose a connection, database, schema or table to import into first";
+
+    /// <summary>Import Data while what was asked to import into is no longer read (its database's tables not read yet).</summary>
+    public const string ImportNotRead = "The file or the tables are still being read";
+
+    /// <summary>A file's cell its column's type does not read.</summary>
+    public static string NotAValue(string text, string kind, string column) => $"'{(text.Length > 60 ? text[..60] + "…" : text)}' is no {kind} for {column}";
+
+    /// <summary>An import stopped by a row the database or its column's type refused: nothing of it was written.</summary>
+    public static string RowRefused(long row, string file, string why) =>
+        $"Row {row.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture)} of {file} was refused, so nothing was written: {why}";
+
+    /// <summary>Export Data over a file open with changes not saved, which the export would lose.</summary>
+    public static string UnsavedThere(string name) => $"{name} is open with changes not saved: save or close it first";
+
     /// <summary>The Migrations window, or an EF Core action, in a folder none of whose projects references EF Core.</summary>
     public const string NoEfCore = "No project here uses EF Core";
 
