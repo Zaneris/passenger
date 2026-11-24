@@ -363,7 +363,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
         tools[AppActions.ApplyHotReloadChanges].IsEnabled = model.HotReloadShown.CanApply;
         mute.IsChecked = model.ShowsMuted;
         evaluate.IsEnabled = paused && model.ShownSnapshot is null;
-        placeholder.IsVisible = state == DebugState.Ended && model.Frames.Count == 0;
+        placeholder.IsVisible = state == DebugState.Ended && model.Frames.Count == 0 && model.ShownSnapshot is null;
     }
 
     /// <summary>The Debugger or the Console tab, as the model shows it, the chosen session's console in the latter.</summary>

@@ -115,7 +115,8 @@ public partial class ManagedDebugger
         {
             EvalStatus.ImplicitOff = wasOff;
         }
-        string? name = _threads.GetValueOrDefault(threadId)?.Name ?? thread.GetThreadNameOrNull();
+        // Named as the threads' list names it.
+        string? name = _threads.GetValueOrDefault(threadId)?.Name ?? thread.GetThreadNameOrNull() ?? (threadId == _mainThreadId ? "Main Thread" : null);
         _taken = new Snapshot(point.Id, threadId, name, DateTimeOffset.Now, Stopwatch.GetElapsedTime(came), frames, capture.Values, asked, capture.Said);
         _logger?.Invoke($"Snapshot of breakpoint {point.Id} on thread {threadId}: {capture.Count} values in {Core.Durations.Said(_taken.Paused)}");
     }

@@ -30,6 +30,9 @@ public sealed class BreakpointProperties : UserControl
     private readonly TextBlock limitProblem = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(0, Gaps.Small, 0, 0) };
     private readonly StackPanel snapshotFields;
 
+    /// <summary>Whether a hit stops, as Suspend execution says while a snapshot point does not grey it (shown unchecked then).</summary>
+    private bool suspends = true;
+
     /// <summary>The breakpoints Wait for offers, in its order: none first.</summary>
     private List<CodeBreakpoint?> waitChoices = [null];
     private readonly TextBox condition = Field("A C# condition: count > 2");
@@ -75,6 +78,13 @@ public sealed class BreakpointProperties : UserControl
         limitProblem.Classes.Add(StyleClasses.Error);
         limit.TextChanged += (_, _) => CheckLimit();
         snapshot.IsCheckedChanged += (_, _) => ShowSnapshot();
+        suspend.IsCheckedChanged += (_, _) =>
+        {
+            if (suspend.IsEnabled)
+            {
+                suspends = suspend.IsChecked == true;
+            }
+        };
         inactive.Classes.Add(StyleClasses.Error);
         hitCount.TextChanged += (_, _) => CheckHitCount();
         log.TextChanged += (_, _) => CheckLog();
@@ -129,6 +139,8 @@ public sealed class BreakpointProperties : UserControl
     {
         Breakpoint = breakpoint;
         enabled.IsChecked = breakpoint.Enabled;
+        suspends = breakpoint.Suspend;
+        suspend.IsEnabled = true;
         suspend.IsChecked = breakpoint.Suspend;
         temporary.IsVisible = waitForRow.IsVisible = snapshot.IsVisible = breakpoint is CodeBreakpoint;
         snapshot.IsChecked = breakpoint is CodeBreakpoint { Snapshot: not null };
@@ -175,7 +187,7 @@ public sealed class BreakpointProperties : UserControl
             return;
         }
         bool on = enabled.IsChecked == true;
-        bool stops = suspend.IsChecked == true;
+        bool stops = suspends;
         string? Blank(string? text) => string.IsNullOrWhiteSpace(text) ? null : text;
         if (on != breakpoint.Enabled || stops != breakpoint.Suspend || Blank(condition.Text)?.Trim() != breakpoint.Condition
             || Blank(hitCount.Text)?.Trim() != breakpoint.HitCondition || Blank(log.Text) != breakpoint.LogMessage)
@@ -230,9 +242,10 @@ public sealed class BreakpointProperties : UserControl
     /// <summary>A snapshot point's fields shown while it takes snapshots, which never stop the program.</summary>
     private void ShowSnapshot()
     {
-        bool taking = snapshot.IsChecked == true;
-        snapshotFields.IsVisible = taking && snapshot.IsVisible;
+        bool taking = snapshot.IsChecked == true && snapshot.IsVisible;
+        snapshotFields.IsVisible = taking;
         suspend.IsEnabled = !taking;
+        suspend.IsChecked = !taking && suspends;
     }
 
     /// <summary>The number of snapshots asked for, null where the field is blank or names none it takes.</summary>
