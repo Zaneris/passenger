@@ -923,6 +923,11 @@ public sealed partial class Vim
         {
             return Ended(text, r, inner, n);
         }
+        if (next.EndKept && next.End > after)
+        {
+            // Counted past its paragraph, as takes the empty lines to the last one's start, where the cursor stands.
+            return r with { Cursor = next.End };
+        }
         VimSpan own = OwnLine(text, next);
         if (!inner && text[after] is ' ' or '\t' && VimTextObjects.Of(text, after, "s", inner: true, 2 * n, breakEnds) is { } units
             && OwnLine(text, units).End is var whole && whole > own.End && LastWordAfterBlanks(text, own.End, whole))
