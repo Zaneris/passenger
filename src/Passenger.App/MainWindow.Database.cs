@@ -103,6 +103,8 @@ public partial class MainWindow
         Add(AppActions.DatabaseOpenTable, "Open Table Data", OpenDatabaseTableAsync,
             () => databaseExplorer?.Chosen is not { Table: not null } chosen ? Refusals.NoDatabaseTable : WhyNotOpened(chosen.Source) ?? PersonsOwn());
         Add(AppActions.DatabaseRefresh, "Refresh Database Connections", controller.RefreshAsync, () => Folder is null ? Refusals.NoFolder : null);
+        Add(AppActions.DatabaseConnect, "Open Database Connection", OpenChosenConnectionAsync,
+            () => ChosenConnection() is not { } chosen ? Refusals.NoDatabaseConnection : WhyNotOpened(chosen) ?? PersonsOwn());
         Add(AppActions.DatabaseConsole, "Open SQL Console", () => OpenSqlConsoleAsync(),
             () => ChosenConnection() is not { } chosen ? Refusals.NoDatabaseConnection : WhyNotOpened(chosen) ?? PersonsOwn());
         Add(AppActions.DatabaseShowDdl, "Show DDL", ShowDdlAsync, WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 0));
@@ -250,6 +252,16 @@ public partial class MainWindow
 
     /// <summary>Why a connection may not be opened: one the folder's own files name waits for the folder to be trusted.</summary>
     private string? WhyNotOpened(DatabaseSource source) => source.Found is not null && session.Folder is not null && !session.Trusted ? Refusals.Untrusted : null;
+
+    /// <summary>Opens the chosen row's connection in the explorer, reading its databases, as its chevron does.</summary>
+    private async Task OpenChosenConnectionAsync()
+    {
+        if (ChosenConnection() is { } source && DatabaseExplorer.Rows.FirstOrDefault(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == source.Id) is { IsExpanded: false } row)
+        {
+            DatabaseExplorer.Choose(row);
+            await DatabaseExplorer.ToggleAsync(row);
+        }
+    }
 
     /// <summary>The connection of the explorer's chosen row.</summary>
     private DatabaseSource? ChosenConnection() => databaseExplorer?.Chosen?.Source is { } source ? database?.Find(source.Id) : null;
