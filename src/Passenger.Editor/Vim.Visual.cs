@@ -1018,10 +1018,12 @@ public sealed partial class Vim
     /// time from the one before where the cursor begins its own, from an empty line before the last of its run to that
     /// line first; as takes a white with the sentence before it, a sentence with the white before where the cursor stood
     /// in or after it or on an empty line a step reached (<paramref name="reached"/> for the first); after is steps from
-    /// an empty line to a sentence, its next step passes over the white before that sentence.</summary>
+    /// the empty line it began on to a sentence, its next step passes over the white before that sentence.</summary>
     private int SentencesBack(TextSnapshot text, int at, bool inner, int n, bool reached = false)
     {
         int left = n;
+        // A walk reaching an empty line on its way passes no white after it.
+        bool fromStart = VimMotions.LineOf(text, at).Length == 0;
         if (VimMotions.LineOf(text, at).Length == 0 && VimTextObjects.Of(text, at, "s", inner: true, 1, breakEnds) is { } run && run.Start > at
             && VimMotions.NextSentenceStart(text, run.Start) < text.Length)
         {
@@ -1041,7 +1043,8 @@ public sealed partial class Vim
             {
                 (start, white) = SentenceUnit(text, VimMotions.StepBack(text, start));
             }
-            passWhite = inner && fromEmpty && !white;
+            passWhite = inner && fromEmpty && !white && fromStart;
+            fromStart = false;
             reached = fromEmpty && (reached || left < n);
             at = start;
             if (!inner && (white || inside || here.White || reached) && at > 0 && SentenceUnit(text, VimMotions.StepBack(text, at)) is var before
