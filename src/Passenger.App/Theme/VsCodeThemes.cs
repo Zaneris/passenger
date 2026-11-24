@@ -28,7 +28,11 @@ public sealed record VsCodeContribution(string Label, string UiTheme, string Pat
 
 /// <summary>An extension as its <c>package.json</c> names it: <c>publisher.name</c>, its version and name for a person, and the
 /// colour themes it contributes.</summary>
-public sealed record VsCodeExtension(string Id, string Version, string DisplayName, IReadOnlyList<VsCodeContribution> Themes);
+public sealed record VsCodeExtension(string Id, string Version, string DisplayName, IReadOnlyList<VsCodeContribution> Themes)
+{
+    /// <summary>The file icon themes it contributes.</summary>
+    public IReadOnlyList<VsCodeIconContribution> IconThemes { get; init; } = [];
+}
 
 /// <summary>A VS Code colour theme's files taken from its extension: the manifest and the files the theme was read from,
 /// by their paths in the extension, its version, and the theme as read.</summary>
@@ -59,8 +63,8 @@ public static partial class VsCodeThemes
 
     private const int Deepest = 32;
     private const int MostRules = 5000;
-    private const int MostThemes = 100;
-    private const int LongestLabel = 128;
+    internal const int MostThemes = 100;
+    internal const int LongestLabel = 128;
 
     /// <summary>A file of an extension by its path inside it (<c>theme/dark.json</c>), or why not.</summary>
     public delegate (byte[]? Bytes, string? Why) ExtensionFile(string path);
@@ -96,7 +100,7 @@ public static partial class VsCodeThemes
             }
             themes.Add(new VsCodeContribution(label, ui, Inside(path, ".")!));
         }
-        return new VsCodeExtension($"{publisher}.{name}", version, display, themes);
+        return new VsCodeExtension($"{publisher}.{name}", version, display, themes) { IconThemes = VsCodeIconThemes.Contributed(file, root, problems) };
     });
 
     /// <summary>A theme an extension contributes, read from its file and those it includes, each through
@@ -324,8 +328,9 @@ public static partial class VsCodeThemes
     }
 
     /// <summary>A path inside an extension from one a file names, beside <paramref name="folder"/> (its folders joined by
-    /// <c>/</c>, <c>./</c> and <c>../</c> taken as they go), or null where it leaves the extension or is no theme's file.</summary>
-    public static string? Inside(string path, string folder)
+    /// <c>/</c>, <c>./</c> and <c>../</c> taken as they go), or null where it leaves the extension or is no file of the
+    /// <paramref name="type"/> asked for (a theme's JSON, else an icon's SVG).</summary>
+    public static string? Inside(string path, string folder, string type = ".json")
     {
         if (path.Length is 0 or > 260 || path.Any(char.IsControl) || path.Contains(':') || path.StartsWith('/') || path.StartsWith('\\'))
         {
@@ -347,7 +352,7 @@ public static partial class VsCodeThemes
                 parts.Add(part);
             }
         }
-        return parts.Count > 0 && parts[^1].EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? string.Join('/', parts) : null;
+        return parts.Count > 0 && parts[^1].EndsWith(type, StringComparison.OrdinalIgnoreCase) ? string.Join('/', parts) : null;
     }
 
     /// <summary>A VS Code colour, <c>#RGB</c>, <c>#RGBA</c>, <c>#RRGGBB</c> or <c>#RRGGBBAA</c>, as <c>0xAARRGGBB</c>.</summary>
@@ -412,13 +417,18 @@ public static partial class VsCodeThemes
         return foreground is null && bold is null && italic is null ? null : new VsCodeStyle(foreground, bold, italic);
     }
 
-    private static ThemeRead<T> Parse<T>(string file, ReadOnlyMemory<byte> bytes, Func<JsonElement, List<string>, T> read) where T : class =>
+    /// <summary>A file of VS Code's JSON read as VS Code reads it, comments and trailing commas allowed.</summary>
+    internal static ThemeRead<T> Parse<T>(string file, ReadOnlyMemory<byte> bytes, Func<JsonElement, List<string>, T> read) where T : class =>
         ThemeJson.Read(file, bytes, LenientJson.Document with { MaxDepth = Deepest }, "VS Code", null, read);
 
     /// <summary>A file's JSON, its own copy apart from the document it was read from.</summary>
     private sealed record Parsed(JsonElement Root);
 
-    private static string Folder(string file) => file.LastIndexOf('/') is >= 0 and var slash ? file[..slash] : string.Empty;
+    /// <summary>The folder a file of an extension is in, by its path there.</summary>
+    internal static string Folder(string file) => file.LastIndexOf('/') is >= 0 and var slash ? file[..slash] : string.Empty;
+
+    /// <summary>Whether a word is a publisher's or an extension's name as VS Code takes them.</summary>
+    internal static bool IsIdWord(string word) => IdWord().IsMatch(word);
 
     // A publisher's or an extension's name as VS Code takes them: letters, digits, '-' and '_'.
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")]

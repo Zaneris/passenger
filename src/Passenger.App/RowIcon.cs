@@ -21,7 +21,6 @@ public sealed class RowIcon : Control
     public static readonly StyledProperty<IBrush?> ForegroundProperty = AvaloniaProperty.Register<RowIcon, IBrush?>(nameof(Foreground));
     public static readonly StyledProperty<string?> ForegroundKeyProperty = AvaloniaProperty.Register<RowIcon, string?>(nameof(ForegroundKey));
     public static readonly StyledProperty<bool> TurnedProperty = AvaloniaProperty.Register<RowIcon, bool>(nameof(Turned));
-    public static readonly StyledProperty<bool> PlainFolderProperty = AvaloniaProperty.Register<RowIcon, bool>(nameof(PlainFolder));
 
     /// <summary>Each geometry as a PathIcon's path holds it stretched, made once for every icon drawing it so.</summary>
     private static readonly ConditionalWeakTable<Geometry, Dictionary<Matrix, Geometry>> Stretched = [];
@@ -36,7 +35,7 @@ public sealed class RowIcon : Control
     {
         WidthProperty.OverrideDefaultValue<RowIcon>(Size);
         HeightProperty.OverrideDefaultValue<RowIcon>(Size);
-        AffectsRender<RowIcon>(DataProperty, DataKeyProperty, ForegroundProperty, ForegroundKeyProperty, TurnedProperty, PlainFolderProperty);
+        AffectsRender<RowIcon>(DataProperty, DataKeyProperty, ForegroundProperty, ForegroundKeyProperty, TurnedProperty);
     }
 
     public RowIcon()
@@ -73,13 +72,6 @@ public sealed class RowIcon : Control
         set => SetValue(TurnedProperty, value);
     }
 
-    /// <summary>Whether its icon is a plain folder's, drawn only while Settings shows plain folders' icons.</summary>
-    public bool PlainFolder
-    {
-        get => GetValue(PlainFolderProperty);
-        set => SetValue(PlainFolderProperty, value);
-    }
-
     public IBrush? Foreground
     {
         get => GetValue(ForegroundProperty);
@@ -99,7 +91,7 @@ public sealed class RowIcon : Control
         context.FillRectangle(Brushes.Transparent, new Rect(Bounds.Size));
         Geometry? data = Data ?? (DataKey is { } key ? Resource(key) as Geometry : null);
         IBrush? brush = Foreground ?? Resource(ForegroundKey ?? TokenKeys.Icon) as IBrush;
-        if (data is null || (PlainFolder && !Explorer.FileIcons.ShowsPlainFolders(this)))
+        if (data is null)
         {
             return;
         }

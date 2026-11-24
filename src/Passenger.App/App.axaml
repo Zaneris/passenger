@@ -12,6 +12,8 @@
                 <app:FluentKeys />
                 <ResourceInclude Source="avares://Passenger/Theme/Icons.axaml" />
                 <ResourceInclude Source="avares://Passenger/Theme/FileIconSet.axaml" />
+                <!-- Each file's and folder's icon by the key naming it, from the icons above or a theme's icon theme. -->
+                <app:NamedIcons />
                 <ResourceInclude Source="avares://Passenger/Theme/ControlThemes.axaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>

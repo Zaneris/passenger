@@ -135,13 +135,14 @@ public static class ThemeSourceReads
             return ([], null);
         }
         (Dictionary<string, byte[]> images, string? why) = await ThemeImages.ReadAsync(theme, image => BytesAsync(reached, ThemeImages.Beside(listed.Path, image), ThemeFiles.MostImageBytes, cancel));
-        // A VS Code theme named as a file beside the theme's comes with it, as its pictures do.
+        // A VS Code theme or file icon theme named as a file beside the theme's comes with it, as its pictures do.
         (Dictionary<string, byte[]> beside, string? unread) = await VsCodeBases.BesideAsync(theme, file => BytesAsync(reached, ThemeImages.Beside(listed.Path, file), ThemeFiles.MostBytes, cancel));
-        foreach ((string path, byte[] bytes) in beside)
+        (Dictionary<string, byte[]> icons, string? undrawn) = await VsCodeIconSets.BesideAsync(theme, file => BytesAsync(reached, ThemeImages.Beside(listed.Path, file), ThemeFiles.MostBytes, cancel));
+        foreach ((string path, byte[] bytes) in beside.Concat(icons))
         {
             images[path] = bytes;
         }
-        return (images, why ?? unread);
+        return (images, why ?? unread ?? undrawn);
     }
 
     /// <summary>A picture beside a file named by the person, by its path there.</summary>

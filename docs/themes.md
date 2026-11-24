@@ -42,7 +42,7 @@ scheme file of your own.
 
 `name` is required, at most 64 characters; `description` is optional, at most 1,000. `tokens` holds values for both
 variants, `dark` and `light` for one each; a token goes in `tokens` or in `dark` and `light`, never both. Any of the
-three may be left out, as may `background`, `fonts`, `languages`, `layout`, `icons`, `base` and `vscode` below.
+three may be left out, as may `background`, `fonts`, `languages`, `layout`, `icons`, `iconTheme`, `base` and `vscode` below.
 
 A token is named as its key in [Tokens.axaml](../src/Passenger.App/Theme/Tokens.axaml) without `Passenger.`:
 `Frame`, `Editor.Background`, `Syntax.Keyword`, `SyntaxStyle.Comment`, `ControlRadius`, and the margins
@@ -157,6 +157,56 @@ A theme over a carried theme takes the base's icons for the keys it names none f
 file, may give icons over any base, a VS Code theme's too, so a set of icons goes with whichever colours you like. Settings
 | Appearance | Show icons on plain folders, off, leaves a plain folder's row its chevron alone whatever the theme draws,
 its name in line with its files'.
+
+### Its file icon theme
+
+```json
+"iconTheme": { "id": "Catppuccin.catppuccin-vsc-icons", "theme": "Catppuccin Mocha" }
+```
+
+```json
+"iconTheme": {
+  "dark": { "id": "Catppuccin.catppuccin-vsc-icons", "theme": "Catppuccin Mocha", "version": "1.26.0" },
+  "light": { "id": "Catppuccin.catppuccin-vsc-icons", "theme": "Catppuccin Latte" }
+}
+```
+
+```json
+"iconTheme": { "file": "icons/theme.json" }
+```
+
+`iconTheme` names a VS Code file icon theme (one an extension contributes as `iconThemes`) that draws the theme's files and
+folders: by its extension's Open VSX id (`publisher.name`), its label in that extension (or its id there), and the version
+pinned, which may be left out; or as a file icon theme's JSON beside the theme's file (`file`, its folders joined by `/`, no
+`..`), its SVGs where it names them beside it. One is the same in both variants, or `{"dark": …, "light": …}` gives each its
+own, either of which may be left out. It is fetched with the theme, from Open VSX or beside the theme's file, with every SVG
+it draws, and kept beside it (`iconTheme/` in its folder), so it draws offline; Refresh takes the extension's newest version
+unless `version` pins one. Nothing of the extension runs: Passenger reads its JSON as VS Code does, comments and trailing
+commas allowed, and draws its SVGs as data, as a theme's own icons are drawn (each at most 256 KB, 5,000 icons a theme).
+
+A file takes the icon theme's icon for its whole name, else for each extension its name ends in, the longest first
+(`d.ts` before `ts`, and one given under a folder's name, `workflows/yml`, first for a file in that folder), else for its
+language as Passenger knows it by its name (VS Code's ids: `csharp`, `typescript`, `markdown`, …); a folder for its name,
+open or closed; names and extensions in any letter case. Where the icon theme names none of these, a file or folder
+Passenger draws apart keeps Passenger's icon (a project file, a Dockerfile, `.github`, a project's `Properties`), and every
+other takes the icon theme's file or folder icon; Passenger's own where it gives none. Its `light` section draws under
+Light, laid over what it gives for both. An icon of a font's character, or a picture that is no SVG, is passed over and
+named, its files keeping Passenger's icons. Projects keep their kinds' icons, and the window's other icons stay
+Passenger's or the theme's own `icons`. The theme's icon saturation, brightness and tint work on the icon theme's colours
+too, and with Show icons on plain folders off, a folder the icon theme draws by its name keeps its icon while every other
+plain folder shows its chevron alone.
+
+A theme of your own, added from its file, pairs any colours with any icon theme, naming a carried theme or a VS Code theme
+as its base beside its `iconTheme`:
+
+```json
+{
+  "format": 1,
+  "name": "Mocha with its icons",
+  "vscode": { "id": "Catppuccin.catppuccin-vsc", "theme": "Catppuccin Mocha" },
+  "iconTheme": { "id": "Catppuccin.catppuccin-vsc-icons", "theme": "Catppuccin Mocha" }
+}
+```
 
 ### The code's colours by language
 

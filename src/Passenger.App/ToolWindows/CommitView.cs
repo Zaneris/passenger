@@ -1265,7 +1265,6 @@ public sealed class CommitView : DockPanel, IOwnKeys
                     string last = folder.Name[(folder.Name.LastIndexOf('/') + 1)..];
                     folderIcon.DataKey = Explorer.FileIcons.FolderKey(last, branch.IsExpanded);
                     folderIcon.ForegroundKey = Explorer.FileIcons.FolderBrushKey(last);
-                    folderIcon.PlainFolder = Explorer.FileIcons.IsPlainFolder(last);
                 }
                 branchName.Text = folder?.Name ?? ((CommitGroup)branch).Name;
                 branchName.Classes.Set(StyleClasses.Strong, folder is null);

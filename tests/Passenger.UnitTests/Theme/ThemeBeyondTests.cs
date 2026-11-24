@@ -46,6 +46,7 @@ public class ThemeBeyondTests
         ("a theme names a carried theme as its base and laid over it keeps all the base gives that it does not", A_theme_names_a_carried_theme_as_its_base_and_laid_over_it_keeps_all_the_base_gives_that_it_does_not),
         ("an icons saturation brightness and tint work on its colour as CSSs filters do keeping its alpha", An_icons_saturation_brightness_and_tint_work_on_its_colour_as_CSSs_filters_do_keeping_its_alpha),
         ("a theme gives its own icons by key beside its file the same in both variants or each its own and laid over a base keeps the bases others", A_theme_gives_its_own_icons_by_key_beside_its_file_the_same_in_both_variants_or_each_its_own_and_laid_over_a_base_keeps_the_bases_others),
+        ("a theme names a vs code file icon theme by its extension or beside its file for both variants or each and laid over a base keeps the bases", A_theme_names_a_vs_code_file_icon_theme_by_its_extension_or_beside_its_file_for_both_variants_or_each_and_laid_over_a_base_keeps_the_bases),
         ("a picture is read beside its themes file in the source", () => Cases.Each<(string, string, string)>(
         [
             ("Dusk/theme.json", "dusk.webp", "Dusk/dusk.webp"),
@@ -110,12 +111,15 @@ public class ThemeBeyondTests
             ("\"base\": [\"Cubicle\"]", "gives base as"),
             ("\"base\": \"Cubicle\", \"vscode\": {\"file\": \"dark.json\"}", "gives both base and vscode"),
         ], row => A_base_Passenger_does_not_carry_refuses_the_theme(row.Item1, row.Item2))),
-        ("an icon that is no SVG beside the themes file refuses the theme and one that does not read as an SVG is refused as its theme is fetched", () => Cases.Each<(string, string)>(
+        ("an icon that is no SVG beside the themes file or an icon theme that names no extension or file beside it refuses the theme and one that does not read as an SVG is refused as its theme is fetched", () => Cases.Each<(string, string)>(
         [
             ("\"icons\": {\"Icon.Lantern\": \"run.png\"}", "gives icons' Icon.Lantern as \"run.png\": an icon is an SVG beside the theme's file"),
             ("\"icons\": {\"Icon.Lantern\": \"../run.svg\"}", "an icon is an SVG beside the theme's file"),
             ("\"icons\": {\"Icon.Lantern\": {\"dark\": 3}}", "gives icons' Icon.Lantern under dark as 3"),
             ("\"icons\": [\"run.svg\"]", "gives icons as"),
+            ("\"iconTheme\": \"Catppuccin Mocha\"", "gives iconTheme as \"Catppuccin Mocha\": iconTheme is {\"id\": \"publisher.extension\", \"theme\": \"its label\"}"),
+            ("\"iconTheme\": {\"file\": \"../icons.json\"}", "gives iconTheme's file as \"../icons.json\": it is a VS Code file icon theme's JSON beside the theme's file"),
+            ("\"iconTheme\": {\"dark\": {\"id\": \"catppuccin\", \"theme\": \"Mocha\"}}", "gives iconTheme's dark's id as \"catppuccin\": it is an extension's Open VSX id"),
         ], row => An_icon_that_is_no_SVG_beside_the_themes_file_refuses_the_theme(row.Item1, row.Item2))),
         ("a pictures kind and size come from its header as PNG JPEG and each kind of WebP write them", A_pictures_kind_and_size_come_from_its_header_as_PNG_JPEG_and_each_kind_of_WebP_write_them),
         ("a picture larger than a background may be is refused before anything decodes it", A_picture_larger_than_a_background_may_be_is_refused_before_anything_decodes_it));
@@ -222,6 +226,29 @@ public class ThemeBeyondTests
     }
 
     private void An_icon_that_is_no_SVG_beside_the_themes_file_refuses_the_theme(string members, string why) => Assert.Contains(why, Refused(members), StringComparison.Ordinal);
+
+    private void A_theme_names_a_vs_code_file_icon_theme_by_its_extension_or_beside_its_file_for_both_variants_or_each_and_laid_over_a_base_keeps_the_bases()
+    {
+        VsCodeBase mocha = new("Catppuccin.catppuccin-vsc-icons", "Catppuccin Mocha", "1.26.0");
+        ThemeFile both = Read("""
+            "iconTheme": {"id": "Catppuccin.catppuccin-vsc-icons", "theme": "Catppuccin Mocha", "version": "1.26.0"}
+            """);
+        Assert.Equal((mocha, mocha), (both.DarkIconTheme, both.LightIconTheme));
+        Assert.Equal([mocha], both.IconThemes);
+        ThemeRead<ThemeFile> each = Theme("""
+            "iconTheme": {"dark": {"file": "icons/night.json"}, "light": {"id": "Catppuccin.catppuccin-vsc-icons", "theme": "catppuccin-latte"}, "dim": {}}
+            """);
+        Assert.Equal((new VsCodeBase(null, null, null, "icons/night.json"), new VsCodeBase("Catppuccin.catppuccin-vsc-icons", "catppuccin-latte", null)),
+            (each.Read!.DarkIconTheme, each.Read.LightIconTheme));
+        Assert.Contains(each.Problems, p => p.Contains("dim", StringComparison.Ordinal));
+        ThemeFile laid = ThemeFiles.Over(both, Read("""
+            "iconTheme": {"dark": {"file": "icons/night.json"}}
+            """));
+        Assert.Equal((new VsCodeBase(null, null, null, "icons/night.json"), mocha), (laid.DarkIconTheme, laid.LightIconTheme));
+        Assert.Null(Read("""
+            "description": "Passenger's icons."
+            """).DarkIconTheme);
+    }
 
     private void An_icons_saturation_brightness_and_tint_work_on_its_colour_as_CSSs_filters_do_keeping_its_alpha()
     {

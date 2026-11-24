@@ -329,6 +329,10 @@ public sealed class Language
         return PlainText;
     }
 
+    /// <summary>The language whose names a file's name (and its folders, where a pattern names them) matches, or null where
+    /// none claims it.</summary>
+    public static Language? Claiming(string path) => All.FirstOrDefault(language => language.PatternOf(path) is not null);
+
     /// <summary>Whether a file can have no line that begins inside a string with nothing here to read it by: ignore patterns,
     /// and prose by its name, where a file matching no language may be any program's.</summary>
     public bool HoldsNoStrings(string path) => this == Ignore || (this == PlainText && PatternOf(path) is not null);

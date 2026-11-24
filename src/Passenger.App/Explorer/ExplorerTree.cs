@@ -1220,7 +1220,6 @@ public sealed class ExplorerNode : Observable, ITreeRow
     public double Opacity => IsDimmed || IsCut ? ListRow.Dimmed : 1;
     public string IconKey => FileIcons.KeyFor(this);
     public string IconBrushKey => FileIcons.BrushKeyFor(this);
-    public bool IsPlainFolder => FileIcons.IsPlainFolder(this);
 
     /// <summary>Whether a path lies under this node: inside its folder, or its project's folder, or nested under its file.</summary>
     public bool Contains(string path)

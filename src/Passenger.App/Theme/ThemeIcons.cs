@@ -9,14 +9,15 @@ namespace Passenger.App;
 /// <summary>The icons a theme gives in Passenger's place as the application's resources: each an <see cref="IconPicture"/>
 /// under the key of the icon it stands for, in its variant's theme dictionary, laid over Passenger's own (Icons.axaml,
 /// FileIconSet.axaml), so every place that finds an icon by its key finds the theme's, and an icon the theme gives none for
-/// stays Passenger's. Each SVG is read from beside the theme's file as kept, once however many keys it stands for. UI
-/// thread only.</summary>
+/// stays Passenger's; and its VS Code file icon theme for each variant (<see cref="IconThemeIcons"/>), which draws its
+/// files and folders by their names. Each SVG is read from beside the theme's file as kept, once however many keys it
+/// stands for. UI thread only.</summary>
 public static class ThemeIcons
 {
     /// <summary>The theme's icons as a dictionary of resources, or null where it gives none.</summary>
     public static ResourceDictionary? Dictionary(ThemeFile theme, Func<string, byte[]?> read)
     {
-        if (theme.DarkIcons.Count == 0 && theme.LightIcons.Count == 0)
+        if (theme.DarkIcons.Count == 0 && theme.LightIcons.Count == 0 && !theme.IconThemes.Any())
         {
             return null;
         }
@@ -41,9 +42,68 @@ public static class ThemeIcons
                     icons[key] = picture;
                 }
             }
+            if (theme.IconThemeOf(dark) is { } wanted)
+            {
+                if (VsCodeIconSets.Kept(wanted, read, out string? why) is { } kept)
+                {
+                    icons[IconThemeIcons.Key] = new IconThemeIcons(kept.Theme, kept.Svg, dark);
+                }
+                else
+                {
+                    IdeErrors.Write($"Themes: {theme.Name}'s file icon theme {wanted.File ?? $"{wanted.Theme} ({wanted.Id})"} is not kept beside it{(why is null ? string.Empty : $": {why}")}, so Passenger's own icons show in its place");
+                }
+            }
             laid.ThemeDictionaries[variant] = icons;
         }
         return laid;
+    }
+}
+
+/// <summary>A VS Code file icon theme laid for one variant, as the application's resource under <see cref="Key"/>: the icon
+/// it gives a file by its name and its folder's, or a folder by its name, open or not (<see cref="VsCodeIconTheme"/>), each
+/// an <see cref="IconPicture"/> of its SVG, read the first time it is drawn and checked as a theme's own icon is. A file's
+/// language is Passenger's by its name (<see cref="Passenger.Languages.Language.Claiming"/>). UI thread only.</summary>
+public sealed class IconThemeIcons(VsCodeIconTheme theme, Func<string, byte[]?> svg, bool dark)
+{
+    /// <summary>The resource it is laid as, under its variant.</summary>
+    public static readonly object Key = new();
+
+    private readonly Dictionary<string, IconPicture?> pictures = new(StringComparer.Ordinal);
+
+    /// <summary>The theme it lays.</summary>
+    public VsCodeIconTheme Theme => theme;
+
+    /// <summary>A file's icon by its name and its folder's, and whether the theme names the file rather than drawing it as any
+    /// other; no icon where it draws none.</summary>
+    public (IconPicture? Icon, bool Named) File(string name, string? folder)
+    {
+        VsCodeIconMatch match = theme.FileIcon(name, folder, dark, () => Passenger.Languages.Language.Claiming(name) is { } language ? language.IdOf(name) : null);
+        return (Picture(match.Icon), match.Named);
+    }
+
+    /// <summary>A folder's icon by its name, open or not, and whether the theme names the folder.</summary>
+    public (IconPicture? Icon, bool Named) Folder(string name, bool open)
+    {
+        VsCodeIconMatch match = theme.FolderIcon(name, open, dark);
+        return (Picture(match.Icon), match.Named);
+    }
+
+    private IconPicture? Picture(string? icon)
+    {
+        if (icon is null || !theme.Icons.TryGetValue(icon, out string? path))
+        {
+            return null;
+        }
+        if (!pictures.TryGetValue(path, out IconPicture? picture))
+        {
+            picture = svg(path) is { } bytes && ThemeImages.IconWhyNot(path, bytes) is null ? new IconPicture(path, bytes) : null;
+            if (picture is null)
+            {
+                IdeErrors.Write($"Themes: {theme.Name}'s icon {path} is not kept or is no SVG, so Passenger's own shows in its place");
+            }
+            pictures[path] = picture;
+        }
+        return picture;
     }
 }
 

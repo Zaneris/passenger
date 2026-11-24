@@ -60,7 +60,7 @@ public sealed record LanguageColours(IReadOnlyDictionary<string, TokenValue> Bot
     IReadOnlyDictionary<string, TokenValue> Light);
 
 /// <summary>A theme's members beyond its tokens: <c>fonts</c>, <c>background</c>, <c>languages</c>, <c>layout</c>, <c>icons</c>,
-/// and its base, <c>vscode</c> or <c>base</c> (docs/themes.md).</summary>
+/// <c>iconTheme</c>, and its base, <c>vscode</c> or <c>base</c> (docs/themes.md).</summary>
 public static partial class ThemeFiles
 {
     /// <summary>The most of a background picture that shows: every glyph keeps at least the rest of its difference from its
@@ -88,7 +88,7 @@ public static partial class ThemeFiles
     private const double OwnOpacity = 0.15;
     private const int LongestLanguage = 40;
 
-    private static readonly string[] Beyond = ["fonts", "background", "languages", "layout", "icons", Member.VsCode, Member.Base];
+    private static readonly string[] Beyond = ["fonts", "background", "languages", "layout", "icons", Member.IconTheme, Member.VsCode, Member.Base];
     private static readonly string[] PictureTypes = [".png", ".jpg", ".jpeg", ".webp"];
     private static readonly (string Word, BackgroundPlaces Place)[] PlaceWords =
         [("editor", BackgroundPlaces.Editor), ("toolWindows", BackgroundPlaces.ToolWindows), ("frame", BackgroundPlaces.Frame), ("welcome", BackgroundPlaces.Welcome)];
@@ -356,7 +356,29 @@ public static partial class ThemeFiles
         return name == ThemeSource.Own ? null : name;
     }
 
-    private static VsCodeBase? Base(string file, JsonElement? named, List<string> problems)
+    private static VsCodeBase? Base(string file, JsonElement? named, List<string> problems) =>
+        Extension(file, named, Member.VsCode, "a VS Code theme's JSON", problems);
+
+    /// <summary>The VS Code file icon theme a theme draws its files and folders with under Dark and under Light: one for both,
+    /// or <c>{"dark": …, "light": …}</c>, either of which may be left out.</summary>
+    private static (VsCodeBase? Dark, VsCodeBase? Light) IconTheme(string file, JsonElement? named, List<string> problems)
+    {
+        if (named is { ValueKind: JsonValueKind.Object } given && (JsonMembers.Value(given, "dark") is not null || JsonMembers.Value(given, "light") is not null))
+        {
+            PassOver(file, given, ["dark", "light"], Member.IconTheme, problems);
+            return (IconThemeOf("dark"), IconThemeOf("light"));
+        }
+        VsCodeBase? both = IconThemeOf(null);
+        return (both, both);
+
+        VsCodeBase? IconThemeOf(string? variant) =>
+            Extension(file, variant is null ? named : JsonMembers.Value(named!.Value, variant), variant is null ? Member.IconTheme : $"{Member.IconTheme}'s {variant}",
+                "a VS Code file icon theme's JSON", problems);
+    }
+
+    /// <summary>A VS Code extension's theme a theme names under <paramref name="member"/>: by its extension's Open VSX id, its
+    /// label (an icon theme's id too) and the version pinned, or by its JSON's file beside the theme's.</summary>
+    private static VsCodeBase? Extension(string file, JsonElement? named, string member, string json, List<string> problems)
     {
         if (named is null)
         {
@@ -364,15 +386,15 @@ public static partial class ThemeFiles
         }
         if (named.Value.ValueKind != JsonValueKind.Object)
         {
-            throw new FormatException($"gives vscode as {ThemeJson.Shown(named.Value)}: vscode is {{\"id\": \"publisher.extension\", \"theme\": \"its label\"}}, its version optional, "
-                + "or {\"file\": \"a VS Code theme's JSON beside the theme's\"}");
+            throw new FormatException($"gives {member} as {ThemeJson.Shown(named.Value)}: {member} is {{\"id\": \"publisher.extension\", \"theme\": \"its label\"}}, its version optional, "
+                + $"or {{\"file\": \"{json} beside the theme's\"}}");
         }
-        PassOver(file, named.Value, [Member.Id, Member.Theme, Member.Version, Member.File], Member.VsCode, problems);
+        PassOver(file, named.Value, [Member.Id, Member.Theme, Member.Version, Member.File], member, problems);
         if (JsonMembers.Value(named.Value, Member.File) is { } beside)
         {
             if (beside.ValueKind != JsonValueKind.String || !Inside(beside.GetString()!, [".json"]) || JsonMembers.Value(named.Value, Member.Id) is not null)
             {
-                throw new FormatException($"gives vscode's file as {ThemeJson.Shown(beside)}: it is a VS Code theme's JSON beside the theme's file, its folders joined by /, "
+                throw new FormatException($"gives {member}'s file as {ThemeJson.Shown(beside)}: it is {json} beside the theme's file, its folders joined by /, "
                     + "with no .., ending .json, given instead of an id");
             }
             return new VsCodeBase(null, null, null, beside.GetString());
@@ -380,13 +402,13 @@ public static partial class ThemeFiles
         string id = Words(named.Value, Member.Id, LongestName * 4, needed: true);
         if (!ExtensionId().IsMatch(id))
         {
-            throw new FormatException($"gives vscode's id as \"{id}\": it is an extension's Open VSX id, publisher.extension");
+            throw new FormatException($"gives {member}'s id as \"{id}\": it is an extension's Open VSX id, publisher.extension");
         }
         string theme = Words(named.Value, Member.Theme, LongestName * 2, needed: true);
         string? version = JsonMembers.Value(named.Value, Member.Version) is null ? null : Words(named.Value, Member.Version, LongestName, needed: true);
         if (version is not null && !IsVersion(version))
         {
-            throw new FormatException($"gives vscode's version as \"{version}\": it is the extension's version, as 2.25.1");
+            throw new FormatException($"gives {member}'s version as \"{version}\": it is the extension's version, as 2.25.1");
         }
         return new VsCodeBase(id, theme, version);
     }
@@ -459,6 +481,7 @@ public static partial class ThemeFiles
         public const string Version = "version";
         public const string File = "file";
         public const string Base = "base";
+        public const string IconTheme = "iconTheme";
     }
 
     /// <summary>A theme laid over another, as over its base: the one under giving every token the one over leaves out, and
@@ -490,6 +513,8 @@ public static partial class ThemeFiles
             Layout = over.Layout ?? under.Layout,
             DarkIcons = Merged(under.DarkIcons, over.DarkIcons),
             LightIcons = Merged(under.LightIcons, over.LightIcons),
+            DarkIconTheme = over.DarkIconTheme ?? under.DarkIconTheme,
+            LightIconTheme = over.LightIconTheme ?? under.LightIconTheme,
         };
 
         static Dictionary<string, string> Merged(IReadOnlyDictionary<string, string> beneath, IReadOnlyDictionary<string, string> given)

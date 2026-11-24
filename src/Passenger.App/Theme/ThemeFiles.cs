@@ -114,6 +114,19 @@ public sealed record ThemeFile(string Name, string Description, IReadOnlyDiction
     /// <summary>The icons it gives under a variant.</summary>
     public IReadOnlyDictionary<string, string> IconsOf(bool dark) => dark ? DarkIcons : LightIcons;
 
+    /// <summary>The VS Code file icon theme drawing its files and folders under Dark (<c>iconTheme</c>), by its extension's id
+    /// and its label, or by its JSON's file beside the theme's; null for none.</summary>
+    public VsCodeBase? DarkIconTheme { get; init; }
+
+    /// <summary>The VS Code file icon theme drawing its files and folders under Light, as <see cref="DarkIconTheme"/>.</summary>
+    public VsCodeBase? LightIconTheme { get; init; }
+
+    /// <summary>The VS Code file icon theme under a variant, or null for none.</summary>
+    public VsCodeBase? IconThemeOf(bool dark) => dark ? DarkIconTheme : LightIconTheme;
+
+    /// <summary>Each VS Code file icon theme it names, each once.</summary>
+    public IEnumerable<VsCodeBase> IconThemes => ((VsCodeBase?[])[DarkIconTheme, LightIconTheme]).OfType<VsCodeBase>().Distinct();
+
     /// <summary>Every icon's file it names, each once.</summary>
     public IEnumerable<string> IconFiles => DarkIcons.Values.Concat(LightIcons.Values).Distinct(StringComparer.Ordinal);
 
@@ -232,6 +245,7 @@ public static partial class ThemeFiles
         }
         (BackgroundValue? darkPicture, BackgroundValue? lightPicture) = code ? (null, null) : Background(file, JsonMembers.Value(root, "background"), problems);
         (Dictionary<string, string>? dark, Dictionary<string, string>? light) = code ? (null, null) : Icons(file, JsonMembers.Value(root, "icons"), problems);
+        (VsCodeBase? iconDark, VsCodeBase? iconLight) = code ? (null, null) : IconTheme(file, JsonMembers.Value(root, Member.IconTheme), problems);
         return new ThemeFile(name, description, sections[0], sections[1], sections[2])
         {
             Fonts = code ? ThemeFonts.None : Fonts(file, JsonMembers.Value(root, "fonts"), problems),
@@ -243,6 +257,8 @@ public static partial class ThemeFiles
             LightIcons = light is null ? new Dictionary<string, string>(StringComparer.Ordinal) : light,
             Base = Base(file, JsonMembers.Value(root, Member.VsCode), problems),
             BuiltInBase = carried,
+            DarkIconTheme = iconDark,
+            LightIconTheme = iconLight,
         };
     }
 

@@ -651,7 +651,6 @@ public partial class ExplorerView : UserControl
             glyphs.Turned = node.IsExpanded;
             glyphs.IconKey = node.IconKey;
             glyphs.IconBrushKey = node.IconBrushKey;
-            glyphs.PlainFolder = node.IsPlainFolder;
             name.Text = node.Name;
             foreach (TextBlock coloured in (TextBlock[])[name, change])
             {

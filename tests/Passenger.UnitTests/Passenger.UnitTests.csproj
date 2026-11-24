@@ -125,6 +125,7 @@
     <Compile Include="../../src/Passenger.App/Theme/ContrastAsked.cs" Link="App/ContrastAsked.cs" />
     <Compile Include="../../src/Passenger.App/Theme/ThemePalettes.cs" Link="App/ThemePalettes.cs" />
     <Compile Include="../../src/Passenger.App/Theme/VsCodeThemes.cs" Link="App/VsCodeThemes.cs" />
+    <Compile Include="../../src/Passenger.App/Theme/VsCodeIconThemes.cs" Link="App/VsCodeIconThemes.cs" />
     <Compile Include="../../src/Passenger.App/Theme/VsCodeScopes.cs" Link="App/VsCodeScopes.cs" />
     <Compile Include="../../src/Passenger.App/Theme/VsCodeColours.cs" Link="App/VsCodeColours.cs" />
     <Compile Include="../../src/Passenger.App/Theme/OpenVsx.cs" Link="App/OpenVsx.cs" />

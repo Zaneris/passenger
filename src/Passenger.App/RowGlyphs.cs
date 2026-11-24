@@ -22,13 +22,12 @@ public sealed class RowGlyphs : Control
     public static readonly StyledProperty<IBrush?> IconBrushProperty = AvaloniaProperty.Register<RowGlyphs, IBrush?>(nameof(IconBrush));
     public static readonly StyledProperty<string?> IconKeyProperty = AvaloniaProperty.Register<RowGlyphs, string?>(nameof(IconKey));
     public static readonly StyledProperty<string?> IconBrushKeyProperty = AvaloniaProperty.Register<RowGlyphs, string?>(nameof(IconBrushKey));
-    public static readonly StyledProperty<bool> PlainFolderProperty = AvaloniaProperty.Register<RowGlyphs, bool>(nameof(PlainFolder));
 
     static RowGlyphs()
     {
         WidthProperty.OverrideDefaultValue<RowGlyphs>(Column + IconSize + Gap);
         HeightProperty.OverrideDefaultValue<RowGlyphs>(ListRow.Height);
-        AffectsRender<RowGlyphs>(HasChevronProperty, TurnedProperty, IconProperty, IconBrushProperty, IconKeyProperty, IconBrushKeyProperty, PlainFolderProperty);
+        AffectsRender<RowGlyphs>(HasChevronProperty, TurnedProperty, IconProperty, IconBrushProperty, IconKeyProperty, IconBrushKeyProperty);
     }
 
     public RowGlyphs()
@@ -82,14 +81,6 @@ public sealed class RowGlyphs : Control
         set => SetValue(IconBrushKeyProperty, value);
     }
 
-    /// <summary>Whether its icon is a plain folder's, drawn only while Settings shows plain folders' icons, its chevron
-    /// alone otherwise, its words where they stand beside every row's icon.</summary>
-    public bool PlainFolder
-    {
-        get => GetValue(PlainFolderProperty);
-        set => SetValue(PlainFolderProperty, value);
-    }
-
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
@@ -112,7 +103,7 @@ public sealed class RowGlyphs : Control
         {
             Glyph(context, chevron, themed, look, new Point((Column - ChevronSize) / 2, (Bounds.Height - ChevronSize) / 2), ChevronSize, Turned, scale);
         }
-        if ((Icon ?? (IconKey is { } key ? Resource(key) as Geometry : null)) is { } icon && !(PlainFolder && !Explorer.FileIcons.ShowsPlainFolders(this)))
+        if ((Icon ?? (IconKey is { } key ? Resource(key) as Geometry : null)) is { } icon)
         {
             Glyph(context, icon, IconBrush ?? (IconBrushKey is { } tint ? Resource(tint) as IBrush : null) ?? themed, look, new Point(Column, (Bounds.Height - IconSize) / 2), IconSize, turned: false, scale);
         }

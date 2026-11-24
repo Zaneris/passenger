@@ -210,7 +210,8 @@ public sealed class ThemePicker : StackPanel
         }
         (Dictionary<string, byte[]> beside, string? unseen) = await ThemeImages.ReadAsync(whole, image => Task.FromResult(ThemeSourceReads.BesideFile(path, image)));
         (Dictionary<string, byte[]> based, string? unbased) = await VsCodeBases.BesideAsync(whole, file => Task.FromResult(ThemeSourceReads.BesideFile(path, file)));
-        foreach ((string file, byte[] bytes) in based)
+        (Dictionary<string, byte[]> icons, string? undrawn) = await VsCodeIconSets.BesideAsync(whole, file => Task.FromResult(ThemeSourceReads.BesideFile(path, file)));
+        foreach ((string file, byte[] bytes) in based.Concat(icons))
         {
             beside[file] = bytes;
         }
@@ -224,9 +225,23 @@ public sealed class ThemePicker : StackPanel
             }
             fetched = taken.Files;
         }
+        // Each file icon theme by an extension's id is fetched now, so the theme draws its icons once added.
+        List<(VsCodeBase Wanted, IReadOnlyDictionary<string, byte[]> Files)> drawn = [];
+        foreach (VsCodeBase iconTheme in whole.IconThemes.Where(i => i.Id is not null))
+        {
+            (VsCodeIconTaken? taken, string? why) = await VsCodeIconSets.FetchAsync(iconTheme, CancellationToken.None);
+            if (taken is null)
+            {
+                return why;
+            }
+            said.AddRange(taken.Problems);
+            drawn.Add((iconTheme, taken.Files));
+        }
         said.AddRange(own.Problems);
-        added.Add(new Added(whole.Name, () => KeptThemes.KeepBase(ThemeSource.Added, code, whole.Name, fetched) ?? KeptThemes.Keep(ThemeSource.Added, code, whole.Name, found, beside)));
-        return unseen ?? unbased;
+        added.Add(new Added(whole.Name, () => KeptThemes.KeepBase(ThemeSource.Added, code, whole.Name, fetched)
+            ?? drawn.Select(d => KeptThemes.KeepUnder(ThemeSource.Added, code, whole.Name, VsCodeIconSets.KeptUnder(d.Wanted), d.Files)).FirstOrDefault(w => w is not null)
+            ?? KeptThemes.Keep(ThemeSource.Added, code, whole.Name, found, beside)));
+        return unseen ?? unbased ?? undrawn;
     }
 
     private async Task PickFileAsync()

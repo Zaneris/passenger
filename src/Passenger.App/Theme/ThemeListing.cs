@@ -84,6 +84,8 @@ public static class ThemeListing
         ThemeSource[] keeping = [.. sources, ThemeSource.Added, ThemeSource.OpenVsx];
         List<(ThemeSource Source, bool Code, string Name, VsCodeBase Base)> bases = [.. keeping.SelectMany(source => ((bool[])[false, true])
             .SelectMany(code => Kept(source, code).Where(file => file.Base is { Id: not null }).Select(file => (source, code, file.Name, file.Base!))))];
+        List<(ThemeSource Source, string Name, VsCodeBase IconTheme)> iconSets = [.. keeping.SelectMany(source => Kept(source, false)
+            .SelectMany(file => file.IconThemes.Where(i => i.Id is not null).Select(i => (source, file.Name, i))))];
         string?[] refused = await BackgroundWork.Run(async () =>
         {
             List<string?> said = [];
@@ -103,6 +105,23 @@ public static class ThemeListing
                 }
                 (VsCodeTaken? taken, string? why) = await VsCodeBases.FetchAsync(wanted with { Version = newest.Version }, CancellationToken.None);
                 said.Add(taken is null ? why : KeptThemes.KeepBase(source, code, name, taken.Files));
+            }
+            // A file icon theme by its extension's id, as a base.
+            foreach ((ThemeSource source, string name, VsCodeBase wanted) in iconSets)
+            {
+                string? kept = VsCodeIconSets.KeptVersion(wanted, path => KeptThemes.Beside(source, false, name, path));
+                if (wanted.Version is { } pinned && kept == pinned)
+                {
+                    continue;
+                }
+                (OpenVsxEntry? newest, string? missing) = await OpenVsx.ExtensionAsync(wanted.Id!, wanted.Version, CancellationToken.None);
+                if (newest is null || newest.Version == kept)
+                {
+                    said.AddRange(newest is null ? [$"{name}'s file icon theme could not be refreshed: {missing}"] : []);
+                    continue;
+                }
+                (VsCodeIconTaken? taken, string? why) = await VsCodeIconSets.FetchAsync(wanted with { Version = newest.Version }, CancellationToken.None);
+                said.Add(taken is null ? why : KeptThemes.KeepUnder(source, false, name, VsCodeIconSets.KeptUnder(wanted), taken.Files));
             }
             foreach ((ListedTheme listed, string name, byte[] bytes) in held)
             {
@@ -179,7 +198,8 @@ public static class ThemeListing
     public static Task<string?> KeepAsync(ListedTheme listed, string name) => BackgroundWork.Run(async () =>
     {
         (Dictionary<string, byte[]> images, string? unseen) = await ThemeSourceReads.ImagesAsync(listed, listed.Source.Reached, CancellationToken.None);
-        return unseen ?? (listed.Read.Read is { } file ? await VsCodeBases.KeepAsync(listed.Source, listed.Code, name, file, CancellationToken.None) : null)
+        return unseen ?? (listed.Read.Read is { } file ? await VsCodeBases.KeepAsync(listed.Source, listed.Code, name, file, CancellationToken.None)
+            ?? await VsCodeIconSets.KeepAsync(listed.Source, listed.Code, name, file, CancellationToken.None) : null)
             ?? KeptThemes.Keep(listed.Source, listed.Code, name, listed.Bytes!, images);
     });
 
