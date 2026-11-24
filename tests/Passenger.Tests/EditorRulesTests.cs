@@ -5,18 +5,21 @@ using Passenger.Editor;
 
 namespace Passenger.Tests;
 
-/// <summary>Rules the code editor keeps as a control of its own: it draws a text, its line numbers and its folds, and the
-/// gutter's other columns through <see cref="IGutterColumn"/> without knowing what they show, so a new kind of mark
-/// changes the IDE and never the editor; and it runs no action of the IDE's, which the IDE's keymap binds.</summary>
+/// <summary>Rules the code editor keeps as a control of its own: it draws a text, its line numbers and its folds, the
+/// gutter's other columns through <see cref="IGutterColumn"/> and the rows above lines through <see cref="RowAbove"/>
+/// without knowing what they show, so a new kind of mark changes the IDE and never the editor; and it runs no action of
+/// the IDE's, which the IDE's keymap binds.</summary>
 [Collection(Beside.Name)]
 [SameOnEverySystem]
 public sealed partial class EditorRulesTests
 {
-    /// <summary>Words of the debugger's, the tests' and version control's, as a name in the editor would carry them.</summary>
+    /// <summary>Words of the debugger's, the tests', version control's and what the rows above members say, as a name in the
+    /// editor would carry them.</summary>
     private static readonly HashSet<string> Foreign = new(StringComparer.OrdinalIgnoreCase)
     {
         "Breakpoint", "Breakpoints", "Tracepoint", "Tracepoints", "Execution", "Debug", "Debugger", "Debugging", "Debuggee", "Dap",
-        "Test", "Tests", "Testing", "Xunit", "Blame", "Commit", "Commits", "Vcs", "Git",
+        "Test", "Tests", "Testing", "Xunit", "Blame", "Commit", "Commits", "Vcs", "Git", "Author", "Authors", "Inheritors", "Overrides",
+        "Signpost", "Signposts", "Lens",
     };
 
     /// <summary>Words of the IDE's actions, as a name in the editor would carry one it ran.</summary>
@@ -33,9 +36,9 @@ public sealed partial class EditorRulesTests
     public void The_editor_names_nothing_of_the_debugger_the_tests_or_version_control()
     {
         List<string> found = Naming(Foreign);
-        Assert.True(found.Count == 0, $"Passenger.Editor names {found.Count} things of the debugger, the tests or version control, so a change to "
-            + $"any of them changes the editor: give that area's mark to the gutter as an IGutterColumn of the IDE's, and keep in the editor only how a thing is "
-            + $"drawn:\n{string.Join("\n", found)}");
+        Assert.True(found.Count == 0, $"Passenger.Editor names {found.Count} things of the debugger, the tests, version control or the rows above members, "
+            + $"so a change to any of them changes the editor: give that area's mark to the gutter as an IGutterColumn of the IDE's, or its words to a RowAbove, "
+            + $"and keep in the editor only how a thing is drawn:\n{string.Join("\n", found)}");
     }
 
     /// <summary>The editor names no action of the IDE's: no declaration of its own holds their words, and its keymaps bind

@@ -14,13 +14,14 @@ public enum DecorationKind
     ChangeMarks,
     Bookmarks,
     Links,
+    RowsAbove,
 }
 
-/// <summary>What is drawn on one document's text for whoever shows it: its markers, inlay hints, folds, line-end
-/// annotations, change marks, bookmarks and links. Every editor showing the document reads this one (<see cref="CodeEditor.Show"/>),
-/// so a split or another window draws what the first does; an editor given a text alone has one of its own. The markers,
-/// the hints and the folds are carried through each change ahead of everyone who hears of it, as runs an edit moves only
-/// where it reaches, so their owners set them again only with others; the rest are set again by their owners. Each list
+/// <summary>What is drawn on one document's text for whoever shows it: its markers, inlay hints, folds, rows above lines,
+/// line-end annotations, change marks, bookmarks and links. Every editor showing the document reads this one
+/// (<see cref="CodeEditor.Show"/>), so a split or another window draws what the first does; an editor given a text alone has
+/// one of its own. The markers, the hints, the folds and the rows above are carried through each change ahead of everyone
+/// who hears of it, as runs an edit moves only where it reaches; the rest are set again by their owners. Each list
 /// is replaced, never changed in place, and kept in order by line, so a frame reads only what is on screen. Read and
 /// changed on the thread that changes the document.</summary>
 public sealed class DocumentDecorations
@@ -53,6 +54,9 @@ public sealed class DocumentDecorations
 
     /// <summary>The hints, in offset order.</summary>
     public HintList InlayHints { get; private set; } = HintList.Empty;
+
+    /// <summary>The rows drawn above lines, in offset order.</summary>
+    public RowAboveList RowsAbove { get; private set; } = RowAboveList.Empty;
 
     /// <summary>The regions that fold, in offset order, each saying whether it is folded.</summary>
     public IReadOnlyList<FoldRegion> FoldRegions { get; private set; } = [];
@@ -110,6 +114,20 @@ public sealed class DocumentDecorations
         }
         InlayHints = list;
         Changed?.Invoke(this, DecorationKind.InlayHints);
+    }
+
+    /// <summary>Sets the rows above lines for the text as it stands, taken as they are when in order (a
+    /// <see cref="RowAboveList"/> always is); rows drawn as those shown already are taken without a word to the editors,
+    /// which draw nothing again for them.</summary>
+    public void SetRowsAbove(IReadOnlyList<RowAbove> rows)
+    {
+        RowAboveList list = RowAboveList.Of(rows);
+        bool alike = RowAboveList.DrawnAlike(list, RowsAbove);
+        RowsAbove = list;
+        if (!alike)
+        {
+            Changed?.Invoke(this, DecorationKind.RowsAbove);
+        }
     }
 
     /// <summary>Sets the regions that fold and which of them are folded, for the text as it stands.</summary>
@@ -176,8 +194,8 @@ public sealed class DocumentDecorations
         Changed?.Invoke(this, DecorationKind.Links);
     }
 
-    /// <summary>Carries the markers, hints and folds through a change once, whichever of its hearers asks first: an editor
-    /// that heard of it before this did wraps its lines with the hints where the change left them.</summary>
+    /// <summary>Carries the markers, hints, folds and rows above through a change once, whichever of its hearers asks first:
+    /// an editor that heard of it before this did wraps its lines with the hints where the change left them.</summary>
     internal void Follow(DocumentChangedEventArgs change)
     {
         if (change.Version == carried)
@@ -196,6 +214,10 @@ public sealed class DocumentDecorations
         if (FoldRegions.Count > 0)
         {
             FoldRegions = FoldList.Of(FoldRegions).Through(change.Edits);
+        }
+        if (RowsAbove.Count > 0)
+        {
+            RowsAbove = RowsAbove.Through(change);
         }
     }
 

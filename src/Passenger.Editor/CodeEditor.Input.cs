@@ -174,6 +174,13 @@ public sealed partial class CodeEditor
             return;
         }
         PointerPoint point = e.GetCurrentPoint(this);
+        if (PressAbove(point.Position, e.KeyModifiers, point.Properties.IsRightButtonPressed))
+        {
+            Focus();
+            CancelChoices();
+            e.Handled = true;
+            return;
+        }
         if (point.Properties.IsRightButtonPressed && point.Position.X < GutterWidth && GutterClicked is not null && ShowLineNumbers)
         {
             int line = LineAtY(point.Position.Y);
@@ -334,6 +341,7 @@ public sealed partial class CodeEditor
         RestartHover(position);
         Cursor = position.X < GutterWidth || drag.Mode == DragMode.Gutter ? Cursor.Default : IbeamCursor;
         FollowLinks(position, drag.Mode != DragMode.None && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed);
+        FollowAbove(position);
         pointer = position;
         FollowGesture(e.KeyModifiers);
         bool inGutter = position.X < GutterWidth;
@@ -429,6 +437,11 @@ public sealed partial class CodeEditor
         hovered.Release();
         pointer = null;
         DropReach();
+        if (aboveHovered is not null)
+        {
+            aboveHovered = null;
+            RedrawChanged();
+        }
     }
 
     /// <summary>Whether Ctrl+wheel (Cmd+wheel on macOS) asks for a bigger or smaller font rather than scrolling.</summary>
@@ -472,6 +485,16 @@ public sealed partial class CodeEditor
         {
             return;
         }
+        TextSnapshot text = document.Snapshot;
+        if (IsAboveRow(hoverAt))
+        {
+            if (AboveWordAt(hoverAt) is { } word && word.Line < text.LineCount)
+            {
+                hovering = true;
+                Hovered?.Invoke(this, new HoverEventArgs(text.GetLineStart(word.Line), hoverAt, above: word.Word));
+            }
+            return;
+        }
         if (hoverAt.X < GutterWidth)
         {
             int rested = LineAtY(hoverAt.Y);
@@ -487,7 +510,6 @@ public sealed partial class CodeEditor
             ShowFoldPreview(placeholder.Line, placeholder.Chip);
             return;
         }
-        TextSnapshot text = document.Snapshot;
         if (AnnotationAt(hoverAt) is { } annotation && annotation.Line < text.LineCount)
         {
             hovering = true;
@@ -589,13 +611,22 @@ public sealed partial class CodeEditor
             firstRow = lastRow - (step * (most - 1));
             CaretLimitReached?.Invoke(this, EventArgs.Empty);
         }
+        RowMap map = Rows;
         for (int row = firstRow; ; row += step)
         {
-            rows.Add(new Selection(OffsetAtRow(text, row, fromX, out _), OffsetAtRow(text, row, toX, out _)));
+            // A row above a line holds no text to select.
+            if (map.LineOfRow(row).Row >= 0)
+            {
+                rows.Add(new Selection(OffsetAtRow(text, row, fromX, out _), OffsetAtRow(text, row, toX, out _)));
+            }
             if (row == lastRow)
             {
                 break;
             }
+        }
+        if (rows.Count == 0)
+        {
+            rows.Add(Selection.At(OffsetAtRow(text, lastRow, toX, out _)));
         }
         return SelectionSet.Create(rows, rows.Count - 1);
     }

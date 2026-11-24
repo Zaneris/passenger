@@ -79,12 +79,14 @@ public sealed partial class CodeEditor
     /// <summary>The rows of the text as it stands: its lines less the folded ones, a wrapped line counted for each row.</summary>
     private RowMap Rows => rowMap = RowsOf(Wraps);
 
-    /// <summary>The rows a map of wraps makes with the folds now: those <see cref="Rows"/> keeps where made of that map, so
-    /// a map's own rows are read without asking for the wraps now, which may wrap it again.</summary>
+    /// <summary>The rows a map of wraps makes with the folds and rows above now: those <see cref="Rows"/> keeps where made of
+    /// that map, so a map's own rows are read without asking for the wraps now, which may wrap it again.</summary>
     private RowMap RowsOf(WrapMap? wrapped)
     {
         FoldLines folds = Folding;
-        return rowMap is { } map && ReferenceEquals(map.Folds, folds) && ReferenceEquals(map.Wraps, wrapped) ? map : new RowMap(folds, wrapped);
+        RowAboveList above = decorations.RowsAbove;
+        return rowMap is { } map && ReferenceEquals(map.Folds, folds) && ReferenceEquals(map.Wraps, wrapped) && ReferenceEquals(map.Above, above)
+            ? map : new RowMap(folds, wrapped, above);
     }
 
     /// <summary>Where the text's lines wrap at the view's width now, or null while soft wrap is off or the view has no width
@@ -115,7 +117,7 @@ public sealed partial class CodeEditor
             }
             WrapMap from = wraps is { } old && ReferenceEquals(old.Text, text) ? old : WrapMap.Blank(text);
             (int line, int sub) = RowsOf(from).LineOfRow(Math.Max(0, RowAtY(0)));
-            wraps = map = WrapShown(from, Math.Min(line, text.LineCount - 1), ViewRows + sub, width)!;
+            wraps = map = WrapShown(from, Math.Min(line, text.LineCount - 1), ViewRows + Math.Max(0, sub), width)!;
             rowShape++;
             WrapRest(map);
             return map;
@@ -134,7 +136,7 @@ public sealed partial class CodeEditor
             return;
         }
         (int line, int sub) = Rows.LineOfRow(Math.Max(0, RowAtY(0)));
-        if (line < map.LineCount && WrapShown(map, line, ViewRows + sub, map.Width) is { } wrapped)
+        if (line < map.LineCount && WrapShown(map, line, ViewRows + Math.Max(0, sub), map.Width) is { } wrapped)
         {
             TakeWraps(wrapped);
         }
@@ -224,7 +226,7 @@ public sealed partial class CodeEditor
         {
             LineSpan span = text.GetLine(line);
             int column = RowSpan.Of(span, was[line], sub).Start - span.Start;
-            int row = Rows.RowOf(line) + (IsHidden(line) ? 0 : SubRowOf(next[line], column, beforeWrap: false));
+            int row = Rows.RowOf(line) + (IsHidden(line) ? 0 : SubRowOf(next[line], column, beforeWrap: false)) - AboveKept(line, sub);
             y = (row * metrics.LineHeight) + Math.Min(within, metrics.LineHeight - 1);
         }
         scroll = new Vector(scroll.X, Math.Clamp(y, 0, MaxScrollY));
@@ -250,7 +252,15 @@ public sealed partial class CodeEditor
     /// <summary>The first row a line shows on; a folded line is on its fold's first line's.</summary>
     private int RowOf(int line) => Rows.RowOf(line);
 
-    /// <summary>A line's top in the content: its first row's.</summary>
+    /// <summary>The row <paramref name="rows"/> rows of text from a row of text, the rows above lines passed by; past either
+    /// end, below zero or at least <see cref="RowCount"/>.</summary>
+    private int TextRowsAway(int row, int rows)
+    {
+        RowMap map = Rows;
+        return map.RowOfText(map.TextRowOf(row) + rows);
+    }
+
+    /// <summary>A line's top in the content: its first row of text's.</summary>
     private double TopOf(int line) => RowOf(line) * metrics.LineHeight;
 
     /// <summary>The bottom of a line's last row in the content.</summary>
@@ -332,14 +342,21 @@ public sealed partial class CodeEditor
         return span.Start + column;
     }
 
-    /// <summary>The rows a frame shows, found again for each.</summary>
+    /// <summary>The rows of text a frame shows, found again for each, and the row each stands at.</summary>
     private readonly List<RowSpan> rowsShown = [];
+    private readonly List<int> rowsShownAt = [];
 
-    /// <summary>The rows from <paramref name="firstRow"/> to <paramref name="lastRow"/>, in order, into
-    /// <paramref name="shown"/>, stepping over folded lines rather than visiting them.</summary>
-    private List<RowSpan> RowsOnScreen(TextSnapshot text, int firstRow, int lastRow, List<RowSpan> shown)
+    /// <summary>The rows above lines a frame shows.</summary>
+    private readonly List<AboveSpan> aboveShown = [];
+
+    /// <summary>The rows of text from <paramref name="firstRow"/> to <paramref name="lastRow"/>, in order, into
+    /// <paramref name="shown"/>, the row each stands at into <paramref name="at"/> and the rows above lines among them into
+    /// <paramref name="above"/>, stepping over folded lines rather than visiting them.</summary>
+    private List<RowSpan> RowsOnScreen(TextSnapshot text, int firstRow, int lastRow, List<RowSpan> shown, List<int> at, List<AboveSpan>? above = null)
     {
         shown.Clear();
+        at.Clear();
+        above?.Clear();
         RowMap map = Rows;
         FoldLines folds = map.Folds;
         (int line, int sub) = map.LineOfRow(firstRow);
@@ -349,16 +366,24 @@ public sealed partial class CodeEditor
         }
         int k = folds.RangeAtOrBefore(line) + 1;
         LineSpan span = text.GetLine(line);
+        int aboveCount = sub < 0 ? map.AboveOf(line) : 0;
+        int aboveFrom = sub < 0 ? map.FirstAboveOf(line) : 0;
         for (int row = firstRow; row <= lastRow; row++)
         {
+            if (sub < 0)
+            {
+                above?.Add(new AboveSpan(line, aboveFrom + aboveCount + sub, aboveCount + sub, row));
+                sub++;
+                continue;
+            }
             LineWrap? wrap = map.Wraps?[line];
             shown.Add(RowSpan.Of(span, wrap, sub));
+            at.Add(row);
             if (wrap is not null && sub < wrap.Starts.Length)
             {
                 sub++;
                 continue;
             }
-            sub = 0;
             line++;
             if (k < folds.Hidden.Length && folds.Hidden[k].First == line)
             {
@@ -370,9 +395,16 @@ public sealed partial class CodeEditor
                 break;
             }
             span = text.GetLine(line);
+            aboveCount = map.AboveOf(line);
+            sub = -aboveCount;
+            aboveFrom = sub < 0 ? map.FirstAboveOf(line) : 0;
         }
         return shown;
     }
+
+    /// <summary>A row above a line on screen: the line, the row's place in the rows above all lines and among its line's,
+    /// and the row it stands at.</summary>
+    private readonly record struct AboveSpan(int Line, int Index, int Nth, int Row);
 
     /// <summary>The carets that land where a row wraps, which stand after the text before them: where typing put them.</summary>
     private HashSet<int>? CaretsAtWraps(SelectionSet carets)
@@ -476,7 +508,12 @@ public sealed partial class CodeEditor
         }
     }
 
-    /// <summary>Changes what the rows are made of, keeping the offset at the view's top on the row at the top.</summary>
+    /// <summary>For a row above a line at the view's top (<paramref name="sub"/> below zero), how far above the line's text it
+    /// stands among the rows above it now: the view's top kept on that row, or on the highest left.</summary>
+    private int AboveKept(int line, int sub) => sub < 0 ? Math.Min(-sub, Rows.AboveOf(line)) : 0;
+
+    /// <summary>Changes what the rows are made of, keeping the offset at the view's top on the row at the top, or the row
+    /// above its line it was.</summary>
     private void KeepTopLine(Action change)
     {
         if (Bounds.Height <= 0 || rowMap is not { } before || !ReferenceEquals(before.Folds.Text, document.Snapshot))
@@ -491,7 +528,7 @@ public sealed partial class CodeEditor
         int anchor = line >= text.LineCount ? text.Length : RowSpan.Of(text.GetLine(line), before.Wraps?[line], sub).Start;
         double within = scroll.Y - (top * metrics.LineHeight);
         change();
-        int row = RowOfOffset(text, anchor, beforeWrap: false).Row;
+        int row = RowOfOffset(text, anchor, beforeWrap: false).Row - (line < text.LineCount ? AboveKept(line, sub) : 0);
         scroll = new Vector(scroll.X, Math.Clamp((row * metrics.LineHeight) + Math.Min(within, metrics.LineHeight - 1), 0, MaxScrollY));
         UpdateScrollBars();
         Redraw();
@@ -1325,9 +1362,11 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>Lines and rows, both ways: the lines the folds leave showing, each one row or, wrapped, as many as its wraps
-    /// make. A line's row is its row among the lines showing and the rows the wraps of the lines showing before it add, from
-    /// the wraps' runs less what the folded ranges before it hide; a row's line is found by halving the lines. With nothing
-    /// wrapped it is the folds' own map. Made for each text and set of folds, it reads only the folded ranges.</summary>
+    /// make, after the rows drawn above it. A line's row is its first row of text: its row among the lines showing, the rows
+    /// the wraps of the lines showing before it add, and the rows above the lines showing up to it, from the wraps' runs and
+    /// the rows above counted by offset, less what the folded ranges before it hide; a row's line is found by halving the
+    /// lines, a row above a line being that line's at a row below zero. With nothing wrapped or above it is the folds' own
+    /// map. Made for each text, set of folds and rows above, it reads only the folded ranges.</summary>
     private sealed class RowMap
     {
         private static readonly int[] NoneHidden = [0];
@@ -1335,48 +1374,95 @@ public sealed partial class CodeEditor
         /// <summary>The rows the wraps add to the lines the folded ranges before each hide; one more than the ranges.</summary>
         private readonly int[] hiddenExtra = NoneHidden;
 
-        public RowMap(FoldLines folds, WrapMap? wraps)
+        /// <summary>The rows above the lines the folded ranges before each hide; one more than the ranges.</summary>
+        private readonly int[] hiddenAbove = NoneHidden;
+
+        public RowMap(FoldLines folds, WrapMap? wraps, RowAboveList above)
         {
             Folds = folds;
             Wraps = wraps;
+            Above = above;
             Count = folds.Text.LineCount - folds.HiddenCount;
-            if (wraps is null)
+            if (wraps is not null)
             {
-                return;
+                if (folds.Hidden.Length > 0)
+                {
+                    hiddenExtra = new int[folds.Hidden.Length + 1];
+                }
+                for (int k = 0; k < folds.Hidden.Length; k++)
+                {
+                    (int first, int last) = folds.Hidden[k];
+                    hiddenExtra[k + 1] = hiddenExtra[k] + wraps.ExtraBefore(last + 1) - wraps.ExtraBefore(first);
+                }
+                Count += wraps.ExtraRows - hiddenExtra[^1];
             }
-            if (folds.Hidden.Length > 0)
+            if (above.Count > 0)
             {
-                hiddenExtra = new int[folds.Hidden.Length + 1];
+                if (folds.Hidden.Length > 0)
+                {
+                    hiddenAbove = new int[folds.Hidden.Length + 1];
+                }
+                for (int k = 0; k < folds.Hidden.Length; k++)
+                {
+                    (int first, int last) = folds.Hidden[k];
+                    hiddenAbove[k + 1] = hiddenAbove[k] + AboveBefore(last + 1) - AboveBefore(first);
+                }
+                AboveCount = above.Count - hiddenAbove[^1];
+                Count += AboveCount;
             }
-            for (int k = 0; k < folds.Hidden.Length; k++)
-            {
-                (int first, int last) = folds.Hidden[k];
-                hiddenExtra[k + 1] = hiddenExtra[k] + wraps.ExtraBefore(last + 1) - wraps.ExtraBefore(first);
-            }
-            Count += wraps.ExtraRows - hiddenExtra[^1];
         }
 
         public FoldLines Folds { get; }
 
         public WrapMap? Wraps { get; }
 
+        public RowAboveList Above { get; }
+
         public int Count { get; }
 
-        /// <summary>A line's first row; a folded line's is its fold's first line's.</summary>
+        /// <summary>How many rows above lines show.</summary>
+        public int AboveCount { get; }
+
+        /// <summary>How many rows show text: every row but those above lines.</summary>
+        public int TextCount => Count - AboveCount;
+
+        /// <summary>A line's first row of text; a folded line's is its fold's first line's.</summary>
         public int RowOf(int line)
         {
             line = Folds.Shown(line);
-            return Folds.RowOf(line) + (Wraps is null ? 0 : Wraps.ExtraBefore(line) - hiddenExtra[Folds.RangeAtOrBefore(line) + 1]);
+            if (Wraps is null && AboveCount == 0)
+            {
+                return Folds.RowOf(line);
+            }
+            int k = Folds.RangeAtOrBefore(line) + 1;
+            int row = Folds.RowOf(line);
+            if (Wraps is not null)
+            {
+                row += Wraps.ExtraBefore(line) - hiddenExtra[k];
+            }
+            if (AboveCount > 0)
+            {
+                row += AboveBefore(line + 1) - hiddenAbove[k];
+            }
+            return row;
         }
 
-        /// <summary>How many rows a line takes: one for a folded one, which shares its fold's.</summary>
+        /// <summary>How many rows of text a line takes: one for a folded one, which shares its fold's.</summary>
         public int RowsOf(int line) =>
             Wraps is null || Folds.IsHidden(line) || line >= Wraps.LineCount ? 1 : 1 + (Wraps[line]?.Breaks ?? 0);
 
-        /// <summary>The line a row shows and which of its rows it is; past the last row, the lines past the end.</summary>
+        /// <summary>How many rows are drawn above a line: none above a folded one.</summary>
+        public int AboveOf(int line) =>
+            AboveCount == 0 || line < 0 || line >= Folds.Text.LineCount || Folds.IsHidden(line) ? 0 : AboveBefore(line + 1) - AboveBefore(line);
+
+        /// <summary>The place in <see cref="Above"/> of the first row above a line.</summary>
+        public int FirstAboveOf(int line) => AboveBefore(line);
+
+        /// <summary>The line a row shows and which of its rows of text it is, below zero for a row above it (-1 the nearest);
+        /// past the last row, the lines past the end.</summary>
         public (int Line, int Row) LineOfRow(int row)
         {
-            if (Wraps is null || row < 0)
+            if ((Wraps is null && AboveCount == 0) || row < 0)
             {
                 return (Folds.LineOfRow(row), 0);
             }
@@ -1384,10 +1470,62 @@ public sealed partial class CodeEditor
             {
                 return (Folds.Text.LineCount + row - Count, 0);
             }
-            // The last line whose first row is at most the row; a folded one is on its fold's first line's.
-            int last = Math.Max(0, Sorted.FirstAfter(Folds.Text.LineCount, this, static (map, at) => map.RowOf(at), row) - 1);
+            // The last line whose first row, above it or of text, is at most the row; a folded one is on its fold's first line's.
+            int last = Math.Max(0, Sorted.FirstAfter(Folds.Text.LineCount, this, static (map, at) => map.FirstRowOf(at), row) - 1);
             int line = Folds.Shown(last);
             return (line, row - RowOf(line));
         }
+
+        /// <summary>A row of text's place among the rows of text alone, the rows above lines left out; past the last row, as
+        /// far past the last row of text.</summary>
+        public int TextRowOf(int row)
+        {
+            if (AboveCount == 0 || row < 0)
+            {
+                return row;
+            }
+            if (row >= Count)
+            {
+                return TextCount + row - Count;
+            }
+            (int line, _) = LineOfRow(row);
+            return row - AboveThrough(line);
+        }
+
+        /// <summary>The row of a place among the rows of text alone (<see cref="TextRowOf"/>).</summary>
+        public int RowOfText(int textRow)
+        {
+            if (AboveCount == 0 || textRow < 0)
+            {
+                return textRow;
+            }
+            if (textRow >= TextCount)
+            {
+                return Count + textRow - TextCount;
+            }
+            int last = Math.Max(0, Sorted.FirstAfter(Folds.Text.LineCount, this, static (map, at) => map.TextRowOfLine(at), textRow) - 1);
+            return textRow + AboveThrough(Folds.Shown(last));
+        }
+
+        /// <summary>A line's first row, above it or of text.</summary>
+        private int FirstRowOf(int line)
+        {
+            line = Folds.Shown(line);
+            return RowOf(line) - AboveOf(line);
+        }
+
+        /// <summary>A line's first row of text among the rows of text alone.</summary>
+        private int TextRowOfLine(int line)
+        {
+            line = Folds.Shown(line);
+            return RowOf(line) - AboveThrough(line);
+        }
+
+        /// <summary>The rows above the lines showing up to a line showing, its own counted.</summary>
+        private int AboveThrough(int line) => AboveBefore(line + 1) - hiddenAbove[Folds.RangeAtOrBefore(line) + 1];
+
+        /// <summary>The rows above the lines before a line, folded or not.</summary>
+        private int AboveBefore(int line) =>
+            line >= Folds.Text.LineCount ? Above.Count : line <= 0 ? 0 : Above.CountBefore(Folds.Text.GetLineStart(line));
     }
 }

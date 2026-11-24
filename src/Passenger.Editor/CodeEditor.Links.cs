@@ -119,7 +119,7 @@ public sealed partial class CodeEditor
         }
         TextSnapshot text = document.Snapshot;
         (int line, int row) = Rows.LineOfRow(RowAtY(point.Y));
-        if (line < 0 || line >= text.LineCount)
+        if (line < 0 || line >= text.LineCount || row < 0)
         {
             return null;
         }

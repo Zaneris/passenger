@@ -240,6 +240,11 @@ public sealed partial class CodeEditor : Control
     {
         switch (kind)
         {
+            case DecorationKind.RowsAbove:
+                // The line at the view's top stays there as rows come and go above it.
+                KeepTopLine(() => { });
+                FollowInputMethod();
+                break;
             case DecorationKind.InlayHints:
                 HintList before = wrappedHints;
                 wrappedHints = decorations.InlayHints;
@@ -839,7 +844,9 @@ public sealed partial class CodeEditor : Control
         double usable = viewport.Height - horizontal.DesiredSize.Height;
         if (top < y)
         {
-            y = top;
+            // Come up to a line's first row, the rows above it come into view with it.
+            int line = text.GetLineFromOffset(offset);
+            y = Rows.RowOf(line) == row ? Math.Max(0, top - (Rows.AboveOf(line) * metrics.LineHeight)) : top;
         }
         else if (top + metrics.LineHeight > y + usable)
         {

@@ -75,3 +75,30 @@ public enum InlayHintKind
     /// text as a type does; shown whatever Settings say of the other two.</summary>
     Value,
 }
+
+/// <summary>A row of words drawn above a line, part of no document: what the host says of the code the line begins. It
+/// stands at <see cref="Offset"/>, its words from that column's x, and goes with its line through edits
+/// (<see cref="RowAboveList.Through"/>). Carets, selections and the text's readers pass it by.</summary>
+public readonly record struct RowAbove(int Offset, IReadOnlyList<RowAboveWord> Words)
+{
+    /// <summary>Whether it is drawn as another is: the same words at the same offset.</summary>
+    public bool DrawnAlike(RowAbove other)
+    {
+        if (Offset != other.Offset || Words.Count != other.Words.Count)
+        {
+            return false;
+        }
+        for (int i = 0; i < Words.Count; i++)
+        {
+            if (!string.Equals(Words[i].Text, other.Words[i].Text, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+/// <summary>A word of a row above a line; <see cref="Data"/> is what the host knows it by, given back by a press on the word
+/// (<see cref="CodeEditor.RowAbovePressed"/>) and a rest over it (<see cref="HoverEventArgs.Above"/>).</summary>
+public readonly record struct RowAboveWord(string Text, object? Data = null);

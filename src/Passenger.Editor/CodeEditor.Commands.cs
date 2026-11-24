@@ -293,8 +293,8 @@ public sealed partial class CodeEditor
         SetSelections(selections.With(s => s.MoveTo(to(s), extend)), reveal: true);
     }
 
-    /// <summary>Up and Down go by rows, a wrapped line's included, and keep returning to the x a vertical run of moves
-    /// started from, even through shorter rows.</summary>
+    /// <summary>Up and Down go by rows of text, a wrapped line's included and the rows above lines passed by, and keep
+    /// returning to the x a vertical run of moves started from, even through shorter rows.</summary>
     private void MoveVertically(int rows, bool extend)
     {
         document.BreakUndoGroup();
@@ -304,7 +304,7 @@ public sealed partial class CodeEditor
         {
             (int row, double caretX) = Place(text, s.Caret, LeansBack(s.Caret));
             double x = double.IsNaN(s.PreferredX) ? caretX : s.PreferredX;
-            int target = row + rows;
+            int target = TextRowsAway(row, rows);
             int offset;
             if (target < 0)
             {
@@ -338,7 +338,7 @@ public sealed partial class CodeEditor
         }
         Selection edge = direction < 0 ? selections.Items[0] : selections.Items[^1];
         (int at, double caretX) = Place(text, edge.Caret, LeansBack(edge.Caret));
-        int row = at + direction;
+        int row = TextRowsAway(at, direction);
         if (row < 0 || row >= RowCount)
         {
             return;

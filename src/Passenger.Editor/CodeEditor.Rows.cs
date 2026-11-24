@@ -150,6 +150,13 @@ public sealed partial class CodeEditor
                 keepFrom = Math.Min(keepFrom, slot.Drawn);
             }
         }
+        foreach (AboveSlot slot in aboveSlots)
+        {
+            if (slot.Span is not null)
+            {
+                keepFrom = Math.Min(keepFrom, slot.Drawn);
+            }
+        }
         labels.Begin(now, keepFrom);
         rowGaps.Begin(now, keepFrom);
         numbers.Begin(now, keepFrom);
@@ -157,7 +164,7 @@ public sealed partial class CodeEditor
         gutterLabels.Begin(now, keepFrom);
         gutterFrame?.Keep(now, keepFrom);
 
-        List<RowSpan> shown = RowsOnScreen(text, row, Math.Max(0, (int)((scroll.Y + size.Height) / lineHeight)), rowsShown);
+        List<RowSpan> shown = RowsOnScreen(text, row, Math.Max(0, (int)((scroll.Y + size.Height) / lineHeight)), rowsShown, rowsShownAt, aboveShown);
         int first = shown.Count > 0 ? shown[0].Line : 0;
         int last = shown.Count > 0 ? shown[^1].Line : -1;
         LineView[] lineViews = ViewsOf(text, shown, scroll.X - TextPadLeft, Math.Max(0, size.Width - gutter));
@@ -179,7 +186,8 @@ public sealed partial class CodeEditor
             widest = Math.Max(widest, shown[i].Indent + lineViews[i].Width + HintsWidth(GapsOn(shown[i])));
         }
 
-        PlaceRows(shown, lineViews, row, stale, now);
+        PlaceRows(shown, lineViews, rowsShownAt, stale, now);
+        PlaceAbove(text, aboveShown, stale, now);
         rowsLayer.Place(new Rect(0, -scroll.Y, size.Width, size.Height));
         overlay.Place(new Rect(size));
         overlay.Redraw();
@@ -199,7 +207,7 @@ public sealed partial class CodeEditor
 
     /// <summary>Gives each row shown a slot: the one that drew it, if all need not be drawn again, which draws it again only
     /// where what it is drawn from changed; else a free one, which draws it; slots left over draw nothing.</summary>
-    private void PlaceRows(List<RowSpan> shown, LineView[] views, int firstRow, bool stale, long now)
+    private void PlaceRows(List<RowSpan> shown, LineView[] views, List<int> at, bool stale, long now)
     {
         keptSlots.Clear();
         foreach (RowSlot slot in slots)
@@ -217,7 +225,7 @@ public sealed partial class CodeEditor
             {
                 kept.Showing = true;
                 kept.Index = i;
-                Place(kept, firstRow + i);
+                Place(kept, at[i]);
                 ulong key = KeyOf(shown[i], views[i]);
                 if (key != kept.Key)
                 {
@@ -251,7 +259,7 @@ public sealed partial class CodeEditor
             slot.Index = i;
             slot.Drawn = now;
             slot.Key = KeyOf(shown[i], views[i]);
-            Place(slot, firstRow + i);
+            Place(slot, at[i]);
             slot.Visual.Redraw();
         }
         foreach (RowSlot slot in slots)
@@ -288,10 +296,7 @@ public sealed partial class CodeEditor
         slot.Forget();
         double lineHeight = metrics.LineHeight;
         double gutter = frameGutter;
-        using (context.PushClip(new Rect(0, 0, gutter, lineHeight)))
-        {
-            DrawGutterRow(context, slot, span);
-        }
+        DrawGutterRow(context, slot.Row, span.Line, span.Row == 0);
         using (context.PushClip(new Rect(gutter, -lineHeight, Math.Max(0, frameSize.Width - gutter), 3 * lineHeight)))
         {
             DrawTextRow(context, slot, span);
@@ -405,7 +410,7 @@ public sealed partial class CodeEditor
         {
             if (frameFocused && caretOn)
             {
-                DrawCarets(context, text, frameStart, frameEnd, frameRow, frameRow + rowsShown.Count - 1, left);
+                DrawCarets(context, text, frameStart, frameEnd, frameRow, rowsShownAt.Count > 0 ? rowsShownAt[^1] : frameRow - 1, left);
             }
             DrawSnippet(context, text, left);
             if (ChangeBackgrounds && rowsShown.Count > 0)
@@ -431,6 +436,7 @@ public sealed partial class CodeEditor
         int last = edits[^1].Start + edits[^1].Length;
         int shift = change.After.Length - before.Length;
         int lines = change.After.LineCount - before.LineCount;
+        FollowAboveSlots(change, first, last, lines);
         foreach (RowSlot slot in slots)
         {
             if (slot.Span is not { } span || span.Line >= before.LineCount)
