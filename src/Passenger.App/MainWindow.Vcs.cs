@@ -136,6 +136,8 @@ public partial class MainWindow
         view.ResolveRequested += (_, _) => ShowConflicts();
         view.MergeRequested += (_, path) => IdeErrors.Observe(MergeAsync(path));
         view.StageRequested += (_, asked) => IdeErrors.Observe(StageFilesAsync(asked.Changes, asked.Stage));
+        view.RepositoryChosen += (_, _) => ShowGitStatus();
+        view.ShowRepositories(session.Repositories);
         view.StashDiffRequested += (_, asked) => IdeErrors.Observe(ShowStashDiffAsync(asked.Stash, asked.File));
         view.DropStash = AskDropStashAsync;
         view.Confirm = (title, text, yes) => Confirm(title, text, yes);
@@ -209,6 +211,13 @@ public partial class MainWindow
                 ShowConflicts();
             }
         };
+        next.RepositoriesChanged += (_, _) =>
+        {
+            if (session == next)
+            {
+                FollowOthers(next);
+            }
+        };
         OnVcsChanged();
     }
 
@@ -217,13 +226,55 @@ public partial class MainWindow
         VcsController vcs = session.Vcs;
         BranchName.Text = vcs.Repository is null ? "Version control" : BranchWords;
         ToolTip.SetTip(BranchButton, vcs.Repository is null ? vcs.Refused ?? "Version control" : $"Git branch: {BranchName.Text}");
-        Explorer.Tree.SetChanges(vcs.Changes.Where(c => c.Kind is not ChangeKind.Deleted).ToDictionary(c => c.Path, c => c.Kind));
+        // Every repository's files take their colours, each file's from the innermost holding it.
+        Dictionary<string, ChangeKind> changed = new(PathNames.Comparer);
+        foreach (VcsController each in (VcsController[])[vcs, .. session.Others])
+        {
+            foreach (FileChange change in each.Changes.Where(c => c.Kind is not ChangeKind.Deleted))
+            {
+                changed[change.Path] = change.Kind;
+            }
+        }
+        Explorer.Tree.SetChanges(changed);
         ShowGitStatus();
         FollowConflicts();
+        commitView?.ShowRepositories(session.Repositories);
     }
 
-    /// <summary>What a working tree's branch is called where the window shows it (the toolbar's Git widget, the status bar).</summary>
-    private string BranchWords => session.Vcs.Branch ?? "Detached HEAD";
+    /// <summary>What a working tree's branch is called where the window shows it (the toolbar's Git widget, the status bar):
+    /// with the folder's repository's name before it where the folder holds others.</summary>
+    private string BranchWords => session.Others.Count > 0 && session.Vcs.Repository is { } own
+        ? $"{VcsController.NameOf(own)}: {session.Vcs.Branch ?? "Detached HEAD"}" : session.Vcs.Branch ?? "Detached HEAD";
+
+    /// <summary>The folder's other repositories as the window follows them: each asks and says as its own does, and its
+    /// changes are listed and coloured as its own's are.</summary>
+    private void FollowOthers(ProjectSession next)
+    {
+        foreach (VcsController other in next.Others.Where(o => o.SaveFirst is null))
+        {
+            other.SaveFirst = Editors.SaveAllLandedAsync;
+            other.MoveToTrash = TrashForGitAsync;
+            other.ChooseRemote = ChooseRemoteAsync;
+            other.AskGit = AskGitAsync;
+            other.Message += (_, message) =>
+            {
+                if (session == next)
+                {
+                    status.Text = message;
+                }
+            };
+            other.Changed += (_, _) =>
+            {
+                if (session == next)
+                {
+                    OnVcsChanged();
+                }
+            };
+        }
+        next.Vcs.LeftOut = [.. next.Others.Select(o => o.Repository?.Root).OfType<string>()];
+        IdeErrors.Observe(next.Vcs.RefreshAsync());
+        OnVcsChanged();
+    }
 
     /// <summary>The branch popup: new branch, commit, push, then the local branches (the current, favourites and last
     /// committed to, at most <see cref="BranchesListed"/>), each with its own menu, and More Branches… for the rest.</summary>
@@ -480,25 +531,26 @@ public partial class MainWindow
     /// folder is in no working tree or the file is binary.</summary>
     private async Task<DiffContent?> HeadDiffAsync(string path)
     {
-        if (session.Vcs.Repository is null)
+        VcsController vcs = session.VcsFor(path);
+        if (vcs.Repository is null)
         {
-            status.Text = session.Vcs.NoRepository;
+            status.Text = vcs.NoRepository;
             return null;
         }
-        ModeChange? mode = session.Vcs.Changes.FirstOrDefault(c => PathNames.Same(c.Path, path))?.Mode;
-        if (await session.Vcs.BinaryChangeAsync(path) is { } binary)
+        ModeChange? mode = vcs.Changes.FirstOrDefault(c => PathNames.Same(c.Path, path))?.Mode;
+        if (await vcs.BinaryChangeAsync(path) is { } binary)
         {
             status.Text = mode is null ? binary.Said(Path.GetFileName(path)) : $"{binary.Said(Path.GetFileName(path))}; {mode.Said}";
             return null;
         }
         OpenDocument? open = Editors.Find(path) is { HoldsText: true } held ? held : null;
-        Task<string?> encoding = session.Vcs.EncodingChangeAsync(path);
-        Task<bool> breaksAlike = session.Vcs.BreaksStoredAlikeAsync(path);
+        Task<string?> encoding = vcs.EncodingChangeAsync(path);
+        Task<bool> breaksAlike = vcs.BreaksStoredAlikeAsync(path);
         TextDocument mine = open?.Text ?? new TextDocument(EditorArea.ReadText(path) ?? string.Empty);
         // An open file's differences are its change bars' own when they are of its text now.
-        if (open is null || await session.Vcs.DiffAsync(open) is not { } diff)
+        if (open is null || await vcs.DiffAsync(open) is not { } diff)
         {
-            string head = await session.Vcs.HeadTextAsync(path) ?? string.Empty;
+            string head = await vcs.HeadTextAsync(path) ?? string.Empty;
             TextSnapshot text = mine.Snapshot;
             diff = await BackgroundWork.Run(() => FileDiff.Compare(head, text));
         }
@@ -1014,9 +1066,12 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>The Git of the repository the Commit window's files are in: the first's.</summary>
+    private VcsController VcsOf(IReadOnlyList<FileChange> changes) => changes.Count > 0 ? session.VcsFor(changes[0].Path) : session.Vcs;
+
     private async Task RollbackAsync(IReadOnlyList<FileChange> changes)
     {
-        if ((changes.Count == 0 ? "No files are chosen to roll back" : session.Vcs.WhyNotRollback(changes)) is { } refused)
+        if ((changes.Count == 0 ? "No files are chosen to roll back" : VcsOf(changes).WhyNotRollback(changes)) is { } refused)
         {
             status.Text = refused;
             return;
@@ -1029,9 +1084,9 @@ public partial class MainWindow
         string lost = (unversioned ? " Unversioned files are deleted to the Trash, and Undo brings them back." : string.Empty)
             + (!tracked ? string.Empty : unversioned ? " The other changes cannot be undone." : " This cannot be undone.");
         string text = $"Roll back the changes to {what}?{kept}{lost}";
-        if (await ConfirmAsync("Rollback Changes", text, "Rollback", ToolWindows.CommitView.FileList(changes, session.Vcs.Repository)))
+        if (await ConfirmAsync("Rollback Changes", text, "Rollback", ToolWindows.CommitView.FileList(changes, VcsOf(changes).Repository)))
         {
-            await session.Vcs.RollbackAsync(changes);
+            await VcsOf(changes).RollbackAsync(changes);
         }
     }
 
@@ -1141,7 +1196,7 @@ public partial class MainWindow
     /// status is read (after a rollback written there, its Undo, another program's write), read off the window's thread.</summary>
     private void FollowDisk(string path, DiffView view)
     {
-        VcsController vcs = session.Vcs;
+        VcsController vcs = session.VcsFor(path);
         void Follow(object? sender, EventArgs e) => IdeErrors.Observe(FollowDiskAsync());
         async Task FollowDiskAsync() => view.FollowDisk(await BackgroundWork.Run(() => EditorArea.ReadText(path)));
         view.AttachedToVisualTree += (_, _) => vcs.Changed += Follow;
@@ -1152,7 +1207,7 @@ public partial class MainWindow
     /// button and Stage's keys turn as the index holds it, read again whenever the status is.</summary>
     private void StageIn(string path, DiffView view)
     {
-        VcsController vcs = session.Vcs;
+        VcsController vcs = session.VcsFor(path);
         if (vcs.Changes.FirstOrDefault(c => PathNames.Same(c.Path, path)) is not { Kind: ChangeKind.Modified or ChangeKind.Renamed, Submodule: SubmoduleChange.None })
         {
             return;
@@ -1221,14 +1276,14 @@ public partial class MainWindow
         {
             return;
         }
-        if (session.Vcs.WhyNotStage(changes) is { } refused)
+        if (VcsOf(changes).WhyNotStage(changes) is { } refused)
         {
             work.Tell(false, status.Text = refused);
             return;
         }
         string[] paths = [.. changes.SelectMany(c => c.From is { } from ? new[] { c.Path, from } : [c.Path])];
         VcsOutcome outcome = await IndexChangedAsync($"{(stage ? "Stage" : "Unstage")} {Plural.Listed([.. changes.Select(c => c.Name)])}", paths,
-            () => session.Vcs.StageAsync(changes, stage));
+            () => VcsOf(changes).StageAsync(changes, stage));
         work.Tell(outcome.Succeeded, outcome.Message);
     }
 
@@ -1258,7 +1313,7 @@ public partial class MainWindow
     /// it, while the index still holds them as the other left them. What came of it, said in the status bar.</summary>
     internal async Task<VcsOutcome> IndexChangedAsync(string command, IReadOnlyList<string> paths, Func<Task<VcsOutcome>> change)
     {
-        VcsController vcs = session.Vcs;
+        VcsController vcs = paths.Count > 0 ? session.VcsFor(paths[0]) : session.Vcs;
         IReadOnlyList<(string Path, (string Mode, string Blob)? Entry)> before = await vcs.IndexEntriesAsync(paths);
         VcsOutcome outcome = await change();
         IReadOnlyList<(string Path, (string Mode, string Blob)? Entry)> after = await vcs.IndexEntriesAsync(paths);
@@ -1281,7 +1336,7 @@ public partial class MainWindow
     /// first, and shows the line after; one command Undo takes back, said once the write has landed.</summary>
     private async Task IgnoreAsync(string path)
     {
-        if (session.Vcs.Repository is not { } repository)
+        if (session.VcsFor(path).Repository is not { } repository)
         {
             return;
         }
@@ -1311,6 +1366,6 @@ public partial class MainWindow
             return;
         }
         status.Text = $"Added {name} to .gitignore";
-        IdeErrors.Observe(session.Vcs.RefreshAsync());
+        IdeErrors.Observe(session.VcsFor(path).RefreshAsync());
     }
 }

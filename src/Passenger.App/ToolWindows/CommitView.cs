@@ -195,6 +195,11 @@ public sealed class CommitView : DockPanel, IOwnKeys
     private readonly HashSet<string> closed = [];
     private readonly TreeList list;
     private readonly ToolTabs.Strip<bool> pages = new();
+
+    /// <summary>The repositories the folder holds, one tab each, while it holds more than one; the one chosen is listed.</summary>
+    private readonly ToolTabs.Strip<VcsController> repositories = new();
+    private readonly Border repositoriesRow;
+    private bool listingRepositories;
     private readonly Panel pagesShown = new();
     private readonly ToolFlow bar;
     private readonly DockPanel changes;
@@ -442,6 +447,18 @@ public sealed class CommitView : DockPanel, IOwnKeys
         Border top = ToolBars.Top(bar);
         changes = new DockPanel { Children = { form, new Panel { Children = { list, placeholder } } } };
 
+        repositories.Chosen += (_, chosen) =>
+        {
+            if (!listingRepositories && chosen != vcs)
+            {
+                Bind(chosen);
+                RepositoryChosen?.Invoke(this, chosen);
+            }
+        };
+        repositoriesRow = ToolBars.Top(new ToolFlow { Margin = new Thickness(Gaps.Small, Gaps.Hair), Children = { repositories } });
+        repositoriesRow.IsVisible = false;
+
+        Children.Add(repositoriesRow);
         Children.Add(top);
         Children.Add(pagesShown);
         pagesShown.Children.Add(changes);
@@ -468,6 +485,71 @@ public sealed class CommitView : DockPanel, IOwnKeys
         pagesShown.Children.Add(made);
         return made;
     }
+
+    /// <summary>The repository whose changes are listed and committed.</summary>
+    public VcsController Vcs => vcs;
+
+    /// <summary>Another of the folder's repositories chosen to list and commit.</summary>
+    public event EventHandler<VcsController>? RepositoryChosen;
+
+    /// <summary>The tab of each repository the folder holds, by its name, branch and how many files changed, shown while
+    /// there are several: the one listed chosen, the first where the one listed has no repository.</summary>
+    public void ShowRepositories(IReadOnlyList<VcsController> shown)
+    {
+        repositoriesRow.IsVisible = shown.Count > 1;
+        listingRepositories = true;
+        try
+        {
+            // The same repositories keep their tabs, only their words said again, as each status read calls here.
+            if (shown.Count > 1 && repositories.Keys.SequenceEqual(shown))
+            {
+                foreach (VcsController each in shown)
+                {
+                    repositories[each].Content = Titled(each);
+                    repositories[each].ContextMenu = RepositoryMenu(each);
+                }
+            }
+            else
+            {
+                repositories.Clear();
+                foreach (VcsController each in shown.Count > 1 ? shown : [])
+                {
+                    repositories.Add(each, Titled(each)).ContextMenu = RepositoryMenu(each);
+                }
+            }
+            if (shown.Count > 1)
+            {
+                repositories.Choice = shown.Contains(vcs) ? vcs : shown[0];
+            }
+        }
+        finally
+        {
+            listingRepositories = false;
+        }
+        if (shown.Count > 0 && !shown.Contains(vcs) && vcs.Repository is null)
+        {
+            Bind(shown[0]);
+            RepositoryChosen?.Invoke(this, shown[0]);
+        }
+    }
+
+    /// <summary>A repository's tab's menu: its own Update Project, Push… and Fetch, whichever tab is chosen.</summary>
+    private static ContextMenu RepositoryMenu(VcsController repository) => new()
+    {
+        ItemsSource = (Control[])
+        [
+            ListMenus.Item("Update Project…", () => IdeErrors.Observe(repository.UpdateAsync()), repository.WhyNotRemote),
+            ListMenus.Item("Push…", () => IdeErrors.Observe(repository.PushAsync()), repository.WhyNotRemote),
+            ListMenus.Item("Fetch", () => IdeErrors.Observe(repository.FetchAsync()), repository.WhyNotRemote),
+        ],
+    };
+
+    /// <summary>The repositories' tabs, for a test to choose in.</summary>
+    public IReadOnlyList<Avalonia.Controls.Primitives.ToggleButton> RepositoryTabs => repositoriesRow.IsVisible ? repositories.Toggles : [];
+
+    /// <summary>A repository's tab's words: its name, its branch, and how many files changed.</summary>
+    public static string Titled(VcsController repository) =>
+        $"{(repository.Repository is { } tree ? VcsController.NameOf(tree) : "?")} · {repository.Branch ?? "detached"}{(repository.Changes.Count > 0 ? $" ({Numbers.Said(repository.Changes.Count)})" : string.Empty)}";
 
     /// <summary>The Stashes tab's own toggle in the toolbar.</summary>
     public Avalonia.Controls.Primitives.ToggleButton StashesTab => pages[true];

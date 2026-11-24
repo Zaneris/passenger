@@ -1,4 +1,5 @@
 using Passenger.App.Editors;
+using Passenger.App.Vcs;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Text;
@@ -214,6 +215,14 @@ public partial class MainWindow
         if (changes.Paths.Count > 0 || changes.Git)
         {
             IdeErrors.Observe(session.Vcs.FolderChangedAsync(changes.Git || changes.Lost));
+        }
+        // Another repository the folder holds hears what changed under its top, its own Git's folder among it.
+        foreach (VcsController other in session.Others)
+        {
+            if (other.Repository is { } its && (changes.Lost || changes.Paths.Any(p => PathNames.Within(p, its.Root))))
+            {
+                IdeErrors.Observe(other.FolderChangedAsync(changes.Lost || changes.Paths.Any(p => PathNames.Within(p, its.GitDir))));
+            }
         }
     }
 

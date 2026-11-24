@@ -58,6 +58,13 @@ public sealed class VcsController : IDisposable
     /// <summary>The working tree the open folder is in, or null when it is in none.</summary>
     public Git? Repository => git;
 
+    /// <summary>The tops of other repositories under this one's, whose files its status leaves to them: a repository the
+    /// open folder holds beside its own.</summary>
+    public IReadOnlyList<string> LeftOut { get; set; } = [];
+
+    /// <summary>A repository as the window names it: its top folder's name.</summary>
+    public static string NameOf(Git repository) => Path.GetFileName(Path.TrimEndingDirectorySeparator(repository.Root));
+
     /// <summary>The signatures of the commits the window shows, read as they are shown.</summary>
     public CommitSignatures Signatures { get; } = new();
 
@@ -632,8 +639,12 @@ public sealed class VcsController : IDisposable
             Branch = status.Branch;
             Upstream = status.Upstream;
             Divergence = divergence;
-            Changes = status.Changes.Any(c => c.Kind is ChangeKind.Unversioned && IgnoredFolders.InToolOutput(c.Path))
-                ? [.. status.Changes.Where(c => c.Kind is not ChangeKind.Unversioned || !IgnoredFolders.InToolOutput(c.Path))] : status.Changes;
+            IReadOnlyList<string> leftOut = LeftOut;
+            // Another repository's top is listed as a folder git does not track, its name ending in a separator.
+            bool Others(FileChange c) => leftOut.Count > 0 && leftOut.Any(o => PathNames.Within(Path.TrimEndingDirectorySeparator(c.Path), o));
+            Changes = status.Changes.Any(c => c.Kind is ChangeKind.Unversioned && IgnoredFolders.InToolOutput(c.Path) || Others(c))
+                ? [.. status.Changes.Where(c => (c.Kind is not ChangeKind.Unversioned || !IgnoredFolders.InToolOutput(c.Path)) && !Others(c))]
+                : status.Changes;
             Conflicts = status.Conflicts;
             Merge = merge ?? MergeState.Idle;
             if (Conflicts.Count == 0 && begun > readsBeforeUnstash)

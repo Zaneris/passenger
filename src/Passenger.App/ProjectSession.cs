@@ -1367,6 +1367,60 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The folder's Git working tree, once its lookup (<see cref="Start"/>) has found one.</summary>
     public VcsController Vcs { get; } = new();
 
+    /// <summary>The other repositories the folder holds (<see cref="Passenger.Vcs.GitRepositories"/>), each with Git of its own, found once
+    /// the folder's own lookup has ended.</summary>
+    public IReadOnlyList<VcsController> Others => others;
+
+    private readonly List<VcsController> others = [];
+
+    /// <summary>Every repository of the folder with Git to show: its own, where it is in one, then the others.</summary>
+    public IReadOnlyList<VcsController> Repositories => [.. Vcs.Repository is null ? [] : new[] { Vcs }, .. others.Where(o => o.Repository is not null)];
+
+    /// <summary>The other repositories found, or the folder's own taken in or let go.</summary>
+    public event EventHandler? RepositoriesChanged;
+
+    /// <summary>The Git of the repository holding a path: the innermost of the others holding it, else the folder's own.</summary>
+    public VcsController VcsFor(string path) =>
+        others.Where(o => o.Repository is { } other && PathNames.Within(path, other.Root)).MaxBy(o => o.Repository!.Root.Length) ?? Vcs;
+
+    /// <summary>Which Git each open file follows, its change bars and blame, by the repository holding it.</summary>
+    private readonly Dictionary<OpenDocument, VcsController> following = [];
+
+    /// <summary>Finds the folder's other repositories once its own lookup has ended, each opened with Git of its own, and
+    /// moves the open files under one to it.</summary>
+    private async Task FindOthersAsync()
+    {
+        string? folder = Folder;
+        await Vcs.Opened;
+        if (folder is null || Folder != folder)
+        {
+            return;
+        }
+        IReadOnlyList<Passenger.Vcs.Git> found = await Passenger.Vcs.GitRepositories.UnderAsync(folder, Vcs.Repository?.Root);
+        if (found.Count == 0 || Folder != folder || IsEnded)
+        {
+            return;
+        }
+        foreach (Passenger.Vcs.Git tree in found)
+        {
+            VcsController other = new() { Work = setup.Work, Watching = setup.Watching };
+            other.Activity = name => LocalHistory?.During(name);
+            other.LookFirst = paths => LocalHistory?.LookBeforeAsync(paths) ?? Task.CompletedTask;
+            others.Add(other);
+            await other.OpenAsync(tree.Root);
+        }
+        foreach ((OpenDocument document, VcsController was) in following.ToList())
+        {
+            if (VcsFor(document.Path) is { } now && now != was)
+            {
+                was.Detach(document);
+                now.Attach(document);
+                following[document] = now;
+            }
+        }
+        RepositoriesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public BookmarkStore Bookmarks { get; } = new();
 
     /// <summary>What the folder had the container engine start, and the labels it goes on with: ended with the folder.</summary>
@@ -1788,7 +1842,9 @@ public sealed class ProjectSession : IAsyncDisposable
         FileChecks.Attach(document);
         Features.Attach(document);
         Debug.Attach(document);
-        Vcs.Attach(document);
+        VcsController vcs = VcsFor(document.Path);
+        vcs.Attach(document);
+        following[document] = vcs;
         Bookmarks.Attach(document.Path, document.Text);
         Navigation.Attach(document.Path, document.Text);
     }
@@ -1834,7 +1890,7 @@ public sealed class ProjectSession : IAsyncDisposable
         FileChecks.Detach(document);
         Features.Detach(document);
         Debug.Detach(document);
-        Vcs.Detach(document);
+        (following.Remove(document, out VcsController? followed) ? followed : Vcs).Detach(document);
         Bookmarks.Detach(document.Path);
         Navigation.Detach(document.Path);
     }
@@ -1935,6 +1991,7 @@ public sealed class ProjectSession : IAsyncDisposable
     public void Start()
     {
         IdeErrors.Observe(Vcs.OpenAsync(Folder!));
+        IdeErrors.Observe(FindOthersAsync());
         StartCSharp();
         // The walk begun ahead is the first, and what the session has not taken of the opening once it lands is ended.
         WalkForProjects(ahead?.Read);
@@ -2249,6 +2306,10 @@ public sealed class ProjectSession : IAsyncDisposable
         Runner.Dispose();
         Debug.Dispose();
         Vcs.Dispose();
+        foreach (VcsController other in others)
+        {
+            other.Dispose();
+        }
     }
 
     /// <summary>Waits for what is ending, for at most the limit, naming in the log what had not ended by then.</summary>

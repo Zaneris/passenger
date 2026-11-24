@@ -211,6 +211,7 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("a commit and a branch switch from outside a folder opened below the repositorys top are followed by the bars colours commit list and branch", t => t.A_commit_and_a_branch_switch_from_outside_a_folder_opened_below_the_repositorys_top_are_followed_by_the_bars_colours_commit_list_and_branch());
         Flow.StepApart<VcsTests>("a save leaves the explorers chosen rows the git log and go to file as they were", t => t.A_save_leaves_the_explorers_chosen_rows_the_git_log_and_go_to_file_as_they_were());
         Flow.StepApart<VcsTests>("coming back to the window reads no last commit text again and head moved elsewhere moves every files bars in one read", t => t.Coming_back_to_the_window_reads_no_last_commit_text_again_and_head_moved_elsewhere_moves_every_files_bars_in_one_read());
+        Flow.StepApart<VcsTests>("a folder holding a second repository lists and commits each from the commit windows tab of it", t => t.A_folder_holding_a_second_repository_lists_and_commits_each_from_the_commit_windows_tab_of_it());
     }
 
     /// <summary>A reftable repository's changes from outside as one flow, every step needing a git that makes one (2.45
@@ -1865,6 +1866,51 @@ public sealed partial class VcsTests : IDisposable
         Ui.Run(window, EditorActions.Undo);
         Ui.WaitFor(() => Stashes() is ["On main: Count only"] && stashes.Stashes.Count == 1, () => $"Undo to put the dropped stash back ({window.Status})");
         Assert.Equal(kept, Git("rev-parse", "stash@{0}").Trim());
+        window.Close();
+    }
+
+    /// <summary>A folder holding another repository below its own: the Commit window has a tab of each, by its name, branch
+    /// and how many files changed, its own listing its file alone (the other's top left to it), the status bar's branch
+    /// names the folder's repository, a commit from each tab goes to that repository, its files and branch as they were
+    /// in the other, and a tab's Push… pushes its repository while another is chosen.</summary>
+    private void A_folder_holding_a_second_repository_lists_and_commits_each_from_the_commit_windows_tab_of_it()
+    {
+        string lib = Path.Combine(folder, "lib");
+        Directory.CreateDirectory(lib);
+        File.WriteAllText(Path.Combine(lib, "Lib.cs"), "class Lib { }\n");
+        TestGit.Init(lib);
+        File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 2", StringComparison.Ordinal));
+        File.WriteAllText(Path.Combine(lib, "Lib.cs"), "class Lib { int size; }\n");
+        MainWindow window = Open();
+        window.Perform(AppActions.ShowCommit);
+        CommitView view = window.CommitView;
+        string top = VcsController.NameOf(window.Vcs.Repository!);
+        Ui.WaitFor(() => view.RepositoryTabs.Count == 2, "the Commit window's tab of each repository");
+        Ui.Landed(() => view.RepositoryTabs.Select(t => t.Content as string).SequenceEqual([$"{top} · main (1)", "lib · main (1)"]),
+            $"the tabs of {top} and lib with their branches and changes, where they say [{string.Join(", ", view.RepositoryTabs.Select(t => t.Content))}]");
+        Assert.Equal([PathNames.Canonical(Path.Combine(folder, "Shop.cs"))], view.Chosen.Select(c => c.Path));
+        Assert.Equal($"{top}: main", window.FindControl<TextBlock>("GitBranchText")?.Text);
+
+        view.Message = "Twice";
+        Assert.True(Ui.Await(view.CommitAsync(push: false), "the commit in the folder's repository"), window.Status);
+        Assert.Equal("Twice", Git("log", "-1", "--format=%s").Trim());
+        Ui.Click(view.RepositoryTabs[1]);
+        Ui.Landed(() => view.Vcs.Repository is { } tree && PathNames.Same(tree.Root, PathNames.Canonical(lib)) && view.Chosen.Count == 1, "lib's changed file listed");
+        Assert.Equal(PathNames.Canonical(Path.Combine(lib, "Lib.cs")), view.Chosen[0].Path);
+        view.Message = "Size";
+        Assert.True(Ui.Await(view.CommitAsync(push: false), "the commit in lib"), window.Status);
+        Assert.Equal("Size", TestGit.Run(lib, "log", "-1", "--format=%s").Trim());
+        Assert.Equal(string.Empty, TestGit.Run(lib, "status", "--porcelain").Trim());
+        Assert.Equal("Twice", Git("log", "-1", "--format=%s").Trim());
+
+        // Each repository's tab pushes that repository, whichever is chosen.
+        string libOrigin = TestFolders.Create("git-lib-origin-");
+        TestGit.Run(libOrigin, "init", "-q", "--bare", "-b", "main");
+        TestGit.Run(lib, "remote", "add", "origin", libOrigin);
+        Ui.Click(view.RepositoryTabs[0]);
+        Ui.ChooseFromMenu(view.RepositoryTabs[1], "Push…");
+        Ui.Landed(() => window.Status == "Pushed main", $"lib pushed from its tab's menu, where the status bar says \"{window.Status}\"");
+        Assert.Equal(TestGit.Run(lib, "rev-parse", "main").Trim(), TestGit.Run(libOrigin, "rev-parse", "main").Trim());
         window.Close();
     }
 
