@@ -96,6 +96,12 @@ public sealed partial class Vim
                         // Joining the last line, a block past its line's end (to its last character, the last line empty) aims j and k at its left.
                         (wantedFor, wanted) = (joined.Selections, [left]);
                     }
+                    else if (block && bottom > top && bottom == VimMotions.LastLine(text, breakEnds) && text.GetLine(bottom).Length == 0 && right != int.MaxValue
+                        && CaretColumn(text.Apply(joined.Edits), joined.Selections.Primary.Caret, tab) == right)
+                    {
+                        // Joining lines down to an empty last one, a caret left on the block's right edge aims j, k and yy where the block began.
+                        (wantedFor, wanted) = (joined.Selections, [TextNavigation.VisualColumn(text, stretch.Anchor, tab)]);
+                    }
                     else if (block && toEnd && bottom == top + 1 && bottom == VimMotions.LastLine(text, breakEnds) && text.GetLineFromOffset(stretch.Anchor) == bottom
                         && TextNavigation.IndentEnd(text, text.GetLine(bottom)) < text.GetLine(bottom).End
                         && TextNavigation.VisualColumn(text, stretch.Anchor, tab) is var anchor && anchor < CaretColumn(text.Apply(joined.Edits), joined.Selections.Primary.Caret, tab)
