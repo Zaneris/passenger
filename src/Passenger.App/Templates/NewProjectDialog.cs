@@ -907,7 +907,8 @@ public sealed class NewProjectDialog : IdeWindow
     {
         TemplateVariant? console = read.Templates.FirstOrDefault(t => t.Pack is null && t.ShortNames.Contains("console"))?.Variant("C#", null);
         IReadOnlyList<string> offered = console?.Frameworks ?? [];
-        IReadOnlyList<string> runs = runtimes.IsCompletedSuccessfully ? GodotGames.Runnable(offered, runtimes.Result) : offered;
+        int oldest = godotFound.IsCompletedSuccessfully && godotFound.Result is { } found ? found.OldestDotnet : GodotFound.EarliestDotnet;
+        IReadOnlyList<string> runs = GodotGames.Runnable(offered, runtimes.IsCompletedSuccessfully ? runtimes.Result : [], oldest);
         ProjectTemplate game = OwnTemplates.GodotGame(runs, GodotGames.Default(runs, GodotTargets?.Newest?.Major), scripts: target is null);
         return new TemplateFamily(game.Name, [game]);
     }

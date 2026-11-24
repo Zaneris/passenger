@@ -65,18 +65,19 @@ public static class GodotGames
     }
 
     /// <summary>The frameworks a new game's project can target so Godot's .NET host runs it, newest first: those offered and
-    /// those of the runtimes installed, from .NET 8, which Godot's own plugins target, to the newest runtime installed that is
-    /// no preview, as the host rolls forward to a released runtime alone; all offered where no runtime is known.</summary>
-    public static IReadOnlyList<string> Runnable(IReadOnlyList<string> offered, IReadOnlyList<string> runtimes)
+    /// those of the runtimes installed, from .NET <paramref name="oldest"/>, which the Godot's own plugins and packages target,
+    /// to the newest runtime installed that is no preview, as the host rolls forward to a released runtime alone; all offered
+    /// from the oldest where no runtime is known.</summary>
+    public static IReadOnlyList<string> Runnable(IReadOnlyList<string> offered, IReadOnlyList<string> runtimes, int oldest)
     {
         List<int> released = [.. runtimes.Where(r => !VersionOrder.IsPrerelease(r)).Select(VersionOrder.Major).OfType<int>()];
         if (released.Count == 0)
         {
-            return offered;
+            return [.. offered.Where(f => FrameworkNames.Major(f) is not int major || major >= oldest)];
         }
         int newest = released.Max();
         return [.. offered.Select(FrameworkNames.Major).OfType<int>()
-            .Concat(released).Where(major => major >= 8 && major <= newest).Distinct().OrderDescending()
+            .Concat(released).Where(major => major >= oldest && major <= newest).Distinct().OrderDescending()
             .Select(major => $"net{major.ToString(System.Globalization.CultureInfo.InvariantCulture)}.0")];
     }
 
