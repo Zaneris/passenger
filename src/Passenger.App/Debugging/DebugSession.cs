@@ -145,8 +145,19 @@ public sealed class DebugSession
     /// <summary>The debug adapter the app carries, beside it in debugger/, which the helper host runs.</summary>
     public static string AdapterPath => Path.Combine(AppContext.BaseDirectory, "debugger", "Passenger.DebugAdapter.dll");
 
-    /// <summary>How the adapter starts: beside the app, or where the program is (a container's, over docker exec).</summary>
-    private static ProcessStartInfo AdapterStart(AdapterPlace? place, bool elsewhere)
+    /// <summary>The helper host the adapter runs in for a program that runs as a 32-bit x86 program on Windows, whose
+    /// runtime's debugging library loads only into a 32-bit process: passenger-helper built for win-x86 with its own x86
+    /// runtime and dbgshim, in debugger/x86/ (the app project's IncludeX86AdapterHost).</summary>
+    public static string X86AdapterHost => Path.Combine(AppContext.BaseDirectory, "debugger", "x86");
+
+    /// <summary>Why a 32-bit x86 program cannot be debugged here: the adapter's x86 host is missing (a Windows build carries
+    /// it); null where it is there, and off Windows, where no x86 program runs.</summary>
+    public static string? WhyNoX86Adapter => !OperatingSystem.IsWindows() || File.Exists(Path.Combine(X86AdapterHost, ChildProcesses.HelperHost + ".exe")) ? null
+        : $"it {DotnetProcesses.RunsAs32Bit}, and Passenger's 32-bit debugger is missing from {X86AdapterHost}";
+
+    /// <summary>How the adapter starts: beside the app (in its 32-bit host for a 32-bit program,
+    /// <paramref name="x86"/>), or where the program is (a container's, over docker exec).</summary>
+    private static ProcessStartInfo AdapterStart(AdapterPlace? place, bool elsewhere, bool x86)
     {
         ProcessStartInfo start;
         if (place is not null)
@@ -171,8 +182,8 @@ public sealed class DebugSession
             {
                 arguments.Add(AdapterFlags.Remote);
             }
-            // On the runtime Passenger runs on: the program it debugs may run on another, or carry its own.
-            start = ChildProcesses.HelperCommand(path, arguments);
+            // On Passenger's runtime or the x86 host's own: the program it debugs may run on another, or carry its own.
+            start = ChildProcesses.HelperCommand(path, arguments, host: x86 ? X86AdapterHost : null);
         }
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
@@ -473,7 +484,7 @@ public sealed class DebugSession
         Func<RunInTerminalArguments, Task<Run.TerminalRun>>? runInTerminal = null, Func<string, int, string?, int?, int?>? columns = null, bool hotReload = false,
         Action<DebugSession>? starting = null, bool elsewhere = false, AdapterPlace? place = null)
     {
-        return StartAsync(OwnAdapter(place, elsewhere), plan.Built ?? plan.Program, DapCommands.Launch, new LaunchArguments
+        return StartAsync(OwnAdapter(place, elsewhere, x86: place is null && !elsewhere && plan.RunsAsX86), plan.Built ?? plan.Program, DapCommands.Launch, new LaunchArguments
         {
             Program = place?.ToProgram(plan.Program) ?? plan.Program,
             Args = plan.Arguments,
@@ -498,7 +509,8 @@ public sealed class DebugSession
     public static Task<DebugSession> AttachAsync(int processId, BreakpointStore breakpoints, IReadOnlyList<string> own, BuiltLines lines, Action<string> log, Action<OutputEvent> output,
         Func<string, int, string?, int?, int?>? columns = null, Action<DebugSession>? starting = null, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null,
         bool quiet = false) =>
-        StartAsync(OwnAdapter(place, elsewhere), place is null ? $"process {processId}" : $"process {processId} in {place.Where}", DapCommands.Attach,
+        StartAsync(OwnAdapter(place, elsewhere, x86: place is null && !elsewhere && DotnetProcesses.Runs32Bit(processId)),
+            place is null ? $"process {processId}" : $"process {processId} in {place.Where}", DapCommands.Attach,
             new AttachArguments
             {
                 ProcessId = processId, JustMyCode = true, HotReload = hotReload ? true : null, Presentations = Godot.GodotValues.Presentations, Carried = Carried,
@@ -513,7 +525,7 @@ public sealed class DebugSession
     public static Task<DebugSession> AttachThroughRelayAsync(string program, Run.Devices.RelaySession relay, BreakpointStore breakpoints, IReadOnlyList<string> own,
         BuiltLines lines, Action<string> log,
         Action<OutputEvent> output, Func<string, int, string?, int?, int?>? columns = null, Action<DebugSession>? starting = null, bool hotReload = false, bool quiet = false) =>
-        StartAsync(OwnAdapter(null, elsewhere: true), program, DapCommands.Attach,
+        StartAsync(OwnAdapter(null, elsewhere: true, x86: false), program, DapCommands.Attach,
             new AttachArguments
             {
                 Relay = relay.Address, RelayModules = relay.Modules, RelayToken = relay.Token, JustMyCode = true, HotReload = hotReload ? true : null,
@@ -548,8 +560,8 @@ public sealed class DebugSession
 
     /// <summary>Passenger's own adapter, started beside the app or where the program is (<see cref="AdapterStart"/>), forked
     /// off the window's thread.</summary>
-    private static Func<Task<AdapterEnd>> OwnAdapter(AdapterPlace? place, bool elsewhere) =>
-        async () => new ProcessEnd(await ChildProcesses.StartAsync(AdapterStart(place, elsewhere)));
+    private static Func<Task<AdapterEnd>> OwnAdapter(AdapterPlace? place, bool elsewhere, bool x86) =>
+        async () => new ProcessEnd(await ChildProcesses.StartAsync(AdapterStart(place, elsewhere, x86)));
 
     /// <summary>Opens the session: the adapter told what to start, the breakpoints sent (a quiet session's none, and no
     /// exception to stop at), then configurationDone, whose answer waits for the program's runtime however long it takes. A

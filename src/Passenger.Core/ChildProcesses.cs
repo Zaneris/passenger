@@ -186,20 +186,20 @@ public static class ChildProcesses
     public const string HelperHost = "passenger-helper";
 
     /// <summary>One of Passenger's own helper programs (an assembly the app carries: Roslyn's server, the project host, the
-    /// debug adapter) with these arguments, on the runtime Passenger itself runs on, never the person's dotnet: run by the
-    /// helper host's apphost beside the app, which beside a self-contained app takes its runtime, else by the muxer of the
-    /// runtime this build runs on, at its version, with the .NET command line's environment (<see cref="DotnetCommand(IEnumerable{string}, string?)"/>).
-    /// A <see cref="FileNotFoundException"/> when the host is missing.</summary>
-    public static ProcessStartInfo HelperCommand(string assembly, IEnumerable<string> arguments, string? folder = null)
+    /// debug adapter) with these arguments, never on the person's dotnet: by the helper host's apphost beside the app, on
+    /// its runtime, else the muxer of the runtime this build runs on, with the .NET command line's environment; or by the
+    /// self-contained host in <paramref name="host"/> on its own (the debugger's x86 one). A
+    /// <see cref="FileNotFoundException"/> when the host is missing.</summary>
+    public static ProcessStartInfo HelperCommand(string assembly, IEnumerable<string> arguments, string? folder = null, string? host = null)
     {
         string runtime = Path.TrimEndingDirectorySeparator(RuntimeEnvironment.GetRuntimeDirectory());
-        string beside = AppContext.BaseDirectory;
+        string beside = host ?? AppContext.BaseDirectory;
         string helper = Path.Combine(beside, HelperHost + ".dll");
         string program = Path.Combine(beside, HelperHost + (OperatingSystem.IsWindows() ? ".exe" : string.Empty));
         string muxer = Path.GetFullPath(Path.Combine(runtime, "..", "..", "..", OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet"));
         List<string> words = [];
         // A runtime with no muxer of its own (one found through DOTNET_ROOT) is found again by the apphost, as the app's was.
-        if (!PathNames.Same(runtime, Path.TrimEndingDirectorySeparator(beside)) && File.Exists(muxer))
+        if (host is null && !PathNames.Same(runtime, Path.TrimEndingDirectorySeparator(beside)) && File.Exists(muxer))
         {
             program = muxer;
             words.AddRange(["exec", "--fx-version", Path.GetFileName(runtime), helper]);

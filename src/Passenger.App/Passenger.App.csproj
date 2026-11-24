@@ -513,4 +513,19 @@
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
   </Target>
+
+  <!-- The debug adapter's 32-bit host becomes this project's output under debugger/x86/ in a build for Windows: the helper
+       host built self-contained for win-x86, with its x86 runtime and dbgshim for x86 (GetX86AdapterHost), which runs the
+       adapter above for a 32-bit program (DebugSession.X86AdapterHost), as a runtime's debugging library loads only into
+       a process of its program's processor. -->
+  <Target Name="IncludeX86AdapterHost" BeforeTargets="AssignTargetPaths" Condition="'$(CommandFor)' == 'windows'">
+    <MSBuild Projects="../Passenger.Helper/Passenger.Helper.csproj" Targets="GetX86AdapterHost" Properties="RuntimeIdentifier=win-x86"
+             RemoveProperties="SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="X86AdapterHostFile" />
+    </MSBuild>
+    <ItemGroup>
+      <None Include="@(X86AdapterHostFile)" Link="debugger/x86/%(X86AdapterHostFile.Filename)%(X86AdapterHostFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
 </Project>

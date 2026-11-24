@@ -3,12 +3,14 @@
        host, the debug adapter) on the runtime Passenger runs on, never the machine's. Carried beside Passenger as its
        apphost, assembly, .deps.json and runtimeconfig.json alone: built for a publish's system it is self-contained on the
        same runtime pack, so its apphost finds the runtime Passenger carries beside it, and its .deps.json names that
-       runtime and nothing else of the folder. -->
+       runtime and nothing else of the folder. Built for win-x86 it is the debug adapter's 32-bit host, carrying its own
+       x86 runtime (GetX86AdapterHost). -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <AssemblyName>passenger-helper</AssemblyName>
     <RootNamespace>Passenger.Helper</RootNamespace>
     <SelfContained Condition="'$(RuntimeIdentifier)' != ''">true</SelfContained>
+    <RuntimeIdentifiers>$(RuntimeIdentifiers);win-x86</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,12 +21,35 @@
     <Compile Include="../Passenger.Core/LenientJson.cs" Link="LenientJson.cs" />
   </ItemGroup>
 
+  <!-- The x86 runtime and apphost the 32-bit host is built on, downloaded by a restore for no system on Windows, which
+       downloads no runtime pack of its own; a publish's restore downloads them as it does every system's. -->
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows'))">
+    <PackageDownload Include="Microsoft.NETCore.App.Runtime.win-x86;Microsoft.NETCore.App.Host.win-x86" Version="[$(BundledNETCoreAppPackageVersion)]" />
+  </ItemGroup>
+
   <!-- The four files Passenger carries of it: what it runs as and is run by, without the runtime a self-contained build
        copies beside them. -->
   <Target Name="GetHelperHost" DependsOnTargets="GetTargetPath" Returns="@(HelperHostFile)">
     <ItemGroup>
       <HelperHostFile Include="$(TargetDir)$(TargetName).dll;$(TargetDir)$(TargetName).deps.json;$(TargetDir)$(TargetName).runtimeconfig.json" />
       <HelperHostFile Include="$(TargetDir)$(TargetName)$(_NativeExecutableExtension)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The debug adapter's 32-bit host, built for win-x86: the host with the x86 runtime its self-contained build copies
+       beside it, but what no debugger's host loads (the runtime's own debugging libraries, createdump, QUIC, the standalone
+       collector and the native symbol reader), and dbgshim for x86, which the adapter's own copy, of the publish's
+       processor, is not. -->
+  <Target Name="GetX86AdapterHost" DependsOnTargets="Build" Returns="@(X86AdapterHostFile)">
+    <Error Condition="'$(RuntimeIdentifier)' != 'win-x86'" Text="The debug adapter's 32-bit host is passenger-helper built for win-x86, not for '$(RuntimeIdentifier)'" />
+    <PropertyGroup>
+      <X86DbgShimVersion>@(PackageVersion->WithMetadataValue('Identity', 'Microsoft.Diagnostics.DbgShim')->'%(Version)')</X86DbgShimVersion>
+      <X86DbgShim>$([MSBuild]::NormalizePath('$(NuGetPackageRoot)', 'microsoft.diagnostics.dbgshim.win-x86', '$(X86DbgShimVersion)', 'runtimes', 'win-x86', 'native', 'dbgshim.dll'))</X86DbgShim>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(X86DbgShim)')" Text="dbgshim for x86 is not at $(X86DbgShim): restore the solution, whose debugger restores it" />
+    <ItemGroup>
+      <X86AdapterHostFile Include="$(TargetDir)*" Exclude="$(TargetDir)mscordaccore*.dll;$(TargetDir)mscordbi.dll;$(TargetDir)createdump.exe;$(TargetDir)msquic.dll;$(TargetDir)clrgc*.dll;$(TargetDir)Microsoft.DiaSymReader.Native.*.dll;$(TargetDir)*.pdb;$(TargetDir)*.runtimeconfig.dev.json" />
+      <X86AdapterHostFile Include="$(X86DbgShim)" />
     </ItemGroup>
   </Target>
 </Project>

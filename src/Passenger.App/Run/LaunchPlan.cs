@@ -52,12 +52,16 @@ public sealed partial record LaunchPlan
     /// null for any other.</summary>
     public string? X86Dotnet { get; init; }
 
-    /// <summary>Why Passenger's debugger cannot debug its program: one known to run on Windows as a 32-bit x86 process, by
-    /// its build (<see cref="X86Dotnet"/>) or by its own native header (a test host's apphost a runner names), never a .NET
-    /// assembly's, whose machine is not its processor; null where it can, or where that is not known.</summary>
-    public string? WhyNotDebugged => OperatingSystem.IsWindows() && (X86Dotnet is not null
-        || (System.IO.Path.IsPathRooted(Program) && ProgramProcessors.Of(Program) is [System.Runtime.InteropServices.Architecture.X86]))
-        ? Refusals.X86Undebugged(ProgramName) : null;
+    /// <summary>Whether its program is known to run on Windows as a 32-bit x86 process, by its build
+    /// (<see cref="X86Dotnet"/>) or by its own native header (a test host's apphost a runner names), never a .NET
+    /// assembly's, whose machine is not its processor: the debugger follows it from its 32-bit host
+    /// (<see cref="Debugging.DebugSession.X86AdapterHost"/>).</summary>
+    public bool RunsAsX86 => OperatingSystem.IsWindows() && (X86Dotnet is not null
+        || (System.IO.Path.IsPathRooted(Program) && ProgramProcessors.Of(Program) is [System.Runtime.InteropServices.Architecture.X86]));
+
+    /// <summary>Why Passenger's debugger cannot debug its program: a 32-bit one (<see cref="RunsAsX86"/>) where the
+    /// debugger's 32-bit host is missing; null where it can.</summary>
+    public string? WhyNotDebugged => RunsAsX86 && Debugging.DebugSession.WhyNoX86Adapter is { } why ? Refusals.Undebugged(ProgramName, why) : null;
 
     /// <summary>The program's arguments, the assembly first when it runs under <c>dotnet</c>.</summary>
     public IReadOnlyList<string> Arguments { get; init; } = [];

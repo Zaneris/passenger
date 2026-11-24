@@ -17,14 +17,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NOTICES = os.path.join(ROOT, "THIRD_PARTY_NOTICES.md")
 
 # Restored with the packages that use them, but in no app Passenger is published as nor in the container tools: their
-# natives are for the browser, 32-bit Arm Linux and 32-bit Windows. A system Passenger comes to ship for takes its own
-# out of here and into the notices; one the container tools carry is checked whatever this says.
+# natives are for the browser and 32-bit Arm Linux. A system Passenger comes to ship for takes its own out of here and
+# into the notices; one the container tools carry is checked whatever this says.
 NOT_SHIPPED = {
     "HarfBuzzSharp.NativeAssets.WebAssembly",
     "SkiaSharp.NativeAssets.WebAssembly",
     "Microsoft.Diagnostics.DbgShim.linux-arm",
     "Microsoft.Diagnostics.DbgShim.linux-musl-arm",
-    "Microsoft.Diagnostics.DbgShim.win-x86",
 }
 
 # The container tools' project and the systems they are published for.

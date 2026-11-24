@@ -1326,8 +1326,8 @@ public sealed partial class BuildRunController
                 return Said(why);
             }
             // Hot Reload through the debugger reaches no program it cannot follow, which runs as it is.
-            bool unreloaded = reloaded && plan.WhyNotDebugged is not null;
-            if (unreloaded)
+            string? unreloaded = reloaded && plan.RunsAsX86 ? Debugging.DebugSession.WhyNoX86Adapter : null;
+            if (unreloaded is not null)
             {
                 reloaded = false;
                 edits?.Dispose();
@@ -1353,7 +1353,7 @@ public sealed partial class BuildRunController
             game?.Console = parts.Views.Run.Fold;
             session.RunPlan = plan;
             string running = watched || reloaded ? $"Running {chosen.Name} with Hot Reload: a save applies its changes"
-                : unreloaded ? $"Running {chosen.Name} without Hot Reload: {Refusals.X86Unreloaded}"
+                : unreloaded is not null ? $"Running {chosen.Name} without Hot Reload: {unreloaded}"
                 : wanted && godot && !plan.ScriptsAlone ? $"Running {chosen.Name} without Hot Reload: {GodotLaunch.EditorReloads}"
                 : functions && (hotReload ?? parts.Settings().HotReload) ? $"Running {chosen.Name} without Hot Reload: {Refusals.FunctionsUnreloaded}"
                 : $"Running {chosen.Name}";

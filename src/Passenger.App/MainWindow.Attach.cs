@@ -100,7 +100,7 @@ public partial class MainWindow
         UiThread.Check();
         if (process.WhyNot is { } why)
         {
-            return $"Cannot attach to {process.Program}: {why}";
+            return Refusals.Unattached(process.Program, why);
         }
         if (work.Begin(AppActions.AttachToProcess, $"Attaching to {process.Program}…") is not { } attaching)
         {
@@ -125,7 +125,7 @@ public partial class MainWindow
             }
             if (target.WhyNot is { } blocked)
             {
-                return $"Cannot attach to {name}: {blocked}";
+                return Refusals.Unattached(name, blocked);
             }
         }
         attachedTo.RemoveAll(p => Same(p, target));

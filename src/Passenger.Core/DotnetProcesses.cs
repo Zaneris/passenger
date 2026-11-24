@@ -847,18 +847,11 @@ public static partial class DotnetProcesses
         }
         string name = Kernel32.ExecutableOf(process) is { } path ? Path.GetFileName(path) : $"{id}";
         (string user, bool mine) = Owner(process);
-        return new DotnetProcess(id, name, WindowsCommandLine(process) ?? string.Empty, user, mine)
-        {
-            WhyNot = Kernel32.Runs32Bit(process) == true ? Undebugged32Bit : null,
-        };
+        return new DotnetProcess(id, name, WindowsCommandLine(process) ?? string.Empty, user, mine);
     }
 
     /// <summary>How a 32-bit program runs on 64-bit Windows, as what Passenger cannot do with one says it.</summary>
     public const string RunsAs32Bit = "runs as a 32-bit (x86) program";
-
-    /// <summary>Why the debugger attaches to no 32-bit program: the runtime's debugging library it loads is of the program's
-    /// own processor, and Passenger's debugger is a 64-bit program.</summary>
-    public const string Undebugged32Bit = $"it {RunsAs32Bit}, and Passenger's debugger, a 64-bit program, loads only a 64-bit runtime's debugging library";
 
     /// <summary>Whether a process runs as a 32-bit program on 64-bit Windows (an x86 program's apphost, or the x86 dotnet);
     /// false where it does not, it is gone or Windows will not say, and off Windows.</summary>

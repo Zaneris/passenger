@@ -1009,17 +1009,11 @@ public static class Refusals
     public static string MacCatalystUnprofiled(string app) =>
         $"Passenger's profiler does not record a Mac Catalyst app yet, so {app} cannot be profiled: Run starts it";
 
-    /// <summary>A program built for 32-bit x86 debugged (by its build, or a test host's or a process's own processor), which
-    /// Passenger's debugger cannot follow (<see cref="DotnetProcesses.Undebugged32Bit"/>): Run starts it, and built for
-    /// AnyCPU it runs, and debugs, as a 64-bit program.</summary>
-    public static string X86Undebugged(string program) =>
-        $"Could not debug {program}: {DotnetProcesses.Undebugged32Bit}. Run starts it; built for AnyCPU (its PlatformTarget), it runs as a 64-bit program, which debugs";
+    /// <summary>A program the debugger cannot follow, by its name, and why (<see cref="Debugging.DebugSession.WhyNoX86Adapter"/>).</summary>
+    public static string Undebugged(string program, string why) => $"Could not debug {program}: {why}";
 
-    /// <summary>A running 32-bit program the debugger was to attach to (a test host a runner started), by the name its tab takes.</summary>
-    public static string X86Unattached(string name) => $"Cannot attach to {name}: {DotnetProcesses.Undebugged32Bit}";
-
-    /// <summary>A 32-bit x86 program run with Hot Reload, which reaches it only through the debugger.</summary>
-    public const string X86Unreloaded = $"it {DotnetProcesses.RunsAs32Bit}, and Hot Reload reaches it only through Passenger's debugger, a 64-bit program";
+    /// <summary>A running program the debugger cannot attach to (a test host a runner started), by the name its tab takes, and why.</summary>
+    public static string Unattached(string name, string why) => $"Cannot attach to {name}: {why}";
 
     /// <summary>A program built for 32-bit x86 run off Windows, the one system .NET runs x86 programs on.</summary>
     public const string X86OnWindowsAlone = "it is built for 32-bit x86 (its PlatformTarget), which .NET runs only on Windows";

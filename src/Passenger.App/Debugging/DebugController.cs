@@ -801,13 +801,13 @@ public sealed partial class DebugController : IDisposable
         LiveApp? app = null, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null, string? startedElsewhere = null,
         ProgramBuild? builds = null)
     {
-        if (!elsewhere && place is null && DotnetProcesses.Runs32Bit(processId))
+        if (!elsewhere && place is null && DotnetProcesses.Runs32Bit(processId) && DebugSession.WhyNoX86Adapter is { } unattached)
         {
             // What the session would have taken goes with the refusal.
             handlers?.Dispose();
             browser?.Dispose();
             edits?.Dispose();
-            return Task.FromResult<string?>(Refusals.X86Unattached(name));
+            return Task.FromResult<string?>(Refusals.Unattached(name, unattached));
         }
         bool hotReloadOn = hotReload && HotReloadOn();
         return OpenAsync((built, log, output, starting) =>
