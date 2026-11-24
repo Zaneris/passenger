@@ -165,11 +165,11 @@ public static class DeviceLaunches
         }, null);
     }
 
-    /// <summary>A plan's iOS simulator found, the app its build made read, the simulator booted with no window where it is
-    /// shut down, and the app installed there, the plan's program then simctl launching the app afresh with its output on
-    /// simctl's own (<see cref="SimulatorApp.Launch"/>); why not, in words for the person. A simulator booted here is told to
-    /// <paramref name="booted"/>, whose folder shuts it down, and where someone sees this Passenger (not <paramref name="unseen"/>),
-    /// the Run window's notes say it has no window.</summary>
+    /// <summary>A plan's iOS simulator found, the app its build made read, the simulator booted where it is shut down, the
+    /// app installed there, and where someone sees this Passenger (not <paramref name="unseen"/>) the simulator's window opened
+    /// in the background (<see cref="AppleSimulators.ShowAsync"/>), the Run window's notes saying why where it did not; the
+    /// plan's program then simctl launching the app afresh with its output on simctl's own (<see cref="SimulatorApp.Launch"/>);
+    /// why not, in words for the person. A simulator booted here is told to <paramref name="booted"/>, whose folder shuts it down.</summary>
     private static async Task<(LaunchPlan? Plan, string? Problem)> SimulatorReadyAsync(LaunchPlan plan, DeviceLaunch device, string project,
         IReadOnlyDictionary<string, string> globals, bool unseen, Action<string> say, Action<IReadOnlyList<DeviceTarget>> listed, Action<string, string>? booted, CancellationToken cancel)
     {
@@ -190,8 +190,7 @@ public static class DeviceLaunches
         {
             return (null, $"{name} could not be installed on {target.Name}: {unread}");
         }
-        bool booting = !target.Running;
-        if (booting)
+        if (!target.Running)
         {
             // Told before its boot, so one stopped partway is shut down with the folder too.
             booted?.Invoke(tools.Simctl, target.Id);
@@ -208,6 +207,7 @@ public static class DeviceLaunches
         {
             return (null, $"{name} could not be installed on {target.Name}: {uninstalled}");
         }
+        string? unshown = await AppleSimulators.ShowAsync(tools, target, unseen, cancel);
         return (plan with
         {
             Program = tools.Simctl,
@@ -215,7 +215,7 @@ public static class DeviceLaunches
             Leading = app.Launch().Count,
             WorkingDirectory = Path.GetDirectoryName(project)!,
             Device = device with { App = app },
-            Notes = booting && !unseen ? [.. plan.Notes, $"{target.Name} was started with no window: open it from Xcode to see {name}"] : plan.Notes,
+            Notes = unshown is null ? plan.Notes : [.. plan.Notes, unshown],
         }, null);
     }
 
