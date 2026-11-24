@@ -393,6 +393,8 @@ public sealed partial class BuildRunController
             await session.StopContainersAsync(run);
             return following;
         }
+        // Up: what its services publish is reached now.
+        RunningChanged?.Invoke(this, EventArgs.Empty);
         string what = ServicesStarted(chosen.Name, how, Plural.Listed([.. debugged.Select(s => s.Service)]));
         parts.Say($"{what}{(how == RunStart.Run ? ":" : ";")} {Plural.Of(plan.Running.Count(), ".NET service")} from Passenger's build"
             + $"{(plan.Mode == ContainerMode.Images ? " images" : string.Empty)}, {Plural.Of(plan.Backing.Count(plan.Touched.Contains), "other service")}; Stop takes them down"

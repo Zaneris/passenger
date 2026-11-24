@@ -1068,21 +1068,63 @@ public partial class MainWindow
         return used;
     }
 
-    /// <summary>Ends once the folder's connections are found, shown or not (another window's ask).</summary>
+    /// <summary>Ends once the folder's connections are found as the folder now stands: found first where they never were, or
+    /// again where what runs changed since, shown or not (an agent's read, another window's ask).</summary>
     internal async Task DatabasesFoundAsync()
     {
         DatabaseController controller = Database;
         await controller.Idle;
-        if (Folder is not null && !controller.Discovered)
+        if (Folder is not null && (!controller.Discovered || databasesMoved))
         {
+            databasesMoved = false;
             await controller.RefreshAsync();
         }
         await controller.Idle;
     }
 
+    /// <summary>What of the folder's compose run and AppHosts runs, as last heard, whose databases are connections while they run.</summary>
+    private string runningDatabases = string.Empty;
+
+    /// <summary>Whether what runs changed since the connections were last found.</summary>
+    private bool databasesMoved;
+
+    /// <summary>What of a folder's compose run and AppHosts runs: the run coming up or up, and each AppHost's service started.</summary>
+    private static string RunningDatabases(ProjectSession of) => string.Join('\n',
+        (of.ContainerRun is { IsStopped: false } run ? [$"{run.Name}|{run.IsComingUp}"] : Array.Empty<string>())
+            .Concat(of.Aspire.Apps.Where(a => !a.Stopping).SelectMany(a => a.Services).Select(s => s.InstanceId)));
+
+    /// <summary>A compose run's and an AppHost's databases are connections while they run: what runs changed, the connections
+    /// are found again once the window shows and is free.</summary>
+    private void FollowRunningDatabases(ProjectSession next)
+    {
+        if (session != next || RunningDatabases(next) is var now && now == runningDatabases)
+        {
+            return;
+        }
+        runningDatabases = now;
+        databasesMoved = true;
+        IdeErrors.Observe(DiscoverMovedDatabasesAsync(next));
+    }
+
+    private async Task DiscoverMovedDatabasesAsync(ProjectSession next)
+    {
+        if (database is not { } controller)
+        {
+            return;
+        }
+        await controller.Idle;
+        if (session == next)
+        {
+            DiscoverDatabasesIfShown();
+        }
+    }
+
     private void BindDatabase(ProjectSession next)
     {
         database?.Bind(next);
+        runningDatabases = RunningDatabases(next);
+        databasesMoved = false;
+        buildRun.RunningChanged += (_, _) => FollowRunningDatabases(next);
         next.ProjectsEvaluated += (_, _) => Rediscover();
         next.WorkspaceChanged += (_, _) => Rediscover();
 
@@ -1099,8 +1141,9 @@ public partial class MainWindow
 
     private void DiscoverDatabasesIfShown()
     {
-        if (Folder is not null && database is { Busy: false, Discovered: false } && Dock.IsShown(ToolWindowIds.Database))
+        if (Folder is not null && database is { Busy: false } controller && (!controller.Discovered || databasesMoved) && Dock.IsShown(ToolWindowIds.Database))
         {
+            databasesMoved = false;
             Request(AppActions.DatabaseRefresh);
         }
     }
