@@ -144,6 +144,15 @@
     <ProjectReference Include="../Passenger.TestFrames/Passenger.TestFrames.csproj" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
     <Compile Include="../Passenger.TestFrames/Variables.cs" Link="Testing/TestFramesVariables.cs" />
+    <!-- Built first and carried under testhits/, never linked: a run mapping which tests run which lines loads it into its
+         test program (Testing/TestHitsRun.cs). It is built once for every platform. -->
+    <ProjectReference Include="../Passenger.TestHits/Passenger.TestHits.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
+    <Compile Include="../Passenger.TestHits/Variables.cs" Link="Testing/TestHitsVariables.cs" />
+    <!-- Built first and carried under coverage/console/ beside the Coverlet it drives, never linked: the map of which tests
+         run which lines instruments a run's own copy through it (Testing/TestHitsRun.cs), on Passenger's own runtime. -->
+    <ProjectReference Include="../Passenger.CoverageMap/Passenger.CoverageMap.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
     <!-- Built first and carried under updatehandlers/, never linked: a program debugged with Hot Reload loads it
          (Debugging/UpdateHandlerHook.cs). It is built once for every platform. -->
     <ProjectReference Include="../Passenger.UpdateHandlers/Passenger.UpdateHandlers.csproj" ReferenceOutputAssembly="false" Private="false"
@@ -347,6 +356,34 @@
     <ItemGroup>
       <TestFramesFile Include="@(TestFramesAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(TestFramesAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />
       <None Include="@(TestFramesFile)" Link="testframes/%(TestFramesFile.Filename)%(TestFramesFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The test hits' hook becomes this project's output under testhits/: its own assembly alone. -->
+  <Target Name="IncludeTestHits" BeforeTargets="AssignTargetPaths">
+    <MSBuild Projects="../Passenger.TestHits/Passenger.TestHits.csproj" Targets="GetTargetPath"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="TestHitsAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <TestHitsFile Include="@(TestHitsAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(TestHitsAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />
+      <None Include="@(TestHitsFile)" Link="testhits/%(TestHitsFile.Filename)%(TestHitsFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The coverage map's instrumenting becomes this project's output under coverage/console/, beside the Coverlet it loads:
+       its assembly, .deps.json and runtimeconfig.json, which passenger-helper runs it by. -->
+  <Target Name="IncludeCoverageMap" BeforeTargets="AssignTargetPaths">
+    <MSBuild Projects="../Passenger.CoverageMap/Passenger.CoverageMap.csproj" Targets="GetTargetPath"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="CoverageMapAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <CoverageMapFile Include="@(CoverageMapAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(CoverageMapAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />
+      <CoverageMapFile Include="@(CoverageMapAssembly->'%(RootDir)%(Directory)%(Filename).deps.json');@(CoverageMapAssembly->'%(RootDir)%(Directory)%(Filename).runtimeconfig.json')" />
+      <None Include="@(CoverageMapFile)" Link="coverage/console/%(CoverageMapFile.Filename)%(CoverageMapFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
   </Target>

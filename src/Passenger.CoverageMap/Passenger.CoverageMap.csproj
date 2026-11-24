@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Passenger's instrumenting of a test run's own copy of the code it tests, for the map of which tests run which lines:
+       Coverlet's instrumenter, as Coverlet's console carries it under coverage/console/, writes each module's counting into
+       it once and is never asked to put it back, and this writes where each count stands in the code. Run on Passenger's
+       own runtime (passenger-helper) from coverage/console/, beside the Coverlet it drives, its own assembly alone. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Passenger.CoverageMap</RootNamespace>
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+
+  <!-- Coverlet's instrumenter keeps its whole API internal: compiled against it publicized, the console's own build of it run. -->
+  <ItemGroup>
+    <PackageDownload Include="coverlet.console" Version="[$(CoverletVersion)]" />
+    <Reference Include="coverlet.core" HintPath="$([MSBuild]::EnsureTrailingSlash('$(NuGetPackageRoot)'))coverlet.console/$(CoverletVersion)/tools/net10.0/any/coverlet.core.dll" Private="false" />
+    <Publicize Include="coverlet.core" IncludeCompilerGeneratedMembers="false" />
+    <PackageReference Include="Krafs.Publicizer" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+
+  <Import Project="../Publicize.targets" />
+</Project>

@@ -137,6 +137,84 @@ public sealed class TestingPlatformRunner : ITestRunner
         return summary;
     }
 
+    /// <summary>Runs tests it discovered one at a time, each alone in a request of its own to one test host per assembly
+    /// started with the environment given, <paramref name="ran"/> told each test once its request has ended (its outcomes
+    /// told before) and awaited before the next is asked: what a hook in the host counted between two is the one test's.
+    /// Canceled, the test under way is asked to stop and the host ended, keeping the outcomes of what had run.</summary>
+    public async Task<RunSummary> RunEachAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Func<TestItem, Task> ran,
+        IReadOnlyDictionary<string, string>? environment, Action<string>? log, CancellationToken cancel)
+    {
+        RunSummary summary = new(TimeSpan.Zero, false, false, null);
+        foreach (TestAssembly assembly in AssembliesOf(tests))
+        {
+            (Dictionary<string, TestItem> byUid, List<Found> chosen) = Asked(tests, assembly.Path);
+            List<TestOutcome> all = new(chosen.Count);
+            long began = Stopwatch.GetTimestamp();
+            RunSummary part;
+            try
+            {
+                IReadOnlyDictionary<string, string>? given = await BackgroundWork.Run(() => HostEnvironment(assembly, looking: false, environment, log), cancel);
+                await using Host host = await Host.StartAsync(assembly, given, null, byUid, log, HoldsConnectionsUntilEnded, cancel);
+                bool stopped = false;
+                foreach (Found test in chosen)
+                {
+                    if (!await host.RequestAsync("testing/runTests", [test], changed => Told(changed, byUid, all, outcomes), cancel))
+                    {
+                        stopped = true;
+                        break;
+                    }
+                    await ran(byUid[test.Uid]);
+                }
+                part = Ended(stopped, null);
+            }
+            catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+            {
+                part = Ended(true, null);
+            }
+            catch (TestHostFailed failed)
+            {
+                log?.Invoke(failed.Message);
+                part = Ended(cancel.IsCancellationRequested, failed.Message);
+            }
+            summary = summary.And(part);
+            if (part.Canceled || part.Aborted)
+            {
+                break;
+            }
+
+            RunSummary Ended(bool canceled, string? error)
+            {
+                lock (all)
+                {
+                    return new RunSummary(Stopwatch.GetElapsedTime(began), canceled, error is not null, error) { Outcomes = [.. all] };
+                }
+            }
+        }
+        return summary;
+    }
+
+    /// <summary>A host's update of the tests asked for told as their outcomes, those of no test asked passed over.</summary>
+    private static void Told(IReadOnlyList<PlatformNode> changed, Dictionary<string, TestItem> byUid, List<TestOutcome> all, Action<IReadOnlyList<TestOutcome>> outcomes)
+    {
+        List<TestOutcome> batch = new(changed.Count);
+        foreach (PlatformNode node in changed)
+        {
+            if (byUid.TryGetValue(node.Uid, out TestItem? test) && Outcome(test, node) is { } outcome)
+            {
+                batch.Add(outcome);
+            }
+        }
+        if (batch.Count == 0)
+        {
+            return;
+        }
+        lock (all)
+        {
+            all.AddRange(batch);
+        }
+        outcomes(batch);
+    }
+
     /// <summary>The assemblies the tests were found in, each once, in the order their tests come.</summary>
     private List<TestAssembly> AssembliesOf(IReadOnlyList<TestItem> tests)
     {
@@ -186,26 +264,7 @@ public sealed class TestingPlatformRunner : ITestRunner
         {
             IReadOnlyDictionary<string, string>? given = await BackgroundWork.Run(() => HostEnvironment(assembly, looking: false, environment, log), cancel);
             await using Host host = await Host.StartAsync(assembly, given, debugger, byUid, log, held, cancel, coverage);
-            bool ran = await host.RequestAsync("testing/runTests", chosen, changed =>
-            {
-                List<TestOutcome> batch = new(changed.Count);
-                foreach (PlatformNode node in changed)
-                {
-                    if (byUid.TryGetValue(node.Uid, out TestItem? test) && Outcome(test, node) is { } outcome)
-                    {
-                        batch.Add(outcome);
-                    }
-                }
-                if (batch.Count == 0)
-                {
-                    return;
-                }
-                lock (all)
-                {
-                    all.AddRange(batch);
-                }
-                outcomes(batch);
-            }, cancel);
+            bool ran = await host.RequestAsync("testing/runTests", chosen, changed => Told(changed, byUid, all, outcomes), cancel);
             return Summary(!ran, null);
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
