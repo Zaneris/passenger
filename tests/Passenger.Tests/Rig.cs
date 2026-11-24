@@ -3070,7 +3070,11 @@ public static class TestSshKeys
     }
 }
 
-/// <summary>GPG keys a test signs its commits with, made by gpg in the run's own keyring (GNUPGHOME), never the person's.</summary>
+/// <summary>GPG keys a test signs its commits with, put in the run's own keyring (GNUPGHOME), never the person's. Each is
+/// carried in SigningKeys/, by its passphrase, as gpg-agent stored it, never made in a run: GnuPG 2.5.24's agent writes a
+/// salt or nonce of printable random bytes inside quotes, dropping a space that follows "(", ")" or another space there,
+/// so about one key in twenty thousand it makes reads back a byte short, its first use failing with "Corrupted
+/// protection". A carried key's salt and nonce are written in hex, which the agent keeps whole.</summary>
 public static class TestGpgKeys
 {
     private static readonly TimeSpan Limit = TimeSpan.FromMinutes(1);
@@ -3081,22 +3085,47 @@ public static class TestGpgKeys
     /// <summary>Why a test that signs with GPG cannot run here, or null.</summary>
     public static string? WhyNot => Gpg is null ? "gpg is not on the PATH, so no commit can be signed with a GPG key here" : null;
 
-    /// <summary>A new key for <paramref name="user"/> (tests@passenger.invalid's where none is given) guarded by
-    /// <paramref name="passphrase"/>, given gpg on its input, never its command line; its id, the agent ended after so the
-    /// passphrase is asked for again.</summary>
-    public static async Task<string> MakeAsync(string passphrase, string? gpg = null, string user = "Passenger Tests <tests@passenger.invalid>")
+    /// <summary>The carried key of <paramref name="user"/> (tests@passenger.invalid's where none is given) guarded by
+    /// <paramref name="passphrase"/>, put in the run's keyring and trusted there as gpg trusts a key it makes; its id, the
+    /// agent ended after, so the passphrase is asked for as a person's first signature asks it.</summary>
+    public static async Task<string> PutAsync(string passphrase, string? gpg = null, string user = "Passenger Tests <tests@passenger.invalid>")
     {
         gpg ??= Gpg!;
         string log = AgentLogged(gpg);
-        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(Of(gpg,
-            ["--batch", "--pinentry-mode", "loopback", "--passphrase-fd", "0", "--quick-gen-key", user, "ed25519", "sign", "never"]),
-            passphrase + "\n", Limit.Scaled());
-        Assert.True(made.Succeeded, $"gpg made no key to sign with, exiting {made.ExitCode}: {made.Error}{AgentSaid(log)}");
+        string carried = Carried(passphrase);
+        Passenger.Core.ChildResult imported = await Passenger.Core.ChildProcesses.RunAsync(Of(gpg, ["--batch", "--import"]),
+            await File.ReadAllTextAsync(Path.Combine(carried, "public.asc")), Limit.Scaled());
+        Assert.True(imported.Succeeded, $"gpg did not import the test's key, exiting {imported.ExitCode}: {imported.Error}{AgentSaid(log)}");
         Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(Of(gpg, ["--list-secret-keys", "--with-colons", $"={user}"]),
             limit: Limit.Scaled());
-        string id = listed.Output.Split('\n').Select(l => l.Split(':')).First(f => f[0] == "sec")[4];
+        string[][] lines = [.. listed.Output.Split('\n').Select(l => l.Split(':'))];
+        Assert.True(lines.Any(f => f[0] == "sec") && lines.Any(f => f[0] == "fpr"), $"gpg lists no secret key of {user} once given the carried key:\n{listed.Output}{listed.Error}{AgentSaid(log)}");
+        Passenger.Core.ChildResult trusted = await Passenger.Core.ChildProcesses.RunAsync(Of(gpg, ["--batch", "--import-ownertrust"]),
+            $"{lines.First(f => f[0] == "fpr")[9]}:6:\n", Limit.Scaled());
+        Assert.True(trusted.Succeeded, $"gpg did not trust the test's key, exiting {trusted.ExitCode}: {trusted.Error}");
         await EndAgentAsync(gpg);
-        return id;
+        return lines.First(f => f[0] == "sec")[4];
+    }
+
+    /// <summary>The folder of the key carried for <paramref name="passphrase"/>, its key files put in the run's
+    /// private-keys-v1.d as they are, where gpg-agent finds a key by its keygrip.</summary>
+    internal static string Carried(string passphrase)
+    {
+        string carried = Path.Combine(AppContext.BaseDirectory, "SigningKeys", passphrase);
+        string keys = Path.Combine(Environment.GetEnvironmentVariable("GNUPGHOME")!, "private-keys-v1.d");
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.CreateDirectory(keys);
+        }
+        else
+        {
+            Directory.CreateDirectory(keys, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        foreach (string key in Directory.EnumerateFiles(carried, "*.key"))
+        {
+            File.Copy(key, Path.Combine(keys, Path.GetFileName(key)), overwrite: true);
+        }
+        return carried;
     }
 
     /// <summary>Git for Windows' own gpg, where git's is the only one: on Windows with no gpg on the PATH; else null.</summary>
@@ -3115,8 +3144,8 @@ public static class TestGpgKeys
     }
 
     /// <summary>The run's gpg-agent, as <paramref name="program"/> starts it next, logging what it does to a file in the run's
-    /// GnuPG home, named in the form the program reads a path; that file, which a failed key's making quotes with the keys
-    /// stored there.</summary>
+    /// GnuPG home, named in the form the program reads a path; that file, which a key's failure quotes with the keys stored
+    /// there.</summary>
     internal static string AgentLogged(string program)
     {
         string home = Environment.GetEnvironmentVariable("GNUPGHOME")!;
@@ -3159,8 +3188,9 @@ public static class TestGpgKeys
     }
 }
 
-/// <summary>X.509 keys a test signs its commits with, made by gpgsm in the run's own keyring (GNUPGHOME), never the person's:
-/// a self-signed certificate trusted there as a root, CRLs left unchecked, as no authority issues it.</summary>
+/// <summary>X.509 keys a test signs its commits with, put in the run's own keyring (GNUPGHOME), never the person's: a
+/// self-signed certificate, carried with its key as <see cref="TestGpgKeys"/> carries its keys, trusted there as a root,
+/// CRLs left unchecked, as no authority issues it.</summary>
 public static class TestX509Keys
 {
     private static readonly TimeSpan Limit = TimeSpan.FromMinutes(1);
@@ -3171,27 +3201,23 @@ public static class TestX509Keys
     /// <summary>Why a test that signs with X.509 cannot run here, or null.</summary>
     public static string? WhyNot => Gpgsm is null ? "gpgsm is not on the PATH, so no commit can be signed with an X.509 certificate here" : null;
 
-    /// <summary>A new self-signed certificate for tests@passenger.invalid, its key guarded by <paramref name="passphrase"/>
-    /// given gpgsm on its input, never its command line, imported and trusted in the run's keyring; its fingerprint (0x…),
-    /// the agent ended after so the passphrase is asked for again.</summary>
-    public static async Task<string> MakeAsync(string passphrase, string folder)
+    /// <summary>The carried certificate for tests@passenger.invalid, its key guarded by <paramref name="passphrase"/>,
+    /// imported and trusted in the run's keyring; its fingerprint (0x…), the agent ended after, so the passphrase is asked
+    /// for as a person's first signature asks it.</summary>
+    public static async Task<string> PutAsync(string passphrase)
     {
         string home = Environment.GetEnvironmentVariable("GNUPGHOME")!;
         await File.AppendAllTextAsync(Path.Combine(home, "gpgsm.conf"), "disable-crl-checks\ndisable-policy-checks\n");
-        string parameters = Path.Combine(folder, "x509.txt");
-        string certificate = Path.Combine(folder, "x509.pem");
-        await File.WriteAllTextAsync(parameters, "Key-Type: RSA\nKey-Length: 2048\nKey-Usage: sign\nSerial: random\nName-DN: CN=Passenger Tests,O=Passenger\n"
-            + "Name-Email: tests@passenger.invalid\n");
         string log = TestGpgKeys.AgentLogged(Gpgsm!);
-        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(TestGpgKeys.Of(Gpgsm!,
-            ["--batch", "--pinentry-mode", "loopback", "--passphrase-fd", "0", "--armor", "--output", certificate, "--gen-key", parameters]), passphrase + "\n", Limit.Scaled());
-        Assert.True(made.Succeeded, $"gpgsm made no certificate to sign with, exiting {made.ExitCode}: {made.Error}{TestGpgKeys.AgentSaid(log)}");
-        Passenger.Core.ChildResult imported = await Passenger.Core.ChildProcesses.RunAsync(TestGpgKeys.Of(Gpgsm!, ["--batch", "--import", certificate]),
-            limit: Limit.Scaled());
-        Assert.True(imported.Succeeded, $"gpgsm did not import the test's certificate, exiting {imported.ExitCode}: {imported.Error}");
+        string carried = TestGpgKeys.Carried(passphrase);
+        Passenger.Core.ChildResult imported = await Passenger.Core.ChildProcesses.RunAsync(TestGpgKeys.Of(Gpgsm!, ["--batch", "--import"]),
+            await File.ReadAllTextAsync(Path.Combine(carried, "certificate.pem")), Limit.Scaled());
+        Assert.True(imported.Succeeded, $"gpgsm did not import the test's certificate, exiting {imported.ExitCode}: {imported.Error}{TestGpgKeys.AgentSaid(log)}");
         Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(TestGpgKeys.Of(Gpgsm!,
             ["--with-colons", "--list-secret-keys", "tests@passenger.invalid"]), limit: Limit.Scaled());
-        string fingerprint = listed.Output.Split('\n').Select(l => l.Split(':')).First(f => f[0] == "fpr")[9];
+        string[][] lines = [.. listed.Output.Split('\n').Select(l => l.Split(':'))];
+        Assert.True(lines.Any(f => f[0] == "fpr"), $"gpgsm lists no secret key of tests@passenger.invalid once given the carried key:\n{listed.Output}{listed.Error}{TestGpgKeys.AgentSaid(log)}");
+        string fingerprint = lines.First(f => f[0] == "fpr")[9];
         await File.AppendAllTextAsync(Path.Combine(home, "trustlist.txt"), $"{fingerprint} S relax\n");
         await TestGpgKeys.EndAgentAsync(Gpgsm);
         return $"0x{fingerprint}";
