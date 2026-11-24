@@ -974,12 +974,16 @@ public sealed partial class Vim
             && WhiteEnding(text, line - 1) is var before && before < above.End ? before : at;
     }
 
-    /// <summary>Where the white ending a line of text begins, where an offset stands in it; null elsewhere.</summary>
+    /// <summary>Where the white after a line of text begins, its blanks ending that line or the lines of blanks alone
+    /// below it, where an offset stands in it; null elsewhere.</summary>
     private static int? BlanksEnding(TextSnapshot text, int offset)
     {
         LineSpan line = VimMotions.LineOf(text, offset);
         int white = WhiteEnding(text, line.Line);
-        return white < line.End && offset >= white && TextNavigation.IndentEnd(text, text.GetLine(text.GetLineFromOffset(white))) < white ? white : null;
+        LineSpan begins = VimMotions.LineOf(text, white);
+        bool afterText = TextNavigation.IndentEnd(text, begins) < white
+            || (white == begins.Start && begins.Line > 0 && text.GetLine(begins.Line - 1).Length > 0);
+        return white < line.End && offset >= white && afterText ? white : null;
     }
 
     /// <summary>The first line below an offset's that is no line of blanks alone.</summary>
@@ -1005,9 +1009,9 @@ public sealed partial class Vim
     }
 
     /// <summary>is and as from a single place: the sentence there, the white after one no bigger than the character
-    /// already shown, and from an empty line or the blanks ending a line what Vim's take there. <paramref name="more"/>
-    /// says the place grew into its stretch, which keeps a block's or a linewise mode, where a sentence found afresh
-    /// makes the stretch charwise.</summary>
+    /// already shown, and from an empty line or the white after a line of text what Vim's take there. <paramref
+    /// name="more"/> says the place grew into its stretch, which keeps a block's or a linewise mode, where a sentence
+    /// found afresh makes the stretch charwise.</summary>
     private Region? SentenceAt(TextSnapshot text, Region r, bool inner, int n, out bool more)
     {
         more = false;
@@ -1060,7 +1064,7 @@ public sealed partial class Vim
         if (!inner && n == 1 && BlanksEnding(text, r.Cursor) is { } ending && BelowBlanks(text, r.Cursor, lastLine) is var first && first <= lastLine
             && VimMotions.Blank(text, first))
         {
-            // From the blanks ending a line, as takes the empty lines below them the text goes on after, one alone before a blank.
+            // From the white after a line of text, as takes the empty lines below it the text goes on after, one alone before a blank.
             int to = first;
             while (to < lastLine && VimMotions.Blank(text, to + 1))
             {
