@@ -26,6 +26,22 @@ public static class DatabaseKinds
         _ => new MySqlConnectionStringBuilder(connection),
     };
 
+    /// <summary>A connection string with another's keys laid over it, each as its driver names it.</summary>
+    public static string LaidOver(DatabaseKind kind, string connection, string over)
+    {
+        if (over.Length == 0)
+        {
+            return connection;
+        }
+        DbConnectionStringBuilder laid = Builder(kind, connection);
+        DbConnectionStringBuilder given = new() { ConnectionString = over };
+        foreach (string key in given.Keys)
+        {
+            laid[key] = given[key];
+        }
+        return laid.ConnectionString;
+    }
+
     /// <summary>The host and port a connection string reaches its server at, its driver's default port where it names none.</summary>
     public static (string Host, int Port) Endpoint(DatabaseKind kind, string connection)
     {

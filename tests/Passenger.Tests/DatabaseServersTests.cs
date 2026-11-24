@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Data.Common;
+using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -21,12 +22,14 @@ namespace Passenger.Tests;
 /// statement run into a grid, its parameter asked for and kept in its history, completion of the table's columns, a table's
 /// changes submitted as one, a console's manual transaction rolled back and committed, the table exported as CSV, its rows
 /// copied as inserts and run again, a CSV imported into a new table and a refused row writing nothing, a production
-/// connection asking before an UPDATE, and a connection made through an SSH bastion with its SSL verified, each through
-/// its own driver. Skipped, naming the image, where the engine lacks it, as it is never pulled.</summary>
+/// connection asking before an UPDATE, a connection made through an SSH bastion with its SSL verified, and a found one
+/// given a client certificate and a tunnel through ~/.ssh/config's jump host, signed in by the agent, its statement stopped
+/// through it, each through its own driver. Skipped, naming the image, where the engine lacks it, as it is never pulled.</summary>
 public sealed class DatabaseServersTests
 {
     private const string Password = "Passenger-db-7c1d";
     private const string SshPassword = "Passenger-ssh-4e2a";
+    private const string ClientKeyPassword = "Passenger-key-91b3";
 
     /// <summary>The bastion's image, pinned to the one the test was written against.</summary>
     private const string SshImage = "lscr.io/linuxserver/openssh-server@sha256:c8431b8982e7eb3935ebf9c46607d19c6417e39c12ce884cc66945df2e9334e8";
@@ -40,6 +43,7 @@ public sealed class DatabaseServersTests
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         Assert.SkipWhen(Docker.Said("image", "inspect", image) is null, $"The engine lacks {image}, which this test never pulls: pull it to run the test");
         Assert.SkipWhen(Docker.Said("image", "inspect", SshImage) is null, $"The engine lacks {SshImage}, which this test never pulls: pull it to run the test");
+        Assert.SkipWhen(Programs.OnPath("ssh-agent") is null || Programs.OnPath("ssh-add") is null, "ssh-agent and ssh-add, which hold the tunnel's key, are not on PATH");
         string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}db{kind}".ToLowerInvariant();
         (int port, string[] environment) = kind switch
         {
@@ -53,11 +57,15 @@ public sealed class DatabaseServersTests
         string[] serving = kind switch
         {
             DatabaseKind.Postgres => ["--entrypoint", "sh", image, "-c", "chown postgres /certs/server.key && chmod 600 /certs/server.key && exec docker-entrypoint.sh postgres "
-                + "-c ssl=on -c ssl_cert_file=/certs/server.crt -c ssl_key_file=/certs/server.key"],
-            DatabaseKind.MySql => [image, "--ssl-cert=/certs/server.crt", "--ssl-key=/certs/server.key"],
+                + "-c ssl=on -c ssl_cert_file=/certs/server.crt -c ssl_key_file=/certs/server.key -c ssl_ca_file=/certs/ca.crt"],
+            DatabaseKind.MySql => [image, "--ssl-cert=/certs/server.crt", "--ssl-key=/certs/server.key", "--ssl-ca=/certs/ca.crt"],
             _ => [image],
         };
         string ssh = name + "ssh";
+        string inner = name + "inner";
+        string? runsSshHome = Environment.GetEnvironmentVariable(SshFiles.HomeVariable);
+        string agentSocket = Path.Combine(TestRun.Temporary, "agent" + ((int)kind).ToString(CultureInfo.InvariantCulture));
+        Process? agent = null;
         try
         {
             Docker.Run(["network", "create", "--label", Docker.RunLabel, name]);
@@ -81,6 +89,21 @@ public sealed class DatabaseServersTests
             Docker.Run("cp", Path.Combine(certificates, "sshd"), $"{ssh}:/config/sshd");
             Docker.Run("start", ssh);
             int bastion = int.Parse(Docker.Run("port", ssh, "2222").Trim().Split(':')[^1], CultureInfo.InvariantCulture);
+            // A second bastion no port of this machine reaches, signed in to only by the agent's key, through the first.
+            Docker.Run(["create", "--name", inner, "--label", Docker.RunLabel, "--network", name, "--network-alias", "bastion", "-e", "USER_NAME=passenger",
+                "-e", "PUBLIC_KEY=" + publicKey, SshImage]);
+            Docker.Run("cp", Path.Combine(certificates, "sshd"), $"{inner}:/config/sshd");
+            Docker.Run("start", inner);
+            string? hostKeys = null;
+            Ui.WaitFor(() => (hostKeys = Docker.Said("exec", ssh, "sh", "-c", "cat /config/ssh_host_keys/ssh_host_*_key.pub")) is { Length: > 0 }, "the first bastion's host keys");
+            string home = SshHome(bastion, agentSocket, hostKeys!);
+            Environment.SetEnvironmentVariable(SshFiles.HomeVariable, home);
+            File.Delete(agentSocket);
+            agent = ChildProcesses.Start(ChildProcesses.Command("ssh-agent", ["-D", "-a", agentSocket]));
+            Ui.WaitFor(() => File.Exists(agentSocket), "ssh-agent's socket");
+            ChildResult added = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command("ssh-add", [keyFile], null, [KeyValuePair.Create("SSH_AUTH_SOCK", agentSocket)]))),
+                "ssh-add of the test's key");
+            Assert.True(added.Succeeded, $"ssh-add failed: {added.Error}");
             int published = int.Parse(Docker.Run("port", name, port.ToString(CultureInfo.InvariantCulture)).Trim().Split(':')[^1], CultureInfo.InvariantCulture);
             string connection = kind switch
             {
@@ -89,16 +112,24 @@ public sealed class DatabaseServersTests
                 _ => $"Server=127.0.0.1,{published};Initial Catalog=shop;User ID=sa;Password={Password};TrustServerCertificate=True",
             };
             Ui.WaitFor(() => Made(kind, connection), $"{image} to take connections and hold the shop's tables", TimeSpan.FromMinutes(3));
+            Certified(kind, name, connection);
             string folder = TestFolders.Create("database-server");
             TestFolders.Write(folder, "Shop.csproj", TestProjects.Console());
             TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
-            TestFolders.Write(folder, "appsettings.json", $$$"""{"ConnectionStrings":{"Shop":"{{{connection}}}"}}""");
+            // The folder names the server as "db" too, which only a tunnel reaches, as a user only a client certificate signs in as.
+            string behindDb = kind switch
+            {
+                DatabaseKind.Postgres => "Host=db;Port=5432;Database=shop;Username=certified",
+                DatabaseKind.MySql => "Server=db;Port=3306;Database=shop;User ID=certified",
+                _ => $"Server=db,1433;Initial Catalog=shop;User ID=sa;Password={Password}",
+            };
+            TestFolders.Write(folder, "appsettings.json", $$$"""{"ConnectionStrings":{"Shop":"{{{connection}}}","Behind":"{{{behindDb}}}"}}""");
             MainWindow window = Ui.OpenFolder(folder, languageServer: false);
             try
             {
                 window.ShowToolWindow(ToolWindowIds.Database);
                 Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
-                DatabaseSource source = Assert.Single(window.Database.Sources);
+                DatabaseSource source = window.Database.Sources.Single(s => s.Name == "Shop");
                 Assert.Equal(kind, source.Kind);
                 string schema = kind switch { DatabaseKind.Postgres => "public", DatabaseKind.SqlServer => "dbo", _ => string.Empty };
                 foreach (string row in (string[])["Shop", "shop", .. schema.Length > 0 ? [schema] : Array.Empty<string>(), "Tables", "products", "Columns"])
@@ -109,7 +140,7 @@ public sealed class DatabaseServersTests
                 DatabaseTests.Open(window, "Views");
                 Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == DatabaseNodeKind.View && r.Title == "cheap");
 
-                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection));
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
                 Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console is not null, "the console with its results under it");
                 window.KeyTextInput("SELECT name FROM products ORDER BY id;");
@@ -267,7 +298,7 @@ public sealed class DatabaseServersTests
                 Assert.Equal("2", Said(kind, connection, "SELECT COUNT(*) FROM items"));
 
                 // A production connection asks before an UPDATE; a read-only one still reads, through the server's own read-only session.
-                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection));
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
                 Assert.True(window.Perform(AppActions.DatabaseProduction), "Production Connection did not run");
                 Replace(window, "UPDATE products SET name = 'sencha' WHERE id = 1");
                 Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
@@ -286,7 +317,7 @@ public sealed class DatabaseServersTests
                 DatabaseConnectionDialog dialog = window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible);
                 T Field<T>(string field) where T : Control => dialog.GetVisualDescendants().OfType<T>().Single(c => c.Name == field);
                 Field<ComboBox>("DatabaseProvider").SelectedIndex = (int)kind;
-                Field<TextBox>("DatabaseConnectionName").Text = "Behind";
+                Field<TextBox>("DatabaseConnectionName").Text = "Direct";
                 Field<TextBox>("DatabaseHost").Text = "db";
                 Field<TextBox>("DatabaseName").Text = "shop";
                 Field<TextBox>("DatabaseUser").Text = kind switch { DatabaseKind.Postgres => "postgres", DatabaseKind.MySql => "root", _ => "sa" };
@@ -311,11 +342,11 @@ public sealed class DatabaseServersTests
                 ConfirmDialog trust = dialog.OwnedWindows.OfType<ConfirmDialog>().Single(d => d.IsVisible);
                 Assert.Contains("SHA256:", string.Join(" ", trust.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)), StringComparison.Ordinal);
                 Ui.ClickButton(trust, "Trust");
-                Ui.WaitFor(() => !dialog.IsVisible && window.Database.Sources.Any(s => s.Name == "Behind"), () => window.Database.Said);
-                DatabaseSource behind = window.Database.Sources.Single(s => s.Name == "Behind");
-                Assert.StartsWith("SHA256:", behind.Tunnel?.HostKey, StringComparison.Ordinal);
-                Assert.Equal(kind == DatabaseKind.Postgres ? null : SshPassword, SystemCredentials.Read(DatabaseController.CredentialService, behind.TunnelAccount));
-                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == behind.Id));
+                Ui.WaitFor(() => !dialog.IsVisible && window.Database.Sources.Any(s => s.Name == "Direct"), () => window.Database.Said);
+                DatabaseSource direct = window.Database.Sources.Single(s => s.Name == "Direct");
+                Assert.StartsWith("SHA256:", Assert.Single(direct.Tunnel!.HostKeys).Fingerprint, StringComparison.Ordinal);
+                Assert.Equal(kind == DatabaseKind.Postgres ? null : SshPassword, SystemCredentials.Read(DatabaseController.CredentialService, direct.TunnelAccount));
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == direct.Id));
                 Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is { } opened && opened != console, "a console of the connection through the bastion");
                 SqlConsole through = window.EditorArea.ActiveGroup.Console!.Console!;
@@ -330,6 +361,65 @@ public sealed class DatabaseServersTests
                 Assert.True(through.Results[0].Error is null, $"{through.Said}, running {through.Results[0].Statement}");
                 Assert.Equal("encrypted", through.Results[0].Sets[0].Cell(0, 0));
                 Assert.DoesNotContain(SshPassword, through.Said, StringComparison.Ordinal);
+
+                // A found connection takes a client certificate and a tunnel to "inner", ~/.ssh/config's bastion behind its jump host, its files untouched.
+                string written = File.ReadAllText(Path.Combine(folder, "appsettings.json"));
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Behind"));
+                Assert.True(window.Perform(AppActions.DatabaseConnectionEdit), "Edit Database Connection did not run");
+                Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "the found connection's settings");
+                dialog = window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible);
+                Assert.False(Field<TextBox>("DatabaseHost").IsEffectivelyVisible, "A found connection's host was offered for changing");
+                Field<ComboBox>("DatabaseSsl").SelectedIndex = (int)(kind == DatabaseKind.SqlServer ? SslChoice.VerifyAuthority : SslChoice.VerifyHost);
+                Field<TextBox>("DatabaseSslCertificate").Text = Path.Combine(certificates, kind == DatabaseKind.SqlServer ? "server.crt" : "ca.crt");
+                if (DatabaseSsl.TakesClientCertificate(kind))
+                {
+                    Field<TextBox>("DatabaseSslClientCertificate").Text = Path.Combine(certificates, "client.crt");
+                    Field<TextBox>("DatabaseSslClientKey").Text = Path.Combine(certificates, "client.key");
+                    Field<TextBox>("DatabaseSslKeyPassword").Text = ClientKeyPassword;
+                }
+                Field<CheckBox>("DatabaseSshTunnel").IsChecked = true;
+                Field<TextBox>("DatabaseSshHost").Text = "inner";
+                Ui.ClickButton(dialog, "Save and Connect");
+                Ui.WaitFor(() => dialog.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible) || !dialog.IsVisible,
+                    () => Field<TextBlock>("DatabaseConnectionError").Text ?? "the inner bastion's host key's question", TimeSpan.FromMinutes(1));
+                trust = dialog.OwnedWindows.OfType<ConfirmDialog>().Single(d => d.IsVisible);
+                Assert.Contains("bastion:2222 gives", string.Join(" ", trust.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)), StringComparison.Ordinal);
+                Ui.ClickButton(trust, "Trust");
+                Ui.WaitFor(() => !dialog.IsVisible, () => Field<TextBlock>("DatabaseConnectionError").Text ?? "the settings kept", TimeSpan.FromMinutes(1));
+                DatabaseSource behind = window.Database.Sources.Single(s => s.Name == "Behind");
+                Assert.NotNull(behind.Found);
+                Assert.Equal(["bastion"], behind.Tunnel!.HostKeys.Select(k => k.Host));
+                Assert.Equal(written, File.ReadAllText(Path.Combine(folder, "appsettings.json")));
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Behind"));
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is { } opened && opened != console && opened != through, "a console of the found connection");
+                SqlConsole jumped = window.EditorArea.ActiveGroup.Console!.Console!;
+                Replace(window, kind switch
+                {
+                    DatabaseKind.Postgres => "SELECT CASE WHEN s.ssl THEN 'encrypted' ELSE 'plain' END || ' as ' || current_user FROM pg_stat_ssl s WHERE s.pid = pg_backend_pid()",
+                    DatabaseKind.MySql => "SELECT CONCAT(CASE WHEN LENGTH(VARIABLE_VALUE) > 0 THEN 'encrypted' ELSE 'plain' END, ' as ', SUBSTRING_INDEX(CURRENT_USER(), '@', 1)) "
+                        + "FROM information_schema.SESSION_STATUS WHERE VARIABLE_NAME = 'Ssl_cipher'",
+                    _ => "SELECT CASE WHEN encrypt_option = 'TRUE' THEN 'encrypted' ELSE 'plain' END + ' as ' + SUSER_NAME() FROM sys.dm_exec_connections WHERE session_id = @@SPID",
+                });
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                Ui.WaitFor(() => !jumped.Running && jumped.Results.Count == 1, () => jumped.Said, TimeSpan.FromMinutes(1));
+                Assert.True(jumped.Results[0].Error is null, $"{jumped.Said}, running {jumped.Results[0].Statement}");
+                Assert.Equal(kind == DatabaseKind.SqlServer ? "encrypted as sa" : "encrypted as certified", jumped.Results[0].Sets[0].Cell(0, 0));
+
+                // Stop Statement ends a statement through the tunnel on the server, well before it would have ended itself.
+                (string sleeping, string running) = kind switch
+                {
+                    DatabaseKind.Postgres => ("SELECT pg_sleep(120)", "SELECT COUNT(*) FROM pg_stat_activity WHERE query = 'SELECT pg_sleep(120)'"),
+                    DatabaseKind.MySql => ("SELECT SLEEP(120)", "SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE INFO = 'SELECT SLEEP(120)'"),
+                    _ => ("WAITFOR DELAY '00:02:00'", "SELECT COUNT(*) FROM sys.dm_exec_requests WHERE wait_type = 'WAITFOR'"),
+                };
+                Replace(window, sleeping);
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                // Pumped, not settled: a settled wait would wait for the statement itself to end.
+                Ui.PumpUntil(() => jumped.Running && Said(kind, connection, running) == "1", $"{sleeping} running on the server", TimeSpan.FromSeconds(30));
+                Assert.True(window.Perform(AppActions.DatabaseRunStop), "Stop Statement did not run");
+                Ui.PumpUntil(() => !jumped.Running && Said(kind, connection, running) == "0", $"{sleeping} stopped on the server", TimeSpan.FromSeconds(20));
+                Assert.Equal("Stopped.", jumped.Said);
             }
             finally
             {
@@ -338,13 +428,64 @@ public sealed class DatabaseServersTests
         }
         finally
         {
-            Docker.Remove(name, ssh);
+            Environment.SetEnvironmentVariable(SshFiles.HomeVariable, runsSshHome);
+            if (agent is not null)
+            {
+                ChildProcesses.Kill(agent);
+                agent.Dispose();
+            }
+            File.Delete(agentSocket);
+            Docker.Remove(name, ssh, inner);
             Docker.Ask(["network", "rm", name]);
         }
     }
 
-    /// <summary>Writes an authority's certificate (ca.crt), and a server's for "db" alone that it signed, with its key
-    /// (server.crt, server.key), into a folder.</summary>
+    /// <summary>An SSH home of the test's own: ~/.ssh/config naming "outer", the first bastion by its published port under the
+    /// key alias "jumphost", and "inner", the second, through it; every host's keys from the test's agent; and known_hosts
+    /// knowing the first bastion's keys, so only the second's is asked about.</summary>
+    private static string SshHome(int outerPort, string agentSocket, string hostKeys)
+    {
+        string home = TestFolders.Create("ssh-home");
+        string ssh = Directory.CreateDirectory(Path.Combine(home, ".ssh")).FullName;
+        File.WriteAllText(Path.Combine(ssh, "config"), $"""
+            Host outer
+              HostName 127.0.0.1
+              Port {outerPort}
+              User passenger
+              HostKeyAlias jumphost
+            Host inner
+              HostName bastion
+              Port 2222
+              User passenger
+              ProxyJump outer
+            Host *
+              IdentityAgent "{agentSocket}"
+
+            """);
+        File.WriteAllLines(Path.Combine(ssh, "known_hosts"), hostKeys.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => line.Split(' ')).Select(key => $"[jumphost]:{outerPort} {key[0]} {key[1]}"));
+        return home;
+    }
+
+    /// <summary>A user only a client certificate signs in as: PostgreSQL's by its certificate's name, MariaDB's requiring one.</summary>
+    private static void Certified(DatabaseKind kind, string container, string connection)
+    {
+        if (kind == DatabaseKind.Postgres)
+        {
+            Docker.Run("exec", "-u", "postgres", container, "sh", "-c", "sed -i '1i hostssl all certified all cert' \"$PGDATA/pg_hba.conf\"");
+            Execute(kind, connection, "CREATE ROLE certified LOGIN");
+            Execute(kind, connection, "GRANT SELECT ON ALL TABLES IN SCHEMA public TO certified");
+            Execute(kind, connection, "SELECT pg_reload_conf()");
+        }
+        else if (kind == DatabaseKind.MySql)
+        {
+            Execute(kind, connection, "CREATE USER 'certified'@'%' REQUIRE X509");
+            Execute(kind, connection, "GRANT SELECT ON shop.* TO 'certified'@'%'");
+        }
+    }
+
+    /// <summary>Writes an authority's certificate (ca.crt), a server's for "db" alone that it signed with its key (server.crt,
+    /// server.key), and a client's for the user "certified" with its key encrypted (client.crt, client.key), into a folder.</summary>
     private static void Certify(string folder)
     {
         DateTimeOffset now = DateTimeOffset.UtcNow;
@@ -362,6 +503,15 @@ public sealed class DatabaseServersTests
         serverAsk.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, true));
         serverAsk.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.1")], false));
         using X509Certificate2 server = serverAsk.Create(authority, now.AddDays(-1), now.AddDays(29), RandomNumberGenerator.GetBytes(16));
+        using RSA clientKey = RSA.Create(2048);
+        CertificateRequest clientAsk = new("CN=certified", clientKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        clientAsk.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
+        clientAsk.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, true));
+        clientAsk.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.2")], false));
+        using X509Certificate2 client = clientAsk.Create(authority, now.AddDays(-1), now.AddDays(29), RandomNumberGenerator.GetBytes(16));
+        File.WriteAllText(Path.Combine(folder, "client.crt"), client.ExportCertificatePem() + "\n");
+        File.WriteAllText(Path.Combine(folder, "client.key"), clientKey.ExportEncryptedPkcs8PrivateKeyPem(ClientKeyPassword,
+            new PbeParameters(PbeEncryptionAlgorithm.Aes256Cbc, HashAlgorithmName.SHA256, 100_000)) + "\n");
         File.WriteAllText(Path.Combine(folder, "ca.crt"), authority.ExportCertificatePem() + "\n");
         File.WriteAllText(Path.Combine(folder, "server.crt"), server.ExportCertificatePem() + "\n");
         File.WriteAllText(Path.Combine(folder, "server.key"), serverKey.ExportPkcs8PrivateKeyPem() + "\n");
@@ -372,6 +522,11 @@ public sealed class DatabaseServersTests
     {
         using RSA key = RSA.Create(2048);
         File.WriteAllText(file, key.ExportRSAPrivateKeyPem() + "\n");
+        if (!OperatingSystem.IsWindows())
+        {
+            // ssh-add takes only a key no one else may read.
+            File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
         RSAParameters parts = key.ExportParameters(false);
         using MemoryStream blob = new();
         byte[] length = new byte[4];

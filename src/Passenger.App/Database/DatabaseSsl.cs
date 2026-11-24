@@ -17,16 +17,25 @@ public enum SslChoice
     VerifyHost,
 }
 
-/// <summary>A connection's SSL as each driver's own connection-string keys write it: PostgreSQL's SSL Mode and Root
-/// Certificate, MySQL's SslMode and SslCa, SQL Server's Encrypt, TrustServerCertificate and ServerCertificate (a file
-/// pinning the server's certificate); SQLite has none.</summary>
+/// <summary>A connection's SSL: how its server is held to it, the file it is verified by, and the client certificate and
+/// key it presents (PostgreSQL's and MySQL's; SQL Server takes none).</summary>
+public sealed record SslSettings(SslChoice Choice, string? Authority = null, string? Certificate = null, string? Key = null);
+
+/// <summary>A connection's SSL as each driver's own connection-string keys write it: PostgreSQL's SSL Mode, Root
+/// Certificate, SSL Certificate, SSL Key and SSL Password; MySQL's SslMode, SslCa, SslCert, SslKey and CertificatePassword
+/// (a password Passenger takes itself, as the driver reads only an unencrypted key's file); SQL Server's Encrypt,
+/// TrustServerCertificate and ServerCertificate (a file pinning the server's certificate); SQLite has none. A key's
+/// password is a secret part, kept as a connection's password is.</summary>
 public static class DatabaseSsl
 {
     /// <summary>The choices' words, in <see cref="SslChoice"/>'s order.</summary>
     public static readonly string[] Titles = ["As the driver does", "Off", "Required, not verified", "Verified: its certificate", "Verified: its certificate and host name"];
 
-    /// <summary>The choice a connection string makes, and the certificate file it verifies by (null for none).</summary>
-    public static (SslChoice Choice, string? Certificate) Of(DatabaseKind kind, string connection)
+    /// <summary>Whether a kind of database takes a client certificate.</summary>
+    public static bool TakesClientCertificate(DatabaseKind kind) => kind is DatabaseKind.Postgres or DatabaseKind.MySql;
+
+    /// <summary>What a connection string says of its SSL.</summary>
+    public static SslSettings Of(DatabaseKind kind, string connection)
     {
         switch (kind)
         {
@@ -40,7 +49,7 @@ public static class DatabaseSsl
                     SslMode.Require => SslChoice.Required,
                     _ => SslChoice.Driver,
                 };
-                return (pgChoice, Named(pg.RootCertificate));
+                return new SslSettings(pgChoice, Named(pg.RootCertificate), Named(pg.SslCertificate), Named(pg.SslKey));
             case DatabaseKind.MySql:
                 MySqlConnectionStringBuilder my = new(connection);
                 SslChoice myChoice = !Has(connection, "sslmode") ? SslChoice.Driver : my.SslMode switch
@@ -51,56 +60,88 @@ public static class DatabaseSsl
                     MySqlSslMode.VerifyFull => SslChoice.VerifyHost,
                     _ => SslChoice.Driver,
                 };
-                return (myChoice, Named(my.SslCa));
+                return new SslSettings(myChoice, Named(my.SslCa), Named(my.SslCert), Named(my.SslKey));
             case DatabaseKind.SqlServer:
                 SqlConnectionStringBuilder sql = new(connection);
                 SslChoice sqlChoice = !Has(connection, "encrypt") ? SslChoice.Driver
                     : sql.Encrypt == SqlConnectionEncryptOption.Optional ? SslChoice.Off
                     : sql.TrustServerCertificate ? SslChoice.Required
                     : sql.Encrypt == SqlConnectionEncryptOption.Strict ? SslChoice.VerifyHost : SslChoice.VerifyAuthority;
-                return (sqlChoice, Named(sql.ServerCertificate));
+                return new SslSettings(sqlChoice, Named(sql.ServerCertificate));
             default:
-                return (SslChoice.Driver, null);
+                return new SslSettings(SslChoice.Driver);
         }
     }
 
-    /// <summary>A connection string holding <paramref name="choice"/> and its certificate file in its driver's keys; the
-    /// driver's own choice, both keys left out.</summary>
-    public static string With(DatabaseKind kind, string connection, SslChoice choice, string? certificate)
+    /// <summary>A connection string holding <paramref name="ssl"/> in its driver's keys, its key's password given where it
+    /// is (else left as the string holds it); the driver's own choice leaves the mode and its file out.</summary>
+    public static string With(DatabaseKind kind, string connection, SslSettings ssl, string? keyPassword = null)
     {
-        string? file = string.IsNullOrWhiteSpace(certificate) ? null : certificate.Trim();
+        string? authority = Named(ssl.Authority);
+        string? certificate = ssl.Choice == SslChoice.Off ? null : Named(ssl.Certificate);
+        string? key = certificate is null ? null : Named(ssl.Key);
         switch (kind)
         {
             case DatabaseKind.Postgres:
                 NpgsqlConnectionStringBuilder pg = new(connection);
                 pg.Remove("SSL Mode");
                 pg.Remove("Root Certificate");
-                if (choice != SslChoice.Driver)
+                pg.Remove("SSL Certificate");
+                pg.Remove("SSL Key");
+                if (ssl.Choice != SslChoice.Driver)
                 {
-                    pg.SslMode = choice switch
+                    pg.SslMode = ssl.Choice switch
                     {
                         SslChoice.Off => SslMode.Disable,
                         SslChoice.Required => SslMode.Require,
                         SslChoice.VerifyAuthority => SslMode.VerifyCA,
                         _ => SslMode.VerifyFull,
                     };
-                    pg.RootCertificate = file;
+                    pg.RootCertificate = authority;
+                }
+                pg.SslCertificate = certificate;
+                pg.SslKey = key;
+                if (certificate is null)
+                {
+                    pg.Remove("SSL Password");
+                }
+                else if (keyPassword is { Length: > 0 })
+                {
+                    pg.SslPassword = keyPassword;
                 }
                 return pg.ConnectionString;
             case DatabaseKind.MySql:
                 MySqlConnectionStringBuilder my = new(connection);
                 my.Remove("SslMode");
                 my.Remove("SslCa");
-                if (choice != SslChoice.Driver)
+                my.Remove("SslCert");
+                my.Remove("SslKey");
+                if (ssl.Choice != SslChoice.Driver)
                 {
-                    my.SslMode = choice switch
+                    my.SslMode = ssl.Choice switch
                     {
                         SslChoice.Off => MySqlSslMode.None,
                         SslChoice.Required => MySqlSslMode.Required,
                         SslChoice.VerifyAuthority => MySqlSslMode.VerifyCA,
                         _ => MySqlSslMode.VerifyFull,
                     };
-                    my.SslCa = file ?? string.Empty;
+                    if (authority is not null)
+                    {
+                        my.SslCa = authority;
+                    }
+                }
+                if (certificate is not null)
+                {
+                    my.SslCert = certificate;
+                    my.SslKey = key ?? string.Empty;
+                }
+                if (certificate is null)
+                {
+                    my.Remove("CertificatePassword");
+                }
+                else if (keyPassword is { Length: > 0 })
+                {
+                    my.CertificatePassword = keyPassword;
                 }
                 return my.ConnectionString;
             case DatabaseKind.SqlServer:
@@ -108,23 +149,39 @@ public static class DatabaseSsl
                 sql.Remove("Encrypt");
                 sql.Remove("TrustServerCertificate");
                 sql.Remove("ServerCertificate");
-                if (choice != SslChoice.Driver)
+                if (ssl.Choice != SslChoice.Driver)
                 {
-                    sql.Encrypt = choice switch
+                    sql.Encrypt = ssl.Choice switch
                     {
                         SslChoice.Off => SqlConnectionEncryptOption.Optional,
                         SslChoice.VerifyHost => SqlConnectionEncryptOption.Strict,
                         _ => SqlConnectionEncryptOption.Mandatory,
                     };
-                    sql.TrustServerCertificate = choice == SslChoice.Required;
-                    if (file is not null && choice is SslChoice.VerifyAuthority or SslChoice.VerifyHost)
+                    sql.TrustServerCertificate = ssl.Choice == SslChoice.Required;
+                    if (authority is not null && ssl.Choice is SslChoice.VerifyAuthority or SslChoice.VerifyHost)
                     {
-                        sql.ServerCertificate = file;
+                        sql.ServerCertificate = authority;
                     }
                 }
                 return sql.ConnectionString;
             default:
                 return connection;
+        }
+    }
+
+    /// <summary>A MySQL connection's client certificate with its encrypted key, which Passenger reads itself, as the driver
+    /// reads only an unencrypted key's file.</summary>
+    public static X509Certificate2 ClientCertificate(string certificate, string key, string password)
+    {
+        X509Certificate2 read = X509Certificate2.CreateFromEncryptedPemFile(certificate, password, key);
+        if (!OperatingSystem.IsWindows())
+        {
+            return read;
+        }
+        // Windows' TLS takes a client certificate's key only from a store or a PKCS #12 file, not one held in memory.
+        using (read)
+        {
+            return X509CertificateLoader.LoadPkcs12(read.Export(X509ContentType.Pkcs12), null);
         }
     }
 

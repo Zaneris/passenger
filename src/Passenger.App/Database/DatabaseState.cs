@@ -20,6 +20,9 @@ public sealed record DatabaseState : IStateDocument<DatabaseState>
     /// <summary>The marks of connections the folder's files name, by <see cref="DatabaseSource.FoundKey"/>.</summary>
     public Dictionary<string, DatabaseMark> FoundMarks { get; init; } = [];
 
+    /// <summary>The SSL and tunnels given connections the folder's files name, by <see cref="DatabaseSource.FoundKey"/>.</summary>
+    public Dictionary<string, FoundSetting> FoundSettings { get; init; } = [];
+
     /// <summary>The values each console's parameters were last given, by its file and the parameter's name.</summary>
     public Dictionary<string, Dictionary<string, string>> Parameters { get; init; } = [];
 
@@ -33,20 +36,30 @@ public sealed record DatabaseState : IStateDocument<DatabaseState>
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
 
+    /// <summary>Whether a kept tunnel names a host, a port in range (0 for ssh's configuration's) and its keys.</summary>
+    private static bool Usable(SshTunnel? tunnel) => tunnel is { Host.Length: > 0, Port: >= 0 and < 65536, User: not null, HostKeys: not null };
+
     public DatabaseState Clamped() => this with
     {
         Connections = [.. (Connections ?? []).Where(c => c is { Name.Length: > 0 } && Enum.IsDefined(c.Kind))
             .Select(c => Enum.IsDefined(c.Mark) ? c : c with { Mark = DatabaseMark.None })
-            .Select(c => c.Tunnel is { Host.Length: > 0, User.Length: > 0, Port: > 0 and < 65536 } ? c : c with { Tunnel = null }).DistinctBy(c => c.Id).Take(200)],
+            .Select(c => Usable(c.Tunnel) ? c : c with { Tunnel = null }).DistinctBy(c => c.Id).Take(200)],
         Consoles = (Consoles ?? []).Where(c => c.Key.Length > 0).Take(500).ToDictionary(),
         ManualCommit = [.. (ManualCommit ?? []).Where(p => p is { Length: > 0 }).Distinct().Take(500)],
         FoundMarks = (FoundMarks ?? []).Where(m => m.Key.Length > 0 && m.Value != DatabaseMark.None && Enum.IsDefined(m.Value)).Take(500).ToDictionary(),
+        FoundSettings = (FoundSettings ?? []).Where(f => f.Key.Length > 0 && f.Value is not null)
+            .Select(f => KeyValuePair.Create(f.Key, f.Value with { Over = f.Value.Over ?? string.Empty, Tunnel = Usable(f.Value.Tunnel) ? f.Value.Tunnel : null }))
+            .Where(f => f.Value.Over.Length > 0 || f.Value.Tunnel is not null).Take(500).ToDictionary(),
         Parameters = (Parameters ?? []).Where(p => p.Key.Length > 0 && p.Value is not null).Take(500)
             .ToDictionary(p => p.Key, p => p.Value.Where(v => v.Key.Length > 0 && v.Value is not null).Take(100).ToDictionary()),
         History = (History ?? []).Where(h => h.Key.Length > 0 && h.Value is not null).Take(200)
             .ToDictionary(h => h.Key, h => h.Value.Where(r => r is { Statement.Length: > 0 and <= LongestRun, Outcome: not null }).Take(MostRuns).ToList()),
     };
 }
+
+/// <summary>A connection the folder's files name given SSL settings of its own (connection string keys laid over its own,
+/// without their secrets) and a tunnel.</summary>
+public sealed record FoundSetting(string Over, SshTunnel? Tunnel);
 
 /// <summary>A statement or batch run on a connection, when, and what it came to.</summary>
 public sealed record SqlRan(string Statement, DateTime At, string Outcome, bool Failed = false);

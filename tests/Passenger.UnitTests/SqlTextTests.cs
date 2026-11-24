@@ -7,8 +7,9 @@ namespace Passenger.UnitTests;
 /// comment or a dollar quote ends nothing, a routine's body is one statement, and SQL Server's GO ends a batch; what each
 /// run does to its database, which read-only and production connections hold it to; the parameters each database's driver
 /// takes in it; the names its connection's schema does not hold; each database's plan read as one tree; its layout by
-/// Reformat Code, comments and strings kept; rows written as each database's inserts; and what an import makes of a file's
-/// text: a new column's type, a value of a column's type, and which column each of the file's goes into.</summary>
+/// Reformat Code, comments and strings kept; rows written as each database's inserts; what an import makes of a file's
+/// text: a new column's type, a value of a column's type, and which column each of the file's goes into; and a tunnel's
+/// host as ssh's configuration and known hosts files say of it.</summary>
 public sealed class SqlTextTests
 {
     [Fact]
@@ -215,5 +216,43 @@ public sealed class SqlTextTests
             ("by name, case aside, a column the table lacks passed over", ["NAME", "id", "extra"], true, [1, 0, null]),
             ("a file naming none by place, a name matched first", ["column1", "name", "column3"], false, [0, 1, 2]),
         }, row => Assert.Equal(row.Into, ImportTypes.Mapped(row.File, ["id", "name", "price"], row.Named)), row => row.Holds);
+        Cases.Each(new (string Holds, string Alias, string Config, string Said)[]
+        {
+            ("the first value wins, IdentityFile's add up, and %-tokens and ~ are expanded", "bastion",
+                "Host bastion\n  HostName %h.example.com\n  Port=2200\n  IdentityFile ~/.ssh/one\nHost *\n  User everyone\n  Port 22\n  IdentityFile %d/.ssh/two_%r\n",
+                "bastion.example.com:2200 as everyone; keys /h/.ssh/one, /h/.ssh/two_everyone; jumps ; agent "),
+            ("a pattern written with ! takes a host out, Match host reads its HostName, and a quoted value keeps its space; ssh's usual keys", "db.internal",
+                "Host db.internal\n  HostName 10.0.0.5\nHost *.internal !db.internal\n  User inside\nMatch host 10.*\n  IdentityAgent \"/run/agent sock\"\n",
+                "10.0.0.5:22 as me; keys /h/.ssh/id_rsa, /h/.ssh/id_ecdsa, /h/.ssh/id_ed25519; jumps ; agent /run/agent sock"),
+            ("Include's files are read in place, relative to ~/.ssh, ProxyJump kept as written", "app",
+                "# hosts\nInclude conf.d/*\n", "app:22 as me; keys /h/.ssh/id_rsa, /h/.ssh/id_ecdsa, /h/.ssh/id_ed25519; jumps alice@jump1:2201, jump2; agent "),
+        }, row =>
+        {
+            Dictionary<string, string> files = new() { ["/h/.ssh/config"] = row.Config, ["/h/.ssh/conf.d/a"] = "Host app\n  ProxyJump alice@jump1:2201,jump2\n" };
+            static string Slashed(string path) => path.Replace('\\', '/');
+            SshHost host = SshConfig.Resolve(row.Alias, "/h/.ssh/config", "/h", "me", path => files.GetValueOrDefault(Slashed(path)),
+                pattern => [.. files.Keys.Where(f => Path.GetDirectoryName(Slashed(f))!.Replace('\\', '/') == Path.GetDirectoryName(Slashed(pattern))!.Replace('\\', '/')
+                    && SshConfig.Wildcard(Path.GetFileName(f), Path.GetFileName(Slashed(pattern))))]);
+            Assert.Equal(row.Said, Slashed($"{host.HostName}:{host.Port} as {host.User}; keys {string.Join(", ", host.IdentityFiles)}; jumps {string.Join(", ", host.Jumps)}; agent {host.IdentityAgent}"));
+        }, row => row.Holds);
+        Cases.Each(new (string Written, string Host, string? User, int? Port)[]
+        {
+            ("alice@jump1:2201", "jump1", "alice", 2201),
+            ("ssh://bob@[::1]:22", "::1", "bob", 22),
+            ("plain", "plain", null, null),
+        }, row => Assert.Equal((row.Host, row.User, row.Port), SshConfig.Jump(row.Written)), row => row.Written);
+        byte[] key = [0, 0, 0, 11, .. "ssh-ed25519"u8, 0, 0, 0, 4, 1, 2, 3, 4];
+        string known = Convert.ToBase64String(key);
+        string other = Convert.ToBase64String([.. key[..^1], 9]);
+        byte[] salt = [7, 7, 7, 7];
+        string hashed = $"|1|{Convert.ToBase64String(salt)}|{Convert.ToBase64String(System.Security.Cryptography.HMACSHA1.HashData(salt, "[jump]:2222"u8))}";
+        Cases.Each(new (string Holds, string Text, string Host, int Port, KnownHostKey Said)[]
+        {
+            ("a line's names on port 22 know its key", $"# keys\nother.example,10.0.0.1 ssh-ed25519 {known}\n", "10.0.0.1", 22, KnownHostKey.Known),
+            ("a bracketed name off port 22 with another key of the kind is changed", $"[jump]:2222 ssh-ed25519 {other}", "jump", 2222, KnownHostKey.Changed),
+            ("a hashed name knows its key", $"{hashed} ssh-ed25519 {known}", "jump", 2222, KnownHostKey.Known),
+            ("a key revoked is refused, though a line knows it", $"j* ssh-ed25519 {known}\n@revoked * ssh-ed25519 {known}", "jump", 22, KnownHostKey.Revoked),
+            ("another kind's key leaves the host unknown", $"jump ssh-rsa {other}", "jump", 22, KnownHostKey.Unknown),
+        }, row => Assert.Equal(row.Said, KnownHosts.Judge(row.Text, row.Host, row.Port, "ssh-ed25519", key)), row => row.Holds);
     }
 }

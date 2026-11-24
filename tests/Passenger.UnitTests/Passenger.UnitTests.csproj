@@ -53,6 +53,8 @@
     <Compile Include="../../src/Passenger.App/Database/SqlPlans.cs" Link="App/SqlPlans.cs" />
     <Compile Include="../../src/Passenger.App/Database/SqlInserts.cs" Link="App/SqlInserts.cs" />
     <Compile Include="../../src/Passenger.App/Database/ImportTypes.cs" Link="App/ImportTypes.cs" />
+    <Compile Include="../../src/Passenger.App/Database/SshConfig.cs" Link="App/SshConfig.cs" />
+    <Compile Include="../../src/Passenger.App/Database/KnownHosts.cs" Link="App/KnownHosts.cs" />
     <Compile Include="../../src/Passenger.App/Containers/ComposeFiles.cs" Link="App/ComposeFiles.cs" />
     <Compile Include="../../src/Passenger.App/Containers/ComposeProjectFile.cs" Link="App/ComposeProjectFile.cs" />
     <Compile Include="../../src/Passenger.App/Containers/ServiceUrls.cs" Link="App/ServiceUrls.cs" />

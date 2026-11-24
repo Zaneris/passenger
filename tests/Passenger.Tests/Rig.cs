@@ -184,6 +184,8 @@ public sealed class TestRun : IAsyncDisposable
         OwnEnvironment.Set(GitVariables.ConfigCount, null);
         // Nor the person's ssh-agent, which ssh-keygen asks first for the key a commit is signed with.
         OwnEnvironment.Set("SSH_AUTH_SOCK", null);
+        // Nor the person's ssh configuration, keys and known hosts: a database's tunnel reads the run's empty SSH home.
+        Environment.SetEnvironmentVariable(Passenger.App.Database.SshFiles.HomeVariable, Directory.CreateDirectory(Path.Combine(Root, "ssh-home")).FullName);
         // Nor the person's GnuPG keyring and agent: gpg keeps a signing test's keys in the run's.
         string gnupg = Path.Combine(Root, "gnupg");
         if (OperatingSystem.IsWindows())

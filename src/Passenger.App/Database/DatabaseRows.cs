@@ -25,8 +25,20 @@ public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folde
     /// <summary>The account the system's credential store keeps its secret parts under.</summary>
     public string Account => Id.ToString("D", CultureInfo.InvariantCulture);
 
+    /// <summary>The account its own settings' secrets are kept under, the same each time: a found connection's by its
+    /// folder and <see cref="FoundKey"/>, as its id is new each time the folder's files are read.</summary>
+    public string SettingsAccount => Found is null ? Account : "found-" + Passenger.Core.FileNames.Hash(Folder + "\n" + FoundKey, 32);
+
     /// <summary>The account the system's credential store keeps its SSH tunnel's password or key passphrase under.</summary>
-    public string TunnelAccount => Account + ".ssh";
+    public string TunnelAccount => SettingsAccount + ".ssh";
+
+    /// <summary>The account the secret parts of a found connection's <see cref="Over"/> are kept under.</summary>
+    public string OverAccount => SettingsAccount + ".ssl";
+
+    /// <summary>A found connection's own settings laid over the string its folder's files give (its SSL, as connection string
+    /// keys): as kept, without their secrets, which are kept under <see cref="OverAccount"/>; as the connection dialog gives
+    /// them, with the secrets it was given; empty for none.</summary>
+    internal string Over { get; init; } = string.Empty;
 
     /// <summary>Whether what runs on it may change it freely, never (read-only), or only once the person agrees (production).</summary>
     public DatabaseMark Mark { get; init; }

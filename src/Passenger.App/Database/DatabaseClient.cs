@@ -1,6 +1,8 @@
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using MySqlConnector;
@@ -25,12 +27,14 @@ internal static class DatabaseClient
         string whole = source.ConnectionString;
         if (source.SecretKept && SystemCredentials.Read(DatabaseController.CredentialService, source.Account) is { Length: > 0 } secret)
         {
-            DbConnectionStringBuilder parts = new() { ConnectionString = secret };
-            foreach (string key in parts.Keys)
-            {
-                ContainerSecrets.Mark(Convert.ToString(parts[key], CultureInfo.InvariantCulture) ?? string.Empty);
-            }
+            MarkSecrets(secret);
             whole = KeptConnection.Joined(source.Kind, whole, secret);
+        }
+        if (source.Over.Length > 0)
+        {
+            string? overSecret = SystemCredentials.Read(DatabaseController.CredentialService, source.OverAccount);
+            MarkSecrets(overSecret);
+            whole = DatabaseKinds.LaidOver(source.Kind, whole, KeptConnection.Joined(source.Kind, source.Over, overSecret));
         }
         string? through = null;
         if (source.Tunnel is { } tunnel && source.Kind != DatabaseKind.Sqlite)
@@ -81,15 +85,58 @@ internal static class DatabaseClient
     private static MySqlConnection MySql(string whole, string? through)
     {
         MySqlConnectionStringBuilder my = new(whole) { Pooling = false, AllowUserVariables = true };
-        if (through is null || my.SslMode is not (MySqlSslMode.VerifyCA or MySqlSslMode.VerifyFull))
+        X509Certificate2? client = null;
+        if (my is { SslCert.Length: > 0, SslKey.Length: > 0, CertificatePassword.Length: > 0, CertificateFile.Length: 0 })
         {
-            return new MySqlConnection(my.ConnectionString);
+            try
+            {
+                client = DatabaseSsl.ClientCertificate(my.SslCert, my.SslKey, my.CertificatePassword);
+            }
+            catch (CryptographicException unread)
+            {
+                throw new IOException($"The client certificate {Path.GetFileName(my.SslCert)} could not be read with its key: {unread.Message}", unread);
+            }
+            my.SslCert = string.Empty;
+            my.SslKey = string.Empty;
+            my.CertificatePassword = string.Empty;
         }
-        string authority = my.SslCa;
-        string? named = my.SslMode == MySqlSslMode.VerifyFull ? through : null;
-        my.SslMode = MySqlSslMode.Required;
-        my.SslCa = string.Empty;
-        return new MySqlConnection(my.ConnectionString) { RemoteCertificateValidationCallback = (_, certificate, _, _) => DatabaseSsl.Verified(certificate, authority, named) };
+        string? authority = null;
+        string? named = null;
+        if (through is not null && my.SslMode is MySqlSslMode.VerifyCA or MySqlSslMode.VerifyFull)
+        {
+            authority = my.SslCa;
+            named = my.SslMode == MySqlSslMode.VerifyFull ? through : null;
+            my.SslMode = MySqlSslMode.Required;
+            my.SslCa = string.Empty;
+        }
+        MySqlConnection connection = new(my.ConnectionString);
+        if (authority is not null)
+        {
+            connection.RemoteCertificateValidationCallback = (_, certificate, _, _) => DatabaseSsl.Verified(certificate, authority, named);
+        }
+        if (client is not null)
+        {
+            connection.ProvideClientCertificatesCallback = certificates =>
+            {
+                certificates.Add(client);
+                return ValueTask.CompletedTask;
+            };
+        }
+        return connection;
+    }
+
+    /// <summary>Marks each part of a connection string's secret parts, so no message says them.</summary>
+    private static void MarkSecrets(string? secret)
+    {
+        if (secret is not { Length: > 0 })
+        {
+            return;
+        }
+        DbConnectionStringBuilder parts = new() { ConnectionString = secret };
+        foreach (string key in parts.Keys)
+        {
+            ContainerSecrets.Mark(Convert.ToString(parts[key], CultureInfo.InvariantCulture) ?? string.Empty);
+        }
     }
 
     internal static string Quote(DatabaseKind kind, string name) => SqlText.QuotedName(kind, name);
