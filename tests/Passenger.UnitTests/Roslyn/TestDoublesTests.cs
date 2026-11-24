@@ -109,7 +109,58 @@ public sealed class TestDoublesTests
         ("a class's fake passes its constructor on, overrides its abstract and virtual members and says it keeps the rest its own", ClassAsync),
         ("a generic interface's fake keeps its type parameters and their constraints", GenericAsync),
         ("Create Fake writes the fake into the test project's Fakes folder, and refuses a second", CreateAsync),
-        ("a sealed or static class is offered with its seam, and a struct, a record, an exception or an attribute is offered nothing", OfferedAsync));
+        ("a sealed or static class is offered with its seam, and a struct, a record, an exception or an attribute is offered nothing", OfferedAsync),
+        ("a call's missing arguments are filled with doubles of each library its project references, and of none it does not", FillsAsync));
+
+    /// <summary>A library's stand-in, its double maker as the library declares it, compiled as an assembly of its name.</summary>
+    private static readonly (string Name, string Code)[] Libraries =
+    [
+        ("NSubstitute", "namespace NSubstitute;\n\npublic static class Substitute\n{\n    public static T For<T>(params object[] arguments) where T : class => null!;\n}\n"),
+        ("Moq", "namespace Moq;\n\npublic class Mock\n{\n    public static T Of<T>() where T : class => null!;\n}\n"),
+    ];
+
+    private static async Task FillsAsync()
+    {
+        const string Test = """
+            using System;
+            using Shop;
+
+            static class Uses
+            {
+                public static object Made() => new Greeting("hi");
+            }
+
+            public sealed class Greeting(string word, IClock clock, Store store, Func<int> next, int times)
+            {
+            }
+            """;
+        using AdhocWorkspace workspace = Shop(Libraries);
+        Document test = Project(workspace, "Shop.Tests").AddDocument("Uses.cs", Test, filePath: "/shop/Shop.Tests/Uses.cs");
+        Assert.True(workspace.TryApplyChanges(test.Project.Solution));
+        test = workspace.CurrentSolution.GetDocument(test.Id)!;
+        Place call = PlaceIn(Test, "\"hi\"");
+        Assert.Equal(["NSubstitute", "Moq"], (await TestDoubles.OfferedAsync(test, new DoublesAsked(call, [Tests]), Cancel)).Libraries);
+
+        Refactored filled = await TestDoubles.FillAsync(test, new ArgumentsAsked(call, "NSubstitute"), Cancel);
+        Assert.Null(filled.Problem);
+        Solution after = workspace.CurrentSolution;
+        foreach (FileChange change in filled.Changes)
+        {
+            SourceText before = await after.GetDocument(after.GetDocumentIdsWithFilePath(change.Path)[0])!.GetTextAsync(Cancel);
+            after = after.WithDocumentText(after.GetDocumentIdsWithFilePath(change.Path)[0], before.WithChanges(change.Edits.Select(e =>
+                new TextChange(before.Lines.GetTextSpan(new LinePositionSpan(new LinePosition(e.Start.Line, e.Start.Character), new LinePosition(e.End.Line, e.End.Character))), e.Text))));
+        }
+        string written = (await after.GetDocument(test.Id)!.GetTextAsync(Cancel)).ToString();
+        Assert.True(written.Contains("using NSubstitute;", StringComparison.Ordinal)
+            && written.Contains("new Greeting(\"hi\", Substitute.For<IClock>(), Substitute.For<Store>(), Substitute.For<Func<int>>(), default)", StringComparison.Ordinal),
+            $"the call filled reads\n{written}");
+        Diagnostic[] errors = [.. (await after.GetProject(test.Project.Id)!.GetCompilationAsync(Cancel))!.GetDiagnostics(Cancel).Where(d => d.Severity == DiagnosticSeverity.Error)];
+        Assert.True(errors.Length == 0, $"the filled call did not compile: {string.Join("; ", errors.Select(e => e.ToString()))}\n{written}");
+
+        using AdhocWorkspace bare = Shop([]);
+        Document unreferenced = Project(bare, "Shop.Tests").AddDocument("Uses.cs", Test, filePath: "/shop/Shop.Tests/Uses.cs");
+        Assert.Empty((await TestDoubles.OfferedAsync(unreferenced, new DoublesAsked(call, [Tests]), Cancel)).Libraries);
+    }
 
     private static async Task InterfaceAsync()
     {
@@ -242,10 +293,12 @@ public sealed class TestDoublesTests
     }
 
     /// <summary>The place of the last word of a declaration in the library's code, a letter into it.</summary>
-    private static Place PlaceOf(string declared)
+    private static Place PlaceOf(string declared) => PlaceIn(Code, declared, declared.LastIndexOf(' ') + 2);
+
+    /// <summary>The place a way into the first of some text in a file's.</summary>
+    private static Place PlaceIn(string file, string text, int into = 1)
     {
-        int at = Code.IndexOf(declared, StringComparison.Ordinal) + declared.LastIndexOf(' ') + 2;
-        LinePosition position = SourceText.From(Code).Lines.GetLinePosition(at);
+        LinePosition position = SourceText.From(file).Lines.GetLinePosition(file.IndexOf(text, StringComparison.Ordinal) + into);
         return new Place(position.Line, position.Character);
     }
 
@@ -253,15 +306,26 @@ public sealed class TestDoublesTests
 
     private static Project Project(AdhocWorkspace workspace, string name) => workspace.CurrentSolution.Projects.Single(p => p.Name == name);
 
-    private static AdhocWorkspace Shop()
+    /// <summary>The library and its test project, which references the libraries' stand-ins given.</summary>
+    private static AdhocWorkspace Shop((string Name, string Code)[]? libraries = null)
     {
         AdhocWorkspace workspace = new();
         ProjectId shop = Add(workspace, "Shop", Library, []);
-        workspace.AddDocument(DocumentInfo.Create(DocumentId.CreateNewId(shop), "Code.cs", filePath: "/shop/Shop/Code.cs",
-            loader: TextLoader.From(TextAndVersion.Create(SourceText.From(Code), VersionStamp.Create()))));
-        Add(workspace, "Shop.Tests", Tests, [new ProjectReference(shop)]);
+        AddCode(workspace, shop, "/shop/Shop/Code.cs", Code);
+        List<ProjectReference> references = [new ProjectReference(shop)];
+        foreach ((string name, string code) in libraries ?? [])
+        {
+            ProjectId library = Add(workspace, name, $"/libraries/{name}/{name}.csproj", []);
+            AddCode(workspace, library, $"/libraries/{name}/{name}.cs", code);
+            references.Add(new ProjectReference(library));
+        }
+        Add(workspace, "Shop.Tests", Tests, references);
         return workspace;
     }
+
+    private static void AddCode(AdhocWorkspace workspace, ProjectId project, string path, string code) =>
+        workspace.AddDocument(DocumentInfo.Create(DocumentId.CreateNewId(project), Path.GetFileName(path), filePath: path,
+            loader: TextLoader.From(TextAndVersion.Create(SourceText.From(code), VersionStamp.Create()))));
 
     private static ProjectId Add(AdhocWorkspace workspace, string name, string path, IReadOnlyList<ProjectReference> references)
     {

@@ -606,8 +606,10 @@ public static class AppActions
     public const string CompareClones = "app.clones.compare";
     public const string ExtractClones = "app.clones.extractMethod";
 
-    // Test doubles, which Rider's keymaps give no keys: a fake of the type at the caret written into a test project.
+    // Test doubles, which Rider's keymaps give no keys: a fake of the type at the caret written into a test project, and a
+    // call's missing arguments filled with the doubles of the mocking library its project references.
     public const string CreateFake = "app.code.createFake";
+    public const string FillArgumentsWithDoubles = "app.code.fillArgumentsWithDoubles";
 
     // The Dependency Map window at the caret, the Explorer's row or the solution, which Rider's keymaps give no keys.
     public const string ShowDependencyMap = "app.showDependencyMap";

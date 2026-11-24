@@ -8,8 +8,9 @@ using Passenger.Text;
 namespace Passenger.App;
 
 /// <summary>Test doubles: Create Fake writes a fake of the interface or class whose name the caret is on into a test project
-/// that sees it, offered among Show Context Actions for each such project, one command of global Undo; a sealed or static
-/// class of the solution's own is offered with the seam a fake needs, by the refactorings' titles.</summary>
+/// that sees it, offered among Show Context Actions for each such project, one command of global Undo, a sealed or static
+/// class of the solution's own offered with the seam a fake needs, by the refactorings' titles; Fill Arguments with Doubles
+/// fills a call's missing arguments with doubles of a mocking library its project references, never one it does not.</summary>
 public partial class MainWindow
 {
     private void AddTestDoubles()
@@ -19,6 +20,12 @@ public partial class MainWindow
             WhyNot = context => WhyNoDoubles(context) ?? (TestProjects().Count == 0 ? Refusals.NoTestProject : null),
             Menus = [new MenuPlace("Code", 4, 0)],
             Words = ["stub", "test double", "mock", "isolate"],
+        });
+        actions.Add(new IdeAction(AppActions.FillArgumentsWithDoubles, "Fill Arguments with Doubles", "Code", _ => IdeErrors.Observe(DoublesAtCaretAsync(fakes: false)))
+        {
+            WhyNot = context => WhyNoDoubles(context) ?? context.ReadOnlyWhy,
+            Menus = [new MenuPlace("Code", 4, 1)],
+            Words = ["mock", "substitute", "fake", "NSubstitute", "Moq", "FakeItEasy"],
         });
     }
 
@@ -41,7 +48,8 @@ public partial class MainWindow
     }
 
     /// <summary>The test doubles offered at an offset of a C# file the server answers for: a fake for each test project that
-    /// sees the type there, or the seam a sealed or static class of the solution's own needs, which refuses saying so.</summary>
+    /// sees the type there, or the seam a sealed or static class of the solution's own needs, which refuses saying so; and,
+    /// in a call missing arguments, a fill for each mocking library its project references.</summary>
     private async Task<(IReadOnlyList<EditorFix> Fakes, IReadOnlyList<EditorFix> Fills)> DoubleFixesAsync(OpenDocument file, int offset)
     {
         if (file.Language != Languages.Language.CSharp || session.CSharp is not { IsReady: true } csharp || csharp.For(file)?.Lsp is not { } lsp)
@@ -58,7 +66,16 @@ public partial class MainWindow
             // The fixes the server offers itself are asked next, and say why where it fails.
             return ([], []);
         }
-        return (FakeFixes(file, offered, new TextRange(offset, 0)), []);
+        TextRange here = new(offset, 0);
+        string fill = TitleOf(AppActions.FillArgumentsWithDoubles);
+        IReadOnlyList<EditorFix> fills = file.ReadOnlyWhy is not null ? [] : [.. offered.Libraries.Select(library =>
+            new EditorFix(offered.Libraries.Count == 1 ? fill : $"{fill} of {library}", library, here, string.Empty)
+            {
+                Elsewhere = (range, patience) => Assist.Actions.MakeAsync(fill, file, range.Start,
+                    now => now.ExtensionAsync<Refactored>(Handlers.FillArguments, new ArgumentsAsked(now.PlaceOf(range.Start), library)),
+                    _ => $"Filled the call's missing arguments with {library}'s doubles", patience),
+            })];
+        return (FakeFixes(file, offered, here), fills);
     }
 
     private IReadOnlyList<EditorFix> FakeFixes(OpenDocument file, DoublesOffered offered, TextRange here)
@@ -90,8 +107,8 @@ public partial class MainWindow
         })];
     }
 
-    /// <summary>Create Fake from its keys or a menu: the one offered at the caret made, a list where there are several test
-    /// projects, refused saying why where none is offered.</summary>
+    /// <summary>Create Fake, or Fill Arguments with Doubles, from its keys or a menu: the one offered at the caret made, a
+    /// list where there are several (test projects, or libraries), refused saying why where none is offered.</summary>
     private async Task DoublesAtCaretAsync(bool fakes)
     {
         if (Editors.Active is not { } file)
@@ -107,13 +124,13 @@ public partial class MainWindow
         switch (fixes.Count)
         {
             case 0:
-                Refuse(Refusals.NoFakeHere);
+                Refuse(fakes ? Refusals.NoFakeHere : Refusals.NothingToFill);
                 break;
             case 1:
                 await Assist.Actions.ApplyOwnFix(file, fixes[0]);
                 break;
             default:
-                Assist.Actions.ShowOwnFixes(TitleOf(AppActions.CreateFake), file, fixes);
+                Assist.Actions.ShowOwnFixes(TitleOf(fakes ? AppActions.CreateFake : AppActions.FillArgumentsWithDoubles), file, fixes);
                 break;
         }
     }

@@ -68,6 +68,7 @@ public static class Handlers
     public const string LayerChecks = "Passenger.Roslyn.Extension.LayerChecks";
     public const string TestDoublesOffered = "Passenger.Roslyn.Extension.TestDoublesOffered";
     public const string CreateFake = "Passenger.Roslyn.Extension.CreateFake";
+    public const string FillArguments = "Passenger.Roslyn.Extension.FillArguments";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -77,7 +78,7 @@ public static class Handlers
         ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames, GeneratedMembers,
         MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover,
         CompletionCall, StepBindings, EditorConfigKeys, EditorConfigValues, Signposts, CodeClones, ExtractClones, Dependencies, DependencyAt, LayerChecks,
-        TestDoublesOffered, CreateFake,
+        TestDoublesOffered, CreateFake, FillArguments,
     ];
 }
 

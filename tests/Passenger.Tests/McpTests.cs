@@ -76,7 +76,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     {
         await Flow.StepApartAsync("an agents run of a passing test after a failure answers no failure of a test it did not run", () => new McpTests(restored), t => t.An_agents_run_of_a_passing_test_after_a_failure_answers_no_failure_of_a_test_it_did_not_run());
         await Flow.StepApartAsync("an agents run with coverage answers what its tests ran of the code and each files lines never run", () => new McpTests(restored), t => t.An_agents_run_with_coverage_answers_what_its_tests_ran_of_the_code_and_each_files_lines_never_run());
-        await Flow.StepApartAsync("an agent makes a fake of a dependency through a code action and a test using it runs green", () => new McpTests(restored), t => t.An_agent_makes_a_fake_of_a_dependency_through_a_code_action_and_a_test_using_it_runs_green());
+        await Flow.StepApartAsync("an agent makes a fake of a dependency through a code action and fills a calls arguments with its mocking librarys doubles and tests using them run green", () => new McpTests(restored), t => t.An_agent_makes_a_fake_of_a_dependency_and_fills_a_calls_arguments_with_its_mocking_librarys_doubles_and_tests_using_them_run_green());
         await Flow.StepApartAsync("an agents unit test actions answer what the run came to", () => new McpTests(restored), t => t.An_agents_unit_test_actions_answer_what_the_run_came_to());
         await Flow.StepApartAsync("an agents test written and run at once by its classs name runs and its failure is told", () => new McpTests(restored), t => t.An_agents_test_written_and_run_at_once_by_its_classs_name_runs_and_its_failure_is_told());
         await Flow.StepApartAsync("an agents run of a failing test that wrote 200000 lines answers its last lines and says the rest was left out", () => new McpTests(restored), t => t.An_agents_run_of_a_failing_test_that_wrote_200000_lines_answers_its_last_lines_and_says_the_rest_was_left_out());
@@ -600,8 +600,10 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent's code_actions at an interface's name offers Create Fake into the test project that sees it, and at a
     /// sealed class the same action, refused saying the seam it needs; apply_code_action writes the fake into the test
-    /// project's Fakes folder, and tests_run runs green the tests that stand it in for the clock (#2087).</summary>
-    private async Task An_agent_makes_a_fake_of_a_dependency_through_a_code_action_and_a_test_using_it_runs_green()
+    /// project's Fakes folder, and tests_run runs green the tests that stand it in for the clock. In a call missing the
+    /// clock, Fill Arguments with Doubles writes a double of the mocking library the test project references (a stand-in
+    /// of NSubstitute's, a proxy answering defaults), which a test runs green with too (#2087).</summary>
+    private async Task An_agent_makes_a_fake_of_a_dependency_and_fills_a_calls_arguments_with_its_mocking_librarys_doubles_and_tests_using_them_run_green()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-fake-"));
         DeleteAtEnd(folder);
@@ -614,8 +616,11 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
                 "    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n" +
                 $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
                 $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n" +
-                "  <ItemGroup>\n    <ProjectReference Include=\"../Shop/Shop.csproj\" />\n  </ItemGroup>\n</Project>\n");
-            TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Shop/Shop.csproj\" />\n  <Project Path=\"Shop.Tests/Shop.Tests.csproj\" />\n</Solution>\n");
+                "  <ItemGroup>\n    <ProjectReference Include=\"../Shop/Shop.csproj\" />\n    <ProjectReference Include=\"../NSubstitute/NSubstitute.csproj\" />\n  </ItemGroup>\n</Project>\n");
+            TestFolders.Write(folder, "NSubstitute/NSubstitute.csproj", TestProjects.Library("<Nullable>enable</Nullable>"));
+            TestFolders.Write(folder, "NSubstitute/Substitute.cs", SubstituteStandIn);
+            TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Shop/Shop.csproj\" />\n  <Project Path=\"Shop.Tests/Shop.Tests.csproj\" />\n" +
+                "  <Project Path=\"NSubstitute/NSubstitute.csproj\" />\n</Solution>\n");
             await Restore.RunAsync(Path.Combine(folder, "Shop.slnx"));
         }, folder);
         await using McpClient client = await Start(["--mcp", folder]);
@@ -633,7 +638,39 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         TestFolders.Write(folder, "Shop.Tests/GreeterTests.cs", GreeterTests);
         JsonElement run = await Call(client, McpTools.TestsRun);
         Assert.StartsWith("Tests passed: 2, failed: 0 of 2", run.GetProperty("summary").GetString(), StringComparison.Ordinal);
+
+        TestFolders.Write(folder, "Shop.Tests/SubstitutedTests.cs",
+            "using Xunit;\n\nnamespace Shop.Tests;\n\npublic class SubstitutedTests\n{\n    [Fact]\n    public void Greets_at_midnight()\n    {\n" +
+            "        Assert.Equal(\"Good morning, Ada\", new Greeter().Greet(\"Ada\"));\n    }\n}\n");
+        Dictionary<string, object?> call = new() { ["path"] = "Shop.Tests/SubstitutedTests.cs", ["line"] = 10, ["column"] = 55 };
+        string[] fills = [.. (await Call(client, McpTools.CodeActions, call)).EnumerateArray().Select(a => a.GetString()!)];
+        Assert.True(fills.FirstOrDefault() == "Fill Arguments with Doubles [quickfix]", $"code_actions in the call missing the clock offered {string.Join("; ", fills)}");
+        await Call(client, McpTools.ApplyCodeAction, new(call) { ["title"] = "Fill Arguments with Doubles" });
+        string filled = File.ReadAllText(Path.Combine(folder, "Shop.Tests", "SubstitutedTests.cs"));
+        Assert.True(filled.StartsWith("using NSubstitute;", StringComparison.Ordinal) && filled.Contains("new Greeter(Substitute.For<IClock>())", StringComparison.Ordinal),
+            $"the call filled reads\n{filled}");
+        JsonElement again = await Call(client, McpTools.TestsRun);
+        Assert.StartsWith("Tests passed: 3, failed: 0 of 3", again.GetProperty("summary").GetString(), StringComparison.Ordinal);
     }
+
+    /// <summary>A stand-in of NSubstitute's Substitute.For, whose doubles answer every call with its type's default.</summary>
+    private const string SubstituteStandIn = """
+        using System.Reflection;
+
+        namespace NSubstitute;
+
+        public static class Substitute
+        {
+            public static T For<T>(params object[] arguments) where T : class => DispatchProxy.Create<T, Answers>();
+        }
+
+        public class Answers : DispatchProxy
+        {
+            protected override object? Invoke(MethodInfo? method, object?[]? args) =>
+                method?.ReturnType is { IsValueType: true } type && type != typeof(void) ? System.Activator.CreateInstance(type) : null;
+        }
+
+        """;
 
     /// <summary>A greeter that reads the time of day through a clock, and a calendar no fake can stand in for.</summary>
     internal const string ClockedGreeter = """

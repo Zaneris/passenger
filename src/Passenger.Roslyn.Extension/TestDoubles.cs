@@ -18,15 +18,17 @@ internal static partial class TestDoubles
     public static async Task<DoublesOffered> OfferedAsync(Document document, DoublesAsked asked, CancellationToken cancel)
     {
         int offset = await Changes.OffsetAsync(document, asked.At, cancel).ConfigureAwait(false);
+        IReadOnlyList<string> libraries = await ToFillAsync(document, offset, cancel).ConfigureAwait(false) is null ? []
+            : Libraries((await document.Project.GetCompilationAsync(cancel).ConfigureAwait(false))!);
         if (await TypeNamedAsync(document, offset, cancel).ConfigureAwait(false) is not { } type)
         {
-            return new DoublesOffered(null, null, false, []);
+            return new DoublesOffered(null, null, false, [], libraries);
         }
         string? seam = type.Locations.Any(l => l.IsInSource) ? SeamOf(type) : null;
         bool fakeable = seam is null && CanFake(type);
         if (!fakeable && seam is null)
         {
-            return new DoublesOffered(null, null, false, []);
+            return new DoublesOffered(null, null, false, [], libraries);
         }
         List<FakePlace> places = [];
         foreach (Project test in TestProjects(document.Project.Solution, asked.TestProjects))
@@ -37,7 +39,85 @@ internal static partial class TestDoubles
                 places.Add(new FakePlace(test.FilePath!, Path.GetFileNameWithoutExtension(test.FilePath!), file, Exists(test.Solution, file)));
             }
         }
-        return new DoublesOffered(Shown(type), seam, fakeable && KeepsOwn(type), places);
+        return new DoublesOffered(Shown(type), seam, fakeable && KeepsOwn(type), places, libraries);
+    }
+
+    /// <summary>The call a place is in, its missing arguments filled: a double of the library named for each parameter one
+    /// can stand in for (an interface, an abstract class or a delegate), else the parameter's type's default, the library's
+    /// namespace imported.</summary>
+    public static async Task<Refactored> FillAsync(Document document, ArgumentsAsked asked, CancellationToken cancel)
+    {
+        int offset = await Changes.OffsetAsync(document, asked.At, cancel).ConfigureAwait(false);
+        Compilation compilation = (await document.Project.GetCompilationAsync(cancel).ConfigureAwait(false))!;
+        if (!Libraries(compilation).Contains(asked.Library) || await ToFillAsync(document, offset, cancel).ConfigureAwait(false) is not { } found)
+        {
+            return Changes.Refused($"Fill Arguments with Doubles fills the missing arguments of the call the caret is in with {asked.Library}'s doubles, where its project references it");
+        }
+        (ArgumentListSyntax list, IReadOnlyList<IParameterSymbol> missing) = found;
+        SyntaxGenerator generator = SyntaxGenerator.GetGenerator(document);
+        INamedTypeSymbol maker = compilation.GetTypeByMetadataName(Makers[asked.Library].Type)!;
+        IEnumerable<ArgumentSyntax> filled = missing.Select(p => Argument(Doubled(p.Type)
+            ? (ExpressionSyntax)generator.InvocationExpression(generator.MemberAccessExpression(generator.TypeExpression(maker),
+                generator.GenericName(Makers[asked.Library].Method, generator.TypeExpression(p.Type))))
+            : LiteralExpression(SyntaxKind.DefaultLiteralExpression)));
+        ArgumentListSyntax made = Imported(list.WithArguments(SeparatedList([.. list.Arguments, .. filled]))).WithAdditionalAnnotations(Formatter.Annotation);
+        SyntaxNode root = (await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false))!;
+        Document changed = document.WithSyntaxRoot(root.ReplaceNode(list, made));
+        changed = await ImportAdder.AddImportsAsync(changed, Simplifier.AddImportsAnnotation, cancellationToken: cancel).ConfigureAwait(false);
+        changed = await Simplifier.ReduceAsync(changed, Simplifier.Annotation, cancellationToken: cancel).ConfigureAwait(false);
+        changed = await Formatter.FormatAsync(changed, Formatter.Annotation, cancellationToken: cancel).ConfigureAwait(false);
+        return await Changes.BetweenAsync(document.Project.Solution, changed.Project.Solution, cancel).ConfigureAwait(false);
+    }
+
+    /// <summary>Each library's type and method that make a double of a type.</summary>
+    private static readonly Dictionary<string, (string Type, string Method)> Makers = new(StringComparer.Ordinal)
+    {
+        [MockingLibraries.NSubstitute] = ("NSubstitute.Substitute", "For"),
+        [MockingLibraries.Moq] = ("Moq.Mock", "Of"),
+        [MockingLibraries.FakeItEasy] = ("FakeItEasy.A", "Fake"),
+    };
+
+    /// <summary>The mocking libraries a compilation references, by their assemblies, each with the type that makes its doubles.</summary>
+    public static IReadOnlyList<string> Libraries(Compilation compilation) =>
+        [.. Makers.Where(m => compilation.ReferencedAssemblyNames.Any(a => a.Name == m.Key) && compilation.GetTypeByMetadataName(m.Value.Type) is not null).Select(m => m.Key)];
+
+    /// <summary>Whether a double of a library stands in for a parameter of a type: an interface, an abstract class or a delegate.</summary>
+    private static bool Doubled(ITypeSymbol type) =>
+        type.TypeKind is TypeKind.Interface or TypeKind.Delegate || type is INamedTypeSymbol { TypeKind: TypeKind.Class, IsAbstract: true };
+
+    /// <summary>The innermost call or object creation an offset is in that binds to nothing as written, its arguments all
+    /// given by place, and the parameters the overload they fit best leaves without one (none of them ref or out), one of
+    /// them a double's; none for anything else.</summary>
+    public static async Task<(ArgumentListSyntax List, IReadOnlyList<IParameterSymbol> Missing)?> ToFillAsync(Document document, int offset, CancellationToken cancel)
+    {
+        SyntaxNode root = (await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false))!;
+        SemanticModel model = (await document.GetSemanticModelAsync(cancel).ConfigureAwait(false))!;
+        foreach (SyntaxNode node in Changes.TokenAt(root, offset).Parent?.AncestorsAndSelf() ?? [])
+        {
+            if (node is not (BaseObjectCreationExpressionSyntax { ArgumentList: { } } or InvocationExpressionSyntax))
+            {
+                continue;
+            }
+            ArgumentListSyntax list = node is InvocationExpressionSyntax call ? call.ArgumentList : ((BaseObjectCreationExpressionSyntax)node).ArgumentList!;
+            SymbolInfo info = model.GetSymbolInfo(node, cancel);
+            if (info.Symbol is not null || list.Arguments.Any(a => a.NameColon is not null || !a.RefKindKeyword.IsKind(SyntaxKind.None)))
+            {
+                return null;
+            }
+            int given = list.Arguments.Count;
+            List<IParameterSymbol>? best = null;
+            foreach (IMethodSymbol candidate in info.CandidateSymbols.OfType<IMethodSymbol>())
+            {
+                List<IParameterSymbol> missing = [.. candidate.Parameters.Skip(given).TakeWhile(p => !p.IsOptional && !p.IsParams)];
+                bool fits = candidate.Parameters.Length >= given && Enumerable.Range(0, given).All(i => model.ClassifyConversion(list.Arguments[i].Expression, candidate.Parameters[i].Type).IsImplicit);
+                if (fits && missing.Count > (best?.Count ?? 0) && missing.All(p => p.RefKind is RefKind.None or RefKind.In) && missing.Any(p => Doubled(p.Type)))
+                {
+                    best = missing;
+                }
+            }
+            return best is null ? null : (list, best);
+        }
+        return null;
     }
 
     public static async Task<Refactored> CreateAsync(Document document, FakeAsked asked, CancellationToken cancel)

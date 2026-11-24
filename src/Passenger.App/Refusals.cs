@@ -1177,8 +1177,12 @@ public static class Refusals
     /// <summary>Find Clones of Selection in a file that is not C#.</summary>
     public const string NotCSharpStatements = "Find Clones of Selection compares C# statements, and the file is not C#";
 
-    /// <summary>Create Fake in a file that is not C#.</summary>
+    /// <summary>Create Fake or Fill Arguments with Doubles in a file that is not C#.</summary>
     public const string DoublesAreCSharp = "Test doubles stand in for C# types, and the file is not C#";
+
+    /// <summary>Fill Arguments with Doubles where the caret is in no call missing arguments a double stands in for, or its
+    /// project references no mocking library.</summary>
+    public const string NothingToFill = "Fill Arguments with Doubles fills the missing arguments of the call the caret is in with doubles of NSubstitute, Moq or FakeItEasy, where its project references one";
 
     /// <summary>Create Fake in a folder with no C# test project for a fake to go into.</summary>
     public const string NoTestProject = "The folder has no C# test project for a fake to go into";

@@ -182,3 +182,9 @@ public sealed class CreateFake : IExtensionDocumentMessageHandler<FakeAsked, Ref
     public Task<Refactored> ExecuteAsync(FakeAsked message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
         TestDoubles.CreateAsync(context.Document(), message, cancellationToken);
 }
+
+public sealed class FillArguments : IExtensionDocumentMessageHandler<ArgumentsAsked, Refactored>
+{
+    public Task<Refactored> ExecuteAsync(ArgumentsAsked message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        TestDoubles.FillAsync(context.Document(), message, cancellationToken);
+}
