@@ -51,7 +51,7 @@ public partial class MainWindow
     /// warm server it may take up, its consoles, Debug window and tests tree, a test run's build (which the session's builds
     /// and runs make), the Terminal tab the debugger asks for, and where its container tools come from.</summary>
     private SessionSetup Setup() => new(Editors, StateFolder, HistoryKeeping, Watching, () => settings.SolutionWideAnalysis, WarmServer, Bottom,
-        cancel => buildRun.BuildAsync(BuildCause.Tests, cancel), RunForDebugger, () => settings, work, () => Engine)
+        (projects, cancel) => buildRun.BuildTestsAsync(projects, cancel), RunForDebugger, () => settings, work, () => Engine)
     {
         ContainerTools = () => ContainerToolsFrom ?? Containers.ContainerToolsSource.Default(Releases),
         DockerHub = DockerHub,
