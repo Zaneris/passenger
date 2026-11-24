@@ -561,13 +561,15 @@ public partial class MainWindow
 
     /// <summary>Adds one of the window's actions, listed in one place of the menus if given.</summary>
     /// <summary>A key the keymap gives one action where another takes it by place (<see cref="AppActions.KeysIn"/>): New
-    /// Item in the Explorer, Rerun in the Run window, Edit Breakpoint on a breakpoint's line. True once taken.</summary>
+    /// Item in the Explorer, Rerun in the Run window, Edit Breakpoint on a breakpoint's line, Stop Statement in a console
+    /// running one. True once taken.</summary>
     private bool PlaceTakes(string action)
     {
         ActionContext context = actions!.Context();
         string? taken = Here(A.NewItem, ExplorerHasKeys(context))
             ?? Here(A.Rerun, context.ToolWindow?.Id == ToolWindowIds.Run)
             ?? Here(A.DatabaseShowDdl, context.ToolWindow?.Id == ToolWindowIds.Database)
+            ?? Here(A.DatabaseRunStop, context is { ToolWindow: null, File: { } sql } && database?.ConsoleOf(sql.Path) is { Running: true })
             ?? Here(A.EditBreakpoint, context is { ToolWindow: null, File: { } file } && session.Debug.Breakpoints.In(file.Path).Any(b => b.Line == context.Caret.Line))
             ?? Here(A.NextOverload, assist.StepsOverloads)
             ?? Here(A.PreviousOverload, assist.StepsOverloads);

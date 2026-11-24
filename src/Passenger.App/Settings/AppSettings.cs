@@ -534,6 +534,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>"Reformat on save": a save (File, Save All) first reformats each changed GDScript as Reformat Code does.</summary>
     public bool GDScriptFormatOnSave { get; init; }
 
+    /// <summary>How Reformat Code writes a SQL file's keywords: upper-case unless the person chooses otherwise.</summary>
+    public Database.SqlKeywordCase SqlKeywords { get; init; } = Database.SqlKeywordCase.Upper;
+
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } =
         [StateStore.Unversioned, DiscordKeptAsItWas, MouseShortcutsKept, ThemesFromTheirRepository, CodeSizeOwnOnlyWhereSet, SolutionWideAnalysisOnAtFirst];
 

@@ -201,6 +201,7 @@ public partial class MainWindow
         assist.FormatOnType = next.FormatOnType;
         assist.XamlFormat = next.XamlFormat;
         assist.GDScriptFormat = (next.GDScriptFormat, next.GDScriptFormatOnSave);
+        assist.SqlKeywords = next.SqlKeywords;
         assist.ReformatsOnSave = next.ReformatOnSave;
         assist.OptimizesImportsOnSave = next.OptimizeImportsOnSave;
         assist.CSharpFormatter = next.CSharpFormatter;

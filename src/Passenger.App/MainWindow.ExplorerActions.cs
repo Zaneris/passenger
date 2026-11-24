@@ -387,6 +387,10 @@ public partial class MainWindow
         {
             entries.AddRange([Item(A.RunTests), Item(A.DebugTests), separator]);
         }
+        if (node is { Kind: NodeKind.File, Path: { } sql } && Languages.Language.ForPath(sql) == Languages.Language.Sql)
+        {
+            entries.AddRange([Item(A.DatabaseRunFile), separator]);
+        }
         if (node.Kind == NodeKind.Project && node.IsShared)
         {
             entries.AddRange([Item(A.EditProjectFile), separator]);

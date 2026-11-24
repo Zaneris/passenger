@@ -63,6 +63,7 @@ internal static class RiderKeymaps
             ["MethodOverloadSwitchUp"] = ["control UP"],
             ["MethodOverloadSwitchDown"] = ["control DOWN"],
             ["ToggleTemporaryLineBreakpoint"] = ["control shift alt F8"],
+            ["Console.History.Browse"] = ["control alt E"],
         }),
         [MacOS] = (Default, new()
         {
@@ -137,7 +138,7 @@ internal static class RiderKeymaps
     };
 
     /// <summary>The keys plugins' descriptors add, by keymap and action, or put in place of all the keymap had for it
-    /// (replace-all): Rider's own (intellij.rider.xml) and dotCover's.</summary>
+    /// (replace-all): Rider's own (intellij.rider.xml), dotCover's and the database tools'.</summary>
     private static readonly (string Keymap, string Action, string Keys, bool ReplaceAll)[] Descriptors =
     [
         ("Visual Studio", "CloneCaretAboveWithVirtualSpace", "alt shift UP", false),
@@ -155,6 +156,7 @@ internal static class RiderKeymaps
         ("Visual Studio", CoverAll, "control U , control K", false),
         ("Visual Studio OSX", CoverAll, "meta U , K", true),
         ("Visual Studio OSX", CoverAll, "meta U , meta K", false),
+        (Default, "Console.Transaction.Commit", "control alt shift ENTER", false),
     ];
 
     /// <summary>dotCover's Cover All Tests from Solution.</summary>

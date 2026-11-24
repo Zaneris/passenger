@@ -1,15 +1,31 @@
 using System.Text;
+using Passenger.Text;
 
 namespace Passenger.App.Database;
 
+/// <summary>How Reformat Code writes SQL's keywords: upper-case, lower-case, or as written.</summary>
+public enum SqlKeywordCase
+{
+    Upper,
+    Lower,
+    AsWritten,
+}
+
+/// <summary>How SQL is laid out: indented as its file indents (its .editorconfig, else its own lines), its keywords cased so.</summary>
+public sealed record SqlFormatOptions(IndentOptions Indent, SqlKeywordCase Keywords = SqlKeywordCase.Upper)
+{
+    /// <summary>Four spaces a level and keywords upper-case.</summary>
+    public static readonly SqlFormatOptions Default = new(new IndentOptions());
+}
+
 /// <summary>SQL laid out as its database reads it (<see cref="SqlText"/>): each clause on a line of its own, a SELECT's
 /// and a SET's items and VALUES' rows one to a line under the first, AND and OR of a condition on lines of their own, a
-/// subquery and a table's columns indented, keywords upper-case and one space between words. Strings, quoted names and
-/// comments are kept as written, a line comment ending its line; a routine's or a block's definition, SQL Server's GO
-/// lines and the blank lines between statements are kept as they stand. Laying out laid-out SQL changes nothing.</summary>
+/// subquery and a table's columns indented a level of the options' indentation, keywords cased as they say and one space
+/// between words. Strings, quoted names and comments are kept as written, a line comment ending its line; a routine's or a
+/// block's definition, SQL Server's GO lines and the blank lines between statements are kept as they stand. Laying out
+/// laid-out SQL changes nothing.</summary>
 public static class SqlFormatter
 {
-    private const string Indent = "    ";
 
     private enum Kind
     {
@@ -52,8 +68,9 @@ public static class SqlFormatter
     };
 
     /// <summary>The text laid out, a statement at a time; the text as written where it holds nothing to lay out.</summary>
-    public static string Format(string sql, DatabaseKind kind)
+    public static string Format(string sql, DatabaseKind kind, SqlFormatOptions? options = null)
     {
+        SqlFormatOptions how = options ?? SqlFormatOptions.Default;
         List<Piece> pieces = Pieces(sql, kind);
         StringBuilder text = new();
         int first = 0;
@@ -70,7 +87,7 @@ public static class SqlFormatter
             }
             else
             {
-                Lay(pieces, first, last, text);
+                Lay(pieces, first, last, text, how);
             }
             first = last + 1;
         }
@@ -134,9 +151,9 @@ public static class SqlFormatter
         || pieces.Skip(first).Take(last - first + 1).Any(p => p.Kind == Kind.Quoted && p.Text.StartsWith('$') || p.Is("BEGIN") && kind == DatabaseKind.SqlServer);
 
     /// <summary>A statement laid out.</summary>
-    private static void Lay(List<Piece> pieces, int first, int last, StringBuilder text)
+    private static void Lay(List<Piece> pieces, int first, int last, StringBuilder text, SqlFormatOptions how)
     {
-        Layout layout = new(text);
+        Layout layout = new(text, how);
         for (int i = first; i <= last; i++)
         {
             layout.Take(pieces, i, first, last);
@@ -144,8 +161,11 @@ public static class SqlFormatter
     }
 
     /// <summary>A statement's layout as it is written: the levels of its brackets, each with its indent and the clause it is in.</summary>
-    private sealed class Layout(StringBuilder text)
+    private sealed class Layout(StringBuilder text, SqlFormatOptions how)
     {
+        /// <summary>The columns a level indents by.</summary>
+        private readonly int step = how.Indent.UseTabs ? how.Indent.TabWidth : how.Indent.Size;
+
         private sealed class Level(int indent, bool query)
         {
             public int Indent { get; } = indent;
@@ -206,7 +226,7 @@ public static class SqlFormatter
                 }
                 else
                 {
-                    Break(Here.Indent + Indent.Length);
+                    Break(Here.Indent + step);
                 }
             }
             if (word && upper == "BETWEEN")
@@ -223,7 +243,7 @@ public static class SqlFormatter
                 bool query = next is { } inner && (inner.Is("SELECT") || inner.Is("WITH"));
                 bool columns = createTable && levels.Count == 1 && !query;
                 createTable &= !columns;
-                levels.Push(new Level(query || columns ? Here.Indent + Indent.Length : Here.Indent, query) { Columns = columns });
+                levels.Push(new Level(query || columns ? Here.Indent + step : Here.Indent, query) { Columns = columns });
                 if (query || columns)
                 {
                     breakNext = true;
@@ -325,7 +345,12 @@ public static class SqlFormatter
             {
                 text.Append(' ');
             }
-            text.Append(piece.Kind == Kind.Word && Keywords.Contains(piece.Text) ? piece.Upper : piece.Text);
+            text.Append(piece.Kind != Kind.Word || !Keywords.Contains(piece.Text) ? piece.Text : how.Keywords switch
+            {
+                SqlKeywordCase.Upper => piece.Upper,
+                SqlKeywordCase.Lower => piece.Text.ToLowerInvariant(),
+                _ => piece.Text,
+            });
             previous2 = previous;
             previous = piece;
         }
@@ -345,7 +370,7 @@ public static class SqlFormatter
             if (piece.Text.StartsWith("--", StringComparison.Ordinal) || piece.Text.StartsWith('#'))
             {
                 // What follows goes on the next line, where it would have gone, or under the clause it goes on in.
-                pendingIndent = breakNext ? pendingIndent : Here.Indent + (Here.Clause.Length > 0 ? Indent.Length : 0);
+                pendingIndent = breakNext ? pendingIndent : Here.Indent + (Here.Clause.Length > 0 ? step : 0);
                 breakNext = true;
             }
             previous2 = previous;
@@ -362,7 +387,7 @@ public static class SqlFormatter
 
         private void Line(int indent)
         {
-            while (text.Length > start && text[^1] == ' ')
+            while (text.Length > start && text[^1] is ' ' or '\t')
             {
                 text.Length--;
             }
@@ -371,7 +396,7 @@ public static class SqlFormatter
                 text.Append('\n');
             }
             lineStart = text.Length;
-            text.Append(' ', indent);
+            text.Append(how.Indent.Whitespace(indent));
             lineStart = text.Length;
         }
     }

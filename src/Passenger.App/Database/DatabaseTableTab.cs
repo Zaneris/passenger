@@ -146,12 +146,12 @@ public sealed class DatabaseTableTab : IDisposable
             { Operator: "Equals" } => $" whose {filter.Column} is '{filter.Value}'",
             _ => $" whose {filter.Column} holds '{filter.Value}'",
         };
-        string order = sort is { } by ? $", sorted by {by.Column}{(by.Descending ? " descending" : string.Empty)}" : string.Empty;
+        string order = sort is { } by ? $" in {by.Column}'s order{(by.Descending ? ", descending" : string.Empty)}" : string.Empty;
         return new ExportSource(source, Table.ToString(), new InsertTarget(source.Kind, DatabaseClient.Full(source.Kind, Table)))
         {
             Sql = sql,
             Parameters = parameters,
-            Said = $"Every row of {Table}{which}{order}, read from {source.Name} a row at a time.",
+            Said = $"Writes {(filter is null ? "every row" : "the rows")} of {Table}{which}{order} to a file, reading them from {source.Name} a row at a time.",
         };
     }
 

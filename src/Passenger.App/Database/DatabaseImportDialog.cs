@@ -105,7 +105,7 @@ public sealed class DatabaseImportDialog : IdeWindow
                 FormRows.Of("First rows", new Border { Classes = { StyleClasses.Framed }, Child = preview }, [holds], top: true),
             },
         };
-        TextBlock about = MutedText.Wrapped("A CSV's or JSON file's rows written into a table, its columns going into the table's of their names.");
+        TextBlock about = MutedText.Wrapped("Reads the rows of a CSV or JSON file into a new table or one of this database's, matching columns by name.");
         Content = DialogFooter.Headed("Import Data", about, fields, DialogFooter.OkCancel(import, () => Close(null), problem));
         columns.Say("Choose a file to read its columns");
         Follow();
@@ -263,7 +263,7 @@ public sealed class DatabaseImportDialog : IdeWindow
         }
         if (IsNew)
         {
-            columns.SetNew(first.Columns, [.. first.Columns.Select((_, i) => ImportTypes.Proposed(first.Rows.Select(r => i < r.Length ? r[i] : null), kind))]);
+            columns.SetNew(first.Columns, [.. first.Samples.Select(values => ImportTypes.Proposed(values, kind))]);
         }
         else if (target is { } table)
         {

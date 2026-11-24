@@ -519,6 +519,13 @@ public sealed class CodeAssist
 
     /// <summary>The open folder's repository, whose configuration declares a .gitattributes' drivers and which says what a
     /// .gitignore's lines ignore.</summary>
+    /// <summary>How Reformat Code writes a SQL file's keywords, as Settings leaves it.</summary>
+    public Database.SqlKeywordCase SqlKeywords
+    {
+        get => context.Languages.Sql.Keywords;
+        set => context.Languages.Sql.Keywords = value;
+    }
+
     /// <summary>A SQL file's database and what its connection holds, where it is a console (<see cref="SqlAssist.Live"/>).</summary>
     public Func<OpenDocument, (Database.DatabaseKind Kind, Task<Database.SqlCatalog?> Catalog)?>? SqlLive
     {

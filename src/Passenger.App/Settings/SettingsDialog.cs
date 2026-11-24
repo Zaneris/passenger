@@ -26,6 +26,7 @@ public sealed partial class SettingsDialog : IdeWindow
     public const string PostfixPage = "Postfix Completion";
     public const string XamlCodeStylePage = "Code Style: XAML";
     public const string GDScriptCodeStylePage = "Code Style: GDScript";
+    public const string SqlCodeStylePage = "Code Style: SQL";
     public const string TerminalPage = "Terminal";
     public const string VersionControlPage = "Version Control";
     public const string BuildPage = "Build";
@@ -57,11 +58,14 @@ public sealed partial class SettingsDialog : IdeWindow
     /// <summary>The names of <see cref="DiscordShown"/>'s choices, in its order.</summary>
     public static readonly string[] DiscordChoices = ["Passenger only", "The solution", "The solution and the file"];
 
-    private static readonly string[] Order = [Appearance, SystemPage, AccessibilityPage, TrustPage, UpdatesPage, ExplorerPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, GDScriptCodeStylePage, LiveTemplatesPage,
+    private static readonly string[] Order = [Appearance, SystemPage, AccessibilityPage, TrustPage, UpdatesPage, ExplorerPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, GDScriptCodeStylePage, SqlCodeStylePage, LiveTemplatesPage,
         VersionControlPage, BuildPage, RunPage, HotReloadPage, NodePage, EslintPage, PrettierPage, SchemasPage, StylesheetsPage, DockerPage, GodotPage, TerminalPage, McpPage, DiscordPage, DiagnosticsPage, KeymapPage];
 
     /// <summary>The names of Attributes format's choices, in <see cref="Passenger.Xaml.Features.XamlAttributeStyle"/>'s
     /// order.</summary>
+    /// <summary>The names of <see cref="Database.SqlKeywordCase"/>'s choices, in its order.</summary>
+    public static readonly string[] SqlKeywordCases = ["Upper case", "Lower case", "As written"];
+
     public static readonly string[] AttributeStyles = ["On single line", "First attribute on single line", "Each attribute on separate lines", "Do not touch"];
 
     /// <summary>The names of Attributes indenting's choices, in <see
@@ -397,6 +401,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.GDScriptBlankLines);
         Add(Declared.GDScriptTrailingCommas);
         Add(Declared.GDScriptFormatOnSave);
+        Add(Declared.SqlKeywords);
 
         Postfix = new PostfixTemplatesPane(Working, Change);
         AddPage(PostfixPage, Postfix, "postfix templates completion expression dot autopopup "

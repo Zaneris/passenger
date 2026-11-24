@@ -160,6 +160,17 @@ public sealed class SqlTextTests
             Assert.Equal(row.Laid, SqlFormatter.Format(row.Sql, row.Kind));
             Assert.Equal(row.Laid, SqlFormatter.Format(row.Laid, row.Kind));
         }, row => row.Holds);
+        Cases.Each(new (string Holds, SqlFormatOptions Options, string Sql, string Laid)[]
+        {
+            ("a level of the file's two spaces, keywords lower-case", new(new Passenger.Text.IndentOptions(2), SqlKeywordCase.Lower),
+                "SELECT a, b FROM t WHERE x IN (SELECT y FROM u)", "select a,\n       b\nfrom t\nwhere x in (\n  select y\n  from u\n)"),
+            ("a level of the file's tab, keywords as written", new(new Passenger.Text.IndentOptions(4, UseTabs: true, TabWidth: 4), SqlKeywordCase.AsWritten),
+                "Select a from t where x = 1 and y = 2", "Select a\nfrom t\nwhere x = 1\n\tand y = 2"),
+        }, row =>
+        {
+            Assert.Equal(row.Laid, SqlFormatter.Format(row.Sql, DatabaseKind.Postgres, row.Options));
+            Assert.Equal(row.Laid, SqlFormatter.Format(row.Laid, DatabaseKind.Postgres, row.Options));
+        }, row => row.Holds);
         object?[] values = [null, true, "it's a \\ path", new byte[] { 10, 255 }, new DateTime(2024, 5, 1, 13, 45, 0), 2.5m];
         Passenger.App.Tables.RowColumn[] columns = [new("id"), new("ok"), new("note"), new("data"), new("at"), new("price")];
         Cases.Each(new (string Holds, DatabaseKind Kind, string Table, string Inserts)[]

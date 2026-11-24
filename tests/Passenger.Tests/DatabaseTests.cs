@@ -27,6 +27,8 @@ public sealed class DatabaseTests
         string folder = TestFolders.Create("database");
         TestFolders.Write(folder, "Shop.csproj", TestProjects.Console());
         TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
+        TestFolders.Write(folder, "seed.sql", "update Products set Note = 'seeded' where Id = 7;\r\nselect Note from Products where Id = 7 and Name is not null;\r\n");
+        TestFolders.Write(folder, ".editorconfig", "[*.sql]\nindent_size = 2\n");
         TestFolders.Write(folder, "appsettings.json", """
             {"ConnectionStrings":{
                 "Shop":"Data Source=shop.db",
@@ -306,7 +308,7 @@ public sealed class DatabaseTests
                 Assert.Contains("-- 1 row changed", output, StringComparison.Ordinal);
                 Assert.Contains("no such table: Nope", output, StringComparison.Ordinal);
 
-                Assert.True(window.Perform(AppActions.DatabaseHistory), "Query History did not run");
+                Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.DatabaseHistory)[0].First.Notation());
                 SqlConsoleView view = window.EditorArea.ActiveGroup.Console!;
                 Ui.WaitFor(() => Tab<ListBox>(window, "ConsoleHistory").IsEffectivelyVisible, "the console's history");
                 Assert.Equal(["SELECT * FROM Nope", "SELECT Note FROM Products WHERE Id = 3", "UPDATE Products SET Note = 'one' WHERE Id = 3"],
@@ -326,6 +328,26 @@ public sealed class DatabaseTests
                 Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
                 Ui.WaitFor(() => !sql.Running && sql.Results is [{ Error: null, Statement: "SELECT COUNT(*) AS n FROM Orders" }], () => sql.Said);
                 Tab<TextBox>(window, "ConsoleFilter").Text = string.Empty;
+            });
+            Flow.Step("a SQL file runs whole from the Explorer's menu, asked first which connection it runs against, and lays out by its .editorconfig and breaks", () =>
+            {
+                Passenger.App.Workspace.OpenDocument console = window.EditorArea.Active!;
+                window.ShowToolWindow(ToolWindowIds.Explorer);
+                Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Name == "seed.sql"), "seed.sql in the Explorer");
+                Ui.ChooseFromRowMenu(window, window.ExplorerView.Tree.Rows.First(r => r.Name == "seed.sql"), "Run SQL File");
+                Ui.ClickButton(Question(window), window.Database.Sources.Single(s => s.Name == "Shop").ToString());
+                Ui.WaitFor(() => window.EditorArea.Active?.Name == "seed.sql" && window.EditorArea.ActiveGroup.Console?.Console is { Running: false, Results.Count: 2 },
+                    () => window.EditorArea.ActiveGroup.Console?.Console?.Said ?? window.Status ?? string.Empty);
+                Assert.Equal("seeded", window.EditorArea.ActiveGroup.Console!.Console!.Results[1].Sets[0].Cell(0, 0));
+                Assert.Equal("seeded", Scalar(folder, "SELECT Note FROM Products WHERE Id = 7"));
+                Assert.True(window.Perform(AppActions.Reformat), "Reformat Code did not run");
+                Ui.WaitFor(() => window.EditorArea.CodeEditor.Document.Snapshot.ToString().StartsWith("UPDATE", StringComparison.Ordinal), "seed.sql laid out");
+                Assert.Equal("UPDATE Products\r\nSET Note = 'seeded'\r\nWHERE Id = 7;\r\nSELECT Note\r\nFROM Products\r\nWHERE Id = 7\r\n  AND Name IS NOT NULL;\r\n",
+                    window.EditorArea.CodeEditor.Document.Snapshot.ToString());
+                Assert.True(window.Perform(AppActions.Save), "Save did not run");
+                window.EditorArea.Activate(console);
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console again");
+                window.EditorArea.CodeEditor.Focus();
             });
             Flow.Step("a console marks a column its connection's schema lacks, and explains a statement as a plan's tree without running it", () =>
             {
@@ -393,7 +415,7 @@ public sealed class DatabaseTests
                 Ui.ChooseFromMenu(tree, "Export Data…");
                 DatabaseExportDialog dialog = Dialog<DatabaseExportDialog>(window);
                 DialogButtonsTests.Check(dialog);
-                Assert.Contains("Every row of Products", dialog.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).OfType<string>().First(t => t.StartsWith("Every row", StringComparison.Ordinal)), StringComparison.Ordinal);
+                Assert.Contains(dialog.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Writes every row of Products to a file, reading them from Shop a row at a time.");
                 Field<ComboBox>(dialog, "ExportFormat").SelectedIndex = (int)ExportFormat.Inserts;
                 Assert.Contains("SQLite's SQL", dialog.Holds, StringComparison.Ordinal);
                 Field<TextBox>(dialog, "ExportTable").Text = "Copied";
@@ -435,7 +457,7 @@ public sealed class DatabaseTests
                 Task<RowExport> held = window.Database.HoldExport(500_000, release.Task);
                 Ui.Click(Tab<Button>(window, "ConsoleExport"));
                 dialog = Dialog<DatabaseExportDialog>(window);
-                Assert.Contains(dialog.GetVisualDescendants().OfType<TextBlock>(), t => t.Text?.StartsWith("Every row its statement returns, run again", StringComparison.Ordinal) == true);
+                Assert.Contains(dialog.GetVisualDescendants().OfType<TextBlock>(), t => t.Text?.StartsWith("Writes every row its statement returns to a file, running it again on Shop", StringComparison.Ordinal) == true);
                 string big = Path.Combine(exports, "big.csv");
                 Field<ComboBox>(dialog, "ExportFormat").SelectedIndex = (int)ExportFormat.Csv;
                 Field<TextBox>(dialog, "ExportFile").Text = big;
@@ -541,6 +563,20 @@ public sealed class DatabaseTests
                 Run(window, "COMMIT");
                 Assert.False(sql.InTransaction, $"COMMIT run in the console left its transaction open: {sql.Said}");
                 Assert.Equal("held", Scalar(folder, "SELECT Note FROM Products WHERE Id=2"));
+                Run(window, "UPDATE Products SET Note='by keys' WHERE Id=2");
+                Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.DatabaseCommit)[0].First.Notation());
+                Ui.WaitFor(() => !sql.InTransaction && !sql.Running, () => sql.Said);
+                Assert.Equal("by keys", Scalar(folder, "SELECT Note FROM Products WHERE Id=2"));
+                Run(window, "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n) SELECT COUNT(*) FROM n", settle: false);
+                Ui.PumpUntil(() => sql.Running, "the endless statement running");
+                Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.KeysIn(AppActions.DatabaseRunStop))[0].First.Notation(), settle: false);
+                Ui.WaitFor(() => !sql.Running, () => sql.Said);
+                Assert.Equal("Stopped.", sql.Said);
+                if (sql.InTransaction)
+                {
+                    Assert.True(window.Perform(AppActions.DatabaseRollback), "Rollback did not run");
+                    Ui.WaitFor(() => !sql.InTransaction && !sql.Running, () => sql.Said);
+                }
                 Run(window, "UPDATE Products SET Note='kept' WHERE Id=2");
                 window.Close();
                 Ui.ClickButton(Question(window), "Cancel");
@@ -708,13 +744,16 @@ public sealed class DatabaseTests
         Assert.Equal(statement, editor.Document.Snapshot.ToString());
     }
 
-    /// <summary>Runs one statement in the console shown, waiting for what it came to.</summary>
-    private static void Run(MainWindow window, string statement)
+    /// <summary>Runs one statement in the console shown, waiting for what it came to unless it is left running.</summary>
+    private static void Run(MainWindow window, string statement, bool settle = true)
     {
         Replace(window, statement);
         SqlConsole sql = window.EditorArea.ActiveGroup.Console!.Console!;
         Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
-        Ui.WaitFor(() => !sql.Running, () => sql.Said);
+        if (settle)
+        {
+            Ui.WaitFor(() => !sql.Running, () => sql.Said);
+        }
     }
 
     /// <summary>What each work of the window's tells it came to from now on, in turn.</summary>

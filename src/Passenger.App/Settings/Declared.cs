@@ -478,6 +478,12 @@ public static class Declared
         new(D.GDScriptCodeStylePage, "Reformat on save", $"{D.GDScriptWords} save actions on save format on save",
             "File, Save and Save All reformat each changed script first, as Reformat Code does, as one undoable edit. Autosave never does."));
 
+    public static readonly ChoiceSetting<Database.SqlKeywordCase> SqlKeywords = new(s => s.SqlKeywords, (s, v) => s with { SqlKeywords = v },
+        Named<Database.SqlKeywordCase>(D.SqlKeywordCases),
+        new(D.SqlCodeStylePage, "Keyword case", "sql keywords case upper lower as written select from where reformat code style console",
+            "Reformat Code lays a .sql file out by its console's database, indented by its .editorconfig, else as its own lines are "
+            + "(four spaces where neither says), its line breaks kept. Keywords are upper-case unless chosen otherwise."));
+
     public static readonly ChoiceSetting<BuildResultsMode> ShowBuildResults = new(s => s.ShowBuildResults, (s, v) => s with { ShowBuildResults = v },
         Named<BuildResultsMode>(D.BuildResultsChoices),
         new(D.BuildPage, "Showing build results after build completed",

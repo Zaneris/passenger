@@ -203,7 +203,8 @@ public sealed class DatabaseServersTests
 
                 // A CSV imports into a new table typed from its rows; a row its column's type refuses writes none of the next file.
                 File.WriteAllText(Path.Combine(folder, "items.csv"), "code,qty,price,made\nA1,3,2.5,2024-05-01\nB2,12,10,2024-06-30\n");
-                File.WriteAllText(Path.Combine(folder, "bad.csv"), "code,qty,price,made\nC3,7,1,2024-01-01\nD4,many,1,2024-01-01\n");
+                // PostgreSQL's numeric takes any price, so its server refuses the third row's qty; the others' decimal(3,1) the second's price.
+                File.WriteAllText(Path.Combine(folder, "bad.csv"), "code,qty,price,made\nC3,7,1,2024-01-01\nD4,8,1234.5,2024-01-01\nE5,many,1,2024-01-01\n");
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.First(r => r.Kind == DatabaseNodeKind.Group && r.Title == "Tables"));
                 Ui.ChooseFromMenu(tree, "Import Data…");
                 Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseImportDialog>().Any(d => d.IsVisible), () => window.Database.Said, TimeSpan.FromMinutes(1));
@@ -221,7 +222,8 @@ public sealed class DatabaseServersTests
                 import.File = Path.Combine(folder, "bad.csv");
                 Ui.WaitFor(() => !import.IsReading && import.Columns.Count == 4 && import.Columns.All(c => c.Into is not null), () => import.Problem);
                 Ui.ClickButton(import, "Import");
-                Ui.WaitFor(() => told.Any(t => t.StartsWith("Row 2 of bad.csv was refused, so nothing was written: ", StringComparison.Ordinal)), () => string.Join("; ", told), TimeSpan.FromMinutes(1));
+                string refused = $"Row {(kind == DatabaseKind.Postgres ? 3 : 2).ToString(CultureInfo.InvariantCulture)} of bad.csv was refused, so nothing was written: ";
+                Ui.WaitFor(() => told.Any(t => t.StartsWith(refused, StringComparison.Ordinal)), () => string.Join("; ", told), TimeSpan.FromMinutes(1));
                 Assert.Equal("2", Said(kind, connection, "SELECT COUNT(*) FROM items"));
 
                 // A production connection asks before an UPDATE; a read-only one still reads, through the server's own read-only session.

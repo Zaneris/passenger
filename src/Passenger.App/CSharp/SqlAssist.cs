@@ -11,11 +11,14 @@ namespace Passenger.App.CSharp;
 /// of the tables its statement names, after a table's name or alias and a dot its columns, every table and view, the
 /// schemas and the database's keywords; a file of no connection, or one not opened yet this session, its keywords alone.
 /// A name typed as a word's first letter, or a dot after a name, opens the list. Reformat Code lays its statements out by
-/// its database (<see cref="SqlFormatter"/>), a selection's statements alone.</summary>
+/// its database (<see cref="SqlFormatter"/>), a selection's statements alone, indented and broken as the file is.</summary>
 internal sealed class SqlAssist(AssistContext context, CodeCompletion completion) : LanguageAssist
 {
     /// <summary>A SQL file's database and what its connection holds, where it is a console; null for a file of none.</summary>
     public Func<OpenDocument, (DatabaseKind Kind, Task<SqlCatalog?> Catalog)?>? Live { get; set; }
+
+    /// <summary>How Reformat Code writes keywords, as Settings leaves it.</summary>
+    public SqlKeywordCase Keywords { get; set; }
 
     private readonly Dictionary<CompletionItem, SqlCompletions.Candidate> offered = [];
 
@@ -125,8 +128,12 @@ internal sealed class SqlAssist(AssistContext context, CodeCompletion completion
             (start, end) = (touched[0].Start, touched[^1].End);
         }
         string part = text[start..end];
-        string laid = await BackgroundWork.Run(() => SqlFormatter.Format(part, kind));
-        return CodeActions.Reformatted.Apply(context.Editors, document, asked, laid == part ? [] : [new TextEdit(start, end - start, laid)], what);
+        SqlFormatOptions options = new(document.Indentation.Options, Keywords);
+        string eol = document.LineEnding;
+        // The text's breaks are '\n' to the formatter, a "\r\n" file's written back as its own.
+        string laid = await BackgroundWork.Run(() => SqlFormatter.Format(part.ReplaceLineEndings("\n"), kind, options));
+        List<TextEdit> edits = laid == part.ReplaceLineEndings("\n") ? [] : LineEndings.Fit(asked.Snapshot, [new TextEdit(start, end - start, laid)], eol);
+        return CodeActions.Reformatted.Apply(context.Editors, document, asked, edits, what);
     }
 
     public override string? Describe(CompletionItem item) => offered.TryGetValue(item, out SqlCompletions.Candidate candidate)

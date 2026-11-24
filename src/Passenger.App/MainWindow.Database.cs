@@ -116,10 +116,9 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools/Database", 1, 0)],
             KeysOf = () => AppActions.KeysIn(AppActions.DatabaseRun) is var keys && keys != AppActions.DatabaseRun ? keys : null,
         });
-        actions!.Add(new IdeAction(AppActions.DatabaseRunFile, "Run SQL File", "Database", _ => IdeErrors.Observe(RunSqlAsync(whole: true)))
+        actions!.Add(new IdeAction(AppActions.DatabaseRunFile, "Run SQL File", "Database", context => IdeErrors.Observe(RunSqlFileAsync(SqlFileOf(context))))
         {
-            WhyNot = _ => Editors.Active is not { Language: var language } || language != Languages.Language.Sql ? Refusals.NoSqlFile
-                : controller.ConsoleOf(Editors.Active.Path) is { Running: true } ? Refusals.SqlRunning : PersonsOwn(),
+            WhyNot = context => SqlFileOf(context) is not { } file ? Refusals.NoSqlFile : controller.ConsoleOf(file) is { Running: true } ? Refusals.SqlRunning : PersonsOwn(),
             Menus = [new MenuPlace("Tools/Database", 1, 4)],
         });
         actions!.Add(new IdeAction(AppActions.DatabaseExplain, "Explain Plan", "Database", _ => IdeErrors.Observe(ExplainSqlAsync()))
@@ -138,6 +137,7 @@ public partial class MainWindow
         {
             WhyNot = _ => Editors.Active is { } file && controller.ConsoleOf(file.Path) is { Running: true } ? null : Refusals.NoSqlRunning,
             Menus = [new MenuPlace("Tools/Database", 1, 1)],
+            KeysOf = () => AppActions.KeysIn(AppActions.DatabaseRunStop) is var keys && keys != AppActions.DatabaseRunStop ? keys : null,
         });
         Transaction(AppActions.DatabaseCommit, "Commit", commit: true, 2);
         Transaction(AppActions.DatabaseRollback, "Roll Back", commit: false, 3);
@@ -450,6 +450,31 @@ public partial class MainWindow
         static string Shortened(string statement) => Containers.ContainerSecrets.InSaid(statement.Length > 400 ? statement[..400] + "…" : statement);
     }
 
+    /// <summary>The SQL file Run SQL File runs where it is asked: the Explorer's row (its menu's, or the row chosen while it
+    /// has the keys), else the file shown; null where that is no SQL file.</summary>
+    private string? SqlFileOf(ActionContext context) => RowOf(context) is { } row
+        ? row is { Kind: Passenger.App.Explorer.NodeKind.File, Path: { } path } && Languages.Language.ForPath(path) == Languages.Language.Sql ? path : null
+        : Editors.Active is { } shown && shown.Language == Languages.Language.Sql ? shown.Path : null;
+
+    /// <summary>Run SQL File: the file opened where it is not shown, then every statement of it run in turn.</summary>
+    private async Task RunSqlFileAsync(string? path)
+    {
+        if (path is null)
+        {
+            return;
+        }
+        if (Editors.Active is not { } shown || !PathNames.Same(shown.Path, path))
+        {
+            if (Editors.Open(path) is { } failed)
+            {
+                Refuse(failed);
+                return;
+            }
+            Editors.FollowSidePanes();
+        }
+        await RunSqlAsync(whole: true);
+    }
+
     /// <summary>Explains the SQL file's statement the caret stands in, or the first chosen, as a plan's tree under it, never
     /// running it, asking its parameters' values where it has any.</summary>
     private async Task ExplainSqlAsync()
@@ -607,7 +632,7 @@ public partial class MainWindow
             {
                 Sql = sql,
                 Parameters = parameters,
-                Said = $"Every row of {table}, read from {within.Name} a row at a time.",
+                Said = $"Writes every row of {table} to a file, reading them from {within.Name} a row at a time.",
             };
             stem = table.Name;
         }
@@ -645,9 +670,9 @@ public partial class MainWindow
         {
             bool again = rows.More && SqlText.EffectOf(run.Statement, connection.Kind) == SqlEffect.Reads;
             bool asks = SqlParameters.Of([run.Statement], connection.Kind)[0].Count > 0;
-            string said = !rows.More ? $"The {Plural.Of(rows.RowCount, "row")} of {title}."
-                : again ? $"Every row its statement returns, run again on {connection.Name} and read a row at a time: {Shortened(run.Statement)}"
-                : $"The first {Plural.Of(rows.RowCount, "row")} {title} holds: its statement changes data, so it is not run again.";
+            string said = !rows.More ? $"Writes the {Plural.Of(rows.RowCount, "row")} of {title} to a file."
+                : again ? $"Writes every row its statement returns to a file, running it again on {connection.Name}: {Shortened(run.Statement)}"
+                : $"Writes the first {Plural.Of(rows.RowCount, "row")} {title} holds to a file: its statement changes data, so it is not run again.";
             return new ExportSource(connection, title, rows.Into ?? new InsertTarget(connection.Kind, SqlInserts.TableOf(run.Statement, connection.Kind)))
             {
                 Sql = run.Statement,

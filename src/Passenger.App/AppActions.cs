@@ -200,13 +200,14 @@ public static class AppActions
     // VS Code's keymaps give the editor's Start New Line Before and Start New Line, so a SQL file takes theirs (KeysIn).
     public const string DatabaseConsole = "app.database.console";
     public const string DatabaseRun = "app.database.run";
+    // Stop Statement, Rider's Console.Jdbc.Cancel, on Stop's keys in a console running a statement (KeysIn).
     public const string DatabaseRunStop = "app.database.runStop";
-    // A SQL file run whole, and the console's connection's history: no key of Rider's for either.
+    // A SQL file run whole: no key of Rider's. The console's connection's history: Rider's Console.History.Browse, Ctrl+Alt+E.
     public const string DatabaseRunFile = "app.database.runFile";
     public const string DatabaseHistory = "app.database.history";
     // A console's statement explained as a plan's tree: Rider's Console.Jdbc.ExplainPlan, no key of its own.
     public const string DatabaseExplain = "app.database.explain";
-    // A console's transaction in manual commit: Rider's Console.Transaction.Commit, IntelliJ IDEA's Ctrl+Alt+Shift+Enter.
+    // A console's transaction in manual commit: Rider's Console.Transaction.Commit, $default's Ctrl+Alt+Shift+Enter.
     public const string DatabaseCommit = "app.database.commit";
     public const string DatabaseRollback = "app.database.rollback";
     // A table's changes not yet written: Submit on Run Statement's keys, Add Row on Generate's, Delete Rows on Delete Line's
@@ -796,8 +797,8 @@ public static class AppActions
     /// <summary>The action whose keys a place takes for one of its own, where Rider's keymaps give a key two actions by place:
     /// Show Diff and Compare Files Duplicate's (none in VS Code's, nor Emacs's), Add to Watches Complete Statement's (VS Code's
     /// Start New Line Before's), Focus Editor a tool window's Escape; outside Visual Studio's, New Item Generate's and Edit
-    /// Breakpoint View Breakpoints', IntelliJ IDEA's Rerun on the Mac Replace's, a SQL file's Run Statement Start New Line
-    /// Before's or Start New Line's, a table's data grid's as their ids say. The action's own once the person gives it some.</summary>
+    /// Breakpoint View Breakpoints', IntelliJ IDEA's Rerun on the Mac Replace's, a SQL file's Run Statement and Stop Statement
+    /// Start New Line Before's or Start New Line's and Stop's, a table's grid's as their ids say; the action's own once given some.</summary>
     public static string KeysIn(string id) => UserShortcuts.ContainsKey(id) ? id : id switch
     {
         ShowDiff or CompareFiles when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => EditorActions.Duplicate,
@@ -812,6 +813,7 @@ public static class AppActions
         DatabaseDeleteRows => EditorActions.DeleteLine,
         DatabaseRevert => RollbackLines,
         DatabaseShowDdl => GoToDeclaration,
+        DatabaseRunStop => Stop,
         Rerun when Preset == KeymapPreset.IntelliJ && OperatingSystem.IsMacOS() => Replace,
         NextOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: true),
         PreviousOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: false),
@@ -847,6 +849,9 @@ public static class AppActions
             .Bind(NextRegion, OperatingSystem.IsMacOS() ? "control meta BACK_QUOTE" : "control alt BACK_QUOTE")
             .Bind(PreviousRegion, OperatingSystem.IsMacOS() ? "control meta shift BACK_QUOTE" : "control alt shift BACK_QUOTE")
             .Bind(ReadAsText, OperatingSystem.IsMacOS() ? "control meta R" : "control alt R");
+        // Rider's Console.History.Browse and Console.Transaction.Commit: $default's, in every keymap, the Mac's with Cmd for Ctrl.
+        bool commandKey = OperatingSystem.IsMacOS() && preset != KeymapPreset.Emacs;
+        keymap.Bind(DatabaseHistory, commandKey ? "meta alt E" : "control alt E").Bind(DatabaseCommit, commandKey ? "meta alt shift ENTER" : "control alt shift ENTER");
         if (preset != KeymapPreset.Emacs)
         {
             // The Switcher's keys are the same in every keymap of Rider's but Emacs's, whose own list gives it Ctrl+X, B.
@@ -1446,7 +1451,6 @@ public static class AppActions
             // Cmd+Q, Exit's here, is the application menu's Quit, as in the other keymaps.
             return keymap
                 .Bind(DatabaseRun, "meta ENTER")
-                .Bind(DatabaseCommit, "meta alt shift ENTER")
                 .Bind(OpenSolution, "control shift O")
                 .Bind(NextProjectWindow, "meta alt BACK_QUOTE")
                 .Bind(PreviousProjectWindow, "meta alt shift BACK_QUOTE")
@@ -1635,7 +1639,6 @@ public static class AppActions
             .Bind(RefactorThis, "control alt shift T")
             .Bind(Generate, "alt INSERT")
             .Bind(DatabaseRun, "control ENTER")
-            .Bind(DatabaseCommit, "control alt shift ENTER")
             .Bind(ExtractMethod, "control alt M")
             .Bind(IntroduceVariable, "control alt V")
             .Bind(Inline, "control alt N")
