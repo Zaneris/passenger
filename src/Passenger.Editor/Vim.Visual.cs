@@ -847,7 +847,7 @@ public sealed partial class Vim
             {
                 // Below an empty line, a cursor in the blanks opening its line stays in it (is after them, then at its start), a count going on back.
                 int steps = inner ? 2 : 1;
-                int to = n < steps ? indent : n == steps ? on.Start : SentencesBack(text, on.Start, inner, n - steps);
+                int to = n < steps ? indent : n == steps ? on.Start : SentencesBack(text, on.Start, inner, n - steps, begun: true);
                 return to != r.Cursor ? r with { Cursor = to } : null;
             }
             int lastLine = VimMotions.LastLine(text, breakEnds);
@@ -860,7 +860,7 @@ public sealed partial class Vim
                 && (inner || run > on.Line + 1 || text[on.End - 1] is not (' ' or '\t')))
             {
                 // Past the end of a line before empty lines, the first step goes on to the last of them (as after blanks, of two or more), a count going on back.
-                int to = n == 1 ? text.GetLineStart(run) : SentencesBack(text, text.GetLineStart(run), inner, n - 1, reached: true);
+                int to = n == 1 ? text.GetLineStart(run) : SentencesBack(text, text.GetLineStart(run), inner, n - 1, reached: true, begun: true);
                 return to != r.Cursor ? r with { Cursor = to } : null;
             }
             else if (on.Length > 0 && r.Cursor == on.End && TextNavigation.IndentEnd(text, on) == on.End && on.Line > 0
@@ -870,11 +870,11 @@ public sealed partial class Vim
                 int white = WhiteEnding(text, on.Line);
                 int sentence = white > 0 ? SentenceUnit(text, VimMotions.StepBack(text, white)).Start : white;
                 int steps = inner ? 2 : 1;
-                int to = n < steps ? white : n == steps ? sentence : SentencesBack(text, sentence, inner, n - steps);
+                int to = n < steps ? white : n == steps ? sentence : SentencesBack(text, sentence, inner, n - steps, begun: true);
                 if (!inner && on.Line < lastLine && VimMotions.Blank(text, on.Line + 1))
                 {
                     // Before an empty line, as takes that white first.
-                    to = n == 1 ? white : SentencesBack(text, white, inner, n - 1);
+                    to = n == 1 ? white : SentencesBack(text, white, inner, n - 1, begun: true);
                 }
                 return to != r.Cursor ? r with { Cursor = to } : null;
             }
@@ -1014,12 +1014,12 @@ public sealed partial class Vim
         return to != r.Cursor ? r with { Cursor = to } : null;
     }
 
-    /// <summary>Where is or as carries a cursor standing before where its stretch began: back a sentence or a white at a
-    /// time from the one before where the cursor begins its own, from an empty line before the last of its run to that
-    /// line first; as takes a white with the sentence before it, a sentence with the white before where the cursor stood
-    /// in or after it or on an empty line a step reached (<paramref name="reached"/> for the first); after is steps from
-    /// the empty line it began on to a sentence, its next step passes over the white before that sentence.</summary>
-    private int SentencesBack(TextSnapshot text, int at, bool inner, int n, bool reached = false)
+    /// <summary>Where is or as carries a cursor before where its stretch began: back a sentence or a white at a time, from
+    /// an empty line before the last of its run to that line first; as takes a white with the sentence before it, a
+    /// sentence with the white before where the cursor stood in or after it or on an empty line a step after the walk's
+    /// first reached (<paramref name="reached"/> for the first, <paramref name="begun"/> where the walk stepped before);
+    /// after is steps from the empty line it began on to a sentence, its next passes the white before it.</summary>
+    private int SentencesBack(TextSnapshot text, int at, bool inner, int n, bool reached = false, bool begun = false)
     {
         int left = n;
         // A walk reaching an empty line on its way passes no white after it.
@@ -1030,6 +1030,7 @@ public sealed partial class Vim
             // An empty line before the last of its run, a sentence following, steps on to that last line first.
             at = run.Start;
             left--;
+            begun = true;
         }
         bool passWhite = false;
         // A line break alone between two sentences is no white: each is a step of its own.
@@ -1045,7 +1046,7 @@ public sealed partial class Vim
             }
             passWhite = inner && fromEmpty && !white && fromStart;
             fromStart = false;
-            reached = fromEmpty && (reached || left < n);
+            reached = fromEmpty && (reached || left < (begun ? n : n - 1));
             at = start;
             if (!inner && (white || inside || here.White || reached) && at > 0 && SentenceUnit(text, VimMotions.StepBack(text, at)) is var before
                 && before.White != white)
