@@ -528,6 +528,7 @@ public sealed partial class Vim(VimRegisters registers)
         }
         if (session is { Count: > 1, How: not ("c" or "cc") } counted && typed is not null && (typed.Length > 0 || counted.How is "o" or "O"))
         {
+            (string Text, int[] Breaks)? entered = breaks is { Count: > 0 } ? WithoutIndents(typed, breaks) : null;
             for (int i = 1; i < Math.Min(counted.Count, Math.Max(2, MostRepeatedText / Math.Max(1, typed.Length))); i++)
             {
                 if (counted.How is "o" or "O")
@@ -539,12 +540,39 @@ public sealed partial class Vim(VimRegisters registers)
                     plans.Add(line);
                     (text, selections) = (text.Apply(line.Edits), line.Selections);
                 }
-                if (typed.Length > 0)
+                if (typed.Length > 0 && entered is ({ } made, { } at))
+                {
+                    // Each line break Enter made is made again as Enter makes it, as . does.
+                    int from = 0;
+                    foreach (int place in at.Append(made.Length))
+                    {
+                        if (place > from)
+                        {
+                            EditPlan part = TextEditing.Insert(text, selections, made[from..place], EditKind.Joined);
+                            plans.Add(part);
+                            (text, selections) = (text.Apply(part.Edits), part.Selections);
+                        }
+                        if (place < made.Length)
+                        {
+                            EditPlan broken = TextEditing.NewLine(text, selections, view.LineEnding, view.Indent, view.Markup) with { Kind = EditKind.Joined };
+                            plans.Add(broken);
+                            (text, selections) = (text.Apply(broken.Edits), broken.Selections);
+                        }
+                        from = place + 1;
+                    }
+                }
+                else if (typed.Length > 0)
                 {
                     EditPlan again = TextEditing.Insert(text, selections, LineEndings.In(typed, view.LineEnding), EditKind.Joined);
                     plans.Add(again);
                     (text, selections) = (text.Apply(again.Edits), again.Selections);
                 }
+            }
+            if (entered is not null && indents && Unindented(text, selections) is { } blankAgain)
+            {
+                // The last line the count's Enter indented and left blank loses its indent too.
+                plans.Add(blankAgain);
+                (text, selections) = (text.Apply(blankAgain.Edits), blankAgain.Selections);
             }
         }
         if (session is { } begun && !replaying)
