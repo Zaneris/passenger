@@ -66,11 +66,11 @@ public sealed partial class Vim
         bool reachesNothing = right == int.MaxValue && Enumerable.Range(top, bottom - top + 1).All(l => TextNavigation.VisualColumn(text, text.GetLine(l).End, tab) <= left);
         (keptBlockLeft, keptBlockRight) = block && !lines ? (left, reachesNothing ? left : right)
             : toEnd ? (keptBlockLeft, keptBlockRight)
-            : inserts && !lines ? (0, stretch.Cursor < stretch.Anchor && overLines ? 0 : CaretColumn(text, stretch.Cursor, tab))
+            : inserts && !lines ? (overLines ? keptBlockLeft : 0, stretch.Cursor < stretch.Anchor && overLines ? 0 : CaretColumn(text, stretch.Cursor, tab))
             : lines || overLines
                 ? (overLines ? keptBlockLeft : 0,
                     stretch.Cursor >= stretch.Anchor || !lines ? CaretColumn(text, stretch.High, tab) : !overLines ? CaretColumn(text, stretch.Cursor, tab) : 0)
-            : (CaretColumn(text, stretch.Low, tab), CaretColumn(text, stretch.High, tab));
+            : (TextNavigation.VisualColumn(text, stretch.Low, tab), CaretColumn(text, stretch.High, tab));
         // A tab the block's edge cuts in two (r: any tab it takes) is first made the spaces it shows.
         EditPlan? split = block && !lines && (op is "I" or "A" or "r" || basic is "d" or "c" or "y")
             ? SplitTabs(text, top, bottom, left, right, tab, cutsLeft: op != "A", cutsRight: op != "I", inside: op == "r")
@@ -90,11 +90,23 @@ public sealed partial class Vim
                 SelectionSet starts = SelectionSet.Create([.. taken.Select(r => Selection.At(r.Low))], 0);
                 if (Join(text, starts, block ? Math.Max(2, bottom - top + 1) : n, spaced: op == "J", Options.JoinSpaces) is { } joined)
                 {
-                    if (block && top == bottom && top + 1 == VimMotions.LastLine(text, breakEnds)
-                        && right.CompareTo(TextNavigation.VisualColumn(text, text.GetLine(top).End, tab) - 1) == (text.GetLine(top + 1).Length > 0 ? 1 : 0))
+                    int startColumn = TextNavigation.VisualColumn(text, stretch.Anchor, tab);
+                    if (block && Math.Max(bottom, top + 1) == VimMotions.LastLine(text, breakEnds) && text.GetLineFromOffset(stretch.Cursor) == top
+                        && joined.Selections.Primary.Caret == stretch.Cursor && startColumn < TextNavigation.VisualColumn(text, stretch.Cursor, tab)
+                        && VimMotions.OffsetAtColumn(text, top, startColumn, tab) is var onTop && TextNavigation.VisualColumn(text, onTop, tab) == startColumn
+                        && (onTop >= text.Length || text[onTop] != '\t'))
                     {
-                        // Joining the last line, a block past its line's end (to its last character, the last line empty) aims j and k at its left.
-                        (wantedFor, wanted) = (joined.Selections, [left]);
+                        // Joining the last line, a caret left where the block's cursor stood, right of where it began, aims j, k and yy there.
+                        (wantedFor, wanted) = (joined.Selections, [startColumn]);
+                    }
+                    else if (block && toEnd && bottom == top + 1 && bottom == VimMotions.LastLine(text, breakEnds) && text.GetLineFromOffset(stretch.Anchor) == bottom
+                        && TextNavigation.IndentEnd(text, text.GetLine(bottom)) < text.GetLine(bottom).End
+                        && TextNavigation.VisualColumn(text, stretch.Anchor, tab) is var anchor && anchor < CaretColumn(text.Apply(joined.Edits), joined.Selections.Primary.Caret, tab)
+                        && VimMotions.OffsetAtColumn(text, top, anchor, tab) is var above && TextNavigation.VisualColumn(text, above, tab) == anchor
+                        && (above >= text.Length || text[above] != '\t'))
+                    {
+                        // Begun in the last line's text, a block to the lines' ends aims j and k at its start's column, where a tab above holds none of it.
+                        (wantedFor, wanted) = (joined.Selections, [anchor]);
                     }
                     return new VimResult(true, Edits: [joined]);
                 }
@@ -338,7 +350,8 @@ public sealed partial class Vim
                 int column = CaretColumn(text, cursor, tab);
                 int aim = aimed >= 0 ? aimed : column;
                 LineSpan cursorLine = VimMotions.LineOf(text, cursor);
-                bool onIt = cursorLine.Line == anchorLine.Line ? column == 0
+                // On one line the cursor's own column counts, past a one-character line's end too.
+                bool onIt = cursorLine.Line == anchorLine.Line ? CaretColumn(text, r.Cursor, tab) == 0
                     : kept.Left <= TextNavigation.VisualColumn(text, cursorLine.End, tab) && (aim == kept.Left || (aim > kept.Left && column < kept.Left));
                 // Back over lines A passes the first character where the kept columns start past it, or after $ differ.
                 bool afterFirst = above && (aim == int.MaxValue ? kept.Left != kept.Right : kept.Left != 0) && anchorLine.Length > 0;
@@ -354,7 +367,7 @@ public sealed partial class Vim
                     changeExtent = extent with
                     {
                         Again = !after ? InsertAgain.AtCursor
-                            : aim == int.MaxValue && !above ? InsertAgain.OnLastBelow
+                            : aim == int.MaxValue ? InsertAgain.OnLastBelow
                             : InsertAgain.AtColumnBelow,
                     };
                 }
@@ -429,8 +442,8 @@ public sealed partial class Vim
             int last = LastCharOf(text, text.GetLineStart(line));
             // The column is the caret's place in its line, counted in characters, not cells; after $ the line's last.
             int at = extent.Again == InsertAgain.OnLastBelow ? last : Math.Min(text.GetLineStart(line) + (c.Caret - VimMotions.LineOf(text, c.Caret).Start), last);
-            // A goes past that character where the columns the last visual change kept widen, on it otherwise.
-            return Selection.At(keptBlockLeft < keptBlockRight ? Math.Min(CharEnd(text, at), text.GetLine(line).End) : at);
+            // A goes past that character where the last visual change kept two columns, on it where it kept one.
+            return Selection.At(keptBlockLeft != keptBlockRight ? Math.Min(CharEnd(text, at), text.GetLine(line).End) : at);
         });
         return Insert(text, places, command, extent.Again == InsertAgain.AtCursor ? "I" : "A");
     }

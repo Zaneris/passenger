@@ -35,6 +35,33 @@ internal static class MemberMoves
         return new Hierarchy(null, type.Name, [.. Movable(type).Select(MemberOf)], bases, [.. derived.Where(InSource).Select(TypeOf)]);
     }
 
+    /// <summary>The public instance member of a class whose name the caret is on, and the interfaces in the solution the class
+    /// implements that declare no such member: those Pull Members Up could declare it in.</summary>
+    public static async Task<MemberPull> LackingAsync(Document document, Place at, CancellationToken cancel)
+    {
+        int offset = await Changes.OffsetAsync(document, at, cancel).ConfigureAwait(false);
+        SyntaxNode root = (await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false))!;
+        SemanticModel model = (await document.GetSemanticModelAsync(cancel).ConfigureAwait(false))!;
+        SyntaxToken token = Changes.TokenAt(root, offset);
+        SyntaxToken name = token.Parent switch
+        {
+            MethodDeclarationSyntax method => method.Identifier,
+            PropertyDeclarationSyntax property => property.Identifier,
+            EventDeclarationSyntax declared => declared.Identifier,
+            IndexerDeclarationSyntax indexer => indexer.ThisKeyword,
+            VariableDeclaratorSyntax { Parent.Parent: EventFieldDeclarationSyntax } variable => variable.Identifier,
+            _ => default,
+        };
+        if (name != token || offset < name.SpanStart || offset > name.Span.End
+            || model.GetDeclaredSymbol(token.Parent!, cancel) is not { DeclaredAccessibility: Accessibility.Public, IsStatic: false } member
+            || member.ContainingType is not { TypeKind: TypeKind.Class, IsRecord: false } type
+            || !Movable(type).Contains(member, SymbolEqualityComparer.Default))
+        {
+            return MemberPull.None;
+        }
+        return new MemberPull(type.Name, name.ValueText, MemberOf(member), [.. type.AllInterfaces.Where(i => InSource(i) && !Declares(i, member)).Select(TypeOf)]);
+    }
+
     public static async Task<Refactored> PullUpAsync(Document document, MembersMove move, CancellationToken cancel)
     {
         (INamedTypeSymbol? type, string? problem) = await SourceAsync(document, move, cancel).ConfigureAwait(false);

@@ -705,7 +705,7 @@ public partial class MainWindow : IdeWindow
 
     /// <summary>Builds as Build does, and says how it ended once it has: built, failed, stopped, refused or unable to start.
     /// Canceled, the build is stopped as the Build window's Stop stops it.</summary>
-    public Task<BuildOutcome> BuildAsync(CancellationToken cancel = default) => buildRun.BuildAsync(BuildCause.Explicit, cancel);
+    public Task<BuildOutcome> BuildAsync(CancellationToken cancel = default) => buildRun.BuildAsync(cancel);
 
     /// <summary>The status bar's text, which says what the last action came to, for the person. What an operation came to
     /// is its own answer (a build's outcome, a commit's), never this, which anything may have replaced since.</summary>

@@ -28,6 +28,56 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-24
+
+- `MauiSimulatorTests`' `A_maui_apps_ios_head_debugged_on_a_simulator_stops_steps_evaluates_and_takes_a_hot_reload_edit`,
+  CI 45453743296 and 45463483590 (macOS report shard 3), at 329200ec7 and 1d74d7984, after 9:51 and 9:38: "Waited 16.9 s,
+  all the test had left of its 9.5 minutes … for the stop at the breakpoint in MainPage's constructor" and "Waited 0 s …
+  for the click handler the edit changed". **Outside the code: the runner starved**, as on 2026-11-23. The class is its
+  shard's first iOS test, so it takes the runner's first boot of the simulator and the first install there. The IDE's
+  log times the build at 1.1 minutes in both runs, the boot at 2 and 1.9, and the install at 1.9 and 4.2, which began
+  about 3 minutes and 1 minute after the boot ended, the IDE logging nothing between; the runner has three processors
+  and kept at least 0.8 GB of its 7 free. The Mac boots the simulator in 8 s and installs in 17. McpIosSimulatorTests,
+  which boots and installs again after it, passed in 4:58 and 5:31. No change in the IDE shortens the simulator's boot or
+  install; booting it once before the shard's device classes, outside any test's minutes, is the deal's to weigh
+  (b98279487).
+- `EslintPrettierTests`' `Eslint_checks_and_fixes_as_its_server_says`, CI 45453743296 (Windows report shard 1), at
+  329200ec7: "Waited 225 s for the problem from the ESLint the project's .pnp.cjs places". **A bug in the IDE, on
+  Windows**: Yarn writes a Plug'n'Play package's location from the project's folder on its portable paths, which climb
+  from one drive to another ("../../../D:/…"), and YarnPnp joined it as a Windows path, which never leaves the project's
+  drive, and found a file's package by .NET's way to it, which across drives is the whole path; so ESLint, Prettier and
+  TypeScript in a package on another drive went unfound, as on CI's Windows runners, whose run folder holds the step's
+  project on C: and whose checkout holds the tests' packages it links to on D:, and as a Yarn 4 project on D: has its
+  global cache on C:. YarnPnp joins and climbs on the portable paths (9725401b0), YarnPnpTests holding it (1b88bab10);
+  the step passes on the Mac, and the Windows VM, with no Node.js and one drive, cannot run it.
+- `AspireCodeHelpTests`' `A_services_connections_are_completed_and_warned_of_by_the_AppHosts_graph_never_accusing_a_service_it_cannot_read`,
+  CI 45453743296 (Linux report shard 2, Windows report shard 1), at 329200ec7: "Completion, Show Context Actions or Go
+  to Declaration in a file no AppHost involves asked Passenger's extension for Aspire's help". **The test**: its step
+  refused any message to Passenger's extension about a document as Aspire's, and since a4da52ac2 (#2204) Show Context
+  Actions asks the extension in every C# file which interfaces lack the member at the caret (InterfacesLacking). The
+  step watches Aspire's own handlers alone (2f29d6039) and passes on the Mac. The class runs on no macOS job.
+- `UnseenAppsTests`' `A_program_a_passenger_nobody_sees_starts_never_reaches_the_screen_and_a_persons_window_starts_it_as_it_is`,
+  CI 45453743296 (Windows gate shard 1), at 329200ec7, in 53 ms: "Strings differ … "de.app/Contents/Developer\\Applications\\Simulator.a"".
+  **The test**: its step for a simulator's window, new in a64f55fab (#2218), compared the Simulator app's place, which
+  AppleTools joins with the system's separator, with a path in forward slashes. It reads that place below the developer
+  folder through PathNames.Relative (ce689b58f) and passes on the Mac.
+- `AboutMacOSRulesTests`' `A_report_class_that_reaches_macOSs_own_behaviour_is_marked_to_run_there_and_a_marked_one_reaches_it`,
+  CI 45453743296 (Linux gate shard 2, Windows gate shard 2), at 329200ec7: "FileBasedProgramsTests reaches macOS's own
+  behaviour, yet macOS's report lane passes it over: it asks whether it runs on macOS" and "UnseenAppsTests … it runs
+  an iOS simulator". **The tests**: FileBasedProgramsTests' .NET 10 step, new in d9662e171 (#2181), asked in the class's
+  own code whether it ran on macOS only to choose where to look for SDK installations, and UnseenAppsTests' step for a
+  simulator's window, new in a64f55fab (#2218), reaches AppleSimulators, macOS's alone. The first looks in every macOS
+  and Linux installer's folder that is there, staying off macOS's lane, and the second carries [AboutMacOS] (201bf9990);
+  the rule passes on the Mac.
+- `CommitSigningTests`' `A_gpg_keys_passphrase_is_asked_in_passengers_dialog_through_its_own_gpg_and_signs_the_commit`,
+  CI 44538058686 (macOS report shard 4), at c461a1b79: "gpg made no key to sign with, exiting 2: … gpg: signing failed:
+  Corrupted protection". **Outside the code**: GnuPG 2.5.24's gpg-agent writes a salt or nonce whose random bytes are
+  all printable inside quotes in its key file, and drops a space that follows "(", ")" or another space there, so the key
+  it has just made reads back a byte short and gpg's self-signature fails, about one key in twenty thousand. Seen on the
+  Mac with the runner's GnuPG, the lost space found as the one salt a byte longer the key signs with. The tests now carry
+  their keys and certificate, each salt and nonce in hex, where each made its own (66cca38df), and one that fails to go in
+  quotes the key files the agent stored (fe5da4265). The class runs on no macOS job.
+
 ## 2026-11-23
 
 - `CodeAssistTests`' `Reformat_and_what_a_completion_or_fix_writes_keep_the_files_indent_and_line_breaks_and_only_their_own_file`,

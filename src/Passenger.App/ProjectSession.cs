@@ -37,7 +37,7 @@ public sealed record SessionSetup(
     Func<bool> SolutionWide,
     WarmServer? WarmServer,
     ToolViews Views,
-    Func<CancellationToken, Task<BuildOutcome>> BuildForTests,
+    Func<IReadOnlyList<string>, CancellationToken, Task<BuildOutcome>> BuildForTests,
     Func<string, Dap.RunInTerminalArguments, Task<TerminalRun>> RunForDebugger,
     Func<Settings.AppSettings> Settings,
     ActionWork Work,

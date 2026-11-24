@@ -68,7 +68,7 @@ public sealed class UsageHighlighting
             WhyNot = context => context.File is null ? Refusals.NoFile
                 : service()?.For(context.File) is not null ? null
                 : service() is null ? Refusals.NoCSharp
-                : "The file is not C#",
+                : Refusals.NotCSharp,
             Menus = [new("Edit/Find", 2, 0)],
         });
 

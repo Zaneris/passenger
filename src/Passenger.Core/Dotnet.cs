@@ -47,6 +47,15 @@ public static partial class Dotnet
         return version.Answer?.Trim() ?? throw new InvalidOperationException($"dotnet --version failed: {version.Said}");
     }
 
+    /// <summary>Whether an SDK's dotnet build, publish or clean of a file-based program takes MSBuild's own switches beside
+    /// its C# file (-tl, -consoleLoggerParameters): one before 10.0.400 then reads the C# file as a project file and fails
+    /// it as no XML (MSB4025). False for no version, or one that does not read.</summary>
+    public static bool ProgramsTakeMSBuildSwitches(string? sdk) =>
+        sdk is not null && Version.TryParse(sdk.Split('-', '+')[0], out Version? version) && version >= ProgramSwitchesFrom;
+
+    /// <summary>The first SDK whose command line passes MSBuild's own switches on beside a file-based program's C# file.</summary>
+    private static readonly Version ProgramSwitchesFrom = new(10, 0, 400);
+
     /// <summary>A line that is an SDK's version alone, as dotnet --version names one; the lines it lists the SDKs on when
     /// global.json names none installed have each one's folder after it.</summary>
     [GeneratedRegex(@"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$")]

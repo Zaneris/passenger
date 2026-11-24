@@ -224,9 +224,9 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
     }
 
     /// <summary>What runs where: each framework of a multi-targeted project, a project's own test attribute, a base
-    /// class's test as each derived one, a platform's build of a solution, a file's own project, a framework's symbols;
-    /// NUnit's and MSTest's named rows and fixture instances each a row that runs and counts; a data row run alone;
-    /// test actions offered only where tests are.</summary>
+    /// class's test as each derived one, a platform's build of a solution, one solution's test of two built alone, a
+    /// file's own project, a framework's symbols; NUnit's and MSTest's named rows and fixture instances each a row that
+    /// runs and counts; a data row run alone; test actions offered only where tests are.</summary>
     [AvaloniaFact]
     public void A_test_run_from_its_icon_or_the_caret_runs_as_its_framework_and_project_take_it_and_each_case_is_a_row_that_counts()
     {
@@ -268,6 +268,11 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Flow.StepApart<UnitTestsTests>("a test project its .sln maps to a platform is found where the solution's build put it and runs from the caret", () => new UnitTestsTests(restored), t =>
         {
             t.A_test_project_its_solution_maps_to_a_platform_is_found_where_the_solutions_build_put_it_and_runs_from_the_caret("sln");
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("a test run at the caret in a folder of two solutions builds its project and what it references alone", () => new UnitTestsTests(restored), t =>
+        {
+            t.A_test_run_at_the_caret_in_a_folder_of_two_solutions_builds_its_project_and_what_it_references_alone();
             OpenWindows.CloseAll();
         });
         Flow.StepApart<UnitTestsTests>("a passing data row run alone leaves its method failed by another row and rerun failed runs that row", () => new UnitTestsTests(restored), t =>
@@ -652,6 +657,34 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Assert.True(Method(window, "Should_Do_Something")?.State == TestState.Passed,
             $"The test its solution builds for {platform} did not run from the caret: the Unit Tests window said '{window.BottomPanel.Tests.Status}'");
         Assert.StartsWith("Tests passed: 1, failed: 0 of 1", window.BottomPanel.Tests.Status, StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>A test run at the caret in a folder of two solutions, each a library and its tests, builds that test's project
+    /// and the library it references alone, the other solution's left unbuilt; Run All then builds both test projects and
+    /// runs both solutions' tests.</summary>
+    private void A_test_run_at_the_caret_in_a_folder_of_two_solutions_builds_its_project_and_what_it_references_alone()
+    {
+        string folder = NewFolder();
+        foreach (string project in WriteTwoSolutions(folder))
+        {
+            Restore.Run(project);
+        }
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile(Path.Combine(folder, "One", "Lib.Tests", "DoublerTests.cs"));
+        Ui.Settle();
+        Tree(window);
+        Ui.WaitFor(() => Method(window, "Doubles_two") is not null && Method(window, "Halves_two") is not null, "both solutions' tests from their code");
+
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "public void Doubles_");
+        Ui.Run(window, AppActions.RunTests);
+        Ui.WaitFor(() => !window.Tests.IsBusy, () => $"the run of the test at the caret: {window.BottomPanel.Tests.Status}", TimeSpan.FromSeconds(180));
+        Assert.True(Method(window, "Doubles_two")?.State == TestState.Passed, $"The test at the caret did not run: the Unit Tests window said '{window.BottomPanel.Tests.Status}'");
+        BuiltOneAlone(folder, "The run of a test at the caret");
+
+        Assert.True(window.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy, () => $"the run of every test: {window.BottomPanel.Tests.Status}", TimeSpan.FromSeconds(180));
+        Assert.StartsWith("Tests passed: 2, failed: 0 of 2", window.BottomPanel.Tests.Status, StringComparison.Ordinal);
         window.Close();
     }
 
@@ -1854,6 +1887,33 @@ public abstract class UnitTestsFolders : IDisposable
         "    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n" +
         $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
         $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n</Project>\n";
+
+    /// <summary>Writes a folder of two solutions apart, One and Two, each a library and a test project referencing it: One's
+    /// Lib.Tests has DoublerTests.Doubles_two, Two's Other.Tests has HalverTests.Halves_two. The test projects, to restore.</summary>
+    public static string[] WriteTwoSolutions(string folder) =>
+        [WriteSolution(folder, "One", "Lib", "Doubler", "Twice(int value) => value * 2", "Doubles_two", "Assert.Equal(4, Doubler.Twice(2))"),
+            WriteSolution(folder, "Two", "Other", "Halver", "Half(int value) => value / 2", "Halves_two", "Assert.Equal(1, Halver.Half(2))")];
+
+    private static string WriteSolution(string folder, string solution, string library, string type, string member, string test, string check)
+    {
+        Write(folder, $"{solution}/{library}/{library}.csproj", TestProjects.Library());
+        Write(folder, $"{solution}/{library}/{type}.cs", $"namespace {library};\n\npublic static class {type}\n{{\n    public static int {member};\n}}\n");
+        Write(folder, $"{solution}/{library}.Tests/{type}Tests.cs",
+            $"using Xunit;\n\nnamespace {library}.Tests;\n\npublic class {type}Tests\n{{\n    [Fact]\n    public void {test}() => {check};\n}}\n");
+        Write(folder, $"{solution}/{solution}.slnx", $"<Solution>\n  <Project Path=\"{library}/{library}.csproj\" />\n  <Project Path=\"{library}.Tests/{library}.Tests.csproj\" />\n</Solution>\n");
+        return Write(folder, $"{solution}/{library}.Tests/{library}.Tests.csproj",
+            TestProject(TestProjects.Framework).With($"  <ItemGroup>\n    <ProjectReference Include=\"../{library}/{library}.csproj\" />\n  </ItemGroup>\n"));
+    }
+
+    /// <summary>Holds a run of One's test in <see cref="WriteTwoSolutions"/>'s folder to have built One's projects and none of Two's.</summary>
+    public static void BuiltOneAlone(string folder, string run)
+    {
+        string[] unbuilt = [.. new[] { "One/Lib", "One/Lib.Tests" }.Where(p => !Directory.Exists(Path.Combine(folder, p, "bin")))];
+        Assert.True(unbuilt.Length == 0, $"{run} did not build {string.Join(", ", unbuilt)}, which its test needs");
+        string[] built = [.. new[] { "Two/Other", "Two/Other.Tests" }.Where(p => Directory.Exists(Path.Combine(folder, p, "bin")))];
+        Assert.True(built.Length == 0,
+            $"{run} built {string.Join(", ", built)} of the other solution, which its test does not reference: in a folder of many solutions a run of one test waits for every project's build");
+    }
 
     /// <summary>A test project of another framework's packages, never restored here.</summary>
     protected static string PackagesProject(params string[] packages) =>

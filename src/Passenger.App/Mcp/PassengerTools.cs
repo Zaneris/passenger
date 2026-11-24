@@ -1656,7 +1656,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         AgentCall.Follow(window.Actions.Work, published is null && game is null ? AppActions.Build : AppActions.Publish);
         // The build, publish or export goes on without an agent that gives up on it, shown in the Build or Run window.
         BuildOutcome built = await (game is not null ? Builds.ExportGodotAsync(new GodotExportRequest(game, preset!, debug, exported))
-            : published is null ? Builds.BuildAsync(BuildCause.Explicit, CancellationToken.None)
+            : published is null ? Builds.BuildAsync(CancellationToken.None)
             : Builds.PublishAsync(new PublishRequest(published.Path, profile ?? Session.Publishing.ProfileOf(published.Path)))).WaitAsync(cancel);
         // So the code tools the agent calls next know what it built.
         await (Session.CSharp?.ReferencesHeld ?? Task.CompletedTask).WaitAsync(cancel);

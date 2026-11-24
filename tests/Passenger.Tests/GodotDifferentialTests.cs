@@ -10,14 +10,14 @@ using Passenger.Workspace.GodotShader;
 namespace Passenger.Tests;
 
 /// <summary>Passenger's ports of Godot held to Godot itself: GDScripts, shaders and binary scenes made at random from a seed,
-/// each read by Passenger and by a headless Godot 4.7, whose errors and readings must be Passenger's, in the same words on the same lines.
-/// A difference is cut down a line at a time to the smallest text still differing and named with its seed; what differs
-/// on purpose is listed with why. Without Godot 4.7 the test skips saying why.</summary>
+/// each read by Passenger and by a headless Godot 4.7 or 4.8, whose errors and readings must be Passenger's, in the same words on the same
+/// lines. A difference is cut down a line at a time to the smallest text still differing and named with its seed; what differs
+/// on purpose is listed with why. Without either Godot the test skips saying why.</summary>
 [Collection(Beside.Name)]
 public sealed partial class GodotDifferentialTests
 {
-    /// <summary>The Godot the tests are written for, CI's.</summary>
-    private const string Pinned = "4.7";
+    /// <summary>The Godots the tests are written for: CI's, and the 4.8 Passenger's ports follow.</summary>
+    private static readonly string[] Pinned = ["4.7", "4.8"];
 
     private const int Seed = 2095;
 
@@ -64,7 +64,8 @@ public sealed partial class GodotDifferentialTests
         {
             Loader loads = new(godot, folder, GodotUserFolders.Under(Path.Combine(folder, "home")), "gdshader", ShadersLoader);
             Random random = new(Seed);
-            await Compare(loads, [.. Enumerable.Range(0, Written).Select(_ => Shader(random))], OursOfShader, "shader");
+            Version version = Version.Parse(Pinned.First(p => godot.Version!.StartsWith(p + ".", StringComparison.Ordinal)));
+            await Compare(loads, [.. Enumerable.Range(0, Written).Select(_ => Shader(random))], shader => OursOfShader(shader, version), "shader");
         }
         finally
         {
@@ -186,8 +187,8 @@ public sealed partial class GodotDifferentialTests
     private static GodotFound Pinned4()
     {
         GodotFound? godot = GodotExecutables.Find(null);
-        Assert.SkipWhen(godot is not { WhyNotScripts: null, Version: { } version } || !version.StartsWith(Pinned + ".", StringComparison.Ordinal),
-            $"No Godot {Pinned} was found (GODOT, the PATH, Applications), whose own errors Passenger's are held to");
+        Assert.SkipWhen(godot is not { WhyNotScripts: null, Version: { } version } || !Pinned.Any(p => version.StartsWith(p + ".", StringComparison.Ordinal)),
+            $"No Godot {string.Join(" or ", Pinned)} was found (GODOT, the PATH, Applications), whose own errors Passenger's are held to");
         return godot!;
     }
 
@@ -346,11 +347,12 @@ public sealed partial class GodotDifferentialTests
             .Select(f => (script.AsSpan(0, f.Start).Count('\n') + 1, f.Message))];
     }
 
-    /// <summary>A shader's first error as Passenger checks it, which is all Godot says as it compiles one.</summary>
-    private static HashSet<(int Line, string Said)> OursOfShader(string shader)
+    /// <summary>A shader's first error as Passenger checks it for a Godot of <paramref name="godot"/>'s major and minor
+    /// version, which is all Godot says as it compiles one.</summary>
+    private static HashSet<(int Line, string Said)> OursOfShader(string shader, Version godot)
     {
         GodotShaderChecked check = GodotShaderCheck.Check(new GodotShaderUnit("res://s.gdshader", shader, new Dictionary<string, string>(), []),
-            GodotShaderTable.Carried, new GodotShaderCheckOptions { Godot = new Version(4, 7, 2) });
+            GodotShaderTable.Carried, new GodotShaderCheckOptions { Godot = godot });
         return [.. check.Messages.Where(m => m.Error && !m.Note).Take(1).Select(m => (m.Line, m.Text))];
     }
 

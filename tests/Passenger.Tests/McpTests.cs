@@ -69,8 +69,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent's test runs as one flow, each step one test's check in an instance of its own: a passing run
     /// after a failure answering no failure it did not run, the Tests actions answering what the run came to, a test
-    /// written and run at once by its class's name, a failing test's 200,000 lines held to its last, one failing row
-    /// among 500 named, and a test reading standard input reaching its end.</summary>
+    /// written and run at once by its class's name, one of two solutions' tests built alone, a failing test's 200,000
+    /// lines held to its last, one failing row among 500 named, and a test reading standard input reaching its end.</summary>
     [Fact]
     public async Task An_agents_test_runs_answer_what_each_came_to_held_to_what_an_answer_carries()
     {
@@ -79,6 +79,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         await Flow.StepApartAsync("an agent makes a fake of a dependency through a code action and fills a calls arguments with its mocking librarys doubles and tests using them run green", () => new McpTests(restored), t => t.An_agent_makes_a_fake_of_a_dependency_and_fills_a_calls_arguments_with_its_mocking_librarys_doubles_and_tests_using_them_run_green());
         await Flow.StepApartAsync("an agents unit test actions answer what the run came to", () => new McpTests(restored), t => t.An_agents_unit_test_actions_answer_what_the_run_came_to());
         await Flow.StepApartAsync("an agents test written and run at once by its classs name runs and its failure is told", () => new McpTests(restored), t => t.An_agents_test_written_and_run_at_once_by_its_classs_name_runs_and_its_failure_is_told());
+        await Flow.StepApartAsync("an agents run of one test in a folder of two solutions builds its project and what it references alone", () => new McpTests(restored), t => t.An_agents_run_of_one_test_in_a_folder_of_two_solutions_builds_its_project_and_what_it_references_alone());
         await Flow.StepApartAsync("an agents run of a failing test that wrote 200000 lines answers its last lines and says the rest was left out", () => new McpTests(restored), t => t.An_agents_run_of_a_failing_test_that_wrote_200000_lines_answers_its_last_lines_and_says_the_rest_was_left_out());
         await Flow.StepApartAsync("an agents run of a theory with one failing row among 500 names that row and counts the rest", () => new McpTests(restored), t => t.An_agents_run_of_a_theory_with_one_failing_row_among_500_names_that_row_and_counts_the_rest());
         await Flow.StepApartAsync("an agents test that reads standard input reads its end and the agents next call is answered", () => new McpTests(restored), t => t.An_agents_test_that_reads_standard_input_reads_its_end_and_the_agents_next_call_is_answered());
@@ -790,6 +791,25 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(run.GetProperty("summary").GetString()!.StartsWith("Tests passed: 2, failed: 1 of 3", StringComparison.Ordinal),
             $"A run by its class's name of a test written just before it left the test out: {run}");
         Assert.Equal("Sums.Tests.SumTests.Written_just_now", Assert.Single(run.GetProperty("failures").EnumerateArray()).GetProperty("test").GetString());
+    }
+
+    /// <summary>tests_run of one test by its name in a folder of two solutions builds that test's project and the library it
+    /// references alone: the other solution's projects are left unbuilt.</summary>
+    private async Task An_agents_run_of_one_test_in_a_folder_of_two_solutions_builds_its_project_and_what_it_references_alone()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-two-solutions-"));
+        DeleteAtEnd(folder);
+        await TestFolders.PrepareAsync(async () =>
+        {
+            foreach (string project in UnitTestsFolders.WriteTwoSolutions(folder))
+            {
+                await Restore.RunAsync(project);
+            }
+        }, folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        JsonElement run = await Call(client, McpTools.TestsRun, new() { ["filter"] = "Doubles_two" });
+        Assert.StartsWith("Tests passed: 1, failed: 0 of 1", run.GetProperty("summary").GetString(), StringComparison.Ordinal);
+        UnitTestsFolders.BuiltOneAlone(folder, "An agent's tests_run of one test");
     }
 
     /// <summary>A failing test that wrote 200,000 lines is answered with its message and stack whole and its output's last

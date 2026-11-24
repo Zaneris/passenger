@@ -17,7 +17,7 @@ public sealed class TestController : IAsyncDisposable
 
     private static readonly IReadOnlyList<TestSource> NoSources = [];
 
-    private readonly Func<CancellationToken, Task<Run.BuildOutcome>> build;
+    private readonly Func<IReadOnlyList<string>, CancellationToken, Task<Run.BuildOutcome>> build;
     private readonly Func<IReadOnlyList<ProjectModel>> projects;
 
     /// <summary>The folder's workspace as last read, whose solution's properties MSBuild is given where the tests build.</summary>
@@ -31,10 +31,10 @@ public sealed class TestController : IAsyncDisposable
     /// <summary>The build, discovery or run under way, which Stop cancels whichever it is.</summary>
     private CancellationTokenSource? stopping;
 
-    /// <summary>The test projects last asked where they build, the solution whose build built them as it was written then,
-    /// and the answer, kept until the folder's projects are read again (a project or props file changed), which makes them
-    /// other objects, or the solution changes.</summary>
-    private (IReadOnlyList<ProjectModel> Projects, (string Path, DateTime Written)? Solution, IReadOnlyList<TestAssembly> Assemblies)? resolved;
+    /// <summary>Where each test project asked builds its assemblies, with the build configuration chosen then, by the
+    /// project as the folder last read it: kept until the folder's projects are read again (a project or props file
+    /// changed), which makes them other objects, or another configuration is chosen.</summary>
+    private readonly Dictionary<ProjectModel, (BuildChoice? Build, IReadOnlyList<TestAssembly> Assemblies)> resolved = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>What discovery found in each assembly, by its path, with the time the assembly was written then, or why its
     /// tests could not be found: an assembly not built again since whose tests were found is not asked again.</summary>
@@ -50,7 +50,7 @@ public sealed class TestController : IAsyncDisposable
     /// <summary>The tests each test project's code declares, by project path.</summary>
     private IReadOnlyDictionary<string, CodeTests> code = new Dictionary<string, CodeTests>();
 
-    public TestController(TestTree tree, Func<CancellationToken, Task<Run.BuildOutcome>> build, Func<IReadOnlyList<ProjectModel>> projects,
+    public TestController(TestTree tree, Func<IReadOnlyList<string>, CancellationToken, Task<Run.BuildOutcome>> build, Func<IReadOnlyList<ProjectModel>> projects,
         Func<WorkspaceModel?> workspaceModel, Action<string> log, Func<string, CancellationToken, Task<ITestRunner>>? startRunner = null)
     {
         Tree = tree;
@@ -376,7 +376,7 @@ public sealed class TestController : IAsyncDisposable
         }
         try
         {
-            if ((build || runner is null) && await DiscoverCore(workspace, build, stop.Token) is { } problem)
+            if ((build || runner is null) && await DiscoverCore(workspace, build, stop.Token, ProjectsOf(choice)) is { } problem)
             {
                 return Came(problem);
             }
@@ -456,7 +456,7 @@ public sealed class TestController : IAsyncDisposable
                 {
                     foreach (string path in environments.Keys.ToArray())
                     {
-                        ProjectModel? project = resolved?.Assemblies.FirstOrDefault(assembly => assembly.Project.Path == path)?.Project;
+                        ProjectModel? project = ResolvedOf(path).FirstOrDefault()?.Project;
                         if (project is not null && await beginAspire(project, debug, stop.Token) is { } aspire)
                         {
                             aspireRuns.Add(aspire);
@@ -807,7 +807,7 @@ public sealed class TestController : IAsyncDisposable
         discovered.Clear();
         unfound = [];
         sources = new(StringComparer.Ordinal);
-        resolved = null;
+        resolved.Clear();
         folder = workspace;
     }
 
@@ -838,10 +838,16 @@ public sealed class TestController : IAsyncDisposable
         }
     }
 
-    private async Task<string?> DiscoverCore(string workspace, bool build, CancellationToken cancel)
+    /// <summary>Builds the test projects of <paramref name="scope"/> (every one for null) and what they reference, where
+    /// <paramref name="build"/> asks, then finds their tests, those of the rest kept as last found. Null once found, or what
+    /// stopped it.</summary>
+    private async Task<string?> DiscoverCore(string workspace, bool build, CancellationToken cancel, IReadOnlySet<string>? scope = null)
     {
-        // A folder of GDScript alone has nothing to build for GUT's tests.
-        if (build && Builds && await this.build(cancel) is { Succeeded: false } unbuilt)
+        bool Within(ProjectModel project) => scope is null || scope.Contains(project.Path);
+        (IReadOnlyList<ProjectModel> every, List<(ProjectModel Project, string Framework)> declaring) = Testing();
+        // A game of GDScript alone has nothing to build for GUT's tests.
+        if (build && Building([.. every.Where(Within), .. declaring.Select(d => d.Project).Where(Within)]) is { Count: > 0 } building
+            && await this.build(building, cancel) is { Succeeded: false } unbuilt)
         {
             return unbuilt.Message;
         }
@@ -854,16 +860,16 @@ public sealed class TestController : IAsyncDisposable
         {
             Forget(workspace);
         }
-        IReadOnlyList<ProjectModel> tests = [.. projects().Where(p => p.Exists && p.IsTestProject)];
-        // GUT's tests, of each Godot project carrying GUT (its project.godot), and GoDotTest's, of each C# game carrying it.
-        List<(ProjectModel Project, string Framework)> declaring = [.. Finder.Projects.Where(p => p.IsScriptGame).Select(p => (p, GutScripts.Framework)),
-            .. Finder.Projects.Where(p => !p.IsTestProject && GoDotTests.Carried(p)).Select(p => (p, GoDotTests.Framework))];
-        if (tests.Count == 0 && declaring.Count == 0)
+        // Read again: the build may have read the projects as written.
+        (every, declaring) = Testing();
+        if (every.Count == 0 && declaring.Count == 0)
         {
             sources = new(StringComparer.Ordinal);
             Load();
             return "There are no test projects: none references a test SDK or adapter";
         }
+        IReadOnlyList<ProjectModel> tests = [.. every.Where(Within)];
+        declaring = [.. declaring.Where(d => Within(d.Project))];
         IReadOnlyList<TestAssembly> assemblies = tests.Count == 0 ? [] : await Assemblies(tests, workspace, cancel);
         List<TestAssembly> built = [];
         foreach (TestAssembly assembly in assemblies)
@@ -905,9 +911,11 @@ public sealed class TestController : IAsyncDisposable
                     notFound.GetValueOrDefault(assembly.Path));
             }
         }
-        unfound = [.. built.Select(a => discovered[a.Path].Unfound).OfType<UnfoundTests>()];
+        unfound = [.. unfound.Where(u => !Within(u.Assembly.Project)), .. built.Select(a => discovered[a.Path].Unfound).OfType<UnfoundTests>()];
         cancel.ThrowIfCancellationRequested();
-        Dictionary<string, IReadOnlyList<TestSource>> next = new(StringComparer.Ordinal);
+        // The tests of projects this run neither built nor looked through stay as last found.
+        Dictionary<string, IReadOnlyList<TestSource>> next = scope is null ? new(StringComparer.Ordinal)
+            : new(sources.Where(s => !scope.Contains(s.Key)), StringComparer.Ordinal);
         foreach (IGrouping<string, TestAssembly> project in built.GroupBy(a => a.Project.Path))
         {
             List<TestSource> now = [.. project.Select(a => new TestSource(a.Framework, discovered[a.Path].Tests))];
@@ -943,27 +951,75 @@ public sealed class TestController : IAsyncDisposable
     /// <summary>The tests a project's code declares as last read, by its path.</summary>
     private IReadOnlyList<TestItem> Declared(string project) => (code.GetValueOrDefault(project) ?? CodeTests.None).Tests;
 
-    /// <summary>The test projects' assemblies, from MSBuild once for these projects as the folder last read them, where the
-    /// build of the whole puts them: a solution's build gives each project the configuration and platform it maps it to.</summary>
+    /// <summary>The projects whose tests a run finds: the test projects; and those whose tests their code declares, GUT's
+    /// of each Godot project carrying GUT (its project.godot) and GoDotTest's of each C# game carrying it.</summary>
+    private (IReadOnlyList<ProjectModel> Tests, List<(ProjectModel Project, string Framework)> Declaring) Testing() =>
+        ([.. projects().Where(p => p.Exists && p.IsTestProject)],
+        [.. Finder.Projects.Where(p => p.IsScriptGame).Select(p => (p, GutScripts.Framework)),
+            .. Finder.Projects.Where(p => !p.IsTestProject && GoDotTests.Carried(p)).Select(p => (p, GoDotTests.Framework))]);
+
+    /// <summary>What a run's build of these projects' tests builds: each .NET project, and for a Godot project's GDScript
+    /// the projects building its C#; none for a game of GDScript alone.</summary>
+    private List<string> Building(IReadOnlyList<ProjectModel> testing)
+    {
+        List<ProjectModel> built = [.. projects().Where(p => p.Exists && !p.IsScriptGame)];
+        return [.. testing.SelectMany(p => p.IsScriptGame ? WorkspaceModel.BuildingGodot(built, p.Folder) : [p.Path]).Distinct(PathNames.Comparer)];
+    }
+
+    /// <summary>The test projects a run of this choice builds and looks through: those of its rows, or of the tree's
+    /// methods a pick takes as they stand; null, every one, where that names none.</summary>
+    private HashSet<string>? ProjectsOf(Choice choice)
+    {
+        IEnumerable<TestNode>? rows = choice.Rows ?? (choice.Pick is { } pick ? pick(Tree.Methods) : null);
+        HashSet<string> chosen = new(PathNames.Comparer);
+        foreach (TestNode row in rows?.SelectMany(Now) ?? [])
+        {
+            if (row is { Kind: TestNodeKind.Project, Project: { } project })
+            {
+                chosen.Add(project);
+            }
+            foreach (TestNode method in row.Kind == TestNodeKind.Row ? row.Parent is { } parent ? [parent] : [] : row.Methods)
+            {
+                if (method.ProjectPath is { } its)
+                {
+                    chosen.Add(its);
+                }
+            }
+        }
+        return chosen.Count > 0 ? chosen : null;
+    }
+
+    /// <summary>These test projects' assemblies, from MSBuild once for each project as the folder last read it and the build
+    /// configuration chosen, where a build of it alone puts them.</summary>
     private async Task<IReadOnlyList<TestAssembly>> Assemblies(IReadOnlyList<ProjectModel> tests, string workspace, CancellationToken cancel)
     {
         WorkspaceModel? model = workspaceModel();
-        (string Path, DateTime Written)? solution = model?.BuiltSolution(projects()) is { } path ? (path, File.GetLastWriteTimeUtc(path)) : null;
-        if (resolved is { } known && known.Projects.SequenceEqual(tests, ReferenceEqualityComparer.Instance) && known.Solution == solution)
+        HashSet<ProjectModel> current = new(projects(), ReferenceEqualityComparer.Instance);
+        foreach (ProjectModel gone in resolved.Keys.Where(p => !current.Contains(p)).ToList())
         {
-            return known.Assemblies;
+            resolved.Remove(gone);
         }
-        IReadOnlyList<TestAssembly> assemblies = await TestAssemblies.ResolveAsync(tests, workspace, model, solution?.Path, UiThread.Marshal(log), cancel);
-        resolved = (tests, solution, assemblies);
-        return assemblies;
+        List<ProjectModel> asked = [.. tests.Where(p => !resolved.TryGetValue(p, out (BuildChoice? Build, IReadOnlyList<TestAssembly> Assemblies) known) || !Equals(known.Build, model?.Build))];
+        if (asked.Count > 0)
+        {
+            IReadOnlyList<TestAssembly> found = await TestAssemblies.ResolveAsync(asked, workspace, model, UiThread.Marshal(log), cancel);
+            foreach (ProjectModel project in asked)
+            {
+                resolved[project] = (model?.Build, [.. found.Where(a => ReferenceEquals(a.Project, project))]);
+            }
+        }
+        return [.. tests.SelectMany(p => resolved.TryGetValue(p, out (BuildChoice? Build, IReadOnlyList<TestAssembly> Assemblies) known) ? known.Assemblies : [])];
     }
+
+    /// <summary>The assemblies of a test project last asked where they build, by its path.</summary>
+    private IEnumerable<TestAssembly> ResolvedOf(string project) => resolved.Values.SelectMany(r => r.Assemblies).Where(a => a.Project.Path == project);
 
     /// <summary>The environment a test project's tests run with: its first launch profile that runs the project, its
     /// variables; and for a project testing Avalonia headless under xunit v3, the hook that draws a failing test's windows
     /// into its result.</summary>
     private IReadOnlyDictionary<string, string> EnvironmentOf(string project)
     {
-        List<TestAssembly> its = [.. resolved?.Assemblies.Where(a => a.Project.Path == project) ?? []];
+        List<TestAssembly> its = [.. ResolvedOf(project)];
         IReadOnlyDictionary<string, string> environment = its.FirstOrDefault()?.Project is { } built
             && Run.LaunchProfile.Read(built).FirstOrDefault(p => p.RunsProject) is { } profile
             ? profile.EnvironmentVariables

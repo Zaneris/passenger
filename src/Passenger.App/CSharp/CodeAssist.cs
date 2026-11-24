@@ -137,6 +137,13 @@ public sealed class CodeAssist
                     context.Languages.CSharp.FormatOpened();
                 }
             };
+            editor.LineBroken += (_, _) =>
+            {
+                if (editor == Editor)
+                {
+                    context.Languages.CSharp.FormatLineBreak();
+                }
+            };
             editor.Typed += (_, text) =>
             {
                 if (editor == Editor)
@@ -726,29 +733,30 @@ public sealed class CodeAssist
                 : context.ReadOnlyWhy,
             Menus = [new("Code", 1, 3)],
         });
-        Code(AppActions.RefactorThis, "Refactor This…", context => IdeErrors.Observe(actions.ShowFixes(AppActions.RefactorThis, a => a.Kind?.StartsWith("refactor", StringComparison.Ordinal) == true, "Refactor This")),
+        Code(AppActions.RefactorThis, "Refactor This…", context => IdeErrors.Observe(actions.ShowFixes(AppActions.RefactorThis, a => a.Kind?.StartsWith("refactor", StringComparison.Ordinal) == true, "Refactor This",
+            OwnRefactorings(registry, context))),
             new("Refactor", 0, 0), xaml: true, writes: true);
         // A GDScript's are Passenger's own, over its reading of the project's scripts (CodeActions.GDScriptRefactor).
         Code(AppActions.ChangeSignature, "Change Signature…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.ChangeSignature, () => actions.GDScriptRefactor(GDScriptRefactoring.ChangeSignature))
-            : actions.AskingAsync(AppActions.ChangeSignature, actions.ChangeSignature)), new("Refactor", 1, 1), gdscript: true, writes: true);
+            : actions.AskingAsync(AppActions.ChangeSignature, actions.ChangeSignature)), new("Refactor", 1, 1), gdscript: true, writes: true, csharp: true);
         Code(AppActions.ExtractMethod, "Extract Method…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.ExtractMethod, () => actions.GDScriptRefactor(GDScriptRefactoring.ExtractFunction))
-            : actions.Refactor(a => a.Title == RoslynNames.ExtractMethod, "Extract Method", renameMethod: true, AppActions.ExtractMethod)), new("Refactor", 1, 2), gdscript: true, writes: true);
+            : actions.Refactor(CodeActions.ExtractsMethod, "Extract Method", renameMethod: true, AppActions.ExtractMethod)), new("Refactor", 1, 2), gdscript: true, writes: true);
         Code(AppActions.IntroduceVariable, "Introduce Variable…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.IntroduceVariable, () => actions.GDScriptRefactor(GDScriptRefactoring.ExtractVariable))
-            : actions.Refactor(a => a.Title.StartsWith(RoslynNames.IntroduceLocal, StringComparison.Ordinal), "Introduce Variable", renameMethod: false, AppActions.IntroduceVariable)),
+            : actions.Refactor(CodeActions.IntroducesLocal, "Introduce Variable", renameMethod: false, AppActions.IntroduceVariable)),
             new("Refactor", 1, 3), gdscript: true, writes: true);
         Code(AppActions.IntroduceField, "Introduce Field…", context => IdeErrors.Observe(actions.Refactor(CodeActions.IntroduceField, AppActions.IntroduceField)), new("Refactor", 1, 4), writes: true);
         Code(AppActions.IntroduceParameter, "Introduce Parameter…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.IntroduceParameter, () => actions.GDScriptRefactor(GDScriptRefactoring.IntroduceParameter))
             : actions.Refactor(CodeActions.IntroduceParameter, AppActions.IntroduceParameter)), new("Refactor", 1, 5), gdscript: true, writes: true);
-        Code(AppActions.ExtractInterface, "Extract Interface…", context => IdeErrors.Observe(actions.AskingAsync(AppActions.ExtractInterface, actions.ExtractInterface)), new("Refactor", 1, 6), writes: true);
+        Code(AppActions.ExtractInterface, "Extract Interface…", context => IdeErrors.Observe(actions.AskingAsync(AppActions.ExtractInterface, actions.ExtractInterface)), new("Refactor", 1, 6), writes: true, csharp: true);
         Code(AppActions.Inline, "Inline…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.Inline, () => actions.GDScriptRefactor(GDScriptRefactoring.Inline))
-            : actions.Refactor(a => a.Kind == RoslynNames.InlineKind || a.Title.StartsWith(RoslynNames.Inline, StringComparison.Ordinal), "Inline", renameMethod: false, AppActions.Inline)),
+            : actions.Refactor(CodeActions.Inlines, "Inline", renameMethod: false, AppActions.Inline)),
             new("Refactor", 1, 7), gdscript: true, writes: true);
         Code(AppActions.Move, "Move…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.Move, () => actions.GDScriptRefactor(GDScriptRefactoring.Move)) : actions.AskingAsync(AppActions.Move, actions.Move)),
-            new("Refactor", 2, 0), gdscript: true, writes: true);
+            new("Refactor", 2, 0), gdscript: true, writes: true, csharp: true);
         Code(AppActions.SafeDelete, "Safe Delete…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.SafeDelete, () => actions.GDScriptRefactor(GDScriptRefactoring.SafeDelete))
-            : actions.SafeDelete()), new("Refactor", 2, 1), gdscript: true, writes: true);
-        Code(AppActions.PullMembersUp, "Pull Members Up…", context => IdeErrors.Observe(actions.AskingAsync(AppActions.PullMembersUp, () => actions.MoveMembers(up: true))), new("Refactor", 3, 0), writes: true);
-        Code(AppActions.PushMembersDown, "Push Members Down…", context => IdeErrors.Observe(actions.AskingAsync(AppActions.PushMembersDown, () => actions.MoveMembers(up: false))), new("Refactor", 3, 1), writes: true);
+            : actions.SafeDelete()), new("Refactor", 2, 1), gdscript: true, writes: true, csharp: true);
+        Code(AppActions.PullMembersUp, "Pull Members Up…", context => IdeErrors.Observe(actions.AskingAsync(AppActions.PullMembersUp, () => actions.MoveMembers(up: true))), new("Refactor", 3, 0), writes: true, csharp: true);
+        Code(AppActions.PushMembersDown, "Push Members Down…", context => IdeErrors.Observe(actions.AskingAsync(AppActions.PushMembersDown, () => actions.MoveMembers(up: false))), new("Refactor", 3, 1), writes: true, csharp: true);
         Code(AppActions.EncapsulateField, "Encapsulate Field…", context => IdeErrors.Observe(actions.Refactor(CodeActions.EncapsulateField, AppActions.EncapsulateField)), new("Refactor", 3, 2), writes: true);
         registry.Add(new IdeAction(AppActions.ExtractResource, "Extract Resource…", "Code", context => IdeErrors.Observe(actions.AskingAsync(AppActions.ExtractResource, actions.ExtractResource)))
         {
@@ -786,8 +794,9 @@ public sealed class CodeAssist
 
         // One that edits the file shown (writes) greys on a read-only one, a file the language server serves too.
         void Code(string id, string title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false,
-            bool http = false, bool godot = false, bool shader = false, bool gdscript = false, bool gherkin = false, bool writes = false, bool link = false, bool config = false) =>
-            registry.Add(CodeAction(id, title, run, menu, server, syntax, xaml, markup, msbuild, http, godot, shader, gdscript, gherkin, writes, link, config));
+            bool http = false, bool godot = false, bool shader = false, bool gdscript = false, bool gherkin = false, bool writes = false, bool link = false, bool config = false,
+            bool csharp = false) =>
+            registry.Add(CodeAction(id, title, run, menu, server, syntax, xaml, markup, msbuild, http, godot, shader, gdscript, gherkin, writes, link, config, csharp));
 
         // Reformat Code, Code Cleanup and Optimize Imports run over what the Explorer has chosen where they are asked of it.
         IdeAction OverChosen(Tidying kind, IdeAction action) => action with
@@ -806,9 +815,10 @@ public sealed class CodeAssist
             WhyNot = context => this.context.Chosen(context) is { } chosen ? chosen.WhyNot(kind) : action.WhyNot(context),
         };
 
+        // One of C#'s own refactorings (csharp) works in a C# file alone, or a GDScript where it has a GDScript path.
         IdeAction CodeAction(string id, string title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false,
             bool msbuild = false, bool http = false, bool godot = false, bool shader = false, bool gdscript = false, bool gherkin = false, bool writes = false, bool link = false,
-            bool config = false) =>
+            bool config = false, bool csharp = false) =>
             new(id, title, "Code", run)
             {
                 // .http requests, Godot scenes' paths, shaders' names, features' steps and an .editorconfig's keys are read with no language server.
@@ -818,11 +828,21 @@ public sealed class CodeAssist
                     || shader && action.File is { } file && GodotFileKinds.IsShader(file.Path)
                     || gherkin && action.File is { } feature && Passenger.App.Bdd.FeatureChecks.IsFeature(feature.Path) ? null
                     : gdscript && CodeActions.IsGDScript(action.File) ? action.ReadOnlyWhy
-                    : WhyNot(action, server, syntax, xaml, markup, msbuild) is { } why && !(link && action.File is not null && action.Editor.LinkOn(action.Editor.Selections.Primary.Caret) is not null) ? why : null)
+                    : WhyNot(action, server, syntax, xaml, markup, msbuild) is { } why && !(link && action.File is not null && action.Editor.LinkOn(action.Editor.Selections.Primary.Caret) is not null) ? why
+                    : csharp && action.File?.Language != Passenger.Languages.Language.CSharp ? Refusals.NotCSharp
+                    : null)
                     ?? (writes ? action.ReadOnlyWhy : null),
                 Menus = [menu],
             };
     }
+
+    /// <summary>Passenger's own refactorings that Refactor This lists: the Refactor menu's, in its order, each that can run
+    /// where Refactor This was asked, as its item there would, run there when chosen.</summary>
+    private static IReadOnlyList<OwnRefactoring> OwnRefactorings(ActionRegistry registry, ActionContext context) =>
+        [.. MainMenu.ActionsIn(MainMenu.Of(registry.All, MainMenu.Refactor))
+            .Where(id => id != AppActions.RefactorThis && registry.WhyNot(id, context) is null)
+            .Select(id => new OwnRefactoring(registry[id]!.TitleWhere(context), registry.ShortcutsShown(id) ?? string.Empty, () => registry.Run(id, context),
+                CodeActions.ServersOf(id)))];
 
     private int Caret => Editor.Selections.Primary.Caret;
 
@@ -889,12 +909,12 @@ public sealed class CodeAssist
         : markup && XamlService.IsXaml(action.File.Path) ? action.ReadOnlyWhy
         : xaml && context.XamlOf(action.File) is { } markupFile && (markupFile.IsLoaded || !markupFile.Loaded.IsCompleted) ? null
         : msbuild && context.MSBuildOf(action.File) is not null ? null
-        : syntax && action.File.Syntax is null ? "The file is not C#"
+        : syntax && action.File.Syntax is null ? Refusals.NotCSharp
         : syntax && action.ReadOnlyWhy is { } readOnly ? readOnly
         : !server || context.Current is not null ? null
         : context.CSharp is null ? Refusals.NoCSharp
         : GeneratedCode.IsCopy(action.File.Path) ? Refusals.Generated(action.File.Name)
-        : "The file is not C#";
+        : Refusals.NotCSharp;
 
     internal IReadOnlyList<EditorFix> OwnFixes(OpenDocument? file, int offset) => actions.OwnFixes(file, offset);
 

@@ -9,7 +9,7 @@ Windows, macOS and Linux ([installing](#installing)).
 <p align="center">
   <a href="https://passenger-ide.net">Website</a> •
   <a href="https://passenger-ide.net/#download">Download</a> •
-  <a href="docs/release-notes/0.4.3.md">What's new in 0.4.3</a> •
+  <a href="docs/release-notes/0.4.4.md">What's new in 0.4.4</a> •
   <a href="#what-it-does">What it does</a> •
   <a href="#installing">Installing</a> •
   <a href="#your-coding-agent-using-the-ide-as-you-do">Your coding agent</a> •
@@ -221,7 +221,7 @@ only the projects it names.
 
 Razor and Blazor files get C# and HTML help together, and a class attribute completes from every stylesheet the page
 uses. Project files complete their properties, items and package versions, with each property's evaluated value.
-JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles and YAML go through their language servers on Node.js, Bun or Deno,
+JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles and YAML go through their language servers on Node.js or Bun,
 the project's own ESLint, Prettier, Oxlint, Oxfmt and Biome checking, fixing and formatting as it asks. Twelve looks of
 its own, each dark and light, and every file with an icon in each look's colours.
 
@@ -263,7 +263,8 @@ its own, each dark and light, and every file with an icon in each look's colours
 - **macOS:** a disk image for Macs with Apple Silicon, or one for Intel Macs. Drag Passenger onto Applications. For its
   command, choose Tools | Add the passenger-ide Command…: it links `~/.local/bin/passenger-ide`, with no administrator,
   and where your shell's PATH lacks `~/.local/bin`, adds it in your shell's startup file (`~/.zshrc` for zsh), saying
-  which before it asks. Tools | Remove the passenger-ide Command… takes the link away.
+  which before it asks. Tools | Remove the passenger-ide Command… takes the link away. Or install it with Homebrew,
+  `brew install passenger-ide`, which puts the `passenger-ide` command on your PATH too.
 - **Windows:** an installer for x64 or Arm64, which installs for you alone, with no administrator, and puts the
   `passenger-ide` command on your Path; uninstalling takes it off. A terminal opened after the install finds it; one
   already open keeps the Path it started with, so open a new one.
@@ -287,7 +288,7 @@ needs:
   Passenger says what is missing and installs one in a step, once you agree; its own language server, project host and
   debugger run on the .NET it carries, whatever the machine has;
 - **Git**, for version control;
-- **Node.js**, or **Bun** or **Deno** for a folder that uses one, for JavaScript, TypeScript, HTML, CSS, JSON,
+- **Node.js**, or **Bun** for a folder that uses it, for JavaScript, TypeScript, HTML, CSS, JSON,
   Dockerfiles and YAML; C#, XAML, GDScript and shaders do without them;
 - for Godot games, **Godot 4** (its .NET build for C#), found from `GODOT`, the PATH or your applications, or named in
   Settings › Godot; Passenger is tested on Godot 4.7 and 4.8's betas;

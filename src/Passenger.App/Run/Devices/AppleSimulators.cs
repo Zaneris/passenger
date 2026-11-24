@@ -9,6 +9,9 @@ namespace Passenger.App.Run.Devices;
 public sealed record AppleTools(string Developer)
 {
     public string Simctl => Path.Combine(Developer, "usr", "bin", "simctl");
+
+    /// <summary>Where its Simulator app is, in an Xcode that has one: Xcode 27's Device Hub takes its place.</summary>
+    public string SimulatorApp => Path.Combine(Developer, "Applications", "Simulator.app");
 }
 
 /// <summary>An app a build made for a simulator, as its workload reads it: its bundle identifier, the built bundle and the
@@ -17,8 +20,9 @@ public sealed record SimulatorBuild(string Package, string Bundle, string Runtim
 
 /// <summary>iOS's simulators through its workload and that workload's own Xcode: the simulators and devices the workload
 /// lists (<c>ComputeAvailableDevices</c>, what <c>dotnet run --list-devices</c> asks), a simulator booted where it is shut
-/// down, always with no window (<c>simctl boot</c> opens none), the built app installed there (<c>simctl install</c>) and
-/// shut down again once the start that booted it is over. Every program through ChildProcesses, the .NET CLI's as questions.</summary>
+/// down (<c>simctl boot</c> opens no window), the built app installed there (<c>simctl install</c>), its window opened in the
+/// background for a person who sees Passenger (<see cref="WindowOpening"/>), and shut down again once the start that booted
+/// it is over. Every program through ChildProcesses, the .NET CLI's as questions.</summary>
 public static class AppleSimulators
 {
     /// <summary>How long a simulator's boot is waited for, to its system's start.</summary>
@@ -26,6 +30,12 @@ public static class AppleSimulators
 
     /// <summary>How long one of simctl's other commands is waited for, an install's but none.</summary>
     private static readonly TimeSpan SimctlLimit = TimeSpan.FromMinutes(3);
+
+    /// <summary>How long the system's open is waited for as it opens a simulator's window.</summary>
+    private static readonly TimeSpan OpenLimit = TimeSpan.FromSeconds(30);
+
+    /// <summary>The system's open, which opens an app or a link as a double click in the Finder would.</summary>
+    private const string Open = "/usr/bin/open";
 
     /// <summary>The simulators this process booted and has not shut down, by their simctl and UDID, which the watchdog shuts
     /// down however Passenger ends (<see cref="ChildProcesses.AtIdeEnd"/>).</summary>
@@ -84,8 +94,8 @@ public static class AppleSimulators
         return (DeviceTargets.Parse(TargetPlatform.Ios, listed), new AppleTools(PathNames.Canonical(developer)), null);
     }
 
-    /// <summary>Boots a shut-down simulator and waits until its system has started, with no window: nothing of it shows on
-    /// anyone's screen. Null once booted, else why not. Another boot of it landing between the look that found it shut
+    /// <summary>Boots a shut-down simulator and waits until its system has started, opening no window of it (its window is
+    /// <see cref="ShowAsync"/>'s). Null once booted, else why not. Another boot of it landing between the look that found it shut
     /// down and this one's request, which simctl then refuses, is waited for as this one would have been.</summary>
     public static async Task<string?> BootAsync(AppleTools tools, DeviceTarget simulator, Action<string> say, CancellationToken cancel)
     {
@@ -179,6 +189,34 @@ public static class AppleSimulators
         catch (TimeoutException)
         {
             return (null, $"simctl did not say where its data container is in {Durations.Said(SimctlLimit)}");
+        }
+    }
+
+    /// <summary>What the system's open is given to show a booted simulator's window, in the background (<c>-g</c>), the
+    /// person's keys left where they are: the Simulator app of the workload's Xcode, where it has one, told which simulator to
+    /// show; else Xcode 27's Device Hub, through the link it opens a simulator's own window by. None where nobody sees this
+    /// Passenger (<paramref name="unseen"/>): an agent's or a test's start shows nothing on anyone's screen.</summary>
+    public static IReadOnlyList<string>? WindowOpening(bool unseen, string? simulatorApp, string udid) =>
+        unseen ? null
+        : simulatorApp is not null ? ["-g", "-a", simulatorApp, "--args", "-CurrentDeviceUDID", udid]
+        : ["-g", $"devices://device/open?id={udid}"];
+
+    /// <summary>Opens a booted simulator's window in the background where someone sees this Passenger (<see cref="WindowOpening"/>):
+    /// null once opened, or where nothing is to open; else why not, in words for the Run console, as a run goes on without it.</summary>
+    public static async Task<string?> ShowAsync(AppleTools tools, DeviceTarget simulator, bool unseen, CancellationToken cancel)
+    {
+        if (WindowOpening(unseen, Directory.Exists(tools.SimulatorApp) ? tools.SimulatorApp : null, simulator.Id) is not { } opening)
+        {
+            return null;
+        }
+        try
+        {
+            ChildResult opened = await ChildProcesses.RunAsync(ChildProcesses.Command(Open, opening), limit: OpenLimit, cancel: cancel);
+            return opened.Succeeded ? null : $"The window of the simulator {simulator.Name} did not open: {opened.Said}";
+        }
+        catch (TimeoutException)
+        {
+            return $"The window of the simulator {simulator.Name} did not open in {Durations.Said(OpenLimit)}";
         }
     }
 

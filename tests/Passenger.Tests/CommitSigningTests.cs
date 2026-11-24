@@ -162,7 +162,7 @@ public sealed class CommitSigningTests : IDisposable
         folders.Add(root);
         File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n}\n");
         TestGit.Init(root);
-        string id = Ui.AwaitPumped(Waiting.Apart(() => TestGpgKeys.MakeAsync(Passphrase)), "the test's GPG key", TimeSpan.FromMinutes(2));
+        string id = Ui.AwaitPumped(Waiting.Apart(() => TestGpgKeys.PutAsync(Passphrase)), "the test's GPG key", TimeSpan.FromMinutes(2));
         TestGit.Run(root, "config", Passenger.Vcs.GitConfigKeys.UserSigningKey, id);
         TestGit.Run(root, "config", Passenger.Vcs.GitConfigKeys.CommitGpgSign, "true");
         try
@@ -204,8 +204,8 @@ public sealed class CommitSigningTests : IDisposable
         folders.Add(root);
         File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n}\n");
         TestGit.Init(root);
-        // A user of its own: the run's keyring may hold the other tests' key, which gpg makes once for a user.
-        string id = Ui.AwaitPumped(Waiting.Apart(() => TestGpgKeys.MakeAsync(Passphrase, gpg, "Passenger Held <held@passenger.invalid>")), "the test's GPG key",
+        // A user of its own, by which the run's keyring, which may hold the other tests' key, lists this one.
+        string id = Ui.AwaitPumped(Waiting.Apart(() => TestGpgKeys.PutAsync(Passphrase, gpg, "Passenger Held <held@passenger.invalid>")), "the test's GPG key",
             TimeSpan.FromMinutes(2));
         TestGit.Run(root, "config", Passenger.Vcs.GitConfigKeys.UserSigningKey, id);
         TestGit.Run(root, "config", Passenger.Vcs.GitConfigKeys.CommitGpgSign, "true");
@@ -281,7 +281,7 @@ public sealed class CommitSigningTests : IDisposable
         Assert.SkipWhen(!OperatingSystem.IsWindows(), "Git for Windows' own gpg is Windows'");
         Assert.SkipWhen(TestGpgKeys.Bundled is null, TestGpgKeys.Gpg is not null ? "A gpg is on the PATH, which git takes before its own"
             : "Git for Windows on the PATH carries no gpg in its usr\\bin");
-        Signs("signing-bundled-", "lantern-quay-5", () => TestGpgKeys.MakeAsync("lantern-quay-5", TestGpgKeys.Bundled), [],
+        Signs("signing-bundled-", "lantern-quay-5", () => TestGpgKeys.PutAsync("lantern-quay-5", TestGpgKeys.Bundled), [],
             "Passphrase for Passenger Tests <tests@passenger.invalid>", "G", () => TestGpgKeys.EndAgentAsync(TestGpgKeys.Bundled));
     }
 
@@ -291,22 +291,21 @@ public sealed class CommitSigningTests : IDisposable
     public void An_x509_keys_passphrase_is_asked_in_passengers_dialog_through_gpgsm_and_signs_the_commit()
     {
         Assert.SkipWhen(TestX509Keys.WhyNot is not null, TestX509Keys.WhyNot ?? string.Empty);
-        string made = PathNames.Canonical(TestFolders.Create("signing-x509-keys-"));
-        folders.Add(made);
-        Signs("signing-x509-", "harbour-gate-6", () => TestX509Keys.MakeAsync("harbour-gate-6", made), [Passenger.Vcs.GitConfigKeys.GpgFormat, "x509"], "Passphrase for 0x", null,
+        Signs("signing-x509-", "harbour-gate-6", () => TestX509Keys.PutAsync("harbour-gate-6"), [Passenger.Vcs.GitConfigKeys.GpgFormat, "x509"], "Passphrase for 0x", null,
             () => TestGpgKeys.EndAgentAsync(TestX509Keys.Gpgsm));
     }
 
-    /// <summary>A commit of the Commit window signed with a key the test makes, the repository given <paramref name="config"/>
-    /// (pairs of name and value) beside the key: its passphrase asked in Passenger's dialog, titled as <paramref name="asked"/>
-    /// begins, and the commit signed, %G? giving <paramref name="verified"/> where given, its signature in the commit else.</summary>
-    private void Signs(string name, string passphrase, Func<Task<string>> make, string[] config, string asked, string? verified, Func<Task> ended)
+    /// <summary>A commit of the Commit window signed with a key the test puts in the run's keyring, the repository given
+    /// <paramref name="config"/> (pairs of name and value) beside the key: its passphrase asked in Passenger's dialog, titled
+    /// as <paramref name="asked"/> begins, and the commit signed, %G? giving <paramref name="verified"/> where given, its
+    /// signature in the commit else.</summary>
+    private void Signs(string name, string passphrase, Func<Task<string>> put, string[] config, string asked, string? verified, Func<Task> ended)
     {
         string root = PathNames.Canonical(TestFolders.Create(name));
         folders.Add(root);
         File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n}\n");
         TestGit.Init(root);
-        string id = Ui.AwaitPumped(Waiting.Apart(make), "the test's signing key", TimeSpan.FromMinutes(2));
+        string id = Ui.AwaitPumped(Waiting.Apart(put), "the test's signing key", TimeSpan.FromMinutes(2));
         TestGit.Run(root, "config", Passenger.Vcs.GitConfigKeys.UserSigningKey, id);
         TestGit.Run(root, "config", Passenger.Vcs.GitConfigKeys.CommitGpgSign, "true");
         for (int at = 0; at + 1 < config.Length; at += 2)

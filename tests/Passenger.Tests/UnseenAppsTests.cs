@@ -1,13 +1,15 @@
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
+using Passenger.App.Run.Devices;
 using Passenger.Core;
 
 namespace Passenger.Tests;
 
 /// <summary>What a Passenger nobody sees makes of a plan by what the plan starts, not only what its project built: a desktop
-/// app is refused, or kept off the screen, however it is named, and an Avalonia one takes the inspector that keeps it off.
-/// Windows starts each on a desktop of its own instead.</summary>
+/// app is refused, or kept off the screen, however it is named, and an Avalonia one takes the inspector that keeps it off;
+/// a simulator's window is opened only for a person's window. Windows starts each on a desktop of its own instead.</summary>
 [Collection(Beside.Name)]
+[AboutMacOS]
 public sealed class UnseenAppsTests : IDisposable
 {
     private readonly string folder = PathNames.Canonical(TestFolders.Create("unseen-"));
@@ -17,7 +19,8 @@ public sealed class UnseenAppsTests : IDisposable
     /// <summary>A program a Passenger nobody sees starts never reaches the person's screen, however it is named: a GTK
     /// program by a configuration or a project's run command, an Avalonia program by its inspector, a dotnet run or
     /// watch kept off by what its project is, a project never built known before dotnet watch builds it, and on Linux a
-    /// display a configuration names kept out; a person's window starts a named program as it is.</summary>
+    /// display a configuration names kept out; a person's window starts a named program as it is, and alone shows a
+    /// simulator's window.</summary>
     [Fact]
     public async Task A_program_a_passenger_nobody_sees_starts_never_reaches_the_screen_and_a_persons_window_starts_it_as_it_is()
     {
@@ -29,6 +32,7 @@ public sealed class UnseenAppsTests : IDisposable
         Flow.StepApart<UnseenAppsTests>("a named dotnet run of another project is kept off the screen by what that project is", t => t.A_named_dotnet_run_of_another_project_is_kept_off_the_screen_by_what_that_project_is());
         Flow.StepApart<UnseenAppsTests>("an Avalonia app dotnet watch would start is kept off the screen", t => t.An_avalonia_app_dotnet_watch_would_start_is_kept_off_the_screen());
         Flow.StepApart<UnseenAppsTests>("a desktop project never built is known by what it says before dotnet watch builds it", t => t.A_desktop_project_never_built_is_known_by_what_it_says_before_dotnet_watch_builds_it());
+        Flow.StepApart<UnseenAppsTests>("a simulator's window opens in the background for a person's window and never for a Passenger nobody sees", t => t.A_simulators_window_opens_in_the_background_for_a_persons_window_and_never_for_a_passenger_nobody_sees());
         await Flow.StepApartAsync("on Linux a display a configuration names stays out of what a Passenger nobody sees starts", () => new UnseenAppsTests(), t => t.On_Linux_a_display_a_configuration_names_stays_out_of_what_a_passenger_nobody_sees_starts());
     }
 
@@ -100,6 +104,22 @@ public sealed class UnseenAppsTests : IDisposable
             return;
         }
         Assert.Contains("a GTK app", never.WhyNot("run", built: false), StringComparison.Ordinal);
+    }
+
+    /// <summary>An iOS simulator a start runs on shows its window, in the background, where a person sees Passenger: through the
+    /// Simulator app of the workload's Xcode told which simulator, or Xcode 27's Device Hub by its link to the simulator,
+    /// where that Xcode has no Simulator app; a Passenger nobody sees opens none.</summary>
+    private void A_simulators_window_opens_in_the_background_for_a_persons_window_and_never_for_a_passenger_nobody_sees()
+    {
+        const string Udid = "3E8F9220-51E5-4DA6-AE52-A22C304D353B";
+        const string Developer = "/Applications/Xcode.app/Contents/Developer";
+        string simulator = new AppleTools(Developer).SimulatorApp;
+        Assert.Equal("Applications/Simulator.app", PathNames.Relative(simulator, Developer));
+        Assert.Equal(["-g", "-a", simulator, "--args", "-CurrentDeviceUDID", Udid], AppleSimulators.WindowOpening(unseen: false, simulator, Udid));
+        Assert.Equal(["-g", $"devices://device/open?id={Udid}"], AppleSimulators.WindowOpening(unseen: false, null, Udid));
+        Assert.True(AppleSimulators.WindowOpening(unseen: true, simulator, Udid) is null
+            && AppleSimulators.WindowOpening(unseen: true, null, Udid) is null,
+            "A Passenger nobody sees would open a simulator's window on the person's screen");
     }
 
     /// <summary>A launch profile may name a display, as one forwarded over SSH does: where nobody is to see the program, that

@@ -45,8 +45,8 @@ public sealed class GodotEditorDotnetTests
             A_new_game_targets_the_newest_dotnet_its_editor_builds_and_runs_started_on_its_own_and_through_passenger),
         (nameof(Through_passenger_a_game_targets_the_newer_dotnet_of_the_installation_the_editor_builds_with_which_passenger_hands_it),
             Through_passenger_a_game_targets_the_newer_dotnet_of_the_installation_the_editor_builds_with_which_passenger_hands_it),
-        (nameof(Its_dotnet_is_the_newest_released_major_from_8_or_a_preview_where_it_rolls_to_one),
-            Its_dotnet_is_the_newest_released_major_from_8_or_a_preview_where_it_rolls_to_one),
+        (nameof(Its_dotnet_is_the_newest_released_major_from_the_one_its_plugins_target_or_a_preview_where_it_rolls_to_one),
+            Its_dotnet_is_the_newest_released_major_from_the_one_its_plugins_target_or_a_preview_where_it_rolls_to_one),
         (nameof(It_runs_on_the_processors_DOTNET_ROOT_then_DOTNET_ROOT_then_the_registered_dotnet_then_the_installers),
             It_runs_on_the_processors_DOTNET_ROOT_then_DOTNET_ROOT_then_the_registered_dotnet_then_the_installers));
 
@@ -118,11 +118,17 @@ public sealed class GodotEditorDotnetTests
         Assert.Equal(new GodotEditorDotnet.GameDotnet(10, Home), GodotEditorDotnet.NewestOf(Through(older, released) with { Roots = [] }));
     }
 
-    private void Its_dotnet_is_the_newest_released_major_from_8_or_a_preview_where_it_rolls_to_one()
+    private void Its_dotnet_is_the_newest_released_major_from_the_one_its_plugins_target_or_a_preview_where_it_rolls_to_one()
     {
-        Assert.Equal(10, GodotEditorDotnet.Major(Installed, previews: false));
-        Assert.Equal(11, GodotEditorDotnet.Major(Installed, previews: true));
-        Assert.Null(GodotEditorDotnet.Major(new DotnetInstallation("/old", [], ["7.0.20", "6.0.36"]), previews: false));
+        Assert.Equal(10, GodotEditorDotnet.Major(Installed, previews: false, oldest: 8));
+        Assert.Equal(11, GodotEditorDotnet.Major(Installed, previews: true, oldest: 8));
+        Assert.Null(GodotEditorDotnet.Major(new DotnetInstallation("/old", [], ["7.0.20", "6.0.36"]), previews: false, oldest: 8));
+        DotnetInstallation nine = new(GodotEditorDotnet.InstallerRoot, ["9.0.300"], ["9.0.7", "8.0.17"]);
+        Assert.Null(GodotEditorDotnet.Major(nine, previews: false, oldest: 10));
+        GodotEditorDotnet.Machine machine = new(nine, nine, Builder, "9.0.300", new Version(1, 6, 10), Previews: false);
+        Assert.Equal(new GodotEditorDotnet.GameDotnet(9, GodotEditorDotnet.InstallerRoot), GodotEditorDotnet.NewestOf(new(machine, [])));
+        Assert.True(GodotEditorDotnet.NewestOf(new(machine with { Oldest = 10 }, [])) is null,
+            "A Godot whose plugins target .NET 10, on a machine whose newest .NET is 9, was offered a game on .NET 9, which its packages refuse");
     }
 
     private void It_runs_on_the_processors_DOTNET_ROOT_then_DOTNET_ROOT_then_the_registered_dotnet_then_the_installers()

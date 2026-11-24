@@ -38,8 +38,7 @@ public sealed class FileBasedProgramsTests : IDisposable
               <config><add key="globalPackagesFolder" value="packages" /></config>
             </configuration>
             """);
-        // What the program builds lies in its folder, which the test removes, rather than in the SDK's cache of the person's.
-        TestFolders.Write(folder, "Directory.Build.props", "<Project>\n  <PropertyGroup>\n    <UseArtifactsOutput>true</UseArtifactsOutput>\n  </PropertyGroup>\n</Project>\n");
+        TestFolders.Write(folder, "Directory.Build.props", ProgramProps);
         TestFolders.Write(folder, "app.cs", """
             #:package Passenger.ProgramTest@1.0.0
             #:property PublishAot=false
@@ -73,14 +72,29 @@ public sealed class FileBasedProgramsTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>The Directory.Build.props of every program's folder: what its restores and builds write lies in the folder,
+    /// each program's apart (the SDK's project names a folder of the person's), which the test removes; and Native AOT's
+    /// publish, on for a program by default, has no restore fetch this platform's runtime packs, which the feeds lack.</summary>
+    private const string ProgramProps = """
+        <Project>
+          <PropertyGroup>
+            <UseArtifactsOutput>true</UseArtifactsOutput>
+            <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+            <IncludeProjectNameInArtifactsPaths>true</IncludeProjectNameInArtifactsPaths>
+            <UseDefaultPublishRuntimeIdentifier>false</UseDefaultPublishRuntimeIdentifier>
+          </PropertyGroup>
+        </Project>
+
+        """;
+
     private string App => Path.Combine(folder, "app.cs");
 
     private string Helper => Path.Combine(folder, "helper.cs");
 
     /// <summary>A file-based program opened as a folder or a file, beside a solution or alone, is a project that
     /// answers across its files and references, runs with its profile, debugs into an included file, builds only what
-    /// changed and lists its tests, and what it includes is never a program itself, as one flow, each step the check
-    /// one test made in an instance of its own.</summary>
+    /// changed and lists its tests, and what it includes is never a program itself, on the earliest .NET 10 SDK too, as one
+    /// flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
     public void A_file_based_program_is_a_project_that_answers_runs_debugs_and_tests()
     {
@@ -92,6 +106,7 @@ public sealed class FileBasedProgramsTests : IDisposable
         Flow.StepApart<FileBasedProgramsTests>("files a program includes from another folder or by a wildcard are never programs themselves", t => t.Files_a_program_includes_from_another_folder_or_by_a_wildcard_are_never_programs_themselves());
         Flow.StepApart<FileBasedProgramsTests>("a program referencing another has it for a project answered across and run with it", t => t.A_program_referencing_another_has_it_for_a_project_answered_across_and_run_with_it());
         Flow.StepApart<FileBasedProgramsTests>("a file of top level statements alone with no directive is a program that completes runs and debugs", t => t.A_file_of_top_level_statements_alone_with_no_directive_is_a_program_that_completes_runs_and_debugs());
+        Flow.StepApart<FileBasedProgramsTests>("programs beside a solution on net 10 sdks are projects that build and run", t => t.Programs_beside_a_solution_on_net_10_sdks_are_projects_that_build_and_run());
     }
 
     private void A_program_opened_as_a_folder_is_a_project_that_answers_across_its_files_runs_with_its_profile_and_stops_in_its_included_file()
@@ -236,7 +251,7 @@ public sealed class FileBasedProgramsTests : IDisposable
         string tests = PathNames.Canonical(TestFolders.Create("program-tests-"));
         try
         {
-            TestFolders.Write(tests, "Directory.Build.props", "<Project>\n  <PropertyGroup>\n    <UseArtifactsOutput>true</UseArtifactsOutput>\n  </PropertyGroup>\n</Project>\n");
+            TestFolders.Write(tests, "Directory.Build.props", ProgramProps);
             string sums = TestFolders.Write(tests, "sums.cs", """
                 #:package xunit.v3@3.2.2
                 #:property PublishAot=false
@@ -378,8 +393,7 @@ public sealed class FileBasedProgramsTests : IDisposable
                 </configuration>
                 """);
             Directory.CreateDirectory(Path.Combine(plain, "feed"));
-            // Native AOT, on for a program by default, has a restore fetch this platform's runtime packs, which the empty feed lacks, before the targets turn it off.
-            TestFolders.Write(plain, "Directory.Build.props", "<Project>\n  <PropertyGroup>\n    <UseArtifactsOutput>true</UseArtifactsOutput>\n    <UseDefaultPublishRuntimeIdentifier>false</UseDefaultPublishRuntimeIdentifier>\n  </PropertyGroup>\n</Project>\n");
+            TestFolders.Write(plain, "Directory.Build.props", ProgramProps);
             // Native AOT, on for a program by default, would restore its compiler's packages, which the empty feed lacks.
             TestFolders.Write(plain, "Directory.Build.targets", "<Project>\n  <PropertyGroup>\n    <PublishAot>false</PublishAot>\n  </PropertyGroup>\n</Project>\n");
             string program = Path.Combine(plain, "héllo app.cs");
@@ -439,6 +453,79 @@ public sealed class FileBasedProgramsTests : IDisposable
         finally
         {
             TestFolders.Delete(plain);
+        }
+    }
+
+    /// <summary>A program in a folder of its own beside a solution, its global.json taking a .NET 10 SDK, is a project
+    /// evaluated for .NET 10 that the language server warns in, and Build and Run build and run it: on the earliest .NET 10
+    /// SDK installed (one of the first, whose project names no place for it and whose command line reads the C# file as a
+    /// project file beside MSBuild's own switches) and on the tests' own installation's newest; skipped where none is.</summary>
+    private void Programs_beside_a_solution_on_net_10_sdks_are_projects_that_build_and_run()
+    {
+        string[] installations = OperatingSystem.IsWindows() ? [Dotnet.Root(), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet")]
+            : [Dotnet.Root(), "/usr/local/share/dotnet", "/usr/share/dotnet", "/usr/lib/dotnet", "/usr/lib64/dotnet"];
+        static IEnumerable<string> Tens(string root) =>
+            DotnetInstallation.Read(root).Sdks.Where(version => version.StartsWith("10.0.", StringComparison.Ordinal) && !version.Contains('-'));
+        string? earliest = installations.Where(Directory.Exists).SelectMany(Tens).MinBy(Version.Parse);
+        Assert.SkipWhen(earliest is null, $"No .NET 10 SDK is installed in {string.Join(", ", installations)}, so no program can be made on one");
+        foreach (string sdk in new[] { earliest, Tens(Dotnet.Root()).MaxBy(Version.Parse) }.OfType<string>().Distinct(StringComparer.Ordinal))
+        {
+            ProgramOnSdk(sdk);
+        }
+    }
+
+    /// <summary>A program beside a solution in a folder whose global.json takes the SDK given: evaluated for .NET 10, the
+    /// language server's warning on its unused variable, Build building the solution and the program, Run printing its line.</summary>
+    private static void ProgramOnSdk(string sdk)
+    {
+        string ten = PathNames.Canonical(TestFolders.Create("ten-program-"));
+        try
+        {
+            TestFolders.Write(ten, "global.json", $"{{ \"sdk\": {{ \"version\": \"{sdk}\", \"rollForward\": \"disable\" }} }}\n");
+            TestFolders.Write(ten, "nuget.config", """
+                <configuration>
+                  <packageSources><clear /><add key="local" value="feed" /></packageSources>
+                </configuration>
+                """);
+            Directory.CreateDirectory(Path.Combine(ten, "feed"));
+            TestFolders.Write(ten, "Directory.Build.props", ProgramProps);
+            // Native AOT, on for a program by default, would restore its compiler's packages, which the empty feed lacks.
+            TestFolders.Write(ten, "Directory.Build.targets", "<Project>\n  <PropertyGroup>\n    <PublishAot>false</PublishAot>\n  </PropertyGroup>\n</Project>\n");
+            TestFolders.Write(ten, "Lib/Lib.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
+            TestFolders.Write(ten, "Lib/Shapes.cs", "namespace Lib;\n\npublic static class Shapes\n{\n}\n");
+            TestFolders.Write(ten, "Ten.slnx", "<Solution>\n  <Project Path=\"Lib/Lib.csproj\" />\n</Solution>\n");
+            string server = Path.Combine(ten, "tools", "mcp", "server.cs");
+            TestFolders.Write(ten, "tools/mcp/server.cs", "#:property Nullable=enable\nint unused = 0;\nConsole.WriteLine(\"server on .NET \" + Environment.Version.Major);\n");
+            Restore.Run(server, ten);
+            MainWindow window = Ui.OpenFolder(ten);
+            try
+            {
+                Ui.WaitFor(() => window.Projects.Any(p => PathNames.Same(p.Path, server) && p.Evaluated is not null),
+                    () => $"server.cs, beside Ten.slnx on SDK {sdk}, to be a program evaluated; the projects are {string.Join(", ", window.Projects.Select(p => $"{p.Path} ({p.Problem})"))}",
+                    TimeSpan.FromMinutes(2));
+                ProjectModel program = window.Projects.Single(p => PathNames.Same(p.Path, server));
+                Assert.True(program.IsEvaluated, $"server.cs on SDK {sdk} is no project the language server can load: {program.Problem}");
+                Assert.Equal(["net10.0"], program.TargetFrameworks);
+                Assert.Null(window.OpenFile(server));
+                WaitForWarning(window, server, "server.cs");
+
+                BuildOutcome built = Ui.Landed(window.BuildAsync(), $"Build of Ten.slnx and server.cs on SDK {sdk}");
+                Assert.True(built.Succeeded, $"Build of Ten.slnx and server.cs on SDK {sdk} ended {built.Status}, so a person cannot build the program there: "
+                    + $"{built.Message}\n{string.Join("\n", built.Output)}");
+                Assert.True(window.SelectConfiguration("server"));
+                Ui.Launched(window, window.RunAsync(), $"server.cs to build and run on SDK {sdk}", TimeSpan.FromMinutes(2));
+                Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), $"server.cs's run on SDK {sdk} to finish", TimeSpan.FromMinutes(2));
+                Assert.Contains("server on .NET 10\n", Output(window), StringComparison.Ordinal);
+                TestContext.Current.TestOutputHelper?.WriteLine($"server.cs beside Ten.slnx loaded, built and ran on SDK {sdk}");
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            TestFolders.Delete(ten);
         }
     }
 

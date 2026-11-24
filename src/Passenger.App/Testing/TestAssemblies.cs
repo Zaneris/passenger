@@ -19,17 +19,17 @@ public sealed record TestAssembly(ProjectModel Project, string Framework, string
 }
 
 /// <summary>Where the test projects build their assemblies, one per target framework, asked of the warm project host with
-/// the global properties a build of each is given (a solution's build, the configuration and platform it maps each to):
-/// each project's target frameworks as MSBuild evaluates them (from a property, an import, Directory.Build.props), then,
-/// for a project of several, each framework's TargetPath as its inner build sees it (GetTargetFrameworks, GetTargetPath).</summary>
+/// the global properties a test run's build of each is given (the configuration and platform chosen, as a build of it
+/// alone is given them): each project's target frameworks as MSBuild evaluates them (from a property, an import,
+/// Directory.Build.props), then, for a project of several, each framework's TargetPath as its inner build sees it
+/// (GetTargetFrameworks, GetTargetPath).</summary>
 public static class TestAssemblies
 {
-    /// <summary>The assemblies, built or not, the projects' in their order, as the build of <paramref name="solution"/> builds
-    /// them where it builds the projects (null where they are built one by one), given <paramref name="also"/> beside the
-    /// properties their build is given (continuous testing's own output folder); a project MSBuild cannot evaluate is logged
-    /// and left out.</summary>
+    /// <summary>The assemblies, built or not, the projects' in their order, as a build of each alone builds them, given
+    /// <paramref name="also"/> beside the properties their build is given (continuous testing's own output folder); a project
+    /// MSBuild cannot evaluate is logged and left out.</summary>
     public static async Task<IReadOnlyList<TestAssembly>> ResolveAsync(IReadOnlyList<ProjectModel> projects, string folder, WorkspaceModel? workspace,
-        string? solution, Action<string> log, CancellationToken cancel, IReadOnlyDictionary<string, string>? also = null)
+        Action<string> log, CancellationToken cancel, IReadOnlyDictionary<string, string>? also = null)
     {
         if (projects.Count == 0)
         {
@@ -44,10 +44,8 @@ public static class TestAssemblies
         {
             throw new InvalidOperationException($"MSBuild could not say where the test projects build: {failed.Reason}", failed);
         }
-        IReadOnlyList<SolutionBuilt> built = solution is null ? [] : await BuiltByAsync(host, solution, workspace?.Build is { OfSolution: true } chosen
-            ? new SolutionConfiguration(chosen.Chosen.Configuration, chosen.Chosen.Platform) : null, log, cancel);
         (IReadOnlyList<TestAssembly> Assemblies, string? Problem)[] each = await Task.WhenAll(projects.Select(p =>
-            OfAsync(host, p, With(ProjectModels.Properties(workspace, p, built.FirstOrDefault(b => PathNames.Same(b.Project, p.Path))), also), cancel)));
+            OfAsync(host, p, With(ProjectModels.Properties(workspace, p), also), cancel)));
         List<string> problems = [.. each.Select(e => e.Problem).OfType<string>()];
         foreach (string problem in problems)
         {
@@ -68,30 +66,6 @@ public static class TestAssemblies
             properties[name] = value;
         }
         return properties;
-    }
-
-    /// <summary>Each project a build of the solution builds under the configuration chosen (else the one MSBuild takes), with
-    /// the configuration and platform it gives it; none, said,
-    /// where MSBuild could not read the solution, whose projects are then asked as built alone.</summary>
-    private static async Task<IReadOnlyList<SolutionBuilt>> BuiltByAsync(ProjectHost host, string solution, SolutionConfiguration? chosen, Action<string> log,
-        CancellationToken cancel)
-    {
-        string? problem;
-        try
-        {
-            SolutionBuild build = await host.SolutionBuildAsync(solution, cancel, chosen);
-            if (build.Problem is null)
-            {
-                return build.Projects;
-            }
-            problem = build.Problem;
-        }
-        catch (ProjectHostFailed failed)
-        {
-            problem = failed.Reason;
-        }
-        log($"MSBuild could not say how {System.IO.Path.GetFileName(solution)} builds its projects, so their tests are looked for where each builds alone: {problem}");
-        return [];
     }
 
     /// <summary>One project's assemblies, a framework's at a time in the order its TargetFrameworks gives them, or why MSBuild

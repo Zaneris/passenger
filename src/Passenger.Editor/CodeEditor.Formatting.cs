@@ -29,18 +29,24 @@ public sealed partial class CodeEditor
     public event EventHandler<int>? LeftBlock;
 
     /// <summary>Enter opened a block between a '{' and its '}' at the one caret, where the host formats a line break typed
-    /// (<see cref="FormatsTyped"/>): the host lays the block out, the caret on the line between (<see cref="FormatOpenedBlock"/>).</summary>
+    /// (<see cref="FormatsTyped"/>): the host lays the block out, the caret on the line between (<see cref="FormatKeyAt"/>).</summary>
     public event EventHandler? OpenedBlock;
 
-    /// <summary>Enter, as <see cref="TextEditing.NewLine"/> plans it: one opening a block between a '{' and its '}' at the
-    /// one caret, where the host formats it, begins the step of Undo its layout joins and has the host lay it out.</summary>
+    /// <summary>Enter at the one caret opened no block, where the host formats a line break typed (<see cref="FormatsTyped"/>):
+    /// the host writes what goes on from the line it broke, if anything, the caret where that puts it (<see cref="FormatKeyAt"/>).</summary>
+    public event EventHandler? LineBroken;
+
+    /// <summary>Enter, as <see cref="TextEditing.NewLine"/> plans it: at one caret, where the host formats a line break,
+    /// it begins the step of Undo the host's layout joins and has the host lay out the block it opened between a '{' and
+    /// its '}', or what goes on from the line it broke.</summary>
     private void NewLine(EditPlan plan)
     {
-        formattedKey = plan.Split is [SplitPair pair] && plan.Selections.Count == 1 && document.Snapshot[pair.Opener] == '{' ? BeginFormattedKey("\n") : null;
+        bool opened = plan.Split is [SplitPair pair] && document.Snapshot[pair.Opener] == '{';
+        formattedKey = plan.Selections.Count == 1 ? BeginFormattedKey("\n") : null;
         Apply(plan);
         if (formattedKey is not null)
         {
-            OpenedBlock?.Invoke(this, EventArgs.Empty);
+            (opened ? OpenedBlock : LineBroken)?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -149,10 +155,11 @@ public sealed partial class CodeEditor
         }
     }
 
-    /// <summary>The host's layout of the block Enter opened (<see cref="OpenedBlock"/>): <paramref name="edits"/>, sorted and
-    /// apart, in <paramref name="asked"/>, the text the host worked from, made while the text still stands so and no key has
-    /// been pressed since, joined to Enter's step of Undo, the caret at <paramref name="caret"/> in the text they make.</summary>
-    public void FormatOpenedBlock(TextSnapshot asked, IReadOnlyList<TextEdit> edits, int caret)
+    /// <summary>The host's formatting of what the last key typed at the one caret, wherever it writes (the block Enter
+    /// opened laid out, <see cref="OpenedBlock"/>, or what goes on from a line, <see cref="LineBroken"/>): <paramref name="edits"/>,
+    /// sorted and apart, in <paramref name="asked"/>, the text the host worked from, made while the text still stands so and no
+    /// key has been pressed since, joined to the key's step of Undo, the caret at <paramref name="caret"/> in the text they make.</summary>
+    public void FormatKeyAt(TextSnapshot asked, IReadOnlyList<TextEdit> edits, int caret)
     {
         if (edits.Count > 0 && !selections.HasMultiple && caret >= 0 && caret <= asked.Length + edits.Sum(e => e.Text.Length - e.Length))
         {

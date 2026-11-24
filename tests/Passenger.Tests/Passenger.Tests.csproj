@@ -258,6 +258,11 @@
     <None Include="VsCodeThemes/*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- The signing tests' GPG keys and X.509 certificate, carried as gpg-agent stores them (TestGpgKeys, TestX509Keys). -->
+  <ItemGroup>
+    <None Include="SigningKeys/*/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- A test drives the IDE whole or a real process through its real boundary: the entry points a unit test would call
        instead are banned (BannedSymbols.txt), as is hearing a child past ChildProcesses.Hear, which warnings as errors
        make a failed build. -->

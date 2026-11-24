@@ -39,9 +39,9 @@
     "url": "https://passenger-ide.net/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Windows, macOS, Linux",
-    "softwareVersion": "0.4.3",
+    "softwareVersion": "0.4.4",
     "downloadUrl": "https://github.com/Zaneris/passenger/releases",
-    "releaseNotes": "https://github.com/Zaneris/passenger/releases/tag/v0.4.3",
+    "releaseNotes": "https://github.com/Zaneris/passenger/releases/tag/v0.4.4",
     "offers": {
         "@type": "Offer",
         "price": "0",
@@ -107,8 +107,8 @@
 <main id="main">
     <div class="hero">
         <div class="wrap">
-            <a class="news" href="#portable"><span class="tag">New in 0.4.3</span>
-                <span class="what">Portable builds: unpack Passenger anywhere, a USB stick included, its settings kept beside it</span><span class="short">What's
+            <a class="news" href="#macos"><span class="tag">New in 0.4.4</span>
+                <span class="what">Now on Homebrew: brew install passenger-ide, with the passenger-ide command on your PATH</span><span class="short">What's
                 new</span><span class="arrow" aria-hidden="true">&rarr;</span></a>
             <h1><span class="lead">Debugger, profiler and Hot&nbsp;Reload, built&nbsp;in.</span> The free IDE for C# and .NET.</h1>
             <p class="lede">Stop at a breakpoint and read every line's values, change the code while it runs, on your
@@ -664,7 +664,7 @@
                 <div class="text">
                     <h3>The web languages</h3>
                     <p>JavaScript, TypeScript, HTML, CSS, SCSS, Less, JSON, Dockerfiles and YAML through their language
-                        servers on Node.js, Bun or Deno: completion, checks, navigation and formatting, TypeScript on the
+                        servers on Node.js or Bun: completion, checks, navigation and formatting, TypeScript on the
                         project's own version and JSON against its schema. The project's own ESLint, Oxlint and Biome show
                         their problems as you type with their fixes, its Prettier, Oxfmt or Biome formats on Reformat Code
                         and on save, and a class attribute completes from every stylesheet the page uses.</p>
@@ -896,7 +896,7 @@
                 </details>
                 <details>
                     <summary>Is it ready for daily work?</summary>
-                    <p>Passenger is young (0.4.3), and its own development runs through it every day: the coding agents
+                    <p>Passenger is young (0.4.4), and its own development runs through it every day: the coding agents
                         that write much of it work through its MCP server. Its tests drive the whole IDE, a window with real
                         keys and clicks, on macOS, Windows and Linux, and a release ships only once its core tests pass
                         on all three. Each release's notes say what it does and its known limits, so you can judge for
@@ -943,7 +943,7 @@
             <h2>Download</h2>
             <p class="status" id="release-status"></p>
             <div class="downloads">
-                <div class="platform">
+                <div class="platform" id="macos">
                     <h3>macOS</h3>
                     <ul>
                         <li><a data-asset="Passenger-macos-arm64.dmg" href="https://github.com/Zaneris/passenger/releases/latest/download/Passenger-macos-arm64.dmg">Apple Silicon <span class="kind">.dmg</span></a></li>
@@ -951,8 +951,10 @@
                     </ul>
                     <p class="note">Apple Silicon for a Mac with an M chip, Intel for one with an Intel processor (About
                         This Mac says which). Drag Passenger onto Applications, then choose Tools &rsaquo; Add the
-                        passenger-ide Command&hellip; for its <code>passenger-ide</code> command in a terminal. Each
-                        new release downloads in the background and installs as Passenger closes.</p>
+                        passenger-ide Command&hellip; for its <code>passenger-ide</code> command in a terminal. Or
+                        install it with Homebrew, <code>brew install passenger-ide</code>, which puts the command
+                        on your PATH too. Each new release downloads in the background and installs as Passenger
+                        closes.</p>
                 </div>
                 <div class="platform">
                     <h3>Windows</h3>
@@ -998,8 +1000,8 @@
                         installs one in a step once you agree. Its own language server, project host and debugger run on
                         the .NET it carries, whatever the machine has.</li>
                     <li><strong><a href="https://git-scm.com/downloads">Git</a></strong>, for version control.</li>
-                    <li><strong><a href="https://nodejs.org/">Node.js</a></strong>, or <a href="https://bun.sh/">Bun</a> or
-                        <a href="https://deno.com/">Deno</a> for a folder that uses one, for JavaScript, TypeScript, HTML,
+                    <li><strong><a href="https://nodejs.org/">Node.js</a></strong>, or <a href="https://bun.sh/">Bun</a>
+                        for a folder that uses it, for JavaScript, TypeScript, HTML,
                         CSS, JSON, Dockerfiles and YAML: Node.js 22.22.2 or later for TypeScript, 22.15 or later for YAML.
                         C#, XAML, GDScript and shaders do without them.</li>
                     <li><strong>Chrome, Edge or another Chromium browser</strong>, for debugging Blazor's WebAssembly.</li>

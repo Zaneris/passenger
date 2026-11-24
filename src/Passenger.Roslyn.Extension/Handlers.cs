@@ -66,6 +66,12 @@ public sealed class PushMembersDown : IExtensionDocumentMessageHandler<MembersMo
         MemberMoves.PushDownAsync(context.Document(), message, cancellationToken);
 }
 
+public sealed class InterfacesLacking : IExtensionDocumentMessageHandler<Caret, MemberPull>
+{
+    public Task<MemberPull> ExecuteAsync(Caret message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        MemberMoves.LackingAsync(context.Document(), message.At, cancellationToken);
+}
+
 internal static class DocumentMessages
 {
     /// <summary>The C# file a message names: Passenger sends a document's messages only about a .cs file, so its document

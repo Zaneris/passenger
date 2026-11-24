@@ -70,7 +70,8 @@ public sealed class KeymapChoiceTests : IDisposable
     /// <summary>Each key reaches what it is meant for where it is pressed: the terminal and a floating terminal keep
     /// the shell's keys, a floating tool window runs the keymap chosen, IntelliJ IDEA's keys act by place (Duplicate,
     /// Generate, View Breakpoints), Copy copies what the mouse chose in the consoles, a chord's first key is forgotten
-    /// after a click, a focus move or two seconds, and on Windows AltGr types its character.</summary>
+    /// after a click, a focus move or two seconds, and on Windows AltGr types its character, Ctrl+Alt of the same key held by
+    /// a left Alt running its shortcut.</summary>
     [AvaloniaFact]
     public void Each_key_reaches_what_it_is_meant_for_in_the_place_it_is_pressed()
     {
@@ -84,6 +85,7 @@ public sealed class KeymapChoiceTests : IDisposable
         Flow.StepApart<ShortcutTests>("a click after a chord's first key forgets it so the next letter is typed not a comment", t => t.A_click_after_a_chords_first_key_forgets_it_so_the_next_letter_is_typed_not_a_comment());
         Flow.StepApart<ShortcutTests>("a chord's first key is forgotten when the focus moves and after two seconds as in Rider", t => t.A_chords_first_key_is_forgotten_when_the_focus_moves_and_after_two_seconds_as_in_Rider());
         Flow.StepApart<ShortcutTests>("on Windows AltGr types its letter where the layout has one and Ctrl Alt runs its shortcut where it has none", t => t.On_Windows_AltGr_types_its_letter_where_the_layout_has_one_and_Ctrl_Alt_runs_its_shortcut_where_it_has_none());
+        Flow.StepApart<ShortcutTests>("on Windows Ctrl Alt held by a left Alt runs its shortcut where AltGr of the same key types its letter", t => t.On_Windows_Ctrl_Alt_held_by_a_left_Alt_runs_its_shortcut_where_AltGr_of_the_same_key_types_its_letter());
         Flow.StepApart<ShortcutTests>("on Windows AltGr types its character into the terminal rather than Ctrl and Alt for the shell", t => t.On_Windows_AltGr_types_its_character_into_the_terminal_rather_than_Ctrl_and_Alt_for_the_shell());
     }
 

@@ -734,11 +734,25 @@ public sealed class KeymapDispatcher(Keymap keymap, Func<long>? timestamps = nul
     public Keystroke? Pending => pending;
 
     /// <summary>Whether a key press types a character rather than being a shortcut: Windows sends AltGr as Ctrl+Alt, so
-    /// Ctrl+Alt (Shift or not) on a key the layout gives a character to, like AltGr+S's ś on a Polish layout, is typing.
-    /// The Mac's key symbol leaves Control out, so there Ctrl+Option stays a shortcut.</summary>
+    /// Ctrl+Alt (Shift or not) on a key the layout gives a character to, like AltGr+S's ś on a Polish layout, is typing,
+    /// but where Windows says the keys held are Ctrl and Alt themselves (<see cref="HeldAsCtrlAlt"/>). The Mac's key symbol
+    /// leaves Control out, so there Ctrl+Option stays a shortcut.</summary>
     public static bool IsAltGrTyping(KeyEventArgs e) => OperatingSystem.IsWindows()
         && (e.KeyModifiers & ~KeyModifiers.Shift) == (KeyModifiers.Control | KeyModifiers.Alt)
-        && e.KeySymbol is { Length: > 0 } symbol && !char.IsControl(symbol[0]) && !char.IsWhiteSpace(symbol[0]);
+        && e.KeySymbol is { Length: > 0 } symbol && !char.IsControl(symbol[0]) && !char.IsWhiteSpace(symbol[0])
+        && !HeldAsCtrlAlt(e);
+
+    /// <summary>Whether Windows says a left Alt or a right Ctrl holds the press's Ctrl+Alt, which AltGr, the right Alt with
+    /// the left Ctrl Windows adds to it, never is; a press Windows says nothing of may be AltGr's.</summary>
+    private static bool HeldAsCtrlAlt(KeyEventArgs e) =>
+        e.PlatformKeyInfo is { Format: KnownPlatformKeyInfoFormats.Win32, Modifiers: { } held } && (held & (LeftAltHeld | RightCtrlHeld)) != 0;
+
+    /// <summary>The flags of a left Alt and a right Ctrl held among the modifiers of Avalonia's Win32 key info, which are
+    /// a console's (dwControlKeyState's LEFT_ALT_PRESSED and RIGHT_CTRL_PRESSED).</summary>
+    private const ulong LeftAltHeld = 0x2;
+
+    /// <inheritdoc cref="LeftAltHeld"/>
+    private const ulong RightCtrlHeld = 0x4;
 
     internal static bool IsModifierOnly(Key key) => key is Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl
         or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin;

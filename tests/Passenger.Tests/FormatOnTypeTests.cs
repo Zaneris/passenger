@@ -12,7 +12,8 @@ namespace Passenger.Tests;
 /// the statement, and the '}' that closes a block, or leaving a block whose '}' Enter wrote, lays out the block, as
 /// Reformat Code would, one Undo taking each back with its key or alone; a for loop's header, a string and a comment stay
 /// as typed, so does everything with the setting off, and an agent's edit is written as given. In Vim mode the layout
-/// joins the insert session's one step, and . types again what the session typed.</summary>
+/// joins the insert session's one step, and . types again what the session typed. A doc comment is written as the server
+/// writes it once its '///' is typed, and goes on at Enter in it.</summary>
 [SameOnEverySystem]
 public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
 {
@@ -44,6 +45,7 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
         Flow.StepApart("a semicolon in a string or a comment, with the setting off, or typed on before the layout came, leaves the text as typed", () => new FormatOnTypeTests(project), t => t.A_semicolon_in_a_string_or_a_comment_with_the_setting_off_or_typed_on_before_the_layout_came_leaves_the_text_as_typed());
         Flow.StepApart("an agent's edit is written as given and never laid out", () => new FormatOnTypeTests(project), t => t.An_agents_edit_is_written_as_given_and_never_laid_out());
         Flow.StepApart("in Vim mode the layout joins the insert session's one step, and dot types again what the keys typed", () => new FormatOnTypeTests(project), t => t.In_vim_mode_the_layout_joins_the_insert_sessions_one_step_and_dot_types_again_what_the_keys_typed());
+        Flow.StepApart("three slashes above a method write its doc comment with the caret in its summary, and Enter goes on in it", () => new FormatOnTypeTests(project), t => t.Three_slashes_above_a_method_write_its_doc_comment_with_the_caret_in_its_summary_and_enter_goes_on_in_it());
     }
 
     /// <summary>The issue's loop typed at the left margin as a person types it here, '{' and Enter writing its '}': its
@@ -250,6 +252,46 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
         window.Close();
     }
 
+    /// <summary>A method of parameters and a value, the indented empty line above it where its doc comment is typed.</summary>
+    private const string Undocumented = "static class Documented\n{\n    \n    public static int Add(int left, int right) => left + right;\n}\n";
+
+    /// <summary>'///' typed above a method, a key at a time, writes its doc comment as the server writes it: a summary, a
+    /// param of each parameter and its returns, the caret in the summary; one Undo takes the comment back with the third
+    /// '/'. Enter after the summary's words goes on in the comment, its next line's '///' written.</summary>
+    private void Three_slashes_above_a_method_write_its_doc_comment_with_the_caret_in_its_summary_and_enter_goes_on_in_it()
+    {
+        MainWindow window = project.Open("Documented.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string Line() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line);
+        Ui.PlaceAfter(editor, "{\n    ");
+        editor.Focus();
+        foreach (string slash in (string[])["/", "/", "/"])
+        {
+            window.KeyTextInput(slash);
+            Ui.Settle();
+        }
+        string documented = Undocumented.Replace("    \n", "    /// <summary>\n    /// \n    /// </summary>\n    /// <param name=\"left\"></param>\n    /// <param name=\"right\"></param>\n"
+            + "    /// <returns></returns>\n", StringComparison.Ordinal);
+        Assert.True(editor.Document.Snapshot.ToString() == documented, $"'///' above the method did not write its doc comment:\n{editor.Document.Snapshot}");
+        Assert.True(Line() == "    /// " && editor.CaretPosition.Column == Line().Length && editor.CaretPosition.Line == 3,
+            $"The caret is not in the summary: line {editor.CaretPosition.Line} '{Line()}', column {editor.CaretPosition.Column}");
+
+        Ui.Run(window, EditorActions.Undo);
+        Assert.True(editor.Document.Snapshot.ToString() == Undocumented.Replace("    \n", "    //\n", StringComparison.Ordinal),
+            $"One Undo did not take the doc comment back with its third '/':\n{editor.Document.Snapshot}");
+        Ui.Run(window, EditorActions.Redo);
+        Assert.True(editor.Document.Snapshot.ToString() == documented, $"Redo did not bring the doc comment back:\n{editor.Document.Snapshot}");
+
+        editor.GoTo(new TextPosition(3, 8));
+        window.KeyTextInput("Adds two numbers.");
+        Ui.Settle();
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        Assert.True(Line() == "    /// " && editor.CaretPosition.Column == Line().Length,
+            $"Enter in the doc comment did not go on in it: '{Line()}', the caret at {editor.CaretPosition.Column}\n{editor.Document.Snapshot}");
+        window.Close();
+    }
+
     /// <summary>A class with an indented empty line in its body and one in a method's, where the block tests type.</summary>
     private const string Blocks = "using System;\n\nclass Blocks\n{\n    \n    public static void Run(string[] args)\n    {\n        \n    }\n}\n";
 
@@ -329,6 +371,7 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
             File.WriteAllText(PathOf("Loop.cs"), Empty);
             File.WriteAllText(PathOf("Twice.cs"), "static class Twice\n{\n    public static void Run()\n    {\n\n        int kept = 0;\n\n    }\n}\n");
             File.WriteAllText(PathOf("Blocks.cs"), Blocks);
+            File.WriteAllText(PathOf("Documented.cs"), Undocumented);
             Directory.CreateDirectory(PathOf("Kept"));
             File.WriteAllText(PathOf("Kept/.editorconfig"), "[*.cs]\ncsharp_new_line_before_open_brace = none\n");
             File.WriteAllText(PathOf("Kept/Blocks.cs"), KeptBlocks);

@@ -795,7 +795,7 @@ public sealed partial class TerminalView : Control
             // Cmd's keys are the IDE's and the Mac's, never the shell's.
             return;
         }
-        if (IsAltGrTyping(e))
+        if (KeymapDispatcher.IsAltGrTyping(e))
         {
             // Its character comes as text input, which handling the key here would keep from coming.
             return;
@@ -818,12 +818,6 @@ public sealed partial class TerminalView : Control
         }
         RestartBlink();
     }
-
-    /// <summary>Windows sends AltGr as Ctrl+Alt: a key the layout gives a character to with them (AltGr+Q's @ on a German
-    /// layout) is typing, not Ctrl and Alt for the shell.</summary>
-    private static bool IsAltGrTyping(KeyEventArgs e) => OperatingSystem.IsWindows()
-        && (e.KeyModifiers & ~KeyModifiers.Shift) == (KeyModifiers.Control | KeyModifiers.Alt)
-        && e.KeySymbol is { Length: > 0 } symbol && !char.IsControl(symbol[0]) && !char.IsWhiteSpace(symbol[0]);
 
     /// <summary>Copies the selection to the clipboard.</summary>
     public async Task CopyAsync()

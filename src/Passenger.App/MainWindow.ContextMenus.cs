@@ -46,7 +46,7 @@ public partial class MainWindow
         MenuEntry separator = new(null);
         Add(Item(A.QuickFix), separator, Item(E.Cut), Item(E.Copy), Item(E.Paste), separator,
             Item(A.FindUsages), Item(A.FindClonesOfSelection),
-            Sub("Refactor", Item(A.RefactorThis), separator, Item(A.Rename), Item(A.ExtractMethod), Item(A.IntroduceVariable), Item(A.Inline)),
+            MainMenu.Of(actions!.All, MainMenu.Refactor),
             Sub("Go To", Item(A.GoToDeclaration), Item(A.DerivedSymbols), Item(A.GoToImplementation), Item(A.GoToTypeDeclaration), Item(A.BaseSymbols),
                 separator, Item(A.CallHierarchy), Item(A.TypeHierarchy), Item(A.ShowDependencyMap)),
             Item(A.Generate),

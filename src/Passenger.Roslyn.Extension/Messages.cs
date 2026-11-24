@@ -17,6 +17,7 @@ public static class Handlers
     public const string DescribeHierarchy = "Passenger.Roslyn.Extension.DescribeHierarchy";
     public const string PullMembersUp = "Passenger.Roslyn.Extension.PullMembersUp";
     public const string PushMembersDown = "Passenger.Roslyn.Extension.PushMembersDown";
+    public const string InterfacesLacking = "Passenger.Roslyn.Extension.InterfacesLacking";
     public const string DocumentTexts = "Passenger.Roslyn.Extension.DocumentTexts";
     public const string DocumentsWritten = "Passenger.Roslyn.Extension.DocumentsWritten";
     public const string ReferencesRead = "Passenger.Roslyn.Extension.ReferencesRead";
@@ -73,7 +74,7 @@ public static class Handlers
     public static readonly IReadOnlyList<string> All =
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
-        DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, ReferencesRead, ReferencedFiles, GeneratorsRun, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
+        DescribeHierarchy, PullMembersUp, PushMembersDown, InterfacesLacking, DocumentTexts, DocumentsWritten, ReferencesRead, ReferencedFiles, GeneratorsRun, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, SymbolContainers, WrittenPlaces,
         ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames, GeneratedMembers,
         MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover,
@@ -1376,6 +1377,18 @@ public sealed record Hierarchy(
     [property: JsonPropertyName("members")] IReadOnlyList<Member> Members,
     [property: JsonPropertyName("bases")] IReadOnlyList<Member> Bases,
     [property: JsonPropertyName("derived")] IReadOnlyList<Member> Derived);
+
+/// <summary>The member of a class whose name the caret is on, by its name, and the interfaces in the solution the class
+/// implements that could declare it but do not, which Pull Members Up could declare it in; no member where the caret is on
+/// none.</summary>
+public sealed record MemberPull(
+    [property: JsonPropertyName("type")] string Type,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("member")] Member? Member,
+    [property: JsonPropertyName("interfaces")] IReadOnlyList<Member> Interfaces)
+{
+    public static readonly MemberPull None = new(string.Empty, string.Empty, null, []);
+}
 
 /// <summary>Pull Members Up's or Push Members Down's request: these members of the class at the caret moved into the base
 /// type named by its id (up), or into each derived class whose id is a line of the target (down); those listed as abstract

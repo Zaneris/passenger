@@ -554,11 +554,13 @@ jobs:
           tools/release-notes.sh ${TAG:+"$TAG"} > release/notes.md
           cat release/notes.md
 
+      # Hidden files too, so a dry run keeps the AUR's .SRCINFO.
       - name: Keep the release's files
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Passenger-${{ needs.version.outputs.version }}
           path: release/
+          include-hidden-files: true
           if-no-files-found: error
           compression-level: 0
           retention-days: ${{ needs.version.outputs.publish == 'true' && 1 || 7 }}
@@ -588,10 +590,10 @@ jobs:
         run: gh release create "$TAG" release/assets/* --verify-tag --title "Passenger $VERSION" --notes-file release/notes.md
 
   # The published release told to each system's package manager, its files written again from the assets job's sums as
-  # the dry run showed them, each passed over while its secret is missing: Homebrew's cask and WinGet's manifests as pull
-  # requests from the forks of PACKAGES_GITHUB_TOKEN's account (a classic token with public_repo), the AUR's
-  # passenger-ide-bin pushed with AUR_SSH_PRIVATE_KEY. One's failure leaves the release and the others as they are: run
-  # again, each writes the same.
+  # the dry run showed them, each passed over while its secret is missing: WinGet's manifests, and Homebrew's cask until
+  # Homebrew's tap has it, as pull requests from the forks of PACKAGES_GITHUB_TOKEN's account (a classic token with
+  # public_repo), the AUR's passenger-ide-bin pushed with AUR_SSH_PRIVATE_KEY. One's failure leaves the release and the
+  # others as they are: run again, each writes the same.
   packages:
     name: Package managers
     needs: [version, assets, release]
@@ -612,6 +614,8 @@ jobs:
           jq -r 'to_entries[] | "\(.value)  \(.key)"' <<< "$SUMS" > "$RUNNER_TEMP/SHA256SUMS"
           tools/package-managers.sh "$VERSION" "$RUNNER_TEMP/SHA256SUMS" "$RUNNER_TEMP/packages"
 
+      # Homebrew's autobump follows each release through the cask's livecheck once its tap has the cask, so the cask is
+      # sent only while the tap lacks it and no pull request of the token's account for it is open.
       - name: Homebrew
         if: ${{ !cancelled() && steps.files.outcome == 'success' }}
         env:
@@ -621,7 +625,21 @@ jobs:
             echo "::notice title=Homebrew::No PACKAGES_GITHUB_TOKEN in the secrets: the cask is not sent"
             exit 0
           fi
-          tools/package-pr.sh Homebrew/homebrew-cask Casks/p/passenger-ide.rb "passenger-ide-$VERSION" "passenger-ide $VERSION" \
+          cask=Casks/p/passenger-ide.rb
+          if said=$(gh api "repos/Homebrew/homebrew-cask/contents/$cask" --silent 2>&1); then
+            echo "::notice title=Homebrew::Homebrew's tap has passenger-ide: its autobump follows $VERSION"
+            exit 0
+          fi
+          case $said in
+            *"(HTTP 404)"*) ;;
+            *) echo "$said"; exit 1 ;;
+          esac
+          open=$(gh pr list --repo Homebrew/homebrew-cask --author @me --state open --search '"passenger-ide" in:title' --json url --jq '.[0].url // empty')
+          if [ -n "$open" ]; then
+            echo "::notice title=Homebrew::The cask is still under review in $open: $VERSION is not sent"
+            exit 0
+          fi
+          tools/package-pr.sh Homebrew/homebrew-cask "$cask" "passenger-ide-$VERSION" "passenger-ide $VERSION" \
             "passenger-ide $VERSION (new cask)" Casks/p "$RUNNER_TEMP/packages/homebrew/passenger-ide.rb"
 
       - name: WinGet

@@ -145,6 +145,10 @@ public sealed partial class BuildRunController
     /// <summary>The projects the build under way builds side by side, and the last build's, which Rerun builds so again.</summary>
     private TogetherBuild? together;
     private TogetherBuild? lastTogether;
+
+    /// <summary>Whether the projects queued for the build under way are put side by side once they are read as written
+    /// (<see cref="JoinAsync"/>): a test run's.</summary>
+    private bool joining;
     private string? buildFramework;
     private string? buildOutput;
 
@@ -332,15 +336,23 @@ public sealed partial class BuildRunController
 
     /// <summary>Builds as Build does, and says how it ended once it has: built, failed, stopped, refused or unable to start.
     /// Canceled, the build is stopped as the Build window's Stop stops it.</summary>
-    public Task<BuildOutcome> BuildAsync(BuildCause cause, CancellationToken cancel)
+    public Task<BuildOutcome> BuildAsync(CancellationToken cancel) => BuildAsync(null, BuildCause.Explicit, cancel);
+
+    /// <summary>A test run's build of the projects its tests are in and those they reference, side by side in one build
+    /// where they can be (<see cref="JoinAsync"/>), each given the configuration and platform chosen as a build of it alone
+    /// is; said as <see cref="BuildAsync(CancellationToken)"/> says it.</summary>
+    public Task<BuildOutcome> BuildTestsAsync(IReadOnlyList<string> projects, CancellationToken cancel) => BuildAsync(projects, BuildCause.Tests, cancel);
+
+    /// <summary>A build of these projects (the whole for none), begun now, its end heard as it ends; canceled, stopped.</summary>
+    private Task<BuildOutcome> BuildAsync(IReadOnlyList<string>? projects, BuildCause cause, CancellationToken cancel)
     {
         TaskCompletionSource<BuildOutcome> built = new(TaskCreationOptions.RunContinuationsAsynchronously);
         CancellationTokenRegistration stopping = default;
-        Build(BuildKind.Build, null, outcome =>
+        Start(BuildKind.Build, projects, outcome =>
         {
             stopping.Dispose();
             built.TrySetResult(outcome);
-        }, cause: cause);
+        }, null, cause, null, null, joined: cause == BuildCause.Tests);
         if (!built.Task.IsCompleted)
         {
             // Canceled on the UI thread, by Stop, so the build it stops is the one begun here, still running.
@@ -374,9 +386,11 @@ public sealed partial class BuildRunController
 
     /// <summary>Starts a build, or the publish given (its work begun already, which the build holds until it ends), or the
     /// build of projects side by side given (its project the one in <paramref name="projects"/>), under a run's own build
-    /// configuration where <paramref name="configured"/> is given.</summary>
+    /// configuration where <paramref name="configured"/> is given; projects given <paramref name="joined"/> are put side by
+    /// side once read as written.</summary>
     private void Start(BuildKind kind, IReadOnlyList<string>? projects, Action<BuildOutcome>? then, string? framework, BuildCause cause, PublishRequest? publish,
-        Working? work, string? output = null, TogetherBuild? side = null, WorkspaceModel? configured = null, IReadOnlyList<string>? properties = null)
+        Working? work, string? output = null, TogetherBuild? side = null, WorkspaceModel? configured = null, IReadOnlyList<string>? properties = null,
+        bool joined = false)
     {
         UiThread.Check();
         if (session.Folder is null || IsBuilding || session.IsEnded)
@@ -418,6 +432,7 @@ public sealed partial class BuildRunController
             then?.Invoke(nothing);
             return;
         }
+        joining = joined && side is null && projects is { Count: > 1 };
         afterBuild = then;
         // A start's own build checks and keeps its projects itself (BuildForAsync).
         checking = kind is BuildKind.Build or BuildKind.Rebuild && publish is null && side is null && cause != BuildCause.BeforeLaunch ? [] : null;
@@ -466,6 +481,10 @@ public sealed partial class BuildRunController
         try
         {
             await session.ProjectsAsWrittenAsync(said => work?.Say(said ?? stage), stopping);
+            if (joining)
+            {
+                await JoinAsync();
+            }
         }
         catch (OperationCanceledException) when (stopping.IsCancellationRequested)
         {
@@ -482,6 +501,30 @@ public sealed partial class BuildRunController
         else
         {
             BuildNext(first: true);
+        }
+    }
+
+    /// <summary>Puts the projects queued for the build under way side by side in one build (<see cref="TogetherBuild"/>),
+    /// each given what a build of it alone is and told of what any of them must be, so a project two of them reference is
+    /// built once; where they cannot be, they stay queued one after another.</summary>
+    private async Task JoinAsync()
+    {
+        joining = false;
+        TaskCompletionSource? mine = building;
+        List<string> projects = [.. buildQueue];
+        string state = parts.StateFolder();
+        string folder = session.Folder!;
+        Func<string, IReadOnlyDictionary<string, string>> properties = (session.Workspace ?? new WorkspaceModel(folder, null, [])).BuiltTogetherWith(projects);
+        TogetherBuild? side = await BackgroundWork.Run(() => TogetherBuild.Write(state, folder, projects, properties));
+        if (side is not null && mine is not null && building == mine)
+        {
+            buildQueue.Clear();
+            buildQueue.Enqueue(side.Project);
+            together = side;
+            lastTogether = side;
+            lastProjects = [side.Project];
+            // As for any build side by side, no project's last build is kept from it.
+            checking = null;
         }
     }
 
@@ -519,8 +562,8 @@ public sealed partial class BuildRunController
         parts.Say($"{verb} {what}…");
         buildWork?.Say($"{verb} {what}…");
         bool windows = WindowsTargeting(together?.Projects ?? [target]);
-        IReadOnlyList<string> arguments = publishing is { } publish ? publish.Arguments(windows)
-            : BuildOutput.Arguments(target, buildKind, buildFramework, windows, buildOutput, [.. Configured(target), .. buildProperties ?? []]);
+        IReadOnlyList<string> arguments = BuildOutput.TakenBy(publishing is { } publish ? publish.Arguments(windows)
+            : BuildOutput.Arguments(target, buildKind, buildFramework, windows, buildOutput, [.. Configured(target), .. buildProperties ?? []]), session.Models.SdkVersion);
         Func<CancellationToken, Task>? after = first ? BeforeFirstStepAsync : null;
         if (checking is { } checks)
         {

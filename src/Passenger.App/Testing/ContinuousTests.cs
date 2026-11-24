@@ -386,7 +386,7 @@ public sealed class ContinuousTests : IDisposable
         Checked(cancel);
         work?.Say("Testing continuously: finding what the build made…");
         Dictionary<string, string> own = new(StringComparer.OrdinalIgnoreCase) { [MSBuildNames.UseArtifactsOutput] = "true", [MSBuildNames.ArtifactsPath] = built };
-        IReadOnlyList<TestAssembly> assemblies = await TestAssemblies.ResolveAsync(testProjects, opened, model, solution: null, log, cancel, own);
+        IReadOnlyList<TestAssembly> assemblies = await TestAssemblies.ResolveAsync(testProjects, opened, model, log, cancel, own);
         List<TestAssembly> copies = [];
         foreach (TestAssembly assembly in assemblies)
         {

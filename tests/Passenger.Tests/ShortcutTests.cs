@@ -10,7 +10,8 @@ namespace Passenger.Tests;
 
 /// <summary>Shortcuts: a chord's first key says so in the status bar and waits for its second, but is forgotten on a
 /// click, when the focus moves and after two seconds, so a letter typed later is typed; and on Windows, which sends AltGr
-/// as Ctrl+Alt, AltGr types its character rather than running the Ctrl+Alt shortcut of the same key.</summary>
+/// as Ctrl+Alt, AltGr types its character rather than running the Ctrl+Alt shortcut of the same key, which Ctrl+Alt held
+/// by its own keys runs.</summary>
 public sealed class ShortcutTests : IDisposable
 {
     private const string Source = "class One { }\n";
@@ -85,6 +86,44 @@ public sealed class ShortcutTests : IDisposable
         Ui.Press(window, "control alt F");
         Assert.True(window.DockHost.IsShown(ToolWindowIds.Structure), "Ctrl+Alt+F without a character never showed Structure");
         window.Close();
+    }
+
+    /// <summary>On a Polish layout Windows gives AltGr+L and Ctrl+Alt+L alike as Ctrl+Alt+L typing ł, telling them apart only
+    /// by the keys it says are held: AltGr, the right Alt with the left Ctrl Windows adds, types ł, and Ctrl+Alt held by
+    /// a left Alt runs IntelliJ IDEA's Reformat Code, typing nothing.</summary>
+    internal void On_Windows_Ctrl_Alt_held_by_a_left_Alt_runs_its_shortcut_where_AltGr_of_the_same_key_types_its_letter()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        const string Unspaced = "var speed=2\n";
+        string script = Path.Combine(folder, "party.gd");
+        File.WriteAllText(script, Unspaced);
+        MainWindow window = Open();
+        try
+        {
+            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.IntelliJ });
+            window.OpenFile(script);
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.Focus();
+            Ui.PlaceAfter(editor, "speed");
+
+            // dwControlKeyState's flags: 0x1 the right Alt, 0x2 the left, 0x8 the left Ctrl.
+            Ui.TypeHeld(window, "control alt L", "ł", held: 0x1 | 0x8);
+            Assert.True(Text(editor) == "var speedł=2\n", $"AltGr+L, the right Alt with the left Ctrl Windows adds, did not type ł:\n{Text(editor)}");
+            Ui.Run(window, EditorActions.Undo);
+
+            Ui.TypeHeld(window, "control alt L", "ł", held: 0x2 | 0x8);
+            Assert.True(Text(editor) == "var speed = 2\n",
+                $"Ctrl+Alt+L held by a left Alt did not run IntelliJ IDEA's Reformat Code, typing nothing: '{Text(editor)}', the status bar saying {window.Status}");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VisualStudio });
+            window.Close();
+        }
     }
 
     internal void On_Windows_AltGr_types_its_character_into_the_terminal_rather_than_Ctrl_and_Alt_for_the_shell()

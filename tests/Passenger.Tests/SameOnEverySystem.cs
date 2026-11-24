@@ -31,15 +31,24 @@ public sealed class SameOnEverySystemAttribute : Attribute, ITraitAttribute
     }
 
     /// <summary>The programs counted as alike everywhere, by a word of their command lines: the C# language server, the
-    /// project host, the .NET CLI's question of the SDK a folder takes and its read of a file-based program, the language
-    /// servers carried under web/, and git's look for the folder's repository.</summary>
-    private static readonly string[] Alike = ["Microsoft.CodeAnalysis.LanguageServer", "Passenger.Host", "dotnet --version", "dotnet --list-sdks",
-        "dotnet run-api", "rev-parse --show-toplevel", $"{Path.DirectorySeparatorChar}web{Path.DirectorySeparatorChar}"];
+    /// project host, the language servers carried under web/, and git's look for the folder's repository.</summary>
+    private static readonly string[] Alike = ["Microsoft.CodeAnalysis.LanguageServer", "Passenger.Host", "rev-parse --show-toplevel",
+        $"{Path.DirectorySeparatorChar}web{Path.DirectorySeparatorChar}"];
+
+    /// <summary>The .NET CLI's questions counted as alike everywhere, by their first word: the SDK a folder takes, the SDKs
+    /// installed and its read of a file-based program.</summary>
+    private static readonly string[] AskedOfDotnet = ["--version", "--list-sdks", "run-api"];
 
     /// <summary>What a program the IDE started in a followed window's folder (<see cref="OpenWindows.Following"/>) ran that
-    /// another system could do otherwise: null for one of <see cref="Alike"/>.</summary>
+    /// another system could do otherwise: null for one of <see cref="Alike"/> or <see cref="AskedOfDotnet"/>.</summary>
     public static string? Started(Passenger.Core.ChildStart start) =>
-        Alike.Any(word => start.Command.Contains(word, StringComparison.Ordinal)) ? null : $"a program it started: {start.Command}";
+        Alike.Any(word => start.Command.Contains(word, StringComparison.Ordinal)) || IsAskedOfDotnet(start) ? null : $"a program it started: {start.Command}";
+
+    /// <summary>Whether a start is a question of <see cref="AskedOfDotnet"/>, its program known by its file's name, which
+    /// is dotnet.exe on Windows.</summary>
+    private static bool IsAskedOfDotnet(Passenger.Core.ChildStart start) =>
+        start.Start is { } begun && Path.GetFileName(begun.FileName) == Passenger.Core.Dotnet.HostName
+            && begun.ArgumentList is [string first, ..] && AskedOfDotnet.Contains(first, StringComparer.Ordinal);
 
     /// <summary>Follows an IDE window a marked test opened as it closes, telling what it runs then (<see cref="Standing"/>).</summary>
     public static void Follow(MainWindow window, Action<string> ran) =>

@@ -48,8 +48,8 @@ public partial class ManagedDebugger
                     _logger?.Invoke($"An exception caught to fault a task on thread {thread.Id} goes on unhandled through {Numbers.Said(followed)} awaiting method(s) to the program's async Main");
                     return ExceptionScenarios.Unhandled;
                 }
-                if ((AwaiterOf(stateMachine) ?? (running is null ? null : CallerAwaiting(stack, running, module, moveNext))) is not { } next
-                    || next.Module.MetadataReader.AsyncCatch(next.MoveNext) is not { } nextCatch)
+                if ((AwaiterOf(stateMachine) ?? (running is null ? null : CallerAwaiting(stack, running, module, moveNext)) ?? AwaitingElsewhere(stateMachine, module, moveNext))
+                    is not { } next || next.Module.MetadataReader.AsyncCatch(next.MoveNext) is not { } nextCatch)
                 {
                     return null;
                 }
@@ -58,7 +58,8 @@ public partial class ManagedDebugger
                 {
                     return null;
                 }
-                (module, moveNext, stateMachine, running) = next;
+                (module, moveNext, stateMachine, running) = (next.Module, next.MoveNext, next.StateMachine, next.Running);
+                stack = next.Stack ?? stack;
             }
             return null;
         }
@@ -74,7 +75,7 @@ public partial class ManagedDebugger
 
     /// <summary>The method awaiting a state machine's task, by its own state machine, suspended at an await; null where
     /// the task has no such continuation.</summary>
-    private (ModuleInfo Module, int MoveNext, ICorDebugValue StateMachine, ICorDebugFrame? Running)? AwaiterOf(ICorDebugValue stateMachine)
+    private Awaiting? AwaiterOf(ICorDebugValue stateMachine)
     {
         if (GetStateMachineTask(stateMachine)?.UnwrapDebugValueToObjectOrNull() is not { } task
             || GetInstanceFieldValue(task, "m_continuationObject") is not { } continuation
@@ -83,13 +84,16 @@ public partial class ManagedDebugger
         {
             return null;
         }
-        return (method.Module, method.MoveNextToken, awaiter, null);
+        return new Awaiting(method.Module, method.MoveNextToken, awaiter, null, null);
     }
+
+    /// <summary>An async method awaiting a task: its module, its MoveNext and state machine, its frame where it is still
+    /// to await (on <see cref="Stack"/>, its thread's frames) and null where it is suspended at its await.</summary>
+    private sealed record Awaiting(ModuleInfo Module, int MoveNext, ICorDebugValue StateMachine, ICorDebugFrame? Running, List<ICorDebugFrame>? Stack);
 
     /// <summary>The async method on the thread's stack below one that has not yet yielded, which called it and awaits
     /// the task it returns in the same statement; null where its caller is no async method, or does not await it there.</summary>
-    private (ModuleInfo Module, int MoveNext, ICorDebugValue StateMachine, ICorDebugFrame? Running)? CallerAwaiting(List<ICorDebugFrame> stack, ICorDebugFrame running,
-        ModuleInfo module, int moveNext)
+    private Awaiting? CallerAwaiting(List<ICorDebugFrame> stack, ICorDebugFrame running, ModuleInfo module, int moveNext)
     {
         if (module.MetadataReader.GetStateMachineKickoffMethodToken(moveNext) is not int kickoff || RangeOf(running) is not { } range)
         {
@@ -97,8 +101,15 @@ public partial class ManagedDebugger
         }
         int at = stack.FindIndex(frame => RangeOf(frame) == range);
         int started = at < 0 ? -1 : stack.FindIndex(at + 1, frame => frame is ICorDebugILFrame il && il.Function.Token == kickoff && FindModule(il.Function.Module) == module);
-        if (started < 0 || stack.Skip(started + 1).OfType<ICorDebugILFrame>().FirstOrDefault() is not { } caller
-            || FindModule(caller.Function.Module) is not { } callerModule
+        return started < 0 || stack.Skip(started + 1).OfType<ICorDebugILFrame>().FirstOrDefault() is not { } caller ? null : AwaitingIn(caller, stack);
+    }
+
+    /// <summary>The async method a frame runs, where it stands in the statement of its next await, before the await
+    /// resumes: before it yields, or handing what it awaits its continuation; null for a frame of another method, or
+    /// standing elsewhere.</summary>
+    private Awaiting? AwaitingIn(ICorDebugILFrame caller, List<ICorDebugFrame> stack)
+    {
+        if (FindModule(caller.Function.Module) is not { } callerModule
             || callerModule.MetadataReader.GetStateMachineKickoffMethodToken(caller.Function.Token) is null
             || callerModule.MetadataReader.GetAsyncMethodSteppingInfo(caller.Function.Token, ModuleMetadataReader.VersionOf(caller)) is not { } awaits
             || caller.TryGetArgument(0, out ICorDebugValue? stateMachine) < 0 || stateMachine is null)
@@ -107,12 +118,121 @@ public partial class ManagedDebugger
         }
         int call = caller.IP.pnOffset;
         int? version = ModuleMetadataReader.VersionOf(caller);
-        uint? awaited = awaits.AwaitInfos.Select(a => a.YieldOffset).Where(yield => yield > call).Order().Cast<uint?>().FirstOrDefault();
+        uint? awaited = awaits.AwaitInfos.Where(a => a.ResumeOffset > call).OrderBy(a => a.ResumeOffset).Select(a => a.YieldOffset).Cast<uint?>().FirstOrDefault();
         bool sameStatement = awaited is { } yieldOffset
             && callerModule.MetadataReader.GetSourceLocationForOffset(caller.Function.Token, call, version) is { } statement
             && callerModule.MetadataReader.GetSourceLocationForOffset(caller.Function.Token, (int)yieldOffset, version) is { } awaiting
             && (statement.startLine, statement.startColumn) == (awaiting.startLine, awaiting.startColumn);
-        return sameStatement ? (callerModule, caller.Function.Token, stateMachine, caller) : null;
+        return sameStatement ? new Awaiting(callerModule, caller.Function.Token, stateMachine, caller, stack) : null;
+    }
+
+    /// <summary>The async method still to await a task nothing awaits yet, on any thread: one whose statement called the state
+    /// machine's method, which ran on another thread from its first await while its caller had yet to hand the task its
+    /// continuation. It stands before the statement's await, the task's own first run or an awaiter of it in a frame of
+    /// its own or above it, the task called on, or the task as the call it is right after returned it. Null for a task
+    /// with a continuation, which says what awaits it, and where no thread holds it so.</summary>
+    private Awaiting? AwaitingElsewhere(ICorDebugValue stateMachine, ModuleInfo module, int moveNext)
+    {
+        if (_process is not { } process || module.MetadataReader.GetStateMachineKickoffMethodToken(moveNext) is not int kickoff
+            || GetStateMachineTask(stateMachine)?.UnwrapDebugValueToObjectOrNull() is not { } task
+            || GetInstanceFieldValue(task, "m_continuationObject") is not ICorDebugReferenceValue { IsNull: true })
+        {
+            return null;
+        }
+        CORDB_ADDRESS awaited = task.Address;
+        foreach (ICorDebugThread thread in process.EnumerateThreads())
+        {
+            if (AwaitingOn(thread, awaited, module, kickoff) is { } found)
+            {
+                _logger?.Invoke($"An exception's async method's task, with no continuation yet, is still to be awaited by the method its thread {thread.Id} runs");
+                return found;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>The async method on a thread still to await a task (<see cref="AwaitingElsewhere"/>): the first below the
+    /// frames of the task's own method, where it or the frames above it hold the task. Null for a thread whose frames the
+    /// runtime does not give.</summary>
+    private Awaiting? AwaitingOn(ICorDebugThread thread, CORDB_ADDRESS task, ModuleInfo module, int kickoff)
+    {
+        try
+        {
+            List<ICorDebugFrame> stack = [.. FramesOnStack(thread)];
+            List<ICorDebugILFrame> above = [];
+            foreach (ICorDebugILFrame frame in stack.OfType<ICorDebugILFrame>())
+            {
+                if (FindModule(frame.Function.Module) is not { } frameModule || frameModule.MetadataReader.GetStateMachineKickoffMethodToken(frame.Function.Token) is null
+                    || frame.TryGetArgument(0, out ICorDebugValue? machine) < 0 || machine is null || MadeFor(machine, task))
+                {
+                    above.Add(frame);
+                    continue;
+                }
+                return CallsIn(frame, frameModule, module, kickoff) && AwaitingIn(frame, stack) is { } awaiting
+                    && (above.Any(each => Holds(each, task, calledOn: true)) || Holds(frame, task, calledOn: false)
+                        || above.Count == 0 && ReturnedHolds(frame, frameModule, task))
+                    ? awaiting
+                    : null;
+            }
+            return null;
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            _logger?.Invoke($"Whether thread {thread.Id} is still to await an exception's task is unknown: {error.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>Whether the statement a frame stands in calls a method (a module's, by its token).</summary>
+    private bool CallsIn(ICorDebugILFrame frame, ModuleInfo frameModule, ModuleInfo module, int method)
+    {
+        int token = frame.Function.Token;
+        int? version = ModuleMetadataReader.VersionOf(frame);
+        return frameModule.MetadataReader.GetStartAndEndSequencePointIlOffsetsForIlOffset(token, frame.IP.pnOffset, version) is var (start, end)
+            && frameModule.MetadataReader.CallSites(token, start, end > start ? end : int.MaxValue, version)
+                .Any(call => call.Kind == ModuleMetadataReader.CallKind.Call && ResolveCalledMethod(frameModule, call.Token) is var (called, calledToken)
+                    && called == module && calledToken == method);
+    }
+
+    /// <summary>Whether a frame's arguments or locals, as far as it has them, hold what is made for a task
+    /// (<see cref="MadeFor"/>), or, <paramref name="calledOn"/>, its first argument is the task.</summary>
+    private static bool Holds(ICorDebugILFrame frame, CORDB_ADDRESS task, bool calledOn)
+    {
+        try
+        {
+            return calledOn && frame.TryGetArgument(0, out ICorDebugValue? first) >= 0 && first?.UnwrapDebugValueToObjectOrNull()?.Address == task
+                || frame.EnumerateArguments().Concat(frame.EnumerateLocalVariables()).Any(value => MadeFor(value, task));
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Whether a frame standing right after a call of its statement has the task, or what is made for it, as the
+    /// value that call returned.</summary>
+    private static bool ReturnedHolds(ICorDebugILFrame frame, ModuleInfo module, CORDB_ADDRESS task)
+    {
+        int token = frame.Function.Token;
+        int ip = frame.IP.pnOffset;
+        int? version = ModuleMetadataReader.VersionOf(frame);
+        return module.MetadataReader.GetStartAndEndSequencePointIlOffsetsForIlOffset(token, ip, version) is var (start, _)
+            && module.MetadataReader.CallSites(token, start, ip + 1, version).Any(call => call.Kind == ModuleMetadataReader.CallKind.Call && Read(frame, call.Offset) is { } value
+                && (value.UnwrapDebugValueToObjectOrNull()?.Address == task || MadeFor(value, task)));
+    }
+
+    /// <summary>Whether a value is made for a task: the state machine whose task it is, or an awaiter of it.</summary>
+    private static bool MadeFor(ICorDebugValue value, CORDB_ADDRESS task)
+    {
+        try
+        {
+            return value.UnwrapDebugValueToObjectOrNull() is { } held
+                && (GetStateMachineTask(value)?.UnwrapDebugValueToObjectOrNull()?.Address == task || GetInstanceFieldValue(held, "m_task")?.UnwrapDebugValueToObjectOrNull()?.Address == task);
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            return false;
+        }
     }
 
     /// <summary>Where a suspended async method goes on once what it awaits is done, the IL offset its await resumes at.</summary>

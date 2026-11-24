@@ -8,6 +8,9 @@ internal static class RoslynNames
     /// <summary>Extract Method's action, the whole title.</summary>
     public const string ExtractMethod = "Extract method";
 
+    /// <summary>How the server's own Extract Interface's title begins, its dialog's three dots after it.</summary>
+    public const string ExtractInterface = "Extract interface";
+
     /// <summary>How Introduce Variable's actions begin: "Introduce local for 'x'" and "for all occurrences of 'x'".</summary>
     public const string IntroduceLocal = "Introduce local";
 

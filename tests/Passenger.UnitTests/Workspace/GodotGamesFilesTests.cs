@@ -13,8 +13,8 @@ public class GodotGamesFilesTests
         (nameof(A_csharp_game_is_a_project_godot_a_scene_its_script_and_a_project_on_the_godots_sdk),
             A_csharp_game_is_a_project_godot_a_scene_its_script_and_a_project_on_the_godots_sdk),
         (nameof(A_gdscript_game_has_no_project_and_its_scene_runs_its_gdscript), A_gdscript_game_has_no_project_and_its_scene_runs_its_gdscript),
-        (nameof(A_game_targets_the_newest_framework_its_godot_builds_and_runs_else_the_newest_it_can),
-            A_game_targets_the_newest_framework_its_godot_builds_and_runs_else_the_newest_it_can));
+        (nameof(A_game_targets_the_newest_framework_its_godot_builds_and_runs_else_the_newest_it_can_never_one_older_than_its_godots),
+            A_game_targets_the_newest_framework_its_godot_builds_and_runs_else_the_newest_it_can_never_one_older_than_its_godots));
 
     private void A_csharp_game_is_a_project_godot_a_scene_its_script_and_a_project_on_the_godots_sdk()
     {
@@ -42,8 +42,12 @@ public class GodotGamesFilesTests
         Assert.Contains("print(\"Hello from Godot!\")", files["main.gd"], StringComparison.Ordinal);
     }
 
-    private void A_game_targets_the_newest_framework_its_godot_builds_and_runs_else_the_newest_it_can()
+    private void A_game_targets_the_newest_framework_its_godot_builds_and_runs_else_the_newest_it_can_never_one_older_than_its_godots()
     {
+        string[] offered = ["net11.0", "net10.0", "net9.0", "net8.0"];
+        Assert.Equal(["net10.0", "net9.0", "net8.0"], GodotGames.Runnable(offered, ["11.0.0-rc.3.26522.148", "10.0.15", "9.0.7"], 8));
+        Assert.Equal(["net10.0"], GodotGames.Runnable(offered, ["11.0.0-rc.3.26522.148", "10.0.15", "9.0.7"], 10));
+        Assert.Equal(["net11.0", "net10.0"], GodotGames.Runnable(offered, [], 10));
         string[] runnable = ["net11.0", "net10.0", "net9.0", "net8.0"];
         Assert.Equal("net10.0", GodotGames.Default(runnable, 10));
         Assert.Equal("net11.0", GodotGames.Default(runnable, 12));

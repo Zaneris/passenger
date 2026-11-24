@@ -31,7 +31,7 @@ public static class MainMenu
     public const string OpenSolutionWindows = "Open Solution Windows";
 
     /// <summary>The menus, in their order.</summary>
-    public static IReadOnlyList<string> Titles { get; } = ["File", "Edit", "View", "Navigate", "Code", "Refactor", "Build", "Run", "Tests", "Tools", "Git", "Window", "Help"];
+    public static IReadOnlyList<string> Titles { get; } = ["File", "Edit", "View", "Navigate", "Code", Refactor, "Build", "Run", "Tests", "Tools", "Git", "Window", "Help"];
 
     /// <summary>The submenus the window lists as each opens.</summary>
     private static readonly string[] Listed = [ToolWindows, RecentSolutions, OpenSolutionWindows];
@@ -60,12 +60,23 @@ public static class MainMenu
 
     private static readonly MenuEntry Separator = new(null);
 
+    /// <summary>The menu of the refactorings, which the editor's menu and Refactor This list too.</summary>
+    public const string Refactor = "Refactor";
+
     /// <summary>The menus the actions make.</summary>
     public static IReadOnlyList<MenuEntry> Build(IEnumerable<IdeAction> actions)
     {
-        List<(MenuPlace Place, string Id)> placed = [.. actions.SelectMany(a => a.Menus.Select(place => (place, a.Id)))];
+        List<(MenuPlace Place, string Id)> placed = Placed(actions);
         return [.. Titles.Select(title => Menu(title, placed))];
     }
+
+    /// <summary>One of the menus the actions make, by its title.</summary>
+    public static MenuEntry Of(IEnumerable<IdeAction> actions, string title) => Menu(title, Placed(actions));
+
+    /// <summary>The actions a menu holds, its submenus' among them, in its order.</summary>
+    public static IEnumerable<string> ActionsIn(MenuEntry menu) => menu.Action is { } id ? [id] : (menu.Items ?? []).SelectMany(ActionsIn);
+
+    private static List<(MenuPlace Place, string Id)> Placed(IEnumerable<IdeAction> actions) => [.. actions.SelectMany(a => a.Menus.Select(place => (place, a.Id)))];
 
     private static MenuEntry Menu(string path, List<(MenuPlace Place, string Id)> placed)
     {

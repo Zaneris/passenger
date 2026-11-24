@@ -1979,7 +1979,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    /// <summary>Refactor This lists only the refactorings at the selection; Extract Method asks for each new method's name at
+    /// <summary>Refactor This lists only the refactorings at the selection, the server's Extract method as Passenger's own
+    /// Extract Method; Extract Method asks for each new method's name at
     /// once, its rename box at the call offering the method just made, not the one before; and lines selected down to the
     /// next statement leave that statement on its own line.</summary>
     private void Extract_method_asks_each_new_methods_name_and_keeps_the_next_statement_on_its_line_and_refactor_this_lists_only_what_fits()
@@ -1993,7 +1994,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Run(window, AppActions.RefactorThis);
         Ui.WaitFor(() => window.Assist.Offered.Count > 0, "the refactorings");
         IReadOnlyList<string> offered = window.Assist.Offered;
-        Assert.Contains("Extract method", offered);
+        Assert.True(offered.Contains("Extract Method…") && !offered.Contains("Extract method"),
+            $"Refactor This lists the server's Extract method other than as Extract Method…, which names the method it makes: {string.Join("; ", offered)}");
         Assert.DoesNotContain(offered, t => t.StartsWith("Suppress", StringComparison.Ordinal));
         Ui.Press(window, "ESCAPE");
 
