@@ -38,8 +38,7 @@ public sealed class FileBasedProgramsTests : IDisposable
               <config><add key="globalPackagesFolder" value="packages" /></config>
             </configuration>
             """);
-        // What the program builds lies in its folder, which the test removes, rather than in the SDK's cache of the person's.
-        TestFolders.Write(folder, "Directory.Build.props", "<Project>\n  <PropertyGroup>\n    <UseArtifactsOutput>true</UseArtifactsOutput>\n  </PropertyGroup>\n</Project>\n");
+        TestFolders.Write(folder, "Directory.Build.props", ProgramProps);
         TestFolders.Write(folder, "app.cs", """
             #:package Passenger.ProgramTest@1.0.0
             #:property PublishAot=false
@@ -72,6 +71,21 @@ public sealed class FileBasedProgramsTests : IDisposable
     }
 
     public void Dispose() => TestFolders.Delete(folder);
+
+    /// <summary>The Directory.Build.props of every program's folder: what its restores and builds write lies in the folder,
+    /// each program's apart (the SDK's project names a folder of the person's), which the test removes; and Native AOT's
+    /// publish, on for a program by default, has no restore fetch this platform's runtime packs, which the feeds lack.</summary>
+    private const string ProgramProps = """
+        <Project>
+          <PropertyGroup>
+            <UseArtifactsOutput>true</UseArtifactsOutput>
+            <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+            <IncludeProjectNameInArtifactsPaths>true</IncludeProjectNameInArtifactsPaths>
+            <UseDefaultPublishRuntimeIdentifier>false</UseDefaultPublishRuntimeIdentifier>
+          </PropertyGroup>
+        </Project>
+
+        """;
 
     private string App => Path.Combine(folder, "app.cs");
 
@@ -237,7 +251,7 @@ public sealed class FileBasedProgramsTests : IDisposable
         string tests = PathNames.Canonical(TestFolders.Create("program-tests-"));
         try
         {
-            TestFolders.Write(tests, "Directory.Build.props", "<Project>\n  <PropertyGroup>\n    <UseArtifactsOutput>true</UseArtifactsOutput>\n  </PropertyGroup>\n</Project>\n");
+            TestFolders.Write(tests, "Directory.Build.props", ProgramProps);
             string sums = TestFolders.Write(tests, "sums.cs", """
                 #:package xunit.v3@3.2.2
                 #:property PublishAot=false
@@ -379,8 +393,7 @@ public sealed class FileBasedProgramsTests : IDisposable
                 </configuration>
                 """);
             Directory.CreateDirectory(Path.Combine(plain, "feed"));
-            // Native AOT, on for a program by default, has a restore fetch this platform's runtime packs, which the empty feed lacks, before the targets turn it off.
-            TestFolders.Write(plain, "Directory.Build.props", "<Project>\n  <PropertyGroup>\n    <UseArtifactsOutput>true</UseArtifactsOutput>\n    <UseDefaultPublishRuntimeIdentifier>false</UseDefaultPublishRuntimeIdentifier>\n  </PropertyGroup>\n</Project>\n");
+            TestFolders.Write(plain, "Directory.Build.props", ProgramProps);
             // Native AOT, on for a program by default, would restore its compiler's packages, which the empty feed lacks.
             TestFolders.Write(plain, "Directory.Build.targets", "<Project>\n  <PropertyGroup>\n    <PublishAot>false</PublishAot>\n  </PropertyGroup>\n</Project>\n");
             string program = Path.Combine(plain, "héllo app.cs");
@@ -464,8 +477,8 @@ public sealed class FileBasedProgramsTests : IDisposable
                 </configuration>
                 """);
             Directory.CreateDirectory(Path.Combine(ten, "feed"));
-            // Restores and builds land in the folder, not the person's cache this SDK's project names, and fetch no Native AOT packs the empty feed lacks.
-            TestFolders.Write(ten, "Directory.Build.props", "<Project>\n  <PropertyGroup>\n    <UseArtifactsOutput>true</UseArtifactsOutput>\n    <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>\n    <UseDefaultPublishRuntimeIdentifier>false</UseDefaultPublishRuntimeIdentifier>\n  </PropertyGroup>\n</Project>\n");
+            TestFolders.Write(ten, "Directory.Build.props", ProgramProps);
+            // Native AOT, on for a program by default, would restore its compiler's packages, which the empty feed lacks.
             TestFolders.Write(ten, "Directory.Build.targets", "<Project>\n  <PropertyGroup>\n    <PublishAot>false</PublishAot>\n  </PropertyGroup>\n</Project>\n");
             TestFolders.Write(ten, "Lib/Lib.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
             TestFolders.Write(ten, "Lib/Shapes.cs", "namespace Lib;\n\npublic static class Shapes\n{\n}\n");

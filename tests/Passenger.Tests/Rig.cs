@@ -200,6 +200,7 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable("ZDOTDIR", Directory.CreateDirectory(Path.Combine(Root, "zsh")).FullName);
         File.WriteAllText(Path.Combine(Root, "zsh", ".zshrc"), string.Empty);
         NuGetHome();
+        RunFiles.Begin();
         // No test reaches GitHub: a Passenger that checks for updates without a stand-in asks where nothing listens.
         Environment.SetEnvironmentVariable(Passenger.App.Updates.ReleaseFeed.Variable, "http://127.0.0.1:9/repos/Zaneris/passenger/releases");
         // Nor any host a browser Passenger starts asks of its own accord (its updates, its services): they go where nothing listens.
@@ -857,6 +858,61 @@ public sealed class EditorRig
     public void AddCaret(int offset) => Editor.Selections = Editor.Selections.Add(Selection.At(offset));
 }
 
+/// <summary>The folders the .NET SDK keeps a file-based program's own records in (its build's and run's, the compiler's
+/// command line), each named for the program's C# file, in the user's local data folder (the temporary folder on Windows)
+/// whatever the program's ArtifactsPath says: a test folder's go with it (<see cref="TestFolders.Delete(string, bool)"/>), so
+/// a run leaves the person's as it found them.</summary>
+public static class RunFiles
+{
+    /// <summary>Where the SDK the run's programs are built by keeps them.</summary>
+    private static string Folder => Path.Combine(OperatingSystem.IsWindows() ? Path.GetTempPath() : Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "dotnet", "runfile");
+
+    /// <summary>Those there as the run began, which it leaves.</summary>
+    private static HashSet<string> before = [];
+
+    public static void Begin() => before = Listed();
+
+    /// <summary>Removes the SDK's folders of the C# files under a folder about to go, those the run made: each named for its
+    /// file, its name then the SHA-256 of its full path in capitals.</summary>
+    public static void Forget(string folder)
+    {
+        HashSet<string> made = Listed();
+        made.ExceptWith(before);
+        if (made.Count == 0 || !Directory.Exists(folder))
+        {
+            return;
+        }
+        foreach (string program in Directory.EnumerateFiles(folder, "*.cs", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true }))
+        {
+            string name = $"{Path.GetFileNameWithoutExtension(program)}-{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(program.ToUpperInvariant())))}";
+            if (made.Contains(name))
+            {
+                try
+                {
+                    Directory.Delete(Path.Combine(Folder, name), recursive: true);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    Console.Error.WriteLine($"The .NET SDK's records of {program} could not be removed from {Folder}: {error.Message}");
+                }
+            }
+        }
+    }
+
+    private static HashSet<string> Listed()
+    {
+        try
+        {
+            return Directory.Exists(Folder) ? [.. Directory.EnumerateDirectories(Folder).Select(Path.GetFileName).OfType<string>()] : [];
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+}
+
 /// <summary>A test's temporary folders, in the run's own (<see cref="TestRun.Root"/>), deleted as Windows lets them be: git
 /// writes its objects read-only, which Windows refuses to delete, and a folder a process still runs in (a git status the
 /// closed window started, a debugged program being killed) cannot go until it has ended, so both are waited out for a
@@ -1031,6 +1087,7 @@ public static class TestFolders
     {
         // A settings folder's log lines still queued would make its logs folder again once it was gone.
         Passenger.App.IdeErrors.Flush();
+        RunFiles.Forget(path);
         bool deleted = Waiting.Until(() =>
         {
             try
