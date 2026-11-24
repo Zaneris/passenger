@@ -1010,7 +1010,14 @@ public partial class ManagedDebugger
                 }
                 else if (unwrappedDebugValue is ICorDebugObjectValue objectValue)
                 {
-                    if (OpenedBy(objectValue.ExactType) is ({ } presentation, int own))
+                    if (CodeMayNotRun && StoredOf(objectValue) is { } stored)
+                    {
+                        // Its items as its debugger view gives them, read from what it stores, its fields under them.
+                        await AddStoredItems(stored, variablesReference.ThreadId, variablesReference.FrameStackDepth, variablesReference.Expression, result);
+                        result.Add(GroupRow(DapRows.RawView, new VariablesReference(StoredReferenceKind.RawView, variablesReference.ObjectValue, variablesReference.ThreadId,
+                            variablesReference.FrameStackDepth, null, Declared: variablesReference.Declared, Expression: variablesReference.Expression)));
+                    }
+                    else if (OpenedBy(objectValue.ExactType) is ({ } presentation, int own))
                     {
                         await AddPresentedRows(variablesReference, objectValue, presentation, own, result);
                     }

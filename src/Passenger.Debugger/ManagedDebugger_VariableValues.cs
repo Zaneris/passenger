@@ -46,7 +46,8 @@ public partial class ManagedDebugger
         ResolvedCorDebugValue resolvedValue = ResolveCorDebugValue(corDebugValue);
         FormattedValue formatted = await FormatCorDebugValueAsync(resolvedValue, threadId, frameStackDepth, escapeStringValue);
         ICorDebugValue? proxyInstance = null;
-        if (resolvedValue.Value is { } valueToProxy && formatted.DebuggerProxyTypeName is { } debuggerProxyTypeName)
+        // A view is made by running its constructor, which no read may while code may not run.
+        if (resolvedValue.Value is { } valueToProxy && formatted.DebuggerProxyTypeName is { } debuggerProxyTypeName && !CodeMayNotRun)
         {
             (ICorDebugModule? module, string proxyName) = FindProxyType(debuggerProxyTypeName, valueToProxy.ExactType.Class.Module);
             if (module is not null)
@@ -81,6 +82,18 @@ public partial class ManagedDebugger
                 return new FormattedValue(friendlyTypeName, written, debuggerProxyTypeName, false);
             }
             formatKind = CorDebugValueFormatKind.ToString;
+        }
+        if (CodeMayNotRun && valueToFormat.UnwrapDebugValue() is ICorDebugObjectValue stored and not ICorDebugStringValue)
+        {
+            // A well-known collection's count, or a record's members, read from what it stores.
+            if (formatKind is CorDebugValueFormatKind.DebuggerDisplay && StoredOf(stored) is { } collection)
+            {
+                return new FormattedValue(friendlyTypeName, CountShown(collection), null, false);
+            }
+            if (formatKind is CorDebugValueFormatKind.ToString && nesting < DisplayNesting && await RecordShownAsync(stored, threadId, frameStackDepth, nesting) is { } record)
+            {
+                return new FormattedValue(friendlyTypeName, record, debuggerProxyTypeName, false);
+            }
         }
         if (EvalStatus.ImplicitOff is not null && !EvalStatus.Explicit && formatKind is CorDebugValueFormatKind.ToString)
         {

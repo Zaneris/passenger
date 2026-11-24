@@ -449,6 +449,37 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
 
     private static string ToHexString(byte[] bytes) => Convert.ToHexString(bytes);
 
+    /// <summary>Whether the compiler has been warmed in this process (<see cref="WarmUp"/>).</summary>
+    private static int _warmed;
+
+    /// <summary>Compiles an expression in a method of the debugger's own runtime, once a process, as a frame's is compiled, so
+    /// the compiler's code is ready before the session's first condition, message, watch or snapshot needs it: a first
+    /// compile costs about half a second more than any after. Off every lock; it reads nothing of the program.</summary>
+    public static unsafe void WarmUp()
+    {
+        if (Interlocked.Exchange(ref _warmed, 1) != 0 || !typeof(object).Assembly.TryGetRawMetadata(out byte* metadata, out int length))
+        {
+            return;
+        }
+        System.Reflection.Module own = typeof(object).Module;
+        ModuleId moduleId = new(own.ModuleVersionId, own.Name);
+        ImmutableArray<MetadataBlock> blocks = [new MetadataBlock(moduleId, Guid.Empty, (nint)metadata, length)];
+        CSharpCompilation compilation = AddRuntimeAccessAttributes(blocks.ToCompilation(moduleId: default, MakeAssemblyReferencesKind.AllAssemblies).AddReferences(_intrinsicMethodsReference));
+        MethodDefinitionHandle method = (MethodDefinitionHandle)MetadataTokens.Handle(typeof(object).GetMethod(nameof(ToString))!.MetadataToken);
+        PEMethodSymbol frame = compilation.GetMethod(moduleId, method);
+        EvaluationContext context = new(new MethodContextReuseConstraints(moduleId, MetadataTokens.GetToken(method), methodVersion: 1, ILSpan.MaxValue), compilation, frame,
+            compilation.GetSourceMethod(moduleId, method), [], ImmutableSortedSet<int>.Empty, MethodDebugInfo<TypeSymbol, LocalSymbol>.None);
+        DiagnosticBag diagnostics = DiagnosticBag.GetInstance();
+        try
+        {
+            context.CompileExpression("GetHashCode() * 10 + ToString().Length", DkmEvaluationFlags.TreatAsExpression, [], diagnostics, out _, testData: null);
+        }
+        finally
+        {
+            diagnostics.Free();
+        }
+    }
+
     private EvaluationContext CreateMethodContext(ImmutableArray<MetadataBlock> blocks, ICorDebugILFrame frame)
     {
         ModuleInfo moduleInfo = debugger.GetModuleInfoForModule(frame.Function.Module);

@@ -65,10 +65,10 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     }
 
     /// <summary>A snapshot point at MyMethod's end, limited to 3 captures, with two expressions of its own: each of its first
-    /// three hits is told as a capture, MyMethod on top, its locals and arguments read whole (a struct's members, an
-    /// auto-property of this through its field, running none of the program's code), its expressions read in its frame, and
-    /// how long the program was held for it; its fourth hit tells the point its limit is reached, and the program never
-    /// stops there: its first stop is a breakpoint's at Test's fourth call, after MyMethod's fourth.</summary>
+    /// three hits is told as a capture, MyMethod on top, its locals and arguments read whole running none of the program's
+    /// code (a struct's members, an auto-property through its field, a list's and a dictionary's items and a record's members
+    /// from what each stores), its expressions read in its frame, and how long the program was held for it; its fourth hit
+    /// tells the point its limit is reached, and the program never stops there, first stopping at Test's fourth call.</summary>
     private async Task A_snapshot_point_captures_its_hits_frames_and_values_within_its_limit_and_never_stops()
     {
         await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended: true, out Process program);
@@ -95,7 +95,15 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
             IReadOnlyList<DapVariable> locals = snapshot.Values[top.Locals];
             Assert.Equal(("4", "\"asdf\"", "13"), (Value(locals, "myInt"), Value(locals, "anotherVar"), Value(locals, "myParam")));
             Assert.Equal("5", Value(snapshot.Values[locals.Single(v => v.Name == "structVar").VariablesReference], "Id"));
-            Assert.Equal("10", Value(snapshot.Values[locals.Single(v => v.Name == "this").VariablesReference], "IntProperty"));
+            IReadOnlyList<DapVariable> self = snapshot.Values[locals.Single(v => v.Name == "this").VariablesReference];
+            Assert.Equal("10", Value(self, "IntProperty"));
+            // A list's, a dictionary's and a record's values read from what each stores, as no code of the program runs.
+            DapVariable list = self.Single(v => v.Name == "_intList");
+            DapVariable dictionary = self.Single(v => v.Name == "_intDictionary");
+            Assert.True((list.Value, dictionary.Value, Value(self, "_recordField")) == ("Count = 4", "Count = 3", "MyRecord1 { X = 1, Y = 2 }"),
+                $"The snapshot shows the list as {list.Value}, the dictionary as {dictionary.Value} and the record as {Value(self, "_recordField")}");
+            Assert.Equal(["1", "4", "8", "25"], snapshot.Values[list.VariablesReference].Where(v => v.Name.StartsWith('[')).Select(v => v.Value));
+            Assert.Equal([("[5]", "50"), ("[10]", "100"), ("[15]", "150")], snapshot.Values[dictionary.VariablesReference].Where(v => v.Name.StartsWith('[')).Select(v => (v.Name, v.Value)));
             Assert.Equal(["40", "4"], snapshot.Asked.Select(a => a.Value));
             Assert.True(snapshot.PausedMilliseconds > 0, $"The snapshot said the program was held {snapshot.PausedMilliseconds} ms for it");
             testOutputHelper.WriteLine($"The program was held {snapshot.PausedMilliseconds:F2} ms for a snapshot of {snapshot.Values.Sum(v => v.Value.Count)} values");

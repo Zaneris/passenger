@@ -317,6 +317,8 @@ public partial class ManagedDebugger
         _callbacks.OnAnyEvent += QueueEvent;
         // Not held: it serves the runtime's events for as long as the session lasts.
         Core.UnawaitedWork.Observe(Core.BackgroundWork.Unheld(ProcessRuntimeEventQueue));
+        // Not held, and off the program's path: the session's first condition, message, watch or snapshot then compiles warm.
+        Core.UnawaitedWork.Observe(Core.BackgroundWork.Unheld(ExpressionEvaluator.Compiler.CilExpressionCompiler.WarmUp));
     }
 
     private void QueueEvent(object? sender, CorDebugManagedCallbackEventArgs e)

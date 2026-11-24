@@ -61,7 +61,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     /// container tools, each in an instance of its own: Detach of a service Hot Reload changed refused saying why,
     /// Attach under Run with Hot Reload debugging by its session, Attach to a service its Debug tab debugs showing that
     /// tab, a Release image stopping through the path map, a service whose environment turns its debugger off never
-    /// held, and a taken port chosen again.</summary>
+    /// held, a taken port chosen again, and a snapshot point capturing a service's request without stopping it.</summary>
     [AvaloniaFact]
     public void A_container_services_attach_detach_and_ports_follow_its_session_and_say_why_where_it_cannot_be_debugged()
     {
@@ -72,6 +72,38 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
         Flow.StepApart("a service whose environment turns its debugger off is never held and serves under Debug and Profile saying why (\"compose\")", () => new ContainerRunDebuggingTests(tools), t => t.A_service_whose_environment_turns_its_debugger_off_is_never_held_and_serves_under_Debug_and_Profile_saying_why("compose"));
         Flow.StepApart("a service whose environment turns its debugger off is never held and serves under Debug and Profile saying why (\"Dockerfile\")", () => new ContainerRunDebuggingTests(tools), t => t.A_service_whose_environment_turns_its_debugger_off_is_never_held_and_serves_under_Debug_and_Profile_saying_why("Dockerfile"));
         Flow.StepApart("a port Passenger chose that is taken before up is chosen again and the service comes up debugged on another", () => new ContainerRunDebuggingTests(tools), t => t.A_port_Passenger_chose_that_is_taken_before_up_is_chosen_again_and_the_service_comes_up_debugged_on_another());
+        Flow.StepApart("a snapshot point in a services handler captures a request it answers without a stop its frame in the workspaces file", () => new ContainerRunDebuggingTests(tools), t => t.A_snapshot_point_in_a_services_handler_captures_a_request_it_answers_without_a_stop_its_frame_in_the_workspaces_file());
+    }
+
+    /// <summary>A snapshot point in web's handler, its services debugged in their containers, captures a request as web answers
+    /// it with no stop: the folder's snapshots list it, its top frame placed in the workspace's own Program.cs (the container's
+    /// path crossing back) at the point's line, and the handler's local as it was there.</summary>
+    private void A_snapshot_point_in_a_services_handler_captures_a_request_it_answers_without_a_stop_its_frame_in_the_workspaces_file()
+    {
+        Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
+        (string folder, string project) = Shop("snap");
+        MainWindow window = ContainerRunsTests.Open(folder);
+        window.Debugger.Breakpoints.ToggleSnapshot(Source(folder, "Web"), InRequest + 1);
+        Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
+        try
+        {
+            Debugged(window, "the services to come up debugged");
+            DebugTab web = Tab(window, "web");
+            Ui.WaitFor(() => window.Debugger.Breakpoints.In(Source(folder, "Web")).Single().Status == BreakpointStatus.Bound, "the snapshot point to bind in web");
+            Assert.Equal("web 1", Ui.Await(Get(ContainerRunsTests.Published(project, "web")), "web's answer", TimeSpan.FromMinutes(1)));
+            Ui.WaitFor(() => window.BottomPanel.Debug.Snapshots.Count == 1, "web's request to be captured");
+            TakenSnapshot taken = window.BottomPanel.Debug.Snapshots[0];
+            Passenger.Dap.DapStackFrame top = taken.Top!;
+            Assert.True(top.Source?.Path == Source(folder, "Web") && top.Line == InRequest + 2 && taken.LocalsOf(top).Any(v => v.Name == "said" && v.Value == "\"web 1\""),
+                $"web's snapshot has its top frame at {top.Source?.Path}:{top.Line} with [{string.Join(", ", taken.LocalsOf(top).Select(v => $"{v.Name} = {v.Value}"))}], "
+                + $"where it stands at {Source(folder, "Web")}:{InRequest + 2} with said = \"web 1\"");
+            Assert.NotEqual(DebugState.Paused, web.Session!.State);
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take the services down");
+            window.Close();
+        }
     }
 
     /// <summary>Two services debugged at once, each stopping in Main and in a request, stepped and evaluated, web's address in

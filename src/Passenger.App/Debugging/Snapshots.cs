@@ -37,8 +37,10 @@ public sealed class TakenSnapshot(SnapshotEvent taken, string point, string prog
     public IReadOnlyList<DapVariable> LocalsOf(DapStackFrame frame) =>
         Taken.Frames.FirstOrDefault(f => f.Frame.Id == frame.Id) is { Locals: > 0 } read ? Values(read.Locals) : [];
 
-    /// <summary>What it is, in a line: "Snapshot 3 of Program.cs:12 at 14:02:11.532 on Main Thread (1), the program held 1.3 ms".</summary>
-    public string Said => $"Snapshot {Number} of {Point} at {Time} on {ThreadName}, the program held {Durations.Said(Paused)}";
+    /// <summary>What it is, when it was taken and how long the program was held for it, plainly: "Snapshot 3 of Program.cs:12,
+    /// taken at 14:02:11.532 on Main Thread. The program was held 1.3 ms."</summary>
+    public string Said => $"Snapshot {Number} of {Point}, taken at {Time} on {(string.IsNullOrEmpty(Taken.ThreadName) ? $"thread {Taken.ThreadId}" : Taken.ThreadName)}. "
+        + $"The program was held {Durations.Said(Paused)}.";
 
     /// <summary>When it was taken, to the millisecond, by the machine's clock where Passenger runs.</summary>
     public string Time => Taken.At.ToLocalTime().ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture);

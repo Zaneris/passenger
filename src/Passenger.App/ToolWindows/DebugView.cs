@@ -272,9 +272,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
     public ListBox SnapshotsList => snapshots;
 
     /// <summary>What Variables says over a snapshot's values shown as a past stop, null while it shows none.</summary>
-    private string? PastSaid() => model.ShownSnapshot is { } shown
-        ? $"{shown.Said}: the values as they were then, which the program has run on from{(shown.Taken.Cut is { } cut ? $". {cut}" : string.Empty)}"
-        : null;
+    private string? PastSaid() => model.ShownSnapshot is { } shown ? shown.Taken.Cut is { } cut ? $"{shown.Said} {cut}." : shown.Said : null;
 
     /// <summary>A snapshot's row: its point and number, then when, on which thread and how long the program was held, muted.</summary>
     private Control SnapshotRow()

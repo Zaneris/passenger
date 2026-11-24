@@ -60,7 +60,8 @@ breakpoint's popup) reads a running program's state at a line without stopping i
 in a program launched, attached to or running in a container. At each hit it takes, the debugger reads the thread's frames
 and, for its ten top frames of the user's code, their locals and arguments and their members two levels down, as a stop's
 Variables reads them, a thousand values at most; it runs none of the program's code for them, so a getter that is not an
-auto-property, a ToString or a debugger view is not read, and says so. The point's own expressions are read in its top
+auto-property, a ToString or a debugger view is not read, and says so. The runtime's lists, dictionaries, sets, queues and
+stacks show their counts and items, and a record its members as it prints them, each read from what it stores. The point's own expressions are read in its top
 frame as a watch's are, running the code they call within the time any evaluation is given. Then the program goes on: it
 was held only while the debugger read, which each snapshot says.
 

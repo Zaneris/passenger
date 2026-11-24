@@ -661,15 +661,16 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>An agent's snapshot point in a web app's handler, reading an expression of its own, captures each of three
-    /// requests as the app serves it: debug_state of snapshots lists them newest first, each with the handler's locals and the
-    /// expression as they were at that request, and how long the app was held for it, which the request's answer took in.
-    /// The app never stops: it answers every request with no continue asked, and the session runs throughout.</summary>
+    /// requests as the app serves it: debug_state of snapshots lists them newest first, each with the handler's locals (its
+    /// list's, set's, queue's and stack's items too) and the expression as they were at that request, and how long the app
+    /// was held for it, within the request's answer. The app never stops, answering with no continue, its session running.</summary>
     private async Task An_agents_snapshot_point_in_a_running_web_app_captures_each_requests_locals_and_never_pauses_it()
     {
         string folder = await WebAppAsync("WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/order/{id:int}\", (int id) =>\n{\n"
-            + "    int total = id * 3;\n    string note = $\"order {id}\";\n    return $\"{note} costs {total}\";\n});\napp.Run();\n");
+            + "    int total = id * 3;\n    string note = $\"order {id}\";\n    List<int> parts = [id, total];\n    HashSet<string> tags = [note];\n"
+            + "    Queue<int> waiting = new([id, id + 1]);\n    Stack<int> undo = new([id, id + 1]);\n    return $\"{note} costs {total}\";\n});\napp.Run();\n");
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-        JsonElement set = await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 6, ["snapshot"] = true, ["capture"] = new[] { "total + 1" } });
+        JsonElement set = await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 10, ["snapshot"] = true, ["capture"] = new[] { "total + 1" } });
         Assert.True(set.EnumerateArray().Single().GetProperty("snapshot").GetString()?.StartsWith("captures the stack and locals with total + 1", StringComparison.Ordinal) == true,
             $"breakpoint_set of a snapshot point answered {set}");
         JsonElement started = await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Web: Serve", ["waitSeconds"] = 600 });
@@ -696,6 +697,12 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             Assert.True(locals.GetValueOrDefault("id") == $"{id}" && locals.GetValueOrDefault("total") == $"{id * 3}" && locals.GetValueOrDefault("note") == $"\"order {id}\""
                 && snapshot.GetProperty("asked").EnumerateArray().Single().GetProperty("value").GetString() == $"{id * 3 + 1}",
                 $"The snapshot of request {id} read: {snapshot.GetRawText()}");
+            // The collections' counts and items, read from what each stores, a queue's head first and a stack's top first.
+            Dictionary<string, string> held = snapshot.GetProperty("locals").EnumerateArray().Where(l => l.TryGetProperty("members", out JsonElement m) && m.ValueKind == JsonValueKind.Array)
+                .ToDictionary(l => l.GetProperty("name").GetString()!, l => $"{l.GetProperty("value").GetString()}: "
+                    + string.Join(", ", l.GetProperty("members").EnumerateArray().Where(m => m.GetProperty("name").GetString()!.StartsWith('[')).Select(m => m.GetProperty("value").GetString())));
+            Assert.Equal((string[])[$"Count = 2: {id}, {id * 3}", $"Count = 1: \"order {id}\"", $"Count = 2: {id}, {id + 1}", $"Count = 2: {id + 1}, {id}"],
+                (string[])[.. ((string[])["parts", "tags", "waiting", "undo"]).Select(name => held.GetValueOrDefault(name) ?? $"no {name}")]);
             double paused = snapshot.GetProperty("pausedMs").GetDouble();
             Assert.True(paused > 0 && paused <= answered[id - 1].TotalMilliseconds,
                 $"The snapshot of request {id} said the app was held {paused} ms, where its answer took {answered[id - 1].TotalMilliseconds} ms in all");

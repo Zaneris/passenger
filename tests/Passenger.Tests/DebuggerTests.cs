@@ -304,8 +304,8 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Ui.Press(window, "Enter");
         Assert.True((Value(window, "total * 10"), Value(window, "i"), Value(window, "total")) == ("10", "1", "1") && debug.Frames[0].Line == 5,
             $"The first turn's snapshot shows total * 10 {Value(window, "total * 10")}, i {Value(window, "i")} and total {Value(window, "total")} at line {debug.Frames[0].Line}, where they were 10, 1 and 1 at line 5");
-        Assert.StartsWith("Snapshot 1 of Program.cs:5 at ", view.GetVisualDescendants().OfType<Banner>().Select(b => b.Said).Single(said => said?.StartsWith("Snapshot", StringComparison.Ordinal) == true),
-            StringComparison.Ordinal);
+        Assert.Matches(@"^Snapshot 1 of Program\.cs:5, taken at \d\d:\d\d:\d\d\.\d{3} on Main Thread\. The program was held [\d.,]+ (ms|s)\.$",
+            view.GetVisualDescendants().OfType<Banner>().Select(b => b.Said).Single(said => said?.StartsWith("Snapshot", StringComparison.Ordinal) == true)!);
         Assert.Equal(Refusals.SnapshotValue, Row(window, "total")!.NoSetting);
         window.Close();
     }
