@@ -121,6 +121,58 @@ public static class YarnPnp
         return string.Join(Path.DirectorySeparatorChar, [.. kept, .. parts.Skip(at + 3)]);
     }
 
+    /// <summary>The path a package's location in the data names from the manifest's folder: joined on portable paths
+    /// (<see cref="Portable"/>), its "." and ".." taken and none above the root, so a location climbing from the folder's
+    /// drive to another (a global cache's, a link's) names that drive.</summary>
+    internal static string Located(string folder, string location, bool windows)
+    {
+        List<string> names = [];
+        foreach (string name in $"{Portable(folder, windows)}/{location}".Split('/'))
+        {
+            if (name == "..")
+            {
+                if (names.Count > 0)
+                {
+                    names.RemoveAt(names.Count - 1);
+                }
+            }
+            else if (name is not ("" or "."))
+            {
+                names.Add(name);
+            }
+        }
+        return Native("/" + string.Join('/', names), windows);
+    }
+
+    /// <summary>A path as Yarn writes the data's paths (its portable path): '/' between names, and on Windows a drive a name
+    /// below the root ("/C:/src/app") and a share's path below "/unc" ("/unc/server/share", "/unc/.dot/" for "\\.\").</summary>
+    internal static string Portable(string path, bool windows)
+    {
+        if (!windows)
+        {
+            return path;
+        }
+        string slashed = path.Replace('\\', '/');
+        return slashed.Length >= 2 && char.IsAsciiLetter(slashed[0]) && slashed[1] == ':' ? "/" + slashed
+            : slashed.StartsWith("//./", StringComparison.Ordinal) ? "/unc/.dot/" + slashed[4..]
+            : slashed.StartsWith("//", StringComparison.Ordinal) ? "/unc/" + slashed[2..]
+            : slashed;
+    }
+
+    /// <summary>The path a portable one (<see cref="Portable"/>) names on this system.</summary>
+    internal static string Native(string portable, bool windows)
+    {
+        if (!windows)
+        {
+            return portable;
+        }
+        string path = portable.Length >= 3 && portable[0] == '/' && char.IsAsciiLetter(portable[1]) && portable[2] == ':' ? portable[1..]
+            : portable.StartsWith("/unc/.dot/", StringComparison.Ordinal) ? "//./" + portable["/unc/.dot/".Length..]
+            : portable.StartsWith("/unc/", StringComparison.Ordinal) ? "//" + portable["/unc/".Length..]
+            : portable;
+        return path.Replace('/', '\\');
+    }
+
     /// <summary>A manifest's data, read again once its file or its data file changed; null where it does not read.</summary>
     private static Manifest? Of(string manifest)
     {
@@ -291,7 +343,7 @@ public static class YarnPnp
                 }
             }
             return found is { } locator && packages.TryGetValue(locator, out Package? package)
-                ? Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.Combine(folder, package.Location.Replace('/', Path.DirectorySeparatorChar))))
+                ? Path.TrimEndingDirectorySeparator(Located(folder, package.Location, OperatingSystem.IsWindows()))
                 : null;
         }
 
@@ -299,7 +351,7 @@ public static class YarnPnp
         /// data leaves to Node.js's own resolution, or one under no package.</summary>
         private Locator? Owner(string file)
         {
-            string relative = Path.GetRelativePath(folder, file).Replace(Path.DirectorySeparatorChar, '/');
+            string relative = Route(file);
             try
             {
                 if (ignored?.IsMatch(relative) == true)
@@ -323,6 +375,20 @@ public static class YarnPnp
                 }
             }
             return best;
+        }
+
+        /// <summary>The way from the manifest's folder to a file as the data writes its locations, '/' between names; to a
+        /// file on another volume, whose whole path .NET gives, up to the portable root and down that path
+        /// (<see cref="Portable"/>).</summary>
+        private string Route(string file)
+        {
+            string relative = Path.GetRelativePath(folder, file);
+            if (!Path.IsPathRooted(relative))
+            {
+                return relative.Replace(Path.DirectorySeparatorChar, '/');
+            }
+            int names = Portable(folder, OperatingSystem.IsWindows()).Split('/', StringSplitOptions.RemoveEmptyEntries).Length;
+            return string.Concat(Enumerable.Repeat("../", names)) + Portable(relative, OperatingSystem.IsWindows()).TrimStart('/');
         }
     }
 }
