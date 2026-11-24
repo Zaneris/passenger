@@ -591,27 +591,21 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
 
             editor = window.EditorArea.CodeEditor;
             Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
-            Task asked = server.RefuseNext(ExtensionMessage, 1);
-            try
-            {
-                Ui.PlaceAfter(editor, "return ");
-                Ui.Run(window, AppActions.Complete);
-                Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("value"), "the server's completion in a file no AppHost involves");
-                Ui.Press(window, "ESCAPE");
-                Ui.PlaceAfter(editor, "Twi");
-                Ui.Run(window, AppActions.QuickFix);
-                Ui.WaitFor(() => window.Assist.Offered.Contains("Generate method 'Twice'"), "the server's fix in a file no AppHost involves");
-                Ui.Press(window, "ESCAPE");
-                Ui.PlaceAfter(editor, "Twice(val");
-                Ui.Run(window, AppActions.GoToDeclaration);
-                Ui.WaitFor(() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line).Contains("int value", StringComparison.Ordinal),
-                    "Go to Declaration to reach the local in a file no AppHost involves");
-                Assert.False(asked.IsCompleted, "Completion, Show Context Actions or Go to Declaration in a file no AppHost involves asked Passenger's extension for Aspire's help");
-            }
-            finally
-            {
-                _ = server.RefuseNext(ExtensionMessage, 0);
-            }
+            // Seen, never held: an ask of Aspire's handlers goes on as it would.
+            Task asked = server.HoldNext(ExtensionMessage, AsksAspire, Task.CompletedTask);
+            Ui.PlaceAfter(editor, "return ");
+            Ui.Run(window, AppActions.Complete);
+            Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("value"), "the server's completion in a file no AppHost involves");
+            Ui.Press(window, "ESCAPE");
+            Ui.PlaceAfter(editor, "Twi");
+            Ui.Run(window, AppActions.QuickFix);
+            Ui.WaitFor(() => window.Assist.Offered.Contains("Generate method 'Twice'"), "the server's fix in a file no AppHost involves");
+            Ui.Press(window, "ESCAPE");
+            Ui.PlaceAfter(editor, "Twice(val");
+            Ui.Run(window, AppActions.GoToDeclaration);
+            Ui.WaitFor(() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line).Contains("int value", StringComparison.Ordinal),
+                "Go to Declaration to reach the local in a file no AppHost involves");
+            Assert.False(asked.IsCompleted, "Completion, Show Context Actions or Go to Declaration in a file no AppHost involves asked Passenger's extension for Aspire's help");
         }
         finally
         {
@@ -621,6 +615,14 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
 
     /// <summary>How Passenger's extension is asked about a document.</summary>
     private const string ExtensionMessage = Passenger.Lsp.LspMethods.DispatchDocumentExtensionMessage;
+
+    /// <summary>Passenger's extension's handlers of Aspire's help.</summary>
+    private static readonly HashSet<string> AspireHandlers =
+        [Handlers.AspireProjectDeclaration, Handlers.AspireCodeHelp, Handlers.AspireReferenceFix, Handlers.AspireRunResources, Handlers.AspireRename, Handlers.AspireParameters];
+
+    /// <summary>Whether a message to Passenger's extension about a document asks one of Aspire's handlers.</summary>
+    private static bool AsksAspire(object parameters) =>
+        parameters is Passenger.Lsp.RoslynExtension.DispatchExtensionMessageParams { MessageName: { } handler } && AspireHandlers.Contains(handler);
 
     /// <summary>What a key typed in the plain file's comment and its pause allocate on the UI thread, the least of a few.</summary>
     private static long UiBytesPerPause(MainWindow window)
