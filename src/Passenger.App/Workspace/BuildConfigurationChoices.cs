@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Passenger.App.State;
 using Passenger.Core;
 using Passenger.Host;
@@ -78,7 +79,7 @@ public sealed class BuildConfigurationChoices
             List<ProjectModel> evaluatedProjects = [.. workspace.Projects.Where(p => p.IsEvaluated)];
             IReadOnlyList<BuildConfiguration> declared = evaluatedProjects.Count == 0 ? []
                 : BuildConfigurations.Declared(evaluatedProjects.Select(p => (p.Property(CarriedProperties.Configurations), p.Property(CarriedProperties.Platforms))));
-            Take(declared, BuildConfigurations.DefaultOf(declared), ofSolution: false, problem: null);
+            Take(declared, BuildConfigurations.DefaultOf(declared, RuntimeInformation.OSArchitecture), ofSolution: false, problem: null);
             List<ProjectModel> standing = [.. workspace.Projects.Where(p => p.Exists)];
             bool evaluated = standing.Count > 0 && standing.All(p => p.Evaluated is { Complete: true });
             if (evaluated || wanted is null || declared.Any(d => d.Is(wanted)))
@@ -98,8 +99,9 @@ public sealed class BuildConfigurationChoices
             Listed?.Invoke(this, EventArgs.Empty);
             return;
         }
-        Take(read.Declared.Select(c => new BuildConfiguration(c.Configuration, c.Platform)).ToList(),
-            read.Default is { } fallback ? new BuildConfiguration(fallback.Configuration, fallback.Platform) : null, ofSolution: true, problem: null);
+        List<BuildConfiguration> declaredBySolution = [.. read.Declared.Select(c => new BuildConfiguration(c.Configuration, c.Platform))];
+        Take(declaredBySolution, BuildConfigurations.Here(declaredBySolution,
+            read.Default is { } fallback ? new BuildConfiguration(fallback.Configuration, fallback.Platform) : null, RuntimeInformation.OSArchitecture), ofSolution: true, problem: null);
         BuildConfiguration? chosen = BuildConfigurations.Chosen(Offered, Default, wanted?.Key);
         if (chosen is not null && read.Taken is { } taken && !chosen.Is(new BuildConfiguration(taken.Configuration, taken.Platform)))
         {
