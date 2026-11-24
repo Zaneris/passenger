@@ -66,6 +66,7 @@ cask "passenger-ide" do
   depends_on macos: :ventura
 
   app "Passenger.app"
+  binary "#{appdir}/Passenger.app/Contents/Resources/bin/passenger-ide"
 
   zap trash: [
     "~/Library/Application Support/Passenger",
