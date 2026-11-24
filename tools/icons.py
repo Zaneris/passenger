@@ -140,6 +140,16 @@ ICONS = [
     # The Database and Migrations windows: the database itself, and changes applied to it.
     ("Database", "Database", "20_regular"),
     ("Migrations", "Database Arrow Right", "20_regular"),
+    # The database explorer's rows: a schema, a table, a view (a table looked into), a column, a key, an index (rows kept in
+    # order), a routine (a body of code), and a SQL console.
+    ("DatabaseSchema", "Organization", "20_regular"),
+    ("DatabaseTable", "Table", "20_regular"),
+    ("DatabaseView", "Table Search", "20_regular"),
+    ("DatabaseColumn", "Column", "20_regular"),
+    ("DatabaseKey", "Key", "20_regular"),
+    ("DatabaseIndex", "Arrow Sort", "20_regular"),
+    ("DatabaseRoutine", "Braces", "20_regular"),
+    ("SqlConsole", "Window Console", "20_regular"),
     # A web project's web root (wwwroot) in the Explorer: the folder whose files are served on the web.
     ("WebRootFolder", "Folder Globe", "20_regular"),
     # A signed commit's mark in the Git log: a good signature, one unverified, a bad one and one expired.

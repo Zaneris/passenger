@@ -65,25 +65,18 @@ public sealed class MigrationsPostgresTests
             string applied = Docker.Run("compose", "-p", project, "exec", "-T", "db", "psql", "-U", "postgres", "-d", "shop", "-tAc", "select \"MigrationId\" from \"__EFMigrationsHistory\"");
             Assert.EndsWith("_Initial", applied.Trim(), StringComparison.Ordinal);
 
+            // The Database window finds the running service's database, opening it only as asked, down to the migrated table.
             window.ShowToolWindow(ToolWindowIds.Database);
-            DatabaseTests.Tool(window, AppActions.DatabaseRefresh);
-            Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
-            Assert.Single(window.Database.Sources);
-            Assert.False(window.Database.Connected);
-            DatabaseTests.Tool(window, AppActions.DatabaseConnect);
-            Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
-            Avalonia.Controls.ListBox tables = window.DatabaseView.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single(l => l.Name == "DatabaseTables");
-            DatabaseTests.ChooseTable(window, "Products");
-            DatabaseTests.Tool(window, AppActions.DatabaseBrowse);
-            Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
-            Assert.Contains(window.Database.Schema!.Columns, c => c.Name == "Id" && c.Primary);
-            Avalonia.Controls.TextBox sql = window.DatabaseView.GetVisualDescendants().OfType<Avalonia.Controls.TextBox>().Single(t => t.Name == "DatabaseSql");
-            sql.Text = "SELECT COUNT(*) AS products FROM \"Products\"";
-            DatabaseTests.Tool(window, AppActions.DatabaseQuery);
-            Ui.WaitFor(() => window.OwnedWindows.OfType<ChoiceDialog>().Any(d => d.IsVisible), () => window.Database.Said);
-            Ui.ClickButton(window.OwnedWindows.OfType<ChoiceDialog>().Single(d => d.IsVisible), "Run");
-            Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
-            Assert.Equal("0", window.Database.Rows!.Cell(0, 0));
+            Assert.True(window.Perform(AppActions.DatabaseRefresh), "Refresh Database Connections did not run");
+            Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
+            Passenger.App.Database.DatabaseSource found = Assert.Single(window.Database.Sources);
+            Assert.False(window.Database.IsConnected(found));
+            foreach (string row in (string[])[found.Name, "shop", "public", "Tables", "Products", "Columns"])
+            {
+                DatabaseTests.Open(window, row);
+            }
+            Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == Passenger.App.Database.DatabaseNodeKind.Column && r.Title == "Id"
+                && r.Detail.Contains("primary key", StringComparison.Ordinal));
             Assert.DoesNotContain(Password, window.Database.Said, StringComparison.Ordinal);
 
             // The connection string goes to dotnet ef through the environment, never a command line any process can read.

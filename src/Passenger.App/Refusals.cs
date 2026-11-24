@@ -638,6 +638,18 @@ public static class Refusals
     /// <summary>An AppHost run whose resource connection (<see cref="Aspire.AspireAppRun.Interactions"/>) is not made yet.</summary>
     public const string AppHostStarting = "The AppHost resource connection is still starting";
 
+    /// <summary>A database action with none of the explorer's connections chosen.</summary>
+    public const string NoDatabaseConnection = "Choose a database connection first";
+
+    /// <summary>Open Table Data with no table or view chosen in the Database window.</summary>
+    public const string NoDatabaseTable = "Choose a table or view first";
+
+    /// <summary>Stop Database Operation with none running.</summary>
+    public const string NoDatabaseOperation = "No database operation is running";
+
+    /// <summary>A database action while the Database window reads a connection.</summary>
+    public const string DatabaseBusy = "A database operation is under way";
+
     /// <summary>The Migrations window, or an EF Core action, in a folder none of whose projects references EF Core.</summary>
     public const string NoEfCore = "No project here uses EF Core";
 

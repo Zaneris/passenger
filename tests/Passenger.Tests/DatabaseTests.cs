@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -6,354 +7,166 @@ using Microsoft.Data.Sqlite;
 using Passenger.App;
 using Passenger.App.Database;
 using Passenger.App.Tables;
+using Passenger.Core;
+using Passenger.TestTables;
 
 namespace Passenger.Tests;
 
+/// <summary>The Database window over a folder's SQLite database: connections found without connecting, the explorer read as
+/// it is opened, a table's data among the editors, and a connection made by hand kept with its password in the system's
+/// credential store (the test run's own, in memory).</summary>
 public sealed class DatabaseTests
 {
     [AvaloniaFact]
-    public void Tables_are_searchable_expandable_and_open_filtered_editor_tabs()
-    {
-        MainWindow window = OpenShop();
-        try
-        {
-            ListBox list = View<ListBox>(window, "DatabaseTables");
-            ChooseTable(window, "Products");
-            Ui.Click(list.GetVisualDescendants().OfType<ListBoxItem>().Single(i => i.DataContext == list.SelectedItem));
-            window.KeyTextInput("ord");
-            Assert.Equal("ord", View<TextBox>(window, "DatabaseTableSearch").Text);
-            Assert.Equal(["OrderLines", "Orders"], list.Items.OfType<DatabaseTreeRow>().Select(r => r.Table.Name));
-            Ui.Press(window, "ESCAPE");
-            Assert.Equal(3, list.ItemCount);
-            ChooseTable(window, "Products");
-            Control item = list.GetVisualDescendants().OfType<ListBoxItem>().Single(i => i.DataContext == list.SelectedItem);
-            Ui.Click(item);
-            Ui.Press(window, "RIGHT");
-            Ui.WaitFor(() => !window.Database.Busy && list.ItemCount == 6, () => window.Database.Said);
-            Assert.Contains(list.Items.OfType<DatabaseTreeRow>(), r => r.Title == "Columns");
-            Ui.Press(window, "DOWN");
-            Ui.Press(window, "RIGHT");
-            Assert.Contains(list.Items.OfType<DatabaseTreeRow>(), r => r.Depth == 2 && r.Title.StartsWith("Name ·", StringComparison.Ordinal));
-            ChooseTable(window, "Products");
-            item = list.GetVisualDescendants().OfType<ListBoxItem>().Single(i => i.DataContext == list.SelectedItem);
-            Ui.Click(item);
-            Ui.Press(window, "CTRL+ENTER");
-            Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTable is not null, "a database editor tab");
-            T Tab<T>(string name) where T : Control => window.GetVisualDescendants().OfType<T>().Single(c => c.Name == name);
-            Ui.WaitFor(() => Tab<CellGrid>("DatabaseTabResults").Table?.RowCount == 3, "table rows in the editor");
-            Passenger.App.Workspace.OpenDocument opened = window.EditorArea.Active!;
-            Assert.DoesNotContain(opened, window.EditorArea.Documents);
-            Tab<ComboBox>("DatabaseFilterColumn").SelectedItem = "Name";
-            Tab<TextBox>("DatabaseFilterValue").Text = "tea";
-            Ui.Click(Tab<Button>("DatabaseApplyFilter"));
-            Ui.WaitFor(() => Tab<CellGrid>("DatabaseTabResults").Table?.RowCount == 1, "filtered rows");
-            Assert.Equal("Tea", Tab<CellGrid>("DatabaseTabResults").Table!.Cell(0, 1));
-            Tab<TextBox>("DatabaseFilterValue").Text = "%";
-            Ui.Click(Tab<Button>("DatabaseApplyFilter"));
-            Ui.WaitFor(() => Tab<CellGrid>("DatabaseTabResults").Table?.RowCount == 0, "a literal wildcard filter");
-            Ui.Click(Tab<Button>("DatabaseClearFilter"));
-            Ui.WaitFor(() => Tab<CellGrid>("DatabaseTabResults").Table?.RowCount == 3, "unfiltered rows");
-            Ui.DoubleClick(item, new Avalonia.Point(item.Bounds.Width - 15, item.Bounds.Height / 2));
-            Ui.Settle();
-            Assert.Same(opened, window.EditorArea.Active);
-            Assert.Single(window.EditorArea.Groups.SelectMany(g => g.Tabs), t => t.Document.DatabaseTable is not null);
-            Assert.False(File.Exists(opened.Path));
-        }
-        finally { window.Close(); }
-    }
-
-    [AvaloniaFact]
-    public void Unbounded_queries_are_limited_and_running_SQL_can_be_cancelled()
-    {
-        MainWindow window = OpenShop();
-        try
-        {
-            TextBox sql = View<TextBox>(window, "DatabaseSql");
-            sql.Text = "SELECT * FROM Products";
-            Tool(window, AppActions.DatabaseQuery);
-            Ui.ClickButton(Question(window), "Run");
-            Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
-            Assert.Contains("LIMIT 1000", sql.Text, StringComparison.Ordinal);
-            Assert.Equal(3, window.Database.Rows!.RowCount);
-            sql.Text = "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<1000000000) SELECT sum(x) FROM n";
-            Tool(window, AppActions.DatabaseQuery);
-            ChoiceDialog question = Question(window);
-            Ui.Click(question.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Run"), settle: false);
-            Assert.True(window.Database.Busy);
-            Assert.True(View<Button>(window, AppActions.DatabaseCancel).IsEnabled);
-            Ui.Click(View<Button>(window, AppActions.DatabaseCancel), settle: false);
-            Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
-            Assert.Contains("cancelled", window.Database.Said, StringComparison.OrdinalIgnoreCase);
-            Assert.False(View<Button>(window, AppActions.DatabaseCancel).IsEnabled);
-        }
-        finally { window.Close(); }
-    }
-
-    private static MainWindow OpenShop()
-    {
-        string folder = TestFolders.Create("database-tree");
-        TestFolders.Write(folder, "Shop.csproj", TestProjects.Console());
-        TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
-        TestFolders.Write(folder, "appsettings.json", """{"ConnectionStrings":{"Shop":"Data Source=shop.db"}}""");
-        using (SqliteConnection connection = new($"Data Source={Path.Combine(folder, "shop.db")};Pooling=False"))
-        {
-            connection.Open();
-            using SqliteCommand command = connection.CreateCommand();
-            command.CommandText = "CREATE TABLE Products(Id INTEGER PRIMARY KEY, Name TEXT); CREATE INDEX ProductName ON Products(Name); CREATE TABLE Orders(Id INTEGER); CREATE TABLE OrderLines(Id INTEGER); INSERT INTO Products VALUES(1,'Coffee'),(2,'Tea'),(3,'Milk')";
-            command.ExecuteNonQuery();
-        }
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        window.ShowToolWindow(ToolWindowIds.Database);
-        Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
-        Run(window, AppActions.DatabaseConnect);
-        return window;
-    }
-
-    [AvaloniaFact]
-    public void A_manual_connection_is_entered_validated_connected_and_kept_through_refresh()
-    {
-        string folder = TestFolders.Create("database-manual");
-        TestFolders.Write(folder, "Shop.csproj", TestProjects.Console());
-        TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
-        using (SqliteConnection connection = new($"Data Source={Path.Combine(folder, "shop.db")};Pooling=False"))
-        {
-            connection.Open();
-            using SqliteCommand command = connection.CreateCommand();
-            command.CommandText = "CREATE TABLE Products(Id INTEGER PRIMARY KEY, Name TEXT); INSERT INTO Products VALUES(1,'Coffee')";
-            command.ExecuteNonQuery();
-        }
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            window.ShowToolWindow(ToolWindowIds.Database);
-            Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
-            Tool(window, AppActions.DatabaseAdd);
-            Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "the manual database connection dialog");
-            DatabaseConnectionDialog dialog = window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible);
-            Ui.Settle();
-            DialogButtonsTests.Check(dialog);
-            T Field<T>(string name) where T : Control => dialog.GetVisualDescendants().OfType<T>().Single(c => c.Name == name);
-            Assert.NotEqual(default, Field<TextBox>("DatabasePassword").PasswordChar);
-            Assert.False(Field<TextBox>("DatabasePassword").RevealPassword);
-            Ui.ClickButton(dialog, "Connect");
-            Assert.True(dialog.IsVisible);
-            Assert.Contains("host and database", Field<TextBlock>("DatabaseConnectionError").Text, StringComparison.Ordinal);
-            Field<ComboBox>("DatabaseProvider").SelectedIndex = (int)DatabaseKind.SqlServer;
-            Field<CheckBox>("DatabaseIntegrated").IsChecked = true;
-            Assert.Equal(1433m, Field<NumericUpDown>("DatabasePort").Value);
-            Assert.False(Field<TextBox>("DatabaseUser").IsEnabled);
-            Assert.False(Field<TextBox>("DatabasePassword").IsEnabled);
-            Field<ComboBox>("DatabaseProvider").SelectedIndex = (int)DatabaseKind.MySql;
-            Assert.Equal(3306m, Field<NumericUpDown>("DatabasePort").Value);
-            Assert.True(Field<TextBox>("DatabasePassword").IsEnabled);
-            Field<ComboBox>("DatabaseProvider").SelectedIndex = (int)DatabaseKind.Sqlite;
-            Field<TextBox>("DatabaseConnectionName").Text = "Manual shop";
-            Field<TextBox>("DatabaseName").Text = "shop.db";
-            Ui.ClickButton(dialog, "Connect");
-            Ui.WaitFor(() => window.Database.Connected && !window.Database.Busy, () => window.Database.Said);
-            Assert.Equal("Manual shop", window.Database.Source!.Name);
-            Assert.Single(window.Database.Tables);
-            Run(window, AppActions.DatabaseRefresh);
-            Assert.Single(window.Database.Sources);
-            Assert.Equal("Manual shop", window.Database.Source!.Name);
-            Run(window, AppActions.DatabaseConnect);
-            ChooseTable(window, window.Database.Tables.Single().Name);
-            Run(window, AppActions.DatabaseBrowse);
-            Assert.Equal("Coffee", window.Database.Rows!.Cell(0, 1));
-            Tool(window, AppActions.DatabaseConnectionRename);
-            Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible), "rename connection dialog");
-            ConfirmDialog rename = window.OwnedWindows.OfType<ConfirmDialog>().Single(d => d.IsVisible);
-            rename.GetVisualDescendants().OfType<TextBox>().Single(c => c.Name == "DatabaseRenameName").Text = "Renamed shop";
-            Ui.ClickButton(rename, "Rename");
-            Assert.Equal("Renamed shop", window.Database.Source!.Name);
-            Assert.True(window.Database.Connected);
-            Tool(window, AppActions.DatabaseConnectionEdit);
-            Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "edit connection dialog");
-            dialog = window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible);
-            Assert.Equal((int)DatabaseKind.Sqlite, Field<ComboBox>("DatabaseProvider").SelectedIndex);
-            Assert.Equal("Renamed shop", Field<TextBox>("DatabaseConnectionName").Text);
-            Field<TextBox>("DatabaseConnectionName").Text = "Edited shop";
-            Ui.ClickButton(dialog, "Save and Connect");
-            Ui.WaitFor(() => window.Database.Connected && !window.Database.Busy, () => window.Database.Said);
-            Assert.Equal("Edited shop", window.Database.Source!.Name);
-            Run(window, AppActions.DatabaseRefresh);
-            Assert.Single(window.Database.Sources);
-            Assert.Equal("Edited shop", window.Database.Source!.Name);
-            Run(window, AppActions.DatabaseConnect);
-            Tool(window, AppActions.DatabaseAdd);
-            Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "another manual connection dialog");
-            Ui.ClickButton(window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible), "Cancel");
-            Assert.Single(window.Database.Sources);
-            Assert.True(window.Database.Connected);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    [AvaloniaFact]
-    public void A_folder_without_connections_explains_why_connect_and_browse_are_disabled()
-    {
-        string folder = TestFolders.Create("database-empty");
-        TestFolders.Write(folder, "Shop.csproj", TestProjects.Console());
-        TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            window.ShowToolWindow(ToolWindowIds.Database);
-            Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
-            Assert.Empty(window.Database.Sources);
-            Assert.False(View<Button>(window, AppActions.DatabaseConnect).IsEnabled);
-            Assert.False(View<Button>(window, AppActions.DatabaseBrowse).IsEnabled);
-            Assert.False(View<Button>(window, AppActions.DatabaseQuery).IsEnabled);
-            Assert.Contains("No supported connection strings", View<TextBlock>(window, "DatabaseStatus").Text, StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    [AvaloniaFact]
-    public void SQLite_is_browsed_paged_queried_and_edited_only_after_confirmation()
+    public void The_database_window_finds_explores_and_opens_a_folders_databases()
     {
         string folder = TestFolders.Create("database");
         TestFolders.Write(folder, "Shop.csproj", TestProjects.Console());
         TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
-        TestFolders.Write(folder, "appsettings.json", """{"ConnectionStrings":{"Shop":"Data Source=shop.db"}}""");
-        using (SqliteConnection connection = new($"Data Source={Path.Combine(folder, "shop.db")};Pooling=False"))
-        {
-            connection.Open();
-            using SqliteCommand command = connection.CreateCommand();
-            command.CommandText = """
-                CREATE TABLE Products (Id INTEGER PRIMARY KEY, Name TEXT NOT NULL, Note TEXT);
-                CREATE INDEX ProductNames ON Products(Name);
-                WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<105)
-                INSERT INTO Products SELECT x, 'Product '||x, NULL FROM n;
-                """;
-            command.ExecuteNonQuery();
-        }
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            window.ShowToolWindow(ToolWindowIds.Database);
-            Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
-            Assert.Equal(Passenger.App.Docking.ToolAnchor.RightBottom, window.DockHost[ToolWindowIds.Database].Anchor);
-            Assert.NotEqual(window.DockHost[ToolWindowIds.Migrations].Icon, window.DockHost[ToolWindowIds.Database].Icon);
-            Assert.Single(window.Database.Sources);
-            Assert.False(window.Database.Connected);
-            Assert.Empty(window.Database.Tables);
-            Assert.False(View<Button>(window, AppActions.DatabaseBrowse).IsEnabled);
-            Run(window, AppActions.DatabaseConnect);
-            Assert.False(View<Button>(window, AppActions.DatabaseBrowse).IsEnabled);
-            ListBox tables = View<ListBox>(window, "DatabaseTables");
-            ChooseTable(window, window.Database.Tables.Single().Name);
-            Assert.True(View<Button>(window, AppActions.DatabaseBrowse).IsEnabled);
-            Run(window, AppActions.DatabaseBrowse);
-            Assert.Equal(100, window.Database.Rows!.RowCount);
-            Assert.True(window.Database.Rows.More);
-            Assert.Contains(window.Database.Schema!.Columns, c => c.Name == "Id" && c.Primary);
-            Assert.Contains(window.Database.Schema.Indexes, i => i.Contains("ProductNames", StringComparison.Ordinal));
-            Assert.Equal("NULL", window.Database.Rows.Cell(0, 2));
-            Run(window, AppActions.DatabaseNext);
-            Assert.Equal(5, window.Database.Rows.RowCount);
-            Assert.Equal("101", window.Database.Rows.Cell(0, 0));
-            Run(window, AppActions.DatabasePrevious);
-
-            CellGrid grid = View<CellGrid>(window, "DatabaseResults");
-            grid.Choose((0, 1), (0, 1));
-            Assert.True(window.Perform(AppActions.DatabaseEdit));
-            Ui.Settle();
-            Assert.NotNull(grid.Writing);
-            grid.Writing!.Text = "New product";
-            Ui.Press(window, "ENTER");
-            ChoiceDialog question = Question(window);
-            Assert.Equal("Product 1", window.Database.Rows!.Cell(0, 1));
-            Ui.ClickButton(question, "Run");
-            Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
-            Assert.Equal("New product", window.Database.Rows!.Cell(0, 1));
-
-            TextBox sql = View<TextBox>(window, "DatabaseSql");
-            sql.Text = "SELECT Name, Note FROM Products WHERE Id=1";
-            Tool(window, AppActions.DatabaseQuery);
-            Ui.ClickButton(Question(window), "Run");
-            Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
-            Assert.Equal("New product", window.Database.Rows!.Cell(0, 0));
-            Assert.Single(window.Database.History);
-            Assert.False(window.Database.Rows.IsEditable(0, 0));
-
-            sql.Text = "DELETE FROM Products";
-            Tool(window, AppActions.DatabaseQuery);
-            Ui.ClickButton(Question(window), "Cancel");
-            Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
-            Assert.Single(window.Database.History);
-            ChooseTable(window, window.Database.Tables.Single().Name);
-            Run(window, AppActions.DatabaseBrowse);
-            Assert.Equal(100, window.Database.Rows!.RowCount);
-
-            using (SqliteConnection connection = new($"Data Source={Path.Combine(folder, "shop.db")};Pooling=False"))
-            {
-                connection.Open();
-                using SqliteCommand command = connection.CreateCommand();
-                command.CommandText = "UPDATE Products SET Name='Changed elsewhere' WHERE Id=1";
-                command.ExecuteNonQuery();
-            }
-            grid.Choose((0, 1), (0, 1));
-            Assert.True(window.Perform(AppActions.DatabaseEdit));
-            Ui.Settle();
-            grid.Writing!.Text = "Must not overwrite";
-            Ui.Press(window, "ENTER");
-            Ui.ClickButton(Question(window), "Run");
-            Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
-            Assert.Contains("row changed", window.Database.Said, StringComparison.Ordinal);
-            Run(window, AppActions.DatabaseBrowse);
-            Assert.Equal("Changed elsewhere", window.Database.Rows!.Cell(0, 1));
-
-            sql.Text = "SELECT 'Password=database-test-secret' AS Secret";
-            Tool(window, AppActions.DatabaseQuery);
-            Ui.ClickButton(Question(window), "Run");
-            Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
-            Assert.DoesNotContain("database-test-secret", window.Database.Rows!.Cell(0, 0), StringComparison.Ordinal);
-            Assert.DoesNotContain(window.Database.History, query => query.Contains("database-test-secret", StringComparison.Ordinal));
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    [AvaloniaFact]
-    public void Discovery_never_connects_and_a_missing_SQLite_database_is_never_created()
-    {
-        string folder = TestFolders.Create("database-missing");
-        TestFolders.Write(folder, "Shop.csproj", TestProjects.Console());
-        TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
         TestFolders.Write(folder, "appsettings.json", """
             {"ConnectionStrings":{
+                "Shop":"Data Source=shop.db",
                 "Missing":"Data Source=missing.db",
                 "Cache":"localhost:6379",
-                "Postgres":"Host=localhost;Database=shop",
-                "SqlServer":"Data Source=localhost;Initial Catalog=shop;Integrated Security=True",
-                "MySql":"Server=localhost;Port=3306;Database=shop"
+                "Orders":"Host=localhost;Database=orders;Username=app;Password=database-test-secret"
             }}
             """);
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Sql(folder, """
+            CREATE TABLE Products (Id INTEGER PRIMARY KEY, Name TEXT NOT NULL, Note TEXT);
+            CREATE INDEX ProductNames ON Products(Name);
+            CREATE TABLE Orders (Id INTEGER PRIMARY KEY, Product INTEGER REFERENCES Products(Id));
+            CREATE VIEW Cheap AS SELECT * FROM Products WHERE Id < 3;
+            WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<105)
+            INSERT INTO Products SELECT x, 'Product '||x, NULL FROM n;
+            """);
+        string settings = TestFolders.Create("database-settings-");
+        MainWindow window = Open(folder, settings);
         try
         {
-            window.ShowToolWindow(ToolWindowIds.Database);
-            Run(window, AppActions.DatabaseRefresh);
-            Assert.Equal([DatabaseKind.Sqlite, DatabaseKind.Postgres, DatabaseKind.SqlServer, DatabaseKind.MySql], window.Database.Sources.Select(s => s.Kind));
-            Assert.False(window.Database.Connected);
-            Assert.False(File.Exists(Path.Combine(folder, "missing.db")));
-            Assert.False(View<Button>(window, AppActions.DatabaseBrowse).IsEnabled);
-            Run(window, AppActions.DatabaseConnect);
-            Assert.False(window.Database.Connected);
-            Assert.Empty(window.Database.Tables);
-            Assert.Equal(window.Database.Said, View<TextBlock>(window, "DatabaseStatus").Text);
-            Assert.Contains("Database operation failed", LogsTests.WholeIdeLog(), StringComparison.Ordinal);
-            Assert.False(View<Button>(window, AppActions.DatabaseBrowse).IsEnabled);
-            Assert.False(File.Exists(Path.Combine(folder, "missing.db")));
+            Flow.Step("the folder's connections are found and none is opened, nor a missing SQLite file made", () =>
+            {
+                window.ShowToolWindow(ToolWindowIds.Database);
+                Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
+                Assert.Equal(["Shop", "Missing", "Orders"], window.Database.Sources.Select(s => s.Name));
+                Assert.Equal([DatabaseKind.Sqlite, DatabaseKind.Sqlite, DatabaseKind.Postgres], window.Database.Sources.Select(s => s.Kind));
+                Assert.DoesNotContain(window.Database.Sources, s => window.Database.IsConnected(s));
+                Assert.False(File.Exists(Path.Combine(folder, "missing.db")), "Finding the connections made a SQLite file the folder names");
+                Assert.All(Explorer(window).Rows, r => Assert.DoesNotContain("database-test-secret", r.Title + r.Detail, StringComparison.Ordinal));
+            });
+            Flow.Step("opening a connection reads its tables and views, and a table its columns keys and indexes", () =>
+            {
+                Open(window, "Shop");
+                Assert.Equal(["Tables", "Views"], Under(window, "Shop").Select(r => r.Title));
+                Open(window, "Tables");
+                Assert.Equal(["Orders", "Products"], Explorer(window).Rows.Where(r => r.Kind == DatabaseNodeKind.Table).Select(r => r.Title));
+                Open(window, "Products");
+                Open(window, "Columns");
+                DatabaseNode id = Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Column && r.Title == "Id");
+                Assert.Contains("primary key", id.Detail, StringComparison.Ordinal);
+                Open(window, "Indexes");
+                Assert.Contains(Explorer(window).Rows, r => r.Kind == DatabaseNodeKind.Index && r.Title.Contains("ProductNames", StringComparison.Ordinal));
+                Assert.True(window.Database.IsConnected(window.Database.Sources[0]));
+            });
+            Flow.Step("a missing SQLite database fails to open, said and logged, and is never made", () =>
+            {
+                DatabaseNode missing = Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Missing");
+                Explorer(window).Choose(missing);
+                Ui.Await(Explorer(window).ToggleAsync(missing), "Missing to fail to open");
+                Assert.False(missing.IsExpanded);
+                Assert.Contains("Database operation failed", LogsTests.WholeIdeLog(), StringComparison.Ordinal);
+                Assert.Equal(window.Database.Said, Explorer(window).GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "DatabaseStatus").Text);
+                Assert.False(File.Exists(Path.Combine(folder, "missing.db")));
+            });
+            Flow.Step("typing in the tree filters the rows read to those whose names hold the words", () =>
+            {
+                ListBox tree = Explorer(window).GetVisualDescendants().OfType<ListBox>().Single(l => l.Name == "DatabaseTree");
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Title == "Products"));
+                Ui.Settle();
+                Ui.Click(tree.GetVisualDescendants().OfType<ListBoxItem>().Single(i => i.DataContext == tree.SelectedItem));
+                window.KeyTextInput("ord");
+                Assert.Equal("ord", Explorer(window).GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "DatabaseSearch").Text);
+                Assert.Contains(Explorer(window).Rows, r => r.Title == "Orders");
+                Assert.DoesNotContain(Explorer(window).Rows, r => r.Title == "Products");
+                Ui.Press(window, "ESCAPE");
+                Assert.Contains(Explorer(window).Rows, r => r.Title == "Products");
+            });
+            Flow.Step("a table's data opens among the editors, paged, sorted by its header and filtered", () =>
+            {
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Title == "Products"));
+                Assert.True(window.Perform(AppActions.DatabaseOpenTable), "Open Table Data did not run");
+                Ui.WaitFor(() => Data(window)?.Rows?.RowCount == 100, "the first page of Products among the editors");
+                Assert.DoesNotContain(window.EditorArea.Active, window.EditorArea.Documents);
+                Assert.True(Data(window)!.Rows!.More);
+                Ui.Click(Tab<Button>(window, "DatabaseNextPage"));
+                Ui.WaitFor(() => Data(window)?.Rows is { RowCount: 5, Offset: 100 }, "the second page of Products");
+                Assert.True(window.Perform(AppActions.DatabaseOpenTable));
+                Ui.Settle();
+                Assert.Single(window.EditorArea.Groups.SelectMany(g => g.Tabs), t => t.Document.DatabaseTable is not null);
+                Tab<ComboBox>(window, "DatabaseFilterColumn").SelectedItem = "Name";
+                Tab<TextBox>(window, "DatabaseFilterValue").Text = "product 10";
+                Ui.Click(Tab<Button>(window, "DatabaseApplyFilter"));
+                Ui.WaitFor(() => Data(window)?.Rows?.RowCount == 7, "Products whose names hold product 10");
+                Tab<TextBox>(window, "DatabaseFilterValue").Text = "%";
+                Ui.Click(Tab<Button>(window, "DatabaseApplyFilter"));
+                Ui.WaitFor(() => Data(window)?.Rows?.RowCount == 0, "a filter's % taken as itself");
+                Ui.Click(Tab<Button>(window, "DatabaseClearFilter"));
+                Ui.WaitFor(() => Data(window)?.Rows?.RowCount == 100, "Products unfiltered");
+            });
+            Flow.Step("a cell is written only once asked, and a row changed since it was read is refused", () =>
+            {
+                CellGrid grid = Tab<CellGrid>(window, "DatabaseTabResults");
+                grid.Choose((0, 1), (0, 1));
+                Assert.True(grid.BeginWriting());
+                grid.Writing!.Text = "New product";
+                Ui.Press(window, "ENTER");
+                Ui.ClickButton(Question(window), "Write");
+                Ui.WaitFor(() => Data(window)?.Rows?.Cell(0, 1) == "New product", "the written cell read again");
+                Sql(folder, "UPDATE Products SET Name='Changed elsewhere' WHERE Id=1");
+                grid.Choose((0, 1), (0, 1));
+                Assert.True(grid.BeginWriting());
+                grid.Writing!.Text = "Must not overwrite";
+                Ui.Press(window, "ENTER");
+                Ui.ClickButton(Question(window), "Write");
+                Ui.WaitFor(() => Tab<TextBlock>(window, "DatabaseTabStatus").Text?.Contains("row changed", StringComparison.Ordinal) == true, "the stale row refused");
+                Assert.Equal("Changed elsewhere", Scalar(folder, "SELECT Name FROM Products WHERE Id=1"));
+            });
+            Flow.Step("a connection made by hand is kept for the folder, its password in the credential store and never in the state", () =>
+            {
+                Assert.True(window.Perform(AppActions.DatabaseAdd), "New Database Connection did not run");
+                Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "the connection dialog");
+                DatabaseConnectionDialog dialog = window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible);
+                Ui.Settle();
+                DialogButtonsTests.Check(dialog);
+                T Field<T>(string name) where T : Control => dialog.GetVisualDescendants().OfType<T>().Single(c => c.Name == name);
+                Assert.False(Field<TextBox>("DatabasePassword").RevealPassword);
+                Ui.ClickButton(dialog, "Connect");
+                Assert.True(dialog.IsVisible, "The dialog closed with no host or database");
+                Field<ComboBox>("DatabaseProvider").SelectedIndex = (int)DatabaseKind.SqlServer;
+                Assert.Equal(1433m, Field<NumericUpDown>("DatabasePort").Value);
+                Field<ComboBox>("DatabaseProvider").SelectedIndex = (int)DatabaseKind.Postgres;
+                Field<TextBox>("DatabaseConnectionName").Text = "Reports";
+                Field<TextBox>("DatabaseHost").Text = "127.0.0.1";
+                Field<NumericUpDown>("DatabasePort").Value = 9;
+                Field<TextBox>("DatabaseName").Text = "reports";
+                Field<TextBox>("DatabaseUser").Text = "app";
+                Field<TextBox>("DatabasePassword").Text = "kept-elsewhere-secret";
+                Ui.ClickButton(dialog, "Connect");
+                Ui.WaitFor(() => !window.Database.Busy && window.Database.Sources.Any(s => s.Name == "Reports"), () => window.Database.Said);
+                DatabaseSource reports = window.Database.Sources.Single(s => s.Name == "Reports");
+                Assert.Contains("kept-elsewhere-secret", SystemCredentials.Read(DatabaseController.CredentialService, reports.Account), StringComparison.Ordinal);
+                Assert.DoesNotContain("kept-elsewhere-secret", window.Database.Said, StringComparison.Ordinal);
+                window.Close();
+                Ui.Settle();
+                string kept = File.ReadAllText(Assert.Single(Directory.GetFiles(Path.Combine(settings, "workspaces"), "database.json", SearchOption.AllDirectories)));
+                Assert.Contains("Reports", kept, StringComparison.Ordinal);
+                Assert.DoesNotContain("kept-elsewhere-secret", kept, StringComparison.Ordinal);
+                Assert.DoesNotContain("Password", JsonDocument.Parse(kept).RootElement.ToString(), StringComparison.OrdinalIgnoreCase);
+                window = Open(folder, settings);
+                window.ShowToolWindow(ToolWindowIds.Database);
+                Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
+                Assert.Equal("Reports", window.Database.Sources[0].Name);
+                Assert.True(window.Database.Sources[0].SecretKept);
+            });
         }
         finally
         {
@@ -361,30 +174,58 @@ public sealed class DatabaseTests
         }
     }
 
-    private static T View<T>(MainWindow window, string name) where T : Control =>
-        window.DatabaseView.GetVisualDescendants().OfType<T>().Single(c => c.Name == name);
-
-    private static void Run(MainWindow window, string action)
+    /// <summary>A window on the folder keeping its state in <paramref name="settings"/>, as a person's does.</summary>
+    private static MainWindow Open(string folder, string settings)
     {
-        Tool(window, action);
-        Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
-    }
-
-    internal static void Tool(MainWindow window, string action)
-    {
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
+        window.Show();
+        window.KeepLayout();
+        window.OpenFolder(folder);
         Ui.Settle();
-        Ui.Click(window.DatabaseView.GetVisualDescendants().OfType<Button>().Single(b => b.Name == action), settle: false);
+        return window;
     }
 
-    internal static void ChooseTable(MainWindow window, string name)
+    private static DatabaseExplorer Explorer(MainWindow window) => window.DatabaseExplorer;
+
+    private static DatabaseTableTab? Data(MainWindow window) => window.EditorArea.Active?.DatabaseTable;
+
+    private static T Tab<T>(MainWindow window, string name) where T : Control =>
+        window.GetVisualDescendants().OfType<T>().Single(c => c.Name == name);
+
+    /// <summary>The rows directly under the row titled <paramref name="title"/>.</summary>
+    private static IEnumerable<DatabaseNode> Under(MainWindow window, string title) =>
+        Explorer(window).Rows.Single(r => r.Title == title).Children ?? [];
+
+    /// <summary>Opens the first closed row titled <paramref name="title"/> as the person does, waiting for what it reads.</summary>
+    internal static void Open(MainWindow window, string title)
     {
-        ListBox list = View<ListBox>(window, "DatabaseTables");
-        list.SelectedItem = list.Items.OfType<DatabaseTreeRow>().Single(r => r.Depth == 0 && r.Table.Name == name);
+        DatabaseNode node = Explorer(window).Rows.First(r => r.Title == title && r.Expands && !r.IsExpanded);
+        Explorer(window).Choose(node);
+        Ui.Await(Explorer(window).ToggleAsync(node), $"{title} to open");
+        Assert.True(node.IsExpanded, $"{title} did not open: {window.Database.Said}");
     }
 
     private static ChoiceDialog Question(MainWindow window)
     {
         Ui.WaitFor(() => window.OwnedWindows.OfType<ChoiceDialog>().Any(d => d.IsVisible), () => window.Database.Said);
         return window.OwnedWindows.OfType<ChoiceDialog>().Single(d => d.IsVisible);
+    }
+
+    private static void Sql(string folder, string sql)
+    {
+        using SqliteConnection connection = new($"Data Source={Path.Combine(folder, "shop.db")};Pooling=False");
+        connection.Open();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.ExecuteNonQuery();
+    }
+
+    private static string? Scalar(string folder, string sql)
+    {
+        using SqliteConnection connection = new($"Data Source={Path.Combine(folder, "shop.db")};Pooling=False");
+        connection.Open();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = sql;
+        return command.ExecuteScalar() as string;
     }
 }

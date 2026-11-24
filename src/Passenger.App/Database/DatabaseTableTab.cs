@@ -13,7 +13,9 @@ public sealed class DatabaseTableTab : IDisposable
 {
     private readonly DatabaseController owner;
     private readonly ActionWork work;
+    private readonly DatabaseSource connection;
     private readonly DatabaseSource source;
+    private (string Column, bool Descending)? sort;
     private readonly Func<string, string, Task<bool>> confirm;
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? operation;
@@ -23,18 +25,29 @@ public sealed class DatabaseTableTab : IDisposable
     private string said = "Loading table…";
     private bool disposed;
 
-    public DatabaseTableTab(DatabaseController owner, ActionWork work, DatabaseSource source, DatabaseTable table, Func<string, string, Task<bool>> confirm)
+    public DatabaseTableTab(DatabaseController owner, ActionWork work, DatabaseSource connection, string database, DatabaseTable table, Func<string, string, Task<bool>> confirm)
     {
-        this.owner = owner; this.work = work; this.source = source; Table = table; this.confirm = confirm;
-        Document = OpenDocument.OfDatabase(this, Path.Combine(source.Folder, $".passenger-table-{Guid.NewGuid():N}"));
+        this.owner = owner;
+        this.work = work;
+        this.connection = connection;
+        source = connection.In(database);
+        Database = database;
+        Table = table;
+        this.confirm = confirm;
+        Document = OpenDocument.OfDatabase(this, Path.Combine(connection.Folder, $".passenger-table-{Guid.NewGuid():N}"));
         owner.Changed += OnOwnerChanged;
     }
 
     public OpenDocument Document { get; }
     public DatabaseTable Table { get; }
-    public string Title => Containers.ContainerSecrets.InSaid($"{Table.Name} · {owner.Sources.FirstOrDefault(s => s.Id == source.Id)?.Name ?? source.Name}");
-    public bool Matches(DatabaseSource chosen, DatabaseTable table) => source.Id == chosen.Id && source.Kind == chosen.Kind && source.ConnectionString == chosen.ConnectionString && Table == table;
-    private bool Valid => !disposed && owner.HasConnection(source);
+    public string Database { get; }
+    public string Title => Containers.ContainerSecrets.InSaid($"{Table.Name} · {owner.Find(connection.Id)?.Name ?? connection.Name}");
+
+    /// <summary>The rows shown, the page last read.</summary>
+    public DatabaseRows? Rows => rows;
+
+    public bool Matches(DatabaseSource chosen, string database, DatabaseTable table) => connection.Id == chosen.Id && Database == database && Table == table;
+    private bool Valid => !disposed && owner.Find(connection.Id) is { } now && now.Kind == connection.Kind && now.ConnectionString == connection.ConnectionString;
     private event EventHandler? Changed;
 
     private void OnOwnerChanged(object? sender, EventArgs e)
@@ -47,7 +60,8 @@ public sealed class DatabaseTableTab : IDisposable
     public Task LoadAsync(int offset = 0, DatabaseFilter? next = null) => RunAsync(async cancel =>
     {
         DatabaseSchema read = schema ?? await BackgroundWork.Run(() => DatabaseClient.SchemaAsync(source, Table, cancel), cancel);
-        DatabaseRows page = await BackgroundWork.Run(() => DatabaseClient.PageAsync(source, read, offset, cancel, next), cancel);
+        (string Column, bool Descending)? order = sort;
+        DatabaseRows page = await BackgroundWork.Run(() => DatabaseClient.PageAsync(source, read, offset, cancel, next, order), cancel);
         cancel.ThrowIfCancellationRequested();
         schema = read; rows = page; filter = next;
         said = $"{Table} · rows {offset + (page.RowCount > 0 ? 1 : 0)}–{offset + page.RowCount}{(page.More ? " · more available" : string.Empty)}";
@@ -76,17 +90,17 @@ public sealed class DatabaseTableTab : IDisposable
     public Control Make()
     {
         CellGrid grid = new() { Name = "DatabaseTabResults" };
-        ComboBox columns = new() { Name = "DatabaseFilterColumn", MinWidth = 120 };
-        ComboBox comparison = new() { Name = "DatabaseFilterOperator", ItemsSource = new[] { "Contains", "Equals", "Is NULL", "Is not NULL" }, SelectedItem = filter?.Operator ?? "Contains", MinWidth = 110 };
+        ToolDropDown columns = new() { Name = "DatabaseFilterColumn" };
+        ToolDropDown comparison = new() { Name = "DatabaseFilterOperator", ItemsSource = new[] { "Contains", "Equals", "Is NULL", "Is not NULL" }, SelectedItem = filter?.Operator ?? "Contains" };
         TextBox value = new() { Name = "DatabaseFilterValue", Text = filter?.Value ?? string.Empty, PlaceholderText = "Filter value", MinWidth = 160 };
         TextBlock status = MutedText.Wrapped(said);
         status.Name = "DatabaseTabStatus";
-        status.Margin = new Thickness(8, 4);
+        status.Margin = new Thickness(Gaps.Normal, Gaps.Tight);
         Button apply = new() { Name = "DatabaseApplyFilter", Content = "Apply Filter" };
         Button clear = new() { Name = "DatabaseClearFilter", Content = "Clear" };
         Button refresh = new() { Content = "Refresh" };
-        Button previous = new() { Content = "Previous Page" };
-        Button next = new() { Content = "Next Page" };
+        Button previous = new() { Name = "DatabasePreviousPage", Content = "Previous Page" };
+        Button next = new() { Name = "DatabaseNextPage", Content = "Next Page" };
         Button cancel = new() { Content = "Cancel Operation", Name = "DatabaseTableCancel" };
         apply.Click += (_, _) => Apply();
         value.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Apply(); e.Handled = true; } };
@@ -96,13 +110,17 @@ public sealed class DatabaseTableTab : IDisposable
         next.Click += (_, _) => IdeErrors.Observe(LoadAsync((rows?.Offset ?? 0) + DatabaseClient.PageSize, filter));
         cancel.Click += (_, _) => operation?.Cancel();
         grid.CellWritten += (_, write) => IdeErrors.Observe(EditAsync(write));
-        WrapPanel bar = new() { Margin = new Thickness(8, 4) };
+        grid.SortRequested += (_, wanted) =>
+        {
+            sort = wanted is { } by && rows is { } shown ? (shown.Columns[by.Column], by.Descending) : null;
+            IdeErrors.Observe(LoadAsync(0, filter));
+        };
+        ToolFlow bar = new() { Margin = new Thickness(Gaps.Normal, Gaps.Hair), Spacing = Gaps.Small };
         foreach (Control control in new Control[] { columns, comparison, value, apply, clear, refresh, previous, next, cancel })
         {
-            control.Margin = new Thickness(0, 0, 6, 4);
             bar.Children.Add(control);
         }
-        Border top = ToolBars.Top(bar);
+        Border top = ToolBars.OverEditor(bar);
         DockPanel page = new();
         DockPanel.SetDock(top, Dock.Top); DockPanel.SetDock(status, Dock.Bottom);
         page.Children.Add(top); page.Children.Add(status);
@@ -143,7 +161,8 @@ public sealed class DatabaseTableTab : IDisposable
         await RunAsync(async cancel =>
         {
             await BackgroundWork.Run(() => DatabaseClient.UpdateAsync(source, page, row, write.Column, write.Text, cancel), cancel);
-            rows = await BackgroundWork.Run(() => DatabaseClient.PageAsync(source, schema!, page.Offset, cancel, filter), cancel);
+            (string Column, bool Descending)? order = sort;
+            rows = await BackgroundWork.Run(() => DatabaseClient.PageAsync(source, schema!, page.Offset, cancel, filter, order), cancel);
             said = "Cell updated.";
         });
     }

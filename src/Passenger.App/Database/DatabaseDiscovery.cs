@@ -52,7 +52,7 @@ internal static class DatabaseDiscovery
             {
                 foreach ((string name, string value) in values)
                 {
-                    if (Source($"{from} / {name}", value, project.Folder, project.Packages.Select(p => p.Name)) is { } source
+                    if (Source(name, from, value, project.Folder, project.Packages.Select(p => p.Name)) is { } source
                         && !found.Any(s => s.Kind == source.Kind && s.ConnectionString == source.ConnectionString))
                     {
                         found.Add(source);
@@ -105,7 +105,7 @@ internal static class DatabaseDiscovery
         }
     }
 
-    private static DatabaseSource? Source(string name, string value, string folder, IEnumerable<string> packages)
+    private static DatabaseSource? Source(string name, string from, string value, string folder, IEnumerable<string> packages)
     {
         if (string.IsNullOrWhiteSpace(value) || !value.Contains('=') || value.Contains("://", StringComparison.Ordinal))
         {
@@ -138,6 +138,6 @@ internal static class DatabaseDiscovery
             sqlite.DataSource = PathNames.Canonical(Path.GetFullPath(sqlite.DataSource, folder));
             value = sqlite.ConnectionString;
         }
-        return kind is { } provider ? new DatabaseSource(name, provider, folder) { ConnectionString = value } : null;
+        return kind is { } provider ? new DatabaseSource(name, provider, folder) { ConnectionString = value, Found = $"found in {from}" } : null;
     }
 }

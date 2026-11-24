@@ -5,6 +5,8 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using MySqlConnector;
 using Npgsql;
+using Passenger.App.Containers;
+using Passenger.Core;
 
 namespace Passenger.App.Database;
 
@@ -14,14 +16,25 @@ internal static class DatabaseClient
 {
     internal const int PageSize = 100;
 
+    /// <summary>Opens a connection, its secret parts read from the system's store where they are kept there.</summary>
     private static async Task<DbConnection> OpenAsync(DatabaseSource source, CancellationToken cancel)
     {
+        string whole = source.ConnectionString;
+        if (source.SecretKept && SystemCredentials.Read(DatabaseController.CredentialService, source.Account) is { Length: > 0 } secret)
+        {
+            DbConnectionStringBuilder parts = new() { ConnectionString = secret };
+            foreach (string key in parts.Keys)
+            {
+                ContainerSecrets.Mark(Convert.ToString(parts[key], CultureInfo.InvariantCulture) ?? string.Empty);
+            }
+            whole = KeptConnection.Joined(source.Kind, whole, secret);
+        }
         DbConnection connection = source.Kind switch
         {
-            DatabaseKind.Sqlite => new SqliteConnection(new SqliteConnectionStringBuilder(source.ConnectionString) { Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ConnectionString),
-            DatabaseKind.Postgres => new NpgsqlConnection(new NpgsqlConnectionStringBuilder(source.ConnectionString) { Pooling = false }.ConnectionString),
-            DatabaseKind.SqlServer => new SqlConnection(new SqlConnectionStringBuilder(source.ConnectionString) { Pooling = false }.ConnectionString),
-            DatabaseKind.MySql => new MySqlConnection(new MySqlConnectionStringBuilder(source.ConnectionString) { Pooling = false }.ConnectionString),
+            DatabaseKind.Sqlite => new SqliteConnection(new SqliteConnectionStringBuilder(whole) { Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ConnectionString),
+            DatabaseKind.Postgres => new NpgsqlConnection(new NpgsqlConnectionStringBuilder(whole) { Pooling = false }.ConnectionString),
+            DatabaseKind.SqlServer => new SqlConnection(new SqlConnectionStringBuilder(whole) { Pooling = false }.ConnectionString),
+            DatabaseKind.MySql => new MySqlConnection(new MySqlConnectionStringBuilder(whole) { Pooling = false }.ConnectionString),
             _ => throw new InvalidOperationException("Unknown database provider"),
         };
         try
@@ -115,10 +128,16 @@ internal static class DatabaseClient
         return new DatabaseSchema(table, columns, keys, indexes);
     }
 
-    internal static async Task<DatabaseRows> PageAsync(DatabaseSource source, DatabaseSchema schema, int offset, CancellationToken cancel, DatabaseFilter? filter = null)
+    internal static async Task<DatabaseRows> PageAsync(DatabaseSource source, DatabaseSchema schema, int offset, CancellationToken cancel, DatabaseFilter? filter = null,
+        (string Column, bool Descending)? sort = null)
     {
         await using DbConnection connection = await OpenAsync(source, cancel);
-        string order = string.Join(",", schema.Columns.Where(c => c.Primary).Select(c => Quote(source.Kind, c.Name)));
+        if (sort is { } wanted && !schema.Columns.Any(c => c.Name == wanted.Column))
+        {
+            throw new InvalidOperationException("Choose a column of this table");
+        }
+        string order = sort is { } by ? Quote(source.Kind, by.Column) + (by.Descending ? " DESC" : string.Empty)
+            : string.Join(",", schema.Columns.Where(c => c.Primary).Select(c => Quote(source.Kind, c.Name)));
         List<(string Name, object? Value)> parameters = [("@offset", offset), ("@take", PageSize + 1)];
         string where = string.Empty;
         if (filter is not null)
@@ -145,13 +164,127 @@ internal static class DatabaseClient
         string sql = $"SELECT * FROM {Full(source.Kind, schema.Table)}{where} ORDER BY {(order.Length == 0 ? "1" : order)}";
         sql += source.Kind == DatabaseKind.SqlServer ? " OFFSET @offset ROWS FETCH NEXT @take ROWS ONLY" : " LIMIT @take OFFSET @offset";
         DatabaseRows rows = await ReadAsync(connection, sql, parameters, cancel, PageSize);
-        return new DatabaseRows(rows.Columns, rows.Rows, rows.More) { Schema = schema, Offset = offset };
+        return new DatabaseRows(rows.Columns, rows.Rows, rows.More)
+        {
+            Schema = schema,
+            Offset = offset,
+            OrderedBy = sort is { } sorted ? (Array.IndexOf(rows.Columns, sorted.Column), sorted.Descending) : null,
+        };
     }
 
-    internal static async Task<DatabaseRows> QueryAsync(DatabaseSource source, string sql, CancellationToken cancel)
+    /// <summary>The databases of the connection's server; SQLite's main database alone.</summary>
+    internal static async Task<IReadOnlyList<string>> DatabasesAsync(DatabaseSource source, CancellationToken cancel)
+    {
+        if (source.Kind == DatabaseKind.Sqlite)
+        {
+            return [source.Database];
+        }
+        await using DbConnection connection = await OpenAsync(source, cancel);
+        string sql = source.Kind switch
+        {
+            DatabaseKind.Postgres => "SELECT datname FROM pg_database WHERE NOT datistemplate AND datallowconn ORDER BY 1",
+            DatabaseKind.SqlServer => "SELECT name FROM sys.databases WHERE HAS_DBACCESS(name)=1 ORDER BY name",
+            _ => "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema','performance_schema','mysql','sys') ORDER BY 1",
+        };
+        DatabaseRows rows = await ReadAsync(connection, sql, [], cancel);
+        return [.. rows.Rows.Select(r => Convert.ToString(r[0], CultureInfo.InvariantCulture) ?? string.Empty)];
+    }
+
+    /// <summary>A database's schemas (none of the system's) with the tables, views and routines each holds; MySQL's database is
+    /// its one schema, and SQLite's has none of a name.</summary>
+    internal static async Task<IReadOnlyList<(string Schema, IReadOnlyList<DatabaseObject> Objects)>> ObjectsAsync(DatabaseSource source, CancellationToken cancel)
     {
         await using DbConnection connection = await OpenAsync(source, cancel);
-        return await ReadAsync(connection, sql, [], cancel, 1000);
+        List<DatabaseObject> objects = [];
+        List<string> schemas = [];
+        if (source.Kind == DatabaseKind.Sqlite)
+        {
+            DatabaseRows rows = await ReadAsync(connection, "SELECT name, type FROM sqlite_schema WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY name", [], cancel);
+            objects.AddRange(rows.Rows.Select(r => new DatabaseObject(string.Empty, (string)r[0]!, (string)r[1]! == "view" ? DatabaseObjectKind.View : DatabaseObjectKind.Table)));
+            schemas.Add(string.Empty);
+        }
+        else
+        {
+            (string Schemas, string Tables, string Routines) sql = source.Kind switch
+            {
+                DatabaseKind.Postgres => (
+                    "SELECT nspname FROM pg_namespace WHERE nspname NOT IN ('pg_catalog','information_schema') AND nspname NOT LIKE 'pg\\_%' ORDER BY 1",
+                    "SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema') ORDER BY 1,2",
+                    "SELECT routine_schema, routine_name, routine_type FROM information_schema.routines WHERE routine_schema NOT IN ('pg_catalog','information_schema') ORDER BY 1,2"),
+                DatabaseKind.SqlServer => (
+                    "SELECT s.name FROM sys.schemas s WHERE s.name NOT IN ('sys','INFORMATION_SCHEMA','guest') AND s.name NOT LIKE 'db\\_%' ESCAPE '\\' ORDER BY 1",
+                    "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE FROM INFORMATION_SCHEMA.TABLES ORDER BY 1,2",
+                    "SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE FROM INFORMATION_SCHEMA.ROUTINES ORDER BY 1,2"),
+                _ => (
+                    "SELECT DATABASE()",
+                    "SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema=DATABASE() ORDER BY 1,2",
+                    "SELECT routine_schema, routine_name, routine_type FROM information_schema.routines WHERE routine_schema=DATABASE() ORDER BY 1,2"),
+            };
+            schemas.AddRange((await ReadAsync(connection, sql.Schemas, [], cancel)).Rows.Select(r => Convert.ToString(r[0], CultureInfo.InvariantCulture) ?? string.Empty));
+            foreach (object?[] row in (await ReadAsync(connection, sql.Tables, [], cancel)).Rows)
+            {
+                string type = Convert.ToString(row[2], CultureInfo.InvariantCulture) ?? string.Empty;
+                objects.Add(new DatabaseObject((string)row[0]!, (string)row[1]!, type.Contains("VIEW", StringComparison.OrdinalIgnoreCase) ? DatabaseObjectKind.View : DatabaseObjectKind.Table));
+            }
+            foreach (object?[] row in (await ReadAsync(connection, sql.Routines, [], cancel)).Rows)
+            {
+                objects.Add(new DatabaseObject((string)row[0]!, (string)row[1]!, DatabaseObjectKind.Routine,
+                    (Convert.ToString(row[2], CultureInfo.InvariantCulture) ?? string.Empty).ToLowerInvariant()));
+            }
+        }
+        return [.. schemas.Union(objects.Select(o => o.Schema)).Select(schema => (schema, (IReadOnlyList<DatabaseObject>)[.. objects.Where(o => o.Schema == schema)]))];
+    }
+
+    /// <summary>Runs each of <paramref name="runs"/> in turn on one connection, telling each one's result sets (each read to
+    /// <paramref name="limit"/> rows), the rows it changed or its failure, after which nothing more runs.</summary>
+    internal static async Task RunAsync(DatabaseSource source, IReadOnlyList<string> runs, int limit, Action<SqlResult> told, CancellationToken cancel)
+    {
+        await using DbConnection connection = await OpenAsync(source, cancel);
+        foreach (string run in runs)
+        {
+            long began = System.Diagnostics.Stopwatch.GetTimestamp();
+            List<DatabaseRows> sets = [];
+            try
+            {
+                await using DbCommand command = connection.CreateCommand();
+                command.CommandText = run;
+                command.CommandTimeout = 0;
+                using CancellationTokenRegistration interrupt = Interrupt(connection, cancel);
+                int affected;
+                bool cut = false;
+                DbDataReader reader = await command.ExecuteReaderAsync(cancel);
+                try
+                {
+                    do
+                    {
+                        if (reader.FieldCount > 0)
+                        {
+                            DatabaseRows rows = await RowsAsync(reader, limit, cancel);
+                            sets.Add(rows);
+                            if (rows.More)
+                            {
+                                // What is left of a long result is never read: the server stops sending it.
+                                cut = true;
+                                command.Cancel();
+                                break;
+                            }
+                        }
+                    }
+                    while (await reader.NextResultAsync(cancel));
+                    affected = reader.RecordsAffected;
+                }
+                finally
+                {
+                    await LetGoAsync(reader, cut);
+                }
+                told(new SqlResult(run, sets, affected, null, System.Diagnostics.Stopwatch.GetElapsedTime(began)));
+            }
+            catch (DbException failed) when (!cancel.IsCancellationRequested)
+            {
+                told(new SqlResult(run, sets, -1, ContainerSecrets.InSaid(failed.Message, known: [source.ConnectionString]), System.Diagnostics.Stopwatch.GetElapsedTime(began)));
+                return;
+            }
+        }
     }
 
     internal static async Task UpdateAsync(DatabaseSource source, DatabaseRows rows, int row, int column, string text, CancellationToken cancel)
@@ -204,9 +337,31 @@ internal static class DatabaseClient
         {
             Add(command, name, value);
         }
-        using CancellationTokenRegistration interrupt = connection is SqliteConnection { Handle: { } handle }
-            ? cancel.Register(() => SQLitePCL.raw.sqlite3_interrupt(handle)) : default;
+        using CancellationTokenRegistration interrupt = Interrupt(connection, cancel);
         await using DbDataReader reader = await command.ExecuteReaderAsync(cancel);
+        return await RowsAsync(reader, limit, cancel);
+    }
+
+    /// <summary>Closes a reader, whose driver reports the cancel of a result cut short as a failure of its own.</summary>
+    private static async Task LetGoAsync(DbDataReader reader, bool cut)
+    {
+        try
+        {
+            await reader.DisposeAsync();
+        }
+        catch (DbException) when (cut)
+        {
+            IdeLog.Write(IdeLog.Ide, "Database: a result cut short was cancelled as asked.");
+        }
+    }
+
+    /// <summary>SQLite runs in the calling thread's native code, which only its interrupt stops.</summary>
+    private static CancellationTokenRegistration Interrupt(DbConnection connection, CancellationToken cancel) =>
+        connection is SqliteConnection { Handle: { } handle } ? cancel.Register(() => SQLitePCL.raw.sqlite3_interrupt(handle)) : default;
+
+    /// <summary>A reader's current result set, its first <paramref name="limit"/> rows and whether more follow.</summary>
+    private static async Task<DatabaseRows> RowsAsync(DbDataReader reader, int limit, CancellationToken cancel)
+    {
         string[] columns = [.. Enumerable.Range(0, reader.FieldCount).Select(reader.GetName)];
         List<object?[]> rows = [];
         bool more = false;

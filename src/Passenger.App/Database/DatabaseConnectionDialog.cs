@@ -14,7 +14,7 @@ namespace Passenger.App.Database;
 
 public sealed class DatabaseConnectionDialog : IdeWindow
 {
-    private readonly ComboBox provider = new() { Name = "DatabaseProvider", ItemsSource = new[] { "SQLite", "PostgreSQL", "SQL Server", "MySQL / MariaDB" }, SelectedIndex = 1, HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly FormDropDown provider = new() { Name = "DatabaseProvider", ItemsSource = new[] { "SQLite", "PostgreSQL", "SQL Server", "MySQL / MariaDB" }, SelectedIndex = 1 };
     private readonly TextBox name = new() { Name = "DatabaseConnectionName", PlaceholderText = "Local shop" };
     private readonly TextBox host = new() { Name = "DatabaseHost", Text = "localhost" };
     private readonly NumericUpDown port = new() { Name = "DatabasePort", Minimum = 1, Maximum = 65535, Value = 5432, FormatString = "0" };
@@ -30,7 +30,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
     {
         this.initial = initial;
         Title = initial is null ? "Add Database Connection" : "Edit Database Connection";
-        Width = 480;
+        Width = DialogWidths.Form;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -81,11 +81,12 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         };
         Content = DialogFooter.Page(new StackPanel
         {
-            Margin = new Thickness(20), Spacing = 12,
+            [DialogFooter.InsetProperty] = true,
+            Spacing = FormRows.Between,
             Children =
             {
                 fields,
-                MutedText.Wrapped("Connections are kept for this open folder. Credentials are not saved to disk."),
+                MutedText.Wrapped("A connection is kept for this folder; its password is kept in the system's credential store, never in a file."),
                 error,
             },
         }, DialogFooter.OkCancel(connect, () => Close(null)));
@@ -94,6 +95,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         if (initial is not null)
         {
             name.Text = initial.Name;
+            password.PlaceholderText = initial.SecretKept ? "Unchanged" : null;
             provider.SelectedIndex = (int)initial.Kind;
             switch (initial.Kind)
             {
