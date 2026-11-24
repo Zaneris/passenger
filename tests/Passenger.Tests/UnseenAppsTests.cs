@@ -111,8 +111,9 @@ public sealed class UnseenAppsTests : IDisposable
     private void A_simulators_window_opens_in_the_background_for_a_persons_window_and_never_for_a_passenger_nobody_sees()
     {
         const string Udid = "3E8F9220-51E5-4DA6-AE52-A22C304D353B";
-        string simulator = new AppleTools("/Applications/Xcode.app/Contents/Developer").SimulatorApp;
-        Assert.Equal("/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app", simulator);
+        const string Developer = "/Applications/Xcode.app/Contents/Developer";
+        string simulator = new AppleTools(Developer).SimulatorApp;
+        Assert.Equal("Applications/Simulator.app", PathNames.Relative(simulator, Developer));
         Assert.Equal(["-g", "-a", simulator, "--args", "-CurrentDeviceUDID", Udid], AppleSimulators.WindowOpening(unseen: false, simulator, Udid));
         Assert.Equal(["-g", $"devices://device/open?id={Udid}"], AppleSimulators.WindowOpening(unseen: false, null, Udid));
         Assert.True(AppleSimulators.WindowOpening(unseen: true, simulator, Udid) is null
