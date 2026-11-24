@@ -1,7 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using Passenger.App.Vcs;
 using Passenger.Core;
 using Passenger.Vcs;
@@ -59,6 +61,9 @@ public sealed class StashesView : DockPanel
     public StashesView(VcsController git)
     {
         vcs = git;
+        // It holds the keys only where its list has no row to give them to, never as a stop of Tab's.
+        Focusable = true;
+        KeyboardNavigation.SetIsTabStop(this, false);
         list = new TreeList { Classes = { StyleClasses.Tree }, ItemsSource = rows };
         ReusedRows.Use(list, Row);
         TreeKeys.Attach<StashNode>(list, Toggle, node =>
@@ -303,9 +308,14 @@ public sealed class StashesView : DockPanel
         }
         await LoadAsync();
         // The keys come back to the stashes acted in, so Undo there takes back what was done, though its button has gone.
-        if (!IsKeyboardFocusWithin && !ListKeys.Hold(list))
+        if (TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is not InputElement { IsEffectivelyVisible: true, IsEffectivelyEnabled: true } focused
+            || !this.IsVisualAncestorOf(focused))
         {
-            list.Focus();
+            // A list with no rows takes no keys of its own: the view holds them.
+            if (!ListKeys.Hold(list))
+            {
+                Focus();
+            }
         }
     }
 

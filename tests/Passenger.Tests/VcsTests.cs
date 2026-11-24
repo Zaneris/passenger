@@ -1861,7 +1861,7 @@ public sealed partial class VcsTests : IDisposable
         Assert.Equal([$"Drop Stash: Drop the stash \"Count only\" without putting its changes back? Undo brings it back while git keeps its commit, {GitHashes.Short(kept)}."], asked);
         Assert.Empty(Stashes());
         Assert.NotNull(stashes.Placeholder);
-        Ui.Click(view.StashesTab);
+        Assert.True(stashes.IsKeyboardFocusWithin, "Once its last stash was dropped the Stashes tab let go of the keys, so Undo would take the open file's own step");
         Ui.Run(window, EditorActions.Undo);
         Ui.WaitFor(() => Stashes() is ["On main: Count only"] && stashes.Stashes.Count == 1, () => $"Undo to put the dropped stash back ({window.Status})");
         Assert.Equal(kept, Git("rev-parse", "stash@{0}").Trim());
