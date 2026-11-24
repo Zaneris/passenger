@@ -37,7 +37,7 @@
       "passenger.text": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.4.3, )"
+          "Passenger.Core": "[0.4.4, )"
         }
       },
       "Microsoft.Diagnostics.NETCore.Client": {
