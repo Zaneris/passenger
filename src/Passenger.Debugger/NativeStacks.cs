@@ -22,12 +22,14 @@ internal static unsafe partial class NativeStacks
     /// keeps dbghelp off every symbol server whatever _NT_SYMBOL_PATH says.</summary>
     private const uint SymbolOptions = 0x2 | 0x4 | 0x200 | 0x80000 | 0x40000;
 
-    /// <summary>CONTEXT for x64 and arm64: its size, where its ContextFlags lie and the flags asking for its control and
-    /// integer registers, and where its program counter, stack pointer and frame pointer lie.</summary>
+    /// <summary>CONTEXT for x64, arm64 and x86: its size, where its ContextFlags lie and the flags asking for its control
+    /// and integer registers, and where its program counter, stack pointer and frame pointer lie, each a pointer
+    /// wide.</summary>
     private static readonly (ushort Machine, int Size, int FlagsAt, uint Flags, int PcAt, int SpAt, int FpAt)? Context = RuntimeInformation.ProcessArchitecture switch
     {
         Architecture.X64 => (0x8664, 0x4D0, 0x30, 0x0010_0003, 0xF8, 0x98, 0xA0),
         Architecture.Arm64 => (0xAA64, 0x390, 0x0, 0x0040_0003, 0x108, 0x100, 0xF0),
+        Architecture.X86 => (0x014C, 0x2CC, 0x0, 0x0001_0003, 0xB8, 0xC4, 0xB4),
         _ => null,
     };
 
@@ -127,9 +129,9 @@ internal static unsafe partial class NativeStacks
                 {
                     return null;
                 }
-                Address(frame, FramePc, *(ulong*)(registers + context.PcAt));
-                Address(frame, FrameFrame, *(ulong*)(registers + context.FpAt));
-                Address(frame, FrameStack, *(ulong*)(registers + context.SpAt));
+                Address(frame, FramePc, Register(registers + context.PcAt));
+                Address(frame, FrameFrame, Register(registers + context.FpAt));
+                Address(frame, FrameStack, Register(registers + context.SpAt));
                 List<ulong> returns = [];
                 while (returns.Count < frames && StackWalk64(context.Machine, process, thread, frame, registers, 0, tables, bases, 0)
                     && *(ulong*)(frame + FramePc) is var at and not 0)
@@ -150,6 +152,8 @@ internal static unsafe partial class NativeStacks
             Kernel32.CloseHandle(thread);
         }
     }
+
+    private static ulong Register(byte* at) => sizeof(nint) == sizeof(uint) ? *(uint*)at : *(ulong*)at;
 
     private static void Address(byte* frame, int at, ulong offset)
     {
