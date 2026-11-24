@@ -4,7 +4,7 @@
 # (OUT/aur/PKGBUILD and .SRCINFO) for the release's own files, by the names and sums the release carries: nothing is
 # built again. Homebrew's and WinGet's install the disk image and the installer, so that copy updates itself; the AUR's
 # is pacman's, its app/package-manager naming what updates it. The release workflow publishes them (tools/package-pr.sh,
-# the AUR by git).
+# the AUR by git); Homebrew's autobump follows each release through the cask's livecheck once its tap has the cask.
 set -eu
 . "$(dirname "$0")/release-common.sh"
 [ $# = 3 ] || fail "usage: package-managers.sh VERSION SHA256SUMS OUT"
@@ -52,8 +52,7 @@ cask "passenger-ide" do
   sha256 arm:   "$mac_arm64",
          intel: "$mac_x64"
 
-  url "$repository/releases/download/v#{version}/Passenger-macos-#{arch}.dmg",
-      verified: "github.com/Zaneris/passenger/"
+  url "$repository/releases/download/v#{version}/Passenger-macos-#{arch}.dmg"
   name "Passenger"
   desc "$described"
   homepage "$site/"
@@ -62,8 +61,6 @@ cask "passenger-ide" do
     url :url
     strategy :github_latest
   end
-
-  no_autobump! because: :bumped_by_upstream
 
   auto_updates true
   depends_on macos: :ventura
