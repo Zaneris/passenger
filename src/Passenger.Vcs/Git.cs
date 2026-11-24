@@ -2591,16 +2591,18 @@ public sealed partial class Git
         return stashes;
     }
 
-    /// <summary>Puts the uncommitted changes, new files too, away in a stash; the files go back to the head's. With nothing
-    /// to put away, git makes no stash and exits 0 all the same: that is a failure here, in git's words.</summary>
-    public async Task<GitResult> StashAsync(string message)
+    /// <summary>Puts the uncommitted changes away in a stash, new files too unless <paramref name="untracked"/> is false;
+    /// the files go back to the head's. With nothing to put away, git makes no stash and exits 0 all the same: that is a
+    /// failure here, in git's words.</summary>
+    public async Task<GitResult> StashAsync(string message, bool untracked = true)
     {
         string? before = await StashTopAsync();
         if (await UnfilteredStashAsync() is { } unfiltered)
         {
             return unfiltered;
         }
-        GitResult stashed = await WritingOutAsync(StashedAsync, () => RunAsync(Root, ["stash", "push", "--include-untracked", .. message.Length > 0 ? new[] { "-m", message } : []]));
+        GitResult stashed = await WritingOutAsync(StashedAsync, () => RunAsync(Root, ["stash", "push", .. untracked ? new[] { "--include-untracked" } : [],
+            .. message.Length > 0 ? new[] { "-m", message } : []]));
         if (!stashed.Succeeded || await StashTopAsync() != before)
         {
             return stashed;

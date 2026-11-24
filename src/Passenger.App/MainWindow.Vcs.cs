@@ -136,6 +136,8 @@ public partial class MainWindow
         view.ResolveRequested += (_, _) => ShowConflicts();
         view.MergeRequested += (_, path) => IdeErrors.Observe(MergeAsync(path));
         view.StageRequested += (_, asked) => IdeErrors.Observe(StageFilesAsync(asked.Changes, asked.Stage));
+        view.StashDiffRequested += (_, asked) => IdeErrors.Observe(ShowStashDiffAsync(asked.Stash, asked.File));
+        view.DropStash = AskDropStashAsync;
         view.Confirm = (title, text, yes) => Confirm(title, text, yes);
         return view;
     }
@@ -320,7 +322,8 @@ public partial class MainWindow
         GitBranches.FocusSearch();
     }
 
-    /// <summary>Stash Changes: what is open saved first, then every change put away under the message given.</summary>
+    /// <summary>Stash Changes: what is open saved first, then every change put away under the message given, the new
+    /// files with them unless the person unticks them.</summary>
     public NamePopup? ShowStash()
     {
         if ((session.Vcs.Repository is null ? session.Vcs.NoRepository : session.Vcs.WhyNotStash) is { } refused)
@@ -328,10 +331,15 @@ public partial class MainWindow
             status.Text = refused;
             return null;
         }
-        NamePopup popup = new("Stash Changes", string.Empty, async message => (await session.Vcs.StashAsync(message)).Problem);
+        NamePopup? popup = null;
+        popup = new("Stash Changes", string.Empty, async message => (await session.Vcs.StashAsync(message, popup!.Option?.IsChecked != false)).Problem,
+            option: (IncludeNewFiles, true));
         popups.Show(popup, _ => { });
         return popup;
     }
+
+    /// <summary>Stash Changes' box for whether new files, which git does not track yet, are put away too.</summary>
+    public const string IncludeNewFiles = "Put new files away too";
 
     /// <summary>Which of several remotes to take (a branch that tracks none pushed to, a tag pushed or deleted on), asked in
     /// <paramref name="asking"/>'s words: chosen from a list of them, null once the popup closes with none chosen (Escape, a
@@ -436,7 +444,7 @@ public partial class MainWindow
             return null;
         }
         UnstashPopup popup = new(await session.Vcs.StashesAsync(), async (stash, pop) => (await session.Vcs.UnstashAsync(stash, pop)).Succeeded,
-            async stash => (await session.Vcs.DropStashAsync(stash)).Succeeded, (title, text, yes) => Confirm(title, text, yes));
+            DropStashAsync, (title, text, yes) => Confirm(title, text, yes));
         popup.Done += (_, _) =>
         {
             // Escape may have closed it while a pop ran, and another popup taken its place since.

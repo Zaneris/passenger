@@ -149,6 +149,7 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("backspace in unstash changes keeps every stash and delete asks before dropping the chosen one once", t => t.Backspace_in_unstash_changes_keeps_every_stash_and_delete_asks_before_dropping_the_chosen_one_once());
         Flow.StepApart<VcsTests>("unstash changes takes the stash chosen though another program stashed or dropped since the list was read", t => t.Unstash_changes_takes_the_stash_chosen_though_another_program_stashed_or_dropped_since_the_list_was_read());
         Flow.StepApart<VcsTests>("stashing a change and a new file leaves the git log as it was", t => t.Stashing_a_change_and_a_new_file_leaves_the_git_log_as_it_was());
+        Flow.StepApart<VcsTests>("the commit windows stashes list each stashs files and diffs then apply pop and drop it as said and undo brings a dropped one back", t => t.The_commit_windows_stashes_list_each_stashs_files_and_diffs_then_apply_pop_and_drop_it_as_said_and_undo_brings_a_dropped_one_back());
     }
 
     /// <summary>Update Project and Push as one flow, each step the check one test made in an instance of its own: Stop
@@ -1781,6 +1782,89 @@ public sealed partial class VcsTests : IDisposable
         Ui.Landed(() => refused.IsCompleted, "the drop's refusal");
         Assert.Empty(Stashes());
         Assert.Equal("The stash \"On main: Newest\" is no longer in the list: it was popped or dropped since the list was read", window.Status);
+        window.Close();
+    }
+
+    /// <summary>Stash Changes leaves new files in place once its box for them is unticked and puts them away with it ticked;
+    /// the Commit window's Stashes tab lists both, newest first, by message, branch and age, opens one to its files (its new
+    /// file among them) and a file's diff beside what it was, says what Pop, Apply and Drop do with it in words and git's,
+    /// applies one keeping it, pops the other dropping it, and drops the last once asked, whose Undo puts it back.</summary>
+    private void The_commit_windows_stashes_list_each_stashs_files_and_diffs_then_apply_pop_and_drop_it_as_said_and_undo_brings_a_dropped_one_back()
+    {
+        string shop = Path.Combine(folder, "Shop.cs");
+        string notes = Path.Combine(folder, "Notes.txt");
+        MainWindow window = Open();
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(2, 4));
+        window.KeyTextInput("long ");
+        File.WriteAllText(notes, "a new file\n");
+        NamePopup stash = window.ShowStash()!;
+        Ui.Settle();
+        Assert.Equal(MainWindow.IncludeNewFiles, stash.Option!.Content);
+        Assert.True(stash.Option.IsChecked, "Stash Changes offered to leave new files out to begin with");
+        Ui.Click(stash.Option);
+        stash.Text = "Count only";
+        Task stashing = stash.SubmitAsync();
+        Ui.Landed(() => stashing.IsCompleted && Text(window) == Original, $"the change stashed and the file as the commit has it ({window.Status})");
+        Assert.True(File.Exists(notes), "Stash Changes with its new files' box unticked put Notes.txt away");
+        stash = window.ShowStash()!;
+        Ui.Settle();
+        stash.Text = "Notes too";
+        stashing = stash.SubmitAsync();
+        Ui.Landed(() => stashing.IsCompleted && !File.Exists(notes), "the new file stashed");
+        Assert.Equal(["On main: Notes too", "On main: Count only"], Stashes());
+
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        window.Perform(AppActions.ShowCommit);
+        CommitView view = window.CommitView;
+        Ui.Click(view.StashesTab);
+        Assert.True(view.ShowsStashes, "The Stashes tab's click left the changes shown");
+        StashesView stashes = view.Stashes;
+        Ui.Landed(() => stashes.Stashes.Count == 2, "the stashes listed");
+        Assert.Equal(["Notes too", "Count only"], stashes.Rows.Select(r => r.Said.Message));
+        Assert.Equal("main", stashes.Rows[0].Said.Branch);
+        Ui.Await(stashes.ChooseAsync(1, "Shop.cs"), "Count only's files");
+        Assert.Equal(
+            [
+                "Pop puts the changes to Shop.cs back into your files and drops the stash; Apply puts them back and keeps it.",
+                "Where your files changed the same lines since, git stops for the conflicts and the stash stays.",
+                "Drop deletes it without putting anything back; Undo brings it back while git keeps its commit.",
+            ], stashes.WhatItDoes);
+        Assert.Equal("git stash pop stash@{1}\ngit stash apply stash@{1}\ngit stash drop stash@{1}", stashes.GitWords);
+        stashes.FocusRows();
+        Ui.Press(window, "ENTER");
+        IDiffHost diff = OpenDiffs.Landed(window, "the stashed file's diff");
+        Assert.Equal(Original, OpenDiffs.ViewOf(diff).Left.Document.Snapshot.ToString());
+        Assert.Equal(Original.Replace("int count", "long int count", StringComparison.Ordinal), OpenDiffs.ViewOf(diff).Right.Document.Snapshot.ToString());
+        diff.Close();
+        Ui.Await(stashes.ChooseAsync(0, "Notes.txt"), "Notes too's files");
+        Assert.StartsWith("Pop puts the new file Notes.txt back", stashes.WhatItDoes[0], StringComparison.Ordinal);
+
+        Ui.Await(stashes.ChooseAsync(1), "Count only chosen");
+        Ui.Click(stashes.ApplyButton);
+        Ui.Landed(() => !window.Vcs.IsBusy && Text(window).Contains("long int count", StringComparison.Ordinal), "the stash applied to the open file");
+        Assert.Equal(["On main: Notes too", "On main: Count only"], Stashes());
+        Ui.Await(stashes.ChooseAsync(0), "Notes too chosen");
+        Ui.Click(stashes.PopButton);
+        Ui.Landed(() => !window.Vcs.IsBusy && File.Exists(notes) && stashes.Stashes.Count == 1, "the stash popped and dropped");
+        Assert.Equal(["On main: Count only"], Stashes());
+
+        List<string> asked = [];
+        window.Confirm = (title, text, _) =>
+        {
+            asked.Add($"{title}: {text}");
+            return Task.FromResult(true);
+        };
+        string kept = Git("rev-parse", "stash@{0}").Trim();
+        Ui.Await(stashes.ChooseAsync(0), "Count only chosen again");
+        Ui.Click(stashes.DropButton);
+        Ui.Landed(() => !window.Vcs.IsBusy && stashes.Stashes.Count == 0, "the stash dropped");
+        Assert.Equal([$"Drop Stash: Drop the stash \"Count only\" without putting its changes back? Undo brings it back while git keeps its commit, {GitHashes.Short(kept)}."], asked);
+        Assert.Empty(Stashes());
+        Assert.NotNull(stashes.Placeholder);
+        Ui.Click(view.StashesTab);
+        Ui.Run(window, EditorActions.Undo);
+        Ui.WaitFor(() => Stashes() is ["On main: Count only"] && stashes.Stashes.Count == 1, () => $"Undo to put the dropped stash back ({window.Status})");
+        Assert.Equal(kept, Git("rev-parse", "stash@{0}").Trim());
         window.Close();
     }
 

@@ -474,9 +474,10 @@ public partial class MainWindow
 
     /// <summary>Whether the editor's Cut, Copy, Paste, Delete (Backspace too), Undo or Redo is the Explorer's here: its
     /// row's menu asked, or its rows have the keys (the Edit menu of the Mac's menu bar runs them where the keys
-    /// are).</summary>
+    /// are); Undo and Redo the window's commands too while the Commit window has the keys outside its message, so a stage
+    /// or a stash dropped there is taken back there.</summary>
     private bool ExplorerEdits(string action, ActionContext context) =>
-        action is E.Undo or E.Redo ? ExplorerHasKeys(context)
+        action is E.Undo or E.Redo ? ExplorerHasKeys(context) || context.ToolWindow?.Id == ToolWindowIds.Commit && context.Focused is not Avalonia.Controls.TextBox
         : action is E.Cut or E.Copy or E.Paste or E.Delete or E.Backspace && RowOf(context) is not null;
 
     /// <summary>Why one of the editor's actions cannot run on the Explorer's row; null when it can.</summary>

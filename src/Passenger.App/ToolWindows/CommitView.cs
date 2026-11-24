@@ -194,6 +194,12 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// <summary>The groups and folders the person closed, by their keys, kept closed as the list is filled again.</summary>
     private readonly HashSet<string> closed = [];
     private readonly TreeList list;
+    private readonly ToolTabs.Strip<bool> pages = new();
+    private readonly Panel pagesShown = new();
+    private readonly ToolFlow bar;
+    private readonly DockPanel changes;
+    private readonly StackPanel tools;
+    private StashesView? stashes;
     private readonly TextBox message;
     private readonly CheckBox amend;
     private readonly CheckBox signOff;
@@ -409,11 +415,10 @@ public sealed class CommitView : DockPanel, IOwnKeys
         };
         form.Bind(Border.BorderBrushProperty, form.GetResourceObservable(TokenKeys.Divider));
 
-        StackPanel tools = new()
+        tools = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = Gaps.Hair,
-            Margin = new Thickness(Gaps.Small, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
@@ -429,11 +434,17 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 groupBy,
             },
         };
-        Border top = ToolBars.Top(tools);
+        pages.Add(false, "Changes", name: "commitChangesTab");
+        pages.Add(true, "Stashes", name: "commitStashesTab");
+        pages.Choice = false;
+        pages.Chosen += (_, shown) => ShowStashes(shown);
+        bar = new ToolFlow { Margin = new Thickness(Gaps.Small, Gaps.Hair), Children = { pages, ToolFlow.Spring(), tools } };
+        Border top = ToolBars.Top(bar);
+        changes = new DockPanel { Children = { form, new Panel { Children = { list, placeholder } } } };
 
         Children.Add(top);
-        Children.Add(form);
-        Children.Add(new Panel { Children = { list, placeholder } });
+        Children.Add(pagesShown);
+        pagesShown.Children.Add(changes);
         vcs.Changed += OnChanged;
         vcs.BusyChanged += OnBusyChanged;
         vcs.Refreshed += OnSigning;
@@ -443,9 +454,50 @@ public sealed class CommitView : DockPanel, IOwnKeys
         ShowSigning();
     }
 
+    /// <summary>The Stashes tab: every stash, its files and what Pop, Apply and Drop do; built as it is first shown or asked for.</summary>
+    public StashesView Stashes => stashes ??= MakeStashes();
+
+    private StashesView MakeStashes()
+    {
+        StashesView made = new(vcs) { IsVisible = false };
+        made.Tools.IsVisible = false;
+        made.DiffRequested += (_, asked) => StashDiffRequested?.Invoke(this, asked);
+        made.Drop = stash => DropStash?.Invoke(stash) ?? Task.CompletedTask;
+        made.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
+        bar.Children.Add(made.Tools);
+        pagesShown.Children.Add(made);
+        return made;
+    }
+
+    /// <summary>The Stashes tab's own toggle in the toolbar.</summary>
+    public Avalonia.Controls.Primitives.ToggleButton StashesTab => pages[true];
+
+    /// <summary>Whether the Stashes tab is shown, else the changes and the commit's form.</summary>
+    public bool ShowsStashes => pages.Choice;
+
+    /// <summary>The Changes or the Stashes tab shown, with its toolbar's buttons.</summary>
+    public void ShowStashes(bool shown)
+    {
+        pages.Choice = shown;
+        changes.IsVisible = !shown;
+        tools.IsVisible = !shown;
+        if (shown || stashes is not null)
+        {
+            Stashes.IsVisible = shown;
+            Stashes.Tools.IsVisible = shown;
+        }
+    }
+
+    /// <summary>A file of a stash to show beside what it was before the stash.</summary>
+    public event EventHandler<(StashInfo Stash, FileChange File)>? StashDiffRequested;
+
+    /// <summary>Drops a stash once the person agrees, done when it is dropped or kept; the window's.</summary>
+    public Func<StashInfo, Task>? DropStash { get; set; }
+
     /// <summary>Lists another folder's changes from now on, its session's working tree in place of the last's.</summary>
     public void Bind(VcsController next)
     {
+        stashes?.Bind(next);
         vcs.Changed -= OnChanged;
         vcs.BusyChanged -= OnBusyChanged;
         vcs.Refreshed -= OnSigning;

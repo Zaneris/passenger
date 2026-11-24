@@ -19,7 +19,7 @@ public sealed class VcsController : IDisposable
     /// <summary>How long typing pauses before an annotated file is blamed again: a git each time, so longer.</summary>
     private static readonly TimeSpan BlameDelay = TimeSpan.FromMilliseconds(500);
 
-    private const string Busy = "Git is still busy with the last change";
+    public const string Busy = "Git is still busy with the last change";
 
 
     /// <summary>What a commit's work is held under, which the Commit window's button starts and no action names.</summary>
@@ -2027,11 +2027,30 @@ public sealed class VcsController : IDisposable
     public Task<VcsOutcome> NewBranchAsync(string name) =>
         SwitchAsync(repository => repository.NewBranchAsync(name), $"Created and checked out {name}", "Git checkout");
 
-    /// <summary>Stash Changes: every uncommitted change, new files too, put away under a message; the open files
-    /// take the head's text again.</summary>
-    public Task<VcsOutcome> StashAsync(string message) => WhyNotStash is { } unfiltered
+    /// <summary>Stash Changes: every uncommitted change put away under a message, new files too unless
+    /// <paramref name="untracked"/> is false; the open files take the head's text again.</summary>
+    public Task<VcsOutcome> StashAsync(string message, bool untracked = true) => WhyNotStash is { } unfiltered
         ? Task.FromResult(Report(false, unfiltered))
-        : SwitchAsync(repository => repository.StashAsync(message.Trim()), "Stashed the changes", "Git stash");
+        : SwitchAsync(repository => repository.StashAsync(message.Trim(), untracked), untracked ? "Stashed the changes" : "Stashed the changes, new files left in place", "Git stash");
+
+    /// <summary>The files a stash holds, its new files last; none outside a working tree.</summary>
+    public async Task<IReadOnlyList<FileChange>> StashFilesAsync(StashInfo stash) => git is { } repository ? await repository.StashFilesAsync(stash) : [];
+
+    /// <summary>The stash of this one's commit where the list has it now; null where it is listed no more.</summary>
+    public async Task<StashInfo?> StashNowAsync(StashInfo stash) => git is { } repository ? await repository.StashNowAsync(stash) : null;
+
+    /// <summary>A dropped stash put back at the top of the list (a drop's Undo): null once back, else why not.</summary>
+    public async Task<string?> RestoreStashAsync(StashInfo stash)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return NoRepository;
+        }
+        GitResult stored = await repository.StoreStashAsync(stash.Commit, stash.Message);
+        await RefreshAsync();
+        return stored.Succeeded ? null : $"The stash \"{stash.Message}\" could not be put back: {stored.Message}";
+    }
 
     public async Task<IReadOnlyList<StashInfo>> StashesAsync() => git is { } repository ? await repository.StashesAsync() : [];
 
