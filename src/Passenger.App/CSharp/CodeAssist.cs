@@ -938,6 +938,9 @@ public sealed class CodeAssist
     /// <summary>A file's fixes that give a key a language lacks (<see cref="CSharpAssist.LocalizationFixes"/>).</summary>
     public IReadOnlyList<EditorFix> LocalizationFixes(OpenDocument file, int offset) => context.Languages.CSharp.LocalizationFixes(file, offset);
 
+    /// <summary>The fixes of a C# file's uses breaking the folder's layer rules on an offset's line (<see cref="CSharpAssist.LayerFixes"/>).</summary>
+    public IReadOnlyList<EditorFix> LayerFixes(OpenDocument file, int offset) => context.Languages.CSharp.LayerFixes(file, offset);
+
     /// <summary>A Godot project's C# file's or open scene's fixes of its checks' marks (<see cref="CSharpAssist.GodotFixes"/>).</summary>
     internal IReadOnlyList<EditorFix> GodotFixes(OpenDocument file, int offset, Godot.GodotSceneMarks marks) => context.Languages.CSharp.GodotFixes(file, offset, marks);
 

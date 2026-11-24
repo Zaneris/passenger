@@ -91,6 +91,45 @@ internal static class DependencyMap
         return path;
     }
 
+    /// <summary>The uses in a document's code that break layer rules: each where it is written, by the layers of the code
+    /// using (its project, its type's namespace, the document) and the code used (its project, namespace and the file
+    /// declaring its type), in the document's order.</summary>
+    public static async Task<IReadOnlyList<LayerBreak>> BrokenAsync(Document document, LayerRules rules, CancellationToken cancel)
+    {
+        if (rules.Layers.Count == 0 || await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is not CompilationUnitSyntax root
+            || await document.GetSemanticModelAsync(cancel).ConfigureAwait(false) is not { } model)
+        {
+            return [];
+        }
+        Solution solution = document.Project.Solution;
+        Dictionary<string, string> projects = new(StringComparer.Ordinal);
+        foreach (Project project in solution.Projects.Where(p => p.FilePath is not null))
+        {
+            projects.TryAdd(project.AssemblyName, Path.GetFileNameWithoutExtension(project.FilePath!));
+        }
+        string own = Path.GetFileNameWithoutExtension(document.Project.FilePath ?? document.Project.Name);
+        SourceText text = await document.GetTextAsync(cancel).ConfigureAwait(false);
+        List<LayerBreak> broken = [];
+        Walker walker = new(model, document.FilePath, cancel)
+        {
+            Heard = (span, user, used) =>
+            {
+                INamedTypeSymbol owner = used as INamedTypeSymbol ?? used.ContainingType;
+                if (rules.Of(own, NamespaceOf(user), document.FilePath) is { } from && owner.ContainingAssembly?.Name is { } assembly
+                    && projects.TryGetValue(assembly, out string? project)
+                    && rules.Of(project, NamespaceOf(owner), owner.Locations.FirstOrDefault(l => l.IsInSource)?.SourceTree?.FilePath) is { } to
+                    && LayerRules.Breaks(from, to))
+                {
+                    LinePositionSpan at = text.Lines.GetLinePositionSpan(span);
+                    broken.Add(new LayerBreak(new Place(at.Start.Line, at.Start.Character), new Place(at.End.Line, at.End.Character), from.Name, to.Name,
+                        used.ToDisplayString(used is INamedTypeSymbol ? TypeShown : SymbolDisplayFormat.CSharpShortErrorMessageFormat)));
+                }
+            },
+        };
+        walker.Read(root);
+        return broken;
+    }
+
     /// <summary>A document's types and members declared, and what each uses, its code bound only where it declares a type
     /// (or holds a program's top-level statements).</summary>
     private static async Task<DocumentReadsKept<DocumentDependencies>.Read> ReadAsync(Document document, CancellationToken cancel)
@@ -316,6 +355,9 @@ internal static class DependencyMap
         private readonly List<DeclaredMember> members = [];
         private readonly Dictionary<(string, string?, string, string, string, string?, string), int> uses = [];
 
+        /// <summary>Told of each use as it is read: where it is written, the type whose code uses, and what it uses.</summary>
+        public Action<TextSpan, INamedTypeSymbol, ISymbol>? Heard { get; init; }
+
         /// <summary>The type and the member whose code is being read; none outside every type.</summary>
         private INamedTypeSymbol? type;
         private ISymbol? member;
@@ -420,18 +462,25 @@ internal static class DependencyMap
             switch (node)
             {
                 case SimpleNameSyntax name when Target(Bound(model.GetSymbolInfo(name, cancel))) is { } target && KindAt(name, target) is { } kind:
-                    Add(target, kind);
+                    Add(target, kind, name.Span);
                     break;
                 case BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax or PrimaryConstructorBaseTypeSyntax
                     when Target(Bound(model.GetSymbolInfo(node, cancel))) is { } made:
-                    Add(made, DependencyKinds.Calls);
+                    Add(made, DependencyKinds.Calls, node is ObjectCreationExpressionSyntax { Type: { } type } ? type.Span : node.Span);
                     break;
-                case AttributeSyntax when Bound(model.GetSymbolInfo(node, cancel)) is IMethodSymbol { ContainingType: { } attribute } && Target(attribute) is { } named:
-                    Add(named, DependencyKinds.Attribute);
+                case AttributeSyntax attributed when Bound(model.GetSymbolInfo(node, cancel)) is IMethodSymbol { ContainingType: { } attribute } && Target(attribute) is { } named:
+                    Add(named, DependencyKinds.Attribute, attributed.Name.Span);
                     break;
                 case BinaryExpressionSyntax or PrefixUnaryExpressionSyntax or PostfixUnaryExpressionSyntax or AssignmentExpressionSyntax
                     when Bound(model.GetSymbolInfo(node, cancel)) is IMethodSymbol { MethodKind: MethodKind.UserDefinedOperator } operation && Target(operation) is { } op:
-                    Add(op, DependencyKinds.Calls);
+                    Add(op, DependencyKinds.Calls, node switch
+                    {
+                        BinaryExpressionSyntax binary => binary.OperatorToken.Span,
+                        AssignmentExpressionSyntax assigned => assigned.OperatorToken.Span,
+                        PrefixUnaryExpressionSyntax prefix => prefix.OperatorToken.Span,
+                        PostfixUnaryExpressionSyntax postfix => postfix.OperatorToken.Span,
+                        _ => node.Span,
+                    });
                     break;
             }
         }
@@ -483,8 +532,9 @@ internal static class DependencyMap
             _ => false,
         };
 
-        private void Add(ISymbol target, string kind)
+        private void Add(ISymbol target, string kind, TextSpan span)
         {
+            Heard?.Invoke(span, type!, target);
             INamedTypeSymbol owner = target as INamedTypeSymbol ?? target.ContainingType;
             if (owner.ContainingAssembly?.Name is not { } assembly)
             {

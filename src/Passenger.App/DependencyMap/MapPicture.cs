@@ -93,12 +93,19 @@ public sealed class MapPicture : Control
     /// <summary>The map's size in its own units.</summary>
     public Size Content => content;
 
-    /// <summary>Lays the map out again for what it shows and draws it, keeping the zoom and as much of the place shown as stands.</summary>
-    public void Show(MapGraph shown, IReadOnlyList<MapEdge> drawn)
+    /// <summary>The edges drawn that break the folder's layer rules, in the error's colour.</summary>
+    public IReadOnlySet<MapEdge> Broken => broken;
+
+    private IReadOnlySet<MapEdge> broken = new HashSet<MapEdge>();
+
+    /// <summary>Lays the map out again for what it shows and draws it, keeping the zoom and as much of the place shown as
+    /// stands, those of its edges <paramref name="breaking"/> the layer rules in the error's colour.</summary>
+    public void Show(MapGraph shown, IReadOnlyList<MapEdge> drawn, IReadOnlySet<MapEdge>? breaking = null)
     {
         UiThread.Check();
         graph = shown;
         edges = drawn;
+        broken = breaking ?? new HashSet<MapEdge>();
         Palette palette = Colours();
         foreach (MapNode gone in labels.Keys.Where(n => shown[n.Id] != n).ToList())
         {
@@ -341,7 +348,7 @@ public sealed class MapPicture : Control
         }
         if (graph is not null)
         {
-            Show(graph, edges);
+            Show(graph, edges, broken);
         }
     }
 
@@ -362,7 +369,10 @@ public sealed class MapPicture : Control
         public required Pen Border { get; init; }
         public required Pen Edge { get; init; }
         public required IBrush EdgeHead { get; init; }
+        public required Pen BrokenEdge { get; init; }
+        public required IBrush BrokenHead { get; init; }
         public required Pen ChosenEdge { get; init; }
+        public required Pen ChosenBroken { get; init; }
         public required IBrush ChosenHead { get; init; }
         public required Pen Chosen { get; init; }
         public required double Radius { get; init; }
@@ -372,6 +382,7 @@ public sealed class MapPicture : Control
         {
             IBrush muted = Tokens.Brush(control, TokenKeys.TextMuted);
             IBrush link = Tokens.Brush(control, TokenKeys.Link);
+            IBrush error = Tokens.Brush(control, TokenKeys.Error);
             double radius = control.TryFindResource(TokenKeys.ControlRadius, control.ActualThemeVariant, out object? found) && found is CornerRadius corner ? corner.TopLeft : 0;
             return new Palette
             {
@@ -382,7 +393,10 @@ public sealed class MapPicture : Control
                 Border = new Pen(Tokens.Brush(control, TokenKeys.FieldBorder), 1),
                 Edge = new Pen(muted, 1),
                 EdgeHead = muted,
+                BrokenEdge = new Pen(error, 1.5),
+                BrokenHead = error,
                 ChosenEdge = new Pen(link, 2),
+                ChosenBroken = new Pen(error, 2.5),
                 ChosenHead = link,
                 Chosen = new Pen(Tokens.Brush(control, TokenKeys.Focus), 2),
                 Radius = radius,
@@ -448,7 +462,8 @@ public sealed class MapPicture : Control
             }
             foreach (MapEdge edge in map.edges)
             {
-                map.DrawEdge(context, edge, palette.Edge, palette.EdgeHead);
+                bool broken = map.broken.Contains(edge);
+                map.DrawEdge(context, edge, broken ? palette.BrokenEdge : palette.Edge, broken ? palette.BrokenHead : palette.EdgeHead);
             }
             foreach ((MapNode node, MapBox box) in map.boxes.Where(b => !b.Key.IsOpen))
             {
@@ -501,7 +516,8 @@ public sealed class MapPicture : Control
             (IReadOnlyList<MapEdge> leaving, IReadOnlyList<MapEdge> coming) = MapGraph.Crossing(node, map.edges);
             foreach (MapEdge edge in leaving.Concat(coming))
             {
-                map.DrawEdge(context, edge, palette.ChosenEdge, palette.ChosenHead);
+                bool broken = map.broken.Contains(edge);
+                map.DrawEdge(context, edge, broken ? palette.ChosenBroken : palette.ChosenEdge, broken ? palette.BrokenHead : palette.ChosenHead);
             }
             context.DrawRectangle(null, palette.Chosen, new Rect(box.X - 1, box.Y - 1, box.Width + 2, (node.IsOpen ? box.Height : NodeHeight) + 2), palette.Radius, palette.Radius);
         }

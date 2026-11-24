@@ -8,8 +8,8 @@ using Passenger.TestTables;
 namespace Passenger.UnitTests.ToolWindows;
 
 /// <summary>The dependency map: each kind of use read by the compiler's binding of a solution of two projects (Roslyn's own
-/// workspace), each use counted once at the deepest level open between the deepest nodes shown, and each level laid out
-/// with what uses above what it uses.</summary>
+/// workspace), each use counted once at the deepest level open between the deepest nodes shown, each level laid out with
+/// what uses above what it uses, and layer rules matched and their broken uses found where they are written.</summary>
 public sealed class DependencyMapTests
 {
     private static CancellationToken Cancel => TestContext.Current.CancellationToken;
@@ -36,7 +36,42 @@ public sealed class DependencyMapTests
         {
             LaysUsersAbove();
             return Task.CompletedTask;
-        }));
+        }),
+        ("layer rules hold code by project, namespace and folder, and a use of a layer not let is found where it is written", BreaksLayerRulesAsync));
+
+    private static async Task BreaksLayerRulesAsync()
+    {
+        LayerRules rules = new("/shop", [
+            new Layer("App", ["App"], [], [], ["Data"]),
+            new Layer("Data", [], ["Shop.Data.*"], [], ["Core"]),
+            new Layer("Core", [], [], ["Core/**"], []),
+        ]);
+        Assert.Equal(["App", "Data", "Data", "Core", "Core", "-", "-", "-"], new[]
+        {
+            rules.Of("App", "Shop.Core", "/shop/Core/Square.cs"),
+            rules.Of("Lib", "Shop.Data", null),
+            rules.Of("Lib", "Shop.Data.Sql", null),
+            rules.Of("Lib", "Other", "/shop/Core/Deep/Money.cs"),
+            rules.Of("Lib", "Other", "/shop/core/Money.cs"),
+            rules.Of("Lib", "Shop.DataSql", "/shop/Lib/Money.cs"),
+            rules.Of("Lib", "Other", "/elsewhere/Core/Money.cs"),
+            rules.Of("Lib", "Other", "/shop/Money.cs"),
+        }.Select(l => l?.Name ?? "-"));
+        Assert.True(LayerRules.Breaks(rules.Layers[0], rules.Layers[2]) && !LayerRules.Breaks(rules.Layers[0], rules.Layers[1]) && !LayerRules.Breaks(rules.Layers[2], rules.Layers[2]),
+            "App may use Data and its own layer, and not Core");
+
+        using AdhocWorkspace workspace = new();
+        ProjectId core = Add(workspace, "Core", Core, [], ("Core.cs", CoreCode));
+        Add(workspace, "App", App, [new ProjectReference(core)], ("Square.cs", AppCode));
+        Document square = workspace.CurrentSolution.Projects.Single(p => p.Name == "App").Documents.Single();
+        IReadOnlyList<LayerBreak> broken = await DependencyMap.BrokenAsync(square, new LayerRules("/shop", [
+            new Layer("App", ["App"], [], [], []),
+            new Layer("Core", ["Core"], [], [], []),
+        ]), Cancel);
+        Assert.Equal(["4:1 MarkAttribute", "5:22 Base", "5:28 IShape", "7:12 Base", "7:24 Base.Base()", "11:11 Base", "11:21 IShape", "16:27 Base"],
+            broken.Select(b => $"{b.Start.Line}:{b.Start.Character} {b.Used}"));
+        Assert.All(broken, b => Assert.Equal(("App", "Core"), (b.From, b.To)));
+    }
 
     private static async Task ReadsEachKindAsync()
     {

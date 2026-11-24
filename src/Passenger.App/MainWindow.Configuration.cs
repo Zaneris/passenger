@@ -47,6 +47,10 @@ public partial class MainWindow
             {
                 document.Saved += (_, _) => session.CSharp?.LocalizationChanged();
             }
+            else if (Path.GetFileName(document.Path) == Roslyn.Extension.LayerRules.FileName)
+            {
+                document.Saved += (_, _) => ReadLayers();
+            }
         };
     }
 

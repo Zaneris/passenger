@@ -319,6 +319,10 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The folder open, canonical; null for a window with none.</summary>
     public string? Folder { get; }
 
+    /// <summary>The folder's layer rules, as the window last read its passenger-layers.json (<see cref="DependencyMap.LayersFile"/>);
+    /// none while it has none, or the file cannot be read.</summary>
+    public Roslyn.Extension.LayerRules? Layers { get; set; }
+
     /// <summary>Whether the folder is trusted (<see cref="WorkspaceTrust"/>), as it was as it opened or once trusted since
     /// (<see cref="Trust"/>). Untrusted, the session runs none of its code: no evaluation or design-time build of its
     /// projects, no C# language server, no reading of its build configurations; its builds, runs, tests and previews are
@@ -2118,6 +2122,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 Hints = (shown.ParameterHints, shown.TypeHints),
                 FirstProjects = ActiveProjectsAsync,
                 ProjectsNow = () => Projects,
+                LayersNow = () => Layers,
                 UnloadedNow = () => [.. Workspace?.Projects.Where(p => Unloaded.Contains(p.Path)) ?? []],
                 Frameworks = Frameworks,
                 Feed = DesignTimeBuilds.Feed,

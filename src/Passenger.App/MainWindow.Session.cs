@@ -326,6 +326,7 @@ public partial class MainWindow
         BindDebug(next);
         BindModules(next);
         BindClones(next);
+        ReadLayers();
         profiler?.Rebind();
         liveTree?.Bind(next);
         bindingValues?.Bind(next);
@@ -630,6 +631,7 @@ public partial class MainWindow
     {
         if (service is not null)
         {
+            service.ReadLayersAgain = ReadLayers;
             service.StateChanged += (_, _) => status.ShowLanguage(LanguageLabel());
             service.StateChanged += (_, _) => usages.Refresh();
             service.StateChanged += (_, _) => OutlineWhenUnseen();

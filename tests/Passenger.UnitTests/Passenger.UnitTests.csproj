@@ -409,6 +409,7 @@
        are the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.Roslyn.Extension/DependencyMessages.cs" Link="Roslyn/DependencyMessages.cs" />
+    <Compile Include="../../src/Passenger.Roslyn.Extension/LayerRules.cs" Link="Roslyn/LayerRules.cs" />
     <Compile Include="../../src/Passenger.Roslyn.Extension/DependencyReads.cs" Link="Roslyn/DependencyReads.cs" />
     <Compile Include="../../src/Passenger.Roslyn.Extension/SymbolKinds.cs" Link="Roslyn/SymbolKinds.cs" />
     <Compile Include="../../src/Passenger.App/DependencyMap/MapGraph.cs" Link="App/MapGraph.cs" />

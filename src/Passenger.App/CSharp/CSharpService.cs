@@ -2513,6 +2513,19 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// lacks, pulls its diagnostics again; no other file.</summary>
     internal void LocalizationChanged() => Each(document => document.LocalizationChanged());
 
+    /// <summary>The folder's layer rules (its passenger-layers.json) as they stand, which each open C# file is checked against
+    /// as it is pulled; none while the folder has none, or its file cannot be read.</summary>
+    public Func<Roslyn.Extension.LayerRules?>? LayersNow { get; init; }
+
+    /// <summary>The folder's layer rules as they stand (<see cref="LayersNow"/>).</summary>
+    internal Roslyn.Extension.LayerRules? Layers => LayersNow?.Invoke();
+
+    /// <summary>Reads the folder's layer rules again, as the window does when their file changes: for a fix that wrote it.</summary>
+    internal Action? ReadLayersAgain { get; set; }
+
+    /// <summary>The folder's layer rules changed: each open file pulled again.</summary>
+    internal void LayersChanged() => Each(document => document.RefreshDiagnostics());
+
     /// <summary>What the folder's pages link changed: each open Razor file's classes are checked again.</summary>
     internal void StylesheetsChanged() => Each(document => document.StylesheetsChanged());
 

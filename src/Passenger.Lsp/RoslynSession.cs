@@ -1050,6 +1050,11 @@ public sealed class LspDocument : IDisposable
     public async Task<IReadOnlyList<string>> DependencyAtAsync(int offset, CancellationToken cancel = default) =>
         (await ExtensionAsync<Roslyn.Extension.DependencyPlace>(Roslyn.Extension.Handlers.DependencyAt, new Roslyn.Extension.Caret(PlaceOf(offset)), cancel).ConfigureAwait(false)).Path;
 
+    /// <summary>The uses in the document that break a folder's layer rules, each where it is written (Passenger's extension's
+    /// <see cref="Roslyn.Extension.LayersAsked"/>).</summary>
+    public async Task<IReadOnlyList<Roslyn.Extension.LayerBreak>> LayersBrokenAsync(Roslyn.Extension.LayerRules rules, CancellationToken cancel = default) =>
+        (await ExtensionAsync<Roslyn.Extension.LayersBroken>(Roslyn.Extension.Handlers.LayerChecks, new Roslyn.Extension.LayersAsked(rules), cancel).ConfigureAwait(false)).Broken;
+
     /// <summary>An offset as the extension's messages give a place.</summary>
     public Roslyn.Extension.Place PlaceOf(int offset)
     {

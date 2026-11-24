@@ -1,5 +1,6 @@
 using Passenger.App.CSharp;
 using Passenger.App.DependencyMap;
+using Passenger.App.Editors;
 using Passenger.App.Explorer;
 using Passenger.Core;
 using Passenger.Lsp;
@@ -21,7 +22,7 @@ public partial class MainWindow
     {
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.DependencyMap, "Dependency Map", IconKeys.DependencyMap, () =>
         {
-            dependencyMap = new DependencyMapView();
+            dependencyMap = new DependencyMapView { Rules = session.Layers };
             dependencyMap.GoToRequested += (_, node) => GoToMapNode(node);
             dependencyMap.Failed += (_, why) => status.Text = why;
             return dependencyMap;
@@ -119,6 +120,39 @@ public partial class MainWindow
             return path.Count > 0 ? path : null;
         }
         return session.ProjectOf(row.Path ?? string.Empty) is { } owner ? [DependencyIds.Project(owner.Path)] : null;
+    }
+
+    /// <summary>Reads the folder's layer rules from its passenger-layers.json (an open one's as the editor has it), off the
+    /// window's thread: the session keeps them, each open C# file is checked against them again, and the map draws their
+    /// broken edges; a file that cannot be read is said in the status bar and holds no rules.</summary>
+    private void ReadLayers()
+    {
+        if (session.Folder is not { } folder)
+        {
+            return;
+        }
+        ProjectSession of = session;
+        OpenTexts texts = Editors.Texts();
+        IdeErrors.Observe(ReadLayersAsync(of, folder, texts));
+    }
+
+    private async Task ReadLayersAsync(ProjectSession of, string folder, OpenTexts texts)
+    {
+        (LayerRules? rules, string? problem) = await BackgroundWork.Run(() => texts.Text(LayersFile.PathIn(folder)) is { } text ? LayersFile.Read(folder, text) : (null, null));
+        if (session != of || of.IsEnded)
+        {
+            return;
+        }
+        if (problem is not null)
+        {
+            status.Text = problem;
+        }
+        of.Layers = rules;
+        of.CSharp?.LayersChanged();
+        if (dependencyMap is not null)
+        {
+            dependencyMap.Rules = rules;
+        }
     }
 
     /// <summary>Goes to where a node of the map is written: a project's file, else the declaration's name.</summary>

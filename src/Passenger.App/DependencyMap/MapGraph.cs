@@ -51,8 +51,8 @@ public sealed class MapNode(DependencyNode given, MapNode? parent)
 }
 
 /// <summary>An edge as the map shows it: between two nodes shown, neither inside the other, with how many uses of each kind
-/// the code below them makes.</summary>
-public sealed record MapEdge(MapNode From, MapNode To, IReadOnlyDictionary<string, int> Kinds)
+/// the code below them makes, and whether any of them breaks the folder's layer rules.</summary>
+public sealed record MapEdge(MapNode From, MapNode To, IReadOnlyDictionary<string, int> Kinds, bool Broken = false)
 {
     /// <summary>How many uses it stands for, of every kind.</summary>
     public int Count => Kinds.Values.Sum();
@@ -171,10 +171,11 @@ public sealed class MapGraph
     /// <summary>The edges shown, of the kinds <paramref name="kinds"/> lets through: each level's whose node is shown open
     /// (the projects' always), but an edge from a node whose own level is open, which counts its uses itself; each from its
     /// node to the deepest node shown on the path of what it uses, none where one end holds the other, those between the
-    /// same two nodes made one.</summary>
-    public IReadOnlyList<MapEdge> Shown(Func<string, bool> kinds)
+    /// same two nodes made one, broken where any of its uses breaks <paramref name="rules"/> (<see cref="Breaks"/>).</summary>
+    public IReadOnlyList<MapEdge> Shown(Func<string, bool> kinds, LayerRules? rules = null)
     {
         Dictionary<(MapNode, MapNode), Dictionary<string, int>> joined = [];
+        HashSet<(MapNode, MapNode)> broken = [];
         foreach ((string level, IReadOnlyList<DependencyEdge> edges) in levels)
         {
             if (level.Length > 0 && (nodes.GetValueOrDefault(level) is not { IsOpen: true } of || !of.IsShown))
@@ -188,11 +189,16 @@ public sealed class MapGraph
                 {
                     continue;
                 }
+                bool breaks = rules is not null && Breaks(rules, from, edge.To);
                 foreach ((string kind, int count) in edge.Kinds)
                 {
                     if (!kinds(kind))
                     {
                         continue;
+                    }
+                    if (breaks)
+                    {
+                        broken.Add((from, to));
                     }
                     if (!joined.TryGetValue((from, to), out Dictionary<string, int>? counted))
                     {
@@ -202,13 +208,39 @@ public sealed class MapGraph
                 }
             }
         }
-        return [.. joined.Select(j => new MapEdge(j.Key.Item1, j.Key.Item2, j.Value))];
+        return [.. joined.Select(j => new MapEdge(j.Key.Item1, j.Key.Item2, j.Value, broken.Contains(j.Key)))];
     }
 
     /// <summary>A node's edges among those shown: what leaves it, or a node below it while it is open, for a node outside
     /// it, and what comes into it so; an open node's own uses being counted at the nodes below it, these are its whole.</summary>
     public static (IReadOnlyList<MapEdge> Out, IReadOnlyList<MapEdge> In) Crossing(MapNode node, IReadOnlyList<MapEdge> shown) =>
         ([.. shown.Where(e => node.Covers(e.From) && !node.Covers(e.To))], [.. shown.Where(e => node.Covers(e.To) && !node.Covers(e.From))]);
+
+    /// <summary>Whether a use breaks a folder's layer rules: the layer of the node using and that of what it uses both known,
+    /// and the one not let use the other. A project is in the layer that holds its name, a namespace in the one that holds
+    /// it there, a type and a member in the one that holds their file too; what is used by its path's ids, its type's file
+    /// where its node is known.</summary>
+    private bool Breaks(LayerRules rules, MapNode from, IReadOnlyList<string> to) =>
+        LayerOf(rules, from) is { } user && LayerOf(rules, to) is { } used && LayerRules.Breaks(user, used);
+
+    private static Layer? LayerOf(LayerRules rules, MapNode node)
+    {
+        MapNode? space = node;
+        while (space is not null && space.Level > 1)
+        {
+            space = space.Parent;
+        }
+        return DependencyIds.Read(node.Id) is { } id
+            ? rules.Of(Path.GetFileNameWithoutExtension(id.Project), space is { Level: 1 } && DependencyIds.Read(space.Id) is { Own: { } own } ? own : string.Empty,
+                node.Level >= 2 ? node.Given.Path : null)
+            : null;
+    }
+
+    private Layer? LayerOf(LayerRules rules, IReadOnlyList<string> path) =>
+        DependencyIds.Read(path[0]) is { } project
+            ? rules.Of(Path.GetFileNameWithoutExtension(project.Project), path.Count > 1 && DependencyIds.Read(path[1]) is { Own: { } own } ? own : string.Empty,
+                path.Count > 2 && this[path[2]] is { } type ? type.Given.Path : null)
+            : null;
 
     /// <summary>The deepest node shown on a path of ids from the project down; null where even its project is unknown.</summary>
     private MapNode? To(IReadOnlyList<string> path)

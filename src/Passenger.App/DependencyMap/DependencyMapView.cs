@@ -23,7 +23,7 @@ public sealed class MapRow(MapNode node) : ITreeRow
 
 /// <summary>A row of the chosen node's edges (<see cref="MapGraph.Crossing"/>): an edge leaving it (what it uses) or coming
 /// into it (what uses it), from or to a node below it while it is open.</summary>
-public sealed record MapEdgeRow(MapEdge Edge, bool Out, MapNode Chosen)
+public sealed record MapEdgeRow(MapEdge Edge, bool Out, MapNode Chosen, bool Broken = false)
 {
     /// <summary>The node at the other end.</summary>
     public MapNode Other => Out ? Edge.To : Edge.From;
@@ -36,7 +36,7 @@ public sealed record MapEdgeRow(MapEdge Edge, bool Out, MapNode Chosen)
         {
             MapNode own = Out ? Edge.From : Edge.To;
             string way = own == Chosen ? (Out ? "Uses" : "Used by") : $"{own.Name} {(Out ? "uses" : "used by")}";
-            return $"{way} {Other.Name}: {MapPicture.KindsOf(Edge)}";
+            return $"{way} {Other.Name}: {MapPicture.KindsOf(Edge)}{(Broken ? ", breaking the layer rules" : string.Empty)}";
         }
     }
 }
@@ -164,6 +164,24 @@ public sealed class DependencyMapView : DockPanel
 
     /// <summary>The edges shown, as the picture draws them.</summary>
     public IReadOnlyList<MapEdge> ShownEdges => shown;
+
+    /// <summary>The folder's layer rules, whose broken edges the map draws in the error's colour; none while it has none.</summary>
+    public LayerRules? Rules
+    {
+        get => rules;
+        set
+        {
+            rules = value;
+            if (graph.HasRoots)
+            {
+                Redraw();
+            }
+        }
+    }
+
+    private LayerRules? rules;
+
+    private IReadOnlySet<MapEdge> broken = new HashSet<MapEdge>();
 
     /// <summary>The tree's rows.</summary>
     public IReadOnlyList<MapRow> Rows => rows;
@@ -322,8 +340,9 @@ public sealed class DependencyMapView : DockPanel
     /// <summary>The picture laid out and the tree listed again for what is open and the kinds shown.</summary>
     private void Redraw()
     {
-        shown = graph.Shown(kind => !hidden.Contains(kind));
-        Picture.Show(graph, shown);
+        shown = graph.Shown(kind => !hidden.Contains(kind), rules);
+        broken = shown.Where(e => e.Broken).ToHashSet();
+        Picture.Show(graph, shown, broken);
         ListRows();
         if (Chosen is { } chosen && graph[chosen.Id] is { } still)
         {
@@ -381,8 +400,8 @@ public sealed class DependencyMapView : DockPanel
         }
         heading.Text = $"{node.Name} ({node.Kind})";
         (IReadOnlyList<MapEdge> leaving, IReadOnlyList<MapEdge> coming) = MapGraph.Crossing(node, shown);
-        edgeList.ItemsSource = (IReadOnlyList<MapEdgeRow>)[.. leaving.Select(e => new MapEdgeRow(e, Out: true, node)).OrderBy(e => e.Edge.From != node).ThenBy(e => e.Other.Name, StringComparer.OrdinalIgnoreCase),
-            .. coming.Select(e => new MapEdgeRow(e, Out: false, node)).OrderBy(e => e.Edge.To != node).ThenBy(e => e.Other.Name, StringComparer.OrdinalIgnoreCase)];
+        edgeList.ItemsSource = (IReadOnlyList<MapEdgeRow>)[.. leaving.Select(e => new MapEdgeRow(e, Out: true, node, e.Broken)).OrderBy(e => e.Edge.From != node).ThenBy(e => e.Other.Name, StringComparer.OrdinalIgnoreCase),
+            .. coming.Select(e => new MapEdgeRow(e, Out: false, node, e.Broken)).OrderBy(e => e.Edge.To != node).ThenBy(e => e.Other.Name, StringComparer.OrdinalIgnoreCase)];
     }
 
     /// <summary>The map's zoom keys, with the platform's command modifier, as every zoomed view takes them.</summary>

@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.DependencyMap;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
@@ -47,12 +48,13 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Flow.StepApart("a pull held past the server's patience is noticed once the server leaves its check unanswered", () => new ProblemsTests(project), t => t.A_files_project_wide_pull_held_past_the_servers_patience_is_noticed_once_the_server_leaves_its_check_unanswered());
     }
 
-    /// <summary>The Problems window's list as a person reads it, and what a key costs it however many problems the
-    /// solution has.</summary>
+    /// <summary>The Problems window's list as a person reads it, a broken layer rule's warning among it, and what a key
+    /// costs it however many problems the solution has.</summary>
     [AvaloniaFact]
     public void The_Problems_list_filters_counts_and_goes_to_each_problem_and_a_key_lists_only_the_open_files_however_many_the_solution_has()
     {
         Flow.StepApart("warnings turned off and a filter's text leave only the matching errors, and the counts follow", () => new ProblemsTests(project), t => t.Warnings_turned_off_and_a_filters_text_leave_only_the_matching_errors_and_the_counts_follow());
+        Flow.StepApart("a use breaking the folder's layer rules is marked in the editor, Problems and the map, and its fix lets the layer use the other", () => new ProblemsTests(project), t => t.A_use_breaking_the_folders_layer_rules_is_marked_in_the_editor_Problems_and_the_map_and_its_fix_lets_the_layer_use_the_other());
         Flow.StepApart("a problem below line breaks only Roslyn counts is listed and gone to at its own line", () => new ProblemsTests(project), t => t.A_problem_below_line_breaks_only_roslyn_counts_is_listed_and_gone_to_at_its_own_line());
         Flow.StepApart("a typing pause lists again only the open file's problems, however many the solution has", () => new ProblemsTests(project), t => t.A_typing_pause_lists_again_only_the_open_files_problems_however_many_the_solution_has());
         Flow.StepApart("a key in a large solution lists the open file's problems without waiting for the whole project's analysis", () => new ProblemsTests(project), t => t.A_key_in_a_large_solution_lists_the_open_files_problems_without_waiting_for_the_whole_projects_analysis());
@@ -1031,6 +1033,47 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Problem[] errors = [.. problems.FileProblems.Where(p => p.Severity == ProblemSeverity.Error || p.Message.StartsWith("CS8652: ", StringComparison.Ordinal))];
         Assert.True(errors.Length == 0,
             $"Problems lists C# 15 that the .NET 11 SDK builds as an error: {string.Join("; ", errors.Select(p => p.Message))}");
+        window.Close();
+    }
+
+    /// <summary>A folder's passenger-layers.json puts the Shop.Domain namespaces in one layer and Shop.Screens' in another
+    /// that may use it: a Domain type's call of a Screens type is a warning where the call names it, in the editor and in
+    /// Problems, saying which layers it breaks, and the map's edge between them is drawn as broken; its fix lets Domain use
+    /// Screens in the file, after which the warning and the broken edge go.</summary>
+    private void A_use_breaking_the_folders_layer_rules_is_marked_in_the_editor_Problems_and_the_map_and_its_fix_lets_the_layer_use_the_other()
+    {
+        Write("passenger-layers.json", "{\n  \"passengerLayers\": 1,\n  \"layers\": [\n    { \"name\": \"Domain\", \"namespaces\": [\"Shop.Domain.*\"] },\n"
+            + "    { \"name\": \"Screens\", \"namespaces\": [\"Shop.Screens.*\"], \"mayUse\": [\"Domain\"] }\n  ]\n}\n");
+        Write("Screen.cs", "namespace Shop.Screens;\n\nstatic class Screen\n{\n    public static string Title() => \"Orders\";\n}\n");
+        Write("Order.cs", "using Shop.Screens;\n\nnamespace Shop.Domain;\n\nstatic class Order\n{\n    public static string Shown() => Screen.Title();\n}\n");
+        MainWindow window = project.Open("Order.cs", w => w.Perform(AppActions.ShowProblems));
+        ProblemsModel problems = window.BottomPanel.Problems;
+        const string Broken = "The Domain layer may not use the Screens layer, which Screen.Title() is in: passenger-layers.json lets it use no other layer";
+        Ui.WaitFor(() => problems.FileProblems.Any(p => p.Message == Broken),
+            () => $"the broken layer rule in Problems, which lists [{string.Join("; ", problems.FileProblems.Select(p => p.Message))}]");
+        int title = window.EditorArea.Active!.Text.Snapshot.ToString().IndexOf("Title()", StringComparison.Ordinal);
+        Assert.Contains(window.EditorArea.Active!.Markers, m => m.Message == Broken && m.Range.Start == title && m.Range.End == title + "Title".Length);
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "string Sho");
+        Assert.Null(window.Actions.Run(AppActions.ShowDependencyMap));
+        DependencyMapView map = window.DependencyMapWindow;
+        Ui.WaitFor(() => map.Chosen?.Name == "Shown()" && !map.IsReading, () => $"the map chosen at Order.Shown, not {map.Chosen?.Name ?? "nothing"} ({map.Said})");
+        Assert.Equal(["Uses Shop.Screens: calls 1, breaking the layer rules"], map.EdgeRows.Select(e => e.Words));
+        Assert.Single(map.Picture.Broken);
+        window.OpenFile(project.PathOf("Order.cs"));
+        Ui.Settle();
+
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "Screen.Ti");
+        Ui.Run(window, AppActions.QuickFix);
+        const string Fix = "Let Domain Use Screens in passenger-layers.json";
+        Ui.WaitFor(() => window.Assist.Offered.Contains(Fix), () => $"the layer rule's fix among [{string.Join(", ", window.Assist.Offered)}]");
+        for (int i = 0; i < window.Assist.Offered.ToList().IndexOf(Fix); i++)
+        {
+            Ui.Press(window, "DOWN");
+        }
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => problems.FileProblems.All(p => p.Message != Broken) && window.EditorArea.Active!.Markers.All(m => m.Message != Broken) && map.Picture.Broken.Count == 0,
+            () => $"the warning gone once Domain may use Screens, the file reading {File.ReadAllText(project.PathOf("passenger-layers.json"))}");
+        Assert.Contains("\"mayUse\": [\n        \"Screens\"\n      ]", File.ReadAllText(project.PathOf("passenger-layers.json")).ReplaceLineEndings("\n"), StringComparison.Ordinal);
         window.Close();
     }
 

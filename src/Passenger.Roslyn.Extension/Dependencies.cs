@@ -22,3 +22,10 @@ public sealed class DependencyAt : IExtensionDocumentMessageHandler<Caret, Depen
         return new DependencyPlace(await DependencyMap.PlaceAsync(document, WrittenPlaces.Offset(text, message.At), cancellationToken).ConfigureAwait(false));
     }
 }
+
+/// <summary>The uses in a document that break a folder's layer rules (<see cref="LayersAsked"/>), each where it is written.</summary>
+public sealed class LayerChecks : IExtensionDocumentMessageHandler<LayersAsked, LayersBroken>
+{
+    public async Task<LayersBroken> ExecuteAsync(LayersAsked message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        new(await DependencyMap.BrokenAsync(context.Document(), message.Rules, cancellationToken).ConfigureAwait(false));
+}

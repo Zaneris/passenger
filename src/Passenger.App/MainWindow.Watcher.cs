@@ -194,6 +194,11 @@ public partial class MainWindow
         {
             session.CSharp?.ConfigurationChanged();
         }
+        // The folder's layer rules written, made or deleted: read again, and every open C# file checked against them.
+        if (changes.Lost || changes.Paths.Any(p => Path.GetFileName(p) == Roslyn.Extension.LayerRules.FileName))
+        {
+            ReadLayers();
+        }
         // A .resx or XLIFF file written: the reads of localized keys are looked at again.
         if (changes.Lost || changes.Paths.Any(Passenger.Xaml.Localization.ResourceFiles.Holds))
         {
