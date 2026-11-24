@@ -90,17 +90,14 @@ public sealed partial class Vim
                 SelectionSet starts = SelectionSet.Create([.. taken.Select(r => Selection.At(r.Low))], 0);
                 if (Join(text, starts, block ? Math.Max(2, bottom - top + 1) : n, spaced: op == "J", Options.JoinSpaces) is { } joined)
                 {
-                    if (block && top == bottom && top + 1 == VimMotions.LastLine(text, breakEnds)
-                        && right.CompareTo(TextNavigation.VisualColumn(text, text.GetLine(top).End, tab) - 1) == (text.GetLine(top + 1).Length > 0 ? 1 : 0))
+                    int startColumn = TextNavigation.VisualColumn(text, stretch.Anchor, tab);
+                    if (block && Math.Max(bottom, top + 1) == VimMotions.LastLine(text, breakEnds) && text.GetLineFromOffset(stretch.Cursor) == top
+                        && joined.Selections.Primary.Caret == stretch.Cursor && startColumn < TextNavigation.VisualColumn(text, stretch.Cursor, tab)
+                        && VimMotions.OffsetAtColumn(text, top, startColumn, tab) is var onTop && TextNavigation.VisualColumn(text, onTop, tab) == startColumn
+                        && (onTop >= text.Length || text[onTop] != '\t'))
                     {
-                        // Joining the last line, a block past its line's end (to its last character, the last line empty) aims j and k at its left.
-                        (wantedFor, wanted) = (joined.Selections, [left]);
-                    }
-                    else if (block && bottom > top && bottom == VimMotions.LastLine(text, breakEnds) && text.GetLine(bottom).Length == 0 && right != int.MaxValue
-                        && CaretColumn(text.Apply(joined.Edits), joined.Selections.Primary.Caret, tab) == right)
-                    {
-                        // Joining lines down to an empty last one, a caret left on the block's right edge aims j, k and yy where the block began.
-                        (wantedFor, wanted) = (joined.Selections, [TextNavigation.VisualColumn(text, stretch.Anchor, tab)]);
+                        // Joining the last line, a caret left where the block's cursor stood, right of where it began, aims j, k and yy there.
+                        (wantedFor, wanted) = (joined.Selections, [startColumn]);
                     }
                     else if (block && toEnd && bottom == top + 1 && bottom == VimMotions.LastLine(text, breakEnds) && text.GetLineFromOffset(stretch.Anchor) == bottom
                         && TextNavigation.IndentEnd(text, text.GetLine(bottom)) < text.GetLine(bottom).End
