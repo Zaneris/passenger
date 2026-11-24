@@ -33,22 +33,23 @@ public class IntelliJKeymapTests
     });
 
     /// <summary>Emacs's own list in place of $default's, its chords too; a key it takes from another action leaves that one
-    /// (Ctrl+/ is Undo's, not Comment's); an action it clears has no keys.</summary>
-    private void An_editor_action_has_Emacss_own_keys_over_defaults_on_every_system() => Cases.Each<(string action, string keys)>(
+    /// (Ctrl+/ is Undo's, not Comment's); an action it clears has no keys; the Mac's Cmd+C, Z and A beside its own there.</summary>
+    private void An_editor_action_has_Emacss_own_keys_over_defaults_on_every_system() => Cases.Each<(string action, string keys, string macAlso)>(
     [
-        (EditorActions.Escape, "ESCAPE , ESCAPE; control G"),
-        (EditorActions.Undo, "shift control MINUS; control SLASH"),
-        (EditorActions.ToggleLineComment, "alt SEMICOLON"),
-        (EditorActions.SelectAll, "control X , H"),
-        (EditorActions.Duplicate, "meta D"),
-        (EditorActions.Delete, "DELETE; control D"),
-        (EditorActions.ToggleCase, "control shift U"),
-        (EditorActions.ScrollUp, ""),
+        (EditorActions.Escape, "ESCAPE , ESCAPE; control G", ""),
+        (EditorActions.Undo, "shift control MINUS; control SLASH", "meta Z"),
+        (EditorActions.Copy, "alt W; control INSERT; alt C; ESCAPE , W", "meta C"),
+        (EditorActions.ToggleLineComment, "alt SEMICOLON", ""),
+        (EditorActions.SelectAll, "control X , H", "meta A"),
+        (EditorActions.Duplicate, "meta D", ""),
+        (EditorActions.Delete, "DELETE; control D", ""),
+        (EditorActions.ToggleCase, "control shift U", ""),
+        (EditorActions.ScrollUp, "", ""),
     ], row =>
     {
-        (string action, string keys) = row;
+        (string action, string keys, string macAlso) = row;
         string[] ours = [.. DefaultKeymaps.For(KeymapPreset.Emacs).ShortcutsFor(action).Select(s => s.Notation()).Order(StringComparer.Ordinal)];
-        string[] theirs = [.. keys.Split("; ", StringSplitOptions.RemoveEmptyEntries).Select(k => Shortcut.Parse(k).Notation()).Order(StringComparer.Ordinal)];
+        string[] theirs = [.. $"{keys}; {(Mac ? macAlso : "")}".Split("; ", StringSplitOptions.RemoveEmptyEntries).Select(k => Shortcut.Parse(k.Trim()).Notation()).Order(StringComparer.Ordinal)];
         Assert.True(ours.SequenceEqual(theirs), $"In Emacs's keymap {action} runs from [{string.Join("; ", ours)}], where Rider's Emacs gives it [{string.Join("; ", theirs)}]");
         Assert.Equal("Emacs", DefaultKeymaps.NameOf(KeymapPreset.Emacs));
     });

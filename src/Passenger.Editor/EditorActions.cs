@@ -139,8 +139,8 @@ public enum KeymapPreset
 /// <summary>The keymaps Passenger has, for the actions it has: Rider's Visual Studio keymap on Windows and its Visual
 /// Studio OSX keymap on macOS, plus the few platform staples those leave out (Cmd+/ to comment, with the keypad's / as
 /// $default has it, Cmd+W to close, Cmd+Up and Down to the text's ends); Rider's VSCode and VSCode OSX keymaps; IntelliJ
-/// IDEA's $default and Mac OS X 10.5+, the Mac's with Cmd+Up and Down too; Rider's Emacs. A key IntelliJ gives two
-/// actions told apart by where it is pressed is given to one (the editor's own). The keypad's keys (DIVIDE, SUBTRACT) are bound where
+/// IDEA's $default and Mac OS X 10.5+, the Mac's with Cmd+Up and Down too; Rider's Emacs, the Mac's with its Cmd+C, V, X,
+/// Z and A. A key IntelliJ gives two actions told apart by where it is pressed is given to one (the editor's own). The keypad's keys (DIVIDE, SUBTRACT) are bound where
 /// Rider binds them, beside the main keys'. The mouse's gestures are theirs too, the Mac's from $default with its Ctrl as
 /// Cmd; Shift+Alt-click, which they give a column from the caret and a column drag both, is the first, a drag going on with
 /// it, and Linux's middle-click paste is left out. A click a drag shares (Alt-click's Quick Evaluate Expression beside
@@ -473,7 +473,20 @@ public static class DefaultKeymaps
     /// its parent's: Undo's Ctrl+/ from Comment with Line Comment, Delete's Ctrl+D from Duplicate (Cmd+D, as Rider's own).
     /// The kill ring's Kill Region and Kill Ring Save are Cut and Copy, Kill to Word Start and End Delete Word Left and Right,
     /// leaving the text as they do, Emacs's own keys first; Escape begins Meta's chords and is Esc, Esc and Ctrl+G.</summary>
-    public static Keymap Emacs(Keymap over) => over
+    public static Keymap Emacs(Keymap over)
+    {
+        Keymap emacs = EmacsOwn(over);
+        // The Mac's Cmd+C, V, X, Z, Shift+Z and A, which Rider's Emacs leaves out, given as Visual Studio OSX's staples are.
+        return !OperatingSystem.IsMacOS() ? emacs : emacs
+            .Bind(EditorActions.Copy, "meta C")
+            .Bind(EditorActions.Paste, "meta V")
+            .Bind(EditorActions.Cut, "meta X")
+            .Bind(EditorActions.Undo, "meta Z")
+            .Bind(EditorActions.Redo, "meta shift Z")
+            .Bind(EditorActions.SelectAll, "meta A");
+    }
+
+    private static Keymap EmacsOwn(Keymap over) => over
         .Own(EditorActions.Left, "LEFT", "control B")
         .Own(EditorActions.Right, "RIGHT", "control F")
         .Own(EditorActions.Up, "UP", "control P")

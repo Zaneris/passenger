@@ -810,9 +810,22 @@ public sealed class KeymapChoiceTests : IDisposable
     /// <summary>Representative keys of Rider's Emacs keymap pressed in the window, Ctrl on the Mac too: the editor's (Ctrl+F,
     /// Ctrl+E and Ctrl+A to move, Ctrl+K to cut to the line's end and Ctrl+Y to paste it back, Esc then Ctrl+F a word on,
     /// Ctrl+/ to undo), the IDE's chords (Ctrl+X, 3 to split and Ctrl+X, 1 to unsplit, Ctrl+X, Ctrl+F to Go to File),
-    /// Alt+X to Find Action, and the person's own key, which splits the editor down.</summary>
+    /// Alt+X to Find Action, and the person's own key, which splits the editor down; on the Mac its Cmd keys too.</summary>
     private static void EmacsKeysWork(MainWindow window, string ownKey)
     {
+        if (OperatingSystem.IsMacOS())
+        {
+            // The Mac's own keys, which Rider's Emacs leaves out, as Visual Studio OSX's keymap has them.
+            foreach ((string key, string action) in new (string, string)[]
+            {
+                ("meta C", EditorActions.Copy), ("meta V", EditorActions.Paste), ("meta X", EditorActions.Cut), ("meta Z", EditorActions.Undo),
+                ("meta shift Z", EditorActions.Redo), ("meta A", EditorActions.SelectAll), ("meta S", AppActions.Save), ("meta W", AppActions.CloseTab),
+                ("meta COMMA", AppActions.ShowSettings),
+            })
+            {
+                Assert.True(AppActions.Keymap().ActionFor(Shortcut.Parse(key)) == action, $"Emacs's {key} on the Mac runs {AppActions.Keymap().ActionFor(Shortcut.Parse(key)) ?? "nothing"}, not {action}");
+            }
+        }
         CodeEditor editor = window.EditorArea.CodeEditor;
         editor.Focus();
         editor.Selections = Passenger.Text.SelectionSet.Single(0);

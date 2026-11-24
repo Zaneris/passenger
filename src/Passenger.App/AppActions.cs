@@ -1619,7 +1619,17 @@ public static class AppActions
     /// Ctrl+Alt+S from Settings, Ctrl+K (Cut to Line End) from Commit. Its Ctrl+X and Escape chords (Ctrl+X, Ctrl+S to Save
     /// All, Esc, X to Find Action) are chords as any; Reformat Code, Safe Delete, Introduce Field, Recent Files, Derived
     /// Symbols, Previous Project Window and the font size in every editor have none.</summary>
-    private static Keymap Emacs(Keymap keymap) => keymap
+    private static Keymap Emacs(Keymap keymap)
+    {
+        Keymap emacs = EmacsOwn(keymap);
+        // The Mac's Cmd+S, W and , which Rider's Emacs leaves out (Cmd+Q is the application menu's Quit in every keymap).
+        return !OperatingSystem.IsMacOS() ? emacs : emacs
+            .Bind(Save, "meta S")
+            .Bind(CloseTab, "meta W")
+            .Bind(ShowSettings, "meta COMMA");
+    }
+
+    private static Keymap EmacsOwn(Keymap keymap) => keymap
         .Own(FindAction, "alt X", "ESCAPE , X")
         .Own(Find, "control alt S", "alt F3", "control S")
         .Own(FindNext, "F3", "alt S")
