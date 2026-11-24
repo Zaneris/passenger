@@ -314,6 +314,13 @@ public sealed partial class EditorArea : UserControl
     /// <summary>Makes a group's view of a console's results.</summary>
     public Func<Database.SqlConsoleView>? MakeConsoleView { get; set; }
 
+    /// <summary>The mark of the database connection a tab works on (a table's data, a console), which its tab shows.</summary>
+    public Func<OpenDocument, Database.DatabaseMark>? MarkOf { get; set; }
+
+    /// <summary>Whether a tab's close waits on a question of its own (a table's changes not submitted, a console's open
+    /// transaction), which closes the tab again once answered: true where it does.</summary>
+    public Func<EditorGroup, OpenDocument, bool>? AsksBeforeClosing { get; set; }
+
     /// <summary>Each group shows its file's own pane again, as a SQL file becomes a console.</summary>
     public void FollowSidePanes()
     {
@@ -672,6 +679,10 @@ public sealed partial class EditorArea : UserControl
         ClosedTab closing = new(document.Path, new WeakReference<EditorGroup>(group), group.Tabs.Select(t => t.Document).ToList().IndexOf(document),
             document.Text.Snapshot.GetPosition(Math.Min(group.SelectionsOf(document).Primary.Caret, document.Text.Snapshot.Length)),
             group.ScrollOf(document), group.IsPinned(document));
+        if (AllGroups.Count(g => g.Has(document)) == 1 && AsksBeforeClosing?.Invoke(group, document) == true)
+        {
+            return false;
+        }
         if (AllGroups.Count(g => g.Has(document)) > 1)
         {
             group.Remove(document);

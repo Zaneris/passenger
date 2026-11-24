@@ -25,6 +25,12 @@ public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folde
     /// <summary>The account the system's credential store keeps its secret parts under.</summary>
     public string Account => Id.ToString("D", CultureInfo.InvariantCulture);
 
+    /// <summary>Whether what runs on it may change it freely, never (read-only), or only once the person agrees (production).</summary>
+    public DatabaseMark Mark { get; init; }
+
+    /// <summary>What a found connection's mark is kept by, the same each time the folder's files name it.</summary>
+    public string FoundKey => $"{Kind}|{Found}|{Name}";
+
     /// <summary>The database it opens in: its connection string's, or for SQLite its file's name.</summary>
     public string Database => Kind switch
     {
@@ -46,6 +52,15 @@ public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folde
     };
 
     public override string ToString() => ContainerSecrets.InSaid($"{Name} · {DatabaseKinds.Title(Kind)}");
+}
+
+/// <summary>How a connection holds what runs on it: any change, none (every statement or edit that would change data or
+/// schema refused), or each only once the person agrees.</summary>
+public enum DatabaseMark
+{
+    None,
+    ReadOnly,
+    Production,
 }
 
 /// <summary>A table or a view, by its schema (empty for SQLite's) and name.</summary>

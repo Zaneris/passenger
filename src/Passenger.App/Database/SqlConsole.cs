@@ -31,6 +31,16 @@ public sealed class SqlConsole(string path)
 
     public bool Running => running is not null;
 
+    /// <summary>Whether it runs in manual commit: its statements in a transaction left open until Commit or Rollback.</summary>
+    public bool Manual { get; internal set; }
+
+    /// <summary>Its connection held open in manual commit, with the transaction open on it; null in automatic commit and
+    /// until its first statement runs.</summary>
+    internal SqlSession? Session { get; set; }
+
+    /// <summary>Whether a transaction its statements began is open.</summary>
+    public bool InTransaction => Session is { InTransaction: true };
+
     public event EventHandler? Changed;
 
     internal void Run(Working working)
@@ -63,11 +73,20 @@ public sealed class SqlConsole(string path)
     };
 }
 
-/// <summary>A console's results under its editor: its connection and Run and Stop over a tab for each result set and one
+/// <summary>A console's results under its editor: its connection, Run and Stop, its commit (automatic, or manual with
+/// Commit and Rollback and whether a transaction is open) and its connection's mark over a tab for each result set and one
 /// for the run's output, each set in a grid its header sorts.</summary>
 public sealed class SqlConsoleView : DockPanel
 {
+    /// <summary>The commits a console runs in, as its bar offers them.</summary>
+    public static readonly string[] Commits = ["Auto-commit", "Manual commit"];
+
     private readonly ToolDropDown connections = new() { Name = "ConsoleConnection" };
+    private readonly ToolDropDown commits = new() { Name = "ConsoleCommit", ItemsSource = Commits, SelectedIndex = 0 };
+    private readonly Border transaction = Tags.Of("transaction open", TokenKeys.Warning);
+    private readonly Button commit;
+    private readonly Button rollback;
+    private readonly Banner marked = new() { Name = "ConsoleMark" };
     private readonly TextBlock said = MutedText.Of(string.Empty);
     private readonly ToolTabs.Strip<int> tabs = new() { Name = "ConsoleTabs" };
     private readonly TextBox filter = SearchBox.Of("Filter rows", "Filter rows");
@@ -96,6 +115,16 @@ public sealed class SqlConsoleView : DockPanel
                 ConnectionChosen?.Invoke(this, (shown, chosen));
             }
         };
+        commits.SelectionChanged += (_, _) =>
+        {
+            if (!showing && shown is not null && commits.SelectedIndex >= 0)
+            {
+                CommitChosen?.Invoke(this, (shown, commits.SelectedIndex == 1));
+            }
+        };
+        transaction.Name = "ConsoleTransaction";
+        commit = ToolButtons.Of(AppActions.DatabaseCommit, IconKeys.Commit, "Commit", request);
+        rollback = ToolButtons.Of(AppActions.DatabaseRollback, IconKeys.Rollback, "Roll Back", request);
         Border bar = ToolBars.OverEditor(new ToolFlow
         {
             Margin = new Thickness(Gaps.Normal, Gaps.Hair),
@@ -105,6 +134,10 @@ public sealed class SqlConsoleView : DockPanel
                 ToolButtons.Of(AppActions.DatabaseRun, IconKeys.Run, "Run Statement", request),
                 ToolButtons.Of(AppActions.DatabaseRunStop, IconKeys.Stop, "Stop Statement", request),
                 connections,
+                commits,
+                commit,
+                rollback,
+                transaction,
                 said,
             },
         });
@@ -116,12 +149,19 @@ public sealed class SqlConsoleView : DockPanel
             ? TableSort.By(table.Unsorted, by.Column, by.Descending) : grid.Table?.Unsorted;
         Border strip = ToolBars.Top(new ToolFlow { Margin = new Thickness(Gaps.Normal, 0), Spacing = Gaps.Small, Children = { tabs, filter } });
         Children.Add(bar);
+        Children.Add(marked);
         Children.Add(strip);
         Children.Add(new Border { Classes = { StyleClasses.Framed }, Child = new Panel { Children = { grid, outputPlace } } });
     }
 
     /// <summary>A connection chosen for the console shown.</summary>
     public event EventHandler<(SqlConsole Console, DatabaseSource Source)>? ConnectionChosen;
+
+    /// <summary>A commit chosen for the console shown: true for manual.</summary>
+    public event EventHandler<(SqlConsole Console, bool Manual)>? CommitChosen;
+
+    /// <summary>Shows the console again as its connections changed (one renamed or marked).</summary>
+    public void Refresh() => Follow(keepTab: true);
 
     public SqlConsole? Console => shown;
 
@@ -152,7 +192,22 @@ public sealed class SqlConsoleView : DockPanel
         {
             IReadOnlyList<DatabaseSource> listed = sources();
             connections.ItemsSource = listed;
-            connections.SelectedItem = listed.FirstOrDefault(s => s.Id == shown?.Connection);
+            DatabaseSource? source = listed.FirstOrDefault(s => s.Id == shown?.Connection);
+            connections.SelectedItem = source;
+            bool manual = shown?.Manual == true;
+            commits.SelectedIndex = manual ? 1 : 0;
+            commit.IsVisible = manual;
+            rollback.IsVisible = manual;
+            string? ended = shown?.Running == true ? Refusals.SqlRunning : shown?.InTransaction != true ? Refusals.NoTransaction : null;
+            ToolButtons.Grey(commit, ended, ActionTips.Of(commit));
+            ToolButtons.Grey(rollback, ended, ActionTips.Of(rollback));
+            transaction.IsVisible = shown?.InTransaction == true;
+            marked.Say(source?.Mark switch
+            {
+                DatabaseMark.Production => $"{ContainerSecrets.InSaid(source.Name)} is marked production: a statement that changes data or schema asks before it runs",
+                DatabaseMark.ReadOnly => Refusals.ReadOnlyConnection(ContainerSecrets.InSaid(source.Name)),
+                _ => null,
+            });
             said.Text = ContainerSecrets.InSaid(shown?.Running == true ? "Running…" : shown?.Said ?? string.Empty);
             int before = tabs.Choice;
             tabs.Clear();

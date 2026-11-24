@@ -662,6 +662,42 @@ public static class Refusals
     /// <summary>A database action while the Database window reads a connection.</summary>
     public const string DatabaseBusy = "A database operation is under way";
 
+    /// <summary>A statement, or a table's changes, that would change data or schema on a connection marked read-only.</summary>
+    public static string ReadOnlyConnection(string connection) => $"{connection} is marked read-only: nothing that changes its data or schema runs there";
+
+    /// <summary>A change asked of a table or view with no primary key, by which a row is found again to write it.</summary>
+    public static string NoPrimaryKey(string table) => $"{table} has no primary key, so none of its rows can be found again to change";
+
+    /// <summary>A table's changes reaching a row deleted since it was read: nothing of them was written.</summary>
+    public static string RowGone(string table, string key) => $"The row {key} of {table} was deleted since it was read, so nothing was written: read the table again";
+
+    /// <summary>A table's changes reaching a row changed elsewhere since it was read: nothing of them was written.</summary>
+    public static string RowChanged(string table, string key) => $"The row {key} of {table} changed since it was read, so nothing was written: read the table again";
+
+    /// <summary>A cell of a column read as true or false written with other words.</summary>
+    public static string NotTrueOrFalse(string text) => $"'{text}' is neither true nor false";
+
+    /// <summary>Submit or Revert with a table's changes all written or reverted.</summary>
+    public const string NoPendingChanges = "No changes are pending";
+
+    /// <summary>A table's Undo with no change of it to take back.</summary>
+    public const string NoPendingUndo = "No change of this table to undo";
+
+    /// <summary>A table's Redo with no change of it taken back.</summary>
+    public const string NoPendingRedo = "No change of this table to redo";
+
+    /// <summary>Delete Rows with no row chosen in a table that may change.</summary>
+    public const string NoRowChosen = "Choose a row first";
+
+    /// <summary>Commit or Rollback in a console that commits each statement as it runs.</summary>
+    public const string AutoCommits = "This console commits each statement as it runs";
+
+    /// <summary>Commit or Rollback in a console in manual commit with no transaction open.</summary>
+    public const string NoTransaction = "No transaction is open in this console";
+
+    /// <summary>A change of a console's commit, or of its connection, while its transaction is open.</summary>
+    public const string TransactionOpen = "Commit or roll back the open transaction first";
+
     /// <summary>The Migrations window, or an EF Core action, in a folder none of whose projects references EF Core.</summary>
     public const string NoEfCore = "No project here uses EF Core";
 

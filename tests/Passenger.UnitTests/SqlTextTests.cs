@@ -4,7 +4,8 @@ using Passenger.TestTables;
 namespace Passenger.UnitTests;
 
 /// <summary>A console's SQL split into what runs, as each database reads it: a semicolon inside a string, a quoted name, a
-/// comment or a dollar quote ends nothing, a routine's body is one statement, and SQL Server's GO ends a batch.</summary>
+/// comment or a dollar quote ends nothing, a routine's body is one statement, and SQL Server's GO ends a batch; and what
+/// each run does to its database, which read-only and production connections hold it to.</summary>
 public sealed class SqlTextTests
 {
     [Fact]
@@ -37,5 +38,32 @@ public sealed class SqlTextTests
             ("the last where the caret is past it", "SELECT 1;\nSELECT 2;\n\n", 20, "SELECT 2;"),
             ("none in a file of comments", "-- nothing\n/* here */", 3, null),
         }, row => Assert.Equal(row.At, SqlText.At(row.Sql, DatabaseKind.Postgres, row.Caret) is { } at ? row.Sql[at.Start..at.End] : null), row => row.Holds);
+        Cases.Each(new (string Holds, DatabaseKind Kind, string Sql, SqlEffect Effect)[]
+        {
+            ("a query reads, its keywords as names and a row lock changing nothing", DatabaseKind.Postgres,
+                "SELECT comment, t.update, x AS delete FROM t WHERE copy = 'DROP' ORDER BY load DESC FOR UPDATE", SqlEffect.Reads),
+            ("an UPDATE, DELETE or INSERT changes data, and a MySQL REPLACE() or INSERT() call does not", DatabaseKind.MySql,
+                "SELECT REPLACE(name, 'a', 'b'), INSERT(name, 1, 1, 'x') FROM t; UPDATE t SET a = 1", SqlEffect.ChangesData),
+            ("DDL and TRUNCATE change the schema", DatabaseKind.Sqlite, "CREATE TABLE t (a int); TRUNCATE t", SqlEffect.ChangesSchema),
+            ("a data-modifying CTE changes data", DatabaseKind.Postgres, "WITH gone AS (DELETE FROM t RETURNING *) SELECT * FROM gone", SqlEffect.ChangesData),
+            ("EXPLAIN reads, and runs what it ANALYZEs", DatabaseKind.Postgres, "EXPLAIN DELETE FROM t; EXPLAIN (ANALYZE, BUFFERS) SELECT 1", SqlEffect.Reads),
+            ("EXPLAIN ANALYZE of a DELETE changes data", DatabaseKind.Postgres, "EXPLAIN ANALYZE DELETE FROM t", SqlEffect.ChangesData),
+            ("a SQL Server batch's statements without semicolons, and SELECT INTO making a table", DatabaseKind.SqlServer,
+                "DECLARE @n int = 1\nIF @n > 0 SELECT a INTO copied FROM t", SqlEffect.ChangesSchema),
+            ("a SQL Server batch's UPDATE after a SELECT", DatabaseKind.SqlServer, "SELECT 1\nUPDATE t SET a = 2", SqlEffect.ChangesData),
+            ("a session's SET and a transaction's statements change nothing", DatabaseKind.Postgres, "SET search_path TO app; BEGIN; COMMIT", SqlEffect.Transaction),
+            ("MySQL's SET GLOBAL changes the server", DatabaseKind.MySql, "SET GLOBAL max_connections = 10", SqlEffect.ChangesSchema),
+            ("a statement of a kind not known may change data", DatabaseKind.Postgres, "FROBNICATE t", SqlEffect.ChangesData),
+        }, row => Assert.Equal(row.Effect, SqlText.EffectOf(row.Sql, row.Kind)), row => row.Holds);
+        Cases.Each(new (string Holds, DatabaseKind Kind, string Sql, SqlTransaction? Transaction)[]
+        {
+            ("COMMIT and its words", DatabaseKind.Postgres, "commit work;", SqlTransaction.Commit),
+            ("PostgreSQL's END commits", DatabaseKind.Postgres, "END", SqlTransaction.Commit),
+            ("SQL Server's ROLLBACK TRAN", DatabaseKind.SqlServer, "ROLLBACK TRAN", SqlTransaction.Rollback),
+            ("a ROLLBACK TO a savepoint is no rollback of the transaction", DatabaseKind.Postgres, "ROLLBACK TO SAVEPOINT a", null),
+            ("SQL Server's BEGIN opens a block, BEGIN TRAN a transaction", DatabaseKind.SqlServer, "BEGIN", null),
+            ("START TRANSACTION", DatabaseKind.MySql, "START TRANSACTION", SqlTransaction.Begin),
+            ("a COMMIT among other statements", DatabaseKind.Sqlite, "UPDATE t SET a = 1; COMMIT", null),
+        }, row => Assert.Equal(row.Transaction, SqlText.TransactionOf(row.Sql, row.Kind)), row => row.Holds);
     }
 }

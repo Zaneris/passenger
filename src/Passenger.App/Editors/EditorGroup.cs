@@ -995,6 +995,8 @@ public sealed class EditorGroup : DockPanel
         Button close = ToolButtons.Small(IconKeys.Close, "Close");
         close.Classes.Add(StyleClasses.TabClose);
         Button pin = ToolButtons.Small(IconKeys.Pin, "Unpin Tab");
+        Border production = Tags.Of("production", TokenKeys.Error);
+        Border readOnly = Tags.Of("read-only");
         Panel ends = new() { Width = 16, Height = 16, Children = { modified, close } };
         bool down = tabsPlace != EditorTabsPlace.Top;
         Border border = new() { Classes = { StyleClasses.Tab } };
@@ -1005,7 +1007,8 @@ public sealed class EditorGroup : DockPanel
                 VerticalAlignment = VerticalAlignment.Center,
                 Children =
                 {
-                    Docked(icon, Dock.Left, 0), Docked(ends, Dock.Right, 6), Docked(pin, Dock.Right, 6), Docked(name, Dock.Left, 6),
+                    Docked(icon, Dock.Left, 0), Docked(ends, Dock.Right, 6), Docked(pin, Dock.Right, 6), Docked(production, Dock.Right, 6),
+                    Docked(readOnly, Dock.Right, 6), Docked(name, Dock.Left, 6),
                 },
             }
             : new StackPanel
@@ -1013,7 +1016,7 @@ public sealed class EditorGroup : DockPanel
                 Orientation = Orientation.Horizontal,
                 Spacing = Gaps.Small,
                 VerticalAlignment = VerticalAlignment.Center,
-                Children = { icon, name, pin, ends },
+                Children = { icon, name, production, readOnly, pin, ends },
             });
         OpenDocument? Shown() => (border.DataContext as EditorTab)?.Document;
         close.Click += (_, e) =>
@@ -1041,7 +1044,10 @@ public sealed class EditorGroup : DockPanel
             ToolTip.SetTip(border, document.Tool is not null || document.DatabaseTable is not null ? document.Title
                 : document.Follows ? $"{document.Path}\n\nFollows the file chosen in the Commit window; pin the tab or edit in it to keep it" : document.Path);
             border.Classes.Set(StyleClasses.Follows, document.Follows);
-            border.Classes.Set(StyleClasses.Modified, document.IsModified);
+            border.Classes.Set(StyleClasses.Modified, document.IsModified || document.HasPending);
+            Database.DatabaseMark mark = area.MarkOf?.Invoke(document) ?? Database.DatabaseMark.None;
+            production.IsVisible = mark == Database.DatabaseMark.Production;
+            readOnly.IsVisible = mark == Database.DatabaseMark.ReadOnly;
             border.Classes.Set(StyleClasses.Active, tab.IsActive);
             border.Classes.Set(StyleClasses.Elsewhere, !IsCurrent);
             pin.IsVisible = tab.IsPinned;
@@ -1053,11 +1059,11 @@ public sealed class EditorGroup : DockPanel
             {
                 return;
             }
-            if (e.PropertyName == nameof(OpenDocument.IsModified))
+            if (e.PropertyName is nameof(OpenDocument.IsModified) or nameof(OpenDocument.HasPending))
             {
-                border.Classes.Set(StyleClasses.Modified, tab.Document.IsModified);
+                border.Classes.Set(StyleClasses.Modified, tab.Document.IsModified || tab.Document.HasPending);
             }
-            else if (e.PropertyName is nameof(OpenDocument.Path) or nameof(OpenDocument.Diff) or nameof(OpenDocument.Follows))
+            else if (e.PropertyName is nameof(OpenDocument.Path) or nameof(OpenDocument.Diff) or nameof(OpenDocument.Follows) or nameof(OpenDocument.Title))
             {
                 Paint(tab);
             }

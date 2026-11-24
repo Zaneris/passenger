@@ -91,6 +91,10 @@ public sealed class SortedTable(Table source, int by, bool descending, int[] ord
 
     public override string? DeleteTitle(int rows) => source.DeleteTitle(rows);
 
+    public override CellMark MarkOf(int row, int column) => source.MarkOf(order[row], column);
+
+    public override CellMark RowMark(int row) => source.RowMark(order[row]);
+
     public override Table Unsorted => source;
 
     public override (int Column, bool Descending)? Sort => (by, descending);

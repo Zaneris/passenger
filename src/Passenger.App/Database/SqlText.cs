@@ -1,5 +1,25 @@
 namespace Passenger.App.Database;
 
+/// <summary>What a statement does to its database, from least to most: reads, sets the session's own (or runs a
+/// batch's flow), begins or ends a transaction, changes rows (or may: a routine called, a statement of a kind not known),
+/// or changes the schema, rights or the server's settings.</summary>
+public enum SqlEffect
+{
+    Reads,
+    Session,
+    Transaction,
+    ChangesData,
+    ChangesSchema,
+}
+
+/// <summary>A transaction statement a console in manual commit takes as its own.</summary>
+public enum SqlTransaction
+{
+    Begin,
+    Commit,
+    Rollback,
+}
+
 /// <summary>SQL read as each database's lexer reads it, far enough to tell its statements apart: strings, quoted names,
 /// comments and PostgreSQL's dollar quotes are passed over whole, so a semicolon inside one ends nothing. A routine's body
 /// (CREATE PROCEDURE, FUNCTION or TRIGGER, its BEGIN … END) is one statement, and SQL Server's GO lines end batches.</summary>
@@ -264,6 +284,186 @@ public static class SqlText
             end++;
         }
         return (start == 0 || sql[start - 1] is '\n' or '\r') && (end == sql.Length || sql[end] is '\n' or '\r');
+    }
+
+    /// <summary>What a run (a statement, or SQL Server's batch) does to its database: the most any of its statements does, a
+    /// statement of a kind not known taken as changing data. A word that begins a statement counts wherever one stands
+    /// (a data-modifying CTE, a batch's statements without semicolons), but not as a name: after a dot or AS, before a comma,
+    /// FROM or an operator. EXPLAIN reads unless it ANALYZEs, which runs what it explains.</summary>
+    public static SqlEffect EffectOf(string run, DatabaseKind kind)
+    {
+        List<Token> tokens = Tokens(run, kind);
+        SqlEffect effect = SqlEffect.Reads;
+        int first = 0;
+        int blocks = 0;
+        bool routine = false;
+        for (int t = 0; t <= tokens.Count; t++)
+        {
+            if (t < tokens.Count)
+            {
+                if (t == first)
+                {
+                    blocks = 0;
+                    routine = Routine(tokens, t);
+                }
+                if (routine)
+                {
+                    blocks += Block(tokens, t);
+                }
+                if (tokens[t].Word != ";" || blocks > 0)
+                {
+                    continue;
+                }
+            }
+            if (t > first)
+            {
+                effect = (SqlEffect)Math.Max((int)effect, (int)StatementEffect(tokens, first, t, kind));
+            }
+            first = t + 1;
+        }
+        return effect;
+    }
+
+    /// <summary>The one transaction statement a run is (BEGIN, COMMIT, ROLLBACK, as each database writes them), which a
+    /// console in manual commit takes as its own; null for any other run, a partial ROLLBACK TO among them.</summary>
+    public static SqlTransaction? TransactionOf(string run, DatabaseKind kind)
+    {
+        List<Token> tokens = Tokens(run, kind);
+        while (tokens.Count > 0 && tokens[^1].Word == ";")
+        {
+            tokens.RemoveAt(tokens.Count - 1);
+        }
+        if (tokens.Count == 0 || tokens.Any(t => t.Word == ";" || t.Quoted))
+        {
+            return null;
+        }
+        string next = tokens.Count > 1 ? tokens[1].Word : string.Empty;
+        bool Rest(params string[] words) => tokens.Skip(1).All(t => words.Contains(t.Word));
+        return tokens[0].Word switch
+        {
+            "COMMIT" when Rest("WORK", "TRAN", "TRANSACTION") => SqlTransaction.Commit,
+            "END" when kind is DatabaseKind.Postgres or DatabaseKind.Sqlite && Rest("WORK", "TRANSACTION") => SqlTransaction.Commit,
+            "ROLLBACK" when Rest("WORK", "TRAN", "TRANSACTION") => SqlTransaction.Rollback,
+            "ABORT" when kind == DatabaseKind.Postgres && Rest("WORK", "TRANSACTION") => SqlTransaction.Rollback,
+            "START" when next == "TRANSACTION" => SqlTransaction.Begin,
+            "BEGIN" when kind != DatabaseKind.SqlServer || next is "TRAN" or "TRANSACTION" => SqlTransaction.Begin,
+            _ => null,
+        };
+    }
+
+    private static readonly HashSet<string> ReadingWords = ["(", "SELECT", "WITH", "VALUES", "TABLE", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "PRAGMA", "HELP"];
+
+    private static readonly HashSet<string> SessionWords =
+    [
+        "SET", "USE", "RESET", "DECLARE", "PRINT", "DISCARD", "LISTEN", "UNLISTEN", "PREPARE", "DEALLOCATE", "FETCH", "CLOSE", "OPEN",
+        "MOVE", "IF", "WHILE", "ELSE", "RETURN", "RAISERROR", "THROW", "WAITFOR", "GOTO", "BREAK", "CONTINUE",
+    ];
+
+    private static readonly HashSet<string> TransactionWords = ["BEGIN", "START", "COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE", "END", "ABORT", "SAVE", "XA"];
+
+    private static readonly HashSet<string> DataWords =
+        ["INSERT", "UPDATE", "DELETE", "MERGE", "REPLACE", "UPSERT", "COPY", "LOAD", "IMPORT", "CALL", "EXEC", "EXECUTE", "DO", "HANDLER"];
+
+    private static readonly HashSet<string> SchemaWords =
+    [
+        "CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME", "GRANT", "REVOKE", "DENY", "COMMENT", "SECURITY", "REINDEX", "CLUSTER", "VACUUM",
+        "ANALYZE", "ANALYSE", "OPTIMIZE", "REPAIR", "REFRESH", "ATTACH", "DETACH", "BACKUP", "RESTORE", "DBCC", "KILL", "SHUTDOWN", "FLUSH",
+        "PURGE", "INSTALL", "UNINSTALL", "LOCK", "UNLOCK", "CHECKPOINT", "RECONFIGURE",
+    ];
+
+    /// <summary>The words that end a name's use rather than follow a statement's first word.</summary>
+    private static readonly HashSet<string> AfterAName =
+        ["FROM", "AS", "AND", "OR", "IS", "IN", "NOT", "LIKE", "BETWEEN", "THEN", "ELSE", "END", "WHEN", "ASC", "DESC", "OVER", "COLLATE", "ESCAPE"];
+
+    /// <summary>The effect of the statement of tokens <paramref name="first"/> to <paramref name="end"/>, by its first word and
+    /// the statements standing inside it.</summary>
+    private static SqlEffect StatementEffect(List<Token> tokens, int first, int end, DatabaseKind kind)
+    {
+        Token lead = tokens[first];
+        string word = lead.Quoted ? string.Empty : lead.Word;
+        string next = first + 1 < end ? tokens[first + 1].Word : string.Empty;
+        if (DataWords.Contains(word))
+        {
+            return SqlEffect.ChangesData;
+        }
+        if (SchemaWords.Contains(word))
+        {
+            return SqlEffect.ChangesSchema;
+        }
+        SqlEffect own;
+        switch (word)
+        {
+            case "EXPLAIN" or "DESCRIBE" or "DESC":
+                int inner = first + 1;
+                bool runs = false;
+                while (inner < end && (tokens[inner].Word is "ANALYZE" or "ANALYSE" or "(" || !ReadingWords.Contains(tokens[inner].Word)
+                    && !DataWords.Contains(tokens[inner].Word) && !SchemaWords.Contains(tokens[inner].Word)))
+                {
+                    runs |= tokens[inner].Word is "ANALYZE" or "ANALYSE";
+                    inner++;
+                }
+                return runs && inner < end ? StatementEffect(tokens, inner, end, kind) : SqlEffect.Reads;
+            case "PRAGMA":
+                return tokens.Skip(first).Take(end - first).Any(t => t.Word is "=" or "OPTIMIZE" or "INCREMENTAL_VACUUM" or "WAL_CHECKPOINT") ? SqlEffect.ChangesSchema : SqlEffect.Reads;
+            case "SET" when next is "GLOBAL" or "PERSIST" or "PERSIST_ONLY":
+                return SqlEffect.ChangesSchema;
+            case "BEGIN" when kind == DatabaseKind.SqlServer && next is not ("TRAN" or "TRANSACTION" or "DISTRIBUTED"):
+                own = SqlEffect.Session;
+                break;
+            default:
+                own = ReadingWords.Contains(word) ? SqlEffect.Reads : SessionWords.Contains(word) ? SqlEffect.Session
+                    : TransactionWords.Contains(word) ? SqlEffect.Transaction : SqlEffect.ChangesData;
+                break;
+        }
+        for (int t = first + 1; t < end; t++)
+        {
+            SqlEffect? inside = StartsStatement(tokens, t, end) ? SchemaWords.Contains(tokens[t].Word) ? SqlEffect.ChangesSchema : SqlEffect.ChangesData
+                : SelectsInto(tokens, t, end);
+            own = (SqlEffect)Math.Max((int)own, (int)(inside ?? own));
+        }
+        return own;
+    }
+
+    /// <summary>What a SELECT's INTO at token <paramref name="t"/> makes: a table (SQL Server's and PostgreSQL's), or a file on
+    /// the server (MySQL's OUTFILE); null for an INSERT's INTO or one into a variable.</summary>
+    private static SqlEffect? SelectsInto(List<Token> tokens, int t, int end)
+    {
+        if (tokens[t] is not { Word: "INTO", Quoted: false } || tokens[t - 1].Word is "INSERT" or "MERGE" or "REPLACE" or "UPSERT" or "IGNORE")
+        {
+            return null;
+        }
+        string target = t + 1 < end ? tokens[t + 1].Word : string.Empty;
+        return target is "@" or ":" ? null : target is "OUTFILE" or "DUMPFILE" ? SqlEffect.ChangesData : SqlEffect.ChangesSchema;
+    }
+
+    /// <summary>Whether a word changing data or schema inside a statement begins one of its own rather than names something:
+    /// not after a dot, AS or a row lock's FOR, and followed by a name (a call's bracket only for EXEC and CALL).</summary>
+    private static bool StartsStatement(List<Token> tokens, int t, int end)
+    {
+        Token token = tokens[t];
+        if (token.Quoted || !DataWords.Contains(token.Word) && !SchemaWords.Contains(token.Word))
+        {
+            return false;
+        }
+        string before = tokens[t - 1].Quoted ? string.Empty : tokens[t - 1].Word;
+        if (before is "." or "AS" or "FOR" or "ON" or "KEY" or "," || t + 1 >= end)
+        {
+            return false;
+        }
+        Token after = tokens[t + 1];
+        if (after.Quoted)
+        {
+            return true;
+        }
+        if (after.Word == "FROM")
+        {
+            return token.Word == "DELETE";
+        }
+        if (after.Word is "(" or "@")
+        {
+            return token.Word is "EXEC" or "EXECUTE" or "CALL";
+        }
+        return after.Word.Length > 0 && (char.IsLetter(after.Word[0]) || after.Word[0] == '_') && !AfterAName.Contains(after.Word);
     }
 
     /// <summary>Whether the statement starting at token <paramref name="t"/> makes a routine, whose body's semicolons end nothing.</summary>

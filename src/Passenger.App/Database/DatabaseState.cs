@@ -14,17 +14,26 @@ public sealed record DatabaseState : IStateDocument<DatabaseState>
     /// <summary>Each console's file and the id of the connection it runs against.</summary>
     public Dictionary<string, Guid> Consoles { get; init; } = [];
 
+    /// <summary>The consoles that run in manual commit, by their files.</summary>
+    public List<string> ManualCommit { get; init; } = [];
+
+    /// <summary>The marks of connections the folder's files name, by <see cref="DatabaseSource.FoundKey"/>.</summary>
+    public Dictionary<string, DatabaseMark> FoundMarks { get; init; } = [];
+
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
 
     public DatabaseState Clamped() => this with
     {
-        Connections = [.. (Connections ?? []).Where(c => c is { Name.Length: > 0 } && Enum.IsDefined(c.Kind)).DistinctBy(c => c.Id).Take(200)],
+        Connections = [.. (Connections ?? []).Where(c => c is { Name.Length: > 0 } && Enum.IsDefined(c.Kind))
+            .Select(c => Enum.IsDefined(c.Mark) ? c : c with { Mark = DatabaseMark.None }).DistinctBy(c => c.Id).Take(200)],
         Consoles = (Consoles ?? []).Where(c => c.Key.Length > 0).Take(500).ToDictionary(),
+        ManualCommit = [.. (ManualCommit ?? []).Where(p => p is { Length: > 0 }).Distinct().Take(500)],
+        FoundMarks = (FoundMarks ?? []).Where(m => m.Key.Length > 0 && m.Value != DatabaseMark.None && Enum.IsDefined(m.Value)).Take(500).ToDictionary(),
     };
 }
 
-/// <summary>A connection made by hand, its connection string with every secret part taken out.</summary>
-public sealed record KeptConnection(Guid Id, string Name, DatabaseKind Kind, string ConnectionString)
+/// <summary>A connection made by hand, its connection string with every secret part taken out, and its mark.</summary>
+public sealed record KeptConnection(Guid Id, string Name, DatabaseKind Kind, string ConnectionString, DatabaseMark Mark = DatabaseMark.None)
 {
     /// <summary>A connection's string split in two: what may be kept in a file, and its secret parts as a connection string.</summary>
     public static (string Kept, string Secret) Split(DatabaseKind kind, string connection)

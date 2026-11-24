@@ -1,9 +1,12 @@
 using System.Data.Common;
 using System.Globalization;
+using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Database;
+using Passenger.App.Tables;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -11,7 +14,9 @@ namespace Passenger.Tests;
 
 /// <summary>The Database window against a server in a container of the test's own: its connection found in the folder's
 /// settings, its explorer down to a table's key column, a console's statement run into a grid and completion of the table's
-/// columns, each through its own driver. Skipped, naming the image, where the engine lacks it, as it is never pulled.</summary>
+/// columns, a table's changes submitted as one, a console's manual transaction rolled back and committed, and a production
+/// connection asking before an UPDATE, each through its own driver. Skipped, naming the image, where the engine lacks it,
+/// as it is never pulled.</summary>
 public sealed class DatabaseServersTests
 {
     private const string Password = "Passenger-db-7c1d";
@@ -83,6 +88,56 @@ public sealed class DatabaseServersTests
                 Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("name") && window.Assist.CompletionLabels.Contains("price"),
                     () => $"products' columns after p., where the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
                 Ui.Press(window, "ESCAPE");
+                Passenger.App.Workspace.OpenDocument sql = window.EditorArea.Active!;
+
+                // A cell written, a row deleted and one added wait as changes until Submit writes them as one.
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "products"));
+                Assert.True(window.Perform(AppActions.DatabaseOpenTable), "Open Table Data did not run");
+                Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTable is { Reading: false, Rows.RowCount: 3 }, "products' rows");
+                DatabaseTableTab data = window.EditorArea.Active!.DatabaseTable!;
+                CellGrid grid = window.GetVisualDescendants().OfType<CellGrid>().Single(g => g.Name == "DatabaseTabResults");
+                Write(window, grid, (0, 1), "green tea");
+                grid.Choose((2, 0), (2, 0));
+                Assert.True(window.Perform(AppActions.DatabaseDeleteRows), "Delete Rows did not run");
+                Assert.True(window.Perform(AppActions.DatabaseAddRow), "Add Row did not run");
+                grid.Writing!.Text = "4";
+                Ui.Press(window, "ENTER");
+                Assert.True(grid.BeginWriting(), "The added row's name could not be written");
+                grid.Writing!.Text = "water";
+                Ui.Press(window, "ENTER");
+                Assert.Equal(["tea", "coffee", "milk"], Names(kind, connection));
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => data is { Reading: false, Edits.IsEmpty: true }, () => data.Said, TimeSpan.FromMinutes(1));
+                Assert.Equal(["green tea", "coffee", "water"], Names(kind, connection));
+
+                // A console in manual commit holds its transaction until Commit or Rollback.
+                window.EditorArea.Activate(sql);
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console again");
+                window.GetVisualDescendants().OfType<ComboBox>().Single(c => c.Name == "ConsoleCommit").SelectedIndex = 1;
+                Run(window, "UPDATE products SET name = 'oolong' WHERE id = 1");
+                Assert.True(console.InTransaction, console.Said);
+                Assert.True(window.Perform(AppActions.DatabaseRollback), "Rollback did not run");
+                Ui.WaitFor(() => !console.InTransaction && !console.Running, () => console.Said);
+                Assert.Equal(["green tea", "coffee", "water"], Names(kind, connection));
+                Run(window, "UPDATE products SET name = 'oolong' WHERE id = 1");
+                Assert.True(window.Perform(AppActions.DatabaseCommit), "Commit did not run");
+                Ui.WaitFor(() => !console.InTransaction && !console.Running, () => console.Said);
+                Assert.Equal(["oolong", "coffee", "water"], Names(kind, connection));
+                window.GetVisualDescendants().OfType<ComboBox>().Single(c => c.Name == "ConsoleCommit").SelectedIndex = 0;
+
+                // A production connection asks before an UPDATE; a read-only one still reads, through the server's own read-only session.
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection));
+                Assert.True(window.Perform(AppActions.DatabaseProduction), "Production Connection did not run");
+                Replace(window, "UPDATE products SET name = 'sencha' WHERE id = 1");
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible), "the production question");
+                Ui.ClickButton(window.OwnedWindows.OfType<ConfirmDialog>().Single(d => d.IsVisible), "Run");
+                Ui.WaitFor(() => !console.Running && console.Results is [{ Statement: var ran }] && ran.StartsWith("UPDATE", StringComparison.Ordinal), () => console.Said);
+                Assert.Equal(["sencha", "coffee", "water"], Names(kind, connection));
+                Assert.True(window.Perform(AppActions.DatabaseReadOnly), "Read-Only Connection did not run");
+                Run(window, "SELECT name FROM products WHERE id = 2");
+                Assert.True(console.Results is [{ Error: null }], console.Said);
+                Assert.Equal("coffee", console.Results[0].Sets[0].Cell(0, 0));
             }
             finally
             {
@@ -93,6 +148,46 @@ public sealed class DatabaseServersTests
         {
             Docker.Remove(name);
         }
+    }
+
+    /// <summary>Writes a cell as the person does: chosen, opened for writing, its text and Enter.</summary>
+    private static void Write(MainWindow window, CellGrid grid, (int Row, int Column) cell, string text)
+    {
+        grid.Choose(cell, cell);
+        Assert.True(grid.BeginWriting(), $"The cell {cell} could not be written");
+        grid.Writing!.Text = text;
+        Ui.Press(window, "ENTER");
+    }
+
+    private static void Replace(MainWindow window, string statement)
+    {
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Select(new TextRange(0, editor.Document.Snapshot.Length));
+        window.KeyTextInput(statement);
+        Ui.Press(window, "ESCAPE");
+    }
+
+    private static void Run(MainWindow window, string statement)
+    {
+        Replace(window, statement);
+        SqlConsole console = window.EditorArea.ActiveGroup.Console!.Console!;
+        Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+        Ui.WaitFor(() => !console.Running, () => console.Said, TimeSpan.FromMinutes(1));
+    }
+
+    /// <summary>The products' names in their ids' order, read on a connection of the test's own.</summary>
+    private static string[] Names(DatabaseKind kind, string connection)
+    {
+        using DbConnection opened = Opened(kind, connection);
+        using DbCommand command = opened.CreateCommand();
+        command.CommandText = "SELECT name FROM products ORDER BY id";
+        using DbDataReader reader = command.ExecuteReader();
+        List<string> names = [];
+        while (reader.Read())
+        {
+            names.Add(reader.GetString(0));
+        }
+        return [.. names];
     }
 
     /// <summary>Whether the server takes a connection, making the shop's tables in it the first time it does.</summary>
@@ -125,15 +220,21 @@ public sealed class DatabaseServersTests
 
     private static void Execute(DatabaseKind kind, string connection, string sql)
     {
-        using DbConnection opened = kind switch
+        using DbConnection opened = Opened(kind, connection);
+        using DbCommand command = opened.CreateCommand();
+        command.CommandText = sql;
+        command.ExecuteNonQuery();
+    }
+
+    private static DbConnection Opened(DatabaseKind kind, string connection)
+    {
+        DbConnection opened = kind switch
         {
             DatabaseKind.SqlServer => new Microsoft.Data.SqlClient.SqlConnection(connection),
             DatabaseKind.Postgres => new Npgsql.NpgsqlConnection(new Npgsql.NpgsqlConnectionStringBuilder(connection) { Pooling = false }.ConnectionString),
             _ => new MySqlConnector.MySqlConnection(new MySqlConnector.MySqlConnectionStringBuilder(connection) { Pooling = false }.ConnectionString),
         };
         opened.Open();
-        using DbCommand command = opened.CreateCommand();
-        command.CommandText = sql;
-        command.ExecuteNonQuery();
+        return opened;
     }
 }

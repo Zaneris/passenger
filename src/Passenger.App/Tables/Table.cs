@@ -41,6 +41,12 @@ public abstract class Table
     /// <summary>What taking some of its rows out of the file is called, null where they cannot be.</summary>
     public virtual string? DeleteTitle(int rows) => null;
 
+    /// <summary>What a cell shows of a change not yet written: written over, in a row added or in one deleted.</summary>
+    public virtual CellMark MarkOf(int row, int column) => CellMark.None;
+
+    /// <summary>What a row's number shows of the changes not yet written in it.</summary>
+    public virtual CellMark RowMark(int row) => CellMark.None;
+
     /// <summary>A cell as a sort compares it: a number, a date, text, or nothing.</summary>
     public abstract CellValue ValueOf(int row, int column);
 
@@ -61,6 +67,15 @@ public abstract class Table
         }
         return new string(name[at..]);
     }
+}
+
+/// <summary>What a cell or a row shows of a change not yet written.</summary>
+public enum CellMark
+{
+    None,
+    Changed,
+    Added,
+    Deleted,
 }
 
 /// <summary>What a cell holds, as a sort compares it.</summary>

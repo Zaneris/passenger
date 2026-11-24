@@ -195,6 +195,18 @@ public static class AppActions
     public const string DatabaseConsole = "app.database.console";
     public const string DatabaseRun = "app.database.run";
     public const string DatabaseRunStop = "app.database.runStop";
+    // A console's transaction in manual commit: Rider's Console.Transaction.Commit, IntelliJ IDEA's Ctrl+Alt+Shift+Enter.
+    public const string DatabaseCommit = "app.database.commit";
+    public const string DatabaseRollback = "app.database.rollback";
+    // A table's changes not yet written: Submit on Run Statement's keys, Add Row on Generate's, Delete Rows on Delete Line's
+    // and Revert on Rollback's, as Rider's data grid takes them (KeysIn).
+    public const string DatabaseSubmit = "app.database.submit";
+    public const string DatabaseRevert = "app.database.revert";
+    public const string DatabaseAddRow = "app.database.addRow";
+    public const string DatabaseDeleteRows = "app.database.deleteRows";
+    // A connection marked read-only or production: no key of Rider's.
+    public const string DatabaseReadOnly = "app.database.readOnly";
+    public const string DatabaseProduction = "app.database.production";
     public const string MigrationsRefresh = "app.migrations.refresh";
     public const string AddMigration = "app.migrations.add";
     public const string RemoveLastMigration = "app.migrations.removeLast";
@@ -753,7 +765,7 @@ public static class AppActions
     /// Show Diff and Compare Files Duplicate's (none in VS Code's, nor Emacs's), Add to Watches Complete Statement's (VS Code's
     /// Start New Line Before's), Focus Editor a tool window's Escape; outside Visual Studio's, New Item Generate's and Edit
     /// Breakpoint View Breakpoints', IntelliJ IDEA's Rerun on the Mac Replace's, a SQL file's Run Statement Start New Line
-    /// Before's (Visual Studio's) or Start New Line's (VS Code's). The action's own once the person gives it some.</summary>
+    /// Before's or Start New Line's, a table's data grid's as their ids say. The action's own once the person gives it some.</summary>
     public static string KeysIn(string id) => UserShortcuts.ContainsKey(id) ? id : id switch
     {
         ShowDiff or CompareFiles when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => EditorActions.Duplicate,
@@ -763,6 +775,10 @@ public static class AppActions
         EditBreakpoint when Preset != KeymapPreset.VisualStudio => ViewBreakpoints,
         DatabaseRun when Preset == KeymapPreset.VisualStudio => EditorActions.StartNewLineBefore,
         DatabaseRun when Preset == KeymapPreset.VSCode => EditorActions.StartNewLine,
+        DatabaseSubmit => KeysIn(DatabaseRun),
+        DatabaseAddRow => Generate,
+        DatabaseDeleteRows => EditorActions.DeleteLine,
+        DatabaseRevert => RollbackLines,
         Rerun when Preset == KeymapPreset.IntelliJ && OperatingSystem.IsMacOS() => Replace,
         NextOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: true),
         PreviousOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: false),
@@ -1397,6 +1413,7 @@ public static class AppActions
             // Cmd+Q, Exit's here, is the application menu's Quit, as in the other keymaps.
             return keymap
                 .Bind(DatabaseRun, "meta ENTER")
+                .Bind(DatabaseCommit, "meta alt shift ENTER")
                 .Bind(OpenSolution, "control shift O")
                 .Bind(NextProjectWindow, "meta alt BACK_QUOTE")
                 .Bind(PreviousProjectWindow, "meta alt shift BACK_QUOTE")
@@ -1585,6 +1602,7 @@ public static class AppActions
             .Bind(RefactorThis, "control alt shift T")
             .Bind(Generate, "alt INSERT")
             .Bind(DatabaseRun, "control ENTER")
+            .Bind(DatabaseCommit, "control alt shift ENTER")
             .Bind(ExtractMethod, "control alt M")
             .Bind(IntroduceVariable, "control alt V")
             .Bind(Inline, "control alt N")

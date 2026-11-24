@@ -115,23 +115,62 @@ public sealed class DatabaseTests
                 Ui.Click(Tab<Button>(window, "DatabaseClearFilter"));
                 Ui.WaitFor(() => Data(window)?.Rows?.RowCount == 100, "Products unfiltered");
             });
-            Flow.Step("a cell is written only once asked, and a row changed since it was read is refused", () =>
+            Flow.Step("cells written, rows added and deleted wait as changes, Undo and Redo stepping through them, until Submit writes them as one", () =>
             {
                 CellGrid grid = Tab<CellGrid>(window, "DatabaseTabResults");
-                grid.Choose((0, 1), (0, 1));
-                Assert.True(grid.BeginWriting());
-                grid.Writing!.Text = "New product";
+                DatabaseTableTab data = Data(window)!;
+                Write(window, grid, (0, 1), "New product");
+                Write(window, grid, (1, 2), "a note");
+                Assert.Equal(CellMark.Changed, data.Shown!.MarkOf(0, 1));
+                Assert.Equal("Product 1", Scalar(folder, "SELECT Name FROM Products WHERE Id=1"));
+                Assert.True(data.Document.HasPending, "A table with changes not written shows no mark on its tab");
+                grid.Choose((3, 0), (3, 0));
+                Assert.True(window.Perform(AppActions.DatabaseDeleteRows), "Delete Rows did not run");
+                Assert.Equal(CellMark.Deleted, data.Shown.RowMark(3));
+                Assert.True(window.Perform(AppActions.DatabaseAddRow), "Add Row did not run");
+                Assert.NotNull(grid.Writing);
+                grid.Writing!.Text = "500";
                 Ui.Press(window, "ENTER");
-                Ui.ClickButton(Question(window), "Write");
-                Ui.WaitFor(() => Data(window)?.Rows?.Cell(0, 1) == "New product", "the written cell read again");
+                Assert.True(grid.BeginWriting(), "The added row's next cell could not be written");
+                grid.Writing!.Text = "Added";
+                Ui.Press(window, "ENTER");
+                Assert.Equal(CellMark.Added, data.Shown.RowMark(100));
+                Assert.Equal("Added", data.Shown.Cell(100, 1));
+                Assert.True(window.Perform(Passenger.Editor.EditorActions.Undo), "Undo did not run in the table");
+                Assert.Equal(string.Empty, data.Shown.Cell(100, 1));
+                Assert.True(window.Perform(Passenger.Editor.EditorActions.Redo), "Redo did not run in the table");
+                Assert.Equal("Added", data.Shown.Cell(100, 1));
+                Assert.True(window.Perform(AppActions.DatabaseRevert), "Revert did not run");
+                Assert.True(data.Edits.IsEmpty);
+                Assert.True(window.Perform(Passenger.Editor.EditorActions.Undo), "Undo did not take back the revert");
+                Assert.Equal("2 rows changed, 1 row deleted, 1 row added pending", data.Edits.Said);
+                Assert.Equal("Product 1", Scalar(folder, "SELECT Name FROM Products WHERE Id=1"));
+                grid.Focus();
+                Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.KeysIn(AppActions.DatabaseSubmit))[0].First.Notation());
+                Ui.WaitFor(() => data.Edits.IsEmpty && !data.Reading, () => data.Said);
+                Assert.Equal(100, data.Rows?.RowCount);
+                Assert.False(data.Document.HasPending);
+                Assert.Equal("New product", Scalar(folder, "SELECT Name FROM Products WHERE Id=1"));
+                Assert.Equal("a note", Scalar(folder, "SELECT Note FROM Products WHERE Id=2"));
+                Assert.Null(Scalar(folder, "SELECT Name FROM Products WHERE Id=4"));
+                Assert.Equal("Added", Scalar(folder, "SELECT Name FROM Products WHERE Id=500"));
+            });
+            Flow.Step("a row changed elsewhere since it was read refuses the changes, none written, and the tab asks before it closes with them", () =>
+            {
+                CellGrid grid = Tab<CellGrid>(window, "DatabaseTabResults");
+                DatabaseTableTab data = Data(window)!;
+                Write(window, grid, (1, 1), "Not this either");
+                Write(window, grid, (0, 1), "Must not overwrite");
                 Sql(folder, "UPDATE Products SET Name='Changed elsewhere' WHERE Id=1");
-                grid.Choose((0, 1), (0, 1));
-                Assert.True(grid.BeginWriting());
-                grid.Writing!.Text = "Must not overwrite";
-                Ui.Press(window, "ENTER");
-                Ui.ClickButton(Question(window), "Write");
-                Ui.WaitFor(() => Tab<TextBlock>(window, "DatabaseTabStatus").Text?.Contains("row changed", StringComparison.Ordinal) == true, "the stale row refused");
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => Tab<TextBlock>(window, "DatabaseTabStatus").Text?.Contains("changed since it was read", StringComparison.Ordinal) == true, () => data.Said);
                 Assert.Equal("Changed elsewhere", Scalar(folder, "SELECT Name FROM Products WHERE Id=1"));
+                Assert.Equal("Product 2", Scalar(folder, "SELECT Name FROM Products WHERE Id=2"));
+                Assert.False(data.Edits.IsEmpty, "The changes refused were dropped");
+                Assert.False(window.EditorArea.CloseTab(window.EditorArea.ActiveGroup, data.Document), "The tab closed with changes not written");
+                Ui.ClickButton(Question(window), "Discard");
+                Ui.WaitFor(() => window.EditorArea.Groups.SelectMany(g => g.Tabs).All(t => t.Document.DatabaseTable is null), "the table's tab closed");
+                Assert.Equal("Product 2", Scalar(folder, "SELECT Name FROM Products WHERE Id=2"));
             });
             Flow.Step("a connection's console runs the statement at the caret on Run Statement's keys, its rows in a grid under it", () =>
             {
@@ -188,6 +227,69 @@ public sealed class DatabaseTests
                 Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Orders"), () => $"the tables, where the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
                 Ui.Press(window, "ESCAPE");
             });
+            Flow.Step("a console in manual commit holds its transaction across statements until Commit or Rollback, and asks before it closes with one open", () =>
+            {
+                SqlConsole sql = window.EditorArea.ActiveGroup.Console!.Console!;
+                Tab<ComboBox>(window, "ConsoleCommit").SelectedIndex = 1;
+                Assert.True(sql.Manual, "Manual commit was not taken");
+                Run(window, "UPDATE Products SET Note='held' WHERE Id=2");
+                Assert.True(sql.InTransaction, sql.Said);
+                Assert.True(Tab<Border>(window, "ConsoleTransaction").IsVisible, "The console does not show its transaction open");
+                Assert.Equal("a note", Scalar(folder, "SELECT Note FROM Products WHERE Id=2"));
+                Assert.True(window.Perform(AppActions.DatabaseRollback), "Rollback did not run");
+                Ui.WaitFor(() => !sql.InTransaction && !sql.Running, () => sql.Said);
+                Run(window, "SELECT Note FROM Products WHERE Id=2");
+                Assert.Equal("a note", sql.Results[0].Sets[0].Cell(0, 0));
+                Run(window, "UPDATE Products SET Note='held' WHERE Id=2");
+                Run(window, "COMMIT");
+                Assert.False(sql.InTransaction, $"COMMIT run in the console left its transaction open: {sql.Said}");
+                Assert.Equal("held", Scalar(folder, "SELECT Note FROM Products WHERE Id=2"));
+                Run(window, "UPDATE Products SET Note='kept' WHERE Id=2");
+                Passenger.App.Workspace.OpenDocument console = window.EditorArea.Active!;
+                Assert.False(window.EditorArea.CloseTab(window.EditorArea.ActiveGroup, console), "The console closed with its transaction open");
+                Ui.ClickButton(Question(window), "Commit");
+                Ui.WaitFor(() => window.EditorArea.Active != console, "the console closed once committed");
+                Assert.Equal("kept", Scalar(folder, "SELECT Note FROM Products WHERE Id=2"));
+            });
+            Flow.Step("a connection marked production asks before a statement that changes data, and one marked read-only refuses it", () =>
+            {
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
+                Assert.True(window.Perform(AppActions.DatabaseProduction), "Production Connection did not run");
+                Assert.Equal(DatabaseMark.Production, window.Database.Sources.Single(s => s.Name == "Shop").Mark);
+                Assert.Equal(DatabaseMark.Production, Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop").Mark);
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console is not null, "Shop's console");
+                Assert.Equal(DatabaseMark.Production, window.EditorArea.MarkOf!(window.EditorArea.Active!));
+                Assert.Contains("production", Tab<Banner>(window, "ConsoleMark").Said, StringComparison.Ordinal);
+                Tab<ComboBox>(window, "ConsoleCommit").SelectedIndex = 0;
+                SqlConsole sql = window.EditorArea.ActiveGroup.Console!.Console!;
+                Run(window, "SELECT COUNT(*) FROM Products");
+                Assert.DoesNotContain(window.OwnedWindows.OfType<ConfirmDialog>(), d => d.IsVisible);
+                Replace(window, "UPDATE Products SET Note='production' WHERE Id=2");
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                Ui.ClickButton(Confirm(window), "Cancel");
+                Ui.WaitFor(() => sql.Said == "Not run.", () => sql.Said);
+                Assert.Equal("kept", Scalar(folder, "SELECT Note FROM Products WHERE Id=2"));
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                Ui.ClickButton(Confirm(window), "Run");
+                Ui.WaitFor(() => !sql.Running && sql.Results is [{ Error: null } ran] && ran.Statement.StartsWith("UPDATE", StringComparison.Ordinal), () => sql.Said);
+                Assert.Equal("production", Scalar(folder, "SELECT Note FROM Products WHERE Id=2"));
+                Assert.True(window.Perform(AppActions.DatabaseReadOnly), "Read-Only Connection did not run");
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                Assert.Equal(Refusals.ReadOnlyConnection("Shop"), sql.Said);
+                Assert.DoesNotContain(window.OwnedWindows.OfType<ConfirmDialog>(), d => d.IsVisible);
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Title == "Products"));
+                Assert.True(window.Perform(AppActions.DatabaseOpenTable), "Open Table Data did not run");
+                Ui.WaitFor(() => Data(window) is { Reading: false, Rows.RowCount: 100 }, "Products read-only");
+                CellGrid grid = Tab<CellGrid>(window, "DatabaseTabResults");
+                grid.Choose((0, 1), (0, 1));
+                Assert.False(grid.BeginWriting(), "A cell of a read-only connection's table opened for writing");
+                Assert.Equal(Refusals.ReadOnlyConnection("Shop"), Tab<TextBlock>(window, "DatabaseTabStatus").Text);
+                Assert.Equal(Refusals.ReadOnlyConnection("Shop"), window.Actions.Run(AppActions.DatabaseAddRow));
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
+                Assert.True(window.Perform(AppActions.DatabaseProduction), "Production Connection did not run");
+                Assert.Equal(DatabaseMark.Production, window.Database.Sources.Single(s => s.Name == "Shop").Mark);
+            });
             Flow.Step("a connection made by hand is kept for the folder, its password in the credential store and never in the state", () =>
             {
                 Assert.True(window.Perform(AppActions.DatabaseAdd), "New Database Connection did not run");
@@ -224,6 +326,9 @@ public sealed class DatabaseTests
                 Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
                 Assert.Equal("Reports", window.Database.Sources[0].Name);
                 Assert.True(window.Database.Sources[0].SecretKept);
+                Ui.WaitFor(() => !window.Database.Busy && window.Database.Sources.Any(s => s.Name == "Shop"),
+                    () => $"{window.Database.Said} [{string.Join(", ", window.Database.Sources.Select(s => s.Name))}] of {window.Session.Projects.Count} projects");
+                Assert.Equal(DatabaseMark.Production, window.Database.Sources.Single(s => s.Name == "Shop").Mark);
             });
         }
         finally
@@ -261,6 +366,39 @@ public sealed class DatabaseTests
         Explorer(window).Choose(node);
         Ui.Await(Explorer(window).ToggleAsync(node), $"{title} to open");
         Assert.True(node.IsExpanded, $"{title} did not open: {window.Database.Said}");
+    }
+
+    /// <summary>Writes a cell as the person does: chosen, opened for writing, its text and Enter.</summary>
+    private static void Write(MainWindow window, CellGrid grid, (int Row, int Column) cell, string text)
+    {
+        grid.Choose(cell, cell);
+        Assert.True(grid.BeginWriting(), $"The cell {cell} could not be written");
+        grid.Writing!.Text = text;
+        Ui.Press(window, "ENTER");
+    }
+
+    /// <summary>The console's text replaced by one statement, the caret after it.</summary>
+    private static void Replace(MainWindow window, string statement)
+    {
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Select(new TextRange(0, editor.Document.Snapshot.Length));
+        window.KeyTextInput(statement);
+        Ui.Press(window, "ESCAPE");
+    }
+
+    /// <summary>Runs one statement in the console shown, waiting for what it came to.</summary>
+    private static void Run(MainWindow window, string statement)
+    {
+        Replace(window, statement);
+        SqlConsole sql = window.EditorArea.ActiveGroup.Console!.Console!;
+        Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+        Ui.WaitFor(() => !sql.Running, () => sql.Said);
+    }
+
+    private static ConfirmDialog Confirm(MainWindow window)
+    {
+        Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible), () => window.Database.Said);
+        return window.OwnedWindows.OfType<ConfirmDialog>().Single(d => d.IsVisible);
     }
 
     private static ChoiceDialog Question(MainWindow window)

@@ -42,6 +42,20 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
     {
         UiThread.Check();
         lifetime.Cancel();
+        foreach (SqlConsole console in consoles.Values)
+        {
+            LetGo(console);
+        }
+    }
+
+    /// <summary>Closes a console's held connection, an open transaction rolled back as it closes.</summary>
+    private static void LetGo(SqlConsole console)
+    {
+        if (console.Session is { } session)
+        {
+            console.Session = null;
+            UnawaitedWork.Dismiss(BackgroundWork.Run(async () => await session.DisposeAsync()));
+        }
     }
 
     public void Bind(ProjectSession next)
@@ -57,6 +71,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         foreach (SqlConsole console in consoles.Values)
         {
             console.Stop();
+            LetGo(console);
         }
         consoles.Clear();
         Discovered = false;
@@ -78,11 +93,21 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             Id = connection.Id,
             ConnectionString = connection.ConnectionString,
             SecretKept = true,
+            Mark = connection.Mark,
         }));
         foreach ((string path, Guid id) in state.Value.Consoles)
         {
             consoles.TryAdd(path, new SqlConsole(path) { Connection = id });
         }
+        foreach (string path in state.Value.ManualCommit)
+        {
+            if (!consoles.TryGetValue(path, out SqlConsole? console))
+            {
+                console = consoles[path] = new SqlConsole(path);
+            }
+            console.Manual = true;
+        }
+        found = [.. found.Select(Marked)];
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -138,6 +163,17 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
     public async Task<bool> RunAsync(SqlConsole console, DatabaseSource source, IReadOnlyList<string> runs)
     {
         UiThread.Check();
+        if (console.Manual && runs is [string alone] && SqlText.TransactionOf(alone, source.Kind) is { } transaction)
+        {
+            // Manual commit's transaction is the console's own: its COMMIT and ROLLBACK end it, and its BEGIN has nothing to open.
+            if (transaction == SqlTransaction.Begin || !console.InTransaction)
+            {
+                console.Ran(console.Results, console.InTransaction ? "A transaction is open already." : Refusals.NoTransaction);
+                return true;
+            }
+            await EndTransactionAsync(console, transaction == SqlTransaction.Commit);
+            return true;
+        }
         if (console.Running || work.Begin(AppActions.DatabaseRun, $"Running on {source.Name}…") is not { } started)
         {
             return false;
@@ -151,14 +187,31 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         string said;
         try
         {
-            await BackgroundWork.Run(() => DatabaseClient.RunAsync(source, runs, SqlConsole.RowLimit, result =>
+            Action<SqlResult> told = result =>
             {
                 lock (results)
                 {
                     results.Add(result);
                 }
-            }, stop.Token), stop.Token);
+            };
+            if (console.Manual)
+            {
+                if (console.Session is { } held && held.Source.Id != source.Id)
+                {
+                    LetGo(console);
+                }
+                SqlSession session = console.Session ??= await BackgroundWork.Run(() => SqlSession.OpenAsync(source, stop.Token), stop.Token);
+                await BackgroundWork.Run(() => session.RunAsync(runs, SqlConsole.RowLimit, told, stop.Token), stop.Token);
+            }
+            else
+            {
+                await BackgroundWork.Run(() => DatabaseClient.RunAsync(source, runs, SqlConsole.RowLimit, told, stop.Token), stop.Token);
+            }
             said = SqlConsole.Summary(results, System.Diagnostics.Stopwatch.GetElapsedTime(began));
+            if (console.Session is { InTransaction: true } open)
+            {
+                said += $" · transaction open: {Plural.Of(open.Statements, "statement")}, {Plural.Of(open.Changed, "row")} changed";
+            }
             connected.Add(source.Id);
             working.Tell(results is not [.., { Error: not null }], said);
         }
@@ -192,9 +245,103 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         }
         kept.Set((kept.Value with
         {
-            Connections = [.. made.Select(source => new KeptConnection(source.Id, source.Name, source.Kind, source.ConnectionString))],
+            Connections = [.. made.Select(source => new KeptConnection(source.Id, source.Name, source.Kind, source.ConnectionString, source.Mark))],
             Consoles = consoles.Values.Where(c => c.Connection is { } id && made.Any(m => m.Id == id)).ToDictionary(c => c.Path, c => c.Connection!.Value),
+            ManualCommit = [.. consoles.Values.Where(c => c.Manual).Select(c => c.Path)],
+            FoundMarks = new Dictionary<string, DatabaseMark>(kept.Value.FoundMarks.Where(m => !found.Any(f => f.FoundKey == m.Key))
+                .Concat(found.Where(f => f.Mark != DatabaseMark.None).Select(f => KeyValuePair.Create(f.FoundKey, f.Mark)))),
         }).Clamped());
+    }
+
+    /// <summary>A found connection with the mark kept for it.</summary>
+    private DatabaseSource Marked(DatabaseSource source) =>
+        source with { Mark = kept?.Value.FoundMarks.GetValueOrDefault(source.FoundKey) ?? DatabaseMark.None };
+
+    /// <summary>Marks a connection read-only, production or neither, kept for the folder, found or made by hand.</summary>
+    public void SetMark(DatabaseSource source, DatabaseMark mark)
+    {
+        UiThread.Check();
+        int at = made.FindIndex(s => s.Id == source.Id);
+        if (at >= 0)
+        {
+            made[at] = made[at] with { Mark = mark };
+        }
+        else
+        {
+            found = [.. found.Select(s => s.Id == source.Id ? s with { Mark = mark } : s)];
+        }
+        Keep();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Whether a connection's consoles hold a transaction open.</summary>
+    public bool InTransaction(DatabaseSource source) => consoles.Values.Any(c => c.Connection == source.Id && c.InTransaction);
+
+    /// <summary>Has a console run in manual commit, its statements in a transaction until Commit or Rollback, or commit
+    /// each as it runs; refused while its transaction is open.</summary>
+    public string? SetManual(SqlConsole console, bool manual)
+    {
+        UiThread.Check();
+        if (console.Manual == manual)
+        {
+            return null;
+        }
+        if (console.InTransaction || console.Running)
+        {
+            console.Raise();
+            return console.Running ? Refusals.SqlRunning : Refusals.TransactionOpen;
+        }
+        console.Manual = manual;
+        if (!manual)
+        {
+            LetGo(console);
+        }
+        Keep();
+        console.Raise();
+        return null;
+    }
+
+    /// <summary>Commits a console's open transaction, or rolls it back, under a <see cref="Working"/> of its own.</summary>
+    public async Task EndTransactionAsync(SqlConsole console, bool commit)
+    {
+        UiThread.Check();
+        string action = commit ? AppActions.DatabaseCommit : AppActions.DatabaseRollback;
+        if (console.Session is not { InTransaction: true } session || console.Running || work.Begin(action, commit ? "Committing…" : "Rolling back…") is not { } started)
+        {
+            return;
+        }
+        using Working working = started;
+        console.Run(working);
+        string said;
+        try
+        {
+            int statements = session.Statements;
+            int changed = session.Changed;
+            await BackgroundWork.Run(() => session.EndAsync(commit, lifetime.Token), lifetime.Token);
+            said = $"{(commit ? "Committed" : "Rolled back")}: {Plural.Of(statements, "statement")}, {Plural.Of(changed, "row")} changed.";
+            working.Tell(true, said);
+        }
+        catch (Exception error) when (error is DbException or InvalidOperationException or IOException or OperationCanceledException or TimeoutException
+            or System.Net.Sockets.SocketException)
+        {
+            said = ContainerSecrets.InSaid(error.Message, known: [session.Source.ConnectionString]);
+            IdeErrors.Write($"Database {(commit ? "commit" : "rollback")} failed: {said}");
+            working.Tell(false, said);
+            LetGo(console);
+        }
+        catalogs.Remove(session.Source.Id);
+        console.Ran(console.Results, said);
+        say(said);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Lets go of a console as its tab closes: its connection closed, a transaction left open rolled back.</summary>
+    public void Close(SqlConsole console)
+    {
+        UiThread.Check();
+        console.Stop();
+        LetGo(console);
+        console.Raise();
     }
 
     /// <summary>Adds a connection made by hand, kept for the folder, its secrets in the system's store.</summary>
@@ -291,7 +438,8 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         IReadOnlyList<DatabaseSource> read = await DatabaseDiscovery.ReadAsync(session, cancel);
         cancel.ThrowIfCancellationRequested();
         found = [.. read.Where(s => !made.Any(m => m.Kind == s.Kind && m.ConnectionString == s.ConnectionString))
-            .Select(s => before.FirstOrDefault(old => old.Name == s.Name && old.Kind == s.Kind && old.ConnectionString == s.ConnectionString) is { } old ? s with { Id = old.Id } : s)];
+            .Select(s => before.FirstOrDefault(old => old.Name == s.Name && old.Kind == s.Kind && old.ConnectionString == s.ConnectionString) is { } old ? s with { Id = old.Id } : s)
+            .Select(Marked)];
         connected.RemoveWhere(id => Find(id) is null);
         catalogs.Clear();
         Discovered = true;

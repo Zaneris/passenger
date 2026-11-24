@@ -172,7 +172,13 @@ public sealed class OpenDocument : Observable
         return document;
     }
 
+    /// <summary>Its title or its tab's mark changed: a table's connection renamed or marked, a console's connection marked.</summary>
     internal void DatabaseTitleChanged() => Raise(nameof(Title));
+
+    /// <summary>Whether its tab holds changes not yet written anywhere but in it: a table's not yet submitted.</summary>
+    public bool HasPending => DatabaseTable is { Edits.IsEmpty: false };
+
+    internal void PendingChanged() => Raise(nameof(HasPending));
 
     /// <summary>What Save saves with this tab shown: the file, or the open file a diff's tab edits (itself where it edits none).</summary>
     public OpenDocument Saves => Diff?.Shown.File ?? this;

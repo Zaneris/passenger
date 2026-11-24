@@ -16,8 +16,10 @@ internal static class DatabaseClient
 {
     internal const int PageSize = 100;
 
-    /// <summary>Opens a connection, its secret parts read from the system's store where they are kept there.</summary>
-    private static async Task<DbConnection> OpenAsync(DatabaseSource source, CancellationToken cancel)
+    /// <summary>Opens a connection, its secret parts read from the system's store where they are kept there. A read-only
+    /// connection is one the server holds read-only too where it can: SQLite's file opened read-only, PostgreSQL's and
+    /// MySQL's sessions' transactions read-only.</summary>
+    internal static async Task<DbConnection> OpenAsync(DatabaseSource source, CancellationToken cancel)
     {
         string whole = source.ConnectionString;
         if (source.SecretKept && SystemCredentials.Read(DatabaseController.CredentialService, source.Account) is { Length: > 0 } secret)
@@ -29,10 +31,16 @@ internal static class DatabaseClient
             }
             whole = KeptConnection.Joined(source.Kind, whole, secret);
         }
+        bool readOnly = source.Mark == DatabaseMark.ReadOnly;
+        NpgsqlConnectionStringBuilder? postgres = source.Kind == DatabaseKind.Postgres ? new NpgsqlConnectionStringBuilder(whole) { Pooling = false } : null;
+        if (postgres is not null && readOnly)
+        {
+            postgres.Options = $"{postgres.Options} -c default_transaction_read_only=on".Trim();
+        }
         DbConnection connection = source.Kind switch
         {
-            DatabaseKind.Sqlite => new SqliteConnection(new SqliteConnectionStringBuilder(whole) { Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ConnectionString),
-            DatabaseKind.Postgres => new NpgsqlConnection(new NpgsqlConnectionStringBuilder(whole) { Pooling = false }.ConnectionString),
+            DatabaseKind.Sqlite => new SqliteConnection(new SqliteConnectionStringBuilder(whole) { Mode = readOnly ? SqliteOpenMode.ReadOnly : SqliteOpenMode.ReadWrite, Pooling = false }.ConnectionString),
+            DatabaseKind.Postgres => new NpgsqlConnection(postgres!.ConnectionString),
             DatabaseKind.SqlServer => new SqlConnection(new SqlConnectionStringBuilder(whole) { Pooling = false }.ConnectionString),
             DatabaseKind.MySql => new MySqlConnection(new MySqlConnectionStringBuilder(whole) { Pooling = false }.ConnectionString),
             _ => throw new InvalidOperationException("Unknown database provider"),
@@ -40,6 +48,12 @@ internal static class DatabaseClient
         try
         {
             await connection.OpenAsync(cancel);
+            if (readOnly && source.Kind == DatabaseKind.MySql)
+            {
+                await using DbCommand command = connection.CreateCommand();
+                command.CommandText = "SET SESSION TRANSACTION READ ONLY";
+                await command.ExecuteNonQueryAsync(cancel);
+            }
             return connection;
         }
         catch (Exception)
@@ -258,6 +272,14 @@ internal static class DatabaseClient
     internal static async Task RunAsync(DatabaseSource source, IReadOnlyList<string> runs, int limit, Action<SqlResult> told, CancellationToken cancel)
     {
         await using DbConnection connection = await OpenAsync(source, cancel);
+        await RunOnAsync(source, connection, null, runs, limit, told, cancel);
+    }
+
+    /// <summary>Runs each of <paramref name="runs"/> in turn on a connection held open, in its <paramref name="transaction"/>
+    /// where it has one, as <see cref="RunAsync"/> does; false where one failed.</summary>
+    internal static async Task<bool> RunOnAsync(DatabaseSource source, DbConnection connection, DbTransaction? transaction, IReadOnlyList<string> runs, int limit,
+        Action<SqlResult> told, CancellationToken cancel)
+    {
         foreach (string run in runs)
         {
             long began = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -266,6 +288,7 @@ internal static class DatabaseClient
             {
                 await using DbCommand command = connection.CreateCommand();
                 command.CommandText = run;
+                command.Transaction = transaction;
                 command.CommandTimeout = 0;
                 using CancellationTokenRegistration interrupt = Interrupt(connection, cancel);
                 int affected;
@@ -281,9 +304,12 @@ internal static class DatabaseClient
                             sets.Add(rows);
                             if (rows.More)
                             {
-                                // What is left of a long result is never read: the server stops sending it.
+                                // The rest of a long result is cancelled unread, but passed over in PostgreSQL's transaction, which a cancel ends.
                                 cut = true;
-                                command.Cancel();
+                                if (transaction is null || source.Kind != DatabaseKind.Postgres)
+                                {
+                                    command.Cancel();
+                                }
                                 break;
                             }
                         }
@@ -300,50 +326,143 @@ internal static class DatabaseClient
             catch (DbException failed) when (!cancel.IsCancellationRequested)
             {
                 told(new SqlResult(run, sets, -1, ContainerSecrets.InSaid(failed.Message, known: [source.ConnectionString]), System.Diagnostics.Stopwatch.GetElapsedTime(began)));
-                return;
+                return false;
             }
         }
+        return true;
     }
 
-    internal static async Task UpdateAsync(DatabaseSource source, DatabaseRows rows, int row, int column, string text, CancellationToken cancel)
+    /// <summary>Writes a table's changes in one transaction: each row deleted or changed found by its primary key, locked,
+    /// and refused where it no longer holds what was read (deleted or changed elsewhere since), then each row added; nothing
+    /// is written unless all of it is. The text written in a cell is read by the server as it reads a value of its column's
+    /// type, or converted to the type its column was read as.</summary>
+    internal static async Task SubmitAsync(DatabaseSource source, DatabaseSchema schema, DatabaseRows page, PendingEdits edits, CancellationToken cancel)
     {
-        if (!rows.IsEditable(row, column) || rows.Schema is not { } schema)
+        string[] columns = page.Columns;
+        string[] keys = [.. schema.Columns.Where(c => c.Primary).Select(c => c.Name)];
+        if (keys.Length == 0 && !(edits.Changed.IsEmpty && edits.Deleted.IsEmpty))
         {
-            throw new InvalidOperationException("Only a table with a primary key has editable cells");
+            throw new InvalidOperationException(Refusals.NoPrimaryKey(schema.Table.ToString()));
         }
-        object? original = rows.Rows[row][column];
-        object? value = text == "NULL" ? null : original is null or string ? text
-            : Convert.ChangeType(text, original.GetType(), CultureInfo.InvariantCulture);
-        if (value is null && schema.Columns.First(c => c.Name == rows.Columns[column]) is { Nullable: false })
-        {
-            throw new InvalidOperationException("This column cannot hold NULL");
-        }
+        string table = Full(source.Kind, schema.Table);
         await using DbConnection connection = await OpenAsync(source, cancel);
         await using DbTransaction transaction = await connection.BeginTransactionAsync(cancel);
-        await using DbCommand command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandTimeout = 30;
-        Add(command, "@value", value);
-        List<string> where = [];
-        for (int i = 0; i < rows.Columns.Length; i++)
+        using CancellationTokenRegistration interrupt = Interrupt(connection, cancel);
+        foreach ((RowKey key, object?[] read) in edits.Deleted)
         {
-            // The original values refuse a concurrent change instead of overwriting it.
-            if (schema.Columns.First(c => c.Name == rows.Columns[i]) is { Generated: true, Primary: false })
-            {
-                continue;
-            }
-            string name = Quote(source.Kind, rows.Columns[i]);
-            string parameter = $"@old{i}";
-            where.Add(rows.Rows[row][i] is null ? $"{name} IS NULL" : $"{name}={parameter}");
-            Add(command, parameter, rows.Rows[row][i]);
+            await HeldAsync(key, read);
+            await WriteAsync($"DELETE FROM {table} WHERE {Where(keys)}", key, []);
         }
-        command.CommandText = $"UPDATE {Full(source.Kind, schema.Table)} SET {Quote(source.Kind, rows.Columns[column])}=@value WHERE {string.Join(" AND ", where)}";
-        int affected = await command.ExecuteNonQueryAsync(cancel);
-        if (affected != 1)
+        foreach ((RowKey key, ChangedRow changed) in edits.Changed)
         {
-            throw new InvalidOperationException($"The row changed since it was read ({affected} rows matched). Refresh before editing");
+            await HeldAsync(key, changed.Read);
+            (string Column, object? Read, string? Text)[] set = [.. changed.Written.OrderBy(w => w.Key).Select(w => (columns[w.Key], changed.Read[w.Key], w.Value))];
+            await WriteAsync($"UPDATE {table} SET {string.Join(", ", set.Select((c, i) => $"{Quote(source.Kind, c.Column)}=@v{i}"))} WHERE {Where(keys)}", key, set);
+        }
+        foreach (AddedRow added in edits.Added)
+        {
+            (string Column, object? Read, string? Text)[] given = [.. added.Written.OrderBy(w => w.Key).Select(w => (columns[w.Key], Like(w.Key), w.Value))];
+            await using DbCommand command = Command(given.Length == 0
+                ? source.Kind == DatabaseKind.MySql ? $"INSERT INTO {table} () VALUES ()" : $"INSERT INTO {table} DEFAULT VALUES"
+                : $"INSERT INTO {table} ({string.Join(", ", given.Select(g => Quote(source.Kind, g.Column)))}) VALUES ({string.Join(", ", given.Select((_, i) => $"@v{i}"))})");
+            for (int i = 0; i < given.Length; i++)
+            {
+                Written(command, $"@v{i}", given[i].Read, given[i].Text);
+            }
+            await command.ExecuteNonQueryAsync(cancel);
         }
         await transaction.CommitAsync(cancel);
+
+        string Where(string[] names) => string.Join(" AND ", names.Select((name, i) => $"{Quote(source.Kind, name)}=@k{i}"));
+
+        DbCommand Command(string sql)
+        {
+            DbCommand command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandTimeout = 30;
+            command.CommandText = sql;
+            return command;
+        }
+
+        void Keyed(DbCommand command, RowKey key)
+        {
+            for (int i = 0; i < key.Values.Length; i++)
+            {
+                Add(command, $"@k{i}", key.Values[i]);
+            }
+        }
+
+        // The row as read, locked until the transaction ends, or why it may not be written.
+        async Task HeldAsync(RowKey key, object?[] read)
+        {
+            string locked = source.Kind switch
+            {
+                DatabaseKind.Postgres or DatabaseKind.MySql => $"SELECT * FROM {table} WHERE {Where(keys)} FOR UPDATE",
+                DatabaseKind.SqlServer => $"SELECT * FROM {table} WITH (UPDLOCK, HOLDLOCK) WHERE {Where(keys)}",
+                _ => $"SELECT * FROM {table} WHERE {Where(keys)}",
+            };
+            await using DbCommand command = Command(locked);
+            Keyed(command, key);
+            DatabaseRows now;
+            await using (DbDataReader reader = await command.ExecuteReaderAsync(cancel))
+            {
+                now = await RowsAsync(reader, 2, cancel);
+            }
+            if (now.RowCount != 1)
+            {
+                throw new InvalidOperationException(Refusals.RowGone(schema.Table.ToString(), key.ToString()));
+            }
+            for (int i = 0; i < columns.Length; i++)
+            {
+                if (Array.IndexOf(now.Columns, columns[i]) is not (>= 0 and int at) || !PendingEdits.Same(now.Rows[0][at], read[i]))
+                {
+                    throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), key.ToString()));
+                }
+            }
+        }
+
+        async Task WriteAsync(string sql, RowKey key, (string Column, object? Read, string? Text)[] set)
+        {
+            await using DbCommand command = Command(sql);
+            for (int i = 0; i < set.Length; i++)
+            {
+                Written(command, $"@v{i}", set[i].Read, set[i].Text);
+            }
+            Keyed(command, key);
+            int affected = await command.ExecuteNonQueryAsync(cancel);
+            if (affected != 1)
+            {
+                throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), key.ToString()));
+            }
+        }
+
+        // A value of the column as read on the page, whose type a new row's text is converted to.
+        object? Like(int column) => page.Rows.Select(r => r[column]).FirstOrDefault(v => v is not null);
+
+        void Written(DbCommand command, string name, object? like, string? text)
+        {
+            DbParameter parameter = command.CreateParameter();
+            parameter.ParameterName = name;
+            parameter.Value = text is null ? DBNull.Value : Typed(like, text);
+            if (parameter is NpgsqlParameter literal && text is not null)
+            {
+                // PostgreSQL reads the text as it reads a literal of the column's type.
+                literal.NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Unknown;
+            }
+            command.Parameters.Add(parameter);
+        }
+
+        object Typed(object? like, string text) => source.Kind == DatabaseKind.Postgres ? text : like switch
+        {
+            bool => text.Trim() switch
+            {
+                "1" => true,
+                "0" => false,
+                string word => bool.TryParse(word, out bool truth) ? truth : throw new FormatException(Refusals.NotTrueOrFalse(text)),
+            },
+            IConvertible and not string => Convert.ChangeType(text, like.GetType(), CultureInfo.InvariantCulture),
+            _ => text,
+        };
     }
 
     private static async Task<DatabaseRows> ReadAsync(DbConnection connection, string sql, IReadOnlyList<(string Name, object? Value)> parameters, CancellationToken cancel, int limit = 10000)

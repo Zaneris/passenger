@@ -119,6 +119,9 @@ public sealed class CellGrid : Control, IOwnKeys
     /// <summary>Rows asked to be taken out of the file (the cells' menu), by their places in the file's order.</summary>
     public event EventHandler<CellWrite>? RowsDeleted;
 
+    /// <summary>A cell asked to be written (a key, a double-click) that the table does not let be, for its owner to say why.</summary>
+    public event EventHandler? WriteRefused;
+
     /// <summary>The box a cell is being written in, null while none is.</summary>
     public TextBox? Writing => box;
 
@@ -126,8 +129,13 @@ public sealed class CellGrid : Control, IOwnKeys
     /// false where the cell may not be written.</summary>
     public bool BeginWriting(string? typed = null)
     {
-        if (table is null || box is not null || table.RowCount == 0 || !table.IsEditable(caret.Row, caret.Column))
+        if (table is null || box is not null || table.RowCount == 0)
         {
+            return false;
+        }
+        if (!table.IsEditable(caret.Row, caret.Column))
+        {
+            WriteRefused?.Invoke(this, EventArgs.Empty);
             return false;
         }
         anchor = caret;
@@ -869,6 +877,16 @@ public sealed class CellGrid : Control, IOwnKeys
 
         using (context.PushClip(body))
         {
+            for (int row = firstRow; row <= lastRow && hasCells; row++)
+            {
+                for (int column = firstColumn; column <= lastColumn; column++)
+                {
+                    if (colours.Pending(table.MarkOf(row, column)) is { } pending)
+                    {
+                        context.FillRectangle(pending, new Rect(X(column), Y(row), widths[column], RowHeight));
+                    }
+                }
+            }
             if (hasCells && bottom >= firstRow && top <= lastRow && right >= firstColumn && left <= lastColumn)
             {
                 double y0 = Math.Max(body.Y, Y(top));
@@ -940,6 +958,10 @@ public sealed class CellGrid : Control, IOwnKeys
                     context.FillRectangle(colours.HeaderChosen, place);
                 }
                 DrawText(context, Text(row, Gutter, gutter, plain, colours.RowNumber)!, place, number: true);
+                if (colours.RowMarked(table.RowMark(row)) is { } marked)
+                {
+                    context.FillRectangle(marked, new Rect(0, place.Y, RowMarkWidth, RowHeight));
+                }
             }
         }
         context.FillRectangle(colours.Edge, new Rect(0, RowHeight - 1, bounds.Width, 1));
@@ -1007,6 +1029,10 @@ public sealed class CellGrid : Control, IOwnKeys
             return null;
         }
         FormattedText text = new(shown, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, TypeRamp.Code, brush);
+        if (row >= 0 && column != Gutter && table!.MarkOf(row, column) == CellMark.Deleted)
+        {
+            text.SetTextDecorations(TextDecorations.Strikethrough);
+        }
         text.MaxTextWidth = Math.Max(1, width - 2 * Pad);
         text.MaxLineCount = 1;
         text.Trimming = TextTrimming.CharacterEllipsis;
@@ -1014,11 +1040,32 @@ public sealed class CellGrid : Control, IOwnKeys
         return text;
     }
 
+    /// <summary>How wide a row's mark of its changes not yet written is, at its number's left edge.</summary>
+    private const double RowMarkWidth = 3;
+
     /// <summary>The theme's brushes the table draws with, read once per look.</summary>
     private sealed record Palette(IBrush Background, IBrush Text, IBrush Number, IBrush Header, IBrush HeaderText, IBrush HeaderChosen,
         IBrush RowNumber, IBrush Grid, IBrush Edge, IBrush Selection, IBrush SelectionInactive, IBrush SearchMatch, IBrush SearchCurrent, IPen CaretPen,
-        Geometry? Up, Geometry? Down)
+        Geometry? Up, Geometry? Down, IBrush Changed, IBrush Added, IBrush Deleted, IBrush ChangedMark, IBrush AddedMark, IBrush DeletedMark)
     {
+        /// <summary>A cell's ground for a change not yet written, as a diff's lines show theirs.</summary>
+        public IBrush? Pending(CellMark mark) => mark switch
+        {
+            CellMark.Changed => Changed,
+            CellMark.Added => Added,
+            CellMark.Deleted => Deleted,
+            _ => null,
+        };
+
+        /// <summary>A row's mark beside its number, as the editor's gutter marks a line changed.</summary>
+        public IBrush? RowMarked(CellMark mark) => mark switch
+        {
+            CellMark.Changed => ChangedMark,
+            CellMark.Added => AddedMark,
+            CellMark.Deleted => DeletedMark,
+            _ => null,
+        };
+
         public static Palette From(Control control)
         {
             IBrush Brush(string key) => Tokens.Brush(control, key);
@@ -1038,7 +1085,13 @@ public sealed class CellGrid : Control, IOwnKeys
                 Brush(TokenKeys.Editor_SearchCurrent),
                 new Pen(Brush(TokenKeys.Accent), 1),
                 control.TryFindResource(IconKeys.ArrowUp, out object? up) ? up as Geometry : null,
-                control.TryFindResource(IconKeys.ArrowDown, out object? down) ? down as Geometry : null);
+                control.TryFindResource(IconKeys.ArrowDown, out object? down) ? down as Geometry : null,
+                Brush(TokenKeys.Diff_Modified),
+                Brush(TokenKeys.Diff_Added),
+                Brush(TokenKeys.Diff_Deleted),
+                Brush(TokenKeys.Vcs_Modified),
+                Brush(TokenKeys.Vcs_Added),
+                Brush(TokenKeys.Vcs_Deleted));
         }
     }
 }

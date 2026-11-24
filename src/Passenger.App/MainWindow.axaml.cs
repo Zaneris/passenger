@@ -508,6 +508,13 @@ public partial class MainWindow : IdeWindow
             e.Handled |= consumed;
             return;
         }
+        if (!shifted && focused is Tables.CellGrid && Editors.Active?.DatabaseTable is not null && TableTakes(action) is { } taken)
+        {
+            // A table's grid takes the keys Rider's data grid gives its own actions.
+            Request(taken);
+            e.Handled = true;
+            return;
+        }
         if (actions![action] is { InEditor: false })
         {
             if (!shifted)

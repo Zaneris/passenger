@@ -22,6 +22,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
     private readonly TextBox user = new() { Name = "DatabaseUser" };
     private readonly TextBox password = new() { Name = "DatabasePassword", PasswordChar = '•', RevealPassword = false };
     private readonly CheckBox integrated = new() { Name = "DatabaseIntegrated", Content = "Windows authentication" };
+    private readonly FormDropDown mark = new() { Name = "DatabaseMark", ItemsSource = new[] { "Read and write", "Read-only", "Production: asks before a change" }, SelectedIndex = 0 };
     private readonly TextBox connection = new() { Name = "DatabaseConnectionString", PasswordChar = '•', RevealPassword = false, PlaceholderText = "Optional: overrides the fields above" };
     private readonly TextBlock error = new() { Name = "DatabaseConnectionError", TextWrapping = TextWrapping.Wrap };
     private readonly DatabaseSource? initial;
@@ -45,6 +46,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         Row("Password", password);
         Row(null, integrated);
         Row("Connection string", connection);
+        Row("Access", mark);
         provider.SelectionChanged += (_, _) => ShowProvider();
         integrated.IsCheckedChanged += (_, _) => ShowAuthentication();
         Button connect = DialogFooter.Default(initial is null ? "Connect" : "Save and Connect");
@@ -70,8 +72,9 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                 }
                 string title = name.Text?.Trim() is { Length: > 0 } named ? named
                     : TitleOf(kind, written);
-                Close(initial is null ? new DatabaseSource(title, kind, folder) { ConnectionString = written }
-                    : initial with { Name = title, Kind = kind, ConnectionString = written });
+                DatabaseMark marked = (DatabaseMark)Math.Max(0, mark.SelectedIndex);
+                Close(initial is null ? new DatabaseSource(title, kind, folder) { ConnectionString = written, Mark = marked }
+                    : initial with { Name = title, Kind = kind, ConnectionString = written, Mark = marked });
             }
             catch (Exception failed) when (failed is ArgumentException or FormatException or OverflowException or IOException or UnauthorizedAccessException)
             {
@@ -95,6 +98,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         if (initial is not null)
         {
             name.Text = initial.Name;
+            mark.SelectedIndex = (int)initial.Mark;
             password.PlaceholderText = initial.SecretKept ? "Unchanged" : null;
             provider.SelectedIndex = (int)initial.Kind;
             switch (initial.Kind)

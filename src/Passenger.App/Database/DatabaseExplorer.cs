@@ -30,6 +30,7 @@ public enum DatabaseNodeKind
 public sealed class DatabaseNode(DatabaseNodeKind kind, string title, int depth, DatabaseSource source) : Observable, ITreeRow
 {
     private bool expanded;
+    private DatabaseMark mark = source.Mark;
 
     public DatabaseNodeKind Kind { get; } = kind;
     public string Title { get; } = title;
@@ -48,6 +49,9 @@ public sealed class DatabaseNode(DatabaseNodeKind kind, string title, int depth,
 
     public bool Expands => Kind is not (DatabaseNodeKind.Column or DatabaseNodeKind.Key or DatabaseNodeKind.Index or DatabaseNodeKind.Routine or DatabaseNodeKind.Note);
     public bool IsExpanded { get => expanded; set => Set(ref expanded, value); }
+
+    /// <summary>A connection's mark as it stands, which its row shows.</summary>
+    public DatabaseMark Mark { get => mark; set => Set(ref mark, value); }
 
     /// <summary>The table or view it names, for a table's or view's row.</summary>
     public DatabaseTable? Table => Kind is DatabaseNodeKind.Table or DatabaseNodeKind.View ? new DatabaseTable(Schema, Object) : null;
@@ -313,6 +317,10 @@ public sealed class DatabaseExplorer : DockPanel
         items.Add(ListMenus.Item("Open SQL Console", () => Request(AppActions.DatabaseConsole), icon: IconKeys.SqlConsole));
         if (node.Kind == DatabaseNodeKind.Connection)
         {
+            items.Add(new Separator());
+            items.Add(MenuChoice.Of("Read-Only", node.Mark == DatabaseMark.ReadOnly, () => Request(AppActions.DatabaseReadOnly)));
+            items.Add(MenuChoice.Of("Production", node.Mark == DatabaseMark.Production, () => Request(AppActions.DatabaseProduction)));
+            items.Add(new Separator());
             items.Add(ListMenus.Edit("Edit Connection…", () => Request(AppActions.DatabaseConnectionEdit)));
             items.Add(ListMenus.Item("Rename Connection…", () => Request(AppActions.DatabaseConnectionRename)));
             items.Add(ListMenus.Remove("Remove Connection", () => Request(AppActions.DatabaseConnectionRemove)));
@@ -326,8 +334,12 @@ public sealed class DatabaseExplorer : DockPanel
 
     private void Show()
     {
-        List<DatabaseNode> wanted = [.. controller.Sources.Select(s => roots.FirstOrDefault(r => r.Source == s)
+        List<DatabaseNode> wanted = [.. controller.Sources.Select(s => roots.FirstOrDefault(r => r.Source with { Mark = s.Mark } == s)
             ?? new DatabaseNode(DatabaseNodeKind.Connection, s.Name, 0, s) { Database = s.Database, Detail = s.Found ?? DatabaseKinds.Title(s.Kind) })];
+        foreach ((DatabaseNode root, DatabaseSource source) in wanted.Zip(controller.Sources))
+        {
+            root.Mark = source.Mark;
+        }
         if (!wanted.SequenceEqual(roots))
         {
             roots = wanted;
@@ -390,7 +402,10 @@ public sealed class DatabaseExplorer : DockPanel
         TextBlock detail = MutedText.Of(string.Empty);
         detail.Margin = new Thickness(Gaps.Normal, 0, 0, 0);
         detail.VerticalAlignment = VerticalAlignment.Center;
-        StackPanel words = new() { Orientation = Orientation.Horizontal, Children = { text, detail } };
+        Border production = Tags.Of("production", TokenKeys.Error);
+        Border readOnly = Tags.Of("read-only");
+        production.Margin = readOnly.Margin = new Thickness(Gaps.Normal, 0, 0, 0);
+        StackPanel words = new() { Orientation = Orientation.Horizontal, Children = { text, production, readOnly, detail } };
         DockPanel line = new() { Height = ListRow.Height, Children = { glyphs, words } };
         SetDock(glyphs, Dock.Left);
         glyphs.ChevronPressed += (_, e) =>
@@ -410,6 +425,8 @@ public sealed class DatabaseExplorer : DockPanel
             text.Text = ContainerSecrets.InSaid(node.Title);
             detail.Text = ContainerSecrets.InSaid(node.Detail);
             detail.IsVisible = node.Detail.Length > 0;
+            production.IsVisible = node.Kind == DatabaseNodeKind.Connection && node.Mark == DatabaseMark.Production;
+            readOnly.IsVisible = node.Kind == DatabaseNodeKind.Connection && node.Mark == DatabaseMark.ReadOnly;
         });
     }
 }

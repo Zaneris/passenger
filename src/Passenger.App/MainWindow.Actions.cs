@@ -353,6 +353,7 @@ public partial class MainWindow
                 InEditor = true,
                 WhyNot = context => ExplorerEdits(id, context) ? WhyNotOnRow(id, context)
                     : context.File is null && context.Focused is not (TextBox or CodeEditor) ? Refusals.NoFile
+                    : id is E.Undo or E.Redo && TableSteps(context) is { } table ? table.WhyNotStep(id == E.Redo)
                     : E.IsChange(id) ? ChangeRefused(id, context) : null,
                 TitleIn = id == E.Delete ? context => DeleteTitle(context) ?? title : null,
                 Menus = menus.GetValueOrDefault(id, []),
@@ -370,11 +371,19 @@ public partial class MainWindow
             ? (other.IsReadOnly && other.FindAncestorOfType<ToolWindows.OutputView>()?.TakesEdit(other, action) != true ? other.ReadOnlyWhy : null)
         : context.ReadOnlyWhy;
 
+    /// <summary>The table whose changes not yet written Undo and Redo step through: the one shown, unless a box of its has the keys.</summary>
+    private static Database.DatabaseTableTab? TableSteps(ActionContext context) => context.Focused is TextBox ? null : context.File?.DatabaseTable;
+
     private void Edit(string action, ActionContext context)
     {
         if (ExplorerEdits(action, context))
         {
             ExplorerEdit(action, context);
+            return;
+        }
+        if (action is E.Undo or E.Redo && TableSteps(context) is { } steps)
+        {
+            steps.Step(action == E.Redo);
             return;
         }
         switch (context.Focused)
