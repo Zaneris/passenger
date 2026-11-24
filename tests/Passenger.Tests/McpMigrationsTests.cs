@@ -51,6 +51,26 @@ public sealed class McpMigrationsTests : McpRig
             $"Add Migration answered: {added}");
         string updated = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.UpdateDatabase }));
         Assert.Contains("_Initial: applied", updated, StringComparison.Ordinal);
+
+        // The context's database, read alone: what it holds, a table, a query's rows; a statement changing anything refused.
+        string opened = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.MigrationsDatabase }));
+        Assert.True(opened.Contains("ShopContext's migrations use Shop", StringComparison.Ordinal), $"Open ShopContext's Database answered: {opened}");
+        JsonElement shop = Assert.Single((await Call(client, McpTools.Database)).GetProperty("connections").EnumerateArray(), c => c.GetProperty("name").GetString() == "Shop");
+        Assert.Equal(("SQLite", "shop.db"), (shop.GetProperty("kind").GetString(), shop.GetProperty("database").GetString()));
+        Assert.Contains("Products", (await Call(client, McpTools.Database, new() { ["connection"] = "Shop" })).GetProperty("schemas")[0].GetProperty("tables").EnumerateArray()
+            .Select(t => t.GetString()));
+        JsonElement products = await Call(client, McpTools.Database, new() { ["connection"] = "Shop", ["table"] = "Products" });
+        Assert.Equal(["Id", "Name"], products.GetProperty("columns").EnumerateArray().Select(c => c.GetProperty("name").GetString()));
+        JsonElement counted = (await Call(client, McpTools.Database, new() { ["connection"] = "Shop", ["sql"] = "SELECT count(*) AS n FROM \"Products\"" }))[0];
+        Assert.Equal("0", counted.GetProperty("sets")[0].GetProperty("rows")[0][0].GetString());
+        foreach ((string statement, string why) in new[] { ("DELETE FROM \"Products\"", "changes data"), ("DROP TABLE \"Products\"", "changes the schema"), ("BEGIN", "begins or ends a transaction") })
+        {
+            CallToolResult refusedWrite = await Result(client, McpTools.Database, new() { ["connection"] = "Shop", ["sql"] = $"SELECT 1; {statement}" });
+            Assert.True(refusedWrite.IsError == true && Text(refusedWrite).Contains($"{statement}\" {why}: an agent's database queries only read", StringComparison.Ordinal),
+                $"{statement} answered: {Text(refusedWrite)}");
+        }
+        Assert.Contains("Products", (await Call(client, McpTools.Database, new() { ["connection"] = "Shop" })).GetProperty("schemas")[0].GetProperty("tables").EnumerateArray()
+            .Select(t => t.GetString()));
         CallToolResult nameless = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.AddMigration });
         Assert.True(nameless.IsError == true && Text(nameless).Contains("takes the migration's name as input", StringComparison.Ordinal),
             $"Add Migration with no name answered: {Text(nameless)}");

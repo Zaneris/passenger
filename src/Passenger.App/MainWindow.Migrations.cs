@@ -151,19 +151,23 @@ public partial class MainWindow
         EfFix? FirstFix() => controller.Gaps.Concat(controller.Failure is { } failed ? [failed] : []).SelectMany(g => g.Fixes).FirstOrDefault();
     }
 
-    /// <summary>The chosen context's database, by the connection its migrations use, opened in the Database window.</summary>
-    private async Task OpenMigrationsDatabaseAsync()
+    /// <summary>The chosen context's database, by the connection its migrations use, opened in the Database window: what came
+    /// of it.</summary>
+    private async Task<EfDone> OpenMigrationsDatabaseAsync()
     {
-        if (await Migrations.ConnectionAsync(A.MigrationsDatabase) is not { } connection)
+        (EfConnection? connection, string? unfound) = await Migrations.ConnectionAsync(A.MigrationsDatabase);
+        if (connection is null)
         {
-            return;
+            return new EfDone(false, unfound!);
         }
         if (Passenger.App.Database.DatabaseDiscovery.Source(connection.Name, connection.Used, connection.Value, connection.Folder, connection.Packages) is not { } wanted)
         {
             Refuse(Refusals.NoDatabaseOf(connection.Name));
-            return;
+            return new EfDone(false, Refusals.NoDatabaseOf(connection.Name));
         }
-        await ShowDatabaseOfAsync(wanted, lasting: !connection.Running);
+        (Passenger.App.Database.DatabaseSource? used, string? why) = await ShowDatabaseOfAsync(wanted, lasting: !connection.Running);
+        return used is null ? new EfDone(false, why!)
+            : new EfDone(true, $"{Migrations.Context ?? Migrations.Contexts.FirstOrDefault()?.Name}'s migrations use {connection.Name}, the Database window's connection {used.Name}");
     }
 
     /// <summary>The session's projects as the Migrations window follows them, from the session's first moment: what they
@@ -370,6 +374,9 @@ public partial class MainWindow
                 done = given is null ? new EfDone(true, $"Offered: {Core.Plural.Listed([.. controller.Environments.Select(e => e.Name)])}; input one, or another name, to choose it")
                     : controller.ChooseEnvironment(given) is { } unchosen ? new EfDone(false, unchosen)
                     : new EfDone(true, $"dotnet ef runs {controller.Startup?.Name} in {controller.Environment?.Name}");
+                break;
+            case A.MigrationsDatabase:
+                done = await OpenMigrationsDatabaseAsync();
                 break;
             case A.MigrationsFix:
                 EfFix fix = controller.Gaps.Concat(controller.Failure is { } failed ? [failed] : []).SelectMany(g => g.Fixes)

@@ -910,26 +910,23 @@ public sealed partial class MigrationsController(MigrationsParts parts)
 
     /// <summary>The database the chosen context's migrations go to, as dotnet ef reaches it: the connection its registration
     /// or the context names, read from the startup project's run as a command gives it (a compose run's or an AppHost's
-    /// database first) then the settings its environment reads; else the connection string its code writes whole. Null
+    /// database first) then the settings its environment reads; else the connection string its code writes whole. Why not
     /// where none is told or the window is busy, said.</summary>
-    public async Task<EfConnection?> ConnectionAsync(string action)
+    public async Task<(EfConnection? Found, string? Why)> ConnectionAsync(string action)
     {
         UiThread.Check();
         ProjectSession session = parts.Session();
         if (Project is not { } project || Startup is not { } startup)
         {
-            Said(new EfDone(false, Refusals.NoEfCore));
-            return null;
+            return (null, Said(new EfDone(false, Refusals.NoEfCore)).Said);
         }
         if ((Context ?? (Contexts is [var only] ? only.Name : null)) is not { } context)
         {
-            Said(new EfDone(false, Refusals.NoEfContext));
-            return null;
+            return (null, Said(new EfDone(false, Refusals.NoEfContext)).Said);
         }
         if (parts.Work.Begin(action, $"Finding {context}'s database…") is not { } work)
         {
-            Said(new EfDone(false, ActionWork.Busy(parts.Work.Of(action)!)));
-            return null;
+            return (null, Said(new EfDone(false, ActionWork.Busy(parts.Work.Of(action)!))).Said);
         }
         using (work)
         {
@@ -960,11 +957,10 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             }, work.Stopping);
             if (found is null)
             {
-                Said(new EfDone(false, why!));
-                return null;
+                return (null, Said(new EfDone(false, why!)).Said);
             }
             work.Tell(true, $"{context}'s migrations use {found.Name}");
-            return found;
+            return (found, null);
         }
     }
 

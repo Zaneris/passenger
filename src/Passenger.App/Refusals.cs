@@ -790,6 +790,10 @@ public static class Refusals
     /// <summary>A connection string asked to open in the Database window that names no database of a kind it opens.</summary>
     public static string NoDatabaseOf(string connection) => $"{connection} names no SQLite, PostgreSQL, SQL Server or MySQL database the Database window opens";
 
+    /// <summary>An agent's database query holding a statement that would change something, which its reads never do.</summary>
+    public static string AgentsQueryWrites(string statement, string what) =>
+        $"\"{statement}\" {what}: an agent's database queries only read, so nothing ran";
+
     /// <summary>A Requests action on a command with none chosen.</summary>
     public const string NoRequestCommand = "Choose a database command in the Requests window first";
 

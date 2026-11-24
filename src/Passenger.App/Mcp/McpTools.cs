@@ -22,6 +22,7 @@ public static class McpTools
     public const string ContainerAction = "container_action";
     public const string ContainerExec = "container_exec";
     public const string Containers = "containers";
+    public const string Database = "database";
     public const string DebugAttach = "debug_attach";
     public const string DebugContinue = "debug_continue";
     public const string DebugEvaluate = "debug_evaluate";

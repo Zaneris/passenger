@@ -448,7 +448,7 @@ public partial class MainWindow
         if (reaching is null && kind == DatabaseKind.Sqlite
             && DatabaseDiscovery.Source(Path.GetFileNameWithoutExtension(place), $"used by {chosen.Request.From}'s requests", $"Data Source={place}", folder ?? Path.GetDirectoryName(place)!, []) is { } file)
         {
-            reaching = await ShowDatabaseOfAsync(file, lasting: true);
+            reaching = (await ShowDatabaseOfAsync(file, lasting: true)).Used;
         }
         if (reaching is null)
         {

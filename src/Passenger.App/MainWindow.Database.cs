@@ -251,7 +251,7 @@ public partial class MainWindow
         ? (source.Kind, database.CatalogOf(source)) : null;
 
     /// <summary>Why a connection may not be opened: one the folder's own files name waits for the folder to be trusted.</summary>
-    private string? WhyNotOpened(DatabaseSource source) => source.Found is not null && session.Folder is not null && !session.Trusted ? Refusals.Untrusted : null;
+    internal string? WhyNotOpened(DatabaseSource source) => source.Found is not null && session.Folder is not null && !session.Trusted ? Refusals.Untrusted : null;
 
     /// <summary>Opens the chosen row's connection in the explorer, reading its databases, as its chevron does.</summary>
     private async Task OpenChosenConnectionAsync()
@@ -1040,8 +1040,8 @@ public partial class MainWindow
 
     /// <summary>Shows a connection another window uses in the Database window and opens its row as a click would, the folder's
     /// connections found first: one listed with its connection string taken, else <paramref name="wanted"/> listed beside them
-    /// (until the folder's end where <paramref name="lasting"/>). Null once refused, said.</summary>
-    internal async Task<DatabaseSource?> ShowDatabaseOfAsync(DatabaseSource wanted, bool lasting)
+    /// (until the folder's end where <paramref name="lasting"/>). Why not once refused, said.</summary>
+    internal async Task<(DatabaseSource? Used, string? Why)> ShowDatabaseOfAsync(DatabaseSource wanted, bool lasting)
     {
         ProjectSession asked = session;
         DatabaseController controller = Database;
@@ -1049,13 +1049,13 @@ public partial class MainWindow
         await DatabasesFoundAsync();
         if (session != asked)
         {
-            return null;
+            return (null, Refusals.SolutionClosed);
         }
         DatabaseSource used = controller.Use(wanted, lasting);
         if (WhyNotOpened(used) is { } why)
         {
             Refuse(why);
-            return null;
+            return (null, why);
         }
         if (DatabaseExplorer.Rows.FirstOrDefault(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == used.Id) is { } row)
         {
@@ -1065,7 +1065,7 @@ public partial class MainWindow
                 await DatabaseExplorer.ToggleAsync(row);
             }
         }
-        return used;
+        return (used, null);
     }
 
     /// <summary>Ends once the folder's connections are found as the folder now stands: found first where they never were, or

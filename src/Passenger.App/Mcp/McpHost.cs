@@ -85,7 +85,8 @@ public static partial class McpHost
         "and app.godot.nextFrame pause its loop and step it a frame, and with app.liveTree.selectElement on, app_click picks the node at " +
         "a point. Also version control (vcs_status, " +
         "vcs_commit), NuGet (nuget_search, nuget_install), Problems and Local History (diagnostics with no path, local_history), the settings (settings, " +
-        "settings_set), the container engine (containers, container_exec, container_action) and Passenger's own " +
+        "settings_set), the container engine (containers, container_exec, container_action), the Database window's connections, read " +
+        "alone (database), and Passenger's own " +
         "window (the app_ tools with app ide, ide_action).\n\n" +
         "Attached to a person's Passenger (--mcp-attach), the first call joins the Passenger window open on the agent's folder (the folder " +
         "after --mcp-attach, else the agent's working folder). With none open, it has the running Passenger open that folder, or starts " +
