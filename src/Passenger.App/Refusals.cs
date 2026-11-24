@@ -647,6 +647,18 @@ public static class Refusals
     /// <summary>Stop Database Operation with none running.</summary>
     public const string NoDatabaseOperation = "No database operation is running";
 
+    /// <summary>Run Statement with no SQL file shown.</summary>
+    public const string NoSqlFile = "Open a SQL file or console first";
+
+    /// <summary>Run Statement with the caret where no statement stands.</summary>
+    public const string NoSqlStatement = "No statement here to run";
+
+    /// <summary>Run Statement while the console runs one.</summary>
+    public const string SqlRunning = "A statement is running in this console";
+
+    /// <summary>Stop Statement with none running in the file shown.</summary>
+    public const string NoSqlRunning = "No statement is running in this console";
+
     /// <summary>A database action while the Database window reads a connection.</summary>
     public const string DatabaseBusy = "A database operation is under way";
 

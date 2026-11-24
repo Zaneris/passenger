@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
@@ -8,6 +9,8 @@ using Passenger.App;
 using Passenger.App.Database;
 using Passenger.App.Tables;
 using Passenger.Core;
+using Passenger.Editor;
+using Passenger.Text;
 using Passenger.TestTables;
 
 namespace Passenger.Tests;
@@ -129,6 +132,61 @@ public sealed class DatabaseTests
                 Ui.ClickButton(Question(window), "Write");
                 Ui.WaitFor(() => Tab<TextBlock>(window, "DatabaseTabStatus").Text?.Contains("row changed", StringComparison.Ordinal) == true, "the stale row refused");
                 Assert.Equal("Changed elsewhere", Scalar(folder, "SELECT Name FROM Products WHERE Id=1"));
+            });
+            Flow.Step("a connection's console runs the statement at the caret on Run Statement's keys, its rows in a grid under it", () =>
+            {
+                string console = Path.Combine(Passenger.App.State.ProjectState.FolderOf(settings, folder), "consoles", "Shop.sql");
+                Directory.CreateDirectory(Path.GetDirectoryName(console)!);
+                File.WriteAllText(console, "SELECT Name FROM Products WHERE Id < 4 ORDER BY Id;\nSELECT COUNT(*) AS n FROM Orders;\nSELECT * FROM Nope;\n");
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Ui.WaitFor(() => window.EditorArea.Active?.Path == PathNames.Canonical(console) && window.EditorArea.ActiveGroup.Console is not null, "Shop's console with its results under it");
+                Assert.True(window.EditorArea.ActiveGroup.SideUnder, "A console's results stand beside its SQL, not under it");
+                CodeEditor editor = window.EditorArea.CodeEditor;
+                editor.Selections = SelectionSet.Single(5);
+                string keys = window.Actions.Keymap.ShortcutsFor(AppActions.KeysIn(AppActions.DatabaseRun))[0].First.Notation();
+                Ui.Press(window, keys);
+                SqlConsole sql = window.EditorArea.ActiveGroup.Console!.Console!;
+                Ui.WaitFor(() => !sql.Running && sql.Results.Count == 1, () => sql.Said);
+                Assert.Equal(["Changed elsewhere", "Product 2", "Product 3"], Enumerable.Range(0, 3).Select(r => sql.Results[0].Sets[0].Cell(r, 0)));
+                Assert.True(editor.Document.Snapshot.ToString().Count(c => c == '\n') == 3, "Run Statement's keys also broke the console's line");
+                CellGrid grid = window.EditorArea.ActiveGroup.Console!.Grid;
+                Ui.WaitFor(() => grid.IsVisible && grid.Table?.RowCount == 3, "the result's grid");
+                grid.Choose((0, 0), (2, 0));
+                Assert.Equal("Changed elsewhere\nProduct 2\nProduct 3", grid.ChosenText().ReplaceLineEndings("\n").TrimEnd());
+            });
+            Flow.Step("statements chosen run in turn, each set in its own grid, a failure ending the run said under them", () =>
+            {
+                CodeEditor editor = window.EditorArea.CodeEditor;
+                editor.Select(new TextRange(0, editor.Document.Snapshot.Length));
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                SqlConsole sql = window.EditorArea.ActiveGroup.Console!.Console!;
+                Ui.WaitFor(() => !sql.Running && sql.Results.Count == 3, () => sql.Said);
+                Assert.Equal("0", sql.Results[1].Sets[0].Cell(0, 0));
+                Assert.Contains("Nope", sql.Results[2].Error, StringComparison.Ordinal);
+                Assert.Contains("Failed after 2 statements", sql.Said, StringComparison.Ordinal);
+                SqlConsoleView view = window.EditorArea.ActiveGroup.Console!;
+                Assert.Equal(["ConsoleResult1", "ConsoleResult2", "ConsoleOutputTab"], view.GetVisualDescendants().OfType<ToggleButton>().Where(t => t.Name?.StartsWith("Console", StringComparison.Ordinal) == true).Select(t => t.Name));
+                Assert.Contains("no such table: Nope", view.GetVisualDescendants().OfType<SelectableTextBlock>().Single(t => t.Name == "ConsoleOutput").Text, StringComparison.Ordinal);
+            });
+            Flow.Step("completion offers the live schema: a table's columns after its alias, and the tables its statement may name", () =>
+            {
+                CodeEditor editor = window.EditorArea.CodeEditor;
+                editor.Select(new TextRange(0, editor.Document.Snapshot.Length));
+                window.KeyTextInput("SELECT  FROM Products p");
+                Ui.Press(window, "ESCAPE");
+                editor.Selections = SelectionSet.Single("SELECT ".Length);
+                window.KeyTextInput("p");
+                window.KeyTextInput(".");
+                Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Name") && window.Assist.CompletionLabels.Contains("Note"),
+                    () => $"Products' columns after p., where the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+                Assert.DoesNotContain("Orders", window.Assist.CompletionLabels);
+                Ui.Press(window, "ESCAPE");
+                editor.Selections = SelectionSet.Single(editor.Document.Snapshot.Length);
+                window.KeyTextInput(" JOIN ");
+                window.KeyTextInput("O");
+                Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Orders"), () => $"the tables, where the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+                Ui.Press(window, "ESCAPE");
             });
             Flow.Step("a connection made by hand is kept for the folder, its password in the credential store and never in the state", () =>
             {

@@ -368,6 +368,7 @@ public partial class MainWindow : IdeWindow
         assist.ConfiguredBy = path => session.ConfiguredBy(path);
         assist.IndexedFiles = () => session.Folder is { } folder ? (folder, session.Index.Files) : null;
         assist.Repository = () => session.Vcs.Repository;
+        FollowSqlConsoles();
         assist.AddActions(actions!);
         usages.AddActions(actions!);
         DebugController.AddActions(actions!, () => session.Debug);
@@ -535,6 +536,13 @@ public partial class MainWindow : IdeWindow
             return;
         }
         bool own = editor == Editors.CodeEditor;
+        if (!shifted && own && action == AppActions.KeysIn(AppActions.DatabaseRun) && Editors.Active is { } sql && sql.Language == Languages.Language.Sql)
+        {
+            // A SQL file runs its statement on the keys the editor's own action has elsewhere.
+            Request(AppActions.DatabaseRun);
+            e.Handled = true;
+            return;
+        }
         if (!shifted && action is EditorActions.Undo or EditorActions.Redo && editor.FindAncestorOfType<Passenger.App.Vcs.DiffView>() is { PutsBackOnDisk: not null } copy
             && editor == copy.Right && UndoCommand(action == EditorActions.Redo, null))
         {

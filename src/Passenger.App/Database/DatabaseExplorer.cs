@@ -92,6 +92,7 @@ public sealed class DatabaseExplorer : DockPanel
         Border side = ToolBars.Side(
             ToolButtons.Of(AppActions.DatabaseAdd, IconKeys.Add, "New Database Connection…", Request),
             ToolButtons.Of(AppActions.DatabaseRefresh, IconKeys.Rerun, "Refresh Database Connections", Request),
+            ToolButtons.Of(AppActions.DatabaseConsole, IconKeys.SqlConsole, "Open SQL Console", Request),
             ToolButtons.Of(AppActions.DatabaseOpenTable, IconKeys.DatabaseTable, "Open Table Data", Request),
             ToolBars.Gap(),
             ToolButtons.Of(AppActions.DatabaseCancel, IconKeys.Stop, "Stop Database Operation", Request));
@@ -309,6 +310,7 @@ public sealed class DatabaseExplorer : DockPanel
         {
             items.Add(ListMenus.Open("Open Table Data", () => Request(AppActions.DatabaseOpenTable)));
         }
+        items.Add(ListMenus.Item("Open SQL Console", () => Request(AppActions.DatabaseConsole), icon: IconKeys.SqlConsole));
         if (node.Kind == DatabaseNodeKind.Connection)
         {
             items.Add(ListMenus.Edit("Edit Connection…", () => Request(AppActions.DatabaseConnectionEdit)));

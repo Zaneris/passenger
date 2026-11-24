@@ -1,0 +1,127 @@
+using Passenger.App.Database;
+using Passenger.App.Workspace;
+using Passenger.Languages;
+using Passenger.Lsp;
+using Passenger.Text;
+
+namespace Passenger.App.CSharp;
+
+/// <summary>A SQL file's completion, from its console's connection as it stands (<see cref="SqlCompletions"/>): the columns
+/// of the tables its statement names, after a table's name or alias and a dot its columns, every table and view, the
+/// schemas and the database's keywords; a file of no connection, or one not opened yet this session, its keywords alone.
+/// A name typed as a word's first letter, or a dot after a name, opens the list.</summary>
+internal sealed class SqlAssist(AssistContext context, CodeCompletion completion) : LanguageAssist
+{
+    /// <summary>A SQL file's database and what its connection holds, where it is a console; null for a file of none.</summary>
+    public Func<OpenDocument, (DatabaseKind Kind, Task<SqlCatalog?> Catalog)?>? Live { get; set; }
+
+    private readonly Dictionary<CompletionItem, SqlCompletions.Candidate> offered = [];
+
+    private static bool Owns(OpenDocument? document) => document?.Language == Language.Sql;
+
+    public override bool Typed(string text)
+    {
+        if (!Owns(context.Editors.Active))
+        {
+            return false;
+        }
+        string written = context.Editor.Document.Snapshot.ToString();
+        int caret = context.Caret;
+        bool startsName = text.Length == 1 && (char.IsLetter(text[0]) || text[0] == '_') && (caret < 2 || !NamePart(written[caret - 2]));
+        bool afterDot = text == "." && caret >= 2 && (NamePart(written[caret - 2]) || written[caret - 2] is '"' or ']' or '`');
+        if ((startsName || afterDot) && !InLiteral(written, caret))
+        {
+            IdeErrors.Observe(completion.Start(null));
+        }
+        return true;
+    }
+
+    public override async Task<bool> CompleteAsync(string? trigger, bool incomplete)
+    {
+        if (context.Editors.Active is not { } shown || !Owns(shown))
+        {
+            return false;
+        }
+        CancellationTokenSource cancel = completion.Asking();
+        TextSnapshot asked = shown.Text.Snapshot;
+        (DatabaseKind Kind, Task<SqlCatalog?> Catalog)? live = Live?.Invoke(shown);
+        SqlCatalog? catalog = live is { } known ? await known.Catalog : null;
+        if (cancel.IsCancellationRequested || context.Editors.Active != shown || shown.Text.Snapshot != asked)
+        {
+            return true;
+        }
+        string text = asked.ToString();
+        if (InLiteral(text, context.Caret))
+        {
+            completion.Close();
+            return true;
+        }
+        (int start, IReadOnlyList<SqlCompletions.Candidate> candidates) = SqlCompletions.At(text, context.Caret, live?.Kind ?? DatabaseKind.Sqlite, catalog);
+        if (candidates.Count == 0)
+        {
+            completion.Close();
+            return true;
+        }
+        offered.Clear();
+        List<CompletionItem> items = [];
+        foreach (SqlCompletions.Candidate candidate in candidates)
+        {
+            CompletionItem item = new()
+            {
+                Label = candidate.Label,
+                Kind = candidate.Kind switch
+                {
+                    SqlCompletions.Kind.Column => CompletionItemKind.Field,
+                    SqlCompletions.Kind.Table => CompletionItemKind.Class,
+                    SqlCompletions.Kind.Schema => CompletionItemKind.Module,
+                    _ => CompletionItemKind.Keyword,
+                },
+                Detail = candidate.Detail,
+                SortText = $"{(int)candidate.Kind}{items.Count:D6}",
+            };
+            offered[item] = candidate;
+            items.Add(item);
+        }
+        completion.Open(new CodeCompletion.Completion(items, start, [], false) { Own = this, WordCharacters = "_$" });
+        return true;
+    }
+
+    public override void Commit(CompletionItem item, int start)
+    {
+        string text = context.Editor.Document.Snapshot.ToString();
+        int end = context.Caret;
+        while (end < text.Length && NamePart(text[end]))
+        {
+            end++;
+        }
+        string insert = offered.TryGetValue(item, out SqlCompletions.Candidate candidate) ? candidate.Insert : item.Label;
+        context.Editor.ApplyEdits([new TextEdit(start, Math.Max(0, end - start), insert)], SelectionSet.Single(start + insert.Length));
+    }
+
+    public override string? Describe(CompletionItem item) => offered.TryGetValue(item, out SqlCompletions.Candidate candidate)
+        ? $"{candidate.Label}: {candidate.Detail}" : null;
+
+    private static bool NamePart(char c) => char.IsLetterOrDigit(c) || c is '_' or '$';
+
+    /// <summary>Whether the caret stands in a string or a comment, where nothing is offered.</summary>
+    private static bool InLiteral(string text, int caret)
+    {
+        int i = 0;
+        while (i < caret)
+        {
+            if (SqlText.Skipped(text, i, DatabaseKind.Postgres) is { } past && text[i] is '\'' or '-' or '/')
+            {
+                if (past > caret || past == caret && text[i] == '-')
+                {
+                    return true;
+                }
+                i = past;
+            }
+            else
+            {
+                i++;
+            }
+        }
+        return false;
+    }
+}

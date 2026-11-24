@@ -235,6 +235,24 @@ internal static class DatabaseClient
         return [.. schemas.Union(objects.Select(o => o.Schema)).Select(schema => (schema, (IReadOnlyList<DatabaseObject>)[.. objects.Where(o => o.Schema == schema)]))];
     }
 
+    /// <summary>The tables and views of the connection's database with their columns, for completion.</summary>
+    internal static async Task<SqlCatalog> CatalogAsync(DatabaseSource source, CancellationToken cancel)
+    {
+        await using DbConnection connection = await OpenAsync(source, cancel);
+        string sql = source.Kind switch
+        {
+            DatabaseKind.Sqlite => "SELECT '', m.name, p.name, p.type FROM sqlite_schema m JOIN pragma_table_info(m.name) p WHERE m.type IN ('table','view') AND m.name NOT LIKE 'sqlite_%' ORDER BY m.name, p.cid",
+            DatabaseKind.Postgres => "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns WHERE table_schema NOT IN ('pg_catalog','information_schema') ORDER BY 1, 2, ordinal_position",
+            DatabaseKind.SqlServer => "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS ORDER BY 1, 2, ORDINAL_POSITION",
+            _ => "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = DATABASE() ORDER BY 1, 2, ordinal_position",
+        };
+        DatabaseRows rows = await ReadAsync(connection, sql, [], cancel, limit: 50000);
+        return new SqlCatalog([.. rows.Rows.GroupBy(r => (Schema: Text(r[0]), Table: Text(r[1])))
+            .Select(g => new SqlTableInfo(g.Key.Schema, g.Key.Table, [.. g.Select(r => (Text(r[2]), Text(r[3])))]))]);
+
+        static string Text(object? value) => Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+    }
+
     /// <summary>Runs each of <paramref name="runs"/> in turn on one connection, telling each one's result sets (each read to
     /// <paramref name="limit"/> rows), the rows it changed or its failure, after which nothing more runs.</summary>
     internal static async Task RunAsync(DatabaseSource source, IReadOnlyList<string> runs, int limit, Action<SqlResult> told, CancellationToken cancel)

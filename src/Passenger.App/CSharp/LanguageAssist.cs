@@ -104,11 +104,13 @@ internal abstract class LanguageAssist
 /// .editorconfig's keys, a .gitattributes' attributes, a .gitignore's paths, an MSBuild file's,
 /// XAML's, a compose file's, a settings file's configuration, a page's stylesheets' classes, a GDScript's own reading
 /// while Godot's server has not started, a web language's, a Godot shader's, a Godot scene's, a .feature file's (and a C# step
-/// definition's steps), then C#'s, Razor's and any file left; the first that answers is the command's.</summary>
+/// definition's steps), a SQL file's, then C#'s, Razor's and any file left; the first that answers is the command's.</summary>
 internal sealed class LanguageAssists(LinkAssist links, HttpAssist http, EditorConfigAssist editorConfig, GitAttributesAssist gitAttributes, GitIgnoreAssist gitIgnore, MSBuildAssist msbuild, XamlAssist xaml, ComposeAssist compose, SettingsAssist settings,
-    CssClassAssist classes, GDScriptAssist gdscript, WebAssist web, GodotShaderAssist shaders, GodotAssist godot, GherkinAssist gherkin, CSharpAssist csharp)
+    CssClassAssist classes, GDScriptAssist gdscript, WebAssist web, GodotShaderAssist shaders, GodotAssist godot, GherkinAssist gherkin, SqlAssist sql, CSharpAssist csharp)
 {
-    private readonly IReadOnlyList<LanguageAssist> ladder = [links, http, editorConfig, gitAttributes, gitIgnore, msbuild, xaml, compose, settings, classes, gdscript, web, shaders, godot, gherkin, csharp];
+    private readonly IReadOnlyList<LanguageAssist> ladder = [links, http, editorConfig, gitAttributes, gitIgnore, msbuild, xaml, compose, settings, classes, gdscript, web, shaders, godot, gherkin, sql, csharp];
+
+    public SqlAssist Sql => sql;
 
     public GherkinAssist Gherkin => gherkin;
 

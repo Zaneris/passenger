@@ -92,16 +92,23 @@ public sealed class DatabaseTableTab : IDisposable
         CellGrid grid = new() { Name = "DatabaseTabResults" };
         ToolDropDown columns = new() { Name = "DatabaseFilterColumn" };
         ToolDropDown comparison = new() { Name = "DatabaseFilterOperator", ItemsSource = new[] { "Contains", "Equals", "Is NULL", "Is not NULL" }, SelectedItem = filter?.Operator ?? "Contains" };
-        TextBox value = new() { Name = "DatabaseFilterValue", Text = filter?.Value ?? string.Empty, PlaceholderText = "Filter value", MinWidth = 160 };
+        TextBox value = SearchBox.Of("Filter value", "Value to filter by");
+        value.Name = "DatabaseFilterValue";
+        value.Text = filter?.Value ?? string.Empty;
         TextBlock status = MutedText.Wrapped(said);
         status.Name = "DatabaseTabStatus";
         status.Margin = new Thickness(Gaps.Normal, Gaps.Tight);
-        Button apply = new() { Name = "DatabaseApplyFilter", Content = "Apply Filter" };
-        Button clear = new() { Name = "DatabaseClearFilter", Content = "Clear" };
-        Button refresh = new() { Content = "Refresh" };
-        Button previous = new() { Name = "DatabasePreviousPage", Content = "Previous Page" };
-        Button next = new() { Name = "DatabaseNextPage", Content = "Next Page" };
-        Button cancel = new() { Content = "Cancel Operation", Name = "DatabaseTableCancel" };
+        Button apply = ToolButtons.Of(IconKeys.Filter, "Apply Filter");
+        apply.Name = "DatabaseApplyFilter";
+        Button clear = ToolButtons.Of(IconKeys.Clear, "Clear Filter");
+        clear.Name = "DatabaseClearFilter";
+        Button refresh = ToolButtons.Of(IconKeys.Rerun, "Read Again");
+        Button previous = ToolButtons.Of(IconKeys.ArrowUp, "Previous Page");
+        previous.Name = "DatabasePreviousPage";
+        Button next = ToolButtons.Of(IconKeys.ArrowDown, "Next Page");
+        next.Name = "DatabaseNextPage";
+        Button cancel = ToolButtons.Of(IconKeys.Stop, "Stop");
+        cancel.Name = "DatabaseTableCancel";
         apply.Click += (_, _) => Apply();
         value.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Apply(); e.Handled = true; } };
         clear.Click += (_, _) => { value.Text = string.Empty; IdeErrors.Observe(LoadAsync()); };
@@ -116,7 +123,7 @@ public sealed class DatabaseTableTab : IDisposable
             IdeErrors.Observe(LoadAsync(0, filter));
         };
         ToolFlow bar = new() { Margin = new Thickness(Gaps.Normal, Gaps.Hair), Spacing = Gaps.Small };
-        foreach (Control control in new Control[] { columns, comparison, value, apply, clear, refresh, previous, next, cancel })
+        foreach (Control control in new Control[] { refresh, previous, next, cancel, ToolBars.Rule(), columns, comparison, value, apply, clear })
         {
             bar.Children.Add(control);
         }

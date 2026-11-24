@@ -21,6 +21,8 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
     private readonly List<DatabaseSource> made = [];
     private IReadOnlyList<DatabaseSource> found = [];
     private readonly HashSet<Guid> connected = [];
+    private readonly Dictionary<string, SqlConsole> consoles = new(PathNames.Comparer);
+    private readonly Dictionary<Guid, Task<SqlCatalog?>> catalogs = [];
 
     public event EventHandler? Changed;
 
@@ -52,6 +54,11 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         made.Clear();
         found = [];
         connected.Clear();
+        foreach (SqlConsole console in consoles.Values)
+        {
+            console.Stop();
+        }
+        consoles.Clear();
         Discovered = false;
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -72,7 +79,108 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             ConnectionString = connection.ConnectionString,
             SecretKept = true,
         }));
+        foreach ((string path, Guid id) in state.Value.Consoles)
+        {
+            consoles.TryAdd(path, new SqlConsole(path) { Connection = id });
+        }
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>What a connection's database holds, for a console's completion: read once the connection was opened this
+    /// session (completion never opens one), kept until a run or a refresh may have changed it; null where it is not.</summary>
+    public Task<SqlCatalog?> CatalogOf(DatabaseSource source)
+    {
+        UiThread.Check();
+        if (!connected.Contains(source.Id))
+        {
+            return Task.FromResult<SqlCatalog?>(null);
+        }
+        if (!catalogs.TryGetValue(source.Id, out Task<SqlCatalog?>? catalog))
+        {
+            CancellationToken cancel = lifetime.Token;
+            catalog = catalogs[source.Id] = BackgroundWork.Run(async () =>
+            {
+                try
+                {
+                    return await DatabaseClient.CatalogAsync(source, cancel);
+                }
+                catch (Exception failed) when (failed is DbException or IOException or InvalidOperationException or OperationCanceledException or TimeoutException
+                    or System.Net.Sockets.SocketException)
+                {
+                    IdeErrors.Write($"Database: {source.Name}'s tables were not read for completion: {ContainerSecrets.InSaid(failed.Message, known: [source.ConnectionString])}");
+                    return null;
+                }
+            });
+        }
+        return catalog;
+    }
+
+    /// <summary>The console a .sql file is, where a connection was chosen for it.</summary>
+    public SqlConsole? ConsoleOf(string path) => consoles.GetValueOrDefault(path);
+
+    /// <summary>Makes a .sql file a console of <paramref name="source"/>, kept for the folder.</summary>
+    public SqlConsole Bind(string path, DatabaseSource source)
+    {
+        UiThread.Check();
+        if (!consoles.TryGetValue(path, out SqlConsole? console))
+        {
+            console = consoles[path] = new SqlConsole(path);
+        }
+        console.Connection = source.Id;
+        console.Raise();
+        Keep();
+        Changed?.Invoke(this, EventArgs.Empty);
+        return console;
+    }
+
+    /// <summary>Runs each of <paramref name="runs"/> in a console against its connection, one after another on one
+    /// connection, under a <see cref="Working"/> of its own beside the explorer's reads; false where one runs there already.</summary>
+    public async Task<bool> RunAsync(SqlConsole console, DatabaseSource source, IReadOnlyList<string> runs)
+    {
+        UiThread.Check();
+        if (console.Running || work.Begin(AppActions.DatabaseRun, $"Running on {source.Name}…") is not { } started)
+        {
+            return false;
+        }
+        using Working working = started;
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(working.Stopping, lifetime.Token);
+        console.Run(working);
+        catalogs.Remove(source.Id);
+        List<SqlResult> results = [];
+        long began = System.Diagnostics.Stopwatch.GetTimestamp();
+        string said;
+        try
+        {
+            await BackgroundWork.Run(() => DatabaseClient.RunAsync(source, runs, SqlConsole.RowLimit, result =>
+            {
+                lock (results)
+                {
+                    results.Add(result);
+                }
+            }, stop.Token), stop.Token);
+            said = SqlConsole.Summary(results, System.Diagnostics.Stopwatch.GetElapsedTime(began));
+            connected.Add(source.Id);
+            working.Tell(results is not [.., { Error: not null }], said);
+        }
+        catch (Exception stopped) when (stopped is OperationCanceledException || stopped is DbException && stop.IsCancellationRequested)
+        {
+            said = "Stopped.";
+            working.Tell(false, said);
+        }
+        catch (Exception error) when (error is DbException or IOException or UnauthorizedAccessException or ArgumentException
+            or InvalidOperationException or FormatException or TimeoutException or System.Net.Sockets.SocketException)
+        {
+            said = ContainerSecrets.InSaid(error.Message, known: [source.ConnectionString]);
+            IdeErrors.Write($"Database console failed: {said}");
+            working.Tell(false, said);
+        }
+        lock (results)
+        {
+            console.Ran([.. results], said);
+        }
+        say(said);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
     /// <summary>The connections kept for the folder, written as they change.</summary>
@@ -85,6 +193,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         kept.Set((kept.Value with
         {
             Connections = [.. made.Select(source => new KeptConnection(source.Id, source.Name, source.Kind, source.ConnectionString))],
+            Consoles = consoles.Values.Where(c => c.Connection is { } id && made.Any(m => m.Id == id)).ToDictionary(c => c.Path, c => c.Connection!.Value),
         }).Clamped());
     }
 
@@ -184,6 +293,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         found = [.. read.Where(s => !made.Any(m => m.Kind == s.Kind && m.ConnectionString == s.ConnectionString))
             .Select(s => before.FirstOrDefault(old => old.Name == s.Name && old.Kind == s.Kind && old.ConnectionString == s.ConnectionString) is { } old ? s with { Id = old.Id } : s)];
         connected.RemoveWhere(id => Find(id) is null);
+        catalogs.Clear();
         Discovered = true;
         Said = Sources.Count == 0 ? "No database connections found in this folder's settings or runs. Add one with New Connection…"
             : $"{Plural.Of(Sources.Count, "connection")}. Open one to read its databases.";

@@ -189,6 +189,12 @@ public static class AppActions
     public const string DatabaseConnectionRemove = "app.database.connectionRemove";
     public const string DatabaseOpenTable = "app.database.openTable";
     public const string DatabaseCancel = "app.database.cancel";
+
+    // A console's Run Statement, Rider's Console.Execute.Multiline: Ctrl+Enter, the Mac's Cmd+Enter, which Visual Studio's and
+    // VS Code's keymaps give the editor's Start New Line Before and Start New Line, so a SQL file takes theirs (KeysIn).
+    public const string DatabaseConsole = "app.database.console";
+    public const string DatabaseRun = "app.database.run";
+    public const string DatabaseRunStop = "app.database.runStop";
     public const string MigrationsRefresh = "app.migrations.refresh";
     public const string AddMigration = "app.migrations.add";
     public const string RemoveLastMigration = "app.migrations.removeLast";
@@ -743,11 +749,11 @@ public static class AppActions
     /// change, since every tip and menu reads it; a caller reads it and never binds into it.</summary>
     public static Keymap Keymap() => inForce ??= Keymap(Preset, UserShortcuts);
 
-    /// <summary>The action whose keys a place takes for one of its own, where Rider's keymaps give a key two actions by place
-    /// and the keymap gives it to the other: Show Diff and Compare Files take Duplicate's (none in VS Code's, nor Emacs's,
-    /// whose Delete has their Ctrl+D), Add to Watches Complete Statement's (VS Code's Start New Line Before's), a tool window
-    /// Escape's for Focus Editor (Emacs's Ctrl+G); outside Visual Studio's, New Item Generate's and Edit Breakpoint View
-    /// Breakpoints', IntelliJ IDEA's Rerun on the Mac Replace's Cmd+R. The action's own once the person gives it some.</summary>
+    /// <summary>The action whose keys a place takes for one of its own, where Rider's keymaps give a key two actions by place:
+    /// Show Diff and Compare Files Duplicate's (none in VS Code's, nor Emacs's), Add to Watches Complete Statement's (VS Code's
+    /// Start New Line Before's), Focus Editor a tool window's Escape; outside Visual Studio's, New Item Generate's and Edit
+    /// Breakpoint View Breakpoints', IntelliJ IDEA's Rerun on the Mac Replace's, a SQL file's Run Statement Start New Line
+    /// Before's (Visual Studio's) or Start New Line's (VS Code's). The action's own once the person gives it some.</summary>
     public static string KeysIn(string id) => UserShortcuts.ContainsKey(id) ? id : id switch
     {
         ShowDiff or CompareFiles when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => EditorActions.Duplicate,
@@ -755,6 +761,8 @@ public static class AppActions
         FocusEditor => EditorActions.Escape,
         NewItem when Preset != KeymapPreset.VisualStudio => Generate,
         EditBreakpoint when Preset != KeymapPreset.VisualStudio => ViewBreakpoints,
+        DatabaseRun when Preset == KeymapPreset.VisualStudio => EditorActions.StartNewLineBefore,
+        DatabaseRun when Preset == KeymapPreset.VSCode => EditorActions.StartNewLine,
         Rerun when Preset == KeymapPreset.IntelliJ && OperatingSystem.IsMacOS() => Replace,
         NextOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: true),
         PreviousOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: false),
@@ -1388,6 +1396,7 @@ public static class AppActions
         {
             // Cmd+Q, Exit's here, is the application menu's Quit, as in the other keymaps.
             return keymap
+                .Bind(DatabaseRun, "meta ENTER")
                 .Bind(OpenSolution, "control shift O")
                 .Bind(NextProjectWindow, "meta alt BACK_QUOTE")
                 .Bind(PreviousProjectWindow, "meta alt shift BACK_QUOTE")
@@ -1575,6 +1584,7 @@ public static class AppActions
             .Bind(ReformatWithPrettier, "control alt shift P")
             .Bind(RefactorThis, "control alt shift T")
             .Bind(Generate, "alt INSERT")
+            .Bind(DatabaseRun, "control ENTER")
             .Bind(ExtractMethod, "control alt M")
             .Bind(IntroduceVariable, "control alt V")
             .Bind(Inline, "control alt N")

@@ -308,6 +308,21 @@ public sealed partial class EditorArea : UserControl
     /// <summary>The file the active group shows.</summary>
     public OpenDocument? Active => activeGroup.Active;
 
+    /// <summary>The console a SQL file is, whose results stand under it, or null for a file run against no connection.</summary>
+    public Func<OpenDocument, Database.SqlConsole?>? ConsoleOf { get; set; }
+
+    /// <summary>Makes a group's view of a console's results.</summary>
+    public Func<Database.SqlConsoleView>? MakeConsoleView { get; set; }
+
+    /// <summary>Each group shows its file's own pane again, as a SQL file becomes a console.</summary>
+    public void FollowSidePanes()
+    {
+        foreach (EditorGroup group in AllGroups)
+        {
+            group.FollowSidePreview();
+        }
+    }
+
     /// <summary>The file the main window's editors show (their group last worked in), whichever window is in front.</summary>
     public OpenDocument? ShownInMain => main.Current.Active;
 

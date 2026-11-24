@@ -286,6 +286,9 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The group's own picture of its SVG file, made as it first shows one.</summary>
     private SvgPreview? svg;
 
+    /// <summary>The group's own results of a SQL console, made as it first shows one.</summary>
+    private Database.SqlConsoleView? consoleView;
+
     /// <summary>The group's own page of its HTML file, made as it first shows one.</summary>
     private HtmlPreview? html;
 
@@ -299,7 +302,7 @@ public sealed class EditorGroup : DockPanel
     public SvgPreview? Svg => Side as SvgPreview;
 
     /// <summary>A Markdown, SVG or HTML file shown in the editor has its preview beside it while the area shows that kind's
-    /// previews, and its toggle on the strip either way; any other file neither.</summary>
+    /// previews, and its toggle on the strip either way, and a SQL console its results under it; any other file neither.</summary>
     internal void FollowSidePreview()
     {
         OpenDocument? document = active?.Document is { } shown && InEditor(shown) ? shown : null;
@@ -308,7 +311,8 @@ public sealed class EditorGroup : DockPanel
         MarkdownLayout layout = area.MarkdownLayout;
         bool previewOnly = isMarkdown && layout.View == MarkdownView.Preview;
         bool moveKeys = previewOnly ? Editor.IsKeyboardFocusWithin : Markdown?.IsKeyboardFocusWithin == true && layout.View == MarkdownView.Editor;
-        body.SetPresentation(isMarkdown ? layout.Stacked : null, previewOnly);
+        Database.SqlConsole? console = document?.Language == Languages.Language.Sql ? area.ConsoleOf?.Invoke(document) : null;
+        body.SetPresentation(isMarkdown ? layout.Stacked : console is not null ? true : null, previewOnly);
         if (isMarkdown && layout.View != MarkdownView.Editor)
         {
             markdown ??= new MarkdownPreview(Editor, area);
@@ -364,7 +368,24 @@ public sealed class EditorGroup : DockPanel
             }
             html?.Show(null);
         }
+        if (console is not null && area.MakeConsoleView is { } make)
+        {
+            consoleView ??= make();
+            Side = consoleView;
+            consoleView.Show(console);
+        }
+        else
+        {
+            if (Side is Database.SqlConsoleView)
+            {
+                Side = null;
+            }
+            consoleView?.Show(null);
+        }
     }
+
+    /// <summary>The results of the console the group shows, under its SQL, while it shows one.</summary>
+    public Database.SqlConsoleView? Console => Side as Database.SqlConsoleView;
 
     /// <summary>The action the strip's preview toggle runs for the file shown, null while it shows none.</summary>
     public string? PreviewAction { get; private set; }

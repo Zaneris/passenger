@@ -86,6 +86,20 @@ public sealed class DatabaseRows(string[] columns, object?[][] rows, bool more =
 
     public override (int Column, bool Descending)? Sort => OrderedBy;
 
+    /// <summary>What it was filtered from, for <see cref="Same"/>.</summary>
+    private DatabaseRows? from;
+    private string? holding;
+
+    /// <summary>The rows any of whose cells hold <paramref name="words"/>, case aside, numbered as before.</summary>
+    public DatabaseRows Holding(string words) => new(Columns, [.. Enumerable.Range(0, RowCount).Where(r => Enumerable.Range(0, ColumnCount)
+        .Any(c => Cell(r, c).Contains(words, StringComparison.OrdinalIgnoreCase))).Select(r => Rows[r])], More, Affected)
+    {
+        Schema = Schema, from = this, holding = words,
+    };
+
+    /// <summary>Whether two filters are of one set by the same words, so a grid keeps its sort and place.</summary>
+    public bool Same(DatabaseRows other) => ReferenceEquals(this, other) || from is not null && ReferenceEquals(from, other.from) && holding == other.holding;
+
     public override int RowCount => Rows.Length;
     public override int ColumnCount => Columns.Length;
     public override string Header(int column) => ContainerSecrets.InSaid(Columns[column]);
