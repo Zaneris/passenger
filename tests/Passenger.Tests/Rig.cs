@@ -1244,6 +1244,33 @@ public static class Ui
         }
     }
 
+    /// <summary>A key that types pressed on Windows as <see cref="Type"/> presses it, its press carrying which Ctrl and Alt
+    /// keys Windows says hold it, as Avalonia's Win32 key info gives them (console flags: <paramref name="held"/> 0x1 the
+    /// right Alt, 0x2 the left, 0x4 the right Ctrl, 0x8 the left): AltGr is the right Alt with the left Ctrl Windows adds to
+    /// it, so on a Polish layout both AltGr+L and Ctrl+Alt+L come as Ctrl+Alt+L carrying "ł".</summary>
+    public static void TypeHeld(TopLevel window, string keys, string text, ulong held)
+    {
+        Keystroke stroke = Keystroke.Parse(keys.Replace('+', ' '));
+        // The focused element is where Avalonia's keyboard raises a key, the window when nothing has the focus.
+        Avalonia.Interactivity.Interactive target = window.FocusManager?.GetFocusedElement() as Avalonia.Interactivity.Interactive ?? window;
+        KeyEventArgs press = new()
+        {
+            RoutedEvent = InputElement.KeyDownEvent,
+            Key = stroke.Key,
+            KeyModifiers = stroke.Modifiers,
+            KeySymbol = text,
+            KeyText = text,
+            PlatformKeyInfo = new PlatformKeyInfo(KnownPlatformKeyInfoFormats.Win32) { Modifiers = held },
+        };
+        target.RaiseEvent(press);
+        if (!press.Handled)
+        {
+            window.KeyTextInput(text);
+        }
+        window.KeyRelease(stroke.Key, Raw(stroke.Modifiers), PhysicalKey.None, text);
+        Settle();
+    }
+
     /// <summary>Long enough for the language server to start and load a small project, on a developer's machine.</summary>
     private static readonly TimeSpan SettleLimit = TimeSpan.FromSeconds(90);
 
