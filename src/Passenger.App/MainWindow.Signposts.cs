@@ -1,6 +1,8 @@
 using Passenger.App.CSharp;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Languages.CSharp;
+using Passenger.Lsp;
 using Passenger.Text;
 
 namespace Passenger.App;
@@ -13,9 +15,6 @@ public partial class MainWindow
     /// <summary>The signposts above the declarations of the C# files shown.</summary>
     private Signposts? signposts;
 
-    /// <summary>Whether the Show Usages about to run was asked by a signpost's usages.</summary>
-    private bool signpostAsking;
-
     private void AddSignposts()
     {
         signposts = new Signposts(Editors, () => session.CSharp, session.Vcs, settings);
@@ -23,9 +22,9 @@ public partial class MainWindow
         Editors.ForEachEditor(editor => editor.RowAbovePressed += (_, press) => IdeErrors.Observe(PressSignpostAsync(editor, press)));
     }
 
-    /// <summary>A press on a signpost's word: its usages, or what implements, overrides or derives from it, as Show Usages
-    /// and Go to Implementation show them from its declaration's name; or its authors' newest commit, chosen in the Git
-    /// window's log.</summary>
+    /// <summary>A press on a signpost's word: its usages, the places its count counts, in Show Usages' popup under its
+    /// declaration's name; what implements, overrides or derives from it, as Go to Implementation shows them from that name;
+    /// or its authors' newest commit, chosen in the Git window's log.</summary>
     private async Task PressSignpostAsync(CodeEditor editor, RowAbovePress press)
     {
         if (press.Context || press.Word.Data is not SignpostWord word)
@@ -47,9 +46,39 @@ public partial class MainWindow
             return;
         }
         editor.Selections = SelectionSet.Single(name);
-        signpostAsking = word.Kind == SignpostKind.Usages;
-        Perform(word.Kind == SignpostKind.Usages ? AppActions.ShowUsages : AppActions.GoToImplementation);
-        signpostAsking = false;
+        if (word.Kind == SignpostKind.Inheriting)
+        {
+            Perform(AppActions.GoToImplementation);
+            return;
+        }
+        if (Editors.Documents.FirstOrDefault(d => d.Text == editor.Document) is not { } document || session.CSharp?.For(document)?.Lsp is not { } lsp)
+        {
+            return;
+        }
+        usagesAsked = new UsagesAsked(editor, editor.Document.Snapshot, editor.Selections, popups.Shown);
+        IReadOnlyList<Passenger.Roslyn.Extension.SignpostCount> counted;
+        try
+        {
+            counted = await lsp.SignpostsAsync([name], usages: true, inheriting: false, places: true);
+        }
+        catch (LanguageServerFailed failed)
+        {
+            status.Text = $"The usages of {word.Name} could not be read: {failed.Reason}";
+            return;
+        }
+        if (counted is not [{ Places: { } places }])
+        {
+            return;
+        }
+        // The list and its count are one answer: a count of another version of the code is counted again.
+        if (SignpostDeclarations.Usages(places.Count) != press.Word.Text)
+        {
+            signposts?.Recount();
+        }
+        await ShowUsagesAsync(new UsagesFound($"Usages of {word.Name}", [.. places.Select(Located)], null, name));
+
+        static LspLocation Located(Passenger.Roslyn.Extension.UriSpan place) =>
+            new(place.Uri, new LspRange(new LspPosition(place.Start.Line, place.Start.Character), new LspPosition(place.End.Line, place.End.Character)));
     }
 
     /// <summary>Where a declaration's name first stands as a whole word from the start of the line its signpost heads, a few

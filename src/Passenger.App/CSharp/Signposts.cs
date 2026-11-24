@@ -216,7 +216,7 @@ internal sealed class Signposts
         LanguageServer.NobodyWaits();
         try
         {
-            counts = await lsp.SignpostsAsync([.. asked.Select(a => a.Declaration.NameOffset)], settings.SignpostUsages, settings.SignpostInheriting, cancel);
+            counts = await lsp.SignpostsAsync([.. asked.Select(a => a.Declaration.NameOffset)], settings.SignpostUsages, settings.SignpostInheriting, cancel: cancel);
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {

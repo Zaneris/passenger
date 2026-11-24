@@ -389,17 +389,18 @@ public sealed record ComponentAsked([property: JsonPropertyName("path")] string 
 /// server takes the class; both null for a file of no project's.</summary>
 public sealed record ComponentFound([property: JsonPropertyName("symbol")] NamedSymbol? Symbol, [property: JsonPropertyName("name")] UriSpan? Name);
 
-/// <summary>The declarations of a document whose signposts are asked for, each by where its name stands, and whether their
-/// usages and what inherits from them are counted.</summary>
+/// <summary>The declarations of a document whose signposts are asked for, each by where its name stands, whether their
+/// usages and what inherits from them are counted, and whether the places their usages count are given too.</summary>
 public sealed record SignpostsAsked([property: JsonPropertyName("at")] IReadOnlyList<Place> At, [property: JsonPropertyName("usages")] bool Usages,
-    [property: JsonPropertyName("inheriting")] bool Inheriting);
+    [property: JsonPropertyName("inheriting")] bool Inheriting, [property: JsonPropertyName("places")] bool Places = false);
 
 /// <summary>Each declaration's counts, in the order asked.</summary>
 public sealed record SignpostsFound([property: JsonPropertyName("counts")] IReadOnlyList<SignpostCount> Counts);
 
 /// <summary>A declaration's own usages, those of what implements or overrides it left out, and how many implement, override
-/// or derive from it; null where it was not asked, or nothing may.</summary>
-public sealed record SignpostCount([property: JsonPropertyName("usages")] int? Usages, [property: JsonPropertyName("inheriting")] int? Inheriting);
+/// or derive from it; null where it was not asked, or nothing may. Asked for, the places its usages count, as many as they.</summary>
+public sealed record SignpostCount([property: JsonPropertyName("usages")] int? Usages, [property: JsonPropertyName("inheriting")] int? Inheriting,
+    [property: JsonPropertyName("places")] IReadOnlyList<UriSpan>? Places = null);
 
 /// <summary>Where the caret is: what a describing message asks about.</summary>
 public sealed record Caret([property: JsonPropertyName("at")] Place At);

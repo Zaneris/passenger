@@ -65,10 +65,8 @@ public partial class MainWindow
                 or AppActions.GoToTypeDeclaration or AppActions.BaseSymbols or AppActions.DerivedSymbols)
             {
                 usagesAsked = running.Context is { ByAgent: false, Focused: Visual focused }
-                    ? new UsagesAsked(focused, (focused as CodeEditor)?.Document.Snapshot, (focused as CodeEditor)?.Selections, popups.Shown,
-                        FromSignpost: signpostAsking && running.Action.Id == AppActions.ShowUsages)
+                    ? new UsagesAsked(focused, (focused as CodeEditor)?.Document.Snapshot, (focused as CodeEditor)?.Selections, popups.Shown)
                     : null;
-                signpostAsking = false;
             }
         };
     }
@@ -79,9 +77,9 @@ public partial class MainWindow
     /// <summary>Where the keys were as the person last asked for Find Usages; none for an agent's asking.</summary>
     private UsagesAsked? usagesAsked;
 
-    /// <summary>Where the keys were as Find Usages was asked: what had them, an editor's text and carets then, how many
-    /// popups had been shown, and whether a signpost's usages asked, which lists the uses its count counts.</summary>
-    private sealed record UsagesAsked(Visual Focused, TextSnapshot? Text, SelectionSet? Carets, int Popups, bool FromSignpost = false)
+    /// <summary>Where the keys were as Find Usages was asked: what had them, an editor's text and carets then, and how many
+    /// popups had been shown.</summary>
+    private sealed record UsagesAsked(Visual Focused, TextSnapshot? Text, SelectionSet? Carets, int Popups)
     {
         /// <summary>Whether the keys are still there: with what had them, nothing typed or moved in it, and no popup shown
         /// since, so the person is still waiting where they asked.</summary>
@@ -98,7 +96,6 @@ public partial class MainWindow
     {
         (string title, IReadOnlyList<LspLocation> locations, string? note) = (found.Title, found.Usages, found.Note);
         int search = ++usageSearches;
-        bool usesAlone = usagesAsked?.FromSignpost == true;
         IReadOnlySet<string> generated = new HashSet<string>();
         if (session.CSharp is { } csharp)
         {
@@ -148,11 +145,6 @@ public partial class MainWindow
         if (search != usageSearches)
         {
             return;
-        }
-        if (usesAlone)
-        {
-            // A signpost counts the uses, never the declaration.
-            usages = [.. usages.Where(u => u.Kind != UsageKind.Declaration)];
         }
         if (found.PopupAt is { } at && usagesAsked is { Focused: CodeEditor editor } asked && asked.Stands(popups))
         {

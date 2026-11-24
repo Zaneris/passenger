@@ -1130,11 +1130,22 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Click(editor, editor.RowAbovePoint(2, 0, 1) ?? throw new InvalidOperationException("Sides' signpost is not drawn"));
         Ui.WaitFor(() => editor.CaretPosition.Line == 7, () => $"Go to Implementation from Sides' signpost: the caret is on line {editor.CaretPosition.Line + 1}");
         Ui.Click(editor, editor.RowAbovePoint(0, 0, 0) ?? throw new InvalidOperationException("IShape's signpost is not drawn"));
-        Ui.WaitFor(() => window.Popup is UsagesPopup || editor.CaretPosition.Line == 5,
-            () => $"Show Usages from IShape's signpost: the caret is on line {editor.CaretPosition.Line + 1} and the popup is {window.Popup?.GetType().Name ?? "none"}");
-        Assert.True(window.Popup is not UsagesPopup listed || listed.Rows.Count == 1,
-            $"Show Usages from IShape's signpost lists {(window.Popup as UsagesPopup)?.Rows.Count} places, where its signpost counts 1 use");
+        Ui.WaitFor(() => window.Popup is UsagesPopup, () => $"Show Usages' popup from IShape's signpost ({window.Status})");
+        Assert.True(((UsagesPopup)window.Popup!).Rows is [{ Line: 5 }], $"Show Usages from IShape's signpost lists {((UsagesPopup)window.Popup!).Rows.Count} places, where its signpost counts Square's 1 use");
         Ui.Press(window, "ESCAPE");
+
+        // An interface member whose implementation is called too: its list is what its count counts, never the implementation's calls.
+        window.OpenFile(project.PathOf("Gauges.cs"));
+        Ui.Settle();
+        Ui.WaitFor(() => Said(2) == "1 usage / 1 implementation", () => $"IGauge.Read's signpost says '{Said(2)}', where it is called once itself and implemented once");
+        Ui.Click(editor, editor.RowAbovePoint(2, 0, 0) ?? throw new InvalidOperationException("IGauge.Read's signpost is not drawn"));
+        Ui.WaitFor(() => window.Popup is UsagesPopup, () => $"Show Usages' popup from IGauge.Read's signpost ({window.Status})");
+        IReadOnlyList<Usage> read = ((UsagesPopup)window.Popup!).Rows;
+        Assert.True(read is [{ Line: 12 } only] && only.LineText.Contains("any.Read()", StringComparison.Ordinal),
+            $"Show Usages from IGauge.Read's signpost, which counts 1 use, lists {string.Join("; ", read.Select(u => $"line {u.Line + 1}: {u.LineText.Trim()}"))}");
+        Ui.Press(window, "ESCAPE");
+        window.OpenFile(project.PathOf("Shapes.cs"));
+        Ui.Settle();
 
         Assert.True(window.Settings.Signposts, "Signposts are off by default");
         Passenger.App.Settings.SettingsDialog settingsDialog = window.ShowSettings();
@@ -3466,6 +3477,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Program.cs"), "class Program\n{\n    static void Main()\n    {\n        int result = Helper.Twice(2);\n    }\n}\n");
             File.WriteAllText(PathOf("Helper.cs"), "static class Helper\n{\n    public static int Twice(int value) => value * 2;\n}\n");
             File.WriteAllText(PathOf("Shapes.cs"), "interface IShape\n{\n    int Sides { get; }\n}\n\nclass Square : IShape\n{\n    public int Sides => 4;\n}\n");
+            File.WriteAllText(PathOf("Gauges.cs"), "interface IGauge\n{\n    int Read();\n}\n\nclass Dial : IGauge\n{\n    public int Read() => 1;\n}\n\n"
+                + "static class Readings\n{\n    static int Both(Dial dial, IGauge any) => dial.Read() + any.Read();\n}\n");
             File.WriteAllText(PathOf("Area.cs"), "static class Area\n{\n    public static int Of(int width, int height) => width * height;\n    public static int Room() => Of(3, 4);\n}\n");
             File.WriteAllText(PathOf("Point.cs"), "class Point\n{\n    public int X { get; }\n    public int Y { get; }\n}\n");
             File.WriteAllText(PathOf("Selected.cs"), SelectedLines);
