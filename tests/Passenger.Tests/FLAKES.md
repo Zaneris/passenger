@@ -28,6 +28,17 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-24
+
+- `CommitSigningTests`' `A_gpg_keys_passphrase_is_asked_in_passengers_dialog_through_its_own_gpg_and_signs_the_commit`,
+  CI 44538058686 (macOS report shard 4), at c461a1b79: "gpg made no key to sign with, exiting 2: … gpg: signing failed:
+  Corrupted protection". **Outside the code**: GnuPG 2.5.24's gpg-agent writes a salt or nonce whose random bytes are
+  all printable inside quotes in its key file, and drops a space that follows "(", ")" or another space there, so the key
+  it has just made reads back a byte short and gpg's self-signature fails, about one key in twenty thousand. Seen on the
+  Mac with the runner's GnuPG, the lost space found as the one salt a byte longer the key signs with. The tests now carry
+  their keys and certificate, each salt and nonce in hex, where each made its own (66cca38df), and one that fails to go in
+  quotes the key files the agent stored (fe5da4265). The class runs on no macOS job.
+
 ## 2026-11-23
 
 - `CodeAssistTests`' `Reformat_and_what_a_completion_or_fix_writes_keep_the_files_indent_and_line_breaks_and_only_their_own_file`,
