@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using System.Text.Json;
 using Passenger.App.Run;
@@ -37,6 +38,7 @@ public enum LiveAppKind
     Avalonia,
     Wpf,
     Maui,
+    WinUI,
 }
 
 /// <summary>Passenger's end of its inspector inside an Avalonia app it runs or debugs (src/Passenger.Inspector), a WPF app
@@ -77,7 +79,12 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         }
         else if (plan is not null)
         {
-            string inspector = kind == LiveAppKind.Wpf ? WpfInspectorPath : InspectorPath;
+            string inspector = kind switch
+            {
+                LiveAppKind.Wpf => WpfInspectorPath,
+                LiveAppKind.WinUI => WinUIInspectorPath(plan.DesktopApp()?.File) ?? InspectorPath,
+                _ => InspectorPath,
+            };
             // An Avalonia app nobody is to see may be started by its inspector, after every other hook, in place of its Main.
             bool unseen = plan.Unseen && kind == LiveAppKind.Avalonia;
             Dictionary<string, string> environment = new(plan.Environment)
@@ -89,7 +96,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             {
                 environment[Wire.UnseenVariable] = plan.OnOwnDesktop ? Wire.UnseenRuns : Wire.UnseenEnds;
             }
-            if (kind == LiveAppKind.Wpf)
+            if (kind is LiveAppKind.Wpf or LiveAppKind.WinUI)
             {
                 environment[RuntimeVariables.XamlDiagnosticsSourceInfo] = "1";
                 if (plan.Project is { } project)
@@ -128,6 +135,16 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>The WPF app's inspector, which only a Windows build carries.</summary>
     public static string WpfInspectorPath => Path.Combine(AppContext.BaseDirectory, "inspector", "wpf", "Passenger.Inspector.Wpf.dll");
 
+    /// <summary>A WinUI app's inspector, for the processor its program runs on (inspector/winui/x64/, arm64/, each with the COM
+    /// host WinUI's diagnostics load it through), which only a Windows build carries; null for a program of another processor.</summary>
+    public static string? WinUIInspectorPath(string? program) =>
+        program is null ? null : (ProgramProcessors.Of(program) is [var processor, ..] ? processor : RuntimeInformation.OSArchitecture) switch
+        {
+            Architecture.X64 => Path.Combine(AppContext.BaseDirectory, "inspector", "winui", "x64", "Passenger.Inspector.WinUI.dll"),
+            Architecture.Arm64 => Path.Combine(AppContext.BaseDirectory, "inspector", "winui", "arm64", "Passenger.Inspector.WinUI.dll"),
+            _ => null,
+        };
+
     /// <summary>A .NET MAUI app's inspector.</summary>
     public static string MauiInspectorPath => Path.Combine(AppContext.BaseDirectory, "inspector", "maui", "Passenger.Inspector.Maui.dll");
 
@@ -144,10 +161,11 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>The framework and its version as the window says it, once the app has said hello: "Avalonia 12.2.0",
     /// "WPF 10.0.1"; the framework alone before.</summary>
     public string Framework => Kind == LiveAppKind.Wpf ? FrameworkSaid ?? "WPF"
+        : Kind == LiveAppKind.WinUI ? FrameworkSaid ?? "WinUI"
         : Kind == LiveAppKind.Maui ? FrameworkSaid ?? "MAUI"
         : Avalonia is { } version ? $"Avalonia {(System.Version.TryParse(version, out Version? read) ? read.ToString(3) : version)}" : "Avalonia";
 
-    /// <summary>What a WPF or MAUI app's inspector said it runs, from its hello.</summary>
+    /// <summary>What a WPF, WinUI or MAUI app's inspector said it runs, from its hello.</summary>
     private string? FrameworkSaid { get; set; }
 
     /// <summary>The plan as it is launched: the inspector among its startup hooks, and the socket to connect to; none for
@@ -280,6 +298,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         plan.DesktopApp() is not { PastHooks: null, File: var started } ? null
         : DesktopPrograms.BesideAvalonia(started) && File.Exists(InspectorPath) ? (started, LiveAppKind.Avalonia)
         : wpf && OperatingSystem.IsWindows() && File.Exists(WpfInspectorPath) && IsWpf(started) ? (started, LiveAppKind.Wpf)
+        : OperatingSystem.IsWindows() && DesktopPrograms.BesideWinUI(started) && WinUIInspectorPath(started) is { } winui && File.Exists(winui) ? (started, LiveAppKind.WinUI)
         : null;
 
     /// <summary>The live app for a plan that runs an app on a device whose build deployed Avalonia or .NET MAUI (its controls'

@@ -630,7 +630,7 @@ public sealed partial class LiveTreeController
     private string? NoneChosen => app is Godot.GodotGame ? "Choose a node in the tree." : null;
 
     /// <summary>What the window says while it follows nothing.</summary>
-    public const string NothingShown = "Debug an Avalonia or WPF app to see its windows and controls here, or run a Godot game to see its nodes.";
+    public const string NothingShown = "Debug an Avalonia, WPF or WinUI app to see its windows and controls here, or run a Godot game to see its nodes.";
 
     /// <summary>Whether the person asked for the game's monitors charted (<see cref="LiveTreeView.ChartsLink"/>).</summary>
     private bool charting;
@@ -972,7 +972,7 @@ public sealed partial class LiveTreeController
     /// <summary>Why the window cannot ask the app now: nothing inspected, not up yet, refused, gone, or paused.</summary>
     private string? WhyNotAsk() => app switch
     {
-        null => "No Avalonia or WPF app is being debugged, nor a Godot game running",
+        null => "No Avalonia, WPF or WinUI app is being debugged, nor a Godot game running",
         { State: LiveAppState.Waiting } => $"{app.Name} has not shown its windows yet",
         { State: LiveAppState.Refused } => app.Problem,
         { State: LiveAppState.Ended } => $"{app.Name} has ended",

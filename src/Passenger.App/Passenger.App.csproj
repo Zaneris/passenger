@@ -144,6 +144,11 @@
          it is built for its own framework rather than this one's. -->
     <ProjectReference Include="../Passenger.Inspector.Wpf/Passenger.Inspector.Wpf.csproj" ReferenceOutputAssembly="false" Private="false"
                       SkipGetTargetFrameworkProperties="true" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" />
+    <!-- Built first on every system and carried under inspector/winui/ by a Windows build alone, never linked: a WinUI app
+         Passenger runs or debugs loads it (LiveTree/LiveApp.cs). It is built for its own framework and processor, its COM
+         host being one processor's. -->
+    <ProjectReference Include="../Passenger.Inspector.WinUI/Passenger.Inspector.WinUI.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SkipGetTargetFrameworkProperties="true" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" />
     <!-- Built first and carried under testframes/, never linked: a test run of an Avalonia headless project loads it
          (Testing/TestFrames.cs). It is built once for every platform. -->
     <ProjectReference Include="../Passenger.TestFrames/Passenger.TestFrames.csproj" ReferenceOutputAssembly="false" Private="false"
@@ -318,6 +323,30 @@
     <ItemGroup>
       <WpfInspectorFile Include="@(WpfInspectorAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(WpfInspectorAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />
       <None Include="@(WpfInspectorFile)" Link="inspector/wpf/%(WpfInspectorFile.Filename)%(WpfInspectorFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The WinUI inspector becomes this project's output under inspector/winui/x64/ and inspector/winui/arm64/ where Passenger
+       runs on Windows, as the WPF one does: for each processor a WinUI app runs on, its assembly, the COM host WinUI's
+       diagnostics load it through and the runtime configuration that host reads. -->
+  <Target Name="IncludeWinUIInspector" BeforeTargets="AssignTargetPaths"
+          Condition="('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows'))) Or $(RuntimeIdentifier.StartsWith('win'))">
+    <!-- x64's is the project's own build, which the reference above makes: the same instance, so the two never race. -->
+    <MSBuild Projects="../Passenger.Inspector.WinUI/Passenger.Inspector.WinUI.csproj" Targets="Build;GetTargetPath"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="WinUIInspectorX64" />
+    </MSBuild>
+    <MSBuild Projects="../Passenger.Inspector.WinUI/Passenger.Inspector.WinUI.csproj" Targets="Build;GetTargetPath" Properties="RuntimeIdentifier=win-arm64"
+             RemoveProperties="SelfContained;PublishReadyToRun;TargetFramework" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="WinUIInspectorArm64" />
+    </MSBuild>
+    <ItemGroup>
+      <WinUIInspectorFile Include="@(WinUIInspectorX64->'%(RootDir)%(Directory)%(Filename)%(Extension)');@(WinUIInspectorX64->'%(RootDir)%(Directory)%(Filename).pdb');@(WinUIInspectorX64->'%(RootDir)%(Directory)%(Filename).comhost.dll');@(WinUIInspectorX64->'%(RootDir)%(Directory)%(Filename).runtimeconfig.json')"
+                          Processor="x64" />
+      <WinUIInspectorFile Include="@(WinUIInspectorArm64->'%(RootDir)%(Directory)%(Filename)%(Extension)');@(WinUIInspectorArm64->'%(RootDir)%(Directory)%(Filename).pdb');@(WinUIInspectorArm64->'%(RootDir)%(Directory)%(Filename).comhost.dll');@(WinUIInspectorArm64->'%(RootDir)%(Directory)%(Filename).runtimeconfig.json')"
+                          Processor="arm64" />
+      <None Include="@(WinUIInspectorFile)" Link="inspector/winui/%(WinUIInspectorFile.Processor)/%(WinUIInspectorFile.Filename)%(WinUIInspectorFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
   </Target>

@@ -3077,7 +3077,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(refused.IsError == true && Text(refused).Contains($"{AppActions.ApplyHotReloadChanges} did not run: Nothing runs", StringComparison.Ordinal),
             $"Apply Hot Reload Changes with nothing running answered: {Text(refused)}");
         string selectElement = Assert.Single(listed, l => l.StartsWith($"{AppActions.SelectElement}: ", StringComparison.Ordinal));
-        Assert.Contains("cannot run: No Avalonia or WPF app is being debugged", selectElement, StringComparison.Ordinal);
+        Assert.Contains("cannot run: No Avalonia, WPF or WinUI app is being debugged", selectElement, StringComparison.Ordinal);
         string restart = Assert.Single(listed, l => l.StartsWith($"{AppActions.RestartCSharpServer}: Restart C# Language Server [IDE]", StringComparison.Ordinal));
         Assert.Contains($" - cannot run: {Refusals.NoCSharp}", restart, StringComparison.Ordinal);
         // An action that turns something on and off says which it is, so an agent never turns one blind.

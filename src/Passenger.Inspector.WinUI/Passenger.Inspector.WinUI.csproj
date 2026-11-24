@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Passenger's inspector inside a WinUI app it runs or debugs (the Live Visual Tree, binding errors, an agent's app
+       tools): the runtime loads it as a startup hook (DOTNET_STARTUP_HOOKS) into a run Passenger launches, never into
+       the app as built or shipped, and it answers over the socket Passenger names (Protocol.cs). It references nothing of
+       the Windows App SDK's: the app's own WinUI is reached through WinUI's XAML diagnostics, whose service .NET's COM
+       host hands it in the app (EnableComHosting, a COM host for one processor's apps per RuntimeIdentifier), and through
+       reflection. Built on every system for win-x64, and carried under inspector/winui/<processor>/ only by Passenger's
+       Windows builds, where WinUI runs. -->
+  <PropertyGroup>
+    <!-- The oldest .NET a WinUI app Passenger runs is on (CoreCLR alone), so it loads into any of them. -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <EnableComHosting>true</EnableComHosting>
+    <!-- The COM host comes from the host pack of its processor, which a build for one downloads. -->
+    <EnableAppHostPackDownload>true</EnableAppHostPackDownload>
+    <!-- The COM host loads it into the app's own runtime, however much newer. -->
+    <RollForward>LatestMajor</RollForward>
+    <RootNamespace>Passenger.Inspector.WinUI</RootNamespace>
+    <Optimize>false</Optimize>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- What Passenger and its inspectors say to each other, and the app's end of the socket, one definition for all. -->
+    <Compile Include="../Passenger.Inspector/Protocol.cs" Link="Protocol.cs" />
+    <Compile Include="../Passenger.Inspector/Connection.cs" Link="Connection.cs" />
+    <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
+    <Compile Include="../Passenger.Core/ApartThreads.cs" Link="ApartThreads.cs" />
+    <Compile Include="../Passenger.Core/CommandKey.cs" Link="CommandKey.cs" />
+    <Compile Include="../Passenger.Inspector/Serving.cs" Link="Serving.cs" />
+    <Compile Include="../Passenger.Inspector/ElementTrees.cs" Link="ElementTrees.cs" />
+    <Compile Include="../Passenger.Inspector/XamlPlaces.cs" Link="XamlPlaces.cs" />
+    <Compile Include="../Passenger.Inspector/BindingFailures.cs" Link="BindingFailures.cs" />
+    <Compile Include="../Passenger.Core/Spelling.cs" Link="Spelling.cs" />
+    <Compile Include="../Passenger.Core/RuntimeVariables.cs" Link="RuntimeVariables.cs" />
+    <Compile Include="../Passenger.Core/StartupHooks.cs" Link="StartupHooks.cs" />
+    <Compile Include="../Passenger.Core/OwnEnvironment.cs" Link="OwnEnvironment.cs" />
+    <Compile Include="../Passenger.Core/PathNames.cs" Link="PathNames.cs" />
+    <Compile Include="../Passenger.Core/Kernel32.cs" Link="Kernel32.cs" />
+    <Compile Include="../Passenger.Core/PathComparer.cs" Link="PathComparer.cs" />
+    <Compile Include="../Passenger.Core/SocketFolders.Limit.cs" Link="SocketFolders.Limit.cs" />
+    <Compile Include="../Passenger.Core/Deadline.cs" Link="Deadline.cs" />
+    <Compile Include="../Passenger.Inspector/Looking.cs" Link="Looking.cs" />
+  </ItemGroup>
+</Project>

@@ -808,7 +808,7 @@ public sealed class ProblemsModel
                 {
                     made.Add(new ProblemRow(0, said, why, null));
                 }
-                EmptyText = "No failed bindings: those of an Avalonia or WPF app run or debugged here are listed as they fail";
+                EmptyText = "No failed bindings: those of an Avalonia, WPF or WinUI app run or debugged here are listed as they fail";
                 break;
             case ProblemsTab.HotReload:
                 made.Add(new ProblemRow(0, hotReloadSaid, null, null));

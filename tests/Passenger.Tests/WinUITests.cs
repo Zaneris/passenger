@@ -1,10 +1,16 @@
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Media.Imaging;
+using ModelContextProtocol.Protocol;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.LiveTree;
+using Passenger.App.Mcp;
+using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Inspector;
 using static Passenger.Tests.XamlTests;
 
 namespace Passenger.Tests;
@@ -12,9 +18,10 @@ namespace Passenger.Tests;
 /// <summary>A WinUI app of the Windows App SDK through the window, on Windows, where WinUI builds and runs: its XAML read
 /// against the projection its restore brings (completion of controls, properties, events and values, the checks as typed),
 /// its <c>{x:Bind}</c> paths completed and checked against the window's code and a data template's <c>x:DataType</c>, Go to
-/// Declaration from them into the C#, and a rename in the C# following them. Skipped elsewhere, saying why. The app is
-/// written as Visual Studio's template makes one, no <c>dotnet new</c> template being Microsoft's; its packages come from
-/// nuget.org, as no restore of the solution's brings them, so it is never one of the gate's.</summary>
+/// Declaration from them into the C#, and a rename in the C# following them; the app run, debugged, inspected in the Live
+/// Visual Tree and used by an agent. Skipped elsewhere, saying why. The app is written as Visual Studio's template makes
+/// one, no <c>dotnet new</c> template being Microsoft's; its packages come from nuget.org, as no restore of the solution's
+/// brings them, so it is never one of the gate's.</summary>
 public sealed class WinUITests : IClassFixture<WinUITests.Gallery>
 {
     private readonly Gallery app;
@@ -52,10 +59,12 @@ public sealed class WinUITests : IClassFixture<WinUITests.Gallery>
     }
 
     /// <summary>The unpackaged app (WindowsPackageType None, the Windows App SDK carried in its output) runs, saying in the
-    /// Run window that its window is up, and Stop ends it; Debug stops it at a breakpoint in its window's constructor, its
-    /// locals shown, and Stop ends it. Its window opens on a desktop of its own, where nobody sees it.</summary>
+    /// Run window that its window is up, and Stop ends it. Debug stops it at a breakpoint in its window's constructor, its
+    /// locals shown; let go, its elements show in the Live Visual Tree as WinUI's diagnostics tell of them, the button's
+    /// value and XAML with them, its misspelt binding is listed in Problems with the member nearest it, and an agent sees
+    /// its tree, clicks its button and takes its picture. Its window opens on a desktop of its own, where nobody sees it.</summary>
     [AvaloniaFact]
-    public void An_unpackaged_winui_app_runs_and_stops_at_a_breakpoint_under_the_debugger()
+    public void An_unpackaged_winui_app_runs_and_debugged_stops_shows_its_live_tree_and_failed_binding_and_takes_an_agents_click()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -79,6 +88,54 @@ public sealed class WinUITests : IClassFixture<WinUITests.Gallery>
                 () => $"the stop at the breakpoint in MainWindow's constructor; the debugger is {window.Debugger.Session?.State.ToString() ?? "not debugging"}, stopped at "
                     + $"{window.Debugger.Stop?.Top?.Name}: {Ui.Said(window)}", Slow);
             Assert.Contains(window.BottomPanel.Debug.Tree.Rows, r => r.Depth == 0 && r.Name == "this");
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "        System.Console.WriteLine(");
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Resume);
+
+            LiveTreeView tree = window.LiveTree;
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Go"),
+                () => $"the Live Visual Tree to show the app's window; its inspector is {window.LiveApp?.Kind} {window.LiveApp?.State} {window.LiveApp?.Problem}: {Ui.Said(window)}", Slow);
+            Assert.True(window.LiveApp is { Kind: LiveAppKind.WinUI } && window.LiveApp.Framework == $"WinUI 3, Windows App SDK {Gallery.WindowsAppSdk}",
+                $"The app was taken for {window.LiveApp?.Kind}, {window.LiveApp?.Framework}");
+            Assert.Contains(tree.Rows, r => r.Element is { Type: "TextBlock", Name: "Heading" });
+            tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Go");
+            Ui.WaitFor(() => tree.Details?.Name == "Go", "the button's details");
+            ElementDetails go = tree.Details!;
+            string xaml = PathNames.Canonical(app.PathOf("MainWindow.xaml"));
+            int line = Array.FindIndex(File.ReadAllLines(xaml), l => l.Contains("x:Name=\"Go\"", StringComparison.Ordinal)) + 1;
+            Assert.True(go.Source is { } made && PathNames.Same(made.File, xaml) && made.Line == line, $"The button's XAML is {go.Source?.File}:{go.Source?.Line}, not MainWindow.xaml:{line}");
+            PropertyValue content = go.Properties.Single(p => p.Name == "Content");
+            Assert.True(content is { Source: ValueSources.Local, Value: "Go" }, $"The button's Content is {content.Value} from {content.Source}, not its local Go");
+
+            PassengerTools agent = new(window);
+            Assert.Contains("Button#Go \"Go\"", Ui.Await(agent.AppTree(filter: "Button"), "an agent's look at the app's buttons", Slow), StringComparison.Ordinal);
+            string clicked = Ui.Await(agent.AppClick(control: "#Go"), "an agent's click on Go", Slow);
+            Assert.StartsWith("Clicked Button#Go", clicked, StringComparison.Ordinal);
+            Ui.WaitFor(() => Ui.Await(agent.AppTree(control: "#Go"), "an agent's look at Go", Slow).Contains("\"Going\"", StringComparison.Ordinal),
+                "Go to say Going once the agent clicked it", Slow);
+            AppWindowInfo shown = Assert.Single(Ui.Await(agent.AppWindowsList(), "an agent's list of the app's windows", Slow).Windows);
+            Assert.Equal("Gallery", shown.Title);
+            CallToolResult picture = Ui.Await(agent.AppScreenshot(), "an agent's picture of the app", Slow);
+            ImageContentBlock image = Assert.Single(picture.Content.OfType<ImageContentBlock>());
+            using (Bitmap drawn = new(new MemoryStream(image.DecodedData.ToArray())))
+            {
+                Assert.True(Math.Abs(drawn.PixelSize.Width - (shown.Width * shown.Scaling)) <= 1 && Math.Abs(drawn.PixelSize.Height - (shown.Height * shown.Scaling)) <= 1,
+                    $"The picture is {drawn.PixelSize} pixels for a window of {shown}");
+            }
+            Assert.True(image.DecodedData.Length > 4000, $"The app's picture is {image.DecodedData.Length} bytes, as a blank one would be");
+
+            // Problems lists the failures of the app Run started last as well as the debugged one's.
+            ProblemsModel problems = window.BottomPanel.Problems;
+            Ui.WaitFor(() => problems.BindingProblems.Any(p => p.Failure.Type == "MainViewModel") && problems.BindingProblems.Any(p => p.Failure.Type == "Person"),
+                () => $"the caption's binding to fail on its window's view model and, once Go is clicked, on a person, in Problems: {string.Join("; ", problems.BindingProblems.Select(p => p.Detail))}: {Ui.Said(window)}",
+                TimeSpan.FromMinutes(1));
+            BindingProblem caption = problems.BindingProblems.First(p => p.Failure.Type == "MainViewModel");
+            Assert.Equal(("TextBlock#Caption", "Text", "Greting"), (caption.Failure.Control, caption.Failure.Property, caption.Failure.Path));
+            Assert.Equal(["Greeting"], caption.Failure.Nearest);
+            int bound = Array.FindIndex(File.ReadAllLines(xaml), l => l.Contains("{Binding Greting}", StringComparison.Ordinal));
+            Assert.True(caption.Problem.Path is { } at && PathNames.Same(at, xaml) && caption.Problem.Position.Line == bound,
+                $"The failed binding is placed at {caption.Problem.Path}:{caption.Problem.Position}, not the caption's Greting on MainWindow.xaml's line {bound + 1}");
+
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
         }
@@ -339,7 +396,7 @@ public sealed class WinUITests : IClassFixture<WinUITests.Gallery>
                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                 xmlns:local="using:Gallery"
                 Title="Gallery">
-                <Grid RowSpacing="8" Padding="12">
+                <Grid x:Name="Root" RowSpacing="8" Padding="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
@@ -348,6 +405,7 @@ public sealed class WinUITests : IClassFixture<WinUITests.Gallery>
                         <TextBlock x:Name="Heading" Text="{x:Bind ViewModel.Greeting, Mode=OneWay}" Style="{StaticResource TitleTextBlockStyle}" />
                         <Button x:Name="Go" Content="Go" Click="OnGo" Foreground="{ThemeResource Accent}" />
                         <TextBlock Text="{x:Bind Heading.Text}" HorizontalAlignment="Center" />
+                        <TextBlock x:Name="Caption" Text="{Binding Greting}" />
                     </StackPanel>
                     <ListView Grid.Row="1" ItemsSource="{x:Bind ViewModel.People}">
                         <ListView.ItemTemplate>
@@ -371,6 +429,7 @@ public sealed class WinUITests : IClassFixture<WinUITests.Gallery>
                 public MainWindow()
                 {
                     InitializeComponent();
+                    Root.DataContext = ViewModel;
                     System.Console.WriteLine("Gallery's window is up");
                 }
 
@@ -379,6 +438,7 @@ public sealed class WinUITests : IClassFixture<WinUITests.Gallery>
                 private void OnGo(object sender, RoutedEventArgs e)
                 {
                     Go.Content = "Going";
+                    Caption.DataContext = ViewModel.People[0];
                 }
             }
 

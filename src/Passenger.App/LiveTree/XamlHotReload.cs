@@ -22,10 +22,10 @@ public sealed class XamlHotReload(LiveApp app, Func<string, TextSnapshot?> texts
     private readonly Dictionary<string, int> edited = new(PathNames.Comparer);
 
     /// <summary>Whether it is a file of the app's framework: an Avalonia app's .axaml (or .xaml), a WPF app's .xaml; none of a
-    /// MAUI app's, which XAML Hot Reload does not reach yet.</summary>
+    /// MAUI app's, which XAML Hot Reload does not reach yet, nor a WinUI app's, whose XAML is compiled into it.</summary>
     public bool Takes(string path) => Path.GetExtension(path).ToLowerInvariant() switch
     {
-        ".xaml" => app.Kind != LiveAppKind.Maui,
+        ".xaml" => app.Kind is not (LiveAppKind.Maui or LiveAppKind.WinUI),
         ".axaml" or ".paml" => app.Kind == LiveAppKind.Avalonia,
         _ => false,
     };
