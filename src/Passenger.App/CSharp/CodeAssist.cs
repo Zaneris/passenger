@@ -524,8 +524,6 @@ public sealed class CodeAssist
         set => context.Languages.EditorConfig.Indexed = value;
     }
 
-    /// <summary>The open folder's repository, whose configuration declares a .gitattributes' drivers and which says what a
-    /// .gitignore's lines ignore.</summary>
     /// <summary>How Reformat Code writes a SQL file's keywords, as Settings leaves it.</summary>
     public Database.SqlKeywordCase SqlKeywords
     {
@@ -540,6 +538,8 @@ public sealed class CodeAssist
         set => context.Languages.Sql.Live = value;
     }
 
+    /// <summary>The open folder's repository, whose configuration declares a .gitattributes' drivers and which says what a
+    /// .gitignore's lines ignore.</summary>
     public Func<Passenger.Vcs.Git?>? Repository
     {
         get => context.Languages.GitAttributes.Repository;
