@@ -45,6 +45,13 @@ internal sealed class Signposts
     /// <summary>How many times the C# files or the server's projects changed: a count from before a change is asked again.</summary>
     private int generation;
 
+    /// <summary>How many counts in a row the server cancelled or refused as stale, each asked again at the next pause up to
+    /// <see cref="AskedAgain"/> times.</summary>
+    private int stale;
+
+    /// <summary>How many times in a row a count the server cancelled is asked again before the next change does.</summary>
+    private const int AskedAgain = 5;
+
     public Signposts(EditorArea editors, Func<CSharpService?> csharp, VcsController vcs, AppSettings settings)
     {
         this.editors = editors;
@@ -119,10 +126,12 @@ internal sealed class Signposts
     public void Recount()
     {
         generation++;
+        stale = 0;
         Soon();
     }
 
-    /// <summary>The counts asked again soon: the text, the scroll or what is shown changed.</summary>
+    /// <summary>The counts asked again soon: the text, the scroll or what is shown changed, or the server came to answer for a
+    /// file (ready, or a file opened in it), which a count asked before it was could not be.</summary>
     public void Soon()
     {
         if (IsOn && kept.Count > 0)
@@ -222,15 +231,20 @@ internal sealed class Signposts
         {
             return;
         }
-        catch (LanguageServerFailed)
+        catch (LanguageServerFailed failed)
         {
-            // Cancelled by the server or gone with it: the next pause asks again.
+            // Gone with the server, its start makes it ready again; made stale by a change the server took in, asked again.
+            if ((failed.Cancelled || failed.Outdated) && stale++ < AskedAgain)
+            {
+                Soon();
+            }
             return;
         }
         if (cancel.IsCancellationRequested || version != document.Text.Version || counts.Count != asked.Count)
         {
             return;
         }
+        stale = 0;
         for (int i = 0; i < asked.Count; i++)
         {
             known.Counts[asked[i].Key] = new Counted(counts[i].Usages, counts[i].Inheriting, asking);

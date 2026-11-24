@@ -652,6 +652,21 @@ public partial class MainWindow
                     signposts?.Recount();
                 }
             };
+            // A count asked while the server could not yet answer for the file is asked again once it can.
+            service.StateChanged += (_, _) =>
+            {
+                if (service == session.CSharp && service.IsReady)
+                {
+                    signposts?.Soon();
+                }
+            };
+            service.Connected += (_, _) =>
+            {
+                if (service == session.CSharp)
+                {
+                    signposts?.Soon();
+                }
+            };
             service.StateChanged += (_, _) =>
             {
                 // Ready, as it loaded the folder's projects: the open AppHosts' resources are read from it once.

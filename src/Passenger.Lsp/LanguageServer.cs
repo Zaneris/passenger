@@ -982,7 +982,7 @@ public sealed class LanguageServer : IAsyncDisposable
     private LanguageServerFailed? Failure(string method, Exception error, CancellationToken cancel) => error switch
     {
         OperationCanceledException when cancel.IsCancellationRequested => null,
-        OperationCanceledException => new LanguageServerFailed("the language server cancelled it", method, error),
+        OperationCanceledException => new LanguageServerFailed("the language server cancelled it", method, error) { Cancelled = true },
         ConnectionLostException or ObjectDisposedException or IOException => new LanguageServerFailed(
             killed ? "the language server stopped responding, so it was ended" : "the language server stopped before it answered", method, error) { Ended = true },
         RemoteRpcException refused => new LanguageServerFailed($"the language server refused it: {refused.Message.Split('\n')[0].Trim()}", method, error)

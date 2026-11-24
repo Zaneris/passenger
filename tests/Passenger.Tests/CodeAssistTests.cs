@@ -1126,7 +1126,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         CodeEditor editor = window.EditorArea.CodeEditor;
         string Said(int line) => string.Join(" / ", editor.RowsAbove.Where(r => editor.Document.Snapshot.GetLineFromOffset(r.Offset) == line).SelectMany(r => r.Words).Select(w => w.Text));
         Ui.WaitFor(() => Said(0) == "1 usage / 1 implementation" && Said(2) == "no usages / 1 implementation",
-            () => $"the signposts counted: IShape's says '{Said(0)}' and Sides' '{Said(2)}', where they say '1 usage / 1 implementation' and 'no usages / 1 implementation'");
+            () => $"the signposts counted: IShape's says '{Said(0)}' and Sides' '{Said(2)}', where they say '1 usage / 1 implementation' and 'no usages / 1 implementation' "
+                + $"(the language server {(window.CSharpService is { } csharp ? $"{(csharp.IsReady ? "ready" : "not ready")}, '{csharp.State}', the file {(csharp.For(window.EditorArea.Active!)?.Lsp is null ? "not " : string.Empty)}opened in it" : "not started")})");
         Assert.True(Said(5) == "no usages" && Said(7) == "no usages", $"Square's signpost says '{Said(5)}' and its Sides' '{Said(7)}', where nothing uses either");
         Assert.True(Math.Abs(editor.PointOf(0).Y + editor.ScrollOffset.Y - editor.LineHeight) < 0.5, "IShape's declaration is not a row lower for its signpost");
 

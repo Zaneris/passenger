@@ -24,4 +24,8 @@ public sealed class LanguageServerFailed(string reason, string? method = null, E
     /// <summary>Whether the server refused it as asked of a document it has since read again (LSP's ContentModified): what
     /// it gave for the document before, asked again of what it gives now, it may answer.</summary>
     public bool Outdated { get; init; }
+
+    /// <summary>Whether the server cancelled it itself, as a change it took in made it stale: asked again once its code rests,
+    /// it may answer.</summary>
+    public bool Cancelled { get; init; }
 }
