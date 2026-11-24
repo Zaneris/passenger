@@ -486,7 +486,7 @@ public partial class MainWindow
         if (node.Kind is NodeKind.File or NodeKind.Folder or NodeKind.Project or NodeKind.Solution && node.Path is { } versioned
             && session.Vcs.Repository?.IsInside(versioned) == true)
         {
-            List<MenuEntry> git = node.Kind == NodeKind.File ? [Item(A.CompareWithRevision), Item(A.CompareWithBranch)] : [];
+            List<MenuEntry> git = node.Kind == NodeKind.File ? [Item(A.CompareWithRevision), Item(A.CompareWithBranch), Item(A.GetFromBranch)] : [];
             git.AddRange([Item(A.ShowHistory), separator, Item(A.AddToGitIgnore), Item(A.GoToIgnoringLine)]);
             if (!histories)
             {

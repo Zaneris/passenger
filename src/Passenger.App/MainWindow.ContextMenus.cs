@@ -84,7 +84,7 @@ public partial class MainWindow
         Add(separator, Sub("Local History", Item(A.ShowLocalHistory), separator, Item(A.ShowProjectHistory), Item(A.RecentChanges), Item(A.PutLabel)));
         if (session.Vcs.Repository is not null)
         {
-            Add(Sub("Git", Item(A.Annotate), Item(A.ShowDiff), Item(A.CompareWithRevision), Item(A.CompareWithBranch), separator,
+            Add(Sub("Git", Item(A.Annotate), Item(A.ShowDiff), Item(A.CompareWithRevision), Item(A.CompareWithBranch), Item(A.GetFromBranch), separator,
                 Item(A.ShowHistory), Item(A.ShowHistoryForSelection), separator, Item(A.RollbackLines)));
         }
         ContextMenu menu = new() { ItemsSource = items, PlacementTarget = editor };

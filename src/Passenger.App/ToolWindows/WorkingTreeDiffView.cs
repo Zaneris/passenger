@@ -8,7 +8,8 @@ namespace Passenger.App.ToolWindows;
 
 /// <summary>A tab of the Git window, Show Diff with Working Tree's: the files that differ between a branch and the working
 /// tree, read again while shown as the working tree changes, the first chosen; a file's diff (the branch's text beside the
-/// file's) opens wherever Settings opens diffs, the list staying. Where nothing differs it says so.</summary>
+/// file's) opens wherever Settings opens diffs, the list staying, and its menu's Get from takes the branch's version whole.
+/// Where nothing differs it says so.</summary>
 public sealed class WorkingTreeDiffView : Panel, IOwnKeys
 {
     private readonly VcsController vcs;
@@ -23,7 +24,7 @@ public sealed class WorkingTreeDiffView : Panel, IOwnKeys
     {
         vcs = git;
         Branch = branch;
-        files = new ChangedFileList(() => vcs.Repository);
+        files = new ChangedFileList(() => vcs.Repository, change => [ListMenus.Item($"Get from '{branch.Name}'", () => GetRequested?.Invoke(this, change))]);
         files.DiffRequested += (_, change) => DiffRequested?.Invoke(this, change);
         files.OpenRequested += (_, path) => OpenRequested?.Invoke(this, path);
         Children.Add(files.List);
@@ -61,6 +62,9 @@ public sealed class WorkingTreeDiffView : Panel, IOwnKeys
 
     /// <summary>A file's diff asked for: the branch's text beside the file's.</summary>
     public event EventHandler<FileChange>? DiffRequested;
+
+    /// <summary>A file to take the branch's version of, whole.</summary>
+    public event EventHandler<FileChange>? GetRequested;
 
     /// <summary>A file asked for as it is now, by its path.</summary>
     public event EventHandler<string>? OpenRequested;

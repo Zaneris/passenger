@@ -687,6 +687,9 @@ public static class AppActions
     public const string CompareWithBranch = "app.vcs.compareWithBranch";
     public const string CompareWithRevision = "app.vcs.compareWithRevision";
 
+    // Rider's Git.Get.From.Branch, its comparison's Get from Branch: no keys in any of its keymaps.
+    public const string GetFromBranch = "app.vcs.getFromBranch";
+
     // A file or folder added to the repository's .gitignore, and the ignore file's line deciding whether git ignores one:
     // no keys of Rider's.
     public const string AddToGitIgnore = "app.vcs.addToGitIgnore";

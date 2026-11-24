@@ -152,6 +152,8 @@ public partial class MainWindow
         view.WorkingTreeDiffRequested += (_, chosen) =>
             IdeErrors.Observe(CompareWithAsync(chosen.File.Path, chosen.Branch.Ref.FullName, chosen.Branch.Name, chosen.File.From ?? chosen.File.Path,
                 added: chosen.File.Kind == ChangeKind.Added));
+        view.GetFromRequested += (_, chosen) =>
+            IdeErrors.Observe(GetFromAsync(chosen.Branch.Ref.FullName, chosen.Branch.Name, [(chosen.File.Path, chosen.File.From ?? chosen.File.Path, null)]));
         view.OpenRequested += (_, path) => OpenFile(path);
         view.ActionRequested += (_, action) => Request(action);
         view.NewBranchRequested += (_, commit) =>

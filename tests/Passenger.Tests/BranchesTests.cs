@@ -8,6 +8,7 @@ using Avalonia.LogicalTree;
 using Passenger.App;
 using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
+using Passenger.Core;
 using Passenger.Vcs;
 
 namespace Passenger.Tests;
@@ -86,6 +87,7 @@ public sealed class BranchesTests : IDisposable
         Flow.StepApart<BranchesTests>("show diff with working tree lists the files in the Git window and opens their diffs in a tab or a window", t => t.Show_diff_with_working_tree_lists_the_files_in_the_Git_window_and_opens_their_diffs_in_a_tab_or_a_window());
         Flow.StepApart<BranchesTests>("show diff on an added row of the working tree comparison shows the file beside the branchs empty side", t => t.Show_diff_on_an_added_row_of_the_working_tree_comparison_shows_the_file_beside_the_branchs_empty_side());
         Flow.StepApart<BranchesTests>("the branch menu over 5000 branches costs the window what 30 do and more branches searches them all", t => t.The_branch_menu_over_5000_branches_costs_the_window_what_30_do_and_more_branches_searches_them_all());
+        Flow.StepApart<BranchesTests>("get from a branch takes its version of a changed file one it lacks and one only it has each one undo and a closed files diff with it is edited in place", t => t.Get_from_a_branch_takes_its_version_of_a_changed_file_one_it_lacks_and_one_only_it_has_each_one_undo_and_a_closed_files_diff_with_it_is_edited_in_place());
     }
 
     private void The_panel_lists_head_local_branches_by_directory_the_remotes_branches_and_the_tags_in_riders_order()
@@ -697,6 +699,79 @@ public sealed class BranchesTests : IDisposable
     }
 
     /// <summary>Chooses a branch or tag in the panel and an item of its menu, as the person would.</summary>
+    /// <summary>Show Diff with Working Tree's Get from 'feature' takes feature's text of a file changed here, makes the file
+    /// only feature has and moves to the Trash the one feature lacks, each one command Undo takes back, the open files showing
+    /// it; and a diff of a file no editor has open, from that list, edits the file itself: its arrow takes feature's change
+    /// into it, saved as the diff closes. Get from Branch or Tag… is in the Git menu beside Compare with Branch or Tag….</summary>
+    private void Get_from_a_branch_takes_its_version_of_a_changed_file_one_it_lacks_and_one_only_it_has_each_one_undo_and_a_closed_files_diff_with_it_is_edited_in_place()
+    {
+        string trash = TestFolders.Create("branches-trash-");
+        string shop = Path.Combine(folder, "Shop.cs");
+        string added = Path.Combine(folder, "Added.cs");
+        string feature = Path.Combine(folder, "Feature.cs");
+        string longer = Shop.Replace("int count", "long count", StringComparison.Ordinal);
+        Trash.Folder = trash;
+        try
+        {
+            File.WriteAllText(shop, longer);
+            File.WriteAllText(added, "class Added { }\n");
+            MainWindow window = Open();
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            Assert.Equal("Get from Branch or Tag…", window.Actions[AppActions.GetFromBranch]?.Title);
+            BranchesPanel panel = window.GitBranches;
+            Choose(panel, List(panel), "feature", "Show Diff with Working Tree");
+            WorkingTreeDiffView changes = Assert.IsType<WorkingTreeDiffView>(window.GitWindow.Shown);
+            Ui.Landed(() => changes.Files.Count == 3, "feature's three files");
+
+            // The diff of Shop.cs, which no editor has open, edits the file: its arrow takes feature's int back.
+            Ui.Click(Ui.Row(changes.List, changes.Files.Single(f => f.Name == "Shop.cs")));
+            Ui.Press(window, "ENTER");
+            IDiffHost diff = OpenDiffs.Landed(window, "Shop.cs beside feature's");
+            DiffView view = OpenDiffs.ViewOf(diff);
+            Assert.True(view.IsEditable, "The diff of a file no editor has open showed it read-only");
+            view.Right.GoTo(new Passenger.Text.TextPosition(2, 4));
+            Ui.Await(view.RollBackAtCaretAsync(), "feature's change taken at the caret");
+            Assert.Equal(Shop, view.Right.Document.Snapshot.ToString());
+            diff.Close();
+            Ui.WaitFor(() => File.ReadAllText(shop) == Shop, "the diff's edit saved into Shop.cs as it closed");
+            Ui.Landed(() => window.EditorArea.Documents.All(d => d.Name != "Shop.cs"), "Shop.cs let go once its diff closed");
+            File.WriteAllText(shop, longer);
+            Ui.WaitFor(() => changes.Files.Count == 3, "the folder's watcher to hear Shop.cs changed again");
+
+            foreach ((string name, string said) in (ReadOnlySpan<(string, string)>)[
+                ("Shop.cs", "Shop.cs now has feature's version: Undo puts yours back"),
+                ("Feature.cs", "Feature.cs now has feature's version: Undo puts yours back"),
+                ("Added.cs", "Added.cs, which feature has not, went to the Trash: Undo puts yours back")])
+            {
+                Ui.Click(Ui.Row(changes.List, changes.Files.Single(f => f.Name == name)));
+                Ui.ChooseFromMenu(changes.List, "Get from 'feature'");
+                Ui.Landed(() => window.Status == said, $"{name} taken from feature, where the status bar says \"{window.Status}\"");
+            }
+            Assert.Equal(Shop, File.ReadAllText(shop));
+            Assert.Equal("class Feature { }\n", File.ReadAllText(feature));
+            Assert.False(File.Exists(added), "Get from 'feature' left Added.cs, which feature has not, in place");
+            Ui.WaitFor(() => changes.Files.Count == 0 && changes.Placeholder == "No differences", "the working tree now as feature has it");
+
+            // Undo where the window's commands are taken back: the Explorer's rows.
+            window.ShowToolWindow(ToolWindowIds.Explorer);
+            window.ExplorerView.Reveal(PathNames.Canonical(shop));
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == PathNames.Canonical(shop)));
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Ui.WaitFor(() => File.Exists(added), () => $"Undo to bring Added.cs back ({window.Status})");
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Ui.WaitFor(() => !File.Exists(feature), () => $"Undo to take Feature.cs away again ({window.Status})");
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Ui.WaitFor(() => File.ReadAllText(shop) == longer, () => $"Undo to put Shop.cs's long back ({window.Status})");
+            window.Close();
+        }
+        finally
+        {
+            Trash.Folder = null;
+            TestFolders.Delete(trash);
+        }
+    }
+
     private static void Choose(BranchesPanel panel, ListBox rows, string name, string item)
     {
         Assert.True(panel.Select(name), $"The branches panel has no {name}");

@@ -2546,7 +2546,7 @@ public sealed partial class Git
 
     /// <summary>The files that differ between a revision and the working tree (Show Diff with Working Tree), renames
     /// found, each by its path now, in their paths' order: those git does not track too, ignored ones left out, each added,
-    /// or modified where the revision has it, which git's diff, reading only what git tracks, calls deleted.</summary>
+    /// or modified where the revision has it otherwise, which git's diff, reading only what git tracks, calls deleted.</summary>
     public async Task<IReadOnlyList<FileChange>> ChangesSinceAsync(string revision)
     {
         GitResult files = await RunAsync(Root, ["diff", "--name-status", "-z", "-M", "--end-of-options", revision, "--"]);
@@ -2565,9 +2565,39 @@ public sealed partial class Git
         HashSet<string> gone = new(changes.Select(c => c.Kind switch { ChangeKind.Deleted => c.Path, ChangeKind.Renamed => c.From, _ => null }).OfType<string>(), PathNames.Comparer);
         HashSet<string> untrackedFiles = new(untracked.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries).Select(names.Full), PathNames.Comparer);
         changes.RemoveAll(c => c.Kind == ChangeKind.Deleted && untrackedFiles.Contains(c.Path));
-        changes.AddRange(untrackedFiles.Select(path => new FileChange(path, gone.Contains(path) ? ChangeKind.Modified : ChangeKind.Added)));
+        HashSet<string> same = await AsStoredAsync(revision, [.. untrackedFiles.Where(gone.Contains)]);
+        changes.AddRange(untrackedFiles.Where(path => !same.Contains(path)).Select(path => new FileChange(path, gone.Contains(path) ? ChangeKind.Modified : ChangeKind.Added)));
         changes.Sort((a, b) => PathNames.Comparer.Compare(a.Path, b.Path));
         return changes;
+    }
+
+    /// <summary>The files of <paramref name="paths"/> (untracked here) whose bytes, as git would store them, are those
+    /// <paramref name="revision"/> has at the same path; each given on git's input, a name holding a line break never same.</summary>
+    private async Task<HashSet<string>> AsStoredAsync(string revision, IReadOnlyList<string> paths)
+    {
+        string[] asked = [.. paths.Where(p => p.AsSpan().IndexOfAny('\n', '\r') < 0)];
+        if (asked.Length == 0)
+        {
+            return [];
+        }
+        string[] relative = [.. asked.Select(Relative)];
+        GitResult hashed = await RunAsync(Root, ["hash-object", "--stdin-paths"], string.Join('\n', relative) + "\n");
+        GitResult stored = await RunAsync(Root, ["cat-file", "--batch-check=%(objectname)"], string.Join('\n', relative.Select(r => $"{revision}:{r}")) + "\n");
+        if (!hashed.Succeeded || !stored.Succeeded)
+        {
+            return [];
+        }
+        string[] mine = hashed.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string[] theirs = stored.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        HashSet<string> same = new(PathNames.Comparer);
+        for (int i = 0; i < asked.Length && i < mine.Length && i < theirs.Length; i++)
+        {
+            if (mine[i].Trim() == theirs[i].Trim())
+            {
+                same.Add(asked[i]);
+            }
+        }
+        return same;
     }
 
     /// <summary>The stashes, the newest first.</summary>

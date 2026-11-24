@@ -37,6 +37,10 @@ public sealed partial class Git
         return held;
     }
 
+    /// <summary>Why files cannot be written out here as a revision has them: in a folder not trusted, one git stores through
+    /// a filter, which runs only once the folder is trusted, in git's words; null where each can be.</summary>
+    public async Task<string?> WhyNotWrittenOutAsync(IReadOnlyList<string> paths) => (await UnfilteredAsync([.. paths.Select(Relative)]))?.Message;
+
     /// <summary>A stash's commit put back at the top of the list under its message (git stash store), as a drop taken back
     /// does; refused where git no longer has the commit.</summary>
     public Task<GitResult> StoreStashAsync(string commit, string message) => RunAsync(Root, ["stash", "store", "-m", message, commit]);

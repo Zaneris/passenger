@@ -2033,6 +2033,10 @@ public sealed class VcsController : IDisposable
         ? Task.FromResult(Report(false, unfiltered))
         : SwitchAsync(repository => repository.StashAsync(message.Trim(), untracked), untracked ? "Stashed the changes" : "Stashed the changes, new files left in place", "Git stash");
 
+    /// <summary>Why files cannot take a revision's text here (Get from Branch): in a folder not trusted, one git stores
+    /// through a filter; null where each can.</summary>
+    public async Task<string?> WhyNotWrittenOutAsync(IReadOnlyList<string> paths) => git is { } repository ? await repository.WhyNotWrittenOutAsync(paths) : NoRepository;
+
     /// <summary>The files a stash holds, its new files last; none outside a working tree.</summary>
     public async Task<IReadOnlyList<FileChange>> StashFilesAsync(StashInfo stash) => git is { } repository ? await repository.StashFilesAsync(stash) : [];
 

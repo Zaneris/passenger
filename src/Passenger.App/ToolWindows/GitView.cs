@@ -54,6 +54,9 @@ public sealed class GitView : DockPanel
     /// <summary>A branch's file to show beside the file as it is now, from its Show Diff with Working Tree tab.</summary>
     public event EventHandler<(BranchInfo Branch, FileChange File)>? WorkingTreeDiffRequested;
 
+    /// <summary>A file of Show Diff with Working Tree to take the branch's version of, whole.</summary>
+    public event EventHandler<(BranchInfo Branch, FileChange File)>? GetFromRequested;
+
     /// <summary>A commit's file to open as it is now, from any tab.</summary>
     public event EventHandler<string>? OpenRequested;
 
@@ -122,6 +125,7 @@ public sealed class GitView : DockPanel
         }
         WorkingTreeDiffView files = new(vcs, branch);
         files.DiffRequested += (_, change) => WorkingTreeDiffRequested?.Invoke(this, (branch, change));
+        files.GetRequested += (_, change) => GetFromRequested?.Invoke(this, (branch, change));
         files.OpenRequested += (_, path) => OpenRequested?.Invoke(this, path);
         Grid body = new() { RowDefinitions = new RowDefinitions("Auto,*") };
         body.Children.Add(Explanation($"Files that differ between {branch.Name} and the working tree", 0));
