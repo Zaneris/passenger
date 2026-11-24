@@ -67,15 +67,16 @@ public partial class ManagedDebugger
 
     /// <summary>A recorded call not yet returned: its moment, where its frame and its caller's lie on the stack, the return
     /// address it goes back to, its method's frame where it began and its label, the frame it was called from, the
-    /// recorded call that frame is, and the run it is part of (<see cref="KeptMoment.Flow"/>).</summary>
+    /// recorded call that frame is, the run it is part of (<see cref="KeptMoment.Flow"/>), and whether its return is read
+    /// at its own closing brace, as for a call code that is not the user's made.</summary>
     private sealed record OpenCall(int Moment, StackRange Frame, StackRange? CallerFrame, (ulong Code, uint Offset)? Return, StackFrameInfo Place, ModuleInfo Module,
-        int Token, string Label, StackFrameInfo? Caller, int? Parent, int Flow);
+        int Token, string Label, IReadOnlyList<StackFrameInfo> Callers, int? Parent, int Flow, bool AtItsEnd = false);
 
     /// <summary>A moment kept: what the timeline lists, the frame it was called from and the recorded call that is, the call it
     /// returns from, its values by references of its own, its top frame's rows, how long reading it held the program, the
     /// size of its own values, what it left out, and its run: the thread a run of calls began on, which an async call's
     /// moments keep whichever thread its code goes on on after an await.</summary>
-    private sealed record KeptMoment(RecordedMoment Moment, string? ThreadName, StackFrameInfo? Caller, int? Parent, IReadOnlyDictionary<int, IReadOnlyList<VariableInfo>> Values,
+    private sealed record KeptMoment(RecordedMoment Moment, string? ThreadName, IReadOnlyList<StackFrameInfo> Callers, int? Parent, IReadOnlyDictionary<int, IReadOnlyList<VariableInfo>> Values,
         int Top, IReadOnlyList<VariableInfo> TopRows, TimeSpan Held, long Bytes, string? Cut, int Flow);
 
     /// <summary>Starts or stops recording: the user's modules loaded so far take their breakpoints, and each loading after
@@ -99,10 +100,12 @@ public partial class ManagedDebugger
         {
             breakpoint.TryActivate(false);
         }
-        foreach (ICorDebugFunctionBreakpoint breakpoint in _asyncBreakpoints.Keys)
+        foreach (ICorDebugFunctionBreakpoint breakpoint in _asyncBreakpoints.Keys.Concat(_endBreakpoints.Keys))
         {
             breakpoint.TryActivate(false);
         }
+        _endBreakpoints.Clear();
+        _endsWatched.Clear();
         foreach (PendingAsync call in _openAsync)
         {
             call.Machine?.TryDispose();
@@ -163,6 +166,11 @@ public partial class ManagedDebugger
             await (point.Begins ? RecordAsyncCallAsync(thread, point, came) : RecordAsyncReturnAsync(thread, point, came));
             return true;
         }
+        if (_endBreakpoints.TryGetValue(breakpoint, out (ModuleInfo Module, int Token, int Local) end))
+        {
+            await RecordEndAsync(thread, end.Local, came);
+            return true;
+        }
         return false;
     }
 
@@ -184,16 +192,19 @@ public partial class ManagedDebugger
             return;
         }
         List<OpenCall> open = OpenOn(thread.Id);
-        // What lies at or below this frame has returned or been unwound.
-        open.RemoveAll(call => call.Frame.Start.Value <= range.Start.Value);
+        LetGoBelow(open, range);
         ICorDebugILFrame? caller = frame.TryGetCaller(out ICorDebugFrame? up) is Cor.S_OK ? up as ICorDebugILFrame : null;
         StackRange? callerRange = caller is null ? null : RangeOf(caller);
-        (int? parent, int flow) = ParentOf(thread.Id, open, callerRange, caller);
+        (int? parent, int flow, ICorDebugILFrame? parentFrame) = ParentOf(thread.Id, open, frame);
         int token = frame.Function.Token;
         RecordedMethod method = MethodRecorded(module, frame);
-        ReturnSite? site = caller is null ? null : ReturnSiteOf(caller, method.ReturnsValue);
+        // A call code that is not the user's made returns where no value is kept: read at its own closing brace where it can be.
+        bool fromUsers = caller is not null && FindModule(caller.Function.Module) is { IsUserCode: true };
+        bool atItsEnd = method.ReturnsValue && !fromUsers && WatchEnd(module, token);
+        ReturnSite? site = caller is null ? null : ReturnSiteOf(caller, method.ReturnsValue && !atItsEnd);
         StackFrameInfo place = method.Place ?? DescribeFrame(0, frame);
-        StackFrameInfo? callerPlace = site is null ? null : site.Place ?? DescribeFrame(0, caller!);
+        StackFrameInfo? callerPlace = caller is null ? null : site?.Place ?? DescribeFrame(0, caller);
+        IReadOnlyList<StackFrameInfo> callers = CallersTo(callerPlace, callerRange, parentFrame);
 
         Capture capture = NewRecordingCapture(null);
         List<VariableInfo> rows = [];
@@ -202,10 +213,25 @@ public partial class ManagedDebugger
         int index = _momentsRecorded + 1;
         string args = string.Join(", ", top.Where(row => row.Name != "this").Select(row => Cut(row.Value)));
         string said = method.Label.EndsWith("()", StringComparison.Ordinal) ? $"{method.Label[..^2]}({args})" : method.Label;
-        Keep(new KeptMoment(new RecordedMoment(index, MomentKind.Call, thread.Id, DateTimeOffset.Now, place, open.Count, said), ThreadNameOf(thread), callerPlace, parent,
+        Keep(new KeptMoment(new RecordedMoment(index, MomentKind.Call, thread.Id, DateTimeOffset.Now, place, DepthUnder(parent, open.Count), said), ThreadNameOf(thread), callers, parent,
             capture.Values, topReference, top, Stopwatch.GetElapsedTime(came), BytesOf(capture.Values, 0), capture.Said, flow));
-        open.Add(new OpenCall(index, range, callerRange, site?.Breakpoint is null ? null : site.Key, place, module, token, method.Label, callerPlace, parent, flow));
+        open.Add(new OpenCall(index, range, callerRange, atItsEnd || site?.Breakpoint is null ? null : site.Key, place, module, token, method.Label, callers, parent, flow, atItsEnd));
+        if (open.Count > MostOpenCalls)
+        {
+            open.RemoveAt(0);
+        }
     }
+
+    /// <summary>How many recorded calls a moment ran in: one more than the call it ran in, where that is still kept.</summary>
+    private int DepthUnder(int? parent, int otherwise) => parent is int above && Find(above) is { } up ? up.Moment.Depth + 1 : otherwise;
+
+    /// <summary>How many recorded calls a thread is followed inside, the outermost let go past them.</summary>
+    private const int MostOpenCalls = 10_000;
+
+    /// <summary>Lets go of a thread's open calls at or below a frame, which have returned or been unwound: a callee's frame
+    /// lies below its caller's at both ends, a sibling's no higher at one of them.</summary>
+    private static void LetGoBelow(List<OpenCall> open, StackRange frame) =>
+        open.RemoveAll(call => call.Frame.Start.Value <= frame.Start.Value || call.Frame.End.Value <= frame.End.Value);
 
     /// <summary>What a recording says of a method, read at its first call.</summary>
     private RecordedMethod MethodRecorded(ModuleInfo module, ICorDebugILFrame frame)
@@ -245,19 +271,81 @@ public partial class ManagedDebugger
         }
         OpenCall call = open[at];
         open.RemoveRange(at, open.Count - at);
+        await KeepReturnAsync(thread, call, site.CallOffset is int offset ? Read(frame, offset) : null, EndOf(call), at, came);
+    }
+
+    /// <summary>A call's return kept: the value it returned (none where none was read), beside its arguments as they were at
+    /// its call, at <paramref name="place"/>, in the call's run.</summary>
+    private async Task KeepReturnAsync(ICorDebugThread thread, OpenCall call, ICorDebugValue? value, StackFrameInfo place, int depth, long came)
+    {
         KeptMoment? called = Find(call.Moment);
         Capture capture = NewRecordingCapture(called?.Values);
         List<VariableInfo> rows = [];
         string name = ReturnedRow(call.Label);
-        int returnedReference = site.CallOffset is int offset && Read(frame, offset) is { } value
+        int returnedReference = value is not null
             ? await ReadRecordedAsync(capture, rows, () => AddValueRow(rows, name, null, value, new ThreadId(thread.Id), new FrameStackDepth(0)))
             : capture.Add([]);
         IReadOnlyList<VariableInfo> returned = capture.Values[returnedReference];
         IReadOnlyList<VariableInfo> top = [.. returned, .. called?.TopRows ?? []];
         int topReference = capture.Add(top);
         string said = returned.Count > 0 ? $"{name} {Cut(returned[0].Value)}" : name;
-        Keep(new KeptMoment(new RecordedMoment(_momentsRecorded + 1, MomentKind.Return, thread.Id, DateTimeOffset.Now, EndOf(call), at, said), ThreadNameOf(thread), call.Caller,
+        Keep(new KeptMoment(new RecordedMoment(_momentsRecorded + 1, MomentKind.Return, thread.Id, DateTimeOffset.Now, place, called?.Moment.Depth ?? depth, said), ThreadNameOf(thread), call.Callers,
             call.Parent, capture.Values, topReference, top, Stopwatch.GetElapsedTime(came), BytesOf(capture.Values, called?.Values.Count ?? 0), capture.Said, call.Flow));
+    }
+
+    /// <summary>The breakpoints at the closing braces of methods whose calls code that is not the user's made, each with the
+    /// method and the local its value is in there.</summary>
+    private readonly Dictionary<ICorDebugFunctionBreakpoint, (ModuleInfo Module, int Token, int Local)> _endBreakpoints = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>Whether each method's closing brace is watched, by its module and token.</summary>
+    private readonly Dictionary<(ModuleInfo Module, int Token), bool> _endsWatched = [];
+
+    /// <summary>Watches where a method returns what a local holds, as a debug build returns at its closing brace, from its
+    /// first call by code that is not the user's; false for one that returns otherwise (an expression body's).</summary>
+    private bool WatchEnd(ModuleInfo module, int token)
+    {
+        if (_endsWatched.TryGetValue((module, token), out bool watched))
+        {
+            return watched;
+        }
+        watched = false;
+        try
+        {
+            ICorDebugCode code = module.Module.GetFunctionFromToken(token).ILCode;
+            foreach ((int offset, int local) in module.MetadataReader.ReturnsOfLocals(token))
+            {
+                ICorDebugFunctionBreakpoint breakpoint = code.CreateBreakpoint(offset);
+                breakpoint.Activate(true);
+                _endBreakpoints[breakpoint] = (module, token, local);
+                watched = true;
+            }
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            _logger?.Invoke($"No end watched of method 0x{token:X} of {module.ModuleName}: {error.Message}");
+        }
+        _endsWatched[(module, token)] = watched;
+        return watched;
+    }
+
+    /// <summary>A call reaching its closing brace: kept as returning, its value read from the local it returns, where it is
+    /// one whose return is read there; any other call of the method passes on.</summary>
+    private async Task RecordEndAsync(ICorDebugThread thread, int local, long came)
+    {
+        if (TopFrame(thread) is not ICorDebugILFrame frame || RangeOf(frame) is not { } range)
+        {
+            return;
+        }
+        List<OpenCall> open = OpenOn(thread.Id);
+        int at = open.FindLastIndex(call => call.Frame == range);
+        if (at < 0 || !open[at].AtItsEnd)
+        {
+            return;
+        }
+        OpenCall call = open[at];
+        open.RemoveRange(at, open.Count - at);
+        ICorDebugValue? value = frame.TryGetLocalVariable(checked((uint)local), out ICorDebugValue? held) is Cor.S_OK ? held : null;
+        await KeepReturnAsync(thread, call, value, DescribeFrame(0, frame), at, came);
     }
 
     /// <summary>A recording's capture, its words its own, after <paramref name="seed"/>'s rows where it has some.</summary>
@@ -295,23 +383,24 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>The return address a frame of the user's code goes back to, its place read once, watched by a breakpoint of
-    /// the recording's from the first call through it that returns a value; null where it is not the user's code.</summary>
+    /// <summary>The return address a frame goes back to, its place read once, watched by a breakpoint of the recording's from
+    /// the first call through it whose value is read there; null where it has none.</summary>
     private ReturnSite? ReturnSiteOf(ICorDebugILFrame caller, bool returnsValue)
     {
-        if (FindModule(caller.Function.Module) is not { IsUserCode: true } module || caller is not ICorDebugNativeFrame native
+        if (FindModule(caller.Function.Module) is not { } module || caller is not ICorDebugNativeFrame native
             || native.TryGetIP(out uint ip) is not Cor.S_OK || native.TryGetCode(out ICorDebugCode? code) is not Cor.S_OK || code is null
             || code.TryGetAddress(out CORDB_ADDRESS start) is not Cor.S_OK)
         {
             return null;
         }
         (ulong, uint) key = (start.Value, ip);
-        if (_returnSites.TryGetValue(key, out ReturnSite? known))
+        // A site of code that is not the user's may call through a delegate one method whose end is watched and another not.
+        if (_returnSites.TryGetValue(key, out ReturnSite? known) && (known.Breakpoint is not null || !returnsValue))
         {
             return known;
         }
-        StackFrameInfo place = DescribeFrame(0, caller);
-        ReturnSite site = new(key, place.Name.Contains('<', StringComparison.Ordinal) ? null : place, null, null);
+        StackFrameInfo place = known?.Place ?? DescribeFrame(0, caller);
+        ReturnSite site = known ?? new(key, place.Name.Contains('<', StringComparison.Ordinal) ? null : place, null, null);
         if (returnsValue)
         {
             try
@@ -441,13 +530,59 @@ public partial class ManagedDebugger
         {
             return null;
         }
+        Dictionary<int, IReadOnlyList<VariableInfo>> values = new(kept.Values);
         List<SnapshotFrame> frames = [new SnapshotFrame(Framed(kept.Moment.Place, 1), kept.Top)];
-        (StackFrameInfo? caller, int? parent) = (kept.Caller, kept.Parent);
-        while (caller is not null)
+        (IReadOnlyList<StackFrameInfo> callers, int? parent) = (kept.Callers, kept.Parent);
+        for (int level = 0; level < 256 && callers.Count > 0; level++)
         {
-            frames.Add(new SnapshotFrame(Framed(caller, frames.Count + 1), 0));
-            (caller, parent) = parent is int above && Find(above) is { } up ? (up.Caller, up.Parent) : (null, null);
+            // The last frame a moment was called through is its recorded call's, which shows its arguments as at its call.
+            KeptMoment? up = parent is int above ? Find(above) : null;
+            for (int i = 0; i < callers.Count; i++)
+            {
+                frames.Add(new SnapshotFrame(Framed(callers[i], frames.Count + 1), up is not null && i == callers.Count - 1 ? Joined(up, values) : 0));
+            }
+            if (up is null)
+            {
+                break;
+            }
+            (callers, parent) = (up.Callers, up.Parent);
         }
-        return new Snapshot(0, kept.Moment.ThreadId, kept.ThreadName, kept.Moment.At, kept.Held, frames, kept.Values, [], kept.Cut);
+        return new Snapshot(0, kept.Moment.ThreadId, kept.ThreadName, kept.Moment.At, kept.Held, frames, values, [], kept.Cut);
+    }
+
+    /// <summary>Another moment's values joined to <paramref name="values"/> under references after theirs, its top rows' the
+    /// reference given.</summary>
+    private static int Joined(KeptMoment other, Dictionary<int, IReadOnlyList<VariableInfo>> values)
+    {
+        int by = values.Count == 0 ? 0 : values.Keys.Max();
+        foreach ((int reference, IReadOnlyList<VariableInfo> rows) in other.Values)
+        {
+            values[reference + by] = [.. rows.Select(row => new VariableInfo
+            {
+                Name = row.Name,
+                EvaluateName = row.EvaluateName,
+                DeclaringType = row.DeclaringType,
+                Value = row.Value,
+                Type = row.Type,
+                VariablesReference = row.VariablesReference > 0 ? row.VariablesReference + by : row.VariablesReference,
+                PresentationHint = row.PresentationHint,
+                PassedOver = row.PassedOver,
+                ImplicitOff = row.ImplicitOff,
+                Mark = row.Mark,
+            })];
+        }
+        return other.Top + by;
+    }
+
+    /// <summary>The frames a call was made through, top first: the one that made it, where there is one, and the recorded
+    /// call it runs in where that is not the one (code that is not the user's between).</summary>
+    private IReadOnlyList<StackFrameInfo> CallersTo(StackFrameInfo? caller, StackRange? callerRange, ICorDebugILFrame? parentFrame)
+    {
+        if (parentFrame is null || RangeOf(parentFrame) == callerRange)
+        {
+            return caller is null ? [] : [caller];
+        }
+        StackFrameInfo parent = DescribeFrame(0, parentFrame);
+        return caller is null ? [parent] : [caller, parent];
     }
 }

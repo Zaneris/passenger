@@ -2969,8 +2969,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "Code's verdict (userCode), as the Modules window lists them. of processes: the .NET programs here and in running containers the " +
         "debugger can attach to, program being the .dll the dotnet host runs (a container's id 0 until debug_attach puts " +
         "Passenger's tools in). of snapshots: the snapshot points' captures, newest first, each with its frames, its top frame's " +
-        "locals and their members, and how long the program was held for it. of timeline: the calls the stopped run recorded " +
-        "(debug_start with record true), each call with its arguments and each return with its value, newest first.")]
+        "locals and their members, and how long the program was held for it. of timeline: what the stopped run recorded " +
+        "(debug_start with record true), newest first: calls with their arguments, returns with their values, exceptions " +
+        "thrown and caught, and breakpoints that went on.")]
     public async Task<object> GetDebugState(string? session = null, string? of = null, int? reference = null, CancellationToken cancel = default) => (of, reference) switch
     {
         (null or "stop", int members) => await DebugVariables(members, session, cancel),
@@ -2997,7 +2998,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.DebugStep, Title = "Step", Destructive = false), Description(
         "Steps (kind) over, into or out of the current line, and waits for the step to stop. back and forward go through the " +
-        "calls the program recorded before the stop (debug_start with record true), each moment's frames and values as they " +
+        "moments the program recorded before the stop (debug_state of timeline), each one's frames and values as they " +
         "were, forward from the newest to the live stop.")]
     public async Task<object> DebugStep(string kind = "over", int waitSeconds = 30, string? session = null,
         CancellationToken cancel = default) => kind switch

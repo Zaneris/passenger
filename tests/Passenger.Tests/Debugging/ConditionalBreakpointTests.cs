@@ -69,9 +69,9 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     }
 
     /// <summary>A recording asked for before the program starts keeps the calls of its own code with their arguments and the
-    /// returns with their values: at a stop in Test's second call, the timeline holds MyMethod's call with 13 and 6,
-    /// DoOperation's return with its Success, and the async MyMethodAsync's call with 4 and return of 5, each read as a past
-    /// stop, its method's frame on top where it stood, and it says what recording held the program.</summary>
+    /// returns with their values: at a stop in Test's second call, the timeline holds MyMethod's call with 13 and 6 (Main's
+    /// arguments below it), DoOperation's return with its Success, Selector's return to LINQ, and the async MyMethodAsync's
+    /// call with 4 and return of 5, each read as a past stop, and it says what recording held the program.</summary>
     private async Task A_recording_keeps_each_calls_arguments_and_each_returns_value_and_shows_either_as_a_past_stop()
     {
         await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended: true, out Process program);
@@ -91,6 +91,14 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         SnapshotEvent call = await host.RequestAsync<SnapshotEvent>(DapCommands.Moment, new MomentArguments(called.Index));
         DapSnapshotFrame entered = call.Frames[0];
         IReadOnlyList<DapVariable> arguments = call.Values[entered.Locals];
+        // The frame below, Main's recorded call, shows its own arguments as they were at its call.
+        DapSnapshotFrame? below = call.Frames.ElementAtOrDefault(1);
+        Assert.True(below is { Locals: > 0 } && below.Frame.Name.Contains("Main", StringComparison.Ordinal) && call.Values[below.Locals].Any(v => v.Name == "args"),
+            $"MyMethod's call shows below it {below?.Frame.Name} with {(below is { Locals: > 0 } ? string.Join(", ", call.Values[below.Locals].Select(v => v.Name)) : "no values")}, "
+            + "where Main's call is there with its args");
+        // A method the framework's code calls (LINQ's Select) has its return read at its own closing brace.
+        Assert.True(timeline.Moments.Any(m => m.Kind == DapMomentKinds.Return && m.Said == "Selector() returned 2"),
+            $"The timeline held {string.Join(" · ", timeline.Moments.Select(m => m.Said))}, where Selector's return of 2 to Select is among them");
         Assert.True(entered.Frame.Name.Contains("MyMethod", StringComparison.Ordinal) && entered.Frame.Line == MyMethodOpens
             && (Value(arguments, "myParam"), Value(arguments, "myIntParam")) == ("13", "6"),
             $"MyMethod's call shows {entered.Frame.Name} at line {entered.Frame.Line} with myParam {Value(arguments, "myParam")} and myIntParam {Value(arguments, "myIntParam")}, "

@@ -106,7 +106,7 @@ public partial class ManagedDebugger
         Capture capture = NewRecordingCapture(null);
         List<VariableInfo> rows = [];
         int topReference = await ReadRecordedAsync(capture, rows, () => read(rows));
-        Keep(new KeptMoment(new RecordedMoment(_momentsRecorded + 1, kind, thread.Id, DateTimeOffset.Now, place, open.Count, said), ThreadNameOf(thread), inside?.Caller,
+        Keep(new KeptMoment(new RecordedMoment(_momentsRecorded + 1, kind, thread.Id, DateTimeOffset.Now, place, inside is null ? open.Count : DepthUnder(inside.Moment, open.IndexOf(inside) + 1), said), ThreadNameOf(thread), inside?.Callers ?? [],
             inside?.Parent, capture.Values, topReference, capture.Values[topReference], Stopwatch.GetElapsedTime(came), BytesOf(capture.Values, 0), capture.Said, flow));
     }
 }

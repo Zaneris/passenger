@@ -3125,6 +3125,16 @@ public sealed partial class DebugController : IDisposable
         }
         view.Tree.Show(rows);
         view.SayMoved(null);
+        if (Session is { State: DebugState.Paused })
+        {
+            // The lines show the past stop's values as a stop's show its own, until the program goes on.
+            Dictionary<string, string> values = [];
+            foreach (VariableNode row in rows)
+            {
+                values.TryAdd(row.Name, row.Value);
+            }
+            ShowInlineValues(chosen, values, past: true);
+        }
     }
 
     /// <summary>The chosen frame's variables, under its watches and the last result evaluated; nothing more is asked once the
@@ -3269,8 +3279,9 @@ public sealed partial class DebugController : IDisposable
     /// <summary>The frame whose values the lines show and the values, until the program goes on.</summary>
     private (DapStackFrame Frame, IReadOnlyDictionary<string, string> Values)? inlineShown;
 
-    /// <summary>The chosen frame's values after the lines of its method, in its file and no other.</summary>
-    private void ShowInlineValues(DapStackFrame current, IReadOnlyDictionary<string, string> values)
+    /// <summary>The chosen frame's values after the lines of its method, in its file and no other; a <paramref name="past"/>
+    /// stop's without how long the program ran to the live one.</summary>
+    private void ShowInlineValues(DapStackFrame current, IReadOnlyDictionary<string, string> values, bool past = false)
     {
         if (disposed)
         {
@@ -3279,7 +3290,7 @@ public sealed partial class DebugController : IDisposable
         inlineShown = (current, values);
         string? path = current.Source?.Path is { } source ? PathNames.Canonical(source) : null;
         // How long the program ran to its stop, where the stop came to, whichever frame is chosen.
-        (string Path, LineAnnotation Tip)? ran = showsElapsed && Stop is { Top: { Source.Path: { } stoppedIn } top } && Session?.Ran is { } time
+        (string Path, LineAnnotation Tip)? ran = !past && showsElapsed && Stop is { Top: { Source.Path: { } stoppedIn } top } && Session?.Ran is { } time
             ? (PathNames.Canonical(stoppedIn), new LineAnnotation(Current(PathNames.Canonical(stoppedIn), top.Line - 1), Elapsed(time), LineAnnotationLook.Chip))
             : null;
         foreach (OpenDocument document in editors.Documents)

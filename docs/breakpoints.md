@@ -76,19 +76,21 @@ has the programs debugged by Passenger's own .NET debugger record the calls of t
 is on before Debug, else from then on. It is off until asked for, as each call recorded holds the program while the
 debugger reads it (a few milliseconds a call, where a breakpoint that does not stop holds it one or two).
 
-Each call of a method the program's symbols place (none the compiler wrote, a lambda's or an auto-property's) is kept as it
-begins, its arguments and their members one level down read as a snapshot reads them, running none of the program's code,
-and a call returning a value again as it returns to the user's code, that value read where the runtime keeps it. An async
-method's call is kept where the code its state machine runs begins and where it completes, with the value it completes
-with, on whichever thread it went on on after an await. An exception is kept where it is thrown in the user's code (or
-reaches it) and where the user's code catches it, and a hit of one of the person's breakpoints that went on (its
-condition false, its hit count not reached, a tracepoint's message logged, a snapshot taken) with its frame's values. A
-recording keeps its newest 10,000 moments and 32 MB of their values, letting the oldest go past them, which its timeline
-says.
+Each call of a method the program's symbols place (none the compiler wrote, a lambda's or an auto-property's) is kept as
+it begins, its arguments and their members one level down read as a snapshot reads them, running none of the program's
+code, and a call returning a value again as it returns, that value read where the runtime keeps it: in the user's code
+that called it, or at its own closing brace for a call code that is not the user's made (LINQ calling a selector; an
+expression-bodied method's return keeps no value there and is kept without one). An async method's call is kept where
+the code its state machine runs begins and where it completes, with the value it completes with, on whichever thread it
+went on on after an await. An exception is kept where it is thrown in the user's code (or reaches it) and where the
+user's code catches it, and a hit of one of the person's breakpoints that went on (its condition false, its hit count
+not reached, a tracepoint's message logged, a snapshot taken) with its frame's values. A recording keeps its newest
+10,000 moments and 32 MB of their values, letting the oldest go past them, which its timeline says.
 
-At a stop, Run › Step Back and Step Forward (or `debug_step`'s `back` and `forward`) go through the moments of the run the
-stop is in: its thread's, and an async call's on whichever thread it went on on. Each is shown in Frames and Variables as
-a past stop, a snapshot's way: the method's frame where it stood (its first line at a call, its last at a return) above
-the recorded calls it ran in, its values as they were then. Step Forward past the newest moment comes back to the live
-stop. The Debug window's Timeline tab lists the moments, each under the call it ran in; Enter shows one. An agent lists
-them with `debug_state` of `timeline`.
+At a stop, Run › Step Back and Step Forward (or `debug_step`'s `back` and `forward`) go through the moments of the run
+the stop is in: its thread's, and an async call's on whichever thread it went on on. Each is shown in Frames and
+Variables as a past stop, a snapshot's way: the method's frame where it stood (its first line at a call, its last at a
+return) above the recorded calls it ran in, each where it made the next call with its arguments as they were at its own
+call, its values as they were then, which the editor's lines show as a stop's show its own. Step Forward past the newest
+moment comes back to the live stop. The Debug window's Timeline tab lists the moments, each under the call it ran in;
+Enter shows one. An agent lists them with `debug_state` of `timeline`.

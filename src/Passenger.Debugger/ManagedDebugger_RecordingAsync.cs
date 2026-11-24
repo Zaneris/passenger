@@ -25,7 +25,7 @@ public partial class ManagedDebugger
     /// <summary>An async call begun and not yet completed: its moment, its MoveNext, its state machine (none for one that is
     /// a struct, which moves into a box at its first await), the frame it was called from and the recorded call that is,
     /// its run, its label, and how many recorded calls it began in.</summary>
-    private sealed record PendingAsync(int Moment, ModuleInfo Module, int MoveNext, ICorDebugHandleValue? Machine, StackFrameInfo? Caller, int? Parent, int Flow,
+    private sealed record PendingAsync(int Moment, ModuleInfo Module, int MoveNext, ICorDebugHandleValue? Machine, IReadOnlyList<StackFrameInfo> Callers, int? Parent, int Flow,
         string Label, int Depth);
 
     private readonly List<PendingAsync> _openAsync = [];
@@ -56,19 +56,28 @@ public partial class ManagedDebugger
         return bound;
     }
 
-    /// <summary>The recorded call a call's frame was made from and its run: the thread's newest open call where that is its
-    /// caller's frame, else the async call whose code the caller runs, else none, the run the thread's own.</summary>
-    private (int? Parent, int Flow) ParentOf(int threadId, List<OpenCall> open, StackRange? callerRange, ICorDebugILFrame? caller)
+    /// <summary>The recorded call a frame runs in and its run: the first frame above it that is one of the thread's open calls
+    /// or runs an open async call's code, whatever code lies between; none, the run the thread's own, where there is none.</summary>
+    private (int? Parent, int Flow, ICorDebugILFrame? Frame) ParentOf(int threadId, List<OpenCall> open, ICorDebugILFrame frame)
     {
-        if (open.Count > 0 && callerRange is { } from && open[^1].Frame == from)
+        ICorDebugFrame? up = frame;
+        for (int hop = 0; hop < 32 && up is not null; hop++)
         {
-            return (open[^1].Moment, open[^1].Flow);
+            up = up.TryGetCaller(out ICorDebugFrame? next) is Cor.S_OK ? next : null;
+            if (up is not ICorDebugILFrame code)
+            {
+                continue;
+            }
+            if (RangeOf(code) is { } range && open.FindLast(call => call.Frame == range) is { } inside)
+            {
+                return (inside.Moment, inside.Flow, code);
+            }
+            if (AsyncCallRunIn(code) is { } running)
+            {
+                return (running.Moment, running.Flow, code);
+            }
         }
-        if (caller is not null && AsyncCallRunIn(caller) is { } running)
-        {
-            return (running.Moment, running.Flow);
-        }
-        return (null, threadId);
+        return (null, threadId, null);
     }
 
     /// <summary>The open async call whose code a frame runs: one of its MoveNext, its state machine the call's.</summary>
@@ -147,13 +156,13 @@ public partial class ManagedDebugger
             return;
         }
         List<OpenCall> open = OpenOn(thread.Id);
-        open.RemoveAll(call => call.Frame.Start.Value <= range.Start.Value);
+        LetGoBelow(open, range);
         ICorDebugILFrame? caller = UserCallerOf(frame, point.Method);
         StackRange? callerRange = caller is null ? null : RangeOf(caller);
-        (int? parent, int flow) = ParentOf(thread.Id, open, callerRange, caller);
+        (int? parent, int flow, ICorDebugILFrame? parentFrame) = ParentOf(thread.Id, open, frame);
         ModuleInfo module = point.Module;
         StackFrameInfo place = DescribeFrame(0, frame);
-        StackFrameInfo? callerPlace = caller is null ? null : DescribeFrame(0, caller);
+        IReadOnlyList<StackFrameInfo> callers = CallersTo(caller is null ? null : DescribeFrame(0, caller), callerRange, parentFrame);
         string label = LabelOf(module.MetadataReader.DescribeCall(point.Method.Kickoff));
 
         Capture capture = NewRecordingCapture(null);
@@ -171,10 +180,11 @@ public partial class ManagedDebugger
         int index = _momentsRecorded + 1;
         string args = string.Join(", ", point.Method.Parameters.Select(name => top.FirstOrDefault(row => row.Name == name)?.Value ?? "?").Select(Cut));
         string said = label.EndsWith("()", StringComparison.Ordinal) ? $"{label[..^2]}({args})" : label;
-        Keep(new KeptMoment(new RecordedMoment(index, MomentKind.Call, thread.Id, DateTimeOffset.Now, place, open.Count, said), ThreadNameOf(thread), callerPlace, parent,
+        int depth = DepthUnder(parent, open.Count);
+        Keep(new KeptMoment(new RecordedMoment(index, MomentKind.Call, thread.Id, DateTimeOffset.Now, place, depth, said), ThreadNameOf(thread), callers, parent,
             capture.Values, topReference, top, Stopwatch.GetElapsedTime(came), BytesOf(capture.Values, 0), capture.Said, flow));
-        open.Add(new OpenCall(index, range, callerRange, null, place, module, frame.Function.Token, label, callerPlace, parent, flow));
-        _openAsync.Add(new PendingAsync(index, module, point.Method.MoveNext, MachineHandle(frame), callerPlace, parent, flow, label, open.Count - 1));
+        open.Add(new OpenCall(index, range, callerRange, null, place, module, frame.Function.Token, label, callers, parent, flow));
+        _openAsync.Add(new PendingAsync(index, module, point.Method.MoveNext, MachineHandle(frame), callers, parent, flow, label, depth));
         if (_openAsync.Count > MostOpenAsync)
         {
             _openAsync[0].Machine?.TryDispose();
@@ -210,7 +220,7 @@ public partial class ManagedDebugger
         int topReference = capture.Add(top);
         string said = returned.Count > 0 ? $"{name} {Cut(returned[0].Value)}" : name;
         Keep(new KeptMoment(new RecordedMoment(_momentsRecorded + 1, MomentKind.Return, thread.Id, DateTimeOffset.Now, DescribeFrame(0, frame), call?.Depth ?? 0, said),
-            ThreadNameOf(thread), call?.Caller, call?.Parent, capture.Values, topReference, top, Stopwatch.GetElapsedTime(came), BytesOf(capture.Values, called?.Values.Count ?? 0),
+            ThreadNameOf(thread), call?.Callers ?? [], call?.Parent, capture.Values, topReference, top, Stopwatch.GetElapsedTime(came), BytesOf(capture.Values, called?.Values.Count ?? 0),
             capture.Said, call?.Flow ?? thread.Id));
     }
 

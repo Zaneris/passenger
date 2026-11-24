@@ -274,10 +274,10 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     }
 
     /// <summary>Record Calls on before Debug, the program runs past a caught exception and Add(2, 3) to a breakpoint: Step Back
-    /// shows Add's return as a past stop, Add on top at its end with 5 returned and its arguments 2 and 3, Variables saying
-    /// which moment it is and Set Value greyed; then its call, Add at its first line above Main; the Timeline tab lists both,
-    /// the one shown chosen; then the exception caught in Main, then thrown in Fail with its message; Step Forward four times
-    /// comes back to the live stop, which Step Forward says it is.</summary>
+    /// shows Add's return, Add at its end with 5 returned and its arguments 2 and 3, Variables saying which moment it is and
+    /// Set Value greyed; then its call at Add's first line above Main, its line showing a: 2, the Timeline tab listing both;
+    /// then the exception caught in Main, then thrown in Fail with its message; Step Forward four times comes back to the
+    /// live stop, which Step Forward says it is.</summary>
     private void Record_calls_keeps_a_calls_arguments_and_its_return_and_step_back_shows_each_as_it_was()
     {
         Write("Program.cs", "try { Fail(); } catch (InvalidOperationException) { } int sum = Add(2, 3);\nConsole.WriteLine($\"sum {sum}\");\n\nint Add(int a, int b)\n{\n"
@@ -304,6 +304,8 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.True((Value(window, "a"), Value(window, "b"), debug.Frames[0].Line, debug.Frames.ElementAtOrDefault(1)?.Line) == ("2", "3", 5, 1),
             $"Add's call shows a {Value(window, "a")} and b {Value(window, "b")} at line {debug.Frames[0].Line} above line {debug.Frames.ElementAtOrDefault(1)?.Line}, "
             + "where it was called with 2 and 3 at its first line, line 5, from line 1");
+        Assert.True(window.EditorArea.CodeEditor.LineAnnotations.Any(a => a.Text == "a: 2"),
+            $"The editor's lines show {string.Join(", ", window.EditorArea.CodeEditor.LineAnnotations.Select(a => a.Text))}, where Add's call shows a: 2 beside its line");
         Ui.Click(view.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(t => t.Name == "debugTimelineTab"));
         Ui.WaitFor(() => debug.Moments.Count >= 2, "the timeline read");
         Assert.Equal(["Add(2, 3)", "Add() returned 5"], debug.Moments.TakeLast(2).Select(m => m.Said));
