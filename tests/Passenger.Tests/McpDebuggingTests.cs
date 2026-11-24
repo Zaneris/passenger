@@ -308,10 +308,13 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains("Assert.Equal() Failure", failure.GetProperty("details").GetString(), StringComparison.Ordinal);
     }
 
-    /// <summary>A program whose top-level statements await, crashing three ways: an exception thrown in sync code they
-    /// call ("here"), or in an async method they await after its own awaits, through another awaiting it (none), which no
-    /// code catches; or the same, caught by the code awaiting it ("caught").</summary>
+    /// <summary>A program whose top-level statements await, crashing four ways: an exception thrown in sync code they
+    /// call ("here"), in an async method they await after its own awaits, through another awaiting it (none), or in one
+    /// going on on another thread from its first await before they have its task to await ("elsewhere"), which no code
+    /// catches; or the second, caught by the code awaiting it ("caught").</summary>
     private const string Crashing = """
+        using System.Runtime.CompilerServices;
+
         if (args is ["caught"])
         {
             try
@@ -328,6 +331,10 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         if (args is ["here"])
         {
             Crash(1);
+        }
+        if (args is ["elsewhere"])
+        {
+            await CrashesElsewhereAsync();
         }
         await CrashesLaterAsync(1);
 
@@ -348,10 +355,46 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             throw new InvalidOperationException(here);
         }
 
+        static async Task CrashesElsewhereAsync()
+        {
+            await new GoesOnElsewhere();
+            try
+            {
+                string elsewhere = "crashing elsewhere";
+                throw new InvalidOperationException(elsewhere);
+            }
+            finally
+            {
+                GoesOnElsewhere.Unwound.Set();
+            }
+        }
+
+        // Goes on on another thread, the thread awaiting held in the await until what went on has unwound from its throw.
+        sealed class GoesOnElsewhere : INotifyCompletion
+        {
+            public static readonly ManualResetEventSlim Unwound = new();
+
+            public GoesOnElsewhere GetAwaiter() => this;
+
+            public bool IsCompleted => false;
+
+            public void GetResult()
+            {
+            }
+
+            public void OnCompleted(Action continuation)
+            {
+                ThreadPool.UnsafeQueueUserWorkItem(_ => continuation(), null);
+                Unwound.Wait();
+            }
+        }
+
         """;
 
     /// <summary>An exception an async program leaves unhandled stops it where it was thrown, with that frame's locals, as a
-    /// synchronous program's does, and once: going on ends the program. One the code awaiting it catches stops nothing.</summary>
+    /// synchronous program's does, and once: going on ends the program. So does one thrown where its method went on on
+    /// another thread before the code awaiting it had its task, as a loaded machine has it. One the code awaiting it
+    /// catches stops nothing.</summary>
     private async Task An_async_programs_unhandled_exception_stops_at_its_throw_with_its_locals_once_and_a_caught_one_stops_nothing()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-async-crash-"));
@@ -367,6 +410,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         {
             (null, "throw new InvalidOperationException(reached);", "reached", "\"crashing at 0\""),
             ("here", "throw new InvalidOperationException(here);", "here", "\"here at 1\""),
+            ("elsewhere", "throw new InvalidOperationException(elsewhere);", "elsewhere", "\"crashing elsewhere\""),
         })
         {
             int line = Array.FindIndex(Crashing.Split('\n'), l => l.Trim() == thrown) + 1;
