@@ -505,7 +505,7 @@ public sealed class DockingTests
         MainWindow window = Open(settings);
         window.KeepLayout();
         DockHost dock = window.DockHost;
-        Dictionary<string, (ToolAnchor Anchor, int Order)> first = dock.Windows.ToDictionary(w => w.Id, w => (w.Anchor, w.Order));
+        Dictionary<string, (ToolAnchor Anchor, int Order, ToolMode Mode)> first = dock.Windows.ToDictionary(w => w.Id, w => (w.Anchor, w.Order, w.Mode));
         dock.Show(ToolWindowIds.Build);
         Ui.Settle();
         double bottom = dock.RowDefinitions[2].ActualHeight;
@@ -529,8 +529,8 @@ public sealed class DockingTests
         NativeMenuItem restore = Ui.Submenu(Ui.Submenu(window.MenuBar, "Window"), "Layout Settings").Items.OfType<NativeMenuItem>().Single(i => i.Header == "Restore Default Layout");
         restore.Command!.Execute(null);
         Ui.Settle();
-        Assert.Equal(first, dock.Windows.ToDictionary(w => w.Id, w => (w.Anchor, w.Order)));
-        Assert.All(dock.Windows, w => Assert.Equal(ToolMode.Docked, w.Mode));
+        Assert.Equal(first, dock.Windows.ToDictionary(w => w.Id, w => (w.Anchor, w.Order, w.Mode)));
+        Assert.All(dock.Windows, w => Assert.Equal(w.InEditorAtFirst ? ToolMode.Editor : ToolMode.Docked, w.Mode));
         Assert.Empty(window.OwnedWindows);
         Assert.Equal([ToolWindowIds.Explorer], dock.Windows.Where(w => w.IsShown).Select(w => w.Id));
         Assert.Contains(Button(window, ToolWindowIds.Debug), Stripe(window, right: false));
@@ -538,7 +538,7 @@ public sealed class DockingTests
 
         MainWindow next = Open(settings);
         next.KeepLayout();
-        Assert.Equal(first, next.DockHost.Windows.ToDictionary(w => w.Id, w => (w.Anchor, w.Order)));
+        Assert.Equal(first, next.DockHost.Windows.ToDictionary(w => w.Id, w => (w.Anchor, w.Order, w.Mode)));
         Assert.Equal([ToolWindowIds.Explorer], next.DockHost.Windows.Where(w => w.IsShown).Select(w => w.Id));
         next.DockHost.Show(ToolWindowIds.Build);
         Ui.Settle();

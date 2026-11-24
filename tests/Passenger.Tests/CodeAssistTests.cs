@@ -9,6 +9,8 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.DependencyMap;
+using Passenger.Roslyn.Extension;
 using Passenger.App.Navigation;
 using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
@@ -123,6 +125,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("Find Usages in a file another program has just written lists the caller it wrote beside it", () => new CodeAssistTests(project), t => t.Find_usages_in_a_file_another_program_has_just_written_lists_the_caller_it_wrote_beside_it());
         Flow.StepApart("the call hierarchy at a use in another file and at a record's positional property shows its callers", () => new CodeAssistTests(project), t => t.Call_hierarchy_at_a_use_in_another_file_and_at_a_records_positional_property_shows_its_callers());
         Flow.StepApart("signposts above each type and member count what uses and implements it, a press shows them and Settings turns them off", () => new CodeAssistTests(project), t => t.Signposts_above_each_type_and_member_count_what_uses_and_implements_it_a_press_shows_them_and_settings_turns_them_off());
+        Flow.StepApart("the dependency map opens at the caret and reads its nodes and edges as the compiler binds them", () => new CodeAssistTests(project), t => t.The_dependency_map_opens_at_the_caret_and_reads_its_nodes_and_edges_as_the_compiler_binds_them());
     }
 
     /// <summary>Reformat Code of a method, on save as one step of Undo or turned off, changes only its own file and
@@ -3041,6 +3044,54 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
 
         string[] Listed() => [.. window.Hierarchy.Rows.Select(r => $"{new string(' ', r.Depth * 2)}{r.Node.Item.Name} {Path.GetFileName(r.Node.Path)}:{r.Node.Where.Line + 1}")];
+    }
+
+    /// <summary>Show Dependency Map in a method opens the map among the editors down to it, the project, its namespace, its
+    /// type and the method chosen, in the tree as in the picture; its edges say what it uses by kind as the compiler binds
+    /// the code (a call, a parameter's type), an open node counting what crosses it from below; the types beside it say
+    /// what they implement; a kind hidden leaves its edges out; Enter on a tree row and a double click on a node go to its
+    /// code.</summary>
+    private void The_dependency_map_opens_at_the_caret_and_reads_its_nodes_and_edges_as_the_compiler_binds_them()
+    {
+        MainWindow window = project.Open("Gauges.cs");
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "static int Bo");
+        Assert.Null(window.Actions.Run(AppActions.ShowDependencyMap));
+        DependencyMapView map = window.DependencyMapWindow;
+        Ui.WaitFor(() => map.Chosen?.Name == "Both(Dial, IGauge)" && !map.IsReading, () => $"the map chosen at Readings.Both, not {map.Chosen?.Name ?? "nothing"} ({map.Said})");
+        Assert.True(window.EditorArea.Active?.Tool?.Window.Id == ToolWindowIds.DependencyMap,
+            $"the map opened among the editors, where {window.EditorArea.Active?.Name} is shown");
+        Assert.Equal(["Sample project", "  <global namespace> namespace", "    Readings class", "      Both(Dial, IGauge) method"],
+            [.. map.Rows.Where(r => r.Node.Name is "Sample" or "<global namespace>" or "Readings" || r.Node.Parent?.Name == "Readings")
+                .Select(r => $"{new string(' ', r.Depth * 2)}{r.Node.Name} {r.Node.Kind}")]);
+        Assert.Equal(["Uses Dial: calls 1, parameter types 1", "Uses IGauge: calls 1, parameter types 1"], [.. map.EdgeRows.Select(e => e.Words)]);
+        Assert.True(map.Picture.Boxes.ContainsKey(map.Chosen!), "the method chosen stands in the picture");
+        MapNode readings = map.Chosen!.Parent!;
+        map.Choose(readings, fromPicture: false);
+        Assert.Equal(["Both(Dial, IGauge) uses Dial: calls 1, parameter types 1", "Both(Dial, IGauge) uses IGauge: calls 1, parameter types 1"],
+            [.. map.EdgeRows.Select(e => e.Words)]);
+
+        MapNode dial = map.Graph.Roots[0].Children!.Single(n => n.Name == "<global namespace>").Children!.Single(n => n.Name == "Dial");
+        map.Choose(dial, fromPicture: false);
+        Assert.Contains("Uses IGauge: implements 1", map.EdgeRows.Select(e => e.Words));
+        Assert.Contains(map.ShownEdges, e => e.From == dial && e.To.Name == "IGauge" && e.Kinds.ContainsKey(DependencyKinds.Implements));
+
+        Ui.Click(map.Kinds.Button);
+        Ui.WaitFor(() => map.Kinds.OpenMenu is not null, "the map's kinds menu");
+        Ui.Click(map.Kinds.OpenMenu!.Items.OfType<MenuItem>().Single(i => i.Header as string == "Implements"));
+        Ui.WaitFor(() => !map.ShownEdges.Any(e => e.Kinds.ContainsKey(DependencyKinds.Implements)), "the implements edges hidden");
+        Assert.Contains(map.ShownEdges, e => e.Kinds.ContainsKey(DependencyKinds.Calls));
+
+        Ui.Click(Ui.Row(map.Tree, map.Rows.Single(r => r.Node == dial)));
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => window.EditorArea.Active?.Name == "Gauges.cs" && window.EditorArea.CodeEditor.CaretPosition.Line == 5,
+            () => $"Enter on Dial's row going to its declaration, not {window.EditorArea.Active?.Name}:{window.EditorArea.CodeEditor.CaretPosition.Line + 1}");
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(0, 0));
+        window.ShowToolWindow(ToolWindowIds.DependencyMap);
+        Ui.Settle();
+        Ui.DoubleClick(map.Picture, map.Picture.Shown(dial)!.Value.Center);
+        Ui.WaitFor(() => window.EditorArea.Active?.Name == "Gauges.cs" && window.EditorArea.CodeEditor.CaretPosition.Line == 5,
+            () => $"a double click on Dial going to its declaration, not {window.EditorArea.Active?.Name}:{window.EditorArea.CodeEditor.CaretPosition.Line + 1}");
+        window.Close();
     }
 
     /// <summary>Typing on into an open completion list narrows it off the UI thread in the rows the list has: as each letter

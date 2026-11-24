@@ -765,6 +765,45 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return Held(inside is null ? found : [.. found.Where(e => Inside(e.Path, inside))], direction[..^1], "within, a folder or file, lists those there");
     });
 
+    [McpServerTool(Name = McpTools.Dependencies, Title = "Dependency map", ReadOnly = true), Description(
+        "A level of the solution's dependency map, as the compiler binds the code: with no node, the C# projects and their " +
+        "references; with a node's id, a project's namespaces, a namespace's types or a type's members. Each edge goes from a " +
+        "node to the id of what it uses (a namespace's to a namespace, a type's or member's to a type or member), counted by " +
+        "kind: calls, inherits, implements, fieldType, parameterType, attribute, uses, references.")]
+    public Task<DependencyLevel> Dependencies(string? node = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
+    {
+        await SettledServer(cancel);
+        CSharp.CSharpService csharp = Session.CSharp ?? throw new InvalidOperationException(Refusals.Sentence(Refusals.CSharpNotRunning));
+        if (node is not null && Roslyn.Extension.DependencyIds.Read(node) is null)
+        {
+            throw new ArgumentException($"No node '{node}': a node's id is one a dependencies answer gave", nameof(node));
+        }
+        Roslyn.Extension.DependenciesFound found = await csharp.DependenciesAsync(node);
+        DependencyNodeInfo[] nodes = [.. found.Nodes.Select(n => new DependencyNodeInfo(n.Id, n.Name, n.Kind, n.Path is { } path ? Relative(path) : null,
+            n.Path is { } at && n.At is { } place ? ServerPlaces.PositionOf(Editors, at, new LspPosition(place.Line, place.Character)).Line + 1 : null, n.Expands ? true : null))];
+        DependencyEdgeInfo[] edges = [.. found.Edges.Select(e => new DependencyEdgeInfo(e.From, e.To[^1], e.Kinds))];
+        return HeldDependencies(new DependencyLevel(nodes, edges));
+    });
+
+    /// <summary>dependencies' answer held within <see cref="AgentAnswers.MostCharacters"/>: its nodes and edges whole where
+    /// they fit, else each list given its share of the room (<see cref="AgentAnswers.Shares"/>), its first entries whole and
+    /// the rest left out, its more saying how many.</summary>
+    private static DependencyLevel HeldDependencies(DependencyLevel answered)
+    {
+        int room = Room(answered with { Nodes = [], Edges = [] });
+        int[] needs = [answered.Nodes.Sum(n => Size(n) + 1), answered.Edges.Sum(e => Size(e) + 1)];
+        if (needs.Sum() <= room)
+        {
+            return answered;
+        }
+        int[] shares = AgentAnswers.Shares(needs, room);
+        int nodes = AgentAnswers.Fitting(answered.Nodes, Size, shares[0]);
+        int edges = AgentAnswers.Fitting(answered.Edges, Size, shares[1]);
+        int left = answered.Nodes.Count - nodes + answered.Edges.Count - edges;
+        return new DependencyLevel([.. answered.Nodes.Take(nodes)], [.. answered.Edges.Take(edges)],
+            AgentAnswers.More(left, nodes < answered.Nodes.Count ? "node or edge" : "edge", "a node's own level lists less", nodes < answered.Nodes.Count ? "nodes and edges" : null));
+    }
+
     /// <summary>One level of the hierarchy hierarchy answers, every entry of it.</summary>
     private async Task<IReadOnlyList<HierarchyEntry>> HierarchyOfAsync(string? path, int? line, int? column, string direction, string? symbol, CancellationToken cancel)
     {
@@ -4642,6 +4681,15 @@ public sealed record FilePlaces(string Path, IReadOnlyList<string>? Places)
 }
 
 public sealed record HierarchyEntry(string? Name, string? Detail, string Path, int Line, int Column, string Text);
+
+/// <summary>A level of the dependency map as an agent reads it: its nodes, its edges, and what was left out.</summary>
+public sealed record DependencyLevel(IReadOnlyList<DependencyNodeInfo> Nodes, IReadOnlyList<DependencyEdgeInfo> Edges, string? More = null);
+
+/// <summary>A node of the map: its id, name and kind, where it is written, and whether a level stands below it.</summary>
+public sealed record DependencyNodeInfo(string Id, string Name, string Kind, string? Path, int? Line, bool? Opens);
+
+/// <summary>An edge of the map: the node that uses, the id of what it uses, and how many uses of each kind.</summary>
+public sealed record DependencyEdgeInfo(string From, string To, IReadOnlyDictionary<string, int> Kinds);
 
 /// <summary>A build's answer: MSBuild's last lines only when it failed, since a build that succeeded has nothing in them
 /// an agent acts on (output of build has them).</summary>

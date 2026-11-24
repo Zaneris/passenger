@@ -40,13 +40,13 @@ public sealed class ZoomedPicture : ScrollViewer
 
     /// <summary>The keys of Zoom In, Zoom Out and Actual Size, which their tips name: the command modifier with =, - and /,
     /// which the keypad's +, - and / and Shift held with any of them do too (<see cref="CommandFor"/>).</summary>
-    private static readonly Keystroke ZoomInKey = new(Key.OemPlus, Keystroke.Command);
+    internal static readonly Keystroke ZoomInKey = new(Key.OemPlus, Keystroke.Command);
 
     /// <inheritdoc cref="ZoomInKey"/>
-    private static readonly Keystroke ZoomOutKey = new(Key.OemMinus, Keystroke.Command);
+    internal static readonly Keystroke ZoomOutKey = new(Key.OemMinus, Keystroke.Command);
 
     /// <inheritdoc cref="ZoomInKey"/>
-    private static readonly Keystroke ActualSizeKey = new(Key.OemQuestion, Keystroke.Command);
+    internal static readonly Keystroke ActualSizeKey = new(Key.OemQuestion, Keystroke.Command);
 
     public ZoomedPicture()
     {
@@ -108,9 +108,18 @@ public sealed class ZoomedPicture : ScrollViewer
     /// <summary>The size the picture is drawn at, in units.</summary>
     public Size DrawnSize => new(image.Width, image.Height);
 
-    public void ZoomIn() => ZoomTo(Steps.FirstOrDefault(s => s > Zoom * 1.001, Steps[^1]));
+    public void ZoomIn() => ZoomTo(StepIn(Zoom));
 
-    public void ZoomOut() => ZoomTo(Steps.LastOrDefault(s => s < Zoom / 1.001, Math.Min(Zoom, Steps[0])));
+    public void ZoomOut() => ZoomTo(StepOut(Zoom));
+
+    /// <summary>The step Zoom In takes from a zoom, as every zoomed view steps.</summary>
+    internal static double StepIn(double zoom) => Steps.FirstOrDefault(s => s > zoom * 1.001, Steps[^1]);
+
+    /// <summary>The step Zoom Out takes from a zoom, as every zoomed view steps.</summary>
+    internal static double StepOut(double zoom) => Steps.LastOrDefault(s => s < zoom / 1.001, Math.Min(zoom, Steps[0]));
+
+    /// <summary>The zoom of the last step, the most any zoomed view enlarges.</summary>
+    internal static double Most => Steps[^1];
 
     /// <summary>The picture at a zoom among the steps' reach; a fit below the first step stays as it is until zoomed in.</summary>
     public void ZoomTo(double zoom)
@@ -136,15 +145,25 @@ public sealed class ZoomedPicture : ScrollViewer
 
     /// <summary>What a key does here (the zoom's keys, with the platform's command modifier), for its owner to run; null
     /// for a key that is not its.</summary>
-    public Action? CommandFor(KeyEventArgs e)
+    public Action? CommandFor(KeyEventArgs e) => ZoomKeyOf(e) switch
+    {
+        > 0 => ZoomIn,
+        < 0 => ZoomOut,
+        0 => () => ZoomTo(1),
+        null => null,
+    };
+
+    /// <summary>Which of the zoom's keys a key is, as every zoomed view takes them: 1 Zoom In, -1 Zoom Out, 0 Actual Size,
+    /// null none.</summary>
+    internal static int? ZoomKeyOf(KeyEventArgs e)
     {
         if ((e.KeyModifiers & ~KeyModifiers.Shift) != Keystroke.Command)
         {
             return null;
         }
-        return e.Key == ZoomInKey.Key || e.Key == Key.Add ? ZoomIn
-            : e.Key == ZoomOutKey.Key || e.Key == Key.Subtract ? ZoomOut
-            : e.Key == ActualSizeKey.Key || e.Key == Key.Divide ? () => ZoomTo(1)
+        return e.Key == ZoomInKey.Key || e.Key == Key.Add ? 1
+            : e.Key == ZoomOutKey.Key || e.Key == Key.Subtract ? -1
+            : e.Key == ActualSizeKey.Key || e.Key == Key.Divide ? 0
             : null;
     }
 

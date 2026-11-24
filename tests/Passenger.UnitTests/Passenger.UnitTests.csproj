@@ -404,6 +404,18 @@
     <Compile Include="../../src/Passenger.Roslyn.Extension/DocumentReadsKept.cs" Link="Roslyn/DocumentReadsKept.cs" />
   </ItemGroup>
 
+  <!-- The dependency map: what the extension reads of each use by the compiler's binding, over Roslyn's own workspaces,
+       and how the window counts and lays it out, compiled in since their projects are built against Roslyn's server and
+       are the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.Roslyn.Extension/DependencyMessages.cs" Link="Roslyn/DependencyMessages.cs" />
+    <Compile Include="../../src/Passenger.Roslyn.Extension/DependencyReads.cs" Link="Roslyn/DependencyReads.cs" />
+    <Compile Include="../../src/Passenger.Roslyn.Extension/SymbolKinds.cs" Link="Roslyn/SymbolKinds.cs" />
+    <Compile Include="../../src/Passenger.App/DependencyMap/MapGraph.cs" Link="App/MapGraph.cs" />
+    <Compile Include="../../src/Passenger.App/DependencyMap/MapLayout.cs" Link="App/MapLayout.cs" />
+    <Compile Include="../../src/Passenger.App/Theme/Gaps.cs" Link="App/Gaps.cs" />
+  </ItemGroup>
+
   <!-- What C#'s refactorings refuse in the words they are asked, compiled in as Passenger.Languages compiles it, reading
        through the debugger's CodeBrackets. -->
   <ItemGroup>

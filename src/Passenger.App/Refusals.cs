@@ -1134,6 +1134,9 @@ public static class Refusals
     /// <summary>Find Clones of Selection in a file that is not C#.</summary>
     public const string NotCSharpStatements = "Find Clones of Selection compares C# statements, and the file is not C#";
 
+    /// <summary>Go to Source on a node of the dependency map the compiler declares with no file of the solution's.</summary>
+    public const string MapNodeUnplaced = "This node of the map is written in no file of the solution's";
+
     /// <summary>Copy Path on a module made as the program runs, or read from its memory alone.</summary>
     public const string ModuleUnplaced = "The module has no file: the program made it, or the debugger read it from its memory";
 

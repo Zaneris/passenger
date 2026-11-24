@@ -186,6 +186,10 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     /// <summary>Open in the layout the IDE starts with (the Explorer), and so after Restore Default Layout.</summary>
     public bool OpenAtFirst { get; init; }
 
+    /// <summary>A tab among the editors in the layout the IDE starts with, and so after Restore Default Layout, where a
+    /// window that needs the room (the Dependency Map) has it; docked at its anchor once the person docks it.</summary>
+    public bool InEditorAtFirst { get; init; }
+
     /// <summary>What it serves, declared as it is made: every folder, or kinds of project the open folder must hold one of
     /// for it to show (<see cref="Unserved"/>).</summary>
     public required ToolWindowServes Serves { get; init; }

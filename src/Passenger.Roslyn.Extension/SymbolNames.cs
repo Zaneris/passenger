@@ -183,7 +183,7 @@ internal static class SymbolNames
     public static NamedSymbol Named(Solution solution, ISymbol symbol)
     {
         (string? path, Place? at) = Declared(solution, symbol);
-        NamedSymbol named = new(symbol.Name, symbol.ToDisplayString(Short), KindOf(symbol), symbol.OriginalDefinition.GetDocumentationCommentId(), ContainerOf(symbol), path, at);
+        NamedSymbol named = new(symbol.Name, symbol.ToDisplayString(Short), SymbolKinds.Of(symbol), symbol.OriginalDefinition.GetDocumentationCommentId(), ContainerOf(symbol), path, at);
         if (path is not null || GeneratedPlace(solution, symbol) is not { } made)
         {
             return named;
@@ -386,24 +386,4 @@ internal static class SymbolNames
         }
         return trimmed.Replace(" ", string.Empty, StringComparison.Ordinal);
     }
-
-    /// <summary>A symbol's kind as LSP's SymbolKind names it, as Go to Symbol's are.</summary>
-    private static string KindOf(ISymbol symbol) => symbol switch
-    {
-        INamespaceSymbol => "namespace",
-        INamedTypeSymbol { TypeKind: TypeKind.Interface } => "interface",
-        INamedTypeSymbol { TypeKind: TypeKind.Struct } => "struct",
-        INamedTypeSymbol { TypeKind: TypeKind.Enum } => "enum",
-        INamedTypeSymbol { TypeKind: TypeKind.Delegate } => "delegate",
-        INamedTypeSymbol => "class",
-        IMethodSymbol { MethodKind: MethodKind.Constructor or MethodKind.StaticConstructor } => "constructor",
-        IMethodSymbol { MethodKind: MethodKind.UserDefinedOperator or MethodKind.Conversion } => "operator",
-        IMethodSymbol => "method",
-        IPropertySymbol => "property",
-        IFieldSymbol { ContainingType.TypeKind: TypeKind.Enum } => "enum member",
-        IFieldSymbol { IsConst: true } => "constant",
-        IFieldSymbol => "field",
-        IEventSymbol => "event",
-        _ => "symbol",
-    };
 }

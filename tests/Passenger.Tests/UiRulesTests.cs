@@ -245,6 +245,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Passenger.App.Docking.DockHost dock = window.DockHost;
             foreach (Passenger.App.Docking.ToolWindow tool in dock.Windows.ToList())
             {
+                // A window that starts among the editors has its header once docked.
+                dock.SetMode(tool, Passenger.App.Docking.ToolMode.Docked);
                 dock.Show(tool.Id);
                 Ui.Settle();
                 Button options = tool.Content.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains(StyleClasses.ToolPane))

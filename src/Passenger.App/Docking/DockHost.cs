@@ -472,7 +472,11 @@ public sealed class DockHost : Grid
         window.Order = windows.Count(w => w.Anchor == window.Anchor);
         window.Unserved = WhyUnserved?.Invoke(window);
         windows.Add(window);
-        firstPlaces[window.Id] = new DockedWindow(window.Anchor, window.Order, window.OpenAtFirst);
+        if (window.InEditorAtFirst)
+        {
+            window.Mode = ToolMode.Editor;
+        }
+        firstPlaces[window.Id] = new DockedWindow(window.Anchor, window.Order, window.OpenAtFirst) { Mode = window.Mode };
         if (window.ShowAction(this) is { } shows)
         {
             Actions?.Add(shows);
@@ -484,8 +488,9 @@ public sealed class DockHost : Grid
         }
     }
 
-    /// <summary>Restore Default Layout: every window back in its default place (<see cref="Default"/>), docked, open only
-    /// if the default opens it, and the areas at their default sizes, halves shared alike.</summary>
+    /// <summary>Restore Default Layout: every window back in its default place (<see cref="Default"/>), docked (or among the
+    /// editors where it starts there), open only if the default opens it, and the areas at their default sizes, halves
+    /// shared alike.</summary>
     public void RestoreDefault()
     {
         foreach (Grid area in (Grid[])[leftArea, rightArea])
@@ -513,7 +518,7 @@ public sealed class DockHost : Grid
                 int order = 0;
                 foreach (string id in placed.Concat(rest))
                 {
-                    places[id] = new DockedWindow(anchor, order++, theme.Open is { } open ? open.Contains(id) : firstPlaces[id].Shown);
+                    places[id] = new DockedWindow(anchor, order++, theme.Open is { } open ? open.Contains(id) : firstPlaces[id].Shown) { Mode = firstPlaces[id].Mode };
                 }
             }
             foreach (string id in theme.InEditor.Where(firstPlaces.ContainsKey))
@@ -1185,9 +1190,14 @@ public sealed class DockHost : Grid
     internal IEnumerable<(ToolWindow Window, Control Place)> ShownAt(IEnumerable<ToolAnchor> places) =>
         places.Select(anchor => panes[anchor]).Where(pane => pane.Window is not null && pane.IsEffectivelyVisible).Select(pane => (pane.Window!, (Control)pane));
 
-    /// <summary>Moves a window to another place (at an index among its buttons there), shown if it was.</summary>
+    /// <summary>Moves a window to another place (at an index among its buttons there), docked there, shown if it was.</summary>
     public void Move(ToolWindow window, ToolAnchor anchor, int? index = null)
     {
+        // A window among the editors moved to a place docks there.
+        if (window.Mode == ToolMode.Editor)
+        {
+            SetMode(window, ToolMode.Docked);
+        }
         bool shown = window.IsShown;
         Remember();
         List<ToolWindow> there = [.. windows.Where(w => w.Anchor == anchor && w != window).OrderBy(w => w.Order)];

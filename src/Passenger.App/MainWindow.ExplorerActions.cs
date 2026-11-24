@@ -476,7 +476,12 @@ public partial class MainWindow
         }
         if (node.Kind == NodeKind.File && !node.IsSolutionItem)
         {
-            entries.Add(Sub("Tools", [Item(A.CompareFiles)]));
+            entries.Add(Sub("Tools", Languages.Language.ForPath(node.Path ?? string.Empty) == Languages.Language.CSharp
+                ? [Item(A.CompareFiles), Item(A.ShowDependencyMap)] : [Item(A.CompareFiles)]));
+        }
+        else if (node.Kind is NodeKind.Project or NodeKind.Solution && !node.IsShared)
+        {
+            entries.Add(Sub("Tools", [Item(A.ShowDependencyMap)]));
         }
         bool histories = node.Kind is NodeKind.File or NodeKind.Folder or NodeKind.Project or NodeKind.Solution && node.Path is not null && !node.IsSolutionItem;
         if (histories)

@@ -63,6 +63,8 @@ public static class Handlers
     public const string Signposts = "Passenger.Roslyn.Extension.Signposts";
     public const string CodeClones = "Passenger.Roslyn.Extension.CodeClones";
     public const string ExtractClones = "Passenger.Roslyn.Extension.ExtractClones";
+    public const string Dependencies = "Passenger.Roslyn.Extension.Dependencies";
+    public const string DependencyAt = "Passenger.Roslyn.Extension.DependencyAt";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -71,7 +73,7 @@ public static class Handlers
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, SymbolContainers, WrittenPlaces,
         ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames, GeneratedMembers,
         MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover,
-        CompletionCall, StepBindings, EditorConfigKeys, EditorConfigValues, Signposts, CodeClones, ExtractClones,
+        CompletionCall, StepBindings, EditorConfigKeys, EditorConfigValues, Signposts, CodeClones, ExtractClones, Dependencies, DependencyAt,
     ];
 }
 

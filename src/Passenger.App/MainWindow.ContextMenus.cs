@@ -48,7 +48,7 @@ public partial class MainWindow
             Item(A.FindUsages), Item(A.FindClonesOfSelection),
             Sub("Refactor", Item(A.RefactorThis), separator, Item(A.Rename), Item(A.ExtractMethod), Item(A.IntroduceVariable), Item(A.Inline)),
             Sub("Go To", Item(A.GoToDeclaration), Item(A.DerivedSymbols), Item(A.GoToImplementation), Item(A.GoToTypeDeclaration), Item(A.BaseSymbols),
-                separator, Item(A.CallHierarchy), Item(A.TypeHierarchy)),
+                separator, Item(A.CallHierarchy), Item(A.TypeHierarchy), Item(A.ShowDependencyMap)),
             Item(A.Generate),
             Sub("Folding", Item(E.Unfold), Item(E.UnfoldAll), separator, Item(E.Fold), Item(E.FoldToDefinitions), Item(E.FoldAll), separator,
                 Item(E.UnfoldDocComments), Item(E.FoldDocComments), separator, Item(E.ToggleFold)),

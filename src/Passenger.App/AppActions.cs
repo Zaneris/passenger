@@ -587,6 +587,9 @@ public static class AppActions
     public const string FindClonesOfSelection = "app.code.findClonesOfSelection";
     public const string CompareClones = "app.clones.compare";
     public const string ExtractClones = "app.clones.extractMethod";
+
+    // The Dependency Map window at the caret, the Explorer's row or the solution, which Rider's keymaps give no keys.
+    public const string ShowDependencyMap = "app.showDependencyMap";
     public const string ShowStructure = "app.showStructure";
 
     // Continuous testing, turned on and off for the folder's repository.

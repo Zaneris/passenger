@@ -438,6 +438,12 @@ public sealed partial class RoslynSession : IAsyncDisposable, IDocumentHost
     public Task<Roslyn.Extension.SymbolsFound> SymbolsNamedAsync(string name, int limit, CancellationToken cancel = default) =>
         ExtensionAsync<Roslyn.Extension.SymbolsFound>(Roslyn.Extension.Handlers.SymbolsNamed, new Roslyn.Extension.SymbolsAsked(name, limit), cancel);
 
+    /// <summary>A level of the dependency map (Passenger's extension's <see cref="Roslyn.Extension.DependenciesAsked"/>): the
+    /// children of a node and what each depends on, the solution's projects for none, each multi-targeted project read in the
+    /// framework <paramref name="frameworks"/> chooses for its file.</summary>
+    public Task<Roslyn.Extension.DependenciesFound> DependenciesAsync(string? of, IReadOnlyDictionary<string, string> frameworks, CancellationToken cancel = default) =>
+        ExtensionAsync<Roslyn.Extension.DependenciesFound>(Roslyn.Extension.Handlers.Dependencies, new Roslyn.Extension.DependenciesAsked(of, frameworks), cancel);
+
     /// <summary>What the symbols declared at places the server named are in (Passenger's extension's <see
     /// cref="Roslyn.Extension.ContainersAsked"/>), in order, as <see cref="SymbolsNamedAsync"/> names a symbol's container: a
     /// member's type, a type's namespace; null when the server has no extension to ask.</summary>
@@ -1038,6 +1044,11 @@ public sealed class LspDocument : IDisposable
         CancellationToken cancel = default) =>
         (await ExtensionAsync<Roslyn.Extension.SignpostsFound>(Roslyn.Extension.Handlers.Signposts,
             new Roslyn.Extension.SignpostsAsked([.. names.Select(PlaceOf)], usages, inheriting, places), cancel).ConfigureAwait(false)).Counts;
+
+    /// <summary>The dependency map's ids from the project down of the symbol at an offset, else of the declaration around it,
+    /// else of the document's first type (<see cref="Roslyn.Extension.DependencyPlace"/>); none in a document of no project's.</summary>
+    public async Task<IReadOnlyList<string>> DependencyAtAsync(int offset, CancellationToken cancel = default) =>
+        (await ExtensionAsync<Roslyn.Extension.DependencyPlace>(Roslyn.Extension.Handlers.DependencyAt, new Roslyn.Extension.Caret(PlaceOf(offset)), cancel).ConfigureAwait(false)).Path;
 
     /// <summary>An offset as the extension's messages give a place.</summary>
     public Roslyn.Extension.Place PlaceOf(int offset)

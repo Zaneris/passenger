@@ -124,10 +124,6 @@ internal sealed class DockDrag
         }
         if (Target(at) is { } anchor)
         {
-            if (window.Mode == ToolMode.Editor)
-            {
-                host.SetMode(window, ToolMode.Docked);
-            }
             host.Move(window, anchor, StripeIndex(window, anchor, at));
         }
     }

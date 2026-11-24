@@ -36,6 +36,7 @@ public sealed class ToolWindowServesTests
         [ToolWindowIds.Hierarchy] = ToolWindowServes.EveryFolder,
         [ToolWindowIds.Coverage] = ToolWindowServes.EveryFolder,
         [ToolWindowIds.Modules] = ToolWindowServes.EveryFolder,
+        [ToolWindowIds.DependencyMap] = ToolWindowServes.EveryFolder,
         [ToolWindowIds.Database] = ToolWindowServes.EveryFolder,
         [ToolWindowIds.Clones] = ToolWindowServes.EveryFolder,
         [ToolWindowIds.Endpoints] = ToolWindowServes.WebRequests,

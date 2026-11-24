@@ -32,6 +32,7 @@ public static class McpTools
     public const string DebugState = "debug_state";
     public const string DebugStep = "debug_step";
     public const string Definition = "definition";
+    public const string Dependencies = "dependencies";
     public const string Diagnostics = "diagnostics";
     public const string Edit = "edit";
     public const string EditorText = "editor_text";
