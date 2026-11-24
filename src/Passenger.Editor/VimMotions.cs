@@ -742,7 +742,9 @@ public static class VimMotions
                     // From white ending a paragraph: to the last empty line's start past one; counted, the sentence after too.
                     if (n == 1)
                     {
-                        return new VimSpan(from, runEnd > sentenceLine.Line ? text.GetLine(runEnd).Start : from, false, EndKept: true);
+                        // White opening its line (blanks alone) takes the lines to the last empty one whole.
+                        return runEnd > sentenceLine.Line && from == LineOf(text, from).Start ? new VimSpan(from, text.GetLine(runEnd).Start, true)
+                            : new VimSpan(from, runEnd > sentenceLine.Line ? text.GetLine(runEnd).Start : from, false, EndKept: true);
                     }
                     (to, next, i) = (text.GetLine(runEnd).Start, textLine.Start, n - 2);
                     continue;

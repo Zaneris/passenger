@@ -230,7 +230,7 @@ public sealed partial class Vim(VimRegisters registers)
         VimResult result = command is null ? VimResult.Held
             : WritesIntoEmpty(command, text, view) ? OnOneEmptyLine(command, text, view)
             : Run(command, text, selections, view);
-        if ((command is { Operator: null, Name: "." or "p" or "P" or "~" or "r" or "h" or "l" or "f" or "F" or "t" or "T" or ";" or "," or "*" or "#"
+        if ((command is { Operator: null, Name: "." or "p" or "P" or "gp" or "gP" or "~" or "r" or "h" or "l" or "f" or "F" or "t" or "T" or ";" or "," or "*" or "#"
                 or "S" or "Y" or "s" or "x" or "X" or "J" or "gJ" or "%" or "+" or "-" or "_" }
             && (ReferenceEquals(result, VimResult.Held) || result is { Edits: null, Selections: null, ReadsClipboard: false }))
             || (command is { Operator: not null, Name: not ("i" or "a" or "$") } && ReferenceEquals(result, VimResult.Held)))

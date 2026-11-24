@@ -894,6 +894,12 @@ public sealed partial class Vim
         {
             return own.Start > r.Cursor ? r with { Cursor = own.Start } : null;
         }
+        if (next.Linewise && !inner && n == 1 && own.End > after && VimMotions.LineOf(text, own.End) is { Length: 0 } lastEmpty
+            && lastEmpty.Line < VimMotions.LastLine(text, breakEnds) && text.GetLine(lastEmpty.Line + 1).Length > 0)
+        {
+            // Lines taken whole, from blanks alone to the last of the empty lines after them, end on that last one.
+            return r with { Cursor = lastEmpty.Start };
+        }
         // Of the empty lines ending the text, the last is none to go to.
         return own.End > after ? r with { Cursor = VimMotions.StepBack(text, own.End) } : Ended(text, r, inner);
     }

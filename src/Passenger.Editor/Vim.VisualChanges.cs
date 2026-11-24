@@ -96,6 +96,15 @@ public sealed partial class Vim
                         // Joining the last line, a block past its line's end (to its last character, the last line empty) aims j and k at its left.
                         (wantedFor, wanted) = (joined.Selections, [left]);
                     }
+                    else if (block && toEnd && bottom == top + 1 && bottom == VimMotions.LastLine(text, breakEnds) && text.GetLineFromOffset(stretch.Anchor) == bottom
+                        && TextNavigation.IndentEnd(text, text.GetLine(bottom)) < text.GetLine(bottom).End
+                        && TextNavigation.VisualColumn(text, stretch.Anchor, tab) is var anchor && anchor < CaretColumn(text.Apply(joined.Edits), joined.Selections.Primary.Caret, tab)
+                        && VimMotions.OffsetAtColumn(text, top, anchor, tab) is var above && TextNavigation.VisualColumn(text, above, tab) == anchor
+                        && (above >= text.Length || text[above] != '\t'))
+                    {
+                        // Begun in the last line's text, a block to the lines' ends aims j and k at its start's column, where a tab above holds none of it.
+                        (wantedFor, wanted) = (joined.Selections, [anchor]);
+                    }
                     return new VimResult(true, Edits: [joined]);
                 }
                 // Nothing to join: visual mode ends all the same, the caret at the stretch's start, or where . found it.
