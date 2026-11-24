@@ -170,7 +170,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     /// million-character local answered by its first characters and length, a debugged test run's tally as it ends, an
     /// async program's unhandled exception stopping once at its throw, a Release build's step out and over, a
     /// breakpoint at a lambda's column or line and one in a lambda written away from its closed file, one outside a
-    /// file's lines or in no file refused, and a temporary breakpoint and one waiting for another.</summary>
+    /// file's lines or in no file refused, a temporary breakpoint and one waiting for another, and a recorded run stepped back.</summary>
     [Fact]
     public async Task An_agents_debugger_stops_steps_and_binds_breakpoints_as_the_code_is_written()
     {
@@ -182,6 +182,38 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         await Flow.StepApartAsync("an agents breakpoint in a lambda written away from its closed file stops at the statement listed by its line", () => new McpDebuggingTests(restored), t => t.An_agents_breakpoint_in_a_lambda_written_away_from_its_closed_file_stops_at_the_statement_listed_by_its_line());
         await Flow.StepApartAsync("an agents breakpoint outside a files lines or in no file is refused and none is kept", () => new McpDebuggingTests(restored), t => t.An_agents_breakpoint_outside_a_files_lines_or_in_no_file_is_refused_and_none_is_kept());
         await Flow.StepApartAsync("an agents temporary breakpoint and one waiting for a tracepoint stop as they say and are listed so", () => new McpDebuggingTests(restored), t => t.An_agents_temporary_breakpoint_and_one_waiting_for_a_tracepoint_stop_as_they_say_and_are_listed_so());
+        await Flow.StepApartAsync("an agents recorded run steps back into a call it ran past and reads its argument and return", () => new McpDebuggingTests(restored), t => t.An_agents_recorded_run_steps_back_into_a_call_it_ran_past_and_reads_its_argument_and_return());
+    }
+
+    /// <summary>An agent's debug_start with record true runs Twice(1) and stops before Twice(2): debug_step back reads Twice's
+    /// return, 2, beside its argument 1 as it was, Twice on top at its end above the loop's line; back again its call; of
+    /// timeline lists the moments newest first; and debug_step forward twice comes back to the live stop.</summary>
+    private async Task An_agents_recorded_run_steps_back_into_a_call_it_ran_past_and_reads_its_argument_and_return()
+    {
+        await TakeFolderAsync();
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 4, ["condition"] = "i == 2" });
+        JsonElement stop = await Call(client, McpTools.DebugStart, new() { ["record"] = true });
+        Assert.Equal(("Program.cs:4:5", "2"), (stop.GetProperty("location").GetString(), Local(stop, "i")));
+
+        JsonElement back = await Call(client, McpTools.DebugStep, new() { ["kind"] = "back" });
+        Assert.True(back.GetProperty("kind").GetString() == DapMomentKinds.Return && Valued(back, "Twice() returned") == "2" && Valued(back, "value") == "1"
+            && back.GetProperty("frames")[0].GetString()?.EndsWith("Helper.cs:7", StringComparison.Ordinal) == true
+            && back.GetProperty("frames")[1].GetString()?.EndsWith("Program.cs:4", StringComparison.Ordinal) == true,
+            $"debug_step back answered {back}, where Twice returned 2 from 1 at its end, Helper.cs:7, called from Program.cs:4");
+        back = await Call(client, McpTools.DebugStep, new() { ["kind"] = "back" });
+        Assert.True(back.GetProperty("kind").GetString() == DapMomentKinds.Call && back.GetProperty("said").GetString()?.Contains("Twice(1) called", StringComparison.Ordinal) == true
+            && Valued(back, "value") == "1", $"debug_step back again answered {back}, where Twice was called with 1");
+        JsonElement timeline = await Call(client, McpTools.DebugState, new() { ["of"] = "timeline" });
+        Assert.Equal(["Twice() returned 2", "Twice(1)"], timeline.EnumerateArray().Take(2).Select(m => m.GetProperty("said").GetString()));
+
+        await Call(client, McpTools.DebugStep, new() { ["kind"] = "forward" });
+        stop = await Call(client, McpTools.DebugStep, new() { ["kind"] = "forward" });
+        Assert.True(stop.GetProperty("location").GetString() == "Program.cs:4:5" && Local(stop, "i") == "2", $"debug_step forward past the newest moment answered {stop}, where the live stop is");
+        await Call(client, McpTools.Stop);
+
+        static string? Valued(JsonElement moment, string name) => moment.GetProperty("values").EnumerateArray()
+            .FirstOrDefault(v => v.GetProperty("name").GetString() == name) is { ValueKind: JsonValueKind.Object } found ? found.GetProperty("value").GetString() : null;
     }
 
     /// <summary>An agent's temporary breakpoint and one waiting for a tracepoint that holds at the loop's third turn are listed

@@ -1199,8 +1199,21 @@ public static class Refusals
     /// <summary>A snapshot point set where the debugger is not Passenger's .NET one (a page's WebAssembly, GDScript).</summary>
     public const string SnapshotsOfDotnet = "Snapshot points are taken by Passenger's .NET debugger alone: this debugger stops or logs at a breakpoint";
 
-    /// <summary>A value of a snapshot shown, which no evaluation, setting, watch on it or mark reaches: its program has run on.</summary>
-    public const string SnapshotValue = "This value is a snapshot's, read as the program ran on, which has run on since: run to a breakpoint to change or watch it";
+    /// <summary>A value of a snapshot or a recorded moment shown, which no evaluation, setting, watch on it or mark reaches:
+    /// its program has run on.</summary>
+    public const string SnapshotValue = "This value was read at a past moment, a snapshot's or a recording's, and the program has run on since: run to a breakpoint to change or watch it";
+
+    /// <summary>Step Back with no moment recorded before the stop.</summary>
+    public const string NothingRecorded = "Nothing is recorded before this stop: Record Calls records the calls of the program's own code as it runs";
+
+    /// <summary>Step Back at the earliest moment a recording keeps.</summary>
+    public const string EarliestMoment = "This is the earliest moment the recording keeps";
+
+    /// <summary>Step Forward at the live stop.</summary>
+    public const string LiveStop = "This is the live stop: Step Back goes to the moments recorded before it";
+
+    /// <summary>Record Calls where the debugger is not Passenger's .NET one (a page's WebAssembly, GDScript).</summary>
+    public const string RecordsDotnet = "Calls are recorded by Passenger's .NET debugger alone";
 
     /// <summary>No snapshot point has taken a capture in the folder.</summary>
     public const string NoSnapshots = "No snapshot point has taken a snapshot yet";

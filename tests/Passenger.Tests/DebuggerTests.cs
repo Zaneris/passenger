@@ -179,11 +179,11 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
-    /// <summary>Conditions typed into a breakpoint's popup, a tracepoint logging and running on, Run to Cursor past a
-    /// false condition or a tracepoint, the Breakpoints window listing, turning off, adding and keeping exception
-    /// breakpoints, an exception breakpoint stopping by its type, its condition and its handler options, Mute letting a run
-    /// pass every breakpoint until unmuted, a temporary breakpoint and one waiting for another, method breakpoints, the
-    /// breakpoints exported to a file and imported again, and a snapshot point's captures opened as past stops.</summary>
+    /// <summary>Conditions typed into a breakpoint's popup, a tracepoint logging and running on, Run to Cursor past a false
+    /// condition or a tracepoint, the Breakpoints window listing, turning off, adding and keeping exception breakpoints, an
+    /// exception breakpoint stopping by its type, its condition and its handler options, Mute letting a run pass every
+    /// breakpoint until unmuted, temporary, waiting and method breakpoints, breakpoints exported and imported again, a
+    /// snapshot point's captures opened as past stops, and a recording's calls stepped back through.</summary>
     [AvaloniaFact]
     public async Task A_breakpoints_condition_tracepoint_exception_type_and_mute_decide_where_a_run_stops()
     {
@@ -265,6 +265,55 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             OpenWindows.CloseAll();
             return Task.CompletedTask;
         });
+        await Flow.StepApartLivedAsync<DebuggerTests>("record calls keeps a call's arguments and its return and step back shows each as it was", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Record_calls_keeps_a_calls_arguments_and_its_return_and_step_back_shows_each_as_it_was();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>Record Calls on before Debug, the program runs past Add(2, 3) to a breakpoint: Step Back shows Add's return
+    /// as a past stop, Add on top at its end with 5 returned and its arguments 2 and 3, Variables saying which moment it is
+    /// and Set Value greyed; Step Back again shows its call, Add at its first line above Main at the call; the Timeline tab
+    /// lists both, the one shown chosen; Step Forward twice comes back to the live stop, which Step Forward says it is.</summary>
+    private void Record_calls_keeps_a_calls_arguments_and_its_return_and_step_back_shows_each_as_it_was()
+    {
+        Write("Program.cs", "int sum = Add(2, 3);\nConsole.WriteLine($\"sum {sum}\");\n\nint Add(int a, int b)\n{\n    return a + b;\n}\n");
+        MainWindow window = Open();
+        window.Debugger.Breakpoints.Toggle(Program, 1);
+        Assert.True(window.Perform(AppActions.RecordCalls) && window.Debugger.RecordsCalls, $"Record Calls did not turn on: {Ui.Said(window)}");
+        StartDebugging(window);
+        DebugModel debug = window.BottomPanel.Debug;
+        WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Paused && debug.Frames.Count > 0 && debug.Frames[0].Line == 2, "the stop after Add's call");
+
+        Assert.True(window.Perform(AppActions.StepBack), $"Step Back did not run: {Ui.Said(window)}");
+        Ui.WaitFor(() => window.Debugger.MomentShown?.Kind == DapMomentKinds.Return && Value(window, "Add() returned") is not null, "Add's return shown as a past stop");
+        Assert.True((Value(window, "Add() returned"), Value(window, "a"), Value(window, "b"), debug.Frames[0].Line) == ("5", "2", "3", 7),
+            $"Add's return shows it returned {Value(window, "Add() returned")} with a {Value(window, "a")} and b {Value(window, "b")} at line {debug.Frames[0].Line}, "
+            + "where it returned 5 from 2 and 3 at its end, line 7");
+        DebugView view = window.DebugWindow;
+        Assert.Matches(@"^Recorded moment \d+: Add\(\) returned 5, at \d\d:\d\d:\d\d\.\d{3} on Main Thread\. Its arguments are as they were at its call\.$",
+            view.GetVisualDescendants().OfType<Banner>().Select(b => b.Said).Single(said => said?.StartsWith("Recorded", StringComparison.Ordinal) == true)!);
+        Assert.Equal(Refusals.SnapshotValue, Row(window, "a")!.NoSetting);
+
+        Assert.True(window.Perform(AppActions.StepBack), $"Step Back did not run: {Ui.Said(window)}");
+        Ui.WaitFor(() => window.Debugger.MomentShown?.Kind == DapMomentKinds.Call, "Add's call shown as a past stop");
+        Assert.True((Value(window, "a"), Value(window, "b"), debug.Frames[0].Line, debug.Frames.ElementAtOrDefault(1)?.Line) == ("2", "3", 5, 1),
+            $"Add's call shows a {Value(window, "a")} and b {Value(window, "b")} at line {debug.Frames[0].Line} above line {debug.Frames.ElementAtOrDefault(1)?.Line}, "
+            + "where it was called with 2 and 3 at its first line, line 5, from line 1");
+        Ui.Click(view.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(t => t.Name == "debugTimelineTab"));
+        Ui.WaitFor(() => debug.Moments.Count >= 2, "the timeline read");
+        Assert.Equal(["Add(2, 3)", "Add() returned 5"], debug.Moments.TakeLast(2).Select(m => m.Said));
+        Assert.Equal("Add(2, 3)", (view.MomentsList.SelectedItem as DapMoment)?.Said);
+
+        Assert.True(window.Perform(AppActions.StepForward), $"Step Forward did not run: {Ui.Said(window)}");
+        Ui.WaitFor(() => window.Debugger.MomentShown?.Kind == DapMomentKinds.Return, "Add's return shown again");
+        Assert.True(window.Perform(AppActions.StepForward), $"Step Forward did not run: {Ui.Said(window)}");
+        Ui.WaitFor(() => window.Debugger.MomentShown is null && debug.ShownSnapshot is null && debug.Frames.Count > 0 && debug.Frames[0].Line == 2, "the live stop shown again");
+        Assert.Equal("5", Value(window, "sum"));
+        Assert.Equal(Refusals.LiveStop, window.Actions.WhyNot(AppActions.StepForward, window.Actions.Context()));
+        window.Close();
     }
 
     /// <summary>Add Snapshot Point in the gutter's menu marks a loop's line with a lens; given an expression of its own in its

@@ -6,8 +6,11 @@ namespace Passenger.App.Debugging;
 /// <summary>A snapshot point's capture as the folder keeps it, for its debug session and after it: what the debugger read
 /// (<see cref="SnapshotEvent"/>), the point it is of, the program it was taken in, and its number among the folder's, from
 /// one. Its frames and values read as a stop's do, each row's members by their reference among its own.</summary>
-public sealed class TakenSnapshot(SnapshotEvent taken, string point, string program, int number)
+public sealed class TakenSnapshot(SnapshotEvent taken, string point, string program, int number, DapMoment? moment = null)
 {
+    /// <summary>The recorded moment it is, where it is one of a recording's rather than a snapshot point's capture.</summary>
+    public DapMoment? Moment { get; } = moment;
+
     public SnapshotEvent Taken { get; } = taken;
 
     /// <summary>The point it is of as the Breakpoints window names it: "Program.cs:12".</summary>
@@ -39,8 +42,16 @@ public sealed class TakenSnapshot(SnapshotEvent taken, string point, string prog
 
     /// <summary>What it is, when it was taken and how long the program was held for it, plainly: "Snapshot 3 of Program.cs:12,
     /// taken at 14:02:11.532 on Main Thread. The program was held 1.3 ms."</summary>
-    public string Said => $"Snapshot {Number} of {Point}, taken at {Time} on {(string.IsNullOrEmpty(Taken.ThreadName) ? $"thread {Taken.ThreadId}" : Taken.ThreadName)}. "
-        + $"The program was held {Durations.Said(Paused)}.";
+    public string Said => Moment is { } recorded
+        ? $"Recorded moment {Numbers.Said(recorded.Index)}: {recorded.Said}{(recorded.Kind == DapMomentKinds.Call ? " called" : "")}, at {Time} on {ThreadWords}. "
+            + (recorded.Kind == DapMomentKinds.Call ? "Its arguments are as they were then." : "Its arguments are as they were at its call.")
+        : $"Snapshot {Number} of {Point}, taken at {Time} on {ThreadWords}. The program was held {Durations.Said(Paused)}.";
+
+    private string ThreadWords => string.IsNullOrEmpty(Taken.ThreadName) ? $"thread {Taken.ThreadId}" : Taken.ThreadName;
+
+    /// <summary>Why a frame below its top shows no values: what it reads.</summary>
+    public string Unread(DapStackFrame frame) => Moment is not null ? "A recording reads the values of each call's own frame alone"
+        : frame.PresentationHint == FrameHints.Subtle ? "A snapshot reads the values of the user's code alone" : "A snapshot reads the values of its top frames of the user's code";
 
     /// <summary>When it was taken, to the millisecond, by the machine's clock where Passenger runs.</summary>
     public string Time => Taken.At.ToLocalTime().ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture);

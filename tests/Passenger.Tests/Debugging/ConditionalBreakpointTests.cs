@@ -11,6 +11,8 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     private static readonly int CountUp = Debuggees.Line("DebuggableConsoleApp", "HitConditionClass.cs", "_count++;");
     private static readonly int AfterCount = Debuggees.Line("DebuggableConsoleApp", "HitConditionClass.cs", "// breakpoint here");
     private static readonly int TestEnd = AfterCount + 1;
+    private static readonly int MyMethodOpens = Debuggees.Line("DebuggableConsoleApp", "MyClass.cs", "public void MyMethod(long myParam, int myIntParam)") + 1;
+    private static readonly int DoOperationCalled = Debuggees.Line("DebuggableConsoleApp", "MultilineSwitchInMethodCall.cs", "Result result = DoOperation();");
 
     /// <summary>The gate's conditions, hit counts and tracepoints as one flow: a breakpoint stopping where its
     /// condition holds, never where it fails, and saying why where it cannot be told or is refused, a hit count of each
@@ -62,6 +64,45 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         await Flow.StepApartAsync<ConditionalBreakpointTests>("a breakpoint waiting for a method's tracepoint stops only once the tracepoint took a hit", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_breakpoint_waiting_for_a_methods_tracepoint_stops_only_once_the_tracepoint_took_a_hit());
         await Flow.StepApartAsync<ConditionalBreakpointTests>("a temporary breakpoint stops once and the session is told it went", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_temporary_breakpoint_stops_once_and_the_session_is_told_it_went());
         await Flow.StepApartAsync<ConditionalBreakpointTests>("a snapshot point captures its hits frames and values within its limit and never stops", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_snapshot_point_captures_its_hits_frames_and_values_within_its_limit_and_never_stops());
+        await Flow.StepApartAsync<ConditionalBreakpointTests>("a recording keeps each calls arguments and each returns value and shows either as a past stop", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_recording_keeps_each_calls_arguments_and_each_returns_value_and_shows_either_as_a_past_stop());
+    }
+
+    /// <summary>A recording asked for before the program starts keeps the calls of its own code with their arguments and the
+    /// returns with their values: at a stop in Test's second call, the stopped thread's timeline holds MyMethod's call with 13
+    /// and 6 and DoOperation's return with its Success, each read as a past stop, its method's frame on top where it stood
+    /// above its caller's at the call, and it says what recording held the program.</summary>
+    private async Task A_recording_keeps_each_calls_arguments_and_each_returns_value_and_shows_either_as_a_past_stop()
+    {
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended: true, out Process program);
+        await host.InitializeAsync().AttachAsync(program.Id).WaitForInitializedEvent();
+        await host.RequestAsync(DapCommands.Record, new RecordArguments(true));
+        await host
+            .BreakpointsAsync(Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs"), [new DapSourceBreakpoint(AfterCount, HitCondition: "==2")])
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(program.Id, startSuspended: true);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+
+        TimelineResponse timeline = await host.RequestAsync<TimelineResponse>(DapCommands.Timeline, new TimelineArguments(stop.ThreadId));
+        DapMoment? called = timeline.Moments.LastOrDefault(m => m.Kind == DapMomentKinds.Call && m.Said == "MyMethod(13, 6)");
+        DapMoment? returned = timeline.Moments.LastOrDefault(m => m.Kind == DapMomentKinds.Return && m.Said.StartsWith("DoOperation() returned", StringComparison.Ordinal));
+        Assert.True(called is not null && returned is not null && timeline.Recording,
+            $"The timeline held {string.Join(" · ", timeline.Moments.Select(m => m.Said))}, where MyMethod's call with 13 and 6 and DoOperation's return are among them");
+        SnapshotEvent call = await host.RequestAsync<SnapshotEvent>(DapCommands.Moment, new MomentArguments(called.Index));
+        DapSnapshotFrame entered = call.Frames[0];
+        IReadOnlyList<DapVariable> arguments = call.Values[entered.Locals];
+        Assert.True(entered.Frame.Name.Contains("MyMethod", StringComparison.Ordinal) && entered.Frame.Line == MyMethodOpens
+            && (Value(arguments, "myParam"), Value(arguments, "myIntParam")) == ("13", "6"),
+            $"MyMethod's call shows {entered.Frame.Name} at line {entered.Frame.Line} with myParam {Value(arguments, "myParam")} and myIntParam {Value(arguments, "myIntParam")}, "
+            + $"where it stood at line {MyMethodOpens} called with 13 and 6");
+        SnapshotEvent back = await host.RequestAsync<SnapshotEvent>(DapCommands.Moment, new MomentArguments(returned.Index));
+        string? value = Value(back.Values[back.Frames[0].Locals], "DoOperation() returned");
+        Assert.True(value?.Contains("Success", StringComparison.Ordinal) == true && back.Frames.Count > 1 && back.Frames[1].Frame.Line == DoOperationCalled,
+            $"DoOperation's return shows it returned {value}, above {string.Join(", ", back.Frames.Skip(1).Select(f => $"{f.Frame.Name}:{f.Frame.Line}"))}, "
+            + $"where it returned a Success to Test's line {DoOperationCalled}");
+        Assert.True(timeline.HeldMilliseconds > 0, $"The timeline said recording held the program {timeline.HeldMilliseconds} ms");
+        testOutputHelper.WriteLine($"Recording held the program {timeline.HeldMilliseconds / timeline.Recorded:F3} ms a moment over {timeline.Recorded} moments");
+
+        static string? Value(IReadOnlyList<DapVariable> rows, string name) => rows.FirstOrDefault(v => v.Name == name)?.Value;
     }
 
     /// <summary>A snapshot point at MyMethod's end, limited to 3 captures, with two expressions of its own: each of its first

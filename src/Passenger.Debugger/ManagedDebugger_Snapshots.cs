@@ -63,7 +63,8 @@ public partial class ManagedDebugger
     private async Task CaptureAsync(ICorDebugThread thread, IHitBreakpoint point, long came)
     {
         int threadId = thread.Id;
-        Capture capture = new();
+        Capture capture = new(ReadsNoCode, $"Not read: a snapshot reads {SnapshotLevels} levels of members below each local", SnapshotValues,
+            $"Not read: a snapshot reads its first {Core.Numbers.Said(SnapshotValues)} values");
         List<SnapshotFrame> frames = [];
         List<VariableInfo> asked = [];
         string? wasOff = EvalStatus.ImplicitOff;
@@ -157,10 +158,10 @@ public partial class ManagedDebugger
     /// not read.</summary>
     private async Task OpenAsync(Opening open, Capture capture, Queue<Opening> opening)
     {
-        if (capture.Count >= SnapshotValues)
+        if (capture.Count >= capture.Most)
         {
-            capture.Cut($"values past its first {Core.Numbers.Said(SnapshotValues)}");
-            open.Copy.VariablesReference = capture.Unread($"Not read: a snapshot reads its first {Core.Numbers.Said(SnapshotValues)} values");
+            capture.Cut($"values past its first {Core.Numbers.Said(capture.Most)}");
+            open.Copy.VariablesReference = capture.Unread(capture.PastMost);
             return;
         }
         List<VariableInfo> members;
@@ -198,14 +199,14 @@ public partial class ManagedDebugger
         }
         if (row.PresentationHint?.Lazy == true || Grouping(row, DapRows.Results))
         {
-            copy.Value = ReadsNoCode;
+            copy.Value = capture.RunsNoCode;
             copy.PresentationHint = new VariablePresentationHint { Kind = PresentationHintKind.Virtual };
             return copy;
         }
         bool group = row.PresentationHint?.Kind == PresentationHintKind.Virtual;
         if (levels <= 0 && !group)
         {
-            copy.VariablesReference = capture.Unread($"Not read: a snapshot reads {SnapshotLevels} levels of members below each local");
+            copy.VariablesReference = capture.Unread(capture.PastLevels);
             return copy;
         }
         opening.Enqueue(new Opening(copy, row.VariablesReference, group ? levels : levels - 1));
@@ -223,12 +224,22 @@ public partial class ManagedDebugger
     /// left below it.</summary>
     private readonly record struct Opening(VariableInfo Copy, int Reference, int Levels);
 
-    /// <summary>What a capture has read: its rows by the references of its own, how many values, and what it left out.</summary>
-    private sealed class Capture
+    /// <summary>What a capture has read: its rows by the references of its own, how many values (at most
+    /// <paramref name="most"/>), what it left out, and the words it says of a value it runs no code for, of members past its
+    /// levels and of values past its most; with <paramref name="seed"/>, another's rows under their references, its own after.</summary>
+    private sealed class Capture(string runsNoCode, string pastLevels, int most, string pastMost, IReadOnlyDictionary<int, IReadOnlyList<VariableInfo>>? seed = null)
     {
-        private readonly Dictionary<int, IReadOnlyList<VariableInfo>> values = [];
+        private readonly Dictionary<int, IReadOnlyList<VariableInfo>> values = seed is null ? [] : new(seed);
         private readonly Dictionary<string, int> unread = new(StringComparer.Ordinal);
         private readonly List<string> cut = [];
+
+        public string RunsNoCode => runsNoCode;
+
+        public string PastLevels => pastLevels;
+
+        public int Most => most;
+
+        public string PastMost => pastMost;
 
         public IReadOnlyDictionary<int, IReadOnlyList<VariableInfo>> Values => values;
 

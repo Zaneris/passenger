@@ -44,6 +44,36 @@ public partial class ModuleMetadataReader : IDisposable
     /// <summary>Whether the module's own code says a method is not the user's.</summary>
     internal bool IsNonUserCode(int methodToken) => NonUserCodeMethodTokens().Contains(methodToken);
 
+    /// <summary>The methods whose calls a recording of the user's code takes: those its symbols place in a source file,
+    /// written by the user (no compiler's own: a lambda's, a state machine's, a record's or an auto-property's accessor),
+    /// its own code not saying they are not the user's, nor hidden from debuggers.</summary>
+    internal IEnumerable<int> RecordedMethodTokens()
+    {
+        if (_pdbMetadataReader is not { } pdb)
+        {
+            yield break;
+        }
+        foreach (MethodDefinitionHandle method in _peMetadataReader.MethodDefinitions)
+        {
+            int token = MetadataTokens.GetToken(method);
+            MethodDefinition definition = _peMetadataReader.GetMethodDefinition(method);
+            string name = _peMetadataReader.GetString(definition.Name);
+            // A local function and a top-level program's Main are the user's, though the compiler names (and marks) them.
+            bool local = Microsoft.CodeAnalysis.CSharp.Symbols.GeneratedNameParser.GetKind(name) is Microsoft.CodeAnalysis.CSharp.Symbols.GeneratedNameKind.LocalFunction;
+            bool written = local || name == "<Main>$"
+                || (!name.Contains('<', StringComparison.Ordinal) && !_peMetadataReader.GetString(_peMetadataReader.GetTypeDefinition(definition.GetDeclaringType()).Name).Contains('<', StringComparison.Ordinal)
+                    && !HasAttribute(_peMetadataReader, definition.GetCustomAttributes(), CompilerGenerated));
+            if (definition.RelativeVirtualAddress == 0 || !written
+                || MetadataTokens.GetRowNumber(method) > pdb.GetTableRowCount(TableIndex.MethodDebugInformation)
+                || pdb.GetMethodDebugInformation(method.ToDebugInformationHandle()).SequencePointsBlob.IsNil
+                || IsNonUserCode(token) || IsHidden(token))
+            {
+                continue;
+            }
+            yield return token;
+        }
+    }
+
     /// <summary>Whether a method is [DebuggerHidden], which no debugger stops in, Just My Code or not.</summary>
     internal bool IsHidden(int methodToken)
     {
@@ -72,6 +102,7 @@ public partial class ModuleMetadataReader : IDisposable
 
     private static readonly string[] DebuggerHidden = ["System.Diagnostics.DebuggerHiddenAttribute"];
     private static readonly string[] StackTraceHidden = ["System.Diagnostics.StackTraceHiddenAttribute"];
+    private static readonly string[] CompilerGenerated = ["System.Runtime.CompilerServices.CompilerGeneratedAttribute"];
 
     private HashSet<int>? _nonUserCode;
     private HashSet<int>? _hidden;

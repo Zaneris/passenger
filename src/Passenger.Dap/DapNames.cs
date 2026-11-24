@@ -3,7 +3,8 @@ namespace Passenger.Dap;
 /// <summary>The requests the IDE and Passenger's debug adapter make of each other, by the protocol's names, each written once
 /// for both ends, so a name one end misspells is a build error rather than a request the other never answers. Passenger's
 /// own extend the protocol: <see cref="ResolveStackFrame"/>, <see cref="HotReloadState"/>, <see cref="ApplyChanges"/>,
-/// <see cref="HotReloadRelease"/>, <see cref="Input"/>, <see cref="MarkObject"/> and <see cref="UnmarkObject"/>.</summary>
+/// <see cref="HotReloadRelease"/>, <see cref="Input"/>, <see cref="MarkObject"/>, <see cref="UnmarkObject"/>, <see cref="Record"/>,
+/// <see cref="Timeline"/> and <see cref="Moment"/>.</summary>
 [IdentifierHome]
 public static class DapCommands
 {
@@ -57,6 +58,15 @@ public static class DapCommands
 
     /// <summary>Passenger's own: a marked object let go of.</summary>
     public const string UnmarkObject = "unmarkObject";
+
+    /// <summary>Passenger's own: the program's calls recorded from now on, or no longer (<see cref="RecordArguments"/>).</summary>
+    public const string Record = "record";
+
+    /// <summary>Passenger's own: the recording's moments on a thread (<see cref="TimelineResponse"/>).</summary>
+    public const string Timeline = "timeline";
+
+    /// <summary>Passenger's own: a recorded moment as a past stop, its frames and values (<see cref="SnapshotEvent"/>'s).</summary>
+    public const string Moment = "moment";
 }
 
 /// <summary>The events Passenger's debug adapter tells the IDE, by the protocol's names, each written once for both ends.</summary>
@@ -305,4 +315,15 @@ public static class AdapterFlags
 
     /// <summary>The client is on another machine (the adapter in a container): the processes it tells of are not local.</summary>
     public const string Remote = "--remote";
+}
+
+/// <summary>What a recorded moment is (<see cref="DapMoment.Kind"/>), written once for both ends.</summary>
+[IdentifierHome]
+public static class DapMomentKinds
+{
+    /// <summary>A call of the user's code entered, its arguments read.</summary>
+    public const string Call = "call";
+
+    /// <summary>A call returning to its caller, the value it returned read.</summary>
+    public const string Return = "return";
 }

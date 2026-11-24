@@ -154,6 +154,17 @@ public sealed class DebugAdapter
             }
         });
         connection.Handle<UnmarkObjectArguments>(DapCommands.UnmarkObject, arguments => Locked(() => debugger.UnmarkObject(arguments.Label)));
+        // Historical debugging: the calls recorded from now on or no longer, the timeline kept, a moment as a past stop.
+        connection.Handle<RecordArguments>(DapCommands.Record, arguments => Locked(() => debugger.Record(arguments.On)));
+        connection.Handle<TimelineArguments, TimelineResponse>(DapCommands.Timeline, async arguments =>
+        {
+            RecordedTimeline timeline = await Read(() => debugger.Timeline(arguments.ThreadId));
+            return new TimelineResponse(timeline.Recording, [.. timeline.Moments.Select(m => new DapMoment(m.Index, m.Kind == MomentKind.Call ? DapMomentKinds.Call : DapMomentKinds.Return,
+                m.ThreadId, m.At, ToProtocol(m.Place), m.Depth, m.Said))], timeline.Dropped, timeline.Recorded, timeline.Held.TotalMilliseconds, timeline.MostMoments, timeline.MostBytes);
+        });
+        connection.Handle<MomentArguments, SnapshotEvent>(DapCommands.Moment, async arguments =>
+            await Read(() => debugger.MomentAt(arguments.Index)) is { } moment ? ToProtocol(moment)
+                : throw new DapException(DapCommands.Moment, $"Moment {arguments.Index} is no longer kept: the recording let it go with the oldest"));
         connection.Handle<EvaluateArguments, EvaluateResponse>(DapCommands.Evaluate, async arguments =>
         {
             // A hover, or a value the client shows of itself, is an implicit evaluation.
@@ -303,18 +314,7 @@ public sealed class DebugAdapter
         debugger.OnBreakpointChanged += breakpoint => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = EventReasons.Changed, Breakpoint = ToProtocol(breakpoint, isEvent: true) });
         debugger.OnBreakpointMessage += (id, message) => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = EventReasons.Changed, Breakpoint = new DapBreakpoint { Id = id, Verified = true, Message = message } });
         debugger.OnBreakpointRemoved += id => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = EventReasons.Removed, Breakpoint = new DapBreakpoint { Id = id } });
-        debugger.OnSnapshot += snapshot => connection.SendEvent(DapEvents.Snapshot, new SnapshotEvent
-        {
-            BreakpointId = snapshot.BreakpointId,
-            ThreadId = snapshot.ThreadId,
-            ThreadName = snapshot.ThreadName,
-            At = snapshot.At,
-            PausedMilliseconds = snapshot.Paused.TotalMilliseconds,
-            Frames = [.. snapshot.Frames.Select(f => new DapSnapshotFrame(ToProtocol(f.Frame), f.Locals))],
-            Values = snapshot.Values.ToDictionary(v => v.Key, v => (IReadOnlyList<DapVariable>)[.. v.Value.Select(ToProtocol)]),
-            Asked = [.. snapshot.Asked.Select(ToProtocol)],
-            Cut = snapshot.Cut,
-        });
+        debugger.OnSnapshot += snapshot => connection.SendEvent(DapEvents.Snapshot, ToProtocol(snapshot));
         // Told only when known: a process attached to on macOS or Linux tells its exit code to its parent alone.
         debugger.OnExited += exitCode =>
         {
@@ -758,6 +758,20 @@ public sealed class DebugAdapter
         DecompiledSourceInfo = frame.DecompiledSourceInfo is { } decompiled
             ? new DapDecompiledSource(decompiled.TypeFullName, new DapAssembly(decompiled.Assembly.AssemblyPath, decompiled.Assembly.Mvid), decompiled.CallingUserCodeAssemblyPath)
             : null,
+    };
+
+    /// <summary>A snapshot's capture, or a recorded moment's, as the protocol carries it.</summary>
+    private SnapshotEvent ToProtocol(Snapshot snapshot) => new()
+    {
+        BreakpointId = snapshot.BreakpointId,
+        ThreadId = snapshot.ThreadId,
+        ThreadName = snapshot.ThreadName,
+        At = snapshot.At,
+        PausedMilliseconds = snapshot.Paused.TotalMilliseconds,
+        Frames = [.. snapshot.Frames.Select(f => new DapSnapshotFrame(ToProtocol(f.Frame), f.Locals))],
+        Values = snapshot.Values.ToDictionary(v => v.Key, v => (IReadOnlyList<DapVariable>)[.. v.Value.Select(ToProtocol)]),
+        Asked = [.. snapshot.Asked.Select(ToProtocol)],
+        Cut = snapshot.Cut,
     };
 
     private static DapVariable ToProtocol(VariableInfo variable) => new()

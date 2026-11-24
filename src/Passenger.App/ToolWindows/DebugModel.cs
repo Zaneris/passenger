@@ -202,6 +202,18 @@ public sealed class DebugModel
     /// <summary>A snapshot opened from the Snapshots tab, to be shown as a past stop.</summary>
     public event EventHandler<TakenSnapshot>? SnapshotChosen;
 
+    /// <summary>A recorded moment opened from the Timeline tab, to be shown as a past stop.</summary>
+    public event EventHandler<DapMoment>? MomentChosen;
+
+    /// <summary>The live stop asked for again in place of a recorded moment.</summary>
+    public event EventHandler? LiveStopRequested;
+
+    /// <summary>The Timeline tab shown, whose moments are to be read.</summary>
+    public event EventHandler? TimelineRequested;
+
+    /// <summary>The timeline read again, or the moment shown changed.</summary>
+    internal event EventHandler? TimelineChanged;
+
     /// <summary>A session's tab was pressed.</summary>
     public event EventHandler<DebugTab>? SessionChosen;
 
@@ -258,6 +270,21 @@ public sealed class DebugModel
 
     /// <summary>Whether the Snapshots tab is shown.</summary>
     public bool IsSnapshotsShown { get; private set; }
+
+    /// <summary>The chosen program's recorded moments on its stopped thread as last read, oldest first.</summary>
+    public IReadOnlyList<DapMoment> Moments { get; private set; } = [];
+
+    /// <summary>What the Timeline tab says over its moments: what the recording keeps, let go and costs.</summary>
+    public string? TimelineSaid { get; private set; }
+
+    /// <summary>The recorded moment shown as a past stop, null while none is.</summary>
+    public DapMoment? MomentShown { get; private set; }
+
+    /// <summary>Whether the Timeline tab is shown.</summary>
+    public bool IsTimelineShown { get; private set; }
+
+    /// <summary>Whether Record Calls is on, as its toggle shows.</summary>
+    public bool ShowsRecording { get; private set; }
 
     public ObservableCollection<DapThread> Threads { get; } = [];
 
@@ -379,6 +406,35 @@ public sealed class DebugModel
         ToolsChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>Shows Record Calls on or off.</summary>
+    public void ShowRecording(bool on)
+    {
+        ShowsRecording = on;
+        ToolsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>The timeline read (<paramref name="read"/>, kept as it was where null) and the moment shown of it.</summary>
+    public void ShowTimeline(TimelineResponse? read, DapMoment? shown)
+    {
+        if (read is not null)
+        {
+            Moments = read.Moments;
+            TimelineSaid = Said(read);
+        }
+        MomentShown = shown;
+        TimelineChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>What a timeline keeps, let go and cost the program, plainly.</summary>
+    internal static string Said(TimelineResponse read)
+    {
+        string kept = $"{Core.Plural.Of(read.Moments.Count, "moment")} on this thread, of {Core.Numbers.Said(read.Recorded)} recorded";
+        string dropped = read.Dropped > 0 ? $"; the oldest {Core.Numbers.Said(read.Dropped)} were let go, as a recording keeps {Core.Numbers.Said(read.MostMoments)} moments and "
+            + $"{Core.Sizes.Said(read.MostBytes)} of values" : "";
+        string cost = read.Recorded > 0 ? $". Each held the program {Core.Durations.Said(TimeSpan.FromMilliseconds(read.HeldMilliseconds / read.Recorded))} on average" : "";
+        return $"{(read.Recording ? "Recording" : "Not recording now")}: {kept}{dropped}{cost}.";
+    }
+
     /// <summary>Shows Apply Hot Reload Changes while the session has Hot Reload, pressable while its program runs.</summary>
     public void ShowHotReload(bool on, bool canApply)
     {
@@ -426,6 +482,7 @@ public sealed class DebugModel
         IsConsoleShown = console;
         IsTelemetryShown = false;
         IsSnapshotsShown = false;
+        IsTimelineShown = false;
         TabShown?.Invoke(this, EventArgs.Empty);
     }
 
@@ -435,6 +492,7 @@ public sealed class DebugModel
         IsConsoleShown = false;
         IsTelemetryShown = true;
         IsSnapshotsShown = false;
+        IsTimelineShown = false;
         TabShown?.Invoke(this, EventArgs.Empty);
     }
 
@@ -444,7 +502,19 @@ public sealed class DebugModel
         IsConsoleShown = false;
         IsTelemetryShown = false;
         IsSnapshotsShown = true;
+        IsTimelineShown = false;
         TabShown?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Shows the Timeline tab, the chosen program's recorded moments, read anew.</summary>
+    public void ShowTimelineTab()
+    {
+        IsConsoleShown = false;
+        IsTelemetryShown = false;
+        IsSnapshotsShown = false;
+        IsTimelineShown = true;
+        TabShown?.Invoke(this, EventArgs.Empty);
+        TimelineRequested?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Keeps a snapshot, the newest first, the oldest past <see cref="MostSnapshots"/> let go.</summary>
@@ -524,6 +594,10 @@ public sealed class DebugModel
     internal void Choose(DebugTab tab) => SessionChosen?.Invoke(this, tab);
 
     internal void Choose(TakenSnapshot snapshot) => SnapshotChosen?.Invoke(this, snapshot);
+
+    internal void Choose(DapMoment moment) => MomentChosen?.Invoke(this, moment);
+
+    internal void BackToLive() => LiveStopRequested?.Invoke(this, EventArgs.Empty);
 
     internal void Close(DebugTab tab) => SessionClosed?.Invoke(this, tab);
 }

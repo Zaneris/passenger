@@ -538,6 +538,12 @@ public static class AppActions
     // A snapshot point on the caret's line, capturing each hit as the program goes on, which Rider's keymaps give no keys.
     public const string ToggleSnapshotPoint = "app.debug.toggleSnapshotPoint";
     public const string ToggleBreakpointEnabled = "app.debug.toggleBreakpointEnabled";
+
+    // Historical debugging, which Rider's keymaps give no keys: the programs debugged record their calls, and a stop steps
+    // back and forward through what they recorded.
+    public const string RecordCalls = "app.debug.recordCalls";
+    public const string StepBack = "app.debug.stepBack";
+    public const string StepForward = "app.debug.stepForward";
     public const string MuteBreakpoints = "app.debug.muteBreakpoints";
     public const string Resume = "app.debug.resume";
     public const string Pause = "app.debug.pause";

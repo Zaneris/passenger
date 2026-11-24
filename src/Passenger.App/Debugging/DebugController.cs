@@ -22,7 +22,7 @@ namespace Passenger.App.Debugging;
 /// a value when the pointer rests on an expression while paused. Several programs may be debugged at once, a session and a
 /// tab of the Debug window each: every breakpoint goes to each, and the window shows the chosen tab's, a stop in any program
 /// choosing its tab. A UI-thread object.</summary>
-public sealed class DebugController : IDisposable
+public sealed partial class DebugController : IDisposable
 {
     /// <summary>The words in the console of a program attached to, whose output goes where it always went.</summary>
     public const string AttachedConsole = "Console output is not available when the debugger is attached to a running process";
@@ -145,6 +145,21 @@ public sealed class DebugController : IDisposable
         EventHandler<VariableNode> textOpened = (_, node) => TextOpened?.Invoke(this, node.Value);
         EventHandler<DebugTab> tabChosen = (_, tab) => IdeErrors.Observe(ChooseAsync(tab));
         EventHandler<TakenSnapshot> snapshotChosen = (_, snapshot) => ShowSnapshot(snapshot);
+        EventHandler<DapMoment> momentChosen = (_, moment) =>
+        {
+            if (Session is { State: DebugState.Paused } paused)
+            {
+                IdeErrors.Observe(ShowMomentAsync(paused, moment));
+            }
+        };
+        EventHandler liveAgain = (_, _) => IdeErrors.Observe(BackToLiveAsync());
+        EventHandler timelineAsked = (_, _) =>
+        {
+            if (Session is { State: DebugState.Paused, Engine: DebugEngine.Managed } paused)
+            {
+                IdeErrors.Observe(TimelineAsync(paused));
+            }
+        };
         EventHandler<DebugTab> tabClosed = (_, tab) => IdeErrors.Observe(CloseTabAsync(tab));
         EventHandler<string> unwatched = (_, expression) =>
         {
@@ -170,9 +185,15 @@ public sealed class DebugController : IDisposable
         view.SessionChosen += tabChosen;
         view.SessionClosed += tabClosed;
         view.SnapshotChosen += snapshotChosen;
+        view.MomentChosen += momentChosen;
+        view.LiveStopRequested += liveAgain;
+        view.TimelineRequested += timelineAsked;
         letGo = () =>
         {
             view.SnapshotChosen -= snapshotChosen;
+            view.MomentChosen -= momentChosen;
+            view.LiveStopRequested -= liveAgain;
+            view.TimelineRequested -= timelineAsked;
             view.SessionChosen -= tabChosen;
             view.SessionClosed -= tabClosed;
             view.ActionRequested -= asked;
@@ -1224,6 +1245,7 @@ public sealed class DebugController : IDisposable
                 starting = made;
                 tab.Session = made;
                 made.SnapshotTaken += (taken, point) => KeepSnapshot(tab, taken, point);
+                RecordFromStart(made);
                 made.InBrowser = inBrowser ?? (plan is { InBrowser.Count: > 0, Project: { } project, Browser: null } ? (plan.InBrowser, project) : null);
                 if (disposed || ending || tab.OpeningStopped || !view.Sessions.Contains(tab))
                 {
@@ -1946,6 +1968,15 @@ public sealed class DebugController : IDisposable
             TitleIn = c => c.File is { } file && c.Symbol is { Length: > 0 } expression && current().Breakpoints.Pins.At(file.Path, c.Caret.Line, expression) is not null
                 ? UnpinFromLineTitle : PinToLineTitle,
             Menus = [new("Run", 1, 11)],
+        });
+        Add(AppActions.StepBack, "Step Back", (d, _) => IdeErrors.Observe(d.SaidAsync(d.StepBackAsync())), (d, _) => d.WhyNotStepBack(), new("Run", 1, 13));
+        Add(AppActions.StepForward, "Step Forward", (d, _) => IdeErrors.Observe(d.SaidAsync(d.StepForwardAsync())),
+            (d, _) => d.NotPaused() ?? (d.MomentShown is null ? Refusals.LiveStop : null), new("Run", 1, 14));
+        // Recorded from the program's start where it is on before Debug, else from then on.
+        actions.Add(new IdeAction(AppActions.RecordCalls, "Record Calls", "Debug", _ => current().SetRecording(!current().RecordsCalls))
+        {
+            Menus = [new("Run", 2, 8)],
+            IsChecked = _ => current().RecordsCalls,
         });
         // Every breakpoint stays as it is, and none stops the program until it is chosen again.
         actions.Add(new IdeAction(AppActions.MuteBreakpoints, "Mute Breakpoints", "Debug", _ => current().Breakpoints.SetMuted(!current().Breakpoints.Muted))
@@ -2814,8 +2845,9 @@ public sealed class DebugController : IDisposable
         {
             return;
         }
-        // A stop shows in place of a snapshot shown as a past one.
+        // A stop shows in place of a snapshot or a recorded moment shown as a past one.
         view.ShowSnapshot(null);
+        LeaveMoment();
         using IDisposable placing = BackgroundWork.Scope();
         int stop = shown;
         stopException = null;
@@ -3052,6 +3084,10 @@ public sealed class DebugController : IDisposable
     {
         UiThread.Check();
         view.ShowSnapshot(snapshot);
+        if (snapshot.Moment is null)
+        {
+            LeaveMoment();
+        }
         view.ShowTab(console: false);
         view.Tree.Load = reference => Task.FromResult(snapshot.Values(reference));
         DapThread thread = snapshot.Thread;
@@ -3085,8 +3121,7 @@ public sealed class DebugController : IDisposable
         rows.AddRange(snapshot.LocalsOf(chosen).Select(v => VariableNode.From(v, 0, captured: true)));
         if (rows.Count == 0)
         {
-            rows.Add(new VariableNode("Not read", chosen.PresentationHint == FrameHints.Subtle
-                ? "A snapshot reads the values of the user's code alone" : "A snapshot reads the values of its top frames of the user's code", null, 0, 0, VariableRole.Error) { Captured = true });
+            rows.Add(new VariableNode("Not read", snapshot.Unread(chosen), null, 0, 0, VariableRole.Error) { Captured = true });
         }
         view.Tree.Show(rows);
         view.SayMoved(null);

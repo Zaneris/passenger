@@ -2570,12 +2570,18 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     [McpServerTool(Name = McpTools.DebugStart, Title = "Debug a configuration", Destructive = true), Description(
         "Builds and launches a configuration under the debugger, as Debug does, and waits for a stop, its end, an Avalonia " +
         "or WPF app's UI, its host's start (where it listens) or its app's start on a device. Returns where it is. With " +
-        "resource, that one alone, restarted.")]
+        "resource, that one alone, restarted. record true records the calls of the program's own code, their arguments and " +
+        "returns, as Record Calls does (debug_step back).")]
     public Task<DebugSnapshot> DebugStart(
         string? configuration = null,
         string? arguments = null,
-        int waitSeconds = 60, string? resource = null, bool? terminal = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
+        int waitSeconds = 60, string? resource = null, bool? terminal = null, bool? record = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
+        if (record is bool recording && recording != Session.Debug.RecordsCalls)
+        {
+            // Record Calls as the person turns it, for this start and those after it.
+            Session.Debug.SetRecording(recording);
+        }
         if (resource is not null)
         {
             NoTerminalFor(terminal);
@@ -2963,7 +2969,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "Code's verdict (userCode), as the Modules window lists them. of processes: the .NET programs here and in running containers the " +
         "debugger can attach to, program being the .dll the dotnet host runs (a container's id 0 until debug_attach puts " +
         "Passenger's tools in). of snapshots: the snapshot points' captures, newest first, each with its frames, its top frame's " +
-        "locals and their members, and how long the program was held for it.")]
+        "locals and their members, and how long the program was held for it. of timeline: the calls the stopped thread recorded " +
+        "(debug_start with record true), each call with its arguments and each return with its value, newest first.")]
     public async Task<object> GetDebugState(string? session = null, string? of = null, int? reference = null, CancellationToken cancel = default) => (of, reference) switch
     {
         (null or "stop", int members) => await DebugVariables(members, session, cancel),
@@ -2972,7 +2979,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         ("processes", null) => await DebugProcesses(cancel),
         ("modules", null) => await DebugModules(session, cancel),
         ("snapshots", null) => await DebugSnapshots(cancel),
-        (_, null) => throw new ModelContextProtocol.McpException($"No '{of}' to give; of takes stop (the default), breakpoints, modules, processes or snapshots"),
+        ("timeline", null) => await DebugTimeline(session, cancel),
+        (_, null) => throw new ModelContextProtocol.McpException($"No '{of}' to give; of takes stop (the default), breakpoints, modules, processes, snapshots or timeline"),
         _ => throw new ModelContextProtocol.McpException("A reference's members are the stop's: give reference or of, not both"),
     };
 
@@ -2987,15 +2995,53 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             _ => throw new ModelContextProtocol.McpException("Run to a line takes both path and line"),
         };
 
-    [McpServerTool(Name = McpTools.DebugStep, Title = "Step", Destructive = false), Description("Steps (kind) over, into or out of the current line, and waits for the step to stop.")]
-    public Task<DebugSnapshot> DebugStep(string kind = "over", int waitSeconds = 30, string? session = null,
-        CancellationToken cancel = default) => Resume(kind switch
+    [McpServerTool(Name = McpTools.DebugStep, Title = "Step", Destructive = false), Description(
+        "Steps (kind) over, into or out of the current line, and waits for the step to stop. back and forward go through the " +
+        "calls the program recorded before the stop (debug_start with record true), each moment's frames and values as they " +
+        "were, forward from the newest to the live stop.")]
+    public async Task<object> DebugStep(string kind = "over", int waitSeconds = 30, string? session = null,
+        CancellationToken cancel = default) => kind switch
     {
-        "over" => s => s.StepOverAsync(),
-        "into" => s => s.StepIntoAsync(),
-        "out" => s => s.StepOutAsync(),
-        _ => throw new ArgumentException($"A step is over, into or out, not '{kind}'"),
-    }, waitSeconds, session, cancel);
+        "back" or "forward" => await Recalled(kind == "back", session, cancel),
+        _ => await Resume(kind switch
+        {
+            "over" => s => s.StepOverAsync(),
+            "into" => s => s.StepIntoAsync(),
+            "out" => s => s.StepOutAsync(),
+            _ => throw new ArgumentException($"A step is over, into, out, back or forward, not '{kind}'"),
+        }, waitSeconds, session, cancel),
+    };
+
+    /// <summary>The recorded moment before or after the one shown, as Step Back and Step Forward show it; past the newest,
+    /// the live stop.</summary>
+    private Task<object> Recalled(bool back, string? session, CancellationToken cancel) => OnUi<object>(cancel, async () =>
+    {
+        DebugSession paused = await Paused(session, choose: true);
+        DebugController debugger = Session.Debug;
+        if (await (back ? debugger.StepBackAsync() : debugger.StepForwardAsync()) is { } why)
+        {
+            throw new InvalidOperationException(why);
+        }
+        return debugger.MomentShown is { } moment && debugger.ShownPast is { } shown ? MomentOf(shown, moment) : (object)await DebugSnapshotAsync(paused);
+    });
+
+    /// <summary>A recorded moment as an agent reads it: what happened, its frames, its top frame's values and their members.</summary>
+    private MomentInfo MomentOf(TakenSnapshot shown, DapMoment moment) => new(moment.Index, moment.Kind, shown.Said,
+        [.. shown.Frames.Select(f => f.Source?.Path is { } path ? $"{f.Name} at {Relative(path)}:{f.Line}" : f.Name)],
+        [.. shown.Taken.Frames.FirstOrDefault(f => f.Locals > 0) is { } top ? shown.Values(top.Locals).Select(v => Valued(shown, v, 1)) : []], shown.Taken.Cut);
+
+    private static SnapshotValue Valued(TakenSnapshot snapshot, DapVariable value, int levels) => new(value.Name, value.Value, value.Type,
+        levels > 0 && value.VariablesReference > 0 ? [.. snapshot.Values(value.VariablesReference).Select(member => Valued(snapshot, member, levels - 1))] : null);
+
+    /// <summary>The stopped thread's recorded moments, the newest first, with what the recording keeps and cost.</summary>
+    private Task<CallToolResult> DebugTimeline(string? session, CancellationToken cancel) => OnUi(cancel, async () =>
+    {
+        DebugSession paused = await Paused(session, choose: true);
+        TimelineResponse read = await Session.Debug.TimelineAsync(paused);
+        return Held([.. read.Moments.Reverse().Select(m => new TimelineMoment(m.Index, m.Kind, m.Said,
+            m.Place.Source?.Path is { } path ? $"{Relative(path)}:{m.Place.Line}" : m.Place.Name, m.Depth))], "moment", "the newest are listed first",
+            note: Session.Debug.TimelineWords(read));
+    });
 
     [McpServerTool(Name = McpTools.DebugPause, Title = "Pause", Destructive = false), Description("Pauses the running program wherever it is.")]
     public Task<DebugSnapshot> DebugPause(int waitSeconds = 10, string? session = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
@@ -3723,9 +3769,6 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             [.. s.Frames.Select(f => f.Source?.Path is { } path ? $"{f.Name} at {Relative(path)}:{f.Line}" : f.Name)],
             [.. s.Taken.Frames.FirstOrDefault(f => f.Locals > 0) is { } top ? s.Values(top.Locals).Select(v => Valued(s, v, 1)) : []],
             s.Taken.Asked.Count == 0 ? null : [.. s.Taken.Asked.Select(v => Valued(s, v, 1))], s.Taken.Cut))], "snapshot", "the newest are listed first"));
-
-        static SnapshotValue Valued(TakenSnapshot snapshot, DapVariable value, int levels) => new(value.Name, value.Value, value.Type,
-            levels > 0 && value.VariablesReference > 0 ? [.. snapshot.Values(value.VariablesReference).Select(member => Valued(snapshot, member, levels - 1))] : null);
     });
 
     private IReadOnlyList<BreakpointInfo> DataBreakpoints() =>
@@ -4761,6 +4804,14 @@ public sealed record SnapshotInfo(int Snapshot, string Point, string Program, st
 
 /// <summary>A snapshot's value, with its members where it has them, as they were read.</summary>
 public sealed record SnapshotValue(string Name, string Value, string? Type, IReadOnlyList<SnapshotValue>? Members);
+
+/// <summary>A recorded moment shown as a past stop: its number, what it is (call or return), what happened and when, its
+/// frames, its top frame's values with their members, and what it left unread.</summary>
+public sealed record MomentInfo(int Moment, string Kind, string Said, IReadOnlyList<string> Frames, IReadOnlyList<SnapshotValue> Values, string? Cut);
+
+/// <summary>A recorded moment as a timeline lists it: its number, call or return, what happened, where, and how many
+/// recorded calls it ran in.</summary>
+public sealed record TimelineMoment(int Moment, string Kind, string Said, string At, int Depth);
 
 public sealed record VariableInfo(string Name, string Value, string? Type, int Reference)
 {

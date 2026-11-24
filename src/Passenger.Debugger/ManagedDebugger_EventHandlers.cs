@@ -292,6 +292,7 @@ public partial class ManagedDebugger
         if (metadataReader.HasSymbols)
         {
             BindLineBreakpoints(moduleInfo);
+            BindRecording(moduleInfo);
             foreach (BreakpointManager.BreakpointInfo breakpoint in _breakpointManager.GetFunctionBreakpoints().Where(b => !b.Refused))
             {
                 bool becameVerified = TryBindFunctionBreakpoint(breakpoint, moduleInfo);
@@ -413,6 +414,14 @@ public partial class ManagedDebugger
             // Right after a call a step over runs: what it returned is read, and the step goes on.
             await TakeWatchedReturn(breakpointCorDebugManagedCallbackEventArgs.Thread, watched);
             Continue(clearVariables: true);
+            return;
+        }
+
+        if (breakpoint is ICorDebugFunctionBreakpoint recorded && (_callBreakpoints.Count > 0 || _returnBreakpoints.Count > 0)
+            && await TakeRecordedAsync(breakpointCorDebugManagedCallbackEventArgs.Thread, recorded,
+                _hitCame.TryGetValue(breakpointCorDebugManagedCallbackEventArgs, out StrongBox<long>? stamped) ? stamped.Value : System.Diagnostics.Stopwatch.GetTimestamp()))
+        {
+            GoOnFromRecorded();
             return;
         }
 

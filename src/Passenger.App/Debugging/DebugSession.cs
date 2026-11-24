@@ -1029,6 +1029,42 @@ public sealed class DebugSession
             : Path.IsPathFullyQualified(path) && File.Exists(path) ? f with { Source = source with { Path = PathNames.Canonical(path) } }
             : f;
 
+    /// <summary>Whether the program's calls are recorded (historical debugging): asked before the program starts, sent with
+    /// what changed, and at once while it runs or is paused.</summary>
+    public bool Records { get; private set; }
+
+    /// <summary>What the debugger was last told of recording, null before it is told.</summary>
+    private bool? recordsSent;
+
+    /// <summary>Records the program's calls from now on, or no longer; told at once once the program runs.</summary>
+    public Task RecordAsync(bool on)
+    {
+        UiThread.Check();
+        Records = on;
+        return State is DebugState.Running or DebugState.Paused && disconnected is null ? SendRecordAsync() : Task.CompletedTask;
+    }
+
+    private async Task SendRecordAsync()
+    {
+        bool on = Records;
+        if (recordsSent != on && (on || recordsSent is not null))
+        {
+            recordsSent = on;
+            await connection.RequestAsync(DapCommands.Record, new RecordArguments(on));
+        }
+    }
+
+    /// <summary>The recording's moments on a thread, oldest first, with what it keeps at most and let go.</summary>
+    public Task<TimelineResponse> TimelineAsync(int? threadId) =>
+        connection.RequestAsync<TimelineResponse>(DapCommands.Timeline, new TimelineArguments(threadId));
+
+    /// <summary>A recorded moment as a past stop, its frames' sources named as a stop's are; one let go throws why.</summary>
+    public async Task<SnapshotEvent> MomentAsync(int index)
+    {
+        SnapshotEvent moment = await connection.RequestAsync<SnapshotEvent>(DapCommands.Moment, new MomentArguments(index)).ConfigureAwait(false);
+        return moment with { Frames = [.. moment.Frames.Select(f => f with { Frame = Named(f.Frame) })] };
+    }
+
     public async Task<IReadOnlyList<DapScope>> ScopesAsync(int frameId) =>
         (await connection.RequestAsync<ScopesResponse>(DapCommands.Scopes, new ScopesArguments(frameId))).Scopes;
 
@@ -1238,6 +1274,10 @@ public sealed class DebugSession
         if (Open() && DataBreakpointsUnavailable is null && (dataSent ?? string.Empty) != DataSignature())
         {
             await SendDataBreakpointsAsync();
+        }
+        if (Open() && Engine == DebugEngine.Managed)
+        {
+            await SendRecordAsync();
         }
 
         bool Open() => disconnected is null && State != DebugState.Ended;

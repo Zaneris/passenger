@@ -598,6 +598,24 @@ public sealed record SnapshotEvent
 /// <summary>A frame of a snapshot, its locals by their reference among the snapshot's values, 0 where they were not read.</summary>
 public sealed record DapSnapshotFrame(DapStackFrame Frame, int Locals);
 
+/// <summary>Passenger's own request: whether the debugger records the program's calls from now on (historical debugging).</summary>
+public sealed record RecordArguments(bool On);
+
+/// <summary>Passenger's own request: the recording's moments on a thread, every thread's without one.</summary>
+public sealed record TimelineArguments(int? ThreadId = null);
+
+/// <summary>What a recording kept: whether it records now, its moments oldest first, how many older ones it let go to keep
+/// within <see cref="MostMoments"/> and <see cref="MostBytes"/> of values, how many it recorded in all, and how long
+/// recording them held the program in all, in milliseconds.</summary>
+public sealed record TimelineResponse(bool Recording, IReadOnlyList<DapMoment> Moments, int Dropped, int Recorded, double HeldMilliseconds, int MostMoments, long MostBytes);
+
+/// <summary>A recorded moment: its number in the session's recording, what it is (<see cref="DapMomentKinds"/>), its
+/// thread, when, its method's frame where it stood, how many recorded calls it ran inside, and what happened, in words.</summary>
+public sealed record DapMoment(int Index, [property: IdentifierOf(typeof(DapMomentKinds))] string Kind, int ThreadId, DateTimeOffset At, DapStackFrame Place, int Depth, string Said);
+
+/// <summary>Passenger's own request: a recorded moment, by its number, as a past stop.</summary>
+public sealed record MomentArguments(int Index);
+
 /// <summary>A breakpoint changed (bound, or moved), new or removed.</summary>
 public sealed record BreakpointEvent
 {
