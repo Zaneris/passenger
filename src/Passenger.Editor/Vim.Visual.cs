@@ -1114,10 +1114,11 @@ public sealed partial class Vim
                 // In a text of empty lines alone, the lines from the first to the one before the last, whatever the count.
                 return new Region(0, text.GetLineStart(lastLine - 1));
             }
-            if (n == 1 && runLast < lastLine && !next && (inner || text[text.GetLineStart(runLast + 1)] is not (' ' or '\t'))
+            bool unindented = runLast < lastLine && text[text.GetLineStart(runLast + 1)] is not (' ' or '\t');
+            if (runLast < lastLine && !next && (n == 1 ? inner || unindented : n == 2 && inner && unindented)
                 && LastWrittenBefore(text, r.Cursor) is { } before)
             {
-                // From an empty line two or more above its run's last, is goes back to the last character before the run, as before text unindented.
+                // From an empty line two or more above its run's last, is goes back to the last character before the run (2is and as before text unindented).
                 more = true;
                 return new Region(r.Cursor, before);
             }
