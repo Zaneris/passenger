@@ -224,7 +224,8 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
     /// <summary>A temporary breakpoint set by its action stops at the loop's first turn and is gone from the gutter; a
     /// breakpoint whose popup has it wait for a tracepoint that holds at the third turn passes the turns before it by and
-    /// stops at the third and fourth, the tracepoint going on.</summary>
+    /// stops at the third and fourth, the tracepoint going on; the tracepoint taken away, it waits no more, which the window
+    /// says once.</summary>
     private void A_temporary_breakpoint_stops_once_and_goes_and_one_waiting_for_a_tracepoint_stops_only_after_it()
     {
         Write("Program.cs", "int total = 0;\nfor (int i = 1; i <= 4; i++)\n{\n    total += i;\n    Console.WriteLine($\"at {i}\");\n    total -= 0;\n}\n"
@@ -269,6 +270,13 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Ui.Run(window, AppActions.Resume);
         WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Ended, "the program to run to its end");
         Assert.Contains("total 10", window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
+
+        editor.GoTo(new TextPosition(4, 4));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        LineBreakpoint freed = window.Debugger.Breakpoints.In(Program).Single(b => b.Line == 5);
+        Assert.True(freed.WaitsFor is null, $"The breakpoint still waits for {freed.WaitsFor?.Location}, taken away");
+        Assert.Contains(new LineMark(5, LineMarkKind.Breakpoint), editor.LineMarks);
+        Assert.Equal("Program.cs:6 waits for no other breakpoint now and stops as a plain breakpoint: Program.cs:5, which it waited for, was removed", window.Status);
         window.Close();
     }
 

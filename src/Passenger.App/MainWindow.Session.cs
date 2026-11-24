@@ -560,6 +560,13 @@ public partial class MainWindow
         debugger.Breakpoints.Changed += (_, _) => ListBreakpoints();
         debugger.StateChanged += (_, _) => ListBreakpoints();
         ListBreakpoints();
+        debugger.Breakpoints.WaitsEnded += (_, ended) =>
+        {
+            if (session == next && next.Debug == debugger)
+            {
+                Say(ended.Words);
+            }
+        };
         debugger.ActionRequested += (_, action) =>
         {
             if (session == next && next.Debug == debugger)

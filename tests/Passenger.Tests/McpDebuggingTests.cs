@@ -169,8 +169,8 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's stops and breakpoints as one flow, each step one test's check in an instance of its own: a
     /// million-character local answered by its first characters and length, a debugged test run's tally as it ends, an
     /// async program's unhandled exception stopping once at its throw, a Release build's step out and over, a
-    /// breakpoint at a lambda's column or line and one in a lambda written away from its closed file, and one outside a
-    /// file's lines or in no file refused.</summary>
+    /// breakpoint at a lambda's column or line and one in a lambda written away from its closed file, one outside a
+    /// file's lines or in no file refused, and a temporary breakpoint and one waiting for another.</summary>
     [Fact]
     public async Task An_agents_debugger_stops_steps_and_binds_breakpoints_as_the_code_is_written()
     {
@@ -181,6 +181,37 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         await Flow.StepApartAsync("an agents breakpoint given a lambdas column stops inside it and one on its line at the statement", () => new McpDebuggingTests(restored), t => t.An_agents_breakpoint_given_a_lambdas_column_stops_inside_it_and_one_on_its_line_at_the_statement());
         await Flow.StepApartAsync("an agents breakpoint in a lambda written away from its closed file stops at the statement listed by its line", () => new McpDebuggingTests(restored), t => t.An_agents_breakpoint_in_a_lambda_written_away_from_its_closed_file_stops_at_the_statement_listed_by_its_line());
         await Flow.StepApartAsync("an agents breakpoint outside a files lines or in no file is refused and none is kept", () => new McpDebuggingTests(restored), t => t.An_agents_breakpoint_outside_a_files_lines_or_in_no_file_is_refused_and_none_is_kept());
+        await Flow.StepApartAsync("an agents temporary breakpoint and one waiting for a tracepoint stop as they say and are listed so", () => new McpDebuggingTests(restored), t => t.An_agents_temporary_breakpoint_and_one_waiting_for_a_tracepoint_stop_as_they_say_and_are_listed_so());
+    }
+
+    /// <summary>An agent's temporary breakpoint and one waiting for a tracepoint that holds at the loop's third turn are listed
+    /// so by debug_state; the temporary one stops at the first turn and is listed no more, and the waiting one stops at the
+    /// third turn alone.</summary>
+    private async Task An_agents_temporary_breakpoint_and_one_waiting_for_a_tracepoint_stop_as_they_say_and_are_listed_so()
+    {
+        await TakeFolderAsync();
+        Write("Program.cs", "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += i;\n    Console.WriteLine($\"at {i}\");\n    total -= 0;\n}\n"
+            + "Console.WriteLine($\"total {total}\");\n");
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 4, ["temporary"] = true });
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 5, ["condition"] = "i == 3", ["suspend"] = false });
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 6, ["waitFor"] = "Program.cs:5" });
+        JsonElement listed = await Call(client, McpTools.DebugState, new() { ["of"] = "breakpoints" });
+        Assert.True(Listed(listed, 4) is { } once && once.TryGetProperty("temporary", out JsonElement temporary) && temporary.GetBoolean()
+            && Listed(listed, 6) is { } waiting && waiting.TryGetProperty("waitsFor", out JsonElement waits) && waits.GetString() == "Program.cs:5",
+            $"debug_state listed the temporary breakpoint and the one waiting for Program.cs:5 as {listed}");
+
+        JsonElement stop = await Call(client, McpTools.DebugStart);
+        Assert.Equal(("Program.cs:4:5", "1"), (stop.GetProperty("location").GetString(), Local(stop, "i")));
+        listed = await Call(client, McpTools.DebugState, new() { ["of"] = "breakpoints" });
+        Assert.True(Listed(listed, 4) is null, $"The temporary breakpoint was still listed once it stopped: {listed}");
+        stop = await Call(client, McpTools.DebugContinue);
+        Assert.Equal(("Program.cs:6:5", "3"), (stop.GetProperty("location").GetString(), Local(stop, "i")));
+        Assert.Equal("not debugging", (await Call(client, McpTools.DebugContinue)).GetProperty("state").GetString());
+
+        static JsonElement? Listed(JsonElement breakpoints, int line) => breakpoints.EnumerateArray()
+            .FirstOrDefault(b => b.TryGetProperty("line", out JsonElement at) && at.ValueKind == JsonValueKind.Number && at.GetInt32() == line) is { ValueKind: JsonValueKind.Object } found
+            ? found : null;
     }
 
     /// <summary>An agent's debug sessions as one flow, each step one test's check in an instance of its own:

@@ -246,6 +246,16 @@ public enum BreakpointStatus
     Invalid,
 }
 
+/// <summary>Breakpoints that waited for one taken away (<paramref name="Gone"/>, by its place), which stop as plain breakpoints
+/// from now on.</summary>
+public sealed record WaitEnded(string Gone, IReadOnlyList<CodeBreakpoint> Freed)
+{
+    /// <summary>What the window says of it, once.</summary>
+    public string Words => $"{Plural.Listed([.. Freed.Select(b => b.Location)])} {Plural.Agreeing(Freed.Count, "waits", "wait")} for no other "
+        + $"breakpoint now and {Plural.Agreeing(Freed.Count, "stops as a plain breakpoint", "stop as plain breakpoints")}: {Gone}, which "
+        + $"{Plural.Agreeing(Freed.Count, "it", "they")} waited for, was removed";
+}
+
 /// <summary>A folder's breakpoints as the store keeps them.</summary>
 public sealed record BreakpointsState : IStateDocument<BreakpointsState>
 {
@@ -383,6 +393,9 @@ public sealed class BreakpointStore
 
     /// <summary>The method breakpoints, in the order they were set.</summary>
     public IReadOnlyList<MethodBreakpoint> Methods => methods;
+
+    /// <summary>Breakpoints that waited for one taken away wait no more, and stop as plain breakpoints from now on.</summary>
+    public event EventHandler<WaitEnded>? WaitsEnded;
 
     /// <summary>The method breakpoints set in a file, which its gutter marks.</summary>
     public IEnumerable<MethodBreakpoint> MethodsIn(string path) => methods.Where(m => m.Path == path);
@@ -1068,17 +1081,24 @@ public sealed class BreakpointStore
         Raise(breakpoint);
     }
 
-    /// <summary>Breakpoints taken away: those waiting for one of them wait for nothing from now on.</summary>
+    /// <summary>Breakpoints taken away: those waiting for one of them wait no more, stopping as plain breakpoints from now on,
+    /// told once for each one taken away (<see cref="WaitsEnded"/>).</summary>
     private void WaitNoMore(IReadOnlyCollection<Breakpoint> gone)
     {
         if (gone.Count == 0)
         {
             return;
         }
-        foreach (CodeBreakpoint waiting in All.Concat<CodeBreakpoint>(methods).Where(b => b.WaitsFor is { } waited && gone.Contains(waited)).ToList())
+        List<(CodeBreakpoint Waiting, CodeBreakpoint Waited)> freed = [.. All.Concat<CodeBreakpoint>(methods)
+            .Where(b => b.WaitsFor is { } waited && gone.Contains(waited)).Select(b => (b, b.WaitsFor!))];
+        foreach ((CodeBreakpoint waiting, _) in freed)
         {
             waiting.WaitsFor = null;
             Raise(waiting);
+        }
+        foreach (IGrouping<CodeBreakpoint, (CodeBreakpoint Waiting, CodeBreakpoint Waited)> by in freed.GroupBy(f => f.Waited))
+        {
+            WaitsEnded?.Invoke(this, new WaitEnded(by.Key.Location, [.. by.Select(f => f.Waiting)]));
         }
     }
 
