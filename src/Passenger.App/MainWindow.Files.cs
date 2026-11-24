@@ -157,23 +157,31 @@ public partial class MainWindow
     public string? CreateClass(string into, string name) => CreateType(into, name, "Class");
 
     /// <summary>Class/Interface: a file of its name holding a type of the kind chosen (<see cref="TypeKinds"/>), in the
-    /// namespace its folder gives. Folders before the name ("Shapes/Circle") are made and the type goes in
-    /// them.</summary>
-    public string? CreateType(string into, string name, string kind)
+    /// namespace its folder gives (<see cref="CreateOwn"/>).</summary>
+    public string? CreateType(string into, string name, string kind) =>
+        CreateOwn(into, name, Templates.OwnTemplates.All.First(t => t.Name == kind).Own!);
+
+    /// <summary>A file of one of Passenger's own templates (Class/Interface's types, Add's New): of the name given, its
+    /// extension added where it was not written, made from the template with the namespace its folder gives, a type's name
+    /// a C# name. Folders before the name ("Shapes/Circle") are made and the file goes in them.</summary>
+    public string? CreateOwn(string into, string name, Templates.OwnTemplate own)
     {
         string[] parts = name.Trim().Split('/', '\\');
-        string last = parts[^1];
-        string type = last.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ? last[..^3] : last;
-        if (!Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(type))
+        string bare = own.Bare(parts[^1]);
+        if (bare.Length == 0)
         {
-            return $"{type} is not a C# name";
+            return "A name is needed";
+        }
+        if (own.DeclaresType && !Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(bare))
+        {
+            return $"{bare} is not a C# name";
         }
         if (Invalid(name) is { } problem)
         {
             return problem;
         }
         into = Path.Combine([into, .. parts[..^1].Where(p => p.Length > 0)]);
-        return CreateFile(into, type + ".cs", Templates.OwnTemplates.TypeText(kind, type, NamespaceFor(into)));
+        return CreateFile(into, bare + own.Extension, own.Text(bare, NamespaceFor(into)));
     }
 
     /// <summary>The namespace a folder's code takes: its project's evaluated RootNamespace (until it is evaluated, its

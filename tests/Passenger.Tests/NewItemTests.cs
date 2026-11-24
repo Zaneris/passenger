@@ -4,6 +4,7 @@ using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Explorer;
 using Passenger.App.Templates;
+using Passenger.App.Vcs;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -28,7 +29,7 @@ public sealed class NewItemTests : IDisposable
     [AvaloniaFact]
     public void New_Item_puts_each_template_where_its_project_keeps_it_one_Undo_taking_it_away()
     {
-        Flow.StepApart<NewItemTests>("an API Controller goes into a web projects Controllers folder in its namespace builds and one Undo takes it away", t => t.An_API_Controller_goes_into_a_web_projects_Controllers_folder_in_its_namespace_builds_and_one_Undo_takes_it_away());
+        Flow.StepApart<NewItemTests>("an API Controller goes into a web projects Controllers folder in its namespace builds and one Undo takes it away, from New Item and Adds New", t => t.An_API_Controller_goes_into_a_web_projects_Controllers_folder_in_its_namespace_builds_and_one_Undo_takes_it_away_from_New_Item_and_Adds_New());
         Flow.StepApart<NewItemTests>("a Razor Component goes into a Blazor projects pages Razor templates listed first and one Undo takes it away", t => t.A_Razor_Component_goes_into_a_Blazor_projects_pages_Razor_templates_listed_first_and_one_Undo_takes_it_away());
         Flow.StepApart<NewItemTests>("a gitignore goes into the solutions folder from its New Item and one Undo takes it away", t => t.A_gitignore_goes_into_the_solutions_folder_from_its_New_Item_and_one_Undo_takes_it_away());
         Flow.StepApart<NewItemTests>("the Add menu makes a gitignore and a gitattributes in the folder and opens the editorconfig already there", t => t.The_Add_menu_makes_a_gitignore_and_a_gitattributes_in_the_folder_and_opens_the_editorconfig_already_there());
@@ -36,8 +37,9 @@ public sealed class NewItemTests : IDisposable
 
     /// <summary>An API Controller added to a web project's Controllers folder from the folder's Add menu: the web project's
     /// controllers lead the list, the namespace offered is the folder's, the file made is an [ApiController] in it, opened,
-    /// and the project builds; one Undo in the Solution view takes the file away.</summary>
-    private void An_API_Controller_goes_into_a_web_projects_Controllers_folder_in_its_namespace_builds_and_one_Undo_takes_it_away()
+    /// and the project builds; one Undo in the Solution view takes the file away. Add's New offers the same controllers after
+    /// the C# kinds and the text file, and makes one from its name alone, in the folder's namespace, one Undo taking it away.</summary>
+    private void An_API_Controller_goes_into_a_web_projects_Controllers_folder_in_its_namespace_builds_and_one_Undo_takes_it_away_from_New_Item_and_Adds_New()
     {
         string api = WebProject(controllers: true);
         MainWindow window = Ui.OpenFolder(place, languageServer: false);
@@ -68,6 +70,28 @@ public sealed class NewItemTests : IDisposable
             Built(Path.Combine(api, "Shop.Api.csproj"));
 
             Undone(window, made);
+
+            Ui.RightClick(Ui.Row(window.ExplorerView, Row(window, NodeKind.Folder, "Controllers")));
+            ContextMenu menu = window.ExplorerView.OpenMenu ?? throw new Xunit.Sdk.XunitException("A right-click on Controllers opened no menu");
+            MenuItem add = menu.Items.OfType<MenuItem>().Single(i => (string?)i.Header == "Add");
+            string[] kinds = [.. add.Items.OfType<MenuItem>().First().Items.OfType<Control>().Select(i => i is MenuItem named ? (string)named.Header! : "—")];
+            menu.Close();
+            Ui.Settle();
+            Assert.True(kinds.SequenceEqual(["Class", "Interface", "Record", "Struct", "Enum", "—", "Text File", "—", "API Controller", "MVC Controller"]),
+                $"A web project's folder's Add › New offers [{string.Join(", ", kinds)}], not the C# kinds, a text file, then its controllers");
+            Ui.ChooseFromRowMenu(window, Row(window, NodeKind.Folder, "Controllers"), "Add", "New", "API Controller");
+            NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
+            window.KeyTextInput("InvoicesController");
+            Ui.Press(window, "ENTER");
+            string invoices = Path.Combine(controllers, "InvoicesController.cs");
+            Ui.WaitFor(() => !window.IsPopupOpen || popup.Problem is not null, "dotnet new to make the API controller from Add's New", TimeSpan.FromMinutes(3));
+            Assert.True(popup.Problem is null, $"Add › New › API Controller refused InvoicesController: {popup.Problem}");
+            Assert.Null(Ui.Await(window.ItemAdded!, "the API controller to be added"));
+            string invoiced = File.ReadAllText(invoices);
+            Assert.True(invoiced.Contains("namespace Shop.Api.Controllers", StringComparison.Ordinal) && invoiced.Contains("class InvoicesController", StringComparison.Ordinal),
+                $"Add › New › API Controller did not make the folder's controller:\n{invoiced}");
+            Assert.Equal(invoices, window.EditorArea.Active?.Path);
+            Undone(window, invoices);
         }
         finally
         {

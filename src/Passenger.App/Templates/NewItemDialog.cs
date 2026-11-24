@@ -24,7 +24,7 @@ public sealed record MadeItem(string Name, string Template, IReadOnlyList<string
 public sealed class NewItemDialog : IdeWindow
 {
     /// <summary>What the dialog asks itself of a template.</summary>
-    private static readonly HashSet<string> Asked = new(StringComparer.OrdinalIgnoreCase) { "namespace" };
+    private static readonly HashSet<string> Asked = new(StringComparer.OrdinalIgnoreCase) { ItemKinds.NamespaceOption };
 
     private readonly ItemTarget target;
     private readonly TextBox search = SearchBox.Of("Search templates");
@@ -201,6 +201,7 @@ public sealed class NewItemDialog : IdeWindow
         string name = template.TakesName ? ItemName : template.Name;
         if (template.Own is { } own)
         {
+            name = own.Bare(name);
             Made = new MadeItem(name, template.Name, [], [], (Path.Combine(target.Folder, name + own.Extension), own.Text(name, Namespace)));
             Close(Made);
             return;
@@ -209,30 +210,22 @@ public sealed class NewItemDialog : IdeWindow
         creating = cancel;
         Fail(null);
         Busy(true);
-        string folder = target.Folder;
         progress.Text = $"Creating {name} from {template.Name} (dotnet new {template.ShortName})…";
-        HashSet<string> before = await BackgroundWork.Run(() => Entries(folder));
         try
         {
-            Task<ChildResult> run = ChildProcesses.RunAsync(ProjectTemplates.NewCommand(Arguments(output: true), folder), limit: TimeSpan.FromMinutes(5), cancel: cancel.Token);
-            BackgroundWork.Track(run);
-            ChildResult made = await run;
-            (List<string> files, List<string> folders) = await BackgroundWork.Run(() => MadeSince(before, Entries(folder)));
-            if (!made.Succeeded || files.Count + folders.Count == 0)
+            (MadeItem? made, string? whyNot) = await ItemKinds.RunAsync(template, target.Folder, name, Arguments(output: true), cancel.Token);
+            if (made is null)
             {
-                await BackgroundWork.Run(() => TakeAway(files, folders));
-                Fail(made.Succeeded ? $"dotnet new {template.ShortName} made nothing in {folder}" : $"{name} could not be created: {made.Said}");
+                Fail(whyNot);
                 return;
             }
             creating = null;
-            Made = new MadeItem(name, template.Name, files, folders, null);
+            Made = made;
             Close(Made);
         }
         catch (OperationCanceledException)
         {
-            // Stopped: what dotnet new wrote meanwhile goes.
-            (List<string> files, List<string> folders) = await BackgroundWork.Run(() => MadeSince(before, Entries(folder)));
-            await BackgroundWork.Run(() => TakeAway(files, folders));
+            // Stopped: what dotnet new wrote meanwhile is gone.
         }
         finally
         {
@@ -261,47 +254,26 @@ public sealed class NewItemDialog : IdeWindow
             {
                 return named;
             }
-            if (template.Own is not null && !Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(ItemName))
+            if (template.Own is { DeclaresType: true } type && !Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(type.Bare(ItemName)))
             {
-                return $"{ItemName} is not a C# name";
+                return $"{type.Bare(ItemName)} is not a C# name";
             }
         }
         if (spaceRow.IsVisible && (Namespace.Length == 0 || Namespace.Split('.').Any(p => !Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(p))))
         {
             return $"{Namespace} is not a namespace";
         }
-        if (template.Own is { } own && Path.Exists(Path.Combine(target.Folder, ItemName + own.Extension)))
+        if (template.Own is { } own && Path.Exists(Path.Combine(target.Folder, own.Bare(ItemName) + own.Extension)))
         {
-            return $"{ItemName + own.Extension} is already there";
+            return $"{own.Bare(ItemName) + own.Extension} is already there";
         }
         return options.WhyNot();
     }
 
-    /// <summary>dotnet new's arguments: the template, the name (where it takes one), where it goes (none in the line the
-    /// dialog shows), the namespace (where it takes one), the language, and the options changed.</summary>
-    private List<string> Arguments(bool output)
-    {
-        TemplateVariant variant = Variant();
-        List<string> arguments = [template!.ShortName];
-        if (template.TakesName)
-        {
-            arguments.AddRange(["--name", ItemName]);
-        }
-        if (output)
-        {
-            arguments.AddRange(["--output", target.Folder, "--no-update-check"]);
-        }
-        if (spaceRow.IsVisible)
-        {
-            arguments.AddRange(["--namespace", Namespace]);
-        }
-        if (variant.Language is { } language)
-        {
-            arguments.AddRange(["--language", language]);
-        }
-        arguments.AddRange(options.Arguments());
-        return arguments;
-    }
+    /// <summary>dotnet new's arguments (<see cref="ItemKinds.Arguments"/>): where it goes only in what Create runs, not in the
+    /// line the dialog shows; the namespace where it takes one; the options changed.</summary>
+    private List<string> Arguments(bool output) =>
+        ItemKinds.Arguments(template!, Variant(), ItemName, output ? target.Folder : null, spaceRow.IsVisible ? Namespace : null, options.Arguments());
 
     private TemplateVariant Variant() => template!.Variant(target.Language, null);
 
@@ -322,8 +294,8 @@ public sealed class NewItemDialog : IdeWindow
         }
     }
 
-    /// <summary>The templates of a read for the folder (none given null, Passenger's own alone): the project's language's
-    /// and those of none, the project's kind's own first, then Passenger's own, then the rest by name.</summary>
+    /// <summary>The templates of a read for the folder (none given null, Passenger's own alone), as <see cref="ItemKinds.Listed"/>
+    /// orders them.</summary>
     private void Show(TemplateCatalog? read)
     {
         if (read is not null && (ReferenceEquals(read, catalog) || catalog?.Shape == read.Shape) || creating is not null)
@@ -331,11 +303,7 @@ public sealed class NewItemDialog : IdeWindow
             return;
         }
         catalog = read;
-        bool Fits(ProjectTemplate t) => t.Languages.Count == 0 || target.Language is { } language && t.Languages.Contains(language);
-        List<ProjectTemplate> theirs = [.. (read?.Items ?? []).Where(Fits)];
-        int First(ProjectTemplate t) => target.First.ToList().FindIndex(f => t.ShortNames.Contains(f, StringComparer.OrdinalIgnoreCase)) is var at and >= 0 ? at : int.MaxValue;
-        entries = [.. theirs.Where(t => First(t) < int.MaxValue).OrderBy(First), .. OwnTemplates.All.Where(Fits),
-            .. theirs.Where(t => First(t) == int.MaxValue).OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)];
+        entries = ItemKinds.Listed(target, read);
         loading.Text = "Nothing matches";
         Filter();
     }
@@ -381,7 +349,7 @@ public sealed class NewItemDialog : IdeWindow
         heading.Text = chosen.Name;
         description.Text = variant.Description;
         nameRow.IsVisible = chosen.TakesName;
-        spaceRow.IsVisible = chosen.Own is not null || variant.Options.Any(o => Asked.Contains(o.Name));
+        spaceRow.IsVisible = chosen.Own?.DeclaresType ?? ItemKinds.TakesNamespace(variant);
         if (chosen.TakesName && (ItemName.Length == 0 || ItemName == nameGiven))
         {
             nameGiven = Free(chosen.DefaultName);
@@ -418,7 +386,7 @@ public sealed class NewItemDialog : IdeWindow
 
     private void ShowCommand() =>
         command.Text = template is null ? string.Empty
-            : template.Own is { } own ? $"Passenger makes {(template.TakesName ? ItemName : template.Name)}{own.Extension}"
+            : template.Own is { } own ? $"Passenger makes {own.Bare(template.TakesName ? ItemName : template.Name)}{own.Extension}"
             : $"dotnet new {string.Join(' ', Arguments(output: false).Select(ChildProcesses.Quote))}";
 
     private void Fail(string? why) => TemplateList.Fail(problem, why);
@@ -445,56 +413,5 @@ public sealed class NewItemDialog : IdeWindow
             from.Text = row.Own is not null ? "Passenger" : row.ShortName;
             ToolTip.SetTip(item, row.Own is not null ? $"{row.Name}, Passenger's own" : $"{row.Name} (dotnet new {row.ShortName})");
         });
-    }
-
-    /// <summary>Every file and folder under a folder, walking only into those a project's wildcards enter (bin, obj,
-    /// node_modules and hidden folders listed, not entered).</summary>
-    private static HashSet<string> Entries(string folder)
-    {
-        HashSet<string> entries = new(PathNames.Comparer);
-        foreach (string each in PathNames.FoldersUnder(folder, ProjectFolders.Enters))
-        {
-            try
-            {
-                entries.UnionWith(Directory.EnumerateFileSystemEntries(each));
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                // Gone or shut: nothing in it is dotnet new's.
-            }
-        }
-        return entries;
-    }
-
-    /// <summary>What came since the first listing: the files outside a folder that came, and the topmost folders that came.</summary>
-    private static (List<string> Files, List<string> Folders) MadeSince(HashSet<string> before, HashSet<string> after)
-    {
-        List<string> came = [.. after.Where(e => !before.Contains(e))];
-        List<string> folders = [.. came.Where(Directory.Exists).Where(f => !came.Any(o => PathNames.IsUnder(f, o))).Select(PathNames.Canonical)];
-        List<string> files = [.. came.Where(File.Exists).Where(f => !came.Any(o => PathNames.IsUnder(f, o))).Select(PathNames.Canonical)];
-        return (files, folders);
-    }
-
-    /// <summary>Takes away what a Create that failed or was stopped made.</summary>
-    private static void TakeAway(List<string> files, List<string> folders)
-    {
-        foreach (string path in files.Concat(folders))
-        {
-            try
-            {
-                if (Directory.Exists(path))
-                {
-                    Directory.Delete(path, recursive: true);
-                }
-                else
-                {
-                    File.Delete(path);
-                }
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                IdeErrors.Write($"A new item that could not be made left {path}: {error.Message}");
-            }
-        }
     }
 }

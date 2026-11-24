@@ -335,9 +335,9 @@ public partial class MainWindow
 
     /// <summary>A row's menu, its items the window's actions run on the row: Build, Rebuild and Clean for the solution or
     /// the projects chosen, a program's Run and Debug, unit tests where they hold any, a project's packages, file and
-    /// unloading, Add where things go, Edit (the clipboard's actions, Delete or the solution's Remove, Rename, Find and
-    /// Replace in Files), the path of what is on disk, Open In, Tools' Compare, Local History and Git's history. A project's
-    /// Dependencies add a reference, and a project reference is removed. None for a row with nothing to do.</summary>
+    /// unloading, Add where things go (New's kinds first), Edit (the clipboard's actions, Delete or Remove, Rename, Find
+    /// and Replace in Files), the path of what is on disk, Open In, Tools' Compare, Local History and Git's history. A
+    /// project's Dependencies add a reference, and a project reference is removed. None for a row with nothing to do.</summary>
     private IReadOnlyList<Control>? ExplorerMenu(ExplorerNode node)
     {
         bool onDisk = node.Kind is NodeKind.File or NodeKind.Folder or NodeKind.Project;
@@ -425,8 +425,8 @@ public partial class MainWindow
                 {
                     add.Add(separator);
                 }
-                add.AddRange([Item(A.NewFile), Item(A.NewFolder), Item(A.NewType), Item(A.NewItem), separator, Item(A.NewEditorConfig), Item(A.NewGitIgnore),
-                    Item(A.NewGitAttributes)]);
+                add.AddRange([new MenuEntry(null, MainMenu.NewKinds), Item(A.NewFile), Item(A.NewFolder), Item(A.NewItem), separator, Item(A.NewEditorConfig),
+                    Item(A.NewGitIgnore), Item(A.NewGitAttributes)]);
             }
             if (node.Kind == NodeKind.Project && !node.IsShared)
             {

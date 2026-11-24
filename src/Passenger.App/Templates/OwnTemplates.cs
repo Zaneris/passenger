@@ -1,19 +1,24 @@
 namespace Passenger.App.Templates;
 
 /// <summary>An item template of Passenger's own: a file of the name given with this extension, its text made from that
-/// name and the folder's namespace (<see cref="Text"/>, given them in that order).</summary>
-public sealed record OwnTemplate(string Extension, Func<string, string, string> Text);
+/// name and the folder's namespace (<see cref="Text"/>, given them in that order), and whether it declares a C# type of
+/// that name, which a C# name and a namespace are asked for (<see cref="DeclaresType"/>).</summary>
+public sealed record OwnTemplate(string Extension, Func<string, string, string> Text, bool DeclaresType)
+{
+    /// <summary>The name given without the extension, where it was written with it ("notes.txt" for "notes").</summary>
+    public string Bare(string name) => name.EndsWith(Extension, StringComparison.OrdinalIgnoreCase) ? name[..^Extension.Length] : name;
+}
 
 /// <summary>Passenger's own templates, a source beside dotnet new's: its item templates, which New Item lists and searches
-/// as it does dotnet new's, one more being one more entry in <see cref="All"/> (Add's Class/Interface makes the same types);
+/// as it does dotnet new's and Add's New offers where they fit, one more being one more entry in <see cref="All"/>;
 /// and its Godot 4 game, which New Project lists beside dotnet new's project templates (<see cref="GodotGame"/>).</summary>
 public static class OwnTemplates
 {
     /// <summary>The C# types Class/Interface makes, in the order its popup lists them.</summary>
     public static IReadOnlyList<string> TypeKinds { get; } = ["Class", "Interface", "Record", "Struct", "Enum"];
 
-    /// <summary>Every one, as New Item lists it: an entry with one C# variant and no options.</summary>
-    public static IReadOnlyList<ProjectTemplate> All { get; } = [.. TypeKinds.Select(Type)];
+    /// <summary>Every one, as New Item lists it, with no options: each C# type, then a text file of no language.</summary>
+    public static IReadOnlyList<ProjectTemplate> All { get; } = [.. TypeKinds.Select(Type), TextFile()];
 
     /// <summary>A C# file declaring a type of a kind (<see cref="TypeKinds"/>), in a file-scoped namespace.</summary>
     public static string TypeText(string kind, string name, string space)
@@ -51,7 +56,16 @@ public static class OwnTemplates
         TemplateVariant variant = new($"Passenger.{kind}.CSharp", "C#", 0, $"A C# {lower} in a file of its own, in the namespace of its folder", null, [], null, []);
         return new ProjectTemplate(kind, [lower], "Passenger", ["Common", "Code"], kind, [variant])
         {
-            Own = new OwnTemplate(".cs", (name, space) => TypeText(kind, name, space)),
+            Own = new OwnTemplate(".cs", (name, space) => TypeText(kind, name, space), DeclaresType: true),
+        };
+    }
+
+    private static ProjectTemplate TextFile()
+    {
+        TemplateVariant variant = new($"Passenger.{nameof(TextFile)}", null, 0, "An empty text file", null, [], null, []);
+        return new ProjectTemplate("Text File", ["text", "txt"], "Passenger", ["Common", "Text"], "TextFile", [variant])
+        {
+            Own = new OwnTemplate(".txt", (_, _) => string.Empty, DeclaresType: false),
         };
     }
 }

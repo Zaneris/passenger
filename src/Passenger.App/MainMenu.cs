@@ -30,6 +30,9 @@ public static class MainMenu
     /// <summary>The Window menu's list of the solution windows open.</summary>
     public const string OpenSolutionWindows = "Open Solution Windows";
 
+    /// <summary>The Explorer's Add, New: the common kinds of file made where its row is.</summary>
+    public const string NewKinds = "New";
+
     /// <summary>The menus, in their order.</summary>
     public static IReadOnlyList<string> Titles { get; } = ["File", "Edit", "View", "Navigate", "Code", Refactor, "Build", "Run", "Tests", "Tools", "Git", "Window", "Help"];
 

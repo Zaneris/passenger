@@ -324,9 +324,9 @@ public partial class MainWindow
             listed.NeedsUpdate += (_, _) =>
             {
                 listed.Items.Clear();
-                foreach (ListedItem item in Listed(entry.Title!))
+                foreach (NativeMenuItemBase item in Grouped<NativeMenuItemBase>(Listed(entry.Title!, actions!.Context()), NativeListed, () => new NativeMenuItemSeparator()))
                 {
-                    listed.Items.Add(NativeListed(item));
+                    listed.Items.Add(item);
                 }
                 if (listed.Items.Count == 0)
                 {
@@ -398,9 +398,10 @@ public partial class MainWindow
         flyout.ShowAt(MenuButton);
     }
 
-    /// <summary>What a listed submenu holds as it opens: every tool window the dock has, one serving nothing in the open folder
-    /// greyed with its action's why; the recent solutions; or the solution windows open.</summary>
-    private IReadOnlyList<ListedItem> Listed(string submenu) => submenu switch
+    /// <summary>What a listed submenu holds as it opens where it opened: every tool window the dock has, one serving nothing
+    /// in the open folder greyed with its action's why; the recent solutions; the solution windows open; or the kinds Add's
+    /// New makes where the Explorer's row is.</summary>
+    private IReadOnlyList<ListedItem> Listed(string submenu, ActionContext context) => submenu switch
     {
         MainMenu.ToolWindows => [.. Dock.Windows.OrderBy(w => w.Title, StringComparer.Ordinal).Select(w => new ListedItem(w.Title, () => ShowToolWindow(w.Id))
         {
@@ -408,6 +409,7 @@ public partial class MainWindow
         })],
         MainMenu.RecentSolutions => [.. RecentMenu().Select(r => new ListedItem(r.Title, r.Open))],
         MainMenu.OpenSolutionWindows => SolutionWindows(),
+        MainMenu.NewKinds => NewKinds(RowOf(context)),
         _ => throw new InvalidOperationException($"No window lists a submenu called {submenu}"),
     };
 
@@ -436,8 +438,8 @@ public partial class MainWindow
             {
                 menu.Items.RemoveAt(list.Start);
             }
-            IReadOnlyList<ListedItem> items = Listed(list.Title);
-            List<NativeMenuItemBase> now = items.Count == 0 ? [] : [new NativeMenuItemSeparator(), .. items.Select(NativeListed)];
+            IReadOnlyList<ListedItem> items = Listed(list.Title, actions!.Context());
+            List<NativeMenuItemBase> now = items.Count == 0 ? [] : [new NativeMenuItemSeparator(), .. Grouped<NativeMenuItemBase>(items, NativeListed, () => new NativeMenuItemSeparator())];
             for (int i = 0; i < now.Count; i++)
             {
                 menu.Items.Insert(list.Start + i, now[i]);
@@ -453,6 +455,22 @@ public partial class MainWindow
     {
         /// <summary>Why it cannot be chosen, which greys it and is its tip; null where it can.</summary>
         public string? WhyNot { get; init; }
+
+        /// <summary>Whether it begins a group of its own, a separator before it.</summary>
+        public bool Apart { get; init; }
+    }
+
+    /// <summary>A list's items as a menu shows them, a separator before each that begins a group.</summary>
+    private static IEnumerable<T> Grouped<T>(IReadOnlyList<ListedItem> items, Func<ListedItem, T> item, Func<T> separator)
+    {
+        foreach (ListedItem each in items)
+        {
+            if (each.Apart)
+            {
+                yield return separator();
+            }
+            yield return item(each);
+        }
     }
 
     /// <summary>Where an inline list's items stand in their native menu, and how many there are.</summary>
@@ -477,9 +495,9 @@ public partial class MainWindow
         if (entry.IsListed)
         {
             MenuItem listed = new() { Header = entry.Title };
-            foreach (ListedItem item in Listed(entry.Title!))
+            foreach (Control item in Grouped<Control>(Listed(entry.Title!, context), FlyoutListed, () => new Separator()))
             {
-                listed.Items.Add(FlyoutListed(item));
+                listed.Items.Add(item);
             }
             ToolWindows.ListMenus.Grey(listed, listed.Items.Count > 0 ? null : Refusals.NothingListed);
             return listed;
@@ -491,13 +509,13 @@ public partial class MainWindow
             {
                 if (item is { IsListed: true, Inline: true })
                 {
-                    IReadOnlyList<ListedItem> listed = Listed(item.Title!);
+                    IReadOnlyList<ListedItem> listed = Listed(item.Title!, context);
                     if (listed.Count > 0)
                     {
                         menu.Items.Add(new Separator());
-                        foreach (ListedItem each in listed)
+                        foreach (Control each in Grouped<Control>(listed, FlyoutListed, () => new Separator()))
                         {
-                            menu.Items.Add(FlyoutListed(each));
+                            menu.Items.Add(each);
                         }
                     }
                     continue;

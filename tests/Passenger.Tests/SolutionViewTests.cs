@@ -25,8 +25,8 @@ namespace Passenger.Tests;
 /// <summary>The Solution view's file commands: Cut, Copy and Paste by their keys and its Edit menu, and drags, move or copy
 /// files and folders into another folder or another project's, an open file's tab, undo and edits going with it; Add,
 /// Reference... adds and takes out a project reference, however the others are laid out, which the Dependencies, the
-/// build and the language server follow, the rest of the project file as it was; Add, Class/Interface... writes each kind
-/// of type; Open In, Terminal starts a shell in the folder; and Tools' Compare shows two files' differences.</summary>
+/// build and the language server follow, the rest of the project file as it was; Add's New writes each kind of type and a
+/// text file; Open In, Terminal starts a shell in the folder; and Tools' Compare shows two files' differences.</summary>
 [AboutMacOS]
 public sealed class SolutionViewTests : IDisposable
 {
@@ -72,7 +72,7 @@ public sealed class SolutionViewTests : IDisposable
         Flow.StepApart<SolutionViewTests>("a folder copied and pasted copies all it holds named as Riders Duplicate asks and a file dragged moves or with the copy key copies", t => t.A_folder_copied_and_pasted_copies_all_it_holds_named_as_Riders_Duplicate_asks_and_a_file_dragged_moves_or_with_the_copy_key_copies());
         Flow.StepApart<SolutionViewTests>("Add reference beside one that shares its line with its groups tags writes a project MSBuild loads and remove puts it back", t => t.Add_reference_beside_one_that_shares_its_line_with_its_groups_tags_writes_a_project_MSBuild_loads_and_remove_puts_it_back());
         Flow.StepApart<SolutionViewTests>("a project file and the solution open with unsaved edits keep them through add reference and new solution folder with no question", t => t.A_project_file_and_the_solution_open_with_unsaved_edits_keep_them_through_add_reference_and_new_solution_folder_with_no_question());
-        Flow.StepApart<SolutionViewTests>("Add refused by its folder says why with no ide error and add class interface writes each of Riders kinds of type in its folders namespace", t => t.Add_refused_by_its_folder_says_why_with_no_ide_error_and_add_class_interface_writes_each_of_Riders_kinds_of_type_in_its_folders_namespace());
+        Flow.StepApart<SolutionViewTests>("Add refused by its folder says why with no ide error and Adds New makes each kind of type and a text file from a name alone", t => t.Add_refused_by_its_folder_says_why_with_no_ide_error_and_Adds_New_makes_each_kind_of_type_and_a_text_file_from_a_name_alone());
         Flow.StepApart<SolutionViewTests>("the menus show their actions keys compare shows two files differences and open in terminal starts a shell in the folder", t => t.The_menus_show_their_actions_keys_compare_shows_two_files_differences_and_open_in_terminal_starts_a_shell_in_the_folder());
         Flow.StepApart<SolutionViewTests>("a file added keeps the open dependencies open and opens no other projects", t => t.A_file_added_keeps_the_open_dependencies_open_and_opens_no_other_projects());
         Flow.StepApart<SolutionViewTests>("a solution filter opens its solution with its projects alone built and analysed and a change to it is followed", t => t.A_solution_filter_opens_its_solution_with_its_projects_alone_built_and_analysed_and_a_change_to_it_is_followed());
@@ -713,27 +713,40 @@ public sealed class SolutionViewTests : IDisposable
     }
 
     /// <summary>A file, folder or class its folder refuses is refused in the popup saying why, with no IDE error; once the
-    /// folder takes them, Add, Class/Interface... writes each kind of type in its folder's namespace.</summary>
-    private void Add_refused_by_its_folder_says_why_with_no_ide_error_and_add_class_interface_writes_each_of_Riders_kinds_of_type_in_its_folders_namespace()
+    /// folder takes them, Add's New, first in Add, offers a C# project's kinds of type and a text file, each asking a name
+    /// alone, writes each type in its folder's namespace and the text file by its name, its extension given or not.</summary>
+    private void Add_refused_by_its_folder_says_why_with_no_ide_error_and_Adds_New_makes_each_kind_of_type_and_a_text_file_from_a_name_alone()
     {
         string models = Path.Combine(folder, "Shop.App", "Models");
         MainWindow window = Open();
         ExplorerNode row = Show(window, models);
         using (Unwritable(models))
         {
-            foreach ((string item, string name, string made) in new[] { ("New File…", "Notes.txt", "Notes.txt"), ("New Folder…", "Drafts", "Drafts"), ("Class/Interface…", "Invoice", "Invoice.cs") })
+            foreach ((string[] item, string name, string made) in new[] { (new[] { "New File…" }, "Notes.txt", "Notes.txt"), (["New Folder…"], "Drafts", "Drafts"), (["New", "Class"], "Invoice", "Invoice.cs") })
             {
-                Ui.ChooseFromRowMenu(window, row, "Add", item);
+                Ui.ChooseFromRowMenu(window, row, ["Add", .. item]);
                 NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
                 window.KeyTextInput(name);
                 Ui.Press(window, "ENTER");
                 Assert.True(window.IsPopupOpen && popup.Problem == $"{made} could not be made: access denied",
-                    $"{item} in a folder that refuses it {(window.IsPopupOpen ? $"said '{popup.Problem}'" : "closed its popup")}, not why {made} was not made");
+                    $"{string.Join(" › ", item)} in a folder that refuses it {(window.IsPopupOpen ? $"said '{popup.Problem}'" : "closed its popup")}, not why {made} was not made");
                 Assert.False(Path.Exists(Path.Combine(models, made)), $"{made} was made in a folder that refuses it");
                 Ui.Press(window, "ESCAPE");
             }
         }
         Assert.Empty(IdeErrors.Errors);
+
+        Ui.RightClick(Ui.Row(window.ExplorerView, Show(window, models)));
+        ContextMenu menu = window.ExplorerView.OpenMenu ?? throw new Xunit.Sdk.XunitException("A right-click on Models opened no menu");
+        MenuItem add = menu.Items.OfType<MenuItem>().Single(i => (string?)i.Header == "Add");
+        string[] adds = [.. add.Items.OfType<Control>().Select(Shown)];
+        string[] kinds = [.. add.Items.OfType<MenuItem>().First().Items.OfType<Control>().Select(Shown)];
+        menu.Close();
+        Ui.Settle();
+        Assert.True(adds.Take(4).SequenceEqual(["New", "New File…", "New Folder…", "New Item…"]) && !adds.Contains("Class/Interface…"),
+            $"A C# project's folder's Add is [{string.Join(", ", adds)}], not New first, then New File, New Folder and New Item");
+        Assert.True(kinds.SequenceEqual(["Class", "Interface", "Record", "Struct", "Enum", "—", "Text File"]),
+            $"A C# library's folder's Add › New offers [{string.Join(", ", kinds)}], not its kinds of type, then a text file");
 
         string[] declarations =
         [
@@ -746,23 +759,31 @@ public sealed class SolutionViewTests : IDisposable
         string[] names = ["Invoice", "IInvoice", "InvoiceLine", "Money", "Status"];
         for (int kind = 0; kind < names.Length; kind++)
         {
-            Ui.ChooseFromRowMenu(window, Show(window, models), "Add", "Class/Interface…");
+            Ui.ChooseFromRowMenu(window, Show(window, models), "Add", "New", MainWindow.TypeKinds[kind]);
             NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
-            Assert.Equal("Class", popup.Kind);
-            for (int down = 0; down < kind; down++)
-            {
-                Ui.Press(window, "DOWN");
-            }
-            Assert.Equal(MainWindow.TypeKinds[kind], popup.Kind);
+            Assert.Null(popup.Kind);
             window.KeyTextInput(names[kind]);
             Ui.Press(window, "ENTER");
-            Assert.False(window.IsPopupOpen, $"The {popup.Kind} {names[kind]} was refused: {popup.Problem}");
+            Assert.False(window.IsPopupOpen, $"The {MainWindow.TypeKinds[kind]} {names[kind]} was refused: {popup.Problem}");
             string written = Path.Combine(models, names[kind] + ".cs");
             Assert.Equal($"namespace Shop.App.Models;\n\n{declarations[kind]}", File.ReadAllText(written));
             Assert.Equal(written, window.EditorArea.Active?.Path);
         }
         Assert.Equal(["Class", "Interface", "Record", "Struct", "Enum"], MainWindow.TypeKinds);
+        foreach ((string name, string made) in new[] { ("Notes", "Notes.txt"), ("Drafts/Plan.txt", "Drafts/Plan.txt") })
+        {
+            Ui.ChooseFromRowMenu(window, Show(window, models), "Add", "New", "Text File");
+            NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
+            window.KeyTextInput(name);
+            Ui.Press(window, "ENTER");
+            Assert.False(window.IsPopupOpen, $"The text file {name} was refused: {popup.Problem}");
+            string written = Path.Combine(models, made.Replace('/', Path.DirectorySeparatorChar));
+            Assert.True(File.Exists(written) && File.ReadAllText(written).Length == 0, $"Add › New › Text File named {name} did not make an empty {made}");
+            Assert.Equal(written, window.EditorArea.Active?.Path);
+        }
         window.Close();
+
+        static string Shown(Control item) => item is MenuItem named ? (string)named.Header! : "—";
     }
 
     /// <summary>A folder nothing can be made in while this is held: read-only for its owner on macOS and Linux, and on
