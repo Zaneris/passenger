@@ -37,6 +37,7 @@ public sealed class ToolWindowServesTests
         [ToolWindowIds.Coverage] = ToolWindowServes.EveryFolder,
         [ToolWindowIds.Modules] = ToolWindowServes.EveryFolder,
         [ToolWindowIds.Database] = ToolWindowServes.EveryFolder,
+        [ToolWindowIds.Clones] = ToolWindowServes.EveryFolder,
         [ToolWindowIds.Endpoints] = ToolWindowServes.WebRequests,
         [ToolWindowIds.Requests] = ToolWindowServes.WebApps,
         [ToolWindowIds.LiveTree] = ToolWindowServes.InspectedApps,

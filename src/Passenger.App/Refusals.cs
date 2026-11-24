@@ -1113,6 +1113,15 @@ public static class Refusals
     /// <summary>Mark Object on a row whose value is no object (a number, a bool), which is copied as it goes.</summary>
     public const string NoObjectToMark = "The value is no object to mark: a number or a struct is copied as it goes";
 
+    /// <summary>Compare Clones Side by Side and Extract Method from Clones with no group of clones chosen in the Clones window.</summary>
+    public const string NoCloneChosen = "Choose a group of clones in the Clones window";
+
+    /// <summary>Compare with First Clone on a group's first clone.</summary>
+    public const string FirstClone = "This is the group's first clone";
+
+    /// <summary>Find Clones of Selection in a file that is not C#.</summary>
+    public const string NotCSharpStatements = "Find Clones of Selection compares C# statements, and the file is not C#";
+
     /// <summary>Copy Path on a module made as the program runs, or read from its memory alone.</summary>
     public const string ModuleUnplaced = "The module has no file: the program made it, or the debugger read it from its memory";
 

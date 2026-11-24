@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Passenger.App;
 using Passenger.App.CSharp;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
@@ -13,7 +14,8 @@ namespace Passenger.Tests;
 
 /// <summary>The refactorings that ask their options in a dialog, each through its own keys and its dialog's controls on a
 /// real project, computed by Passenger's extension in the real language server: Change Signature, Extract Interface,
-/// Move to Another File, Move to Namespace, Pull Members Up and Push Members Down; Undo takes each back whole.</summary>
+/// Move to Another File, Move to Namespace, Pull Members Up and Push Members Down; and the code clones the extension finds,
+/// compared side by side and made to share one method; Undo takes each back whole.</summary>
 public sealed class RefactoringDialogsTests
 {
     private const string Calc = "namespace Shop;\n\npublic static class Calc\n{\n    public static int Scale(int value, int factor, int unused) => value * factor;\n\n"
@@ -43,6 +45,28 @@ public sealed class RefactoringDialogsTests
     private const string Purse = "using System;\n\nnamespace Shop;\n\npublic static class Purse\n{\n    public static int Fill()\n    {\n        Func<int, string, Coin> mint = Coin.Mint;\n"
         + "        return Coin.Mint(1).Value + mint(2, \"silver\").Value;\n    }\n}\n";
 
+    /// <summary>Code clones: Total and Sum the same but for names and a literal, Header and Footer the same, Stamp and Mark
+    /// the same but for the date's method, which no one method can take.</summary>
+    private const string Ledger = "using System;\nusing System.Collections.Generic;\n\nnamespace Shop;\n\npublic static class Ledger\n{\n"
+        + "    public static int Total(int[] prices)\n    {\n        int total = 0;\n        foreach (int price in prices)\n        {\n            if (price > 100)\n"
+        + "            {\n                total += price * 9 / 10;\n            }\n            else\n            {\n                total += price;\n            }\n        }\n"
+        + "        Console.WriteLine($\"Total of {prices.Length}: {total}\");\n        return total;\n    }\n\n"
+        + "    public static void Header(List<string> lines)\n    {\n" + Notice + "    }\n\n"
+        + "    public static string Stamp(DateTime when)\n    {\n        string day = when.ToShortDateString();\n        string time = when.ToShortTimeString();\n"
+        + "        string zone = TimeZoneInfo.Local.StandardName;\n        int week = when.DayOfYear / 7 + 1;\n        return $\"{day} {time} ({zone}, week {week})\";\n    }\n}\n";
+
+    private const string Tally = "using System;\nusing System.Collections.Generic;\n\nnamespace Shop;\n\npublic static class Tally\n{\n"
+        + "    public static int Sum(int[] amounts)\n    {\n        int sum = 0;\n        foreach (int amount in amounts)\n        {\n            if (amount > 250)\n"
+        + "            {\n                sum += amount * 9 / 10;\n            }\n            else\n            {\n                sum += amount;\n            }\n        }\n"
+        + "        Console.WriteLine($\"Total of {amounts.Length}: {sum}\");\n        return sum;\n    }\n\n"
+        + "    public static void Footer(List<string> lines)\n    {\n" + Notice + "    }\n\n"
+        + "    public static string Mark(DateTime at)\n    {\n        string day = at.ToLongDateString();\n        string time = at.ToShortTimeString();\n"
+        + "        string zone = TimeZoneInfo.Local.StandardName;\n        int week = at.DayOfYear / 7 + 1;\n        return $\"{day} {time} ({zone}, week {week})\";\n    }\n}\n";
+
+    private const string Notice = "        lines.Add(\"Shop report\");\n        lines.Add(\"===========\");\n        lines.Add(DateTime.Today.ToShortDateString());\n"
+        + "        lines.Add(\"Thank you for your custom\");\n        lines.Add(\"Please pay within thirty days\");\n        lines.Add(\"Goods sold are not returned\");\n"
+        + "        lines.Add(\"Prices include tax\");\n";
+
     private string folder = string.Empty;
 
     /// <summary>Every dialog's refactoring made in one window on one project, each through its own keys or menu item and
@@ -55,7 +79,8 @@ public sealed class RefactoringDialogsTests
         folder = PathNames.Canonical(TestFolders.Create("refactorings-"));
         File.WriteAllText(PathOf("Shop.csproj"), TestProjects.Library("<Nullable>enable</Nullable>"));
         (string Name, string Text)[] files = [("Calc.cs", Calc), ("Till.cs", Till), ("Order.cs", Order), ("OrderBook.cs", OrderBook),
-            ("Report.cs", Report), ("Shapes.cs", Shapes), ("Animal.cs", Animal), ("Dog.cs", Dog), ("Cat.cs", Cat), ("Coins.cs", Coins), ("Purse.cs", Purse)];
+            ("Report.cs", Report), ("Shapes.cs", Shapes), ("Animal.cs", Animal), ("Dog.cs", Dog), ("Cat.cs", Cat), ("Coins.cs", Coins), ("Purse.cs", Purse),
+            ("Ledger.cs", Ledger), ("Tally.cs", Tally)];
         foreach ((string name, string text) in files)
         {
             File.WriteAllText(PathOf(name), text);
@@ -72,7 +97,81 @@ public sealed class RefactoringDialogsTests
         MoveToAnotherFile(window, asked);
         PushMembersDown(window, asked);
         PullMembersUp(window, asked);
+        CodeClones(window, asked);
         window.Close();
+    }
+
+    /// <summary>Find Code Clones lists each group of the solution's clones with how alike they are and where each lies; two
+    /// renamed clones compare side by side; Extract Method from Clones makes them one method, the literal they differ in its
+    /// parameter, every clone called in its place as one command Undo takes back whole; a group whose clones call different
+    /// methods is refused, saying so; and Find Clones of Selection finds the statements chosen elsewhere.</summary>
+    private void CodeClones(MainWindow window, List<(string Title, string Text)> asked)
+    {
+        asked.Clear();
+        window.OpenFile(PathOf("Ledger.cs"));
+        Assert.True(window.Perform(AppActions.FindClones), Ui.Said(window));
+        Ui.Settle();
+        Ui.WaitFor(() => window.ClonesWindow.Found is not null, () => $"the clones to be found, where the status bar says {window.Status}");
+        Assert.StartsWith("3 groups of code clones in the solution (", window.Status, StringComparison.Ordinal);
+        IReadOnlyList<CloneSet> sets = window.ClonesWindow.Found!.Sets;
+        Assert.Equal("Renamed, 79% alike: Ledger.cs:10–23 Ledger.Total, Tally.cs:10–23 Tally.Sum\nRenamed, 93% alike: Ledger.cs:39–43 Ledger.Stamp, Tally.cs:39–43 Tally.Mark\n"
+            + "Exact: Ledger.cs:28–34 Ledger.Header, Tally.cs:28–34 Tally.Footer",
+            string.Join("\n", sets.Select(s => $"{s.Kind}: {string.Join(", ", s.Clones.Select(c => $"{c.Shown(folder)} {c.Member}"))}")));
+        Assert.Equal(["Renamed, 79% alike", "Ledger.cs:10–23", "Tally.cs:10–23", "Renamed, 93% alike", "Exact"],
+            window.ClonesWindow.Rows.Select(r => r.Clone?.Shown(folder) ?? r.Set.Kind));
+
+        window.ClonesWindow.Choose(sets[0], sets[0].Clones[1]);
+        Assert.True(window.Perform(AppActions.CompareClones), Ui.Said(window));
+        Ui.Settle();
+        Passenger.App.Vcs.DiffView compared = OpenDiffs.ViewOf(OpenDiffs.Landed(window, "the clones side by side"));
+        Assert.StartsWith("        int total = 0;\n", compared.Left.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.StartsWith("        int sum = 0;\n", compared.Right.Document.Snapshot.ToString(), StringComparison.Ordinal);
+
+        window.ClonesWindow.Choose(sets[1]);
+        Ui.Settle();
+        Assert.Equal("The clones name different things: ToShortDateString at Ledger.cs:39, ToLongDateString at Tally.cs:39; one method can't take both",
+            window.Actions.WhyNot(AppActions.ExtractClones, window.Actions.Context()));
+
+        window.ClonesWindow.Choose(sets[0]);
+        Ui.Settle();
+        OpenDocument ledger = window.EditorArea.Documents.First(d => d.Name == "Ledger.cs");
+        int version = ledger.Text.Version;
+        Assert.True(window.Perform(AppActions.ExtractClones), Ui.Said(window));
+        Ui.Settle();
+        Ui.WaitFor(() => ledger.Text.Version != version, () => $"the clones to be extracted, where the status bar says {window.Status}");
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Assert.Same(ledger.Text, editor.Document);
+        Assert.Equal("NewMethod", window.Assist.Renaming);
+        Ui.Press(window, "ESCAPE");
+        string body = "        int total = 0;\n        foreach (int price in prices)\n        {\n            if (price > 100)\n            {\n                total += price * 9 / 10;\n"
+            + "            }\n            else\n            {\n                total += price;\n            }\n        }\n        Console.WriteLine($\"Total of {prices.Length}: {total}\");\n"
+            + "        return total;\n";
+        Assert.Equal(Ledger.Replace(body, "        return NewMethod(prices, 100);\n    }\n\n    internal static int NewMethod(int[] prices, int value)\n    {\n"
+            + body.Replace("price > 100", "price > value", StringComparison.Ordinal), StringComparison.Ordinal), editor.Document.Snapshot.ToString());
+        int sumFrom = Tally.IndexOf("        int sum = 0;", StringComparison.Ordinal);
+        int sumTo = Tally.IndexOf("        return sum;\n", StringComparison.Ordinal) + "        return sum;\n".Length;
+        Assert.Equal(Tally[..sumFrom] + "        return Ledger.NewMethod(amounts, 250);\n" + Tally[sumTo..], File.ReadAllText(PathOf("Tally.cs")));
+        Assert.StartsWith("Extracted a method from 2 clones in 2 files", window.Status, StringComparison.Ordinal);
+        Assert.Equal(["Renamed, 93% alike", "Exact"], window.ClonesWindow.Rows.Where(r => r.Clone is null).Select(r => r.Set.Kind));
+
+        editor.Focus();
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal([("Undo", "Undo Extract Method from Clones? It changes Ledger.cs and Tally.cs.")], asked);
+        Assert.Equal(Ledger, editor.Document.Snapshot.ToString());
+        Assert.Equal(Tally, File.ReadAllText(PathOf("Tally.cs")));
+
+        window.OpenFile(PathOf("Tally.cs"));
+        Ui.Settle();
+        string tally = window.EditorArea.CodeEditor.Document.Snapshot.ToString();
+        int from = tally.IndexOf("        lines.Add(\"Shop", StringComparison.Ordinal);
+        window.EditorArea.CodeEditor.Selections = SelectionSet.Single(new Selection(from, from + Notice.Length));
+        Assert.True(window.Perform(AppActions.FindClonesOfSelection), Ui.Said(window));
+        Ui.Settle();
+        Ui.WaitFor(() => window.ClonesWindow.Found?.Searched.EndsWith("Tally.cs", StringComparison.Ordinal) == true,
+            () => $"the selection's clones to be found, where the status bar says {window.Status}");
+        Assert.Equal(["Exact: Tally.cs:28–34, Ledger.cs:28–34"],
+            window.ClonesWindow.Found!.Sets.Select(s => $"{s.Kind}: {string.Join(", ", s.Clones.Select(c => c.Shown(folder)))}"));
     }
 
     /// <summary>Change Signature adds, removes and reorders parameters, and every call passes its arguments in the new order,

@@ -61,6 +61,8 @@ public static class Handlers
     public const string EditorConfigKeys = "Passenger.Roslyn.Extension.EditorConfigKeys";
     public const string EditorConfigValues = "Passenger.Roslyn.Extension.EditorConfigValues";
     public const string Signposts = "Passenger.Roslyn.Extension.Signposts";
+    public const string CodeClones = "Passenger.Roslyn.Extension.CodeClones";
+    public const string ExtractClones = "Passenger.Roslyn.Extension.ExtractClones";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -69,7 +71,7 @@ public static class Handlers
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, SymbolContainers, WrittenPlaces,
         ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames, GeneratedMembers,
         MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover,
-        CompletionCall, StepBindings, EditorConfigKeys, EditorConfigValues, Signposts,
+        CompletionCall, StepBindings, EditorConfigKeys, EditorConfigValues, Signposts, CodeClones, ExtractClones,
     ];
 }
 
@@ -401,6 +403,47 @@ public sealed record SignpostsFound([property: JsonPropertyName("counts")] IRead
 /// or derive from it; null where it was not asked, or nothing may. Asked for, the places its usages count, as many as they.</summary>
 public sealed record SignpostCount([property: JsonPropertyName("usages")] int? Usages, [property: JsonPropertyName("inheriting")] int? Inheriting,
     [property: JsonPropertyName("places")] IReadOnlyList<UriSpan>? Places = null);
+
+/// <summary>Code clones asked for, among the documents under <paramref name="Within"/>'s paths (files, folders or project
+/// files; every C# document where it is empty): runs of whole statements of at least <paramref name="Tokens"/> tokens that
+/// are the same, or the same but for names and literals. With a <paramref name="Selection"/>, the runs alike to the
+/// statements it covers, of any size.</summary>
+public sealed record ClonesAsked(
+    [property: JsonPropertyName("within")] IReadOnlyList<string> Within,
+    [property: JsonPropertyName("tokens")] int Tokens,
+    [property: JsonPropertyName("selection")] CloneRun? Selection = null);
+
+/// <summary>The groups of clones found, the largest first, how many documents were read, and why none could be looked for
+/// (a selection covering no statement), null where they were.</summary>
+public sealed record ClonesFound(
+    [property: JsonPropertyName("groups")] IReadOnlyList<CloneGroup> Groups,
+    [property: JsonPropertyName("documents")] int Documents,
+    [property: JsonPropertyName("problem")] string? Problem = null);
+
+/// <summary>Runs of statements alike: the same text (<paramref name="Exact"/>, trivia aside) or the same but for names and
+/// literals, the share of their tokens written alike in every one of them (<paramref name="Alike"/>, a percent), and how many
+/// statements and tokens each holds. A selection's group has the selection first.</summary>
+public sealed record CloneGroup(
+    [property: JsonPropertyName("exact")] bool Exact,
+    [property: JsonPropertyName("alike")] int Alike,
+    [property: JsonPropertyName("statements")] int Statements,
+    [property: JsonPropertyName("tokens")] int Tokens,
+    [property: JsonPropertyName("clones")] IReadOnlyList<CloneRun> Clones);
+
+/// <summary>A run of statements in a file, from its first statement's start to its last's end, and the member it is in
+/// ("Order.Add"); a selection to check has none.</summary>
+public sealed record CloneRun(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("start")] Place Start,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("member")] string? Member = null);
+
+/// <summary>A group's clones to share one method: one Extract Method over the first, every other replaced by a call of it,
+/// named <paramref name="Name"/>; with <paramref name="Apply"/> false only whether it can be, its problem said where not.</summary>
+public sealed record ClonesExtraction(
+    [property: JsonPropertyName("clones")] IReadOnlyList<CloneRun> Clones,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("apply")] bool Apply);
 
 /// <summary>Where the caret is: what a describing message asks about.</summary>
 public sealed record Caret([property: JsonPropertyName("at")] Place At);

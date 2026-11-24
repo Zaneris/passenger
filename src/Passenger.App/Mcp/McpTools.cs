@@ -17,6 +17,7 @@ public static class McpTools
     public const string ApplyCodeAction = "apply_code_action";
     public const string BreakpointSet = "breakpoint_set";
     public const string Build = "build";
+    public const string Clones = "clones";
     public const string CodeActions = "code_actions";
     public const string ContainerAction = "container_action";
     public const string ContainerExec = "container_exec";

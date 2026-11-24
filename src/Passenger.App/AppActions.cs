@@ -569,6 +569,13 @@ public static class AppActions
 
     // The Modules window, which Rider's keymaps give no keys.
     public const string ShowModules = "app.showModules";
+
+    // Code clones, which Rider's keymaps give no keys: found across the solution or for the selection, two compared side by
+    // side, and a group made to share one method.
+    public const string FindClones = "app.code.findClones";
+    public const string FindClonesOfSelection = "app.code.findClonesOfSelection";
+    public const string CompareClones = "app.clones.compare";
+    public const string ExtractClones = "app.clones.extractMethod";
     public const string ShowStructure = "app.showStructure";
 
     // Continuous testing, turned on and off for the folder's repository.

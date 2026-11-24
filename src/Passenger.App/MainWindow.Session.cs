@@ -325,6 +325,7 @@ public partial class MainWindow
         BindContinuous(next);
         BindDebug(next);
         BindModules(next);
+        BindClones(next);
         profiler?.Rebind();
         liveTree?.Bind(next);
         bindingValues?.Bind(next);

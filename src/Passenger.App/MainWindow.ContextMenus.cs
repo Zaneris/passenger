@@ -45,7 +45,7 @@ public partial class MainWindow
         void Add(params MenuEntry[] entries) => items.AddRange(entries.Select(entry => FlyoutEntry(entry, context)));
         MenuEntry separator = new(null);
         Add(Item(A.QuickFix), separator, Item(E.Cut), Item(E.Copy), Item(E.Paste), separator,
-            Item(A.FindUsages),
+            Item(A.FindUsages), Item(A.FindClonesOfSelection),
             Sub("Refactor", Item(A.RefactorThis), separator, Item(A.Rename), Item(A.ExtractMethod), Item(A.IntroduceVariable), Item(A.Inline)),
             Sub("Go To", Item(A.GoToDeclaration), Item(A.DerivedSymbols), Item(A.GoToImplementation), Item(A.GoToTypeDeclaration), Item(A.BaseSymbols),
                 separator, Item(A.CallHierarchy), Item(A.TypeHierarchy)),

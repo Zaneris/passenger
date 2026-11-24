@@ -130,6 +130,7 @@ public partial class MainWindow : IdeWindow
         AddPlaces();
         AddSwitcher();
         AddHierarchy();
+        AddClones();
         AddFileOperations();
         AcceptDrops(this);
         AddFileProperties();

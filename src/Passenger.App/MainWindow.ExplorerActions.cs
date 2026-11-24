@@ -462,7 +462,7 @@ public partial class MainWindow
         // What is chosen laid out, cleaned up or its usings optimized, every file in it as its own command does it.
         if (holds || solutionFolder || node.IsSolutionItem)
         {
-            entries.Add(Sub("Code", [Item(A.Reformat), Item(A.CodeCleanup), Item(A.OptimizeUsings)]));
+            entries.Add(Sub("Code", [Item(A.Reformat), Item(A.CodeCleanup), Item(A.OptimizeUsings), separator, Item(A.FindClones)]));
         }
         // A solution folder is in no folder on disk, so it has no path to copy or show.
         if (!solutionFolder)
