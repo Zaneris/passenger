@@ -5,8 +5,9 @@ namespace Passenger.App.ToolWindows;
 
 /// <summary>Two panes, a tool window's or an editor's and its file's own (a preview): side by side, and in a place narrow
 /// and tall, as a side dock or the editors beside it are, the first over the second, where side by side would leave
-/// neither room for its words. Each way keeps its own shares, which its divider moves. With no second pane the first
-/// takes it all, no divider of its own standing in the tree.</summary>
+/// neither room for its words; or either way whatever the shape, as its user sets them (<see cref="SetPresentation"/>).
+/// Each way keeps its own shares, which its divider moves. With no second pane the first takes it all, no divider of its
+/// own standing in the tree; the second may stand alone too, the first hidden.</summary>
 public sealed class PaneSplit : Grid
 {
     private readonly Control first;
@@ -16,6 +17,15 @@ public sealed class PaneSplit : Grid
     private readonly HairlineDivider beside = new(GridResizeDirection.Columns) { [ColumnProperty] = 1, [RowSpanProperty] = 3 };
     private readonly HairlineDivider under = new(GridResizeDirection.Rows) { [RowProperty] = 1, [ColumnSpanProperty] = 3, IsVisible = false };
     private bool stacked;
+
+    /// <summary>One over the other (true) or side by side (false) whatever the place's shape; null as the shape stands them.</summary>
+    private bool? stackedOverride;
+
+    /// <summary>Whether the second pane, while there is one, stands alone over every cell, the first hidden.</summary>
+    private bool secondOnly;
+
+    /// <summary>Whether the first pane is hidden by <see cref="secondOnly"/>.</summary>
+    private bool firstHidden;
 
     /// <param name="first">The left pane, or the upper.</param>
     /// <param name="second">The right pane, or the lower; null for none yet.</param>
@@ -73,10 +83,11 @@ public sealed class PaneSplit : Grid
     /// <summary>The divider between the panes as they stand.</summary>
     public HairlineDivider Divider => stacked ? under : beside;
 
-    private bool? stackedOverride;
-    private bool secondOnly;
+    /// <summary>The panes turned, one over the other or side by side.</summary>
     internal event EventHandler? DirectionChanged;
 
+    /// <summary>The panes stand as <paramref name="stack"/> says whatever the place's shape (null: as the shape stands
+    /// them), and with <paramref name="onlySecond"/> the second alone while there is one.</summary>
     internal void SetPresentation(bool? stack, bool onlySecond)
     {
         if (stackedOverride == stack && secondOnly == onlySecond)
@@ -85,10 +96,13 @@ public sealed class PaneSplit : Grid
         }
         stackedOverride = stack;
         secondOnly = onlySecond;
-        first.IsVisible = !onlySecond;
         Lay();
         InvalidateMeasure();
     }
+
+    /// <summary>The way to stand the panes turned from how they stand: one over the other (true) or side by side (false),
+    /// null where that is how the place's shape stands them.</summary>
+    internal bool? Turned => !stacked == ToolLayout.Stacks(Bounds.Width, Bounds.Height) ? null : !stacked;
 
     protected override Size MeasureOverride(Size availableSize)
     {
@@ -101,15 +115,22 @@ public sealed class PaneSplit : Grid
         return base.MeasureOverride(availableSize);
     }
 
-    /// <summary>Each pane in its place and the divider between them as they stand, or the first alone over every cell.</summary>
+    /// <summary>Each pane in its place and the divider between them as they stand, or either alone over every cell.</summary>
     private void Lay()
     {
-        beside.IsVisible = second is not null && !secondOnly && !stacked;
-        under.IsVisible = second is not null && !secondOnly && stacked;
+        bool alone = secondOnly && second is not null;
+        beside.IsVisible = second is not null && !alone && !stacked;
+        under.IsVisible = second is not null && !alone && stacked;
+        if (alone != firstHidden)
+        {
+            // Only this split's own hiding is undone, never the first pane's own (a log's branches turned off).
+            firstHidden = alone;
+            first.IsVisible = !alone;
+        }
         Place(first, 0, second is null);
         if (second is not null)
         {
-            Place(second, 2, alone: secondOnly);
+            Place(second, 2, alone);
         }
     }
 

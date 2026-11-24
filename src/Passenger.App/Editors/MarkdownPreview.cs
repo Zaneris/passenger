@@ -18,7 +18,8 @@ namespace Passenger.App.Editors;
 /// <see cref="Markdown"/> as a page of the blocks in sight (<see cref="MarkdownBlocks"/>), each file's page kept while its
 /// tab is open. It follows the text as typing pauses, read off the window's thread, keeping the control of every block
 /// whose lines did not change. It follows the editor's scroll, the block at the editor's top line at its own top, and
-/// once the person scrolls it the editor follows it, the line at its top the editor's top line. Its web links open through
+/// once the person scrolls it the editor follows it, the line at its top the editor's top line; shown alone in the
+/// editor's place, it goes where a navigation takes the editor behind it. Its web links open through
 /// the window's browser, a link to a file beside it opens that file, a <c>#heading</c> scrolls to the heading, and it
 /// draws the images of files inside the open folder alone, the rest as their words.</summary>
 public sealed class MarkdownPreview : ScrollViewer
@@ -293,6 +294,10 @@ public sealed class MarkdownPreview : ScrollViewer
     /// <summary>The editor's top line as the preview leading last left it.</summary>
     private int steered;
 
+    /// <summary>The line a preview shown alone was taken to (<see cref="Reveal"/>), kept at its top as blocks come and grow
+    /// until the person moves it or the editor shows again.</summary>
+    private int? alone;
+
     private bool steering;
     private bool leading;
 
@@ -377,15 +382,37 @@ public sealed class MarkdownPreview : ScrollViewer
         }, DispatcherPriority.Background);
     }
 
-    /// <summary>The preview scrolled so the block at the editor's top line stands at its top, a long block's part as far
-    /// down it as the line is, unless the preview leads; whether it moved.</summary>
+    /// <summary>Shown alone in its editor's place, the preview goes to a place the editor behind it was taken to
+    /// (Structure, Go to Line, a usage), the block there at its top once laid out, and follows the editor from there.</summary>
+    internal void Reveal(int offset)
+    {
+        if (document is null || editor.Document != document.Text)
+        {
+            return;
+        }
+        leads = false;
+        alone = document.Text.Snapshot.GetLineFromOffset(offset);
+        FollowLaidOut();
+    }
+
+    /// <summary>The editor shown again beside the preview that led it while alone: it comes to the preview's top line once
+    /// laid out.</summary>
+    internal void EditorShown() => Dispatcher.UIThread.Post(LeadEditor, DispatcherPriority.Background);
+
+    /// <summary>The preview scrolled so the block at the editor's top line (shown alone, the line it was taken to) stands at
+    /// its top, a long block's part as far down it as the line is, unless the preview leads; whether it moved.</summary>
     private bool FollowEditor()
     {
-        if (leads || document is null || page is not { } shown || editor.Document != document.Text || shown.Entries.Count == 0 || !editor.IsEffectivelyVisible)
+        if (editor.IsEffectivelyVisible)
+        {
+            alone = null;
+        }
+        if (leads || document is null || page is not { } shown || editor.Document != document.Text || shown.Entries.Count == 0
+            || (!editor.IsEffectivelyVisible && alone is null))
         {
             return false;
         }
-        int top = editor.LinesShown.First;
+        int top = alone ?? editor.LinesShown.First;
         int found = top == 0 ? -1 : shown.IndexAtLine(top);
         if (found < 0)
         {

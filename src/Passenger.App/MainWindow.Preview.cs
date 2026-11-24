@@ -56,7 +56,7 @@ public partial class MainWindow
             Words = ["preview", "build", "framework"],
         });
         Editors.HasXamlPreview = document => session.Xaml.For(document) is not null;
-        Editors.PreviewToggleClicked += (_, group) => Request(group.PreviewAction ?? A.XamlPreview);
+        Editors.ActionAsked += (_, action) => Request(action);
         Editors.ActiveChanged += (_, _) => FollowPreviews();
         Editors.Closed += (_, document) => EndPreview(document);
         Editors.ForEachEditor(editor => editor.SelectionChanged += (_, _) => OutlineAtCaret(editor));

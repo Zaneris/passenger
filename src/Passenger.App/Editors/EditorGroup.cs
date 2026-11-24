@@ -57,10 +57,20 @@ public sealed class EditorGroup : DockPanel
     private readonly List<EditorTab> shownOrder = [];
     private readonly Dictionary<OpenDocument, (SelectionSet Selections, Vector Scroll)> views = [];
     private readonly Border tabBar;
+
+    /// <summary>A Markdown file's layouts on the tab strip, shown while the group shows one.</summary>
     private readonly StackPanel markdownModes;
     private readonly ToggleButton markdownEditor;
     private readonly ToggleButton markdownSplit;
     private readonly ToggleButton markdownOnly;
+
+    /// <summary>Editor and Preview's mark, turned a quarter while the preview stands under the editor.</summary>
+    private readonly PathIcon splitMark = new();
+
+    private const string EditorOnly = "Editor Only";
+    private const string EditorAndPreview = "Editor and Preview";
+    private const string PreviewOnly = "Preview Only";
+
     private readonly ItemsControl strip;
     private readonly ScrollViewer stripView;
 
@@ -110,13 +120,14 @@ public sealed class EditorGroup : DockPanel
         PreviewToggle[DockProperty] = Dock.Right;
         PreviewToggle.Click += (_, _) =>
         {
-            area.PreviewToggled(this);
+            area.Ask(this, PreviewAction ?? AppActions.XamlPreview);
             // It says what is in force once its action ran, or was refused.
             FollowPreviewToggle();
         };
-        markdownEditor = MarkdownButton(MarkdownView.Editor, IconKeys.DocumentText, "Editor Only");
-        markdownSplit = MarkdownButton(MarkdownView.Split, IconKeys.Diff, "Editor and Preview (click again to change split direction)");
-        markdownOnly = MarkdownButton(MarkdownView.Preview, IconKeys.Preview, "Preview Only");
+        splitMark.Bind(PathIcon.DataProperty, splitMark.GetResourceObservable(IconKeys.Diff));
+        markdownEditor = MarkdownButton(ToolButtons.Toggle(IconKeys.DocumentText, EditorOnly), AppActions.MarkdownEditorOnly);
+        markdownSplit = MarkdownButton(ToolButtons.Give(new ToggleButton(), splitMark, EditorAndPreview), AppActions.MarkdownEditorAndPreview);
+        markdownOnly = MarkdownButton(ToolButtons.Toggle(IconKeys.Preview, PreviewOnly), AppActions.MarkdownPreviewOnly);
         markdownModes = new StackPanel
         {
             Orientation = Orientation.Horizontal, IsVisible = false, [DockProperty] = Dock.Right,
@@ -165,7 +176,11 @@ public sealed class EditorGroup : DockPanel
         editorPlace = new Panel { Children = { Editor } };
         // The picture over the editor's place, whatever it holds, in a panel of their own; never over the pane beside it.
         body = new ToolWindows.PaneSplit(new Panel { Children = { editorPlace, new ThemeBackdrop(BackgroundPlaces.Editor) } }, null, "*,1,*");
-        body.DirectionChanged += (_, _) => ((PathIcon)markdownSplit.Content!).RenderTransform = body.IsStacked ? new RotateTransform(90) : null;
+        body.DirectionChanged += (_, _) =>
+        {
+            splitMark.RenderTransform = body.IsStacked ? new RotateTransform(90) : null;
+            FollowSplitWords();
+        };
         Children.Add(body);
         // The group the person works in is the area's active one; while a table lies over the editor, the table takes its focus.
         Editor.GotFocus += (_, _) =>
@@ -184,6 +199,10 @@ public sealed class EditorGroup : DockPanel
         {
             tables?.Reveal(offset);
             godotPage?.Reveal();
+            if (previewAlone)
+            {
+                Markdown?.Reveal(offset);
+            }
         };
         Editor.SelectionChanged += (_, _) =>
         {
@@ -195,21 +214,27 @@ public sealed class EditorGroup : DockPanel
         AddHandler(PointerPressedEvent, (_, _) => area.SetActiveGroup(this), RoutingStrategies.Tunnel, handledEventsToo: true);
     }
 
-    private ToggleButton MarkdownButton(MarkdownView view, string icon, string tip)
+    /// <summary>A Markdown layout's button on the tab strip, asking for its action as its keys do, pressed while its layout
+    /// is in force.</summary>
+    private ToggleButton MarkdownButton(ToggleButton button, string action)
     {
-        ToggleButton button = ToolButtons.Toggle(icon, tip);
         button.Classes.Add(StyleClasses.TabStripTool);
+        ActionTips.Set(button, action, AutomationProperties.GetName(button) ?? action);
         button.Click += (_, _) =>
         {
-            area.SetActiveGroup(this);
-            MarkdownLayout layout = area.MarkdownLayout;
-            area.MarkdownLayout = view == MarkdownView.Split && layout.View == view
-                ? layout with { Stacked = !SideUnder } : layout with { View = view };
-            button.IsChecked = true;
-            FocusShown();
+            area.Ask(this, action);
+            FollowPreviewToggle();
         };
         return button;
     }
+
+    /// <summary>Editor and Preview's words: what a press does, which with both shown is to turn them.</summary>
+    private void FollowSplitWords() => ActionTips.Set(markdownSplit, AppActions.MarkdownEditorAndPreview,
+        area.MarkdownLayout.View != MarkdownView.Split ? EditorAndPreview : SideUnder ? "Preview Beside the Editor" : "Preview Under the Editor");
+
+    /// <summary>The way Editor and Preview pressed again stands the preview: under the editor (true) or beside it (false),
+    /// null as the group's shape stands it.</summary>
+    internal bool? TurnedSplit => body.Turned;
 
     /// <summary>Whether this is the group the person works in; the others mark their file quieter.</summary>
     public bool IsCurrent
@@ -255,6 +280,9 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The group's own preview of its Markdown file, made as it first shows one.</summary>
     private MarkdownPreview? markdown;
 
+    /// <summary>Whether the Markdown file's preview stands alone in its editor's place.</summary>
+    private bool previewAlone;
+
     /// <summary>The group's own picture of its SVG file, made as it first shows one.</summary>
     private SvgPreview? svg;
 
@@ -286,6 +314,10 @@ public sealed class EditorGroup : DockPanel
             markdown ??= new MarkdownPreview(Editor, area);
             Side = markdown;
             markdown.Show(document);
+            if (previewAlone && !previewOnly)
+            {
+                markdown.EditorShown();
+            }
         }
         else
         {
@@ -299,6 +331,7 @@ public sealed class EditorGroup : DockPanel
                 markdown?.Forget();
             }
         }
+        previewAlone = previewOnly;
         if (moveKeys)
         {
             FocusShown();
@@ -336,14 +369,18 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The action the strip's preview toggle runs for the file shown, null while it shows none.</summary>
     public string? PreviewAction { get; private set; }
 
-    /// <summary>The active file's layout buttons on the tab strip, with its current choice pressed.</summary>
+    /// <summary>The strip's preview toggle shows for an SVG, an HTML file or a XAML file the previewer draws, pressed while
+    /// that kind's preview is on, its tip naming the action it runs; a Markdown file's layouts show for one, the layout in
+    /// force pressed.</summary>
     internal void FollowPreviewToggle()
     {
         OpenDocument? document = active is { } shown && InEditor(shown.Document) ? shown.Document : null;
+        MarkdownView view = area.MarkdownLayout.View;
         markdownModes.IsVisible = document?.Language == Languages.Language.Markdown;
-        markdownEditor.IsChecked = area.MarkdownLayout.View == MarkdownView.Editor;
-        markdownSplit.IsChecked = area.MarkdownLayout.View == MarkdownView.Split;
-        markdownOnly.IsChecked = area.MarkdownLayout.View == MarkdownView.Preview;
+        markdownEditor.IsChecked = view == MarkdownView.Editor;
+        markdownSplit.IsChecked = view == MarkdownView.Split;
+        markdownOnly.IsChecked = view == MarkdownView.Preview;
+        FollowSplitWords();
         (string Action, string Title, bool On)? toggle = document is null ? null
             : EditorArea.IsSvg(document) ? (AppActions.SvgPreview, "SVG Preview", area.ShowsSvgPreview)
             : document.Language == Languages.Language.Html ? (AppActions.HtmlPreview, "HTML Preview", area.ShowsHtmlPreview)
@@ -567,9 +604,11 @@ public sealed class EditorGroup : DockPanel
         {
             return;
         }
-        bool keys = preview?.IsKeyboardFocusWithin == true || Markdown?.IsKeyboardFocusWithin == true;
+        bool keys = preview?.IsKeyboardFocusWithin == true;
+        MarkdownPreview? page = Markdown is { IsKeyboardFocusWithin: true } held ? held : null;
         ShowIn(document);
-        if (keys)
+        // A Markdown preview that had the keys keeps them while it stays, showing the next file.
+        if (keys || page is { IsKeyboardFocusWithin: false })
         {
             FocusShown();
         }

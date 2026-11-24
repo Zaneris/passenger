@@ -587,6 +587,12 @@ public static class AppActions
     // VSCode keymaps give it Ctrl+K, V (Cmd+K, V on macOS).
     public const string MarkdownPreview = "app.editor.markdownPreview";
 
+    // A Markdown file's layouts, on its tab strip: IntelliJ's TextEditorWithPreview.Layout actions. Only the VSCode keymaps
+    // give any keys, Preview Only's Ctrl+Shift+V (Cmd+Shift+V on macOS); Editor and Preview's are the toggle's above.
+    public const string MarkdownEditorOnly = "app.editor.markdownEditorOnly";
+    public const string MarkdownEditorAndPreview = "app.editor.markdownEditorAndPreview";
+    public const string MarkdownPreviewOnly = "app.editor.markdownPreviewOnly";
+
     // An SVG file's picture beside its editor, under View and on the editor's tab strip: no keymap gives it keys.
     public const string SvgPreview = "app.editor.svgPreview";
 
@@ -1219,6 +1225,7 @@ public static class AppActions
                 .Bind(MoveToOppositeGroup, "meta control RIGHT")
                 .Bind(OpenInNewWindow, "meta K , O")
                 .Bind(MarkdownPreview, "meta K , V")
+                .Bind(MarkdownPreviewOnly, "meta shift V")
                 .Bind(ReopenClosedTab, "meta shift T")
                 .Bind(PinTab, "meta K , shift ENTER")
                 .Bind(CloseOtherTabs, "meta alt T", "meta K , U")
@@ -1339,6 +1346,7 @@ public static class AppActions
             .Bind(MoveToOppositeGroup, "control alt RIGHT")
             .Bind(OpenInNewWindow, "control K , O")
             .Bind(MarkdownPreview, "control K , V")
+            .Bind(MarkdownPreviewOnly, "control shift V")
             .Bind(ReopenClosedTab, "control shift T")
             .Bind(PinTab, "control K , shift ENTER")
             .Bind(CloseOtherTabs, "control K , U")

@@ -2,6 +2,7 @@ using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.LogicalTree;
@@ -14,6 +15,7 @@ using Passenger.App.Navigation;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Text;
 using SkiaSharp;
 
 namespace Passenger.Tests;
@@ -110,8 +112,8 @@ public sealed class MarkdownPreviewTests
         return encoded.ToArray();
     }
 
-    /// <summary>A README's blocks and links draw beside its editor and follow its typing, and text nested too deep ends
-    /// nothing.</summary>
+    /// <summary>A README's blocks and links draw beside its editor and follow its typing, text nested too deep ends
+    /// nothing, and its layouts show its editor, its preview or both.</summary>
     [AvaloniaFact]
     public void A_readme_draws_beside_its_editor_and_follows_it()
     {
@@ -120,6 +122,9 @@ public sealed class MarkdownPreviewTests
         OpenWindows.CloseAll();
         Flow.Step(nameof(A_file_nested_past_what_a_page_reads_shows_the_rest_as_words_and_ends_nothing),
             A_file_nested_past_what_a_page_reads_shows_the_rest_as_words_and_ends_nothing);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_READMEs_layouts_show_its_editor_its_preview_or_both_turn_the_split_and_open_as_last_left),
+            A_READMEs_layouts_show_its_editor_its_preview_or_both_turn_the_split_and_open_as_last_left);
     }
 
     /// <summary>A README's headings nest by level in Structure and lead to their lines, and a typing pause in a long
@@ -256,6 +261,90 @@ public sealed class MarkdownPreviewTests
             Assert.Contains(written, preview.Text, StringComparison.Ordinal);
         }
         window.Close();
+    }
+
+    /// <summary>The README's layouts on its tab strip: its editor alone, as the preview kept off before there were layouts
+    /// opens; both, Editor and Preview pressed again turning them and once more turning them back; its preview alone over
+    /// the group, the keys going with it, going where a navigation takes the editor behind it, which shows that place as
+    /// both come back; the next window opening on the layout left, the actions by their ids choosing as the buttons do; and
+    /// none of it offered for a C# file.</summary>
+    private void A_READMEs_layouts_show_its_editor_its_preview_or_both_turn_the_split_and_open_as_last_left()
+    {
+        (string folder, string readme) = Shop();
+        string state = TestFolders.Create("markdown-state-");
+        File.WriteAllText(Path.Combine(state, "previews.json"), """{"version":1,"markdown":false}""");
+        MainWindow window = Started(state, folder);
+        Assert.Null(window.OpenFile(readme));
+        Ui.Settle();
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        ToggleButton Layout(string action) => group.TabStrip.GetLogicalDescendants().OfType<ToggleButton>().Single(b => ActionTips.ActionOf(b) == action);
+        Assert.True(group.Markdown is null && Layout(AppActions.MarkdownEditorOnly).IsChecked == true,
+            "The preview kept off before there were layouts did not open as the README's editor alone");
+
+        Ui.Click(Layout(AppActions.MarkdownEditorAndPreview));
+        Shown(group);
+        bool under = group.SideUnder;
+        Ui.Click(Layout(AppActions.MarkdownEditorAndPreview));
+        Assert.True(group.SideUnder != under && Layout(AppActions.MarkdownEditorAndPreview).IsChecked == true,
+            $"Editor and Preview pressed again left the preview {(under ? "under" : "beside")} the editor");
+        string turnBack = under ? "Preview Under the Editor" : "Preview Beside the Editor";
+        Assert.True(ActionTips.Of(Layout(AppActions.MarkdownEditorAndPreview)) == turnBack,
+            $"With the split turned, Editor and Preview's tip says '{ActionTips.Of(Layout(AppActions.MarkdownEditorAndPreview))}', not '{turnBack}'");
+
+        group.Editor.Focus();
+        Ui.Click(Layout(AppActions.MarkdownPreviewOnly));
+        MarkdownPreview preview = Shown(group);
+        Control body = (Control)preview.Parent!;
+        Assert.True(!group.Editor.IsEffectivelyVisible && Math.Abs(preview.Bounds.Width - body.Bounds.Width) < 1 && preview.IsKeyboardFocusWithin,
+            $"Preview Only left the editor shown {group.Editor.IsEffectivelyVisible}, the preview {preview.Bounds.Width:0} wide of {body.Bounds.Width:0}, the keys in it {preview.IsKeyboardFocusWithin}");
+        CodeEditor editor = group.Editor;
+        int line = editor.Document.Snapshot.ToString().Split('\n').ToList().IndexOf("## Section 12");
+        window.NavigateTo(readme, new TextPosition(line, 0));
+        Ui.Settle();
+        Control twelve = preview.BlockAt(line) ?? throw new Xunit.Sdk.XunitException($"Gone to Section 12, the preview alone draws no block of line {line}");
+        Assert.True(Math.Abs(preview.Offset.Y - preview.TopOf(twelve)) < 1,
+            $"Gone to Section 12, the preview alone stands at {preview.Offset.Y:0}, not that heading's {preview.TopOf(twelve):0}");
+        Ui.Click(Layout(AppActions.MarkdownEditorAndPreview));
+        Assert.True(group.Editor.IsEffectivelyVisible && editor.LinesShown.First <= line && line <= editor.LinesShown.Last,
+            $"Back beside the preview, the editor shows lines {editor.LinesShown.First} to {editor.LinesShown.Last}, not Section 12's {line}");
+        Ui.Click(Layout(AppActions.MarkdownPreviewOnly));
+        window.Close();
+        Ui.Settle();
+
+        window = Started(state, folder);
+        Assert.Null(window.OpenFile(readme));
+        Ui.Settle();
+        group = window.EditorArea.ActiveGroup;
+        Assert.True(Layout(AppActions.MarkdownPreviewOnly).IsChecked == true && !group.Editor.IsEffectivelyVisible && Shown(group).IsEffectivelyVisible,
+            "The next window did not open the README as its preview alone, as the last was left");
+        Assert.True(window.Perform(AppActions.MarkdownEditorAndPreview), "Editor and Preview did not run by its id, as its keys run it");
+        Ui.Settle();
+        Assert.True(group.Editor.IsEffectivelyVisible && group.SideUnder != under && Layout(AppActions.MarkdownEditorAndPreview).IsChecked == true,
+            "The next window's Editor and Preview did not show both, turned as the last window left them");
+        Assert.True(window.Perform(AppActions.MarkdownEditorAndPreview));
+        Ui.Settle();
+        Assert.True(group.SideUnder == under, "Editor and Preview pressed once more did not turn the split back to as the group's shape stands it");
+        Shown(group).Focus();
+        Ui.Click(Layout(AppActions.MarkdownEditorOnly));
+        Assert.True(group.Markdown is null && group.Editor.IsKeyboardFocusWithin, "Editor Only left the preview shown, or the keys out of the editor");
+
+        Assert.Null(window.OpenFile(Path.Combine(folder, "Program.cs")));
+        Ui.Settle();
+        Assert.True(!Layout(AppActions.MarkdownPreviewOnly).IsEffectivelyVisible && !window.Perform(AppActions.MarkdownPreviewOnly),
+            "A C# file's tab strip offers the README's layouts, or Preview Only ran on it");
+        window.Close();
+    }
+
+    /// <summary>A window on the folder that keeps its layout and settings in <paramref name="state"/>, as the person's does.</summary>
+    private static MainWindow Started(string state, string folder)
+    {
+        MainWindow window = new() { Width = 1400, Height = 900, StateFolder = state, StartsLanguageServer = false };
+        window.Show();
+        window.KeepLayout();
+        window.KeepSettings();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        return window;
     }
 
     private void A_READMEs_headings_nest_by_level_in_Structure_and_File_Structure_follow_its_typing_and_go_to_their_lines()

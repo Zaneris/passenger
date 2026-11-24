@@ -149,7 +149,8 @@ public sealed partial class EditorArea : UserControl
 
     private MarkdownLayout markdownLayout;
 
-    /// <summary>Whether a Markdown preview is open. Showing a hidden preview through View opens it alongside the editor.</summary>
+    /// <summary>Whether a Markdown file shows its preview, beside its editor or alone, in every group showing one; turned on,
+    /// the preview stands beside the editor.</summary>
     public bool ShowsMarkdownPreview
     {
         get => MarkdownLayout.View != MarkdownView.Editor;
@@ -162,8 +163,10 @@ public sealed partial class EditorArea : UserControl
         }
     }
 
+    /// <summary>Another Markdown layout was chosen (<see cref="MarkdownLayout"/>).</summary>
     internal event EventHandler? MarkdownLayoutChanged;
 
+    /// <summary>What a Markdown file shows, its editor, its preview or both, and how both stand, in every group showing one.</summary>
     internal MarkdownLayout MarkdownLayout
     {
         get => markdownLayout;
@@ -262,11 +265,15 @@ public sealed partial class EditorArea : UserControl
     /// <summary>Whether a file is an SVG, which shows its picture beside its text.</summary>
     public static bool IsSvg(OpenDocument document) => document.Path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>A group's preview toggle pressed, for the window to run the preview's action: nothing outside the group
-    /// holds the toggle, so a closed split goes with it.</summary>
-    public event EventHandler<EditorGroup>? PreviewToggleClicked;
+    /// <summary>A button on a group's tab strip pressed (its preview toggle, a Markdown file's layouts), for the window to
+    /// run the button's action in that group: nothing outside the group holds the button, so a closed split goes with it.</summary>
+    public event EventHandler<string>? ActionAsked;
 
-    internal void PreviewToggled(EditorGroup group) => PreviewToggleClicked?.Invoke(this, group);
+    internal void Ask(EditorGroup group, string action)
+    {
+        SetActiveGroup(group);
+        ActionAsked?.Invoke(this, action);
+    }
 
     /// <summary>A group's list of the tabs its strip hides asked for, for the window to show it under the strip's button.</summary>
     public event EventHandler<EditorGroup>? HiddenTabsRequested;
