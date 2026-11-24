@@ -43,6 +43,9 @@ public sealed class RefactoringDialogsTests
     private const string Purse = "using System;\n\nnamespace Shop;\n\npublic static class Purse\n{\n    public static int Fill()\n    {\n        Func<int, string, Coin> mint = Coin.Mint;\n"
         + "        return Coin.Mint(1).Value + mint(2, \"silver\").Value;\n    }\n}\n";
 
+    private const string Pets = "namespace Shop;\n\npublic interface IPet\n{\n    string Name { get; }\n}\n\npublic class Fish : IPet\n{\n    public string Name => \"Nemo\";\n\n"
+        + "    public int Fins => 2;\n}\n";
+
     private string folder = string.Empty;
 
     /// <summary>Every dialog's refactoring made in one window on one project, each through its own keys or menu item and
@@ -55,7 +58,7 @@ public sealed class RefactoringDialogsTests
         folder = PathNames.Canonical(TestFolders.Create("refactorings-"));
         File.WriteAllText(PathOf("Shop.csproj"), TestProjects.Library("<Nullable>enable</Nullable>"));
         (string Name, string Text)[] files = [("Calc.cs", Calc), ("Till.cs", Till), ("Order.cs", Order), ("OrderBook.cs", OrderBook),
-            ("Report.cs", Report), ("Shapes.cs", Shapes), ("Animal.cs", Animal), ("Dog.cs", Dog), ("Cat.cs", Cat), ("Coins.cs", Coins), ("Purse.cs", Purse)];
+            ("Report.cs", Report), ("Shapes.cs", Shapes), ("Animal.cs", Animal), ("Dog.cs", Dog), ("Cat.cs", Cat), ("Coins.cs", Coins), ("Purse.cs", Purse), ("Pets.cs", Pets)];
         foreach ((string name, string text) in files)
         {
             File.WriteAllText(PathOf(name), text);
@@ -72,6 +75,7 @@ public sealed class RefactoringDialogsTests
         MoveToAnotherFile(window, asked);
         PushMembersDown(window, asked);
         PullMembersUp(window, asked);
+        PullIntoAnInterfaceFromContextActions(window, asked);
         window.Close();
     }
 
@@ -269,6 +273,49 @@ public sealed class RefactoringDialogsTests
         Assert.Equal([("Undo", "Undo Pull Members Up? It changes Animal.cs and Dog.cs.")], asked);
         Assert.Equal(Dog, window.EditorArea.Active?.Text.Snapshot.ToString());
         Assert.Equal(Animal, OpenText(window, "Animal.cs"));
+    }
+
+    /// <summary>Pull Members Up is where a refactoring of a member is looked for, Refactor This and the editor's Refactor
+    /// submenu, and Show Context Actions on the member's name pulls it up into the interface its class implements that lacks
+    /// it, with no dialog, leaving the class's own as it is, which Undo takes back whole.</summary>
+    private void PullIntoAnInterfaceFromContextActions(MainWindow window, List<(string Title, string Text)> asked)
+    {
+        asked.Clear();
+        window.OpenFile(PathOf("Pets.cs"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "int Fi");
+        Ui.Run(window, AppActions.RefactorThis);
+        Ui.WaitFor(() => window.Assist.Offered.Count > 0, () => $"Refactor This's list: {window.Status}");
+        IReadOnlyList<string> offered = window.Assist.Offered;
+        Assert.True(offered.Contains("Pull Members Up…") && !offered.Contains("Extract Method…"),
+            $"Refactor This on a member offers Passenger's refactorings that apply, never those the server has none of here: {string.Join("; ", offered)}");
+        Ui.Press(window, "ESCAPE");
+
+        int fins = editor.Document.Snapshot.ToString().IndexOf("Fins", StringComparison.Ordinal) + 1;
+        Ui.RightClick(editor, editor.PointOf(fins) + new Vector(1, editor.LineHeight / 2));
+        MenuItem refactor = window.OpenContextMenu?.Items.OfType<MenuItem>().FirstOrDefault(i => i.Header as string == "Refactor")
+            ?? throw new Xunit.Sdk.XunitException("The editor's menu has no Refactor submenu");
+        IReadOnlyList<string> refactorings = [.. refactor.Items.OfType<MenuItem>().Where(i => i.IsEnabled).Select(i => i.Header as string ?? string.Empty)];
+        Assert.True(refactorings.Contains("Pull Members Up…") && refactorings.Contains("Change Signature…"),
+            $"The editor's Refactor submenu lacks the main menu's refactorings: {string.Join("; ", refactorings)}");
+        window.OpenContextMenu!.Close();
+        Ui.Settle();
+
+        Ui.PlaceAfter(editor, "int Fi");
+        Ui.Run(window, AppActions.QuickFix);
+        const string pull = "Pull 'Fins' up into 'IPet'";
+        Ui.WaitFor(() => window.Assist.Offered.Contains(pull), () => $"'{pull}' among the actions offered: {string.Join("; ", window.Assist.Offered)}; the status bar said: {window.Status}");
+        for (int down = window.Assist.Offered.ToList().IndexOf(pull); down > 0; down--)
+        {
+            Ui.Press(window, "DOWN");
+        }
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => window.Status == "Pulled 1 member of Fish up to IPet", () => $"the member to be pulled up: {window.Status}");
+        Assert.Equal(Pets.Replace("    string Name { get; }\n", "    string Name { get; }\n\n    int Fins { get; }\n", StringComparison.Ordinal), window.EditorArea.Active?.Text.Snapshot.ToString());
+
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal(Pets, window.EditorArea.Active?.Text.Snapshot.ToString());
     }
 
     /// <summary>Push Members Down copies a member into each inheritor, and made abstract leaves it abstract in the base class.</summary>

@@ -11,6 +11,10 @@ using Passenger.Text;
 
 namespace Passenger.App.CSharp;
 
+/// <summary>One of Passenger's own refactorings as Refactor This lists it: its title and keys, what running it says where it
+/// could not run (null once it ran), and the server's actions it stands for (<see cref="CodeActions.ServersOf"/>).</summary>
+internal sealed record OwnRefactoring(string Title, string Keys, Func<string?> Run, (Func<CodeAction, bool> Actions, bool Made)? Servers);
+
 /// <summary>Code actions and refactorings: Show Context Actions (Passenger's own fixes first, then ESLint's and the language
 /// server's), Generate and Refactor This, the refactorings by their own keys and dialogs, Rename, Reformat Code, Code
 /// Cleanup and Optimize Imports, each change one command that Undo takes back whole.</summary>
@@ -19,12 +23,14 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     private CodeEditor Editor => context.Editor;
 
     /// <summary>The fixes and refactorings at the caret (those <paramref name="only"/> takes), listed under
-    /// <paramref name="title"/>, the one chosen made as the work of the action <paramref name="id"/>.</summary>
-    public async Task ShowFixes(string id, Func<CodeAction, bool>? only = null, string title = "Fixes and refactorings")
+    /// <paramref name="title"/>, the one chosen made as the work of the action <paramref name="id"/>; in a C# file, Passenger's
+    /// own <paramref name="refactorings"/> first, those the server's own actions make only where it offers them, and none of
+    /// the server's actions one of them stands for.</summary>
+    public async Task ShowFixes(string id, Func<CodeAction, bool>? only = null, string title = "Fixes and refactorings", IReadOnlyList<OwnRefactoring>? refactorings = null)
     {
         using (BackgroundWork.Scope())
         {
-            await ShowFixesCore(only, title, id);
+            await ShowFixesCore(only, title, id, refactorings ?? []);
         }
     }
 
@@ -163,7 +169,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
     }
 
-    private async Task ShowFixesCore(Func<CodeAction, bool>? only, string title, string id)
+    private async Task ShowFixesCore(Func<CodeAction, bool>? only, string title, string id, IReadOnlyList<OwnRefactoring> refactorings)
     {
         if (context.XamlCurrent is { } xaml)
         {
@@ -184,12 +190,16 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         Selection primary = Editor.Selections.Primary;
         IReadOnlyList<LintFix> linted = [];
         IReadOnlyList<CodeAction> actions = [];
+        List<OwnRefactoring> listed = [];
         if (context.Ask(own.Count > 0 ? null : what) is { } lsp && context.Current is { } current)
         {
             int line = lsp.PositionOf(primary.Caret).Line;
             List<Diagnostic> here = current.Diagnostics
                 .Where(d => d.Range.Start.Line <= line && line <= d.Range.End.Line)
                 .ToList();
+            bool csharp = current is CSharpDocument { Lsp.IsRazor: false };
+            Task<IReadOnlyList<EditorFix>> pulls = only is null && csharp ? PullsIntoInterfacesAsync(lsp, document, primary) : NoFixes;
+            LanguageServerFailed? unanswered = null;
             try
             {
                 // The linters' fixes for the line first, before the language's own.
@@ -198,30 +208,41 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             }
             catch (LanguageServerFailed failed)
             {
-                if (own.Count == 0)
-                {
-                    context.Failed(what, failed);
-                    return;
-                }
+                unanswered = failed;
             }
+            own = [.. own, .. await pulls];
+            if (unanswered is not null && own.Count == 0)
+            {
+                context.Failed(what, unanswered);
+                return;
+            }
+            // Passenger's own refactorings are C#'s, never a Razor file's.
+            listed = csharp ? [.. refactorings.Where(r => r.Servers is not ({ } made, true) || actions.Any(made))] : [];
+            actions = [.. actions.Where(a => !listed.Any(r => r.Servers?.Actions(a) == true))];
         }
         else if (own.Count == 0)
         {
             return;
         }
-        if (own.Count == 0 && actions.Count == 0 && linted.Count == 0)
+        if (own.Count == 0 && listed.Count == 0 && actions.Count == 0 && linted.Count == 0)
         {
             context.Say(only is null ? "No fixes or refactorings here" : "No refactorings here");
             return;
         }
-        List<Choice> choices = [.. own.Select(f => new Choice(f.Title, f.Detail, f)), .. linted.Select(f => new Choice(f.Title, CodeActionKinds.Shown(f.Action.Kind), f)),
-            .. actions.Select(a => new Choice(a.Title, CodeActionKinds.Shown(a.Kind), a))];
+        List<Choice> choices = [.. own.Select(f => new Choice(f.Title, f.Detail, f)), .. listed.Select(r => new Choice(r.Title, r.Keys, r)),
+            .. linted.Select(f => new Choice(f.Title, CodeActionKinds.Shown(f.Action.Kind), f)), .. actions.Select(a => new Choice(a.Title, CodeActionKinds.Shown(a.Kind), a))];
         popups.ShowModal(new ChoicePopup(title, choices), primary.Caret, what, choice =>
         {
             switch (choice?.Value)
             {
                 case EditorFix fix:
                     return ApplyOwnFix(document, fix);
+                case OwnRefactoring refactoring:
+                    if (refactoring.Run() is { } why)
+                    {
+                        context.Say(why);
+                    }
+                    return Task.CompletedTask;
                 case LintFix fix:
                     return context.Languages.Web.RunLintFix(document, fix);
                 case CodeAction chosen:
@@ -230,6 +251,38 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
                     return Task.CompletedTask;
             }
         });
+    }
+
+    private static readonly Task<IReadOnlyList<EditorFix>> NoFixes = Task.FromResult<IReadOnlyList<EditorFix>>([]);
+
+    /// <summary>Pull Members Up of the member whose name the caret is on into each interface its class implements that
+    /// lacks it, offered as fixes made as Pull Members Up makes them, with no dialog; none where the extension finds none,
+    /// or cannot be asked.</summary>
+    private async Task<IReadOnlyList<EditorFix>> PullsIntoInterfacesAsync(LspDocument lsp, OpenDocument document, Selection primary)
+    {
+        if (!primary.IsEmpty)
+        {
+            return [];
+        }
+        MemberPull pull;
+        try
+        {
+            pull = await lsp.ExtensionAsync<MemberPull>(Handlers.InterfacesLacking, new Roslyn.Extension.Caret(lsp.PlaceOf(primary.Caret)));
+        }
+        catch (LanguageServerFailed)
+        {
+            // The server's own fixes are listed without them.
+            return [];
+        }
+        if (pull.Member is not { } member)
+        {
+            return [];
+        }
+        Hierarchy hierarchy = new(null, pull.Type, [member], pull.Interfaces, []);
+        return [.. pull.Interfaces.Select(into => new EditorFix($"Pull '{pull.Name}' up into '{into.Text}'", "Pull Members Up", new TextRange(primary.Caret, 0), string.Empty)
+        {
+            Elsewhere = (at, patience) => MoveMembersAsync(document, at.Start, hierarchy, up: true, into.Id, [member.Id], [], patience),
+        })];
     }
 
     /// <summary>A code action chosen, carried out: one that offers choices (a fix-all's scopes, the actions nested under

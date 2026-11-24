@@ -35,6 +35,31 @@ internal sealed partial class CodeActions
         a => a.Title.StartsWith(RoslynNames.EncapsulateField, StringComparison.Ordinal),
         "put the caret on a field's declaration");
 
+    /// <summary>Extract Method's own action of the server's, which it makes and then names.</summary>
+    public static readonly Func<CodeAction, bool> ExtractsMethod = a => a.Title == RoslynNames.ExtractMethod;
+
+    /// <summary>Introduce Variable's actions of the server's.</summary>
+    public static readonly Func<CodeAction, bool> IntroducesLocal = a => a.Title.StartsWith(RoslynNames.IntroduceLocal, StringComparison.Ordinal);
+
+    /// <summary>Inline's actions of the server's.</summary>
+    public static readonly Func<CodeAction, bool> Inlines = a => a.Kind == RoslynNames.InlineKind || a.Title.StartsWith(RoslynNames.Inline, StringComparison.Ordinal);
+
+    /// <summary>The server's actions one of Passenger's refactorings stands for, by its action's id, and whether it is them
+    /// under Passenger's name, so that it applies only where the server offers one; null for a refactoring the server has
+    /// none of.</summary>
+    public static (Func<CodeAction, bool> Actions, bool Made)? ServersOf(string id) => id switch
+    {
+        AppActions.ExtractMethod => (ExtractsMethod, true),
+        AppActions.IntroduceVariable => (IntroducesLocal, true),
+        AppActions.Inline => (Inlines, true),
+        AppActions.IntroduceField => (IntroduceField.Pick, true),
+        AppActions.IntroduceParameter => (IntroduceParameter.Pick, true),
+        AppActions.EncapsulateField => (EncapsulateField.Pick, true),
+        // Its dialog asks what the server's own takes as it chooses.
+        AppActions.ExtractInterface => (a => a.Title.StartsWith(RoslynNames.ExtractInterface, StringComparison.Ordinal), false),
+        _ => null,
+    };
+
     /// <summary>A refactoring the server offers under its own words, over the selection: its one action carried out, or
     /// a list of them when it offers several (Encapsulate Field's with and without the property used), then the choices
     /// nested under the one chosen (Introduce Parameter's into a new overload or an extracted method), as the work of the

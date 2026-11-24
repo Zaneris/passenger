@@ -256,7 +256,7 @@ public partial class MainWindow
     {
         ActionContext context = barMenu is { IsOpen: true } && barMenuContext is { } kept ? kept : barKeysContext ?? actions!.Context();
         barMenu?.Hide();
-        MenuEntry entry = MainMenu.Build(actions!.All).First(m => m.Title == (string)title.Tag!);
+        MenuEntry entry = MainMenu.Of(actions!.All, (string)title.Tag!);
         MenuFlyout flyout = new() { Placement = PlacementMode.BottomEdgeAlignedLeft, OverlayDismissEventPassThrough = true };
         if (FlyoutEntry(entry, context) is MenuItem built)
         {
