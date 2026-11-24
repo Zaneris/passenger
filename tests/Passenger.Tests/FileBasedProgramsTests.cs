@@ -463,8 +463,7 @@ public sealed class FileBasedProgramsTests : IDisposable
     private void Programs_beside_a_solution_on_net_10_sdks_are_projects_that_build_and_run()
     {
         string[] installations = OperatingSystem.IsWindows() ? [Dotnet.Root(), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet")]
-            : OperatingSystem.IsMacOS() ? [Dotnet.Root(), "/usr/local/share/dotnet"]
-            : [Dotnet.Root(), "/usr/share/dotnet", "/usr/lib/dotnet", "/usr/lib64/dotnet"];
+            : [Dotnet.Root(), "/usr/local/share/dotnet", "/usr/share/dotnet", "/usr/lib/dotnet", "/usr/lib64/dotnet"];
         static IEnumerable<string> Tens(string root) =>
             DotnetInstallation.Read(root).Sdks.Where(version => version.StartsWith("10.0.", StringComparison.Ordinal) && !version.Contains('-'));
         string? earliest = installations.Where(Directory.Exists).SelectMany(Tens).MinBy(Version.Parse);

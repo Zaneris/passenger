@@ -9,6 +9,7 @@ namespace Passenger.Tests;
 /// app is refused, or kept off the screen, however it is named, and an Avalonia one takes the inspector that keeps it off;
 /// a simulator's window is opened only for a person's window. Windows starts each on a desktop of its own instead.</summary>
 [Collection(Beside.Name)]
+[AboutMacOS]
 public sealed class UnseenAppsTests : IDisposable
 {
     private readonly string folder = PathNames.Canonical(TestFolders.Create("unseen-"));
