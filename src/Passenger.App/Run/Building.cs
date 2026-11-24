@@ -136,7 +136,18 @@ public static partial class BuildOutput
     public static IReadOnlyList<string> Tail(bool windowsTargeting) =>
         windowsTargeting ? [PropertySwitch.Of(MSBuildNames.EnableWindowsTargeting, "true"), .. LoggerSwitches] : LoggerSwitches;
 
-    private static readonly string[] LoggerSwitches = ["-nologo", "-tl:off", "-clp:NoSummary;ForceNoAlign"];
+    /// <summary>The switches of <see cref="LoggerSwitches"/> that are MSBuild's own, which the .NET command line passes on.</summary>
+    private static readonly string[] MSBuildSwitches = ["-tl:off", "-clp:NoSummary;ForceNoAlign"];
+
+    private static readonly string[] LoggerSwitches = ["--nologo", .. MSBuildSwitches];
+
+    /// <summary>A build's, publish's or clean's command line as the folder's SDK takes it: a file-based program's without
+    /// MSBuild's own switches where that SDK would read its C# file as a project file beside them
+    /// (<see cref="Dotnet.ProgramsTakeMSBuildSwitches"/>), so its output has MSBuild's summary; any other as it is.</summary>
+    public static IReadOnlyList<string> TakenBy(IReadOnlyList<string> arguments, string? sdk) =>
+        arguments.Count > 1 && Passenger.Host.ProgramFiles.IsProgram(arguments[1]) && !Dotnet.ProgramsTakeMSBuildSwitches(sdk)
+            ? [.. arguments.Where(argument => !MSBuildSwitches.Contains(argument, StringComparer.Ordinal))]
+            : arguments;
 
     /// <summary>Whether a build of a target (the solution, the folder, or one project) needs EnableWindowsTargeting: a
     /// project it builds (the one named and those it references, or every one) is one the project host evaluated with it,

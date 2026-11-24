@@ -106,7 +106,7 @@ public sealed class FileBasedProgramsTests : IDisposable
         Flow.StepApart<FileBasedProgramsTests>("files a program includes from another folder or by a wildcard are never programs themselves", t => t.Files_a_program_includes_from_another_folder_or_by_a_wildcard_are_never_programs_themselves());
         Flow.StepApart<FileBasedProgramsTests>("a program referencing another has it for a project answered across and run with it", t => t.A_program_referencing_another_has_it_for_a_project_answered_across_and_run_with_it());
         Flow.StepApart<FileBasedProgramsTests>("a file of top level statements alone with no directive is a program that completes runs and debugs", t => t.A_file_of_top_level_statements_alone_with_no_directive_is_a_program_that_completes_runs_and_debugs());
-        Flow.StepApart<FileBasedProgramsTests>("a program beside a solution on the earliest net 10 sdk is a project the language server answers in", t => t.A_program_beside_a_solution_on_the_earliest_net_10_sdk_is_a_project_the_language_server_answers_in());
+        Flow.StepApart<FileBasedProgramsTests>("programs beside a solution on net 10 sdks are projects that build and run", t => t.Programs_beside_a_solution_on_net_10_sdks_are_projects_that_build_and_run());
     }
 
     private void A_program_opened_as_a_folder_is_a_project_that_answers_across_its_files_runs_with_its_profile_and_stops_in_its_included_file()
@@ -456,17 +456,29 @@ public sealed class FileBasedProgramsTests : IDisposable
         }
     }
 
-    /// <summary>A program in a folder of its own beside a solution, its global.json taking the earliest .NET 10 SDK installed
-    /// (one of the first, whose project the SDK makes names no place for it), is a project evaluated for .NET 10 that the
-    /// language server warns in, rather than a program the SDK made no project for; skipped where no .NET 10 SDK is.</summary>
-    private void A_program_beside_a_solution_on_the_earliest_net_10_sdk_is_a_project_the_language_server_answers_in()
+    /// <summary>A program in a folder of its own beside a solution, its global.json taking a .NET 10 SDK, is a project
+    /// evaluated for .NET 10 that the language server warns in, and Build and Run build and run it: on the earliest .NET 10
+    /// SDK installed (one of the first, whose project names no place for it and whose command line reads the C# file as a
+    /// project file beside MSBuild's own switches) and on the tests' own installation's newest; skipped where none is.</summary>
+    private void Programs_beside_a_solution_on_net_10_sdks_are_projects_that_build_and_run()
     {
         string[] installations = OperatingSystem.IsWindows() ? [Dotnet.Root(), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet")]
             : OperatingSystem.IsMacOS() ? [Dotnet.Root(), "/usr/local/share/dotnet"]
             : [Dotnet.Root(), "/usr/share/dotnet", "/usr/lib/dotnet", "/usr/lib64/dotnet"];
-        string? sdk = installations.Where(Directory.Exists).SelectMany(root => DotnetInstallation.Read(root).Sdks)
-            .Where(version => version.StartsWith("10.0.", StringComparison.Ordinal) && !version.Contains('-')).MinBy(Version.Parse);
-        Assert.SkipWhen(sdk is null, $"No .NET 10 SDK is installed in {string.Join(", ", installations)}, so no program can be made on one");
+        static IEnumerable<string> Tens(string root) =>
+            DotnetInstallation.Read(root).Sdks.Where(version => version.StartsWith("10.0.", StringComparison.Ordinal) && !version.Contains('-'));
+        string? earliest = installations.Where(Directory.Exists).SelectMany(Tens).MinBy(Version.Parse);
+        Assert.SkipWhen(earliest is null, $"No .NET 10 SDK is installed in {string.Join(", ", installations)}, so no program can be made on one");
+        foreach (string sdk in new[] { earliest, Tens(Dotnet.Root()).MaxBy(Version.Parse) }.OfType<string>().Distinct(StringComparer.Ordinal))
+        {
+            ProgramOnSdk(sdk);
+        }
+    }
+
+    /// <summary>A program beside a solution in a folder whose global.json takes the SDK given: evaluated for .NET 10, the
+    /// language server's warning on its unused variable, Build building the solution and the program, Run printing its line.</summary>
+    private static void ProgramOnSdk(string sdk)
+    {
         string ten = PathNames.Canonical(TestFolders.Create("ten-program-"));
         try
         {
@@ -484,7 +496,7 @@ public sealed class FileBasedProgramsTests : IDisposable
             TestFolders.Write(ten, "Lib/Shapes.cs", "namespace Lib;\n\npublic static class Shapes\n{\n}\n");
             TestFolders.Write(ten, "Ten.slnx", "<Solution>\n  <Project Path=\"Lib/Lib.csproj\" />\n</Solution>\n");
             string server = Path.Combine(ten, "tools", "mcp", "server.cs");
-            TestFolders.Write(ten, "tools/mcp/server.cs", "#:property Nullable=enable\nint unused = 0;\nConsole.WriteLine(\"server\");\n");
+            TestFolders.Write(ten, "tools/mcp/server.cs", "#:property Nullable=enable\nint unused = 0;\nConsole.WriteLine(\"server on .NET \" + Environment.Version.Major);\n");
             Restore.Run(server, ten);
             MainWindow window = Ui.OpenFolder(ten);
             try
@@ -497,6 +509,15 @@ public sealed class FileBasedProgramsTests : IDisposable
                 Assert.Equal(["net10.0"], program.TargetFrameworks);
                 Assert.Null(window.OpenFile(server));
                 WaitForWarning(window, server, "server.cs");
+
+                BuildOutcome built = Ui.Landed(window.BuildAsync(), $"Build of Ten.slnx and server.cs on SDK {sdk}");
+                Assert.True(built.Succeeded, $"Build of Ten.slnx and server.cs on SDK {sdk} ended {built.Status}, so a person cannot build the program there: "
+                    + $"{built.Message}\n{string.Join("\n", built.Output)}");
+                Assert.True(window.SelectConfiguration("server"));
+                Ui.Launched(window, window.RunAsync(), $"server.cs to build and run on SDK {sdk}", TimeSpan.FromMinutes(2));
+                Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), $"server.cs's run on SDK {sdk} to finish", TimeSpan.FromMinutes(2));
+                Assert.Contains("server on .NET 10\n", Output(window), StringComparison.Ordinal);
+                TestContext.Current.TestOutputHelper?.WriteLine($"server.cs beside Ten.slnx loaded, built and ran on SDK {sdk}");
             }
             finally
             {

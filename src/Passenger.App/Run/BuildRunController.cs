@@ -519,8 +519,8 @@ public sealed partial class BuildRunController
         parts.Say($"{verb} {what}…");
         buildWork?.Say($"{verb} {what}…");
         bool windows = WindowsTargeting(together?.Projects ?? [target]);
-        IReadOnlyList<string> arguments = publishing is { } publish ? publish.Arguments(windows)
-            : BuildOutput.Arguments(target, buildKind, buildFramework, windows, buildOutput, [.. Configured(target), .. buildProperties ?? []]);
+        IReadOnlyList<string> arguments = BuildOutput.TakenBy(publishing is { } publish ? publish.Arguments(windows)
+            : BuildOutput.Arguments(target, buildKind, buildFramework, windows, buildOutput, [.. Configured(target), .. buildProperties ?? []]), session.Models.SdkVersion);
         Func<CancellationToken, Task>? after = first ? BeforeFirstStepAsync : null;
         if (checking is { } checks)
         {
