@@ -61,6 +61,9 @@ public static class TypingPauses
     /// <summary>Before the signposts of the declarations on screen are counted again, after typing or scrolling.</summary>
     public static TimeSpan Signposts => Of(TimeSpan.FromMilliseconds(600));
 
+    /// <summary>Before a SQL console is checked against its connection's schema again.</summary>
+    public static TimeSpan SqlChecks => Of(TimeSpan.FromMilliseconds(400));
+
     /// <summary>Before a file's change bars are worked out again.</summary>
     public static TimeSpan ChangeBars => Of(TimeSpan.FromMilliseconds(120));
 

@@ -31,6 +31,11 @@ public sealed class SqlConsole(string path)
 
     public bool Running => running is not null;
 
+    /// <summary>The plan of the statement last explained, and the statement; null until one is.</summary>
+    public PlanStep? Plan { get; private set; }
+
+    public string Planned { get; private set; } = string.Empty;
+
     /// <summary>Whether it runs in manual commit: its statements in a transaction left open until Commit or Rollback.</summary>
     public bool Manual { get; internal set; }
 
@@ -57,25 +62,52 @@ public sealed class SqlConsole(string path)
         Raise();
     }
 
+    /// <summary>A statement's plan explained, or why not, which its Plan tab shows.</summary>
+    internal void Explained(string statement, PlanStep? plan, string said)
+    {
+        running = null;
+        Planned = statement;
+        Plan = plan ?? Plan;
+        Said = said;
+        Raise();
+    }
+
     public void Stop() => running?.Cancel();
 
     internal void Raise() => Changed?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>What one statement came to: its result sets' rows, the rows it changed, or why it failed.</summary>
+    public static string Outcome(SqlResult result) => result.Error is { } error ? $"failed: {error}"
+        : result.Sets.Count > 0 ? string.Join(", ", result.Sets.Select(s => s.More ? $"first {RowLimit.ToString(CultureInfo.InvariantCulture)} rows" : Plural.Of(s.RowCount, "row")))
+        : result.Affected >= 0 ? $"{Plural.Of(result.Affected, "row")} changed" : "done";
 
     /// <summary>What a run's results say in a line: each statement's rows or changes, or the failure that ended it.</summary>
     public static string Summary(IReadOnlyList<SqlResult> results, TimeSpan took) => results switch
     {
         [] => "Nothing ran.",
         [.., { Error: { } error }] => $"Failed after {Plural.Of(results.Count - 1, "statement")}: {error}",
-        _ => $"{Plural.Of(results.Count, "statement")} in {Durations.Said(took)}: "
-            + string.Join("; ", results.Select(r => r.Sets.Count > 0
-                ? string.Join(", ", r.Sets.Select(s => s.More ? $"first {RowLimit.ToString(CultureInfo.InvariantCulture)} rows" : Plural.Of(s.RowCount, "row")))
-                : r.Affected >= 0 ? $"{Plural.Of(r.Affected, "row")} changed" : "done")),
+        _ => $"{Plural.Of(results.Count, "statement")} in {Durations.Said(took)}: " + string.Join("; ", results.Select(Outcome)),
     };
 }
 
+/// <summary>A row of a plan's tree: its step, how deep it stands, and whether it costs the most alone.</summary>
+public sealed class PlanRow(PlanStep step, int depth, bool costliest) : Observable, ITreeRow
+{
+    private bool expanded = true;
+
+    public PlanStep Step { get; } = step;
+    public int Depth { get; } = depth;
+    public bool Costliest { get; } = costliest;
+    public List<PlanRow> Children { get; } = [];
+    public bool Expands => Children.Count > 0;
+    public bool IsExpanded { get => expanded; set => Set(ref expanded, value); }
+}
+
 /// <summary>A console's results under its editor: its connection, Run and Stop, its commit (automatic, or manual with
-/// Commit and Rollback and whether a transaction is open) and its connection's mark over a tab for each result set and one
-/// for the run's output, each set in a grid its header sorts.</summary>
+/// Commit and Rollback and whether a transaction is open) and its connection's mark over a tab for each result set, one
+/// for the run's output, one for its connection's history and one for the plan last explained, each set in a grid its
+/// header sorts, the history a list the filter searches whose statement Enter or a double click writes into the console
+/// again, the plan a tree of steps with their cost and rows, the costliest alone marked.</summary>
 public sealed class SqlConsoleView : DockPanel
 {
     /// <summary>The commits a console runs in, as its bar offers them.</summary>
@@ -93,13 +125,44 @@ public sealed class SqlConsoleView : DockPanel
     private readonly CellGrid grid = new() { Name = "ConsoleResults" };
     private readonly SelectableWords output = new() { Name = "ConsoleOutput", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(Gaps.Normal) };
     private readonly ScrollViewer outputPlace;
+    private readonly ListBox history = new() { Name = "ConsoleHistory" };
+    private readonly EmptyState noHistory = new() { Text = "Nothing has run on this connection yet." };
+    private readonly Panel historyPlace;
+    private readonly TreeList plan = new() { Name = "ConsolePlan", Classes = { StyleClasses.Tree } };
+    private readonly TreeRows<PlanRow> planRows = [];
+    private PlanStep? planShown;
     private readonly Func<IReadOnlyList<DatabaseSource>> sources;
+    private readonly Func<SqlConsole, IReadOnlyList<SqlRan>> ran;
     private SqlConsole? shown;
     private bool showing;
 
-    public SqlConsoleView(Func<IReadOnlyList<DatabaseSource>> sources, Action<string> request)
+    /// <summary>The tabs past the result sets': the run's output and the connection's history.</summary>
+    public const int OutputTab = 0;
+
+    public const int HistoryTab = -1;
+
+    public const int PlanTab = -2;
+
+    /// <param name="ran">What ran on a console's connection, newest first.</param>
+    public SqlConsoleView(Func<IReadOnlyList<DatabaseSource>> sources, Func<SqlConsole, IReadOnlyList<SqlRan>> ran, Action<string> request)
     {
         this.sources = sources;
+        this.ran = ran;
+        ReusedRows.Use(history, HistoryRow);
+        ListKeys.Act(history, new ListActs
+        {
+            Open = () =>
+            {
+                if (shown is not null && history.SelectedItem is SqlRan chosen)
+                {
+                    HistoryChosen?.Invoke(this, (shown, chosen));
+                }
+            },
+        });
+        historyPlace = new Panel { Children = { history, noHistory } };
+        plan.ItemsSource = planRows;
+        ReusedRows.Use(plan, PlanRowControl);
+        TreeKeys.Attach<PlanRow>(plan, Toggle);
         said.Name = "ConsoleSaid";
         said.VerticalAlignment = VerticalAlignment.Center;
         said.TextTrimming = TextTrimming.CharacterEllipsis;
@@ -133,6 +196,8 @@ public sealed class SqlConsoleView : DockPanel
             {
                 ToolButtons.Of(AppActions.DatabaseRun, IconKeys.Run, "Run Statement", request),
                 ToolButtons.Of(AppActions.DatabaseRunStop, IconKeys.Stop, "Stop Statement", request),
+                ToolButtons.Of(AppActions.DatabaseExplain, IconKeys.DatabasePlan, "Explain Plan", request),
+                ToolButtons.Of(AppActions.DatabaseHistory, IconKeys.History, "Query History", request),
                 connections,
                 commits,
                 commit,
@@ -151,7 +216,112 @@ public sealed class SqlConsoleView : DockPanel
         Children.Add(bar);
         Children.Add(marked);
         Children.Add(strip);
-        Children.Add(new Border { Classes = { StyleClasses.Framed }, Child = new Panel { Children = { grid, outputPlace } } });
+        Children.Add(new Border { Classes = { StyleClasses.Framed }, Child = new Panel { Children = { grid, outputPlace, historyPlace, plan } } });
+    }
+
+    /// <summary>The plan's rows shown, for a test to read.</summary>
+    public IReadOnlyList<PlanRow> PlanShown => planRows;
+
+    private void Toggle(PlanRow row)
+    {
+        if (!row.Expands)
+        {
+            return;
+        }
+        row.IsExpanded = !row.IsExpanded;
+        if (row.IsExpanded)
+        {
+            planRows.Open(row, TreeRows<PlanRow>.Shown(row.Children, r => r.IsExpanded ? r.Children : null));
+        }
+        else
+        {
+            planRows.Close(row);
+        }
+    }
+
+    /// <summary>A plan's rows, every step open, the one that costs the most alone marked.</summary>
+    private void ShowPlan(PlanStep step)
+    {
+        PlanStep? costliest = SqlPlans.Costliest(step);
+        PlanRow Row(PlanStep at, int depth)
+        {
+            PlanRow row = new(at, depth, ReferenceEquals(at, costliest) && at.Own > 0);
+            row.Children.AddRange(at.Steps.Select(s => Row(s, depth + 1)));
+            return row;
+        }
+        planRows.Show([.. TreeRows<PlanRow>.Shown([Row(step, 0)], r => r.IsExpanded ? r.Children : null)]);
+    }
+
+    private Control PlanRowControl()
+    {
+        RowGlyphs glyphs = new() { IconKey = IconKeys.DatabasePlan };
+        TextBlock operation = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock detail = MutedText.Of(string.Empty);
+        detail.Margin = new Thickness(Gaps.Normal, 0, 0, 0);
+        detail.VerticalAlignment = VerticalAlignment.Center;
+        detail.TextTrimming = TextTrimming.CharacterEllipsis;
+        Border costliest = Tags.Of("costliest", TokenKeys.Warning);
+        costliest.Margin = new Thickness(Gaps.Normal, 0, 0, 0);
+        TextBlock figures = MutedText.Of(string.Empty);
+        figures.Margin = new Thickness(Gaps.Wide, 0, 0, 0);
+        figures.VerticalAlignment = VerticalAlignment.Center;
+        StackPanel words = new() { Orientation = Orientation.Horizontal, Children = { operation, costliest, detail } };
+        DockPanel line = new() { Height = ListRow.Height, Children = { glyphs, figures, words } };
+        SetDock(glyphs, Avalonia.Controls.Dock.Left);
+        SetDock(figures, Avalonia.Controls.Dock.Right);
+        glyphs.ChevronPressed += (_, e) =>
+        {
+            if (line.DataContext is PlanRow row)
+            {
+                Toggle(row);
+                e.Handled = true;
+            }
+        };
+        return line.Showing<PlanRow>(row =>
+        {
+            line.Margin = new Thickness(RowExpander.Column * row.Depth, 0, Gaps.Normal, 0);
+            glyphs.HasChevron = row.Expands;
+            glyphs.Turned = row.IsExpanded;
+            operation.Text = ContainerSecrets.InSaid(row.Step.Operation);
+            operation.Classes.Set(StyleClasses.Strong, row.Costliest);
+            costliest.IsVisible = row.Costliest;
+            detail.Text = ContainerSecrets.InSaid(row.Step.Detail);
+            figures.Text = string.Join(" · ", new[]
+            {
+                row.Step.Cost is { } cost ? $"cost {cost.ToString("0.##", CultureInfo.InvariantCulture)}" + (row.Step.Own is { } own && row.Step.Steps.Count > 0 ? $" ({own.ToString("0.##", CultureInfo.InvariantCulture)} alone)" : string.Empty) : null,
+                row.Step.Rows is { } rows ? Plural.Of((long)Math.Round(rows), "row") : null,
+            }.OfType<string>());
+        });
+    }
+
+    /// <summary>A statement of the history chosen, to write into the console again.</summary>
+    public event EventHandler<(SqlConsole Console, SqlRan Ran)>? HistoryChosen;
+
+    /// <summary>Shows the console's history, its filter's box given the keys.</summary>
+    public void ShowHistory()
+    {
+        tabs.Choice = HistoryTab;
+        ShowTab();
+        filter.Focus();
+    }
+
+    /// <summary>The history's rows shown, newest first, for a test to read.</summary>
+    public IReadOnlyList<SqlRan> HistoryShown => [.. history.Items.OfType<SqlRan>()];
+
+    private static Control HistoryRow()
+    {
+        TextBlock statement = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock outcome = MutedText.Of(string.Empty);
+        outcome.Margin = new Thickness(Gaps.Wide, 0, 0, 0);
+        outcome.VerticalAlignment = VerticalAlignment.Center;
+        DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Normal, 0), Children = { outcome, statement } };
+        SetDock(outcome, Avalonia.Controls.Dock.Right);
+        return line.Showing<SqlRan>(row =>
+        {
+            string first = row.Statement.Trim().Split('\n')[0].Trim();
+            statement.Text = ContainerSecrets.InSaid(first + (row.Statement.Trim().Contains('\n', StringComparison.Ordinal) ? " …" : string.Empty));
+            outcome.Text = ContainerSecrets.InSaid($"{row.At.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)} · {row.Outcome}");
+        });
     }
 
     /// <summary>A connection chosen for the console shown.</summary>
@@ -179,6 +349,16 @@ public sealed class SqlConsoleView : DockPanel
         if (console is not null)
         {
             console.Changed += OnChanged;
+        }
+        // The plan a console shown again had is its own, its tab chosen only as a statement is explained.
+        planShown = console?.Plan;
+        if (planShown is not null)
+        {
+            ShowPlan(planShown);
+        }
+        else
+        {
+            planRows.Clear();
         }
         Follow(keepTab: false);
     }
@@ -216,8 +396,20 @@ public sealed class SqlConsoleView : DockPanel
             {
                 tabs.Add(i + 1, $"Result {(i + 1).ToString(CultureInfo.InvariantCulture)}", name: $"ConsoleResult{(i + 1).ToString(CultureInfo.InvariantCulture)}");
             }
-            tabs.Add(0, "Output", name: "ConsoleOutputTab");
-            tabs.Choice = keepTab && tabs.Keys.Contains(before) ? before : sets.Count > 0 && shown?.Results is not [.., { Error: not null }] ? 1 : 0;
+            tabs.Add(OutputTab, "Output", name: "ConsoleOutputTab");
+            tabs.Add(HistoryTab, "History", name: "ConsoleHistoryTab");
+            if (shown?.Plan is not null)
+            {
+                tabs.Add(PlanTab, "Plan", name: "ConsolePlanTab");
+            }
+            bool planned = shown?.Plan is not null && !ReferenceEquals(shown.Plan, planShown);
+            if (planned)
+            {
+                planShown = shown!.Plan;
+                ShowPlan(planShown!);
+            }
+            tabs.Choice = planned ? PlanTab : keepTab && tabs.Keys.Contains(before) ? before
+                : sets.Count > 0 && shown?.Results is not [.., { Error: not null }] ? 1 : OutputTab;
             output.Text = Output();
         }
         finally
@@ -232,8 +424,23 @@ public sealed class SqlConsoleView : DockPanel
         IReadOnlyList<DatabaseRows> sets = [.. (shown?.Results ?? []).SelectMany(r => r.Sets)];
         int chosen = tabs.Choice;
         grid.IsVisible = chosen > 0;
-        outputPlace.IsVisible = chosen == 0;
-        filter.IsVisible = chosen > 0;
+        outputPlace.IsVisible = chosen == OutputTab;
+        historyPlace.IsVisible = chosen == HistoryTab;
+        plan.IsVisible = chosen == PlanTab;
+        filter.IsVisible = chosen > 0 || chosen == HistoryTab;
+        filter.PlaceholderText = chosen == HistoryTab ? "Filter history" : "Filter rows";
+        if (chosen == HistoryTab)
+        {
+            string sought = filter.Text?.Trim() ?? string.Empty;
+            IReadOnlyList<SqlRan> all = shown is null ? [] : ran(shown);
+            SqlRan[] listed = [.. all.Where(r => sought.Length == 0 || r.Statement.Contains(sought, StringComparison.OrdinalIgnoreCase))];
+            if (!history.Items.OfType<SqlRan>().SequenceEqual(listed))
+            {
+                history.ItemsSource = listed;
+            }
+            noHistory.Text = all.Count == 0 ? "Nothing has run on this connection yet." : "No statement run here holds these words.";
+            noHistory.IsVisible = listed.Length == 0;
+        }
         DatabaseRows? set = chosen > 0 && chosen <= sets.Count ? sets[chosen - 1] : null;
         Table? table = set is not null && filter.Text?.Trim() is { Length: > 0 } words ? set.Holding(words) : set;
         if (!ReferenceEquals(grid.Table?.Unsorted, table) && !(table is DatabaseRows a && grid.Table?.Unsorted is DatabaseRows b && a.Same(b)))
@@ -244,7 +451,5 @@ public sealed class SqlConsoleView : DockPanel
 
     /// <summary>Each statement run, with what it came to and how long it took.</summary>
     private string Output() => shown is null ? string.Empty : ContainerSecrets.InSaid(string.Join("\n\n", shown.Results.Select(r =>
-        $"{r.Statement}\n-- " + (r.Error is { } error ? $"failed: {error}"
-            : (r.Sets.Count > 0 ? string.Join(", ", r.Sets.Select(s => s.More ? $"first {SqlConsole.RowLimit.ToString(CultureInfo.InvariantCulture)} rows" : Plural.Of(s.RowCount, "row")))
-                : r.Affected >= 0 ? $"{Plural.Of(r.Affected, "row")} changed" : "done") + $" in {Durations.Said(r.Took)}"))));
+        $"{r.Statement}\n-- {SqlConsole.Outcome(r)}" + (r.Error is null ? $" in {Durations.Said(r.Took)}" : string.Empty))));
 }

@@ -1459,6 +1459,7 @@ public sealed class OpenDocument : Observable
         : Endpoints.RequestLog.IsCommandCopy(Path) ? "SQL a running app issued, or an EF Core query's the debugger read, copied to read, read-only"
         : CSharp.GeneratedCode.IsCopy(Path) ? "Code a source generator made, as the C# language server has it, read-only"
         : Web.RemoteStylesheets.IsCopy(Path) ? "A stylesheet a page links on the web, as it was downloaded, read-only"
+        : Database.DatabaseDdl.IsCopy(Path) ? "A database object's definition, as its database gives it, read-only"
         : Path.Contains("SourceLink", StringComparison.OrdinalIgnoreCase) || Path.Contains("Embedded", StringComparison.OrdinalIgnoreCase)
         ? "Source from the library's Source Link or PDB, read-only"
         : "Decompiled code: the language server made this from the assembly, so it is read-only";

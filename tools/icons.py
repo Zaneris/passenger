@@ -150,6 +150,9 @@ ICONS = [
     ("DatabaseIndex", "Arrow Sort", "20_regular"),
     ("DatabaseRoutine", "Braces", "20_regular"),
     ("SqlConsole", "Window Console", "20_regular"),
+    # A table's trigger (what fires as its rows change) and a statement's plan (the steps the database takes, as a tree).
+    ("DatabaseTrigger", "Flash", "20_regular"),
+    ("DatabasePlan", "Flowchart", "20_regular"),
     # A web project's web root (wwwroot) in the Explorer: the folder whose files are served on the web.
     ("WebRootFolder", "Folder Globe", "20_regular"),
     # A signed commit's mark in the Git log: a good signature, one unverified, a bad one and one expired.

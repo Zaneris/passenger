@@ -31,6 +31,9 @@ public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folde
     /// <summary>What a found connection's mark is kept by, the same each time the folder's files name it.</summary>
     public string FoundKey => $"{Kind}|{Found}|{Name}";
 
+    /// <summary>What its history is kept by: a found connection's <see cref="FoundKey"/>, one made by hand its id.</summary>
+    public string HistoryKey => Found is null ? Account : FoundKey;
+
     /// <summary>The database it opens in: its connection string's, or for SQLite its file's name.</summary>
     public string Database => Kind switch
     {
@@ -71,14 +74,24 @@ public sealed record DatabaseTable(string Schema, string Name)
 
 public sealed record DatabaseColumn(string Name, string Type, bool Nullable, bool Primary, bool Generated);
 
-public sealed record DatabaseSchema(DatabaseTable Table, IReadOnlyList<DatabaseColumn> Columns, IReadOnlyList<string> Keys, IReadOnlyList<string> Indexes);
+/// <summary>A table's or view's columns, keys, indexes (each by its name and what it says of itself) and triggers.</summary>
+public sealed record DatabaseSchema(DatabaseTable Table, IReadOnlyList<DatabaseColumn> Columns, IReadOnlyList<string> Keys, IReadOnlyList<DatabasePart> Indexes)
+{
+    public IReadOnlyList<DatabasePart> Triggers { get; init; } = [];
+}
 
-/// <summary>What kind of thing a schema holds.</summary>
+/// <summary>A part of a table by its own name (an index, a trigger) and the words its row shows.</summary>
+public sealed record DatabasePart(string Name, string Said);
+
+/// <summary>What kind of thing a schema holds, or a table holds of its own (an index, a trigger, a column).</summary>
 public enum DatabaseObjectKind
 {
     Table,
     View,
     Routine,
+    Trigger,
+    Index,
+    Column,
 }
 
 /// <summary>A table, view or routine of a schema; a routine's detail says whether it is a function or a procedure.</summary>

@@ -42,7 +42,8 @@ internal static class DatabaseClient
             DatabaseKind.Sqlite => new SqliteConnection(new SqliteConnectionStringBuilder(whole) { Mode = readOnly ? SqliteOpenMode.ReadOnly : SqliteOpenMode.ReadWrite, Pooling = false }.ConnectionString),
             DatabaseKind.Postgres => new NpgsqlConnection(postgres!.ConnectionString),
             DatabaseKind.SqlServer => new SqlConnection(new SqlConnectionStringBuilder(whole) { Pooling = false }.ConnectionString),
-            DatabaseKind.MySql => new MySqlConnection(new MySqlConnectionStringBuilder(whole) { Pooling = false }.ConnectionString),
+            // A console's SET @a and SELECT @a are the session's own variables, its parameters bound by name over them.
+            DatabaseKind.MySql => new MySqlConnection(new MySqlConnectionStringBuilder(whole) { Pooling = false, AllowUserVariables = true }.ConnectionString),
             _ => throw new InvalidOperationException("Unknown database provider"),
         };
         try
@@ -70,7 +71,7 @@ internal static class DatabaseClient
         _ => "\"" + name.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"",
     };
 
-    private static string Full(DatabaseKind kind, DatabaseTable table) =>
+    internal static string Full(DatabaseKind kind, DatabaseTable table) =>
         (table.Schema.Length > 0 ? Quote(kind, table.Schema) + "." : string.Empty) + Quote(kind, table.Name);
 
     internal static async Task<IReadOnlyList<DatabaseTable>> TablesAsync(DatabaseSource source, CancellationToken cancel)
@@ -92,7 +93,8 @@ internal static class DatabaseClient
         await using DbConnection connection = await OpenAsync(source, cancel);
         List<DatabaseColumn> columns = [];
         List<string> keys = [];
-        List<string> indexes = [];
+        List<DatabasePart> indexes = [];
+        List<DatabasePart> triggers = [];
         if (source.Kind == DatabaseKind.Sqlite)
         {
             DatabaseRows info = await ReadAsync(connection, "SELECT name, type, \"notnull\", pk, hidden FROM pragma_table_xinfo(@table)", [("@table", table.Name)], cancel);
@@ -109,8 +111,11 @@ internal static class DatabaseClient
             foreach (object?[] index in indexed.Rows)
             {
                 DatabaseRows fields = await ReadAsync(connection, "SELECT name FROM pragma_index_info(@index)", [("@index", index[0])], cancel);
-                indexes.Add($"{index[0]} · {(Convert.ToInt32(index[1], CultureInfo.InvariantCulture) != 0 ? "UNIQUE · " : string.Empty)}{string.Join(", ", fields.Rows.Select(r => r[0]))}");
+                indexes.Add(new DatabasePart((string)index[0]!,
+                    $"{index[0]} · {(Convert.ToInt32(index[1], CultureInfo.InvariantCulture) != 0 ? "UNIQUE · " : string.Empty)}{string.Join(", ", fields.Rows.Select(r => r[0]))}"));
             }
+            DatabaseRows made = await ReadAsync(connection, "SELECT name, sql FROM sqlite_schema WHERE type='trigger' AND tbl_name=@table ORDER BY name", [("@table", table.Name)], cancel);
+            triggers.AddRange(made.Rows.Select(r => new DatabasePart((string)r[0]!, DatabaseDdl.TriggerWhen(Convert.ToString(r[1], CultureInfo.InvariantCulture) ?? string.Empty, source.Kind))));
         }
         else
         {
@@ -137,9 +142,21 @@ internal static class DatabaseClient
                 _ => "SELECT i.name, c.name FROM sys.indexes i JOIN sys.index_columns ic ON i.object_id=ic.object_id AND i.index_id=ic.index_id JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id JOIN sys.tables t ON t.object_id=i.object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=@schema AND t.name=@table ORDER BY i.name,ic.key_ordinal",
             };
             DatabaseRows indexed = await ReadAsync(connection, indexSql, parameters, cancel);
-            indexes.AddRange(indexed.Rows.Select(r => $"{r[0]} · {r[1]}"));
+            indexes.AddRange(indexed.Rows.Select(r => new DatabasePart(Convert.ToString(r[0], CultureInfo.InvariantCulture) ?? string.Empty, $"{r[0]} · {r[1]}")));
+            string triggerSql = source.Kind switch
+            {
+                DatabaseKind.Postgres => "SELECT trigger_name, string_agg(DISTINCT lower(action_timing || ' ' || event_manipulation), ', ') FROM information_schema.triggers "
+                    + "WHERE event_object_schema=@schema AND event_object_table=@table GROUP BY trigger_name ORDER BY 1",
+                DatabaseKind.MySql => "SELECT trigger_name, lower(concat(action_timing, ' ', event_manipulation)) FROM information_schema.triggers "
+                    + "WHERE event_object_schema=@schema AND event_object_table=@table ORDER BY 1",
+                _ => "SELECT tr.name, CASE WHEN tr.is_instead_of_trigger=1 THEN 'instead of ' ELSE 'after ' END + LOWER(STRING_AGG(te.type_desc, ', ')) FROM sys.triggers tr "
+                    + "JOIN sys.trigger_events te ON te.object_id=tr.object_id JOIN sys.objects t ON t.object_id=tr.parent_id JOIN sys.schemas s ON s.schema_id=t.schema_id "
+                    + "WHERE s.name=@schema AND t.name=@table GROUP BY tr.name, tr.is_instead_of_trigger ORDER BY 1",
+            };
+            triggers.AddRange((await ReadAsync(connection, triggerSql, parameters, cancel)).Rows.Select(r =>
+                new DatabasePart(Convert.ToString(r[0], CultureInfo.InvariantCulture) ?? string.Empty, Convert.ToString(r[1], CultureInfo.InvariantCulture) ?? string.Empty)));
         }
-        return new DatabaseSchema(table, columns, keys, indexes);
+        return new DatabaseSchema(table, columns, keys, indexes) { Triggers = triggers };
     }
 
     internal static async Task<DatabaseRows> PageAsync(DatabaseSource source, DatabaseSchema schema, int offset, CancellationToken cancel, DatabaseFilter? filter = null,
@@ -268,26 +285,30 @@ internal static class DatabaseClient
     }
 
     /// <summary>Runs each of <paramref name="runs"/> in turn on one connection, telling each one's result sets (each read to
-    /// <paramref name="limit"/> rows), the rows it changed or its failure, after which nothing more runs.</summary>
-    internal static async Task RunAsync(DatabaseSource source, IReadOnlyList<string> runs, int limit, Action<SqlResult> told, CancellationToken cancel)
+    /// <paramref name="limit"/> rows), the rows it changed or its failure, after which nothing more runs; its parameters
+    /// given the <paramref name="values"/> asked by name, where they were.</summary>
+    internal static async Task RunAsync(DatabaseSource source, IReadOnlyList<string> runs, int limit, Action<SqlResult> told, CancellationToken cancel,
+        IReadOnlyDictionary<string, string>? values = null)
     {
         await using DbConnection connection = await OpenAsync(source, cancel);
-        await RunOnAsync(source, connection, null, runs, limit, told, cancel);
+        await RunOnAsync(source, connection, null, runs, limit, told, cancel, values);
     }
 
     /// <summary>Runs each of <paramref name="runs"/> in turn on a connection held open, in its <paramref name="transaction"/>
     /// where it has one, as <see cref="RunAsync"/> does; false where one failed.</summary>
     internal static async Task<bool> RunOnAsync(DatabaseSource source, DbConnection connection, DbTransaction? transaction, IReadOnlyList<string> runs, int limit,
-        Action<SqlResult> told, CancellationToken cancel)
+        Action<SqlResult> told, CancellationToken cancel, IReadOnlyDictionary<string, string>? values = null)
     {
-        foreach (string run in runs)
+        List<List<SqlParameter>> parameters = SqlParameters.Of(runs, source.Kind);
+        for (int at = 0; at < runs.Count; at++)
         {
+            string run = runs[at];
             long began = System.Diagnostics.Stopwatch.GetTimestamp();
             List<DatabaseRows> sets = [];
             try
             {
                 await using DbCommand command = connection.CreateCommand();
-                command.CommandText = run;
+                command.CommandText = values is null ? run : Bind(command, run, parameters[at], values, source.Kind);
                 command.Transaction = transaction;
                 command.CommandTimeout = 0;
                 using CancellationTokenRegistration interrupt = Interrupt(connection, cancel);
@@ -330,6 +351,87 @@ internal static class DatabaseClient
             }
         }
         return true;
+    }
+
+    /// <summary>A run with its parameters given the values asked, as its driver binds them: by name, a place's in its
+    /// order with no name (PostgreSQL's $n, MySQL's ?), SQLite's bare ? written as its number, which SQLite binds by.</summary>
+    internal static string Bind(DbCommand command, string run, IReadOnlyList<SqlParameter> found, IReadOnlyDictionary<string, string> values, DatabaseKind kind)
+    {
+        if (found.Count == 0)
+        {
+            return run;
+        }
+        bool positional = kind == DatabaseKind.Postgres && found.Any(p => p.Name[0] == '$') || kind == DatabaseKind.MySql && found.Any(p => p.Name[0] == '?');
+        if (positional)
+        {
+            IEnumerable<string> places = kind == DatabaseKind.Postgres
+                ? Enumerable.Range(1, found.Where(p => p.Name[0] == '$').Max(p => int.Parse(p.Name[1..], CultureInfo.InvariantCulture))).Select(n => $"${n.ToString(CultureInfo.InvariantCulture)}")
+                : found.Select(p => p.Name);
+            foreach (string place in places)
+            {
+                command.Parameters.Add(Made(command, string.Empty, values.GetValueOrDefault(place, "NULL"), kind));
+            }
+            return run;
+        }
+        string sql = run;
+        foreach (SqlParameter parameter in found.Where(p => p.Name.Length > 1 && p.Name[0] == '?').Reverse())
+        {
+            sql = sql[..parameter.Start] + parameter.Name + sql[parameter.End..];
+        }
+        foreach (string name in found.Select(p => p.Name).Distinct(StringComparer.Ordinal))
+        {
+            command.Parameters.Add(Made(command, name, values.GetValueOrDefault(name, "NULL"), kind));
+        }
+        return sql;
+    }
+
+    private static DbParameter Made(DbCommand command, string name, string text, DatabaseKind kind)
+    {
+        DbParameter parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = SqlParameters.Value(text, kind);
+        if (parameter is Npgsql.NpgsqlParameter literal && parameter.Value is string)
+        {
+            // PostgreSQL reads the text as it reads a literal of the type its place needs.
+            literal.NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Unknown;
+        }
+        return parameter;
+    }
+
+    /// <summary>A statement's plan as its database explains it without running it (<see cref="SqlPlans"/>), its parameters
+    /// given the <paramref name="values"/> asked; SQL Server's asked of a session that only plans.</summary>
+    internal static async Task<PlanStep> ExplainAsync(DatabaseSource source, string statement, IReadOnlyDictionary<string, string>? values, CancellationToken cancel)
+    {
+        await using DbConnection connection = await OpenAsync(source, cancel);
+        using CancellationTokenRegistration interrupt = Interrupt(connection, cancel);
+        if (source.Kind == DatabaseKind.SqlServer)
+        {
+            await using DbCommand planning = connection.CreateCommand();
+            planning.CommandText = "SET SHOWPLAN_XML ON";
+            await planning.ExecuteNonQueryAsync(cancel);
+        }
+        string asked = SqlPlans.Asked(statement, source.Kind);
+        await using DbCommand command = connection.CreateCommand();
+        command.CommandTimeout = 60;
+        command.CommandText = values is null ? asked : Bind(command, asked, SqlParameters.Of([asked], source.Kind)[0], values, source.Kind);
+        DatabaseRows rows;
+        await using (DbDataReader reader = await command.ExecuteReaderAsync(cancel))
+        {
+            rows = await RowsAsync(reader, 10000, cancel);
+        }
+        string Said(int row, int column) => Convert.ToString(rows.Rows[row][column], CultureInfo.InvariantCulture) ?? string.Empty;
+        if (rows.RowCount == 0)
+        {
+            throw new InvalidOperationException(Refusals.NoPlan);
+        }
+        return source.Kind switch
+        {
+            DatabaseKind.Postgres => SqlPlans.FromPostgres(Said(0, 0)),
+            DatabaseKind.MySql => SqlPlans.FromMySql(Said(0, 0)),
+            DatabaseKind.SqlServer => SqlPlans.FromSqlServer(Said(0, 0)),
+            _ => SqlPlans.FromSqlite([.. Enumerable.Range(0, rows.RowCount).Select(r => (Convert.ToInt64(rows.Rows[r][0], CultureInfo.InvariantCulture),
+                Convert.ToInt64(rows.Rows[r][1], CultureInfo.InvariantCulture), Said(r, rows.ColumnCount - 1)))]),
+        };
     }
 
     /// <summary>Writes a table's changes in one transaction: each row deleted or changed found by its primary key, locked,
@@ -465,7 +567,7 @@ internal static class DatabaseClient
         };
     }
 
-    private static async Task<DatabaseRows> ReadAsync(DbConnection connection, string sql, IReadOnlyList<(string Name, object? Value)> parameters, CancellationToken cancel, int limit = 10000)
+    internal static async Task<DatabaseRows> ReadAsync(DbConnection connection, string sql, IReadOnlyList<(string Name, object? Value)> parameters, CancellationToken cancel, int limit = 10000)
     {
         await using DbCommand command = connection.CreateCommand();
         command.CommandText = sql;

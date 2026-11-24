@@ -16,8 +16,9 @@ using Passenger.TestTables;
 namespace Passenger.Tests;
 
 /// <summary>The Database window over a folder's SQLite database: connections found without connecting, the explorer read as
-/// it is opened, a table's data among the editors, and a connection made by hand kept with its password in the system's
-/// credential store (the test run's own, in memory).</summary>
+/// it is opened, a table's data among the editors, an object's DDL and scripts, a console's parameters, history, files run
+/// whole and SQL laid out, and a connection made by hand kept with its password in the system's credential store (the
+/// test run's own, in memory).</summary>
 public sealed class DatabaseTests
 {
     [AvaloniaFact]
@@ -39,6 +40,7 @@ public sealed class DatabaseTests
             CREATE INDEX ProductNames ON Products(Name);
             CREATE TABLE Orders (Id INTEGER PRIMARY KEY, Product INTEGER REFERENCES Products(Id));
             CREATE VIEW Cheap AS SELECT * FROM Products WHERE Id < 3;
+            CREATE TRIGGER Noted AFTER INSERT ON Orders BEGIN UPDATE Products SET Note = 'ordered' WHERE Id = NEW.Product; END;
             WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<105)
             INSERT INTO Products SELECT x, 'Product '||x, NULL FROM n;
             """);
@@ -218,7 +220,7 @@ public sealed class DatabaseTests
                 Assert.Contains("Nope", sql.Results[2].Error, StringComparison.Ordinal);
                 Assert.Contains("Failed after 2 statements", sql.Said, StringComparison.Ordinal);
                 SqlConsoleView view = window.EditorArea.ActiveGroup.Console!;
-                Assert.Equal(["ConsoleResult1", "ConsoleResult2", "ConsoleOutputTab"], view.GetVisualDescendants().OfType<ToggleButton>().Where(t => t.Name?.StartsWith("Console", StringComparison.Ordinal) == true).Select(t => t.Name));
+                Assert.Equal(["ConsoleResult1", "ConsoleResult2", "ConsoleOutputTab", "ConsoleHistoryTab"], view.GetVisualDescendants().OfType<ToggleButton>().Where(t => t.Name?.StartsWith("Console", StringComparison.Ordinal) == true).Select(t => t.Name));
                 Assert.Contains("no such table: Nope", view.GetVisualDescendants().OfType<SelectableTextBlock>().Single(t => t.Name == "ConsoleOutput").Text, StringComparison.Ordinal);
             });
             Flow.Step("completion offers the live schema: a table's columns after its alias, and the tables its statement may name", () =>
@@ -239,6 +241,114 @@ public sealed class DatabaseTests
                 window.KeyTextInput("O");
                 Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Orders"), () => $"the tables, where the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
                 Ui.Press(window, "ESCAPE");
+            });
+            Flow.Step("an object's DDL opens read-only as SQL, a table's triggers are listed, and its scripts are written into the console, never run", () =>
+            {
+                Open(window, "Orders");
+                Open(window, "Triggers");
+                DatabaseNode trigger = Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Trigger);
+                Assert.Equal(("Noted", "after insert"), (trigger.Title, trigger.Detail));
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "Products"));
+                Assert.True(window.Perform(AppActions.DatabaseShowDdl), "Show DDL did not run");
+                Ui.WaitFor(() => window.EditorArea.Active?.Name == "Products.sql" && !window.Database.Busy, () => window.Database.Said);
+                Passenger.App.Workspace.OpenDocument ddl = window.EditorArea.Active!;
+                Assert.Equal("CREATE TABLE Products (Id INTEGER PRIMARY KEY, Name TEXT NOT NULL, Note TEXT);\n\nCREATE INDEX ProductNames ON Products(Name);\n",
+                    ddl.Text.Snapshot.ToString());
+                Assert.True(ddl.IsReadOnly, "A table's DDL opened for writing");
+                Assert.Equal(Passenger.Languages.Language.Sql, ddl.Language);
+                ListBox tree = Explorer(window).GetVisualDescendants().OfType<ListBox>().Single(l => l.Name == "DatabaseTree");
+                Explorer(window).Choose(trigger);
+                Ui.Settle();
+                Ui.Click(tree.GetVisualDescendants().OfType<ListBoxItem>().Single(i => i.DataContext == trigger));
+                Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.GoToDeclaration)[0].First.Notation());
+                Ui.WaitFor(() => window.EditorArea.Active?.Name == "Orders.Noted.sql" && !window.Database.Busy, () => window.Database.Said);
+                Assert.StartsWith("CREATE TRIGGER Noted AFTER INSERT ON Orders", window.EditorArea.Active!.Text.Snapshot.ToString(), StringComparison.Ordinal);
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Index && r.Title.StartsWith("ProductNames", StringComparison.Ordinal)));
+                Assert.True(window.Perform(AppActions.DatabaseScriptDrop), "Generate Drop Script did not run");
+                Ui.WaitFor(() => window.EditorArea.Active?.Name == "Shop.sql" && !window.Database.Busy, () => window.Database.Said);
+                CodeEditor editor = window.EditorArea.CodeEditor;
+                Assert.EndsWith("\nDROP INDEX \"ProductNames\";\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+                Selection written = editor.Selections.Primary;
+                Assert.True("DROP INDEX \"ProductNames\";" == editor.Document.Snapshot.ToString()[written.Start..written.End],
+                    $"The script written is not what is chosen: {written} of {editor.Document.Snapshot.Length} in {editor.Document.Snapshot.ToString().ReplaceLineEndings("⏎")}");
+                Assert.Equal("ProductNames", Scalar(folder, "SELECT name FROM sqlite_schema WHERE type = 'index' AND name = 'ProductNames'"));
+                Open(window, "Views");
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.View && r.Title == "Cheap"));
+                Assert.True(window.Perform(AppActions.DatabaseScriptAlter), "Generate Alter Script did not run");
+                Ui.WaitFor(() => !window.Database.Busy && editor.Document.Snapshot.ToString().Contains("DROP VIEW", StringComparison.Ordinal), () => window.Database.Said);
+                Assert.EndsWith("DROP VIEW \"Cheap\";\nCREATE VIEW Cheap AS SELECT * FROM Products WHERE Id < 3;\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+            });
+            Flow.Step("a statement's parameters are asked for before it runs and remembered, a file runs whole to its first failure, and the history runs one again", () =>
+            {
+                SqlConsole sql = window.EditorArea.ActiveGroup.Console!.Console!;
+                Replace(window, "SELECT Name FROM Products WHERE Id = :id");
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                ConfirmDialog asked = Confirm(window);
+                TextBox id = asked.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "SqlParameter0");
+                Assert.Equal(string.Empty, id.Text);
+                id.Text = "2";
+                Ui.ClickButton(asked, "Run");
+                Ui.WaitFor(() => !sql.Running && sql.Results is [{ Error: null }], () => sql.Said);
+                Assert.Equal("Product 2", sql.Results[0].Sets[0].Cell(0, 0));
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                asked = Confirm(window);
+                Assert.Equal("2", asked.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "SqlParameter0").Text);
+                Ui.ClickButton(asked, "Cancel");
+                Ui.WaitFor(() => sql.Said == "Not run.", () => sql.Said);
+
+                Replace(window, "UPDATE Products SET Note = 'one' WHERE Id = 3;\nSELECT Note FROM Products WHERE Id = 3;\nSELECT * FROM Nope;\nUPDATE Products SET Note = 'never' WHERE Id = 3;");
+                window.EditorArea.CodeEditor.Selections = SelectionSet.Single(0);
+                Assert.True(window.Perform(AppActions.DatabaseRunFile), "Run SQL File did not run");
+                Ui.WaitFor(() => !sql.Running && sql.Results.Count == 3, () => sql.Said);
+                Assert.Equal("one", Scalar(folder, "SELECT Note FROM Products WHERE Id = 3"));
+                Assert.Contains("Failed after 2 statements", sql.Said, StringComparison.Ordinal);
+                string output = Tab<SelectableTextBlock>(window, "ConsoleOutput").Text ?? string.Empty;
+                Assert.Contains("-- 1 row changed", output, StringComparison.Ordinal);
+                Assert.Contains("no such table: Nope", output, StringComparison.Ordinal);
+
+                Assert.True(window.Perform(AppActions.DatabaseHistory), "Query History did not run");
+                SqlConsoleView view = window.EditorArea.ActiveGroup.Console!;
+                Ui.WaitFor(() => Tab<ListBox>(window, "ConsoleHistory").IsEffectivelyVisible, "the console's history");
+                Assert.Equal(["SELECT * FROM Nope", "SELECT Note FROM Products WHERE Id = 3", "UPDATE Products SET Note = 'one' WHERE Id = 3"],
+                    view.HistoryShown.Take(3).Select(r => r.Statement));
+                Assert.True(view.HistoryShown[0].Failed, "The failed statement is not kept as failed");
+                Tab<TextBox>(window, "ConsoleFilter").Text = "count";
+                Ui.Settle();
+                SqlRan counted = Assert.Single(view.HistoryShown);
+                Assert.Equal("SELECT COUNT(*) AS n FROM Orders", counted.Statement);
+                ListBox history = Tab<ListBox>(window, "ConsoleHistory");
+                history.SelectedItem = counted;
+                Ui.Settle();
+                Ui.Click(history.GetVisualDescendants().OfType<ListBoxItem>().Single(i => Equals(i.DataContext, counted)));
+                Ui.Press(window, "ENTER");
+                CodeEditor editor = window.EditorArea.CodeEditor;
+                Assert.EndsWith("\n\nSELECT COUNT(*) AS n FROM Orders;\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                Ui.WaitFor(() => !sql.Running && sql.Results is [{ Error: null, Statement: "SELECT COUNT(*) AS n FROM Orders" }], () => sql.Said);
+                Tab<TextBox>(window, "ConsoleFilter").Text = string.Empty;
+            });
+            Flow.Step("a console marks a column its connection's schema lacks, and explains a statement as a plan's tree without running it", () =>
+            {
+                Passenger.App.Workspace.OpenDocument file = window.EditorArea.Active!;
+                Replace(window, "SELECT Nme FROM Products WHERE Id = 2");
+                Ui.WaitFor(() => file.Markers.Any(m => m.Message.Contains("Nme", StringComparison.Ordinal)), () => $"the unknown column marked, where the marks are {string.Join("; ", file.Markers.Select(m => m.Message))}");
+                Marker unknown = file.Markers.Single();
+                Assert.Equal("Nme", file.Text.Snapshot.ToString()[unknown.Range.Start..unknown.Range.End]);
+                Replace(window, "UPDATE Products SET Note = 'planned' WHERE Id = 2");
+                Ui.WaitFor(() => file.Markers.Count == 0, () => string.Join("; ", file.Markers.Select(m => m.Message)));
+                Assert.True(window.Perform(AppActions.DatabaseExplain), "Explain Plan did not run");
+                SqlConsole sql = window.EditorArea.ActiveGroup.Console!.Console!;
+                SqlConsoleView view = window.EditorArea.ActiveGroup.Console!;
+                Ui.WaitFor(() => !sql.Running && sql.Plan is not null && Tab<TreeList>(window, "ConsolePlan").IsEffectivelyVisible, () => sql.Said);
+                Assert.Contains(view.PlanShown, r => r.Step.Operation.StartsWith("SEARCH Products", StringComparison.Ordinal));
+                Assert.Equal("a note", Scalar(folder, "SELECT Note FROM Products WHERE Id = 2"));
+            });
+            Flow.Step("Reformat Code lays a console's SQL out, its comments and strings as written", () =>
+            {
+                Replace(window, "select Name, 'a;b' from Products -- kept\nwhere Id = 1 and Note is null");
+                Assert.True(window.Perform(AppActions.Reformat), "Reformat Code did not run");
+                Ui.WaitFor(() => window.EditorArea.CodeEditor.Document.Snapshot.ToString().StartsWith("SELECT", StringComparison.Ordinal), "the statement laid out");
+                Assert.Equal("SELECT Name,\n       'a;b'\nFROM Products -- kept\nWHERE Id = 1\n    AND Note IS NULL", window.EditorArea.CodeEditor.Document.Snapshot.ToString());
             });
             Flow.Step("a console in manual commit holds its transaction across statements until Commit or Rollback, and asks before it closes with one open", () =>
             {
@@ -406,13 +516,22 @@ public sealed class DatabaseTests
         Ui.Press(window, "ENTER");
     }
 
-    /// <summary>The console's text replaced by one statement, the caret after it.</summary>
+    /// <summary>The console's text replaced by what is typed, a line at a time with Enter between, the caret after it.</summary>
     private static void Replace(MainWindow window, string statement)
     {
         CodeEditor editor = window.EditorArea.CodeEditor;
         editor.Select(new TextRange(0, editor.Document.Snapshot.Length));
-        window.KeyTextInput(statement);
+        string[] lines = statement.Split('\n');
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (i > 0)
+            {
+                Ui.Press(window, "ENTER");
+            }
+            window.KeyTextInput(lines[i]);
+        }
         Ui.Press(window, "ESCAPE");
+        Assert.Equal(statement, editor.Document.Snapshot.ToString());
     }
 
     /// <summary>Runs one statement in the console shown, waiting for what it came to.</summary>

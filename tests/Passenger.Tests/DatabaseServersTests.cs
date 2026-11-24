@@ -13,9 +13,10 @@ using Passenger.Text;
 namespace Passenger.Tests;
 
 /// <summary>The Database window against a server in a container of the test's own: its connection found in the folder's
-/// settings, its explorer down to a table's key column, a console's statement run into a grid and completion of the table's
-/// columns, a table's changes submitted as one, a console's manual transaction rolled back and committed, and a production
-/// connection asking before an UPDATE, each through its own driver. Skipped, naming the image, where the engine lacks it,
+/// settings, its explorer down to a table's key column and trigger, the table's DDL as the server gives it, a console's
+/// statement run into a grid, its parameter asked for and kept in its history, completion of the table's columns, a table's
+/// changes submitted as one, a console's manual transaction rolled back and committed, and a production connection asking
+/// before an UPDATE, each through its own driver. Skipped, naming the image, where the engine lacks it,
 /// as it is never pulled.</summary>
 public sealed class DatabaseServersTests
 {
@@ -89,6 +90,46 @@ public sealed class DatabaseServersTests
                     () => $"products' columns after p., where the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
                 Ui.Press(window, "ESCAPE");
                 Passenger.App.Workspace.OpenDocument sql = window.EditorArea.Active!;
+
+                // A parameter written as the driver takes it is asked for, and the run kept in the connection's history.
+                string parameter = kind switch { DatabaseKind.Postgres => "$1", DatabaseKind.MySql => "?", _ => "@id" };
+                Replace(window, $"SELECT name FROM products WHERE id = {parameter}");
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible), "the parameter's question");
+                ConfirmDialog asked = window.OwnedWindows.OfType<ConfirmDialog>().Single(d => d.IsVisible);
+                asked.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "SqlParameter0").Text = "2";
+                Ui.ClickButton(asked, "Run");
+                Ui.WaitFor(() => !console.Running && console.Results is [{ Statement: var ran }] && ran.Contains(parameter, StringComparison.Ordinal), () => console.Said, TimeSpan.FromMinutes(1));
+                Assert.True(console.Results[0].Error is null, console.Said);
+                Assert.Equal("coffee", console.Results[0].Sets[0].Cell(0, 0));
+                Assert.Equal($"SELECT name FROM products WHERE id = {parameter}", window.Database.HistoryOf(source)[0].Statement);
+
+                // The table's trigger is listed, and its DDL is the server's own, the trigger with it.
+                DatabaseTests.Open(window, "Triggers");
+                Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == DatabaseNodeKind.Trigger && r.Title == "stamp");
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "products"));
+                Assert.True(window.Perform(AppActions.DatabaseShowDdl), "Show DDL did not run");
+                Ui.WaitFor(() => window.EditorArea.Active?.Name.EndsWith("products.sql", StringComparison.Ordinal) == true && !window.Database.Busy, () => window.Database.Said);
+                string ddl = window.EditorArea.Active!.Text.Snapshot.ToString();
+                Assert.Contains("CREATE TABLE", ddl, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("price", ddl, StringComparison.Ordinal);
+                Assert.Contains("stamp", ddl, StringComparison.Ordinal);
+                Assert.True(window.EditorArea.Active!.IsReadOnly, "The DDL opened for writing");
+                window.EditorArea.Activate(sql);
+
+                // A column the table lacks is marked; a statement is explained as a plan's tree, never run, its costliest step marked.
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console again");
+                Replace(window, "SELECT nme FROM products WHERE id = 2");
+                Ui.WaitFor(() => sql.Markers.Any(m => m.Message.Contains("nme", StringComparison.Ordinal)), () => $"nme marked, where the marks are {string.Join("; ", sql.Markers.Select(m => m.Message))}");
+                Replace(window, "UPDATE products SET name = 'planned' WHERE id = 2");
+                Ui.WaitFor(() => sql.Markers.Count == 0, () => string.Join("; ", sql.Markers.Select(m => m.Message)));
+                Assert.True(window.Perform(AppActions.DatabaseExplain), "Explain Plan did not run");
+                Ui.WaitFor(() => !console.Running && console.Plan is not null && console.Planned.StartsWith("UPDATE", StringComparison.Ordinal), () => console.Said, TimeSpan.FromMinutes(1));
+                Assert.Equal("coffee", Names(kind, connection)[1]);
+                Replace(window, "SELECT p.name FROM products p WHERE p.price > 1 ORDER BY p.name");
+                Assert.True(window.Perform(AppActions.DatabaseExplain), "Explain Plan did not run");
+                Ui.WaitFor(() => !console.Running && console.Planned.StartsWith("SELECT", StringComparison.Ordinal), () => console.Said, TimeSpan.FromMinutes(1));
+                Assert.Contains(window.EditorArea.ActiveGroup.Console!.PlanShown, r => r.Costliest);
 
                 // A cell written, a row deleted and one added wait as changes until Submit writes them as one.
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "products"));
@@ -210,6 +251,13 @@ public sealed class DatabaseServersTests
                 INSERT INTO products VALUES (1, 'tea', 2.5), (2, 'coffee', 3.5), (3, 'milk', 1.25)
                 """);
             Execute(kind, connection, "CREATE VIEW cheap AS SELECT id, name FROM products WHERE price < 3");
+            Execute(kind, connection, kind switch
+            {
+                DatabaseKind.Postgres => "CREATE FUNCTION keep() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$; "
+                    + "CREATE TRIGGER stamp BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION keep()",
+                DatabaseKind.MySql => "CREATE TRIGGER stamp BEFORE UPDATE ON products FOR EACH ROW SET NEW.name = NEW.name",
+                _ => "CREATE TRIGGER stamp ON products AFTER UPDATE AS SET NOCOUNT ON",
+            });
             return true;
         }
         catch (DbException)

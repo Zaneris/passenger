@@ -1,5 +1,6 @@
 using Passenger.App.Database;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Languages;
 using Passenger.Lsp;
 using Passenger.Text;
@@ -9,7 +10,8 @@ namespace Passenger.App.CSharp;
 /// <summary>A SQL file's completion, from its console's connection as it stands (<see cref="SqlCompletions"/>): the columns
 /// of the tables its statement names, after a table's name or alias and a dot its columns, every table and view, the
 /// schemas and the database's keywords; a file of no connection, or one not opened yet this session, its keywords alone.
-/// A name typed as a word's first letter, or a dot after a name, opens the list.</summary>
+/// A name typed as a word's first letter, or a dot after a name, opens the list. Reformat Code lays its statements out by
+/// its database (<see cref="SqlFormatter"/>), a selection's statements alone.</summary>
 internal sealed class SqlAssist(AssistContext context, CodeCompletion completion) : LanguageAssist
 {
     /// <summary>A SQL file's database and what its connection holds, where it is a console; null for a file of none.</summary>
@@ -96,6 +98,35 @@ internal sealed class SqlAssist(AssistContext context, CodeCompletion completion
         }
         string insert = offered.TryGetValue(item, out SqlCompletions.Candidate candidate) ? candidate.Insert : item.Label;
         context.Editor.ApplyEdits([new TextEdit(start, Math.Max(0, end - start), insert)], SelectionSet.Single(start + insert.Length));
+    }
+
+    public override async Task<CodeActions.Reformatted?> FormatAsync(OpenDocument document, TextRange? within)
+    {
+        if (!Owns(document))
+        {
+            return null;
+        }
+        const string what = "Reformat Code";
+        if (CodeActions.Reformatted.ReadOnly(document, what) is { } refused)
+        {
+            return refused;
+        }
+        using ChangeTracker asked = new(document.Text);
+        string text = asked.Snapshot.ToString();
+        DatabaseKind kind = Live?.Invoke(document)?.Kind ?? DatabaseKind.Sqlite;
+        (int start, int end) = (0, text.Length);
+        if (within is { } range)
+        {
+            List<(int Start, int End)> touched = [.. SqlText.Statements(text, kind).Where(s => s.End >= range.Start && s.Start <= range.End)];
+            if (touched.Count == 0)
+            {
+                return CodeActions.Reformatted.Apply(context.Editors, document, asked, [], what);
+            }
+            (start, end) = (touched[0].Start, touched[^1].End);
+        }
+        string part = text[start..end];
+        string laid = await BackgroundWork.Run(() => SqlFormatter.Format(part, kind));
+        return CodeActions.Reformatted.Apply(context.Editors, document, asked, laid == part ? [] : [new TextEdit(start, end - start, laid)], what);
     }
 
     public override string? Describe(CompletionItem item) => offered.TryGetValue(item, out SqlCompletions.Candidate candidate)

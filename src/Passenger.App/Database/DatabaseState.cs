@@ -20,6 +20,17 @@ public sealed record DatabaseState : IStateDocument<DatabaseState>
     /// <summary>The marks of connections the folder's files name, by <see cref="DatabaseSource.FoundKey"/>.</summary>
     public Dictionary<string, DatabaseMark> FoundMarks { get; init; } = [];
 
+    /// <summary>The values each console's parameters were last given, by its file and the parameter's name.</summary>
+    public Dictionary<string, Dictionary<string, string>> Parameters { get; init; } = [];
+
+    /// <summary>What ran on each connection, newest first, by <see cref="DatabaseSource.HistoryKey"/>.</summary>
+    public Dictionary<string, List<SqlRan>> History { get; init; } = [];
+
+    /// <summary>The most runs kept for a connection, and the longest statement kept whole.</summary>
+    public const int MostRuns = 500;
+
+    public const int LongestRun = 20_000;
+
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
 
     public DatabaseState Clamped() => this with
@@ -29,8 +40,15 @@ public sealed record DatabaseState : IStateDocument<DatabaseState>
         Consoles = (Consoles ?? []).Where(c => c.Key.Length > 0).Take(500).ToDictionary(),
         ManualCommit = [.. (ManualCommit ?? []).Where(p => p is { Length: > 0 }).Distinct().Take(500)],
         FoundMarks = (FoundMarks ?? []).Where(m => m.Key.Length > 0 && m.Value != DatabaseMark.None && Enum.IsDefined(m.Value)).Take(500).ToDictionary(),
+        Parameters = (Parameters ?? []).Where(p => p.Key.Length > 0 && p.Value is not null).Take(500)
+            .ToDictionary(p => p.Key, p => p.Value.Where(v => v.Key.Length > 0 && v.Value is not null).Take(100).ToDictionary()),
+        History = (History ?? []).Where(h => h.Key.Length > 0 && h.Value is not null).Take(200)
+            .ToDictionary(h => h.Key, h => h.Value.Where(r => r is { Statement.Length: > 0 and <= LongestRun, Outcome: not null }).Take(MostRuns).ToList()),
     };
 }
+
+/// <summary>A statement or batch run on a connection, when, and what it came to.</summary>
+public sealed record SqlRan(string Statement, DateTime At, string Outcome, bool Failed = false);
 
 /// <summary>A connection made by hand, its connection string with every secret part taken out, and its mark.</summary>
 public sealed record KeptConnection(Guid Id, string Name, DatabaseKind Kind, string ConnectionString, DatabaseMark Mark = DatabaseMark.None)

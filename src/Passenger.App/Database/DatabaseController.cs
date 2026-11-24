@@ -17,6 +17,23 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
     private ProjectSession? session;
     private Working? running;
     private StateDocument<DatabaseState>? kept;
+
+    /// <summary>The history and parameters of a window keeping no state, for its session alone.</summary>
+    private DatabaseState unkept = new();
+
+    private DatabaseState State => kept?.Value ?? unkept;
+
+    private void SetState(DatabaseState state)
+    {
+        if (kept is null)
+        {
+            unkept = state;
+        }
+        else
+        {
+            kept.Set(state);
+        }
+    }
     private CancellationTokenSource lifetime = new();
     private readonly List<DatabaseSource> made = [];
     private IReadOnlyList<DatabaseSource> found = [];
@@ -65,6 +82,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         lifetime = new CancellationTokenSource();
         session = next;
         kept = null;
+        unkept = new DatabaseState();
         made.Clear();
         found = [];
         connected.Clear();
@@ -158,9 +176,45 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         return console;
     }
 
+    /// <summary>What ran on a connection, newest first, as kept for the folder.</summary>
+    public IReadOnlyList<SqlRan> HistoryOf(DatabaseSource source) => State.History.GetValueOrDefault(source.HistoryKey) ?? [];
+
+    /// <summary>The values a console's parameters were last given, by name.</summary>
+    public IReadOnlyDictionary<string, string> ParametersOf(SqlConsole console) => State.Parameters.GetValueOrDefault(console.Path) ?? [];
+
+    /// <summary>Keeps the values a console's parameters were given, for the next time it asks.</summary>
+    public void KeepParameters(SqlConsole console, IReadOnlyDictionary<string, string> values)
+    {
+        UiThread.Check();
+        Dictionary<string, Dictionary<string, string>> all = new(State.Parameters);
+        all[console.Path] = new Dictionary<string, string>(all.GetValueOrDefault(console.Path) ?? []).Concat(values)
+            .GroupBy(v => v.Key).ToDictionary(g => g.Key, g => g.Last().Value);
+        SetState((State with { Parameters = all }).Clamped());
+    }
+
+    /// <summary>Keeps what a run came to in its connection's history, each statement newest first, one run again taking
+    /// its earlier place's.</summary>
+    private void Remember(DatabaseSource source, IReadOnlyList<SqlResult> results)
+    {
+        if (results.Count == 0)
+        {
+            return;
+        }
+        List<SqlRan> history = [.. State.History.GetValueOrDefault(source.HistoryKey) ?? []];
+        foreach (SqlResult result in results)
+        {
+            string statement = result.Statement.Length > DatabaseState.LongestRun ? result.Statement[..DatabaseState.LongestRun] : result.Statement;
+            history.RemoveAll(r => r.Statement == statement);
+            history.Insert(0, new SqlRan(statement, DateTime.UtcNow, SqlConsole.Outcome(result), result.Error is not null));
+        }
+        Dictionary<string, List<SqlRan>> all = new(State.History) { [source.HistoryKey] = history };
+        SetState((State with { History = all }).Clamped());
+    }
+
     /// <summary>Runs each of <paramref name="runs"/> in a console against its connection, one after another on one
-    /// connection, under a <see cref="Working"/> of its own beside the explorer's reads; false where one runs there already.</summary>
-    public async Task<bool> RunAsync(SqlConsole console, DatabaseSource source, IReadOnlyList<string> runs)
+    /// connection, under a <see cref="Working"/> of its own beside the explorer's reads, its parameters given the
+    /// <paramref name="values"/> asked; false where one runs there already.</summary>
+    public async Task<bool> RunAsync(SqlConsole console, DatabaseSource source, IReadOnlyList<string> runs, IReadOnlyDictionary<string, string>? values = null)
     {
         UiThread.Check();
         if (console.Manual && runs is [string alone] && SqlText.TransactionOf(alone, source.Kind) is { } transaction)
@@ -201,11 +255,11 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
                     LetGo(console);
                 }
                 SqlSession session = console.Session ??= await BackgroundWork.Run(() => SqlSession.OpenAsync(source, stop.Token), stop.Token);
-                await BackgroundWork.Run(() => session.RunAsync(runs, SqlConsole.RowLimit, told, stop.Token), stop.Token);
+                await BackgroundWork.Run(() => session.RunAsync(runs, SqlConsole.RowLimit, told, stop.Token, values), stop.Token);
             }
             else
             {
-                await BackgroundWork.Run(() => DatabaseClient.RunAsync(source, runs, SqlConsole.RowLimit, told, stop.Token), stop.Token);
+                await BackgroundWork.Run(() => DatabaseClient.RunAsync(source, runs, SqlConsole.RowLimit, told, stop.Token, values), stop.Token);
             }
             said = SqlConsole.Summary(results, System.Diagnostics.Stopwatch.GetElapsedTime(began));
             if (console.Session is { InTransaction: true } open)
@@ -227,10 +281,53 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             IdeErrors.Write($"Database console failed: {said}");
             working.Tell(false, said);
         }
+        List<SqlResult> ran;
         lock (results)
         {
-            console.Ran([.. results], said);
+            ran = [.. results];
         }
+        Remember(source, ran);
+        console.Ran(ran, said);
+        say(said);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>Explains a console's statement against its connection, under a <see cref="Working"/> of its own, never
+    /// running it; false where one runs there already.</summary>
+    public async Task<bool> ExplainAsync(SqlConsole console, DatabaseSource source, string statement, IReadOnlyDictionary<string, string>? values)
+    {
+        UiThread.Check();
+        if (console.Running || work.Begin(AppActions.DatabaseExplain, $"Explaining on {source.Name}…") is not { } started)
+        {
+            return false;
+        }
+        using Working working = started;
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(working.Stopping, lifetime.Token);
+        console.Run(working);
+        PlanStep? plan = null;
+        string said;
+        try
+        {
+            plan = await BackgroundWork.Run(() => DatabaseClient.ExplainAsync(source, statement, values, stop.Token), stop.Token);
+            connected.Add(source.Id);
+            PlanStep? costliest = SqlPlans.Costliest(plan);
+            said = $"Plan of {Plural.Of(SqlPlans.Each(plan).Count() - 1, "step")}" + (costliest is null ? ", its costs not given" : $", the costliest {costliest.Operation}");
+            working.Tell(true, said);
+        }
+        catch (Exception stopped) when (stopped is OperationCanceledException || stopped is DbException && stop.IsCancellationRequested)
+        {
+            said = "Stopped.";
+            working.Tell(false, said);
+        }
+        catch (Exception error) when (error is DbException or IOException or InvalidOperationException or FormatException or TimeoutException or JsonException
+            or System.Xml.XmlException or System.Net.Sockets.SocketException or KeyNotFoundException)
+        {
+            said = ContainerSecrets.InSaid(error.Message, known: [source.ConnectionString]);
+            IdeErrors.Write($"Database explain failed: {said}");
+            working.Tell(false, said);
+        }
+        console.Explained(statement, plan, said);
         say(said);
         Changed?.Invoke(this, EventArgs.Empty);
         return true;

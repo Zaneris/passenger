@@ -8,6 +8,7 @@ public partial class MainWindow
 {
     private DatabaseController? database;
     private DatabaseExplorer? databaseExplorer;
+    private SqlConsoleChecks? sqlChecks;
 
     public DatabaseController Database => database!;
     public DatabaseExplorer DatabaseExplorer => databaseExplorer ?? (DatabaseExplorer)Dock[ToolWindowIds.Database].Content;
@@ -29,13 +30,20 @@ public partial class MainWindow
         };
         Dock.Add(shown);
         Editors.ConsoleOf = document => controller.ConsoleOf(document.Path);
+        SqlConsoleChecks checks = sqlChecks = new SqlConsoleChecks(document => controller.ConsoleOf(document.Path) is { Connection: { } id } && controller.Find(id) is { } source
+            ? (source.Kind, controller.CatalogOf(source)) : null);
+        Editors.Opened += (_, document) => checks.Attach(document);
+        Editors.Closed += (_, document) => checks.Detach(document);
+        controller.Changed += (_, _) => checks.SchemaChanged();
         Editors.MarkOf = document => document.DatabaseTable is { } table ? controller.Find(table.Connection)?.Mark ?? DatabaseMark.None
             : document.Language == Languages.Language.Sql && controller.ConsoleOf(document.Path) is { Connection: { } id } ? controller.Find(id)?.Mark ?? DatabaseMark.None
             : DatabaseMark.None;
         Editors.AsksBeforeClosing = AsksBeforeClosingDatabase;
         Editors.MakeConsoleView = () =>
         {
-            SqlConsoleView view = new(() => controller.Sources, action => Request(action));
+            SqlConsoleView view = new(() => controller.Sources, console => console.Connection is { } id && controller.Find(id) is { } source ? controller.HistoryOf(source) : [],
+                action => Request(action));
+            view.HistoryChosen += (_, chosen) => WriteIntoConsole(chosen.Console, chosen.Ran.Statement.TrimEnd() + (chosen.Ran.Statement.TrimEnd().EndsWith(';') ? string.Empty : ";") + "\n");
             view.ConnectionChosen += (_, chosen) =>
             {
                 if (chosen.Console.InTransaction && chosen.Console.Connection != chosen.Source.Id)
@@ -92,12 +100,34 @@ public partial class MainWindow
         Add(AppActions.DatabaseRefresh, "Refresh Database Connections", controller.RefreshAsync, () => Folder is null ? Refusals.NoFolder : null);
         Add(AppActions.DatabaseConsole, "Open SQL Console", OpenSqlConsoleAsync,
             () => ChosenConnection() is not { } chosen ? Refusals.NoDatabaseConnection : WhyNotOpened(chosen) ?? PersonsOwn());
+        Add(AppActions.DatabaseShowDdl, "Show DDL", ShowDdlAsync, WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 0));
+        Add(AppActions.DatabaseScriptCreate, "Generate Create Script", () => ScriptIntoConsoleAsync(DdlScript.Create), WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 1));
+        Add(AppActions.DatabaseScriptAlter, "Generate Alter Script", () => ScriptIntoConsoleAsync(DdlScript.Alter), WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 2));
+        Add(AppActions.DatabaseScriptDrop, "Generate Drop Script", () => ScriptIntoConsoleAsync(DdlScript.Drop), WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 3));
         actions!.Add(new IdeAction(AppActions.DatabaseRun, "Run Statement", "Database", _ => IdeErrors.Observe(RunSqlAsync()))
         {
             WhyNot = _ => Editors.Active is not { Language: var language } || language != Languages.Language.Sql ? Refusals.NoSqlFile
                 : controller.ConsoleOf(Editors.Active.Path) is { Running: true } ? Refusals.SqlRunning : PersonsOwn(),
             Menus = [new MenuPlace("Tools/Database", 1, 0)],
             KeysOf = () => AppActions.KeysIn(AppActions.DatabaseRun) is var keys && keys != AppActions.DatabaseRun ? keys : null,
+        });
+        actions!.Add(new IdeAction(AppActions.DatabaseRunFile, "Run SQL File", "Database", _ => IdeErrors.Observe(RunSqlAsync(whole: true)))
+        {
+            WhyNot = _ => Editors.Active is not { Language: var language } || language != Languages.Language.Sql ? Refusals.NoSqlFile
+                : controller.ConsoleOf(Editors.Active.Path) is { Running: true } ? Refusals.SqlRunning : PersonsOwn(),
+            Menus = [new MenuPlace("Tools/Database", 1, 4)],
+        });
+        actions!.Add(new IdeAction(AppActions.DatabaseExplain, "Explain Plan", "Database", _ => IdeErrors.Observe(ExplainSqlAsync()))
+        {
+            WhyNot = _ => Editors.Active is not { Language: var language } || language != Languages.Language.Sql ? Refusals.NoSqlFile
+                : controller.ConsoleOf(Editors.Active.Path) is { Running: true } ? Refusals.SqlRunning : PersonsOwn(),
+            Menus = [new MenuPlace("Tools/Database", 1, 6)],
+        });
+        actions!.Add(new IdeAction(AppActions.DatabaseHistory, "Query History", "Database", _ => Editors.ActiveGroup.Console?.ShowHistory())
+        {
+            WhyNot = _ => Editors.Active is not { Language: var language } file || language != Languages.Language.Sql || controller.ConsoleOf(file.Path) is not { Connection: not null }
+                || Editors.ActiveGroup.Console is null ? Refusals.NoSqlConsole : null,
+            Menus = [new MenuPlace("Tools/Database", 1, 5)],
         });
         actions!.Add(new IdeAction(AppActions.DatabaseRunStop, "Stop Statement", "Database", _ => (Editors.Active is { } file ? controller.ConsoleOf(file.Path) : null)?.Stop())
         {
@@ -159,14 +189,16 @@ public partial class MainWindow
             });
         }
 
-        void Add(string id, string title, Func<Task> run, Func<string?> why)
+        void Add(string id, string title, Func<Task> run, Func<string?> why, MenuPlace? menu = null)
         {
             actions!.Add(new IdeAction(id, title, "Database", _ => IdeErrors.Observe(run()))
             {
                 WhyNot = _ => controller.Busy ? Refusals.DatabaseBusy : why(),
-                Menus = [new MenuPlace("Tools/Database", 0, 0)],
+                Menus = [menu ?? new MenuPlace("Tools/Database", 0, 0)],
             });
         }
+
+        string? WhyNotObject() => databaseExplorer?.Chosen is not { Target: not null } chosen ? Refusals.NoDatabaseObject : WhyNotOpened(chosen.Source) ?? PersonsOwn();
 
         string? PersonsOwn() => AgentsOwn || Mcp.AgentCall.Current is not null ? Refusals.AsksThePerson : null;
     }
@@ -261,6 +293,65 @@ public partial class MainWindow
         await tab.LoadAsync();
     }
 
+    /// <summary>Shows the chosen object's definition, as its database gives it, in a read-only tab of its own, read anew each time.</summary>
+    private async Task ShowDdlAsync()
+    {
+        if (databaseExplorer?.Chosen is not { Target: { } chosen } node || database is not { } controller)
+        {
+            return;
+        }
+        // A column's definition is its table's.
+        DatabaseObjectRef target = chosen.Kind == DatabaseObjectKind.Column ? chosen with { Kind = DatabaseObjectKind.Table, Name = chosen.Table, Table = string.Empty } : chosen;
+        DatabaseSource within = node.Source.In(node.Database);
+        if (await controller.ReadAsync(node.Source, $"Reading {target}'s definition…", cancel => DatabaseDdl.ReadAsync(within, target, cancel)) is not { } text)
+        {
+            return;
+        }
+        string path = DatabaseDdl.CopyOf(node.Source, node.Database, target);
+        await BackgroundWork.Run(() =>
+        {
+            Containers.OwnFiles.Made(Path.GetDirectoryName(path)!);
+            Containers.OwnFiles.Write(path, text);
+        });
+        Editors.Find(path)?.Reload(overUnsaved: true);
+        if (Editors.Open(path) is { } failed)
+        {
+            Refuse(failed);
+        }
+    }
+
+    /// <summary>Writes a script that makes, changes or drops the chosen object at the end of its connection's console,
+    /// chosen there and never run, so the person reads it before running it.</summary>
+    private async Task ScriptIntoConsoleAsync(DdlScript script)
+    {
+        if (databaseExplorer?.Chosen is not { Target: { } target } node || database is not { } controller)
+        {
+            return;
+        }
+        DatabaseSource source = node.Source;
+        DatabaseSource within = source.In(node.Database);
+        if (await controller.ReadAsync(source, $"Writing {script.ToString().ToLowerInvariant()} script of {target}…",
+            cancel => DatabaseDdl.ScriptAsync(within, target, script, cancel)) is not { } text)
+        {
+            return;
+        }
+        await OpenSqlConsoleAsync();
+        if (Editors.Active is not { } console || controller.ConsoleOf(console.Path)?.Connection != source.Id)
+        {
+            return;
+        }
+        string elsewhere = node.Database == source.Database || source.Kind == DatabaseKind.Sqlite ? string.Empty : source.Kind switch
+        {
+            DatabaseKind.SqlServer => $"USE {DatabaseClient.Quote(source.Kind, node.Database)}\nGO\n",
+            DatabaseKind.MySql => $"USE {DatabaseClient.Quote(source.Kind, node.Database)};\n",
+            _ => $"-- Of database {node.Database}, which this console's connection does not open\n",
+        };
+        if (controller.ConsoleOf(console.Path) is { } shown)
+        {
+            WriteIntoConsole(shown, elsewhere + text);
+        }
+    }
+
     /// <summary>Opens the chosen connection's console, a .sql file kept with the folder's state, made as first opened.</summary>
     private async Task OpenSqlConsoleAsync()
     {
@@ -283,41 +374,21 @@ public partial class MainWindow
         Editors.FollowSidePanes();
     }
 
-    /// <summary>Runs the SQL file's chosen statements, or the one the caret stands in, against its console's connection,
-    /// asking which connection where it has none yet.</summary>
-    private async Task RunSqlAsync()
+    /// <summary>Runs the SQL file's chosen statements, or the one the caret stands in, or <paramref name="whole"/> every
+    /// statement in turn, against its console's connection, asking which connection where it has none yet, and the
+    /// values of their parameters where they have any.</summary>
+    private async Task RunSqlAsync(bool whole = false)
     {
-        if (Editors.Active is not { } file || file.Language != Languages.Language.Sql || database is not { } controller)
+        if (await ConsoleToRunAsync() is not { } run || database is not { } controller)
         {
             return;
         }
+        (SqlConsole console, DatabaseSource source) = run;
         Passenger.Editor.CodeEditor editor = Editors.CodeEditor;
         Selection chosen = editor.Selections.Primary;
         string text = editor.Document.Snapshot.ToString();
-        SqlConsole? console = controller.ConsoleOf(file.Path);
-        if (console?.Connection is not { } id || controller.Find(id) is null)
-        {
-            IReadOnlyList<DatabaseSource> sources = controller.Sources;
-            if (sources.Count == 0)
-            {
-                Refuse(Refusals.NoDatabaseConnection);
-                return;
-            }
-            string? name = await ChooseAsync("Run Statement", $"Which database does {file.Name} run against?", [.. sources.Select(s => s.ToString())], null);
-            if (name is null || sources.FirstOrDefault(s => s.ToString() == name) is not { } picked)
-            {
-                return;
-            }
-            console = controller.Bind(file.Path, picked);
-            Editors.FollowSidePanes();
-        }
-        DatabaseSource source = controller.Find(console.Connection!.Value)!;
-        if (WhyNotOpened(source) is { } why)
-        {
-            Refuse(why);
-            return;
-        }
-        IReadOnlyList<string> runs = !chosen.IsEmpty ? SqlText.Runs(text[chosen.Start..chosen.End], source.Kind)
+        IReadOnlyList<string> runs = whole ? SqlText.Runs(text, source.Kind)
+            : !chosen.IsEmpty ? SqlText.Runs(text[chosen.Start..chosen.End], source.Kind)
             : SqlText.At(text, source.Kind, chosen.Caret) is { } at ? SqlText.Runs(text[at.Start..at.End], source.Kind) : [];
         if (runs.Count == 0)
         {
@@ -338,9 +409,130 @@ public partial class MainWindow
             console.Ran(console.Results, "Not run.");
             return;
         }
-        await controller.RunAsync(console, source, runs);
+        if (await ValuesAsync(console, runs, source.Kind) is not { } values)
+        {
+            console.Ran(console.Results, "Not run.");
+            return;
+        }
+        await controller.RunAsync(console, source, runs, values.Count == 0 ? null : values);
 
         static string Shortened(string statement) => Containers.ContainerSecrets.InSaid(statement.Length > 400 ? statement[..400] + "…" : statement);
+    }
+
+    /// <summary>Explains the SQL file's statement the caret stands in, or the first chosen, as a plan's tree under it, never
+    /// running it, asking its parameters' values where it has any.</summary>
+    private async Task ExplainSqlAsync()
+    {
+        if (await ConsoleToRunAsync() is not { } run || database is not { } controller)
+        {
+            return;
+        }
+        (SqlConsole console, DatabaseSource source) = run;
+        Passenger.Editor.CodeEditor editor = Editors.CodeEditor;
+        Selection chosen = editor.Selections.Primary;
+        string text = editor.Document.Snapshot.ToString();
+        (int Start, int End)? at = SqlText.At(text, source.Kind, chosen.IsEmpty ? chosen.Caret : chosen.Start);
+        string? statement = at is { } found ? SqlText.Runs(text[found.Start..found.End], source.Kind).FirstOrDefault() : null;
+        if (statement is null || !SqlPlans.Explains(statement, source.Kind))
+        {
+            Refuse(statement is null ? Refusals.NoSqlStatement : Refusals.NoPlan);
+            return;
+        }
+        if (await ValuesAsync(console, [statement], source.Kind) is not { } values)
+        {
+            return;
+        }
+        await controller.ExplainAsync(console, source, statement, values.Count == 0 ? null : values);
+    }
+
+    /// <summary>The values of what runs' parameters, asked of the person; empty where it has none, null where the person
+    /// cancelled.</summary>
+    private async Task<IReadOnlyDictionary<string, string>?> ValuesAsync(SqlConsole console, IReadOnlyList<string> runs, DatabaseKind kind) =>
+        SqlParameters.Asked(SqlParameters.Of(runs, kind)) is { Count: > 0 } asked ? await AskParametersAsync(console, asked, runs.Count) : new Dictionary<string, string>();
+
+    /// <summary>The SQL file shown as a console and its connection, asking which connection where it has none yet; null
+    /// where none is chosen or it may not be opened, said.</summary>
+    private async Task<(SqlConsole Console, DatabaseSource Source)?> ConsoleToRunAsync()
+    {
+        if (Editors.Active is not { } file || file.Language != Languages.Language.Sql || database is not { } controller)
+        {
+            return null;
+        }
+        SqlConsole? console = controller.ConsoleOf(file.Path);
+        if (console?.Connection is not { } id || controller.Find(id) is null)
+        {
+            IReadOnlyList<DatabaseSource> sources = controller.Sources;
+            if (sources.Count == 0)
+            {
+                Refuse(Refusals.NoDatabaseConnection);
+                return null;
+            }
+            string? name = await ChooseAsync("Run Statement", $"Which database does {file.Name} run against?", [.. sources.Select(s => s.ToString())], null);
+            if (name is null || sources.FirstOrDefault(s => s.ToString() == name) is not { } picked)
+            {
+                return null;
+            }
+            console = controller.Bind(file.Path, picked);
+            Editors.FollowSidePanes();
+        }
+        DatabaseSource source = controller.Find(console.Connection!.Value)!;
+        if (WhyNotOpened(source) is { } why)
+        {
+            Refuse(why);
+            return null;
+        }
+        return (console, source);
+    }
+
+    /// <summary>Asks the values of a run's parameters, each given the value the console last gave it, and keeps them for
+    /// the console; null where the person cancelled, or an agent asked, which the person alone answers.</summary>
+    private async Task<IReadOnlyDictionary<string, string>?> AskParametersAsync(SqlConsole console, IReadOnlyList<string> asked, int statements)
+    {
+        if (AgentsOwn || Mcp.AgentCall.Current is not null || database is not { } controller)
+        {
+            Refuse(Refusals.AsksThePerson);
+            return null;
+        }
+        IReadOnlyDictionary<string, string> last = controller.ParametersOf(console);
+        Avalonia.Controls.StackPanel rows = new() { Spacing = FormRows.Between };
+        FormRows.Scope(rows);
+        List<(string Name, Avalonia.Controls.TextBox Box)> boxes = [];
+        foreach (string name in asked)
+        {
+            Avalonia.Controls.TextBox box = new() { Name = $"SqlParameter{boxes.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)}", Text = last.GetValueOrDefault(name, string.Empty) };
+            boxes.Add((name, box));
+            rows.Children.Add(FormRows.Of(name, box));
+        }
+        ConfirmDialog dialog = new("Run with Parameters", $"{(statements == 1 ? "The statement takes" : "The statements take")} {(asked.Count == 1 ? "a parameter" : $"{asked.Count} parameters")}. "
+            + "Give each a value: a number, text, 'quoted text' or NULL.", "Run", detail: rows);
+        // The first value is typed as the question opens, as a question asking one is.
+        dialog.Opened += (_, _) =>
+        {
+            boxes[0].Box.Focus();
+            boxes[0].Box.SelectAll();
+        };
+        if (!await dialog.ShowDialog<bool>(this))
+        {
+            return null;
+        }
+        Dictionary<string, string> values = boxes.ToDictionary(b => b.Name, b => b.Box.Text ?? string.Empty, StringComparer.Ordinal);
+        controller.KeepParameters(console, values);
+        return values;
+    }
+
+    /// <summary>Writes a statement at the end of a console's file shown, on a line of its own, chosen there and not run.</summary>
+    private void WriteIntoConsole(SqlConsole console, string statement)
+    {
+        if (Editors.Active is not { } file || !PathNames.Same(file.Path, console.Path))
+        {
+            return;
+        }
+        Passenger.Editor.CodeEditor editor = Editors.CodeEditor;
+        string now = editor.Document.Snapshot.ToString();
+        string lead = now.Length == 0 ? string.Empty : now.EndsWith('\n') ? "\n" : "\n\n";
+        int start = now.Length + lead.Length;
+        editor.Focus();
+        editor.ApplyEdits([new TextEdit(now.Length, 0, lead + statement)], SelectionSet.Single(new Selection(start, start + statement.TrimEnd().Length)));
     }
 
     /// <summary>Asks before a change on a connection marked production, Cancel taking Enter so no stray key runs it; never

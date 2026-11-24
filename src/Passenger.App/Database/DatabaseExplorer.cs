@@ -21,12 +21,13 @@ public enum DatabaseNodeKind
     Column,
     Key,
     Index,
+    Trigger,
     Note,
 }
 
 /// <summary>A row of the explorer: a connection, a database, a schema, a group of a schema's tables, views or routines or
-/// of a table's columns, keys or indexes, one of those, or a note (none, or why a read failed). What is under it is read
-/// as it is first opened.</summary>
+/// of a table's columns, keys, indexes or triggers, one of those, or a note (none, or why a read failed). What is under it
+/// is read as it is first opened.</summary>
 public sealed class DatabaseNode(DatabaseNodeKind kind, string title, int depth, DatabaseSource source) : Observable, ITreeRow
 {
     private bool expanded;
@@ -45,9 +46,14 @@ public sealed class DatabaseNode(DatabaseNodeKind kind, string title, int depth,
     /// <summary>Words shown muted after its title: a column's type, a routine's kind.</summary>
     public string Detail { get; init; } = string.Empty;
 
+    /// <summary>A column's, index's or trigger's own name, and a column's type.</summary>
+    public string Member { get; init; } = string.Empty;
+    public string Type { get; init; } = string.Empty;
+
     public List<DatabaseNode>? Children { get; set; }
 
-    public bool Expands => Kind is not (DatabaseNodeKind.Column or DatabaseNodeKind.Key or DatabaseNodeKind.Index or DatabaseNodeKind.Routine or DatabaseNodeKind.Note);
+    public bool Expands => Kind is not (DatabaseNodeKind.Column or DatabaseNodeKind.Key or DatabaseNodeKind.Index or DatabaseNodeKind.Routine or DatabaseNodeKind.Trigger
+        or DatabaseNodeKind.Note);
     public bool IsExpanded { get => expanded; set => Set(ref expanded, value); }
 
     /// <summary>A connection's mark as it stands, which its row shows.</summary>
@@ -55,6 +61,19 @@ public sealed class DatabaseNode(DatabaseNodeKind kind, string title, int depth,
 
     /// <summary>The table or view it names, for a table's or view's row.</summary>
     public DatabaseTable? Table => Kind is DatabaseNodeKind.Table or DatabaseNodeKind.View ? new DatabaseTable(Schema, Object) : null;
+
+    /// <summary>The object its row names, whose definition it shows and whose scripts it makes; null for a connection, a
+    /// database, a schema, a group, a key or a note.</summary>
+    public DatabaseObjectRef? Target => Kind switch
+    {
+        DatabaseNodeKind.Table => new DatabaseObjectRef(DatabaseObjectKind.Table, Schema, Object),
+        DatabaseNodeKind.View => new DatabaseObjectRef(DatabaseObjectKind.View, Schema, Object),
+        DatabaseNodeKind.Routine => new DatabaseObjectRef(DatabaseObjectKind.Routine, Schema, Object, Detail: Detail),
+        DatabaseNodeKind.Trigger => new DatabaseObjectRef(DatabaseObjectKind.Trigger, Schema, Member, Object),
+        DatabaseNodeKind.Index => new DatabaseObjectRef(DatabaseObjectKind.Index, Schema, Member, Object),
+        DatabaseNodeKind.Column => new DatabaseObjectRef(DatabaseObjectKind.Column, Schema, Member, Object, Type),
+        _ => null,
+    };
 
     public string IconKey => Kind switch
     {
@@ -67,6 +86,7 @@ public sealed class DatabaseNode(DatabaseNodeKind kind, string title, int depth,
         DatabaseNodeKind.Column => IconKeys.DatabaseColumn,
         DatabaseNodeKind.Key => IconKeys.DatabaseKey,
         DatabaseNodeKind.Index => IconKeys.DatabaseIndex,
+        DatabaseNodeKind.Trigger => IconKeys.DatabaseTrigger,
         _ => IconKeys.Info,
     };
 }
@@ -110,12 +130,17 @@ public sealed class DatabaseExplorer : DockPanel
         ReusedRows.Use(list, Row);
         TreeKeys.Attach<DatabaseNode>(list, node => IdeErrors.Observe(ToggleAsync(node)), node =>
         {
-            if (node.Table is null)
+            if (node.Table is not null)
             {
-                return false;
+                Request(AppActions.DatabaseOpenTable);
+                return true;
             }
-            Request(AppActions.DatabaseOpenTable);
-            return true;
+            if (node.Target is not null && !node.Expands)
+            {
+                Request(AppActions.DatabaseShowDdl);
+                return true;
+            }
+            return false;
         });
         ListMenus.Attach(list, Menu);
         list.AddHandler(TextInputEvent, (_, e) =>
@@ -233,18 +258,24 @@ public sealed class DatabaseExplorer : DockPanel
                 }
                 List<DatabaseNode> parts =
                 [
-                    Group("Columns", depth, node, [.. schema.Columns.Select(c => new DatabaseNode(DatabaseNodeKind.Column, c.Name, depth + 1, source)
-                    {
-                        Database = node.Database, Schema = node.Schema, Object = node.Object,
-                        Detail = c.Type + (c.Nullable ? string.Empty : " not null") + (c.Primary ? ", primary key" : string.Empty) + (c.Generated ? ", generated" : string.Empty),
-                    })]),
+                    Group("Columns", depth, node, [.. schema.Columns.Select(c => Part(DatabaseNodeKind.Column, c.Name, c.Name,
+                        c.Type + (c.Nullable ? string.Empty : " not null") + (c.Primary ? ", primary key" : string.Empty) + (c.Generated ? ", generated" : string.Empty), c.Type))]),
                 ];
                 if (node.Kind == DatabaseNodeKind.Table)
                 {
-                    parts.Add(Group("Keys", depth, node, [.. schema.Keys.Select(k => new DatabaseNode(DatabaseNodeKind.Key, k, depth + 1, source))]));
-                    parts.Add(Group("Indexes", depth, node, [.. schema.Indexes.Select(i => new DatabaseNode(DatabaseNodeKind.Index, i, depth + 1, source))]));
+                    parts.Add(Group("Keys", depth, node, [.. schema.Keys.Select(k => Part(DatabaseNodeKind.Key, k, string.Empty))]));
+                    parts.Add(Group("Indexes", depth, node, [.. schema.Indexes.DistinctBy(i => i.Said).Select(i => Part(DatabaseNodeKind.Index, i.Said, i.Name))]));
+                }
+                if (node.Kind == DatabaseNodeKind.Table || schema.Triggers.Count > 0)
+                {
+                    parts.Add(Group("Triggers", depth, node, [.. schema.Triggers.Select(t => Part(DatabaseNodeKind.Trigger, t.Name, t.Name, t.Said))]));
                 }
                 return parts;
+
+                DatabaseNode Part(DatabaseNodeKind kind, string title, string member, string detail = "", string type = "") => new(kind, title, depth + 1, source)
+                {
+                    Database = node.Database, Schema = node.Schema, Object = node.Object, Member = member, Detail = detail, Type = type,
+                };
             default:
                 return node.Children ?? [];
         }
@@ -313,6 +344,14 @@ public sealed class DatabaseExplorer : DockPanel
         if (node.Table is not null)
         {
             items.Add(ListMenus.Open("Open Table Data", () => Request(AppActions.DatabaseOpenTable)));
+        }
+        if (node.Target is not null)
+        {
+            items.Add(ListMenus.Keyed("Show DDL", AppActions.DatabaseShowDdl, () => Request(AppActions.DatabaseShowDdl)));
+            items.Add(ListMenus.Sub("SQL Scripts",
+                ListMenus.Item("Create", () => Request(AppActions.DatabaseScriptCreate)),
+                ListMenus.Item("Alter", () => Request(AppActions.DatabaseScriptAlter)),
+                ListMenus.Item("Drop", () => Request(AppActions.DatabaseScriptDrop))));
         }
         items.Add(ListMenus.Item("Open SQL Console", () => Request(AppActions.DatabaseConsole), icon: IconKeys.SqlConsole));
         if (node.Kind == DatabaseNodeKind.Connection)

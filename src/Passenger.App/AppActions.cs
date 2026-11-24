@@ -189,12 +189,23 @@ public static class AppActions
     public const string DatabaseConnectionRemove = "app.database.connectionRemove";
     public const string DatabaseOpenTable = "app.database.openTable";
     public const string DatabaseCancel = "app.database.cancel";
+    // An object's DDL: Show DDL on Go to Declaration's keys in the Database window, as Rider's Jdbc.OpenEditor.DDL takes them
+    // (KeysIn); its scripts into a console, no key of Rider's.
+    public const string DatabaseShowDdl = "app.database.showDdl";
+    public const string DatabaseScriptCreate = "app.database.scriptCreate";
+    public const string DatabaseScriptAlter = "app.database.scriptAlter";
+    public const string DatabaseScriptDrop = "app.database.scriptDrop";
 
     // A console's Run Statement, Rider's Console.Execute.Multiline: Ctrl+Enter, the Mac's Cmd+Enter, which Visual Studio's and
     // VS Code's keymaps give the editor's Start New Line Before and Start New Line, so a SQL file takes theirs (KeysIn).
     public const string DatabaseConsole = "app.database.console";
     public const string DatabaseRun = "app.database.run";
     public const string DatabaseRunStop = "app.database.runStop";
+    // A SQL file run whole, and the console's connection's history: no key of Rider's for either.
+    public const string DatabaseRunFile = "app.database.runFile";
+    public const string DatabaseHistory = "app.database.history";
+    // A console's statement explained as a plan's tree: Rider's Console.Jdbc.ExplainPlan, no key of its own.
+    public const string DatabaseExplain = "app.database.explain";
     // A console's transaction in manual commit: Rider's Console.Transaction.Commit, IntelliJ IDEA's Ctrl+Alt+Shift+Enter.
     public const string DatabaseCommit = "app.database.commit";
     public const string DatabaseRollback = "app.database.rollback";
@@ -786,6 +797,7 @@ public static class AppActions
         DatabaseAddRow => Generate,
         DatabaseDeleteRows => EditorActions.DeleteLine,
         DatabaseRevert => RollbackLines,
+        DatabaseShowDdl => GoToDeclaration,
         Rerun when Preset == KeymapPreset.IntelliJ && OperatingSystem.IsMacOS() => Replace,
         NextOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: true),
         PreviousOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: false),

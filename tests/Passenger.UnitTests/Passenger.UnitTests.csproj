@@ -46,6 +46,11 @@
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Database/DatabaseKind.cs" Link="App/DatabaseKind.cs" />
     <Compile Include="../../src/Passenger.App/Database/SqlText.cs" Link="App/SqlText.cs" />
+    <Compile Include="../../src/Passenger.App/Database/SqlParameters.cs" Link="App/SqlParameters.cs" />
+    <Compile Include="../../src/Passenger.App/Database/SqlFormatter.cs" Link="App/SqlFormatter.cs" />
+    <Compile Include="../../src/Passenger.App/Database/SqlCompletions.cs" Link="App/SqlCompletions.cs" />
+    <Compile Include="../../src/Passenger.App/Database/SqlChecks.cs" Link="App/SqlChecks.cs" />
+    <Compile Include="../../src/Passenger.App/Database/SqlPlans.cs" Link="App/SqlPlans.cs" />
     <Compile Include="../../src/Passenger.App/Containers/ComposeFiles.cs" Link="App/ComposeFiles.cs" />
     <Compile Include="../../src/Passenger.App/Containers/ComposeProjectFile.cs" Link="App/ComposeProjectFile.cs" />
     <Compile Include="../../src/Passenger.App/Containers/ServiceUrls.cs" Link="App/ServiceUrls.cs" />

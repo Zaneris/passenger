@@ -650,6 +650,12 @@ public static class Refusals
     /// <summary>Run Statement with no SQL file shown.</summary>
     public const string NoSqlFile = "Open a SQL file or console first";
 
+    /// <summary>Explain Plan of a statement that is no query or change of rows (DDL, a session's SET), or an EXPLAIN already.</summary>
+    public const string NoPlan = "Only a query or a change of rows has a plan to explain";
+
+    /// <summary>Query History, Explain Plan or a console's own action with no console of a connection shown.</summary>
+    public const string NoSqlConsole = "Open a SQL console of a connection first";
+
     /// <summary>Run Statement with the caret where no statement stands.</summary>
     public const string NoSqlStatement = "No statement here to run";
 
@@ -664,6 +670,12 @@ public static class Refusals
 
     /// <summary>A statement, or a table's changes, that would change data or schema on a connection marked read-only.</summary>
     public static string ReadOnlyConnection(string connection) => $"{connection} is marked read-only: nothing that changes its data or schema runs there";
+
+    /// <summary>Show DDL, or a script made from it, of an object its database gives no definition of (dropped since it was read).</summary>
+    public static string NoDefinition(string name) => $"The database gives no definition of {name}: read it again in Database";
+
+    /// <summary>Show DDL or a script with no table, view, routine, trigger, index or column chosen in the Database window.</summary>
+    public const string NoDatabaseObject = "Choose a table, view, routine, trigger, index or column first";
 
     /// <summary>A change asked of a table or view with no primary key, by which a row is found again to write it.</summary>
     public static string NoPrimaryKey(string table) => $"{table} has no primary key, so none of its rows can be found again to change";

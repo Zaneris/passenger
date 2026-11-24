@@ -24,7 +24,7 @@ public sealed class SqlSession(DatabaseSource source, DbConnection connection) :
         new(source, await DatabaseClient.OpenAsync(source, cancel));
 
     /// <summary>Runs statements in the transaction, beginning it first where none is open.</summary>
-    internal async Task<bool> RunAsync(IReadOnlyList<string> runs, int limit, Action<SqlResult> told, CancellationToken cancel)
+    internal async Task<bool> RunAsync(IReadOnlyList<string> runs, int limit, Action<SqlResult> told, CancellationToken cancel, IReadOnlyDictionary<string, string>? values = null)
     {
         // SQLite's transaction locks the file for writing only once a statement writes, as the others' do their rows.
         transaction ??= connection is Microsoft.Data.Sqlite.SqliteConnection sqlite ? sqlite.BeginTransaction(deferred: true) : await connection.BeginTransactionAsync(cancel);
@@ -33,7 +33,7 @@ public sealed class SqlSession(DatabaseSource source, DbConnection connection) :
             Statements++;
             Changed += Math.Max(0, result.Affected);
             told(result);
-        }, cancel);
+        }, cancel, values);
     }
 
     /// <summary>Commits the transaction open, or rolls it back, the connection kept for the next statement.</summary>
