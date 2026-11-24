@@ -129,7 +129,7 @@ public static class EventReasons
     /// <summary>A module loaded.</summary>
     public const string New = "new";
 
-    /// <summary>A module unloaded.</summary>
+    /// <summary>A module unloaded, or a temporary breakpoint went at its hit.</summary>
     public const string Removed = "removed";
 
     /// <summary>A thread started.</summary>

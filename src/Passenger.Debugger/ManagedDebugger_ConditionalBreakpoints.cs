@@ -19,6 +19,12 @@ public partial class ManagedDebugger
     /// <summary>A data or exception breakpoint's message, by its id, written by a hit whose condition could not be told.</summary>
     public event Action<int, string>? OnBreakpointMessage;
 
+    /// <summary>A temporary breakpoint, by its id, went at the hit it took.</summary>
+    public event Action<int>? OnBreakpointRemoved;
+
+    /// <summary>What the session's breakpoints have come to between them: those hit, those temporary gone.</summary>
+    private readonly SessionHits _sessionHits = new();
+
     /// <summary>Why the debugger will not take a breakpoint's condition, hit count or message as it is, if it will not: such
     /// a breakpoint is refused when set, of every kind, rather than stopping at every hit saying it could not be told, or
     /// logging what its message was not meant to say.</summary>
@@ -49,6 +55,8 @@ public partial class ManagedDebugger
         Say = line => OnConsole?.Invoke($"{line}\n"),
         Told = Told,
         Log = _logger,
+        Session = _sessionHits,
+        Removed = gone => OnBreakpointRemoved?.Invoke(gone.Id),
     });
 
     /// <summary>A breakpoint's message changed at a hit, told as its kind tells one.</summary>

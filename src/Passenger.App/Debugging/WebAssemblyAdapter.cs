@@ -588,6 +588,8 @@ public sealed class WebAssemblyAdapter : InProcessAdapter
             Reached = () => BreakpointHits.Reached(at.File, top.Line + 1),
             Say = Say,
             Told = told => Told(told, at.File, at.Bound ?? at.Request.Line),
+            Session = Hits,
+            Removed = Removed,
         }))
         {
             Stopped(StopReasons.Breakpoint, null, [at.Id]);

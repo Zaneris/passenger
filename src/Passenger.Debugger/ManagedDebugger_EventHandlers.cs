@@ -509,8 +509,9 @@ public partial class ManagedDebugger
         }
 
         BreakpointManager.BreakpointBinding? hit = managedBreakpoint.Bindings.Find(binding => binding.CorBreakpoint == functionBreakpoint);
-        if (!await HitStopsAsync(corThread, managedBreakpoint, "the breakpoint",
-            () => BreakpointHits.Reached(managedBreakpoint.FilePath, managedBreakpoint.IsFunctionBreakpoint ? managedBreakpoint.Line : hit?.Source.StartLine ?? managedBreakpoint.Line)))
+        if (!await HitStopsAsync(corThread, managedBreakpoint, "the breakpoint", () => hit?.Source is { } where
+            ? BreakpointHits.Reached(managedBreakpoint.IsFunctionBreakpoint ? where.DocumentPath : managedBreakpoint.FilePath, where.StartLine)
+            : BreakpointHits.Reached(managedBreakpoint.FilePath, managedBreakpoint.Line)))
         {
             Continue(clearVariables: true);
             return;

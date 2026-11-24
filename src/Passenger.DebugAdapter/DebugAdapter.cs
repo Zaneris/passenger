@@ -296,6 +296,7 @@ public sealed class DebugAdapter
         };
         debugger.OnBreakpointChanged += breakpoint => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = EventReasons.Changed, Breakpoint = ToProtocol(breakpoint, isEvent: true) });
         debugger.OnBreakpointMessage += (id, message) => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = EventReasons.Changed, Breakpoint = new DapBreakpoint { Id = id, Verified = true, Message = message } });
+        debugger.OnBreakpointRemoved += id => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = EventReasons.Removed, Breakpoint = new DapBreakpoint { Id = id } });
         // Told only when known: a process attached to on macOS or Linux tells its exit code to its parent alone.
         debugger.OnExited += exitCode =>
         {
@@ -458,14 +459,18 @@ public sealed class DebugAdapter
             b.Column is int column ? ColumnIn(column) : null,
             b.LogMessage,
             b.Suspend,
-            b.RunTo == true))];
+            b.RunTo == true,
+            b.Key,
+            b.WaitFor,
+            b.Temporary == true))];
         List<BreakpointManager.BreakpointInfo> breakpoints = await Locked(() => debugger.SetBreakpoints(path, requests));
         return new SetBreakpointsResponse([.. breakpoints.Select(b => ToProtocol(b, isEvent: false))]);
     }
 
     private async Task<SetBreakpointsResponse> SetFunctionBreakpoints(SetFunctionBreakpointsArguments arguments)
     {
-        FunctionBreakpointRequest[] requests = [.. (arguments.Breakpoints ?? []).Select(b => new FunctionBreakpointRequest(b.Name, b.Condition, b.HitCondition, b.LogMessage, b.Suspend))];
+        FunctionBreakpointRequest[] requests = [.. (arguments.Breakpoints ?? []).Select(b => new FunctionBreakpointRequest(b.Name, b.Condition, b.HitCondition, b.LogMessage, b.Suspend,
+            b.Key, b.WaitFor, b.Temporary == true))];
         List<BreakpointManager.BreakpointInfo> breakpoints = await Locked(() => debugger.SetFunctionBreakpoints(requests));
         return new SetBreakpointsResponse([.. breakpoints.Select(b => new DapBreakpoint { Id = b.Id, Verified = b.Verified, Message = b.Message, Reason = b.Refused ? BreakpointReasons.Failed : null })]);
     }

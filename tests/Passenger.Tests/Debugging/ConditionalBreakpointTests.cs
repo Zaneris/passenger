@@ -51,12 +51,60 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     }
 
     /// <summary>A condition nested past what the parser reads is refused saying so and the adapter runs on, and a
-    /// condition reading a pattern's variable stops only where it holds.</summary>
+    /// condition reading a pattern's variable stops only where it holds; which hits stop, by what a breakpoint asks beside
+    /// its condition: one waiting for another passes its hits by until that one takes a hit, and a temporary one stops once.</summary>
     [Fact]
     public async Task A_condition_the_parser_cannot_read_or_a_patterns_variable_reads_is_refused_or_held_where_it_holds()
     {
         await Flow.StepApartAsync<ConditionalBreakpointTests>("a condition nested past what the parser reads is refused saying so and the adapter runs on", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_condition_nested_past_what_the_parser_reads_is_refused_saying_so_and_the_adapter_runs_on());
         await Flow.StepApartAsync<ConditionalBreakpointTests>("a condition reading a pattern's variable stops only where it holds", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_condition_reading_a_patterns_variable_stops_only_where_it_holds());
+        await Flow.StepApartAsync<ConditionalBreakpointTests>("a breakpoint waiting for a method's tracepoint stops only once the tracepoint took a hit", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_breakpoint_waiting_for_a_methods_tracepoint_stops_only_once_the_tracepoint_took_a_hit());
+        await Flow.StepApartAsync<ConditionalBreakpointTests>("a temporary breakpoint stops once and the session is told it went", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_temporary_breakpoint_stops_once_and_the_session_is_told_it_went());
+    }
+
+    /// <summary>A line breakpoint waiting for a method breakpoint, a tracepoint whose condition first holds as Test begins its
+    /// third call, passes the first two calls by, then stops at the third and at each call after it.</summary>
+    private async Task A_breakpoint_waiting_for_a_methods_tracepoint_stops_only_once_the_tracepoint_took_a_hit()
+    {
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended: true, out Process program);
+        await host.InitializeAsync().AttachAsync(program.Id).WaitForInitializedEvent();
+        await host.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments(
+            [new DapFunctionBreakpoint("DebuggableConsoleApp.HitConditionClass.Test", Condition: "_count == 2", LogMessage: "armed at {_count}", Suspend: false, Key: 1)]));
+        await host
+            .BreakpointsAsync(Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs"), [new DapSourceBreakpoint(AfterCount, WaitFor: 1)])
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(program.Id, startSuspended: true);
+
+        Assert.Equal("armed at 2\n", (await host.WaitForEvent<OutputEvent>(o => o.Output.StartsWith("armed", StringComparison.Ordinal))).Output);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        Assert.Equal(AfterCount, stop.ReadStopInfo().line);
+        string count = (await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, "_count")).Result;
+        Assert.True(count == "3", $"The breakpoint waiting for Test's tracepoint stopped with the count at {count}, where the tracepoint first took a hit at 2 and the line after it counts 3");
+        StoppedEvent next = await host.ContinueAsync().WaitForStoppedEvent();
+        Assert.Equal("4", (await host.EvaluateAsync((await host.TopFrameAsync(next.ThreadId!.Value)).Id, "_count")).Result);
+    }
+
+    /// <summary>A temporary breakpoint stops at its first hit and the session is told it went; the program then passes its
+    /// line by: after a method breakpoint's stop in the next pass of the loop, the stop after it is that method's again.</summary>
+    private async Task A_temporary_breakpoint_stops_once_and_the_session_is_told_it_went()
+    {
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended: true, out Process program);
+        await host.InitializeAsync().AttachAsync(program.Id).WaitForInitializedEvent();
+        await host.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments(
+            [new DapFunctionBreakpoint("DebuggableConsoleApp.MyClassNoMembers.MyMethod", HitCondition: ">=2")]));
+        SetBreakpointsResponse set = await host.SetBreakpointsAsync(Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs"),
+            [new DapSourceBreakpoint(AfterCount, Key: 5, Temporary: true)]);
+        int temporary = set.Breakpoints.Single().Id!.Value;
+        await host.ConfigurationDoneAsync().ResumeRuntimeAsync(program.Id, startSuspended: true);
+
+        await host.WaitForEvent<BreakpointEvent>(e => e.Reason == EventReasons.Removed && e.Breakpoint.Id == temporary);
+        StoppedEvent once = await host.WaitForStoppedEvent();
+        Assert.Equal(AfterCount, once.ReadStopInfo().line);
+        Assert.Equal("1", (await host.EvaluateAsync((await host.TopFrameAsync(once.ThreadId!.Value)).Id, "_count")).Result);
+        Assert.EndsWith("MyClassNoMembers.cs", (await host.ContinueAsync().WaitForStoppedEvent()).Source?.Path);
+        StoppedEvent after = await host.ContinueAsync().WaitForStoppedEvent();
+        Assert.True(after.Source?.Path?.EndsWith("MyClassNoMembers.cs", StringComparison.Ordinal) == true,
+            $"The temporary breakpoint stopped the program again, at {after.Source?.Path}:{after.Line}, after it had gone");
     }
 
     /// <summary>A condition nested past what the parser reads (interpolations within interpolations, each a level of a lexer

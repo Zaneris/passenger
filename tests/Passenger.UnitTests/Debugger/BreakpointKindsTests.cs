@@ -13,7 +13,8 @@ public class BreakpointKindsTests
     /// <summary>What every debugger refuses to read is refused saying why, a condition nested past what the parser reads too,
     /// on a stack a parse of it would run out of; a breakpoint asked for again is kept, counting on through an edit of its
     /// message and again from an edit of its condition or count; a hit count counts only where the condition held; a
-    /// condition that cannot be told stops its counted hit saying why; Run to Cursor's hold stops the next hit.</summary>
+    /// condition that cannot be told stops its counted hit saying why; Run to Cursor's hold stops the next hit; a breakpoint
+    /// waiting for another passes its hits by until that one takes one; a temporary one's first hit taken is its last.</summary>
     [Fact]
     public Task A_breakpoint_is_refused_matched_counted_and_tried_alike_in_every_debugger() => Cases.AllAsync(
         ("a condition holding a lambda, a hit count the debugger cannot read and a message it would misread are refused", () =>
@@ -98,6 +99,46 @@ public class BreakpointKindsTests
             Assert.Equal(2, held.HitCount);
             Assert.True(await BreakpointHits.StopsAsync(held, Reading(11, i => new ConditionRead(i > 10), [], [])), "Run to Cursor's hold did not stop where the hit count is not met");
             Assert.Equal(3, held.HitCount);
+        }),
+        ("a breakpoint waiting for another passes its hits by uncounted until that one takes a hit, a tracepoint's too, then stops as its own say", async () =>
+        {
+            SessionHits session = new();
+            BreakpointManager.BreakpointInfo first = Set(1, new BreakpointRequest(5, Condition: "i > 2", Suspend: false, LogMessage: "first at {i}"), hits: 0);
+            (first.Key, first.Suspend, first.LogMessage) = (101, false, "first at {i}");
+            BreakpointManager.BreakpointInfo waiting = Set(2, new BreakpointRequest(9, HitCondition: "==2"), hits: 0);
+            waiting.WaitFor = 101;
+            List<string> said = [];
+            List<int> stops = [];
+            for (int i = 0; i < 6; i++)
+            {
+                Assert.False(await BreakpointHits.StopsAsync(first, Reading(i, at => new ConditionRead(at > 2), said, [], session)), $"The tracepoint stopped at {i}");
+                if (await BreakpointHits.StopsAsync(waiting, Reading(i, _ => new ConditionRead(true), said, [], session)))
+                {
+                    stops.Add(i);
+                }
+            }
+            Assert.Equal([4], stops);
+            Assert.Equal(3, waiting.HitCount);
+            Assert.Equal(["first at 3", "first at 4", "first at 5"], said);
+        }),
+        ("a temporary breakpoint's first hit taken is its last: the session is told to take it away and its later hits pass by", async () =>
+        {
+            SessionHits session = new();
+            BreakpointManager.BreakpointInfo once = Set(1, new BreakpointRequest(5, HitCondition: ">=2"), hits: 0);
+            (once.Key, once.Temporary) = (7, true);
+            List<IHitBreakpoint> removed = [];
+            List<int> stops = [];
+            for (int i = 0; i < 5; i++)
+            {
+                if (await BreakpointHits.StopsAsync(once, Reading(i, _ => new ConditionRead(true), [], [], session, removed)))
+                {
+                    stops.Add(i);
+                }
+            }
+            Assert.Equal([1], stops);
+            Assert.Equal([once], removed);
+            Assert.True(session.Went(7), "The temporary breakpoint was not gone once it stopped");
+            Assert.True(session.WasHit(7), "The temporary breakpoint's hit armed nothing waiting for it");
         }));
 
     /// <summary>The values of i at which a breakpoint stops through a loop of 30 turns, its condition read as <paramref name="holds"/>.</summary>
@@ -114,8 +155,10 @@ public class BreakpointKindsTests
         return [.. stops];
     }
 
-    /// <summary>A hit at turn <paramref name="i"/>, its condition read as <paramref name="holds"/>, a message's {i} as i.</summary>
-    private static HitReading Reading(int i, Func<int, ConditionRead> holds, List<string> said, List<IHitBreakpoint> told) => new()
+    /// <summary>A hit at turn <paramref name="i"/>, its condition read as <paramref name="holds"/>, a message's {i} as i, in a
+    /// session of its own unless one is given.</summary>
+    private static HitReading Reading(int i, Func<int, ConditionRead> holds, List<string> said, List<IHitBreakpoint> told, SessionHits? session = null,
+        List<IHitBreakpoint>? removed = null) => new()
     {
         Named = "the breakpoint",
         Holds = _ => Task.FromResult(holds(i)),
@@ -123,6 +166,8 @@ public class BreakpointKindsTests
         Reached = () => BreakpointHits.Reached("/src/Loop.cs", 5),
         Say = said.Add,
         Told = told.Add,
+        Session = session ?? new SessionHits(),
+        Removed = gone => removed?.Add(gone),
     };
 
     private static BreakpointManager.BreakpointInfo Set(int id, BreakpointRequest request, int hits) =>

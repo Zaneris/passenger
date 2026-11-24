@@ -22,6 +22,16 @@ public interface IHitBreakpoint
     /// <summary>Held for Run to Cursor: its next hit stops whatever its condition, hit count and Suspend say.</summary>
     bool RunTo => false;
 
+    /// <summary>The client's own number for it, by which another breakpoint waits for it; null where it gave none.</summary>
+    int? Key => null;
+
+    /// <summary>The <see cref="Key"/> of the breakpoint it waits for: until that one takes a hit, each of its own is passed
+    /// over, neither tried nor counted.</summary>
+    int? WaitFor => null;
+
+    /// <summary>Removed once hit: the first hit it takes is its last, which the session is told of.</summary>
+    bool Temporary => false;
+
     /// <summary>The hits where its condition held (or every hit, where it has none).</summary>
     int HitCount { get; set; }
     string? Message { get; set; }
@@ -53,12 +63,64 @@ public sealed class HitReading
 
     /// <summary>The debugger's own log, of a hit that goes on.</summary>
     public Action<string>? Log { get; init; }
+
+    /// <summary>What the session's breakpoints have come to between them.</summary>
+    public required SessionHits Session { get; init; }
+
+    /// <summary>A temporary breakpoint's hit was its last: the session is to take it away.</summary>
+    public required Action<IHitBreakpoint> Removed { get; init; }
+}
+
+/// <summary>What one debugging session's breakpoints have come to between them, by their keys
+/// (<see cref="IHitBreakpoint.Key"/>): those that took a hit, which a breakpoint waiting for one waits for no more, and the
+/// temporary ones gone, whose later hits are passed over until the session takes them away. Any thread.</summary>
+public sealed class SessionHits
+{
+    private readonly HashSet<int> hit = [];
+    private readonly HashSet<int> gone = [];
+    private readonly Lock gate = new();
+
+    /// <summary>Whether the breakpoint of a key has taken a hit.</summary>
+    public bool WasHit(int key)
+    {
+        lock (gate)
+        {
+            return hit.Contains(key);
+        }
+    }
+
+    internal void Hit(int key)
+    {
+        lock (gate)
+        {
+            hit.Add(key);
+        }
+    }
+
+    /// <summary>Whether the temporary breakpoint of a key has gone.</summary>
+    public bool Went(int key)
+    {
+        lock (gate)
+        {
+            return gone.Contains(key);
+        }
+    }
+
+    /// <summary>The temporary breakpoint of a key goes: true the first time, false where it went already.</summary>
+    internal bool Go(int key)
+    {
+        lock (gate)
+        {
+            return gone.Add(key);
+        }
+    }
 }
 
 /// <summary>Every debugger's one way with a breakpoint's hits: a hit counts only where the condition held (or there is
-/// none), as a person reads "stop the 3rd time i &gt; 10"; a breakpoint asked for again keeps its count while its place,
-/// condition and hit count stay (an edit of its message or of whether it stops keeps it), and counts again from the edit
-/// where any of those change.</summary>
+/// none), as a person reads "stop the 3rd time i &gt; 10", and a breakpoint takes a hit where its hit count is met too,
+/// arming those waiting for it, whose hits are passed over until then; a temporary breakpoint's first hit taken is its last. A breakpoint asked for again keeps its count while
+/// its place, condition and hit count stay (an edit of its message, of whether it stops, of what it waits for or whether it
+/// is temporary keeps it), and counts again from the edit where any of those change.</summary>
 public static class BreakpointHits
 {
     /// <summary>Matches the breakpoints asked for with those set: one asked for again just as it was keeps the one set (each
@@ -101,12 +163,22 @@ public static class BreakpointHits
     public static string? Unreadable(string? hitCondition) =>
         hitCondition is { } hits && !HitCondition.TryParse(hits, out _, out string? problem) ? problem : null;
 
-    /// <summary>A hit of a breakpoint of any kind: its condition tried (one that cannot be told taken as held, said once the
-    /// hit stops, as <see cref="HitReading.Named"/> having stopped), the hit counted where it held, then tried by its hit
-    /// count; its message is logged, or <see cref="HitReading.Reached"/> said where it neither logs nor stops. Whether the
-    /// hit stops the program.</summary>
+    /// <summary>A hit of a breakpoint of any kind: passed over while what it waits for has taken no hit, or once it went as
+    /// temporary; else its condition tried (one that cannot be told taken as held, said once the hit stops, as
+    /// <see cref="HitReading.Named"/> having stopped), counted where it held, then tried by its hit count. A hit taken arms those
+    /// waiting for it, is a temporary one's last (<see cref="HitReading.Removed"/>), and logs its message, or says
+    /// <see cref="HitReading.Reached"/> where it neither logs nor stops. Whether the hit stops the program.</summary>
     public static async Task<bool> StopsAsync(IHitBreakpoint breakpoint, HitReading hit)
     {
+        if (breakpoint.WaitFor is int awaited && !hit.Session.WasHit(awaited))
+        {
+            hit.Log?.Invoke($"Breakpoint {breakpoint.Id}: waits for another breakpoint to be hit first");
+            return breakpoint.RunTo;
+        }
+        if (breakpoint.Temporary && breakpoint.Key is int once && hit.Session.Went(once))
+        {
+            return breakpoint.RunTo;
+        }
         string? unread = null;
         if (breakpoint.Condition is { } condition && hit.Holds is { } holds)
         {
@@ -126,6 +198,19 @@ public static class BreakpointHits
         {
             hit.Log?.Invoke($"Breakpoint {breakpoint.Id}: hit count not met: count={breakpoint.HitCount}, condition={hits}");
             return breakpoint.RunTo;
+        }
+        if (breakpoint.Key is int key)
+        {
+            hit.Session.Hit(key);
+        }
+        if (breakpoint.Temporary)
+        {
+            // Two threads at it at once: the first takes it, the second passes it by.
+            if (breakpoint.Key is int going && !hit.Session.Go(going))
+            {
+                return breakpoint.RunTo;
+            }
+            hit.Removed(breakpoint);
         }
         if (unread is not null)
         {

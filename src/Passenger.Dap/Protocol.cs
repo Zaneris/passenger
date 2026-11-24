@@ -153,9 +153,10 @@ public sealed record DapSource
 /// <summary>A line breakpoint as asked for. <c>Suspend</c> is Passenger's own: whether a hit stops the program, so a
 /// breakpoint can log and stop, or neither stop nor log a message of its own ("Breakpoint reached"); without it,
 /// a log message alone means no stop, as the protocol has it. <c>RunTo</c> is Passenger's own too: Run to Cursor's line,
-/// whose next hit stops whatever the condition, hit count and Suspend say, tried as the breakpoint's own hit all the same.</summary>
+/// whose next hit stops whatever the condition, hit count and Suspend say, tried as the breakpoint's own hit all the same.
+/// So are <c>Key</c>, <c>WaitFor</c> and <c>Temporary</c> (<see cref="IHitBreakpoint"/>).</summary>
 public sealed record DapSourceBreakpoint(int Line, int? Column = null, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool? Suspend = null,
-    bool? RunTo = null) : IAskedBreakpoint;
+    bool? RunTo = null, int? Key = null, int? WaitFor = null, bool? Temporary = null) : IAskedBreakpoint;
 
 public sealed record SetBreakpointsArguments(DapSource Source, IReadOnlyList<DapSourceBreakpoint>? Breakpoints);
 
@@ -178,8 +179,10 @@ public sealed record DapBreakpoint
     public int? Offset { get; init; }
 }
 
-/// <summary>A function breakpoint as asked for; <c>Suspend</c> is Passenger's own, as a line breakpoint's is.</summary>
-public sealed record DapFunctionBreakpoint(string Name, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool? Suspend = null);
+/// <summary>A function breakpoint as asked for; <c>Suspend</c>, <c>Key</c>, <c>WaitFor</c> and <c>Temporary</c> are
+/// Passenger's own, as a line breakpoint's are.</summary>
+public sealed record DapFunctionBreakpoint(string Name, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool? Suspend = null,
+    int? Key = null, int? WaitFor = null, bool? Temporary = null);
 
 public sealed record SetFunctionBreakpointsArguments(IReadOnlyList<DapFunctionBreakpoint>? Breakpoints);
 
