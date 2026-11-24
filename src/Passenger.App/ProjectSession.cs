@@ -135,6 +135,14 @@ public sealed class ProjectSession : IAsyncDisposable
             GodotFolders = () => [.. Workspace?.GodotGames ?? [], .. Projects.Select(p => p.NamedGodotFolder).OfType<string>()],
         };
         Tests.Finder.StateFolder = setup.StateFolder;
+        Continuous = new ContinuousTests(Tests, () => Projects, () => Workspace, line => setup.Views.Build.Append($"{line}\n"))
+        {
+            Work = setup.Work,
+            Refused = () => Trusted ? null : Refusals.Untrusted,
+            // Its builds and runs' copies, a cache of the folder's in Passenger's state, never in the folder.
+            Root = folder is null ? null : Path.Combine(setup.StateFolder, "cache", "continuous", FileNames.Hash(folder, 12)),
+        };
+        ContinuousTests.PruneOnce(Path.Combine(setup.StateFolder, "cache", "continuous"));
         Containers = new Containers.FolderContainers(folder, setup.Engine());
         Vcs.Work = setup.Work;
         Vcs.Watching = setup.Watching;
@@ -1034,6 +1042,9 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>The folder's unit tests: those its test projects declare, their runs and their results.</summary>
     public TestController Tests { get; }
+
+    /// <summary>The folder's continuous testing, on while its repository's answer says so.</summary>
+    public ContinuousTests Continuous { get; }
 
     /// <summary>The folder's debugger, its breakpoints with it.</summary>
     public DebugController Debug { get; }
@@ -2275,6 +2286,7 @@ public sealed class ProjectSession : IAsyncDisposable
         }
         Game?.Dispose();
         Tests.Stop();
+        Continuous.Dispose();
         parts.Add(("the test runner", Tests.DisposeAsync().AsTask()));
         parts.Add(("the language server", CSharp?.DisposeAsync().AsTask() ?? Task.CompletedTask));
         CSharp = null;

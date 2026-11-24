@@ -543,6 +543,9 @@ public static class AppActions
     public const string ShowModules = "app.showModules";
     public const string ShowStructure = "app.showStructure";
 
+    // Continuous testing, turned on and off for the folder's repository.
+    public const string ContinuousTesting = "app.tests.continuous";
+
     // Editor splits: Rider's, from the tab's menu (no keys in its Visual Studio keymaps).
     public const string SplitRight = "app.editor.splitRight";
     public const string SplitDown = "app.editor.splitDown";

@@ -142,6 +142,8 @@ public sealed class TestController : IAsyncDisposable
             if (busy != value)
             {
                 busy = value;
+                // The person's own run takes the tree from continuous testing's.
+                continuousShown &= !value;
                 BusyChanged?.Invoke(this, EventArgs.Empty);
             }
         }
@@ -603,6 +605,63 @@ public sealed class TestController : IAsyncDisposable
     }
 
     private bool holdingWork;
+
+    /// <summary>Whether continuous testing's run shows in the tree: from its begin to its end, unless the person's own run
+    /// began meanwhile, which the tree is then the person's.</summary>
+    private bool continuousShown;
+
+    /// <summary>The tests continuous testing found in its own build of a project, shown as found where no look of the
+    /// person's runs has found the project's yet; one that has stands, as their runs find them again.</summary>
+    public void FoundContinuously(string project, IReadOnlyList<TestSource> found)
+    {
+        UiThread.Check();
+        if (IsBusy || sources.ContainsKey(project))
+        {
+            return;
+        }
+        sources = new(sources, StringComparer.Ordinal) { [project] = found };
+        Load();
+    }
+
+    /// <summary>Continuous testing's run of these tests as it begins, shown running in the tree as the person's own runs are;
+    /// false, showing nothing, while the person's own run is under way.</summary>
+    public bool BeginContinuous(IReadOnlyList<TestItem> tests)
+    {
+        UiThread.Check();
+        if (IsBusy)
+        {
+            return false;
+        }
+        continuousShown = true;
+        Tree.Begin(tests);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>Continuous testing's outcomes as they come, while its run shows in the tree.</summary>
+    public void ApplyContinuous(IReadOnlyList<TestOutcome> outcomes)
+    {
+        UiThread.Check();
+        if (continuousShown)
+        {
+            Tree.Apply(outcomes);
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>Continuous testing's run ended, however: what it began and never heard of is no longer running, and the
+    /// results its methods told are kept for a later session, as a run of the person's are.</summary>
+    public void EndContinuous(IReadOnlyList<TestItem> tests, DateTimeOffset began)
+    {
+        UiThread.Check();
+        if (continuousShown)
+        {
+            Tree.End();
+            Keep([.. tests.Select(Tree.Node).OfType<TestNode>().Select(n => n.Kind == TestNodeKind.Row ? n.Parent! : n).Distinct()], began);
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+        continuousShown = false;
+    }
 
     /// <summary>The last coverage measured, by the last run with coverage; null before one, or once cleared.</summary>
     public CoverageReport? Coverage { get; private set; }

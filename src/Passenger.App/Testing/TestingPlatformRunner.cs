@@ -138,10 +138,11 @@ public sealed class TestingPlatformRunner : ITestRunner
     }
 
     /// <summary>Runs tests it discovered one at a time, each alone in a request of its own to one test host per assembly
-    /// started with the environment given, <paramref name="ran"/> told each test once its request has ended (its outcomes
-    /// told before) and awaited before the next is asked: what a hook in the host counted between two is the one test's.
-    /// Canceled, the test under way is asked to stop and the host ended, keeping the outcomes of what had run.</summary>
-    public async Task<RunSummary> RunEachAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Func<TestItem, Task> ran,
+    /// started with the environment given, <paramref name="started"/> awaited once each host answers and before its first
+    /// test, and <paramref name="ran"/> told each test once its request has ended (its outcomes told before) and awaited
+    /// before the next is asked: what a hook in the host counted between two is the one test's. Canceled, the test under way
+    /// is asked to stop and the host ended, keeping the outcomes of what had run.</summary>
+    public async Task<RunSummary> RunEachAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Func<Task> started, Func<TestItem, Task> ran,
         IReadOnlyDictionary<string, string>? environment, Action<string>? log, CancellationToken cancel)
     {
         RunSummary summary = new(TimeSpan.Zero, false, false, null);
@@ -155,6 +156,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             {
                 IReadOnlyDictionary<string, string>? given = await BackgroundWork.Run(() => HostEnvironment(assembly, looking: false, environment, log), cancel);
                 await using Host host = await Host.StartAsync(assembly, given, null, byUid, log, HoldsConnectionsUntilEnded, cancel);
+                await started();
                 bool stopped = false;
                 foreach (Found test in chosen)
                 {

@@ -99,11 +99,21 @@ public sealed class CoverageRun(string folder)
         return report;
     }
 
+    /// <summary>What VSTest's settings are given in place of Coverlet's collector, for a run over code instrumented already
+    /// (<see cref="TestHitsRun"/>); null for Coverlet's.</summary>
+    public Action<XElement>? Settings { get; init; }
+
     /// <summary>VSTest's settings given Coverlet's collector, carried: found among the adapters, measuring in the test host and
     /// writing its JSON to the run's folder, and left out of what generated code and code its author left out of coverage
-    /// holds. A collector the project's own settings already configure keeps its configuration, JSON its format.</summary>
+    /// holds. A collector the project's own settings already configure keeps its configuration, JSON its format. A run given
+    /// its own <see cref="Settings"/> takes those alone.</summary>
     public void Into(XElement root)
     {
+        if (Settings is { } own)
+        {
+            own(root);
+            return;
+        }
         XElement configuration = Child(root, "RunConfiguration");
         string adapters = (string?)configuration.Element("TestAdaptersPaths") is { Length: > 0 } given ? $"{given};{Collector}" : Collector;
         configuration.SetElementValue("TestAdaptersPaths", adapters);

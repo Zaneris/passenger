@@ -25,10 +25,11 @@ public sealed record TestAssembly(ProjectModel Project, string Framework, string
 public static class TestAssemblies
 {
     /// <summary>The assemblies, built or not, the projects' in their order, as the build of <paramref name="solution"/> builds
-    /// them where it builds the projects (null where they are built one by one); a project MSBuild cannot evaluate is logged
+    /// them where it builds the projects (null where they are built one by one), given <paramref name="also"/> beside the
+    /// properties their build is given (continuous testing's own output folder); a project MSBuild cannot evaluate is logged
     /// and left out.</summary>
     public static async Task<IReadOnlyList<TestAssembly>> ResolveAsync(IReadOnlyList<ProjectModel> projects, string folder, WorkspaceModel? workspace,
-        string? solution, Action<string> log, CancellationToken cancel)
+        string? solution, Action<string> log, CancellationToken cancel, IReadOnlyDictionary<string, string>? also = null)
     {
         if (projects.Count == 0)
         {
@@ -46,7 +47,7 @@ public static class TestAssemblies
         IReadOnlyList<SolutionBuilt> built = solution is null ? [] : await BuiltByAsync(host, solution, workspace?.Build is { OfSolution: true } chosen
             ? new SolutionConfiguration(chosen.Chosen.Configuration, chosen.Chosen.Platform) : null, log, cancel);
         (IReadOnlyList<TestAssembly> Assemblies, string? Problem)[] each = await Task.WhenAll(projects.Select(p =>
-            OfAsync(host, p, ProjectModels.Properties(workspace, p, built.FirstOrDefault(b => PathNames.Same(b.Project, p.Path))), cancel)));
+            OfAsync(host, p, With(ProjectModels.Properties(workspace, p, built.FirstOrDefault(b => PathNames.Same(b.Project, p.Path))), also), cancel)));
         List<string> problems = [.. each.Select(e => e.Problem).OfType<string>()];
         foreach (string problem in problems)
         {
@@ -58,6 +59,15 @@ public static class TestAssemblies
             throw new InvalidOperationException($"MSBuild could not say where the test projects build: {string.Join("; ", problems)}");
         }
         return found;
+    }
+
+    private static Dictionary<string, string> With(Dictionary<string, string> properties, IReadOnlyDictionary<string, string>? also)
+    {
+        foreach ((string name, string value) in also ?? new Dictionary<string, string>())
+        {
+            properties[name] = value;
+        }
+        return properties;
     }
 
     /// <summary>Each project a build of the solution builds under the configuration chosen (else the one MSBuild takes), with

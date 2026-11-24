@@ -4,6 +4,7 @@ using Avalonia.VisualTree;
 using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.Settings;
 using Passenger.App.Testing;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
@@ -45,6 +46,8 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
     {
         Flow.StepApart("a run with coverage of a vstest and a platform project marks the lines both ran in the gutter counts them in the coverage window and exports them",
             () => new TestingPlatformCoverageTests(restored), t => t.A_run_with_coverage_of_a_vstest_and_a_platform_project_marks_the_lines_both_ran_counts_them_and_exports_them());
+        Flow.StepApart("continuous testing asked once at the first run reruns only the tests that ran a line saved and marks each line with how they ended, and nothing once off",
+            () => new TestingPlatformCoverageTests(restored), t => t.Continuous_testing_asked_once_reruns_only_the_tests_that_ran_a_line_saved_and_nothing_once_off());
         Flow.StepApart("an xUnit v3 project on the platform alone shows its tests from code and Run All reports pass, fail and skip with output and times",
             () => new TestingPlatformTests(restored), t => t.An_xunit_v3_project_on_the_platform_alone_shows_its_tests_from_code_and_run_all_reports_pass_fail_and_skip_with_output_and_times());
         Flow.StepApart("a project's run settings reach its tests on MSTest's runner and their variables those of a runner that reads none",
@@ -237,7 +240,9 @@ public sealed class TestingPlatformCoverageTests : TestingPlatformFolders
     {
     }
 
-    internal void A_run_with_coverage_of_a_vstest_and_a_platform_project_marks_the_lines_both_ran_counts_them_and_exports_them()
+    /// <summary>The solution of a VSTest project and a Testing Platform project over one library, restored: its folder and the
+    /// library's file.</summary>
+    private (string Solution, string Shapes) Suite()
     {
         string solution = NewFolder();
         string shapes = Write(solution, "Shapes/Measure.cs", Measured);
@@ -256,9 +261,82 @@ public sealed class TestingPlatformCoverageTests : TestingPlatformFolders
             $"    <PackageReference Include=\"MSTest.TestFramework\" Version=\"{TestPackages.MSTestRunner}\" />\n    <PackageReference Include=\"MSTest.TestAdapter\" Version=\"{TestPackages.MSTestRunner}\" />\n  </ItemGroup>\n{Library}\n");
         Write(solution, "Store.Tests/SignTests.cs",
             "using Microsoft.VisualStudio.TestTools.UnitTesting;\n\nnamespace Store.Tests;\n\n[TestClass]\npublic class SignTests\n{\n" +
-            "    [TestMethod]\n    public void Signs_a_negative() => Assert.AreEqual(-1, Shapes.Measure.Sign(-5));\n}\n");
+            "    [TestMethod]\n    public void Signs_a_negative() => Assert.AreEqual(-1, Shapes.Measure.Sign(-5));\n\n" +
+            "    [TestMethod]\n    public void Doubles_too() => Assert.AreEqual(6, Shapes.Measure.Twice(3));\n}\n");
         Write(solution, "Suite.slnx", "<Solution>\n  <Project Path=\"Shapes/Shapes.csproj\" />\n  <Project Path=\"Vs.Tests/Vs.Tests.csproj\" />\n  <Project Path=\"Store.Tests/Store.Tests.csproj\" />\n</Solution>\n");
         Restore.Run(Path.Combine(solution, "Suite.slnx"));
+        return (solution, shapes);
+    }
+
+    internal void Continuous_testing_asked_once_reruns_only_the_tests_that_ran_a_line_saved_and_nothing_once_off()
+    {
+        (string solution, string shapes) = Suite();
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, Unseen = false };
+        window.Show();
+        window.OpenFolder(solution);
+        Ui.Settle();
+        Tree(window);
+        Ui.WaitFor(() => Method(window, "Signs_a_negative") is not null, "the platform project's tests read from the code");
+
+        // The person's first run of tests in the folder's repository asks, without taking the keys, whether to test continuously.
+        Assert.True(window.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => window.Questions.Showing(Declared.ContinuousTesting) is not null, "the question whether to test continuously at the first run of tests");
+        ConfirmDialog asked = window.Questions.Showing(Declared.ContinuousTesting)!;
+        Assert.False(asked.IsActive, "The question took the keys from what the person was doing");
+        Assert.DoesNotContain(asked.GetVisualDescendants().OfType<Button>(), b => b.IsDefault);
+        Ui.ClickButton(asked, "Turn On");
+        Assert.True(window.Questions.Answered(Declared.ContinuousTesting), "Turn On was not kept as the repository's answer");
+        Ui.WaitFor(() => !window.Tests.IsBusy && window.Continuous is { Rounds: > 0, IsRunning: false } && window.Continuous.Map.Tests.Count > 0,
+            () => $"continuous testing's first round, after the person's run: {window.Continuous.Said}", TimeSpan.FromSeconds(300));
+        Assert.Equal(["Doubles", "Doubles_too", "Signs_a_negative", "Signs_a_positive"], window.Continuous.LastRan.Select(t => t.Method[(t.Method.LastIndexOf('.') + 1)..]).Order());
+
+        // Each line of the library shows how the tests that run it ended; a press on one lists them.
+        window.OpenFile(shapes);
+        Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => document.Reach is { Count: > 0 }, () => $"the library's lines marked from the map: {window.Continuous.Said}");
+        Assert.True(document.Reach!.At(12) is { State: ReachState.Passed, Tests: [{ } negative] } && negative.EndsWith("Signs_a_negative", StringComparison.Ordinal),
+            $"Sign's last line, which Signs_a_negative alone runs, was marked {document.Reach.At(12)}");
+        Assert.True(document.Reach.At(8) is { State: ReachState.Passed, Tests.Length: 2 }, $"Sign's if, which both projects' tests of Sign run, was marked {document.Reach.At(8)}");
+        Assert.Equal(ReachState.Unreached, document.Reach.At(17)?.State);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        double x = Enumerable.Range(0, 400).First(x => editor.IsOnGutterColumn(editor.Gutter!.Coverage, new Avalonia.Point(x, 0))) + 3;
+        Ui.Click(editor, new Avalonia.Point(x, editor.PointOf(document.Text.Snapshot.GetLineStart(12)).Y + (editor.LineHeight / 2)));
+        Assert.Equal(["Line 13, run by 1 test", "Signs_a_negative (passed)", "Run This Test"],
+            Assert.IsType<MenuFlyout>(window.ReachMenu).Items.OfType<MenuItem>().Select(i => i.Header as string));
+        window.ReachMenu!.Hide();
+
+        // A line saved changed reruns the one test that ran it of either project's, which now fails, and the lines it runs say so.
+        int rounds = window.Continuous.Rounds;
+        Typing.Replace(window, "value < 0 ? -1", "value < 0 ? -2");
+        Assert.True(window.Perform(AppActions.Save));
+        Ui.WaitFor(() => window.Continuous is { IsRunning: false } && window.Continuous.Rounds > rounds && window.Continuous.LastRan.Count > 0,
+            () => $"the round the save brought: {window.Continuous.Said}", TimeSpan.FromSeconds(300));
+        Assert.Equal(["Signs_a_negative"], window.Continuous.LastRan.Select(t => t.Method[(t.Method.LastIndexOf('.') + 1)..]));
+        Ui.WaitFor(() => document.Reach?.At(12)?.State == ReachState.Failed, () => $"Sign's last line marked failed: {document.Reach?.At(12)}");
+        Assert.Equal(ReachState.Passed, document.Reach!.At(4)?.State);
+
+        // The person's next run asks nothing.
+        Assert.True(window.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy, () => $"the person's second run: {window.BottomPanel.Tests.Status}", TimeSpan.FromSeconds(300));
+        Assert.Null(window.Questions.Showing(Declared.ContinuousTesting));
+
+        // Turned off, a save runs nothing, and what it built for the folder is gone.
+        Assert.True(window.Perform(AppActions.ContinuousTesting));
+        Assert.False(window.Continuous.IsOn);
+        Ui.WaitFor(() => !Directory.Exists(window.Continuous.Root!), () => $"the folder's cache, {window.Continuous.Root}, removed as continuous testing was turned off");
+        rounds = window.Continuous.Rounds;
+        Typing.Replace(window, "value < 0 ? -2", "value < 0 ? -1");
+        Assert.True(window.Perform(AppActions.Save));
+        Ui.Hold(TimeSpan.FromSeconds(3), "the folder's watcher hearing the save");
+        Ui.Settle();
+        Assert.Equal(rounds, window.Continuous.Rounds);
+        Assert.Null(document.Reach);
+        window.Close();
+    }
+
+    internal void A_run_with_coverage_of_a_vstest_and_a_platform_project_marks_the_lines_both_ran_counts_them_and_exports_them()
+    {
+        (string solution, string shapes) = Suite();
         MainWindow window = Ui.OpenFolder(solution, languageServer: false);
         window.OpenFile(shapes);
         CodeEditor editor = window.EditorArea.CodeEditor;

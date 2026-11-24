@@ -7,9 +7,11 @@ namespace Passenger.TestHits;
 
 /// <summary>Coverlet's counts in the test program, read for Passenger between tests. Each instrumented module's tracker
 /// adds itself, as its first count is made, to the list a collector in the program keeps under Coverlet's key, which this
-/// makes as the program starts; each <see cref="Variables.Take"/> is answered with one line naming, for each tracker by the
-/// file its counts would be written to, the places counted since the last (its array's indices, in order), whose counts it
-/// starts again. Nothing is written as the program ends: what it counted is Passenger's already.</summary>
+/// makes as the program starts (<see cref="Register"/>); what each tracker counted since the last take is one line naming,
+/// for each tracker by the file its counts would be written to, the places counted (its array's indices, in order), whose
+/// counts it starts again (<see cref="Take"/>): answered to each <see cref="Variables.Take"/> Passenger asks
+/// (<see cref="Serve"/>), or told as each test ends after the test's full name (<see cref="Push"/>). Nothing is written as
+/// the program ends: what it counted is Passenger's already.</summary>
 internal static class Hits
 {
     /// <summary>The key Coverlet's trackers find a collector's list of them under.</summary>
@@ -17,23 +19,82 @@ internal static class Hits
 
     private static readonly List<EventHandler> Trackers = [];
 
+    /// <summary>The list each tracker adds itself to, made before any counts: Coverlet's own where a collector of its made it.</summary>
+    public static void Register()
+    {
+        if (AppDomain.CurrentDomain.GetData(Registry) is not List<EventHandler>)
+        {
+            AppDomain.CurrentDomain.SetData(Registry, Trackers);
+        }
+    }
+
     /// <summary>Connects to Passenger and answers it on a thread of its own, for as long as the connection stands; a
     /// connection refused leaves the program to run as it would.</summary>
     public static void Serve(int port)
     {
-        AppDomain.CurrentDomain.SetData(Registry, Trackers);
+        Register();
+        if (Connected(port) is { } client)
+        {
+            Thread answering = new(() => Answer(client)) { IsBackground = true, Name = "Passenger test hits" };
+            answering.Start();
+        }
+    }
+
+    /// <summary>A connection to Passenger that each test's end is told on, as its full name and its counts; null where
+    /// Passenger is not there.</summary>
+    public static Pushing? Push(int port)
+    {
+        Register();
+        return Connected(port) is { } client ? new Pushing(client) : null;
+    }
+
+    private static TcpClient? Connected(int port)
+    {
         TcpClient client = new() { NoDelay = true };
         try
         {
             client.Connect(IPAddress.Loopback, port);
+            return client;
         }
         catch (SocketException)
         {
             client.Dispose();
-            return;
+            return null;
         }
-        Thread answering = new(() => Answer(client)) { IsBackground = true, Name = "Passenger test hits" };
-        answering.Start();
+    }
+
+    /// <summary>The connection each test's end is told on.</summary>
+    public sealed class Pushing(TcpClient client) : IDisposable
+    {
+        private readonly StreamWriter writer = new(client.GetStream(), new UTF8Encoding(false)) { NewLine = "\n" };
+
+        /// <summary>A test ended: its full name, then what it counted, each a line; a connection gone passes it over.</summary>
+        public void Ended(string test)
+        {
+            try
+            {
+                writer.WriteLine(Quoted(new StringBuilder(), test).ToString());
+                writer.WriteLine(Take());
+                writer.Flush();
+            }
+            catch (IOException)
+            {
+                // Passenger went: the tests run on uncounted.
+            }
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                writer.Dispose();
+            }
+            catch (IOException)
+            {
+                // Gone already.
+            }
+            client.Dispose();
+        }
     }
 
     private static void Answer(TcpClient client)
@@ -61,7 +122,7 @@ internal static class Hits
     }
 
     /// <summary>Each tracker's places counted since the last take, as JSON: {"file": [index, …], …}.</summary>
-    private static string Take()
+    public static string Take()
     {
         EventHandler[] trackers;
         lock (Trackers)

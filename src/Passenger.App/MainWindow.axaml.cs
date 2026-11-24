@@ -119,6 +119,7 @@ public partial class MainWindow : IdeWindow
         AddSteps();
         AddStepLibrary();
         AddCoverage();
+        AddContinuousTesting();
         AddRequestMarks();
         AddRequests();
         AddMigrations();
@@ -999,6 +1000,7 @@ public partial class MainWindow : IdeWindow
             {
                 State.StateFile.NewsNow -= news;
                 LetGoFolder();
+                questions?.Dispose();
                 state.Release();
             };
             SayStateNews();
@@ -1092,6 +1094,7 @@ public partial class MainWindow : IdeWindow
         // Before the folder's documents are this window's, so what restoring them changes is not written back.
         RestoreUnitTests(opening.UnitTests.Value);
         session.Tests.Keep(opening.UnitTestResults.Value.Methods);
+        session.Continuous.Open(folder, opening.TestReach.Value);
         branchFavorites = opening.GitBranches.Value;
         session.Vcs.SignOff = opening.Commit.Value.SignOff;
         session.Vcs.GroupsByDirectory = opening.Commit.Value.GroupsByDirectory;

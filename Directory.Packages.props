@@ -189,7 +189,9 @@
     <!-- Reqnroll's own runtime, which the unit tests run in-process as the reference StepConversions is held to, at the
          version its port follows; Passenger never carries it. -->
     <PackageVersion Include="Reqnroll" Version="$(ReqnrollVersion)" />
-    <!-- VSTest's own client for the vstest.console the SDK ships: discovery, runs and debugging of tests. -->
+    <!-- VSTest's own client for the vstest.console the SDK ships: discovery, runs and debugging of tests; and its object
+         model, which the test hits' hook is compiled against as a test host's in-process data collector, at the client's. -->
+    <PackageVersion Include="Microsoft.TestPlatform.ObjectModel" Version="18.12.0" />
     <PackageVersion Include="Microsoft.TestPlatform.TranslationLayer" Version="18.12.0" />
     <!-- The Windows install's hooks, at the version of the vpk tool that packs it (dotnet-tools.json). -->
     <PackageVersion Include="Velopack" Version="1.2.161" />

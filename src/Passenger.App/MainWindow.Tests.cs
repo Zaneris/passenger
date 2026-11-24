@@ -175,6 +175,7 @@ public partial class MainWindow
             return;
         }
         ShowToolWindow(ToolWindowIds.Tests);
+        AskContinuousTesting();
         ProjectSession running = session;
         bool covering = coverageAsked;
         coverageAsked = false;

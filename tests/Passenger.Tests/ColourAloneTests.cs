@@ -14,10 +14,10 @@ namespace Passenger.Tests;
 
 /// <summary>Every state the editor tells apart by colour is told apart by shape as well: drawn one at a time in one place
 /// with each family's colours made one grey, an error's, a warning's and a suggestion's lines, the gutter's and the
-/// scrollbar stripe's change marks, a diff's signs, a test's marks and a line's coverage marks still differ in the pixels
-/// they ink, so a person who
-/// cannot tell their colours apart can; and every state of each family, a changed file's kind and a run's state too, has a
-/// shape, sign or letter of its own, a state added later held to one as well.</summary>
+/// scrollbar stripe's change marks, a diff's signs, a test's marks and a line's coverage marks (and those of the tests
+/// running it) still differ in the pixels they ink, so a person who cannot tell their colours apart can; and every state of
+/// each family, a changed file's kind and a run's state too, has a shape, sign or letter of its own, a state added later
+/// held to one as well.</summary>
 public sealed class ColourAloneTests
 {
     private const string Grey = "#808080";
@@ -30,7 +30,7 @@ public sealed class ColourAloneTests
         ("The gutters added changed conflicted and deleted marks ink different shapes in one colour", The_gutters_added_changed_conflicted_and_deleted_marks_ink_different_shapes_in_one_colour),
         ("A diffs added removed changed and conflicted lines ink different signs in one colour", A_diffs_added_removed_changed_and_conflicted_lines_ink_different_signs_in_one_colour),
         ("A tests marks before its run passed failed and running ink different shapes in one colour", A_tests_marks_before_its_run_passed_failed_and_running_ink_different_shapes_in_one_colour),
-        ("A lines coverage marks run whole run partly and never run ink different shapes in one colour", A_lines_coverage_marks_run_whole_run_partly_and_never_run_ink_different_shapes_in_one_colour),
+        ("A lines coverage marks and those of the tests running it ink different shapes in one colour", A_lines_coverage_marks_and_those_of_the_tests_running_it_ink_different_shapes_in_one_colour),
         ("The stripes added changed conflicted and deleted marks ink different shapes in one colour", The_stripes_added_changed_conflicted_and_deleted_marks_ink_different_shapes_in_one_colour));
 
     private void An_error_a_warning_and_a_suggestion_ink_different_lines_in_one_colour()
@@ -87,18 +87,18 @@ public sealed class ColourAloneTests
         }), "a test's gutter marks");
     }
 
-    private void A_lines_coverage_marks_run_whole_run_partly_and_never_run_ink_different_shapes_in_one_colour()
+    private void A_lines_coverage_marks_and_those_of_the_tests_running_it_ink_different_shapes_in_one_colour()
     {
         EditorRig rig = OneColour(TokenKeys.Test_Passed, TokenKeys.Editor_Warning, TokenKeys.Test_Failed);
         CodeEditor editor = rig.Editor;
         CoverageMarks marks = new();
         Strip strip = new(marks);
         editor.SetGutterColumns([], [strip]);
-        AllApart(Enum.GetValues<CoverageState>().Select(state =>
+        AllApart(Enum.GetValues<CoverageShape>().Select(shape =>
         {
-            marks.State = state;
-            return (state.ToString(), Inked(rig, () => strip.Beside(editor, 1, 1)));
-        }), "a line's coverage marks");
+            marks.Shape = shape;
+            return (shape.ToString(), Inked(rig, () => strip.Beside(editor, 1, 1)));
+        }), "a line's coverage marks and those of the tests running it");
     }
 
     private void The_stripes_added_changed_conflicted_and_deleted_marks_ink_different_shapes_in_one_colour()
@@ -142,7 +142,11 @@ public sealed class ColourAloneTests
 
     private void Every_test_mark_has_a_shape_of_its_own() => Apart(Enum.GetValues<TestMarkKind>(), TestMarks.ShapeOf);
 
-    private void Every_coverage_mark_has_a_shape_of_its_own() => Apart(Enum.GetValues<CoverageState>(), CoverageColumn.ShapeOf);
+    private void Every_coverage_mark_has_a_shape_of_its_own()
+    {
+        Apart(Enum.GetValues<CoverageState>(), CoverageColumn.ShapeOf);
+        Apart(Enum.GetValues<ReachState>(), CoverageColumn.ShapeOf);
+    }
 
     private void Every_changed_files_kind_has_a_letter_and_a_word_of_its_own()
     {
@@ -257,17 +261,17 @@ public sealed class ColourAloneTests
         public GutterAnswer Press(GutterPress press) => inner.Press(press);
     }
 
-    /// <summary>A line's coverage mark of one state on the second line.</summary>
+    /// <summary>A line's coverage mark of one shape on the second line.</summary>
     private sealed class CoverageMarks : IGutterColumn
     {
-        private CoverageState state;
+        private CoverageShape shape;
 
-        public CoverageState State
+        public CoverageShape Shape
         {
-            get => state;
+            get => shape;
             set
             {
-                state = value;
+                shape = value;
                 Changed?.Invoke(this, EventArgs.Empty);
             }
         }
@@ -280,7 +284,7 @@ public sealed class ColourAloneTests
         {
             if (frame.First <= 1 && frame.Last >= 1)
             {
-                CoverageColumn.DrawMark(frame, State, frame.Left, 1);
+                CoverageColumn.DrawMark(frame, Shape, TokenKeys.Test_Passed, frame.Left, 1);
             }
         }
 

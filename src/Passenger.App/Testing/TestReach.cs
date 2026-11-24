@@ -5,7 +5,8 @@ namespace Passenger.App.Testing;
 /// <summary>Which tests run which lines, kept in the folder's state so it lasts from one session to the next: each test
 /// method (its rows together) by its identity, with the lines of each file it ran and how its run ended, and each file it
 /// ran by its path, with a hash of each of its lines as they were when mapped, so a file changed since is compared line by
-/// line to find what the change reaches (<see cref="Changed"/>). Bounded: the tests mapped latest, and the files they ran.</summary>
+/// line to find what the change reaches (<see cref="Changed"/>), and the lines a test could run, so a line none runs shows so.
+/// Bounded: the tests mapped latest, and the files they ran or could run.</summary>
 public sealed partial record TestReachState
 {
     /// <summary>The most tests kept, those mapped longest ago going first.</summary>
@@ -26,11 +27,11 @@ public sealed partial record TestReachState
                 tests[identity] = test with { Lines = test.Lines.Where(l => l.Value is { Count: > 0 } s && s.Count % 2 == 0).ToDictionary(l => l.Key, l => l.Value, StringComparer.Ordinal) };
             }
         }
-        HashSet<string> ran = [.. tests.Values.SelectMany(t => t.Lines.Keys)];
+        HashSet<string> ran = [.. tests.Values.SelectMany(t => t.Lines.Keys), .. tests.Values.Select(t => t.File).OfType<string>()];
         Dictionary<string, MappedFile> files = new(StringComparer.Ordinal);
         foreach ((string path, MappedFile? file) in Files ?? [])
         {
-            if (file?.Hashes is not null && ran.Contains(path))
+            if (file?.Hashes is not null && (ran.Contains(path) || file.Coverable is { Count: > 0 }))
             {
                 files[path] = file;
             }
@@ -90,9 +91,55 @@ public sealed partial record TestReachState
         return [.. Tests.Where(t => t.Value.Lines.TryGetValue(path, out List<int>? stretches) && Stretches.Lines(stretches).Any(reached.Contains)).Select(t => t.Key)];
     }
 
+    /// <summary>Whether a file mapped reads otherwise now (<paramref name="now"/>, a hash of each line): a test's own file
+    /// changed since it was mapped.</summary>
+    public bool Differs(string path, uint[] now) => Files.TryGetValue(path, out MappedFile? was) && !was.Hashes.AsSpan().SequenceEqual(now);
+
     /// <summary>The tests that ran a line of a file (from one) as it was mapped.</summary>
     public IEnumerable<string> Running(string path, int line) =>
         Tests.Where(t => t.Value.Lines.TryGetValue(path, out List<int>? stretches) && Stretches.Holds(stretches, line)).Select(t => t.Key);
+
+    /// <summary>A file's lines that a test could run, as it reads now (<paramref name="now"/>, a hash of each line), each with
+    /// how the tests that run it last ended and their identities: lines changed since it was mapped left out, their tests yet
+    /// to run them again.</summary>
+    public IReadOnlyList<ReachedLine> Marks(string path, uint[] now)
+    {
+        if (!Files.TryGetValue(path, out MappedFile? file))
+        {
+            return [];
+        }
+        int[] moved = Moved(file.Hashes, now);
+        Dictionary<int, List<(string Test, TestState State)>> running = [];
+        foreach ((string identity, ReachedTest test) in Tests)
+        {
+            if (test.Lines.TryGetValue(path, out List<int>? stretches))
+            {
+                foreach (int line in Stretches.Lines(stretches))
+                {
+                    if (!running.TryGetValue(line, out List<(string, TestState)>? its))
+                    {
+                        running[line] = its = [];
+                    }
+                    its.Add((identity, test.State));
+                }
+            }
+        }
+        List<ReachedLine> marks = [];
+        foreach (int line in Stretches.Lines(file.Coverable).Concat(running.Keys).Distinct().Order())
+        {
+            if (line > moved.Length || moved[line - 1] == 0)
+            {
+                continue;
+            }
+            List<(string Test, TestState State)> its = running.GetValueOrDefault(line) ?? [];
+            ReachState state = its.Count == 0 ? ReachState.Unreached
+                : its.Any(t => t.State == TestState.Failed) ? ReachState.Failed
+                : its.All(t => t.State is TestState.Passed or TestState.Skipped) ? ReachState.Passed
+                : ReachState.Waiting;
+            marks.Add(new ReachedLine(moved[line - 1], state, [.. its.Select(t => t.Test).Order(StringComparer.Ordinal)]));
+        }
+        return marks;
+    }
 
     /// <summary>Where each line of a text as mapped (from one) stands in it now, zero for a line changed or taken out.</summary>
     private static int[] Moved(uint[] was, uint[] now)
@@ -136,13 +183,28 @@ public sealed partial record TestReachState
     }
 }
 
-/// <summary>A test method as its last mapped run left it: when that was, how it ended, and the lines it ran, by file, as
-/// stretches (<see cref="Stretches"/>).</summary>
+/// <summary>How a line stands with the tests that run it: each passed, one failed, one yet to run since it was mapped, or
+/// none runs it.</summary>
+public enum ReachState
+{
+    Passed,
+    Failed,
+    Waiting,
+    Unreached,
+}
+
+/// <summary>A line (from one) as the tests that run it left it, and their identities.</summary>
+public readonly record struct ReachedLine(int Line, ReachState State, string[] Tests);
+
+/// <summary>A test method as its last mapped run left it: when that was, how it ended, the file declaring it, and the lines
+/// it ran, by file, as stretches (<see cref="Stretches"/>).</summary>
 public sealed record ReachedTest
 {
     public DateTimeOffset Mapped { get; init; }
 
     public TestState State { get; init; }
+
+    public string? File { get; init; }
 
     public Dictionary<string, List<int>> Lines { get; init; } = [];
 }

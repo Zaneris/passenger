@@ -8,3 +8,4 @@ public sealed partial record TestReachState : IStateDocument<TestReachState>
 {
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
 }
+

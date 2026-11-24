@@ -114,11 +114,13 @@ public sealed partial class SettingsDialog : IdeWindow
     /// <param name="agents">The agents' setup the MCP Server page shows: this copy's, and the window's folder.</param>
     /// <param name="editorConfigs">What the window's folder's .editorconfig files set over the rows, followed while it is open.</param>
     /// <param name="trust">The folders the person answered for, which the Trusted Folders page shows, where the window keeps them.</param>
+    /// <param name="questions">The window's first-time questions, whose answers their rows show and change.</param>
     public SettingsDialog(AppSettings current, ActionRegistry actions, Action<AppSettings, AppSettings> apply, Mcp.AgentSetup? agents = null, SettingsPreview? preview = null,
-        FolderEditorConfigs? editorConfigs = null, TrustAnswers? trust = null)
+        FolderEditorConfigs? editorConfigs = null, TrustAnswers? trust = null, FirstTimeQuestions? questions = null)
     {
         this.apply = apply;
         this.trust = trust;
+        this.questions = questions;
         this.preview = preview;
         this.editorConfigs = editorConfigs;
         Closed += (_, _) => preview?.Dispose();
@@ -220,6 +222,7 @@ public sealed partial class SettingsDialog : IdeWindow
             applied = Working;
             preview?.Update(applied, Working);
             ApplyTrust();
+            ApplyQuestions();
         }
     }
 
@@ -411,6 +414,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(BuildPage, "Tool Window: open the build progress view even when the build is invoked implicitly (i.e. Run/Debug)", implicitly,
             "build tool window open progress view start implicitly run debug profile before launch toolset presentation");
         Add(Declared.ShowBuildResults);
+        Add(Declared.ContinuousTesting);
 
         Add(Declared.HotReloadWhileDebugging);
         Add(Declared.HotReload);

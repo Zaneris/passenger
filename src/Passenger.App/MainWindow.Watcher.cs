@@ -127,6 +127,7 @@ public partial class MainWindow
         session.DesignTimeBuilds.FolderChanged(changes);
         session.FilesChanged(changes);
         session.Debug.FilesChanged(changes.Paths);
+        session.Continuous.FilesChanged(changes.Paths, every: changes.Lost);
         // What came or went is the index's to weigh against what the folder's read found (ProjectSession.ProjectsCameOrWent).
         string[] written = [.. changes.Written];
         (bool programsMade, bool programsWritten) = ProgramsChanged(written);

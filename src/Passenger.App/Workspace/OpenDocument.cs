@@ -594,6 +594,23 @@ public sealed class OpenDocument : Observable
 
     private Testing.CoveredLines? coverage;
 
+    /// <summary>Which tests run the file's lines and how they last ended, as continuous testing mapped them, marked on its lines
+    /// and carried with its text; null while it tests nothing here. Marks set in place of others let the others go.</summary>
+    public Testing.ReachedLines? Reach
+    {
+        get => reach;
+        set
+        {
+            Testing.ReachedLines? was = reach;
+            if (Set(ref reach, value))
+            {
+                was?.Clear();
+            }
+        }
+    }
+
+    private Testing.ReachedLines? reach;
+
     /// <summary>The run icons beside what a run configuration runs from it: a program's entry point, a launch profile, a
     /// compose file's services, a Dockerfile's image.</summary>
     public IReadOnlyList<RunMark> RunMarks

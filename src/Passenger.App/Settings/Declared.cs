@@ -454,6 +454,24 @@ public static class Declared
         new(D.BuildPage, "Showing build results after build completed",
             "build tool window results after completed finished failed errors warnings always never toolset presentation"));
 
+    /// <summary>Whether a repository's tests run continuously (<see cref="Testing.ContinuousTests"/>): off until the person says,
+    /// asked the first time they run tests in it.</summary>
+    public static readonly FirstTimeQuestion ContinuousTesting = new("continuousTesting", QuestionScope.Repository, Default: false,
+        new(D.BuildPage, "Test continuously as files are saved, in this repository", "continuous testing tests rerun run again save background build affected covered coverage unit",
+            "Passenger builds the test projects in a folder of its own and runs again, one at a time, the tests that ran the lines a save "
+            + "changed, each line then showing whether its tests pass. It counts each line a test runs, which adds a little to the memory "
+            + "the tests take: Passenger's own 606 unit tests peaked at 1.9 GB in their test host, about 0.1 GB above the same tests run one "
+            + "at a time uncounted. Tests that write to a database, files or containers do so at each save. What it builds is kept in "
+            + "Passenger's own cache, removed as it is turned off for a repository and for folders not opened for 30 days."),
+        "Test Continuously?",
+        "Passenger can build this repository's tests in a folder of its own as you save, and run again only the tests that run "
+        + "what changed, each line showing whether its tests pass. It takes a little more memory than the tests take, and tests "
+        + $"that write to a database, files or containers do so at each save. {SettingsDialog.PlaceOfPage(SettingsDialog.BuildPage)} changes it later.",
+        "Turn On", "Not Now");
+
+    /// <summary>Every first-time question, which Settings shows a row of each.</summary>
+    public static IReadOnlyList<FirstTimeQuestion> Questions { get; } = [ContinuousTesting];
+
     public static readonly ToggleSetting HotReloadWhileDebugging = new(s => s.HotReloadWhileDebugging, (s, v) => s with { HotReloadWhileDebugging = v },
         new(D.HotReloadPage, "Hot Reload when debugging (Edit and Continue)", "hot reload edit and continue enc debug apply changes paused running alt f10"));
 

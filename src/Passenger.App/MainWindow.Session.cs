@@ -317,6 +317,7 @@ public partial class MainWindow
         };
         BindTests(next);
         BindCoverage(next);
+        BindContinuous(next);
         BindDebug(next);
         BindModules(next);
         profiler?.Rebind();
