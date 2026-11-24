@@ -294,9 +294,9 @@ public sealed class FirstStartView : UserControl, IOwnKeys
         foreach (string action in KeysShown)
         {
             StackPanel one = new() { Children = { new TextBlock { Classes = { StyleClasses.FirstStartWords }, Text = titleOf(action), TextWrapping = TextWrapping.Wrap } } };
-            if (keymap.ShortcutsFor(action).FirstOrDefault() is { } first)
+            if (KeyWords.Of(keymap, action) is { } first)
             {
-                Border box = SettingsDialog.KeyBox(first.Display());
+                Border box = SettingsDialog.KeyBox(first);
                 box.HorizontalAlignment = HorizontalAlignment.Left;
                 one.Children.Add(box);
             }
