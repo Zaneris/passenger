@@ -865,19 +865,20 @@ public partial class MainWindow
         status.Text = $"{lines[line].Short} {lines[line].Summary} ({lines[line].Author}, {lines[line].Time.ToLocalTime():f})";
     }
 
-    /// <summary>The gutter menu where no breakpoint is, or on a line holding lambdas: the line's breakpoints given first, then
-    /// annotations on or off.</summary>
-    private void ShowGutterMenu(CodeEditor editor, OpenDocument document, IReadOnlyList<Control>? breakpoints = null)
+    /// <summary>The gutter menu where no breakpoint is, or on a line holding lambdas: the line's breakpoints given first, a
+    /// snapshot point on the line where none is set, then annotations on or off.</summary>
+    private void ShowGutterMenu(CodeEditor editor, OpenDocument document, int line, IReadOnlyList<Control>? breakpoints = null)
     {
         ContextMenu menu = new();
         foreach (Control item in breakpoints ?? [])
         {
             menu.Items.Add(item);
         }
-        if (breakpoints is { Count: > 0 })
+        if (!session.Debug.Breakpoints.In(document.Path).Any(b => b.Line == line))
         {
-            menu.Items.Add(new Separator());
+            menu.Items.Add(ToolWindows.ListMenus.Item("Add Snapshot Point", () => session.Debug.Breakpoints.ToggleSnapshot(document.Path, line)));
         }
+        menu.Items.Add(new Separator());
         menu.Items.Add(ToolWindows.ListMenus.Item(session.Vcs.IsAnnotated(document) ? "Close Annotations" : "Annotate with Git Blame",
             () => IdeErrors.Observe(ToggleAnnotationsAsync(document)), session.Vcs.Repository is null ? Refusals.NoRepository : null));
         Open(menu, editor);

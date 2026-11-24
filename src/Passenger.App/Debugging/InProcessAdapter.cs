@@ -110,10 +110,10 @@ public abstract class InProcessAdapter
         NoSteps = noSteps,
     });
 
-    /// <summary>A breakpoint refused as asked for, for a hit count the debugger cannot read or a log message it would misread;
-    /// null where it is taken.</summary>
+    /// <summary>A breakpoint refused as asked for, for a hit count the debugger cannot read or a log message it would misread,
+    /// or as a snapshot point, which only Passenger's .NET debugger takes; null where it is taken.</summary>
     protected static DapBreakpoint? Refused(DapSourceBreakpoint breakpoint) =>
-        (BreakpointHits.Unreadable(breakpoint.HitCondition) ?? DisplayFormat.Misread(breakpoint.LogMessage)) is { } problem
+        (breakpoint.Snapshot == true ? Refusals.SnapshotsOfDotnet : BreakpointHits.Unreadable(breakpoint.HitCondition) ?? DisplayFormat.Misread(breakpoint.LogMessage)) is { } problem
         ? new DapBreakpoint { Verified = false, Reason = BreakpointReasons.Failed, Message = problem, Line = breakpoint.Line }
         : null;
 

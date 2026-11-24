@@ -199,6 +199,9 @@ public sealed class DebugModel
     /// <summary>A link in a session's console was clicked.</summary>
     public event EventHandler<LinkTarget>? ConsoleLinkClicked;
 
+    /// <summary>A snapshot opened from the Snapshots tab, to be shown as a past stop.</summary>
+    public event EventHandler<TakenSnapshot>? SnapshotChosen;
+
     /// <summary>A session's tab was pressed.</summary>
     public event EventHandler<DebugTab>? SessionChosen;
 
@@ -220,7 +223,7 @@ public sealed class DebugModel
     /// <summary>Each frame's place to be said again, an edit made while paused perhaps having moved its code.</summary>
     internal event EventHandler? PlacesMoved;
 
-    /// <summary>What Variables says over its rows changed (<see cref="Moved"/>).</summary>
+    /// <summary>What Variables says over its rows changed (<see cref="Moved"/>), or the snapshot shown (<see cref="ShownSnapshot"/>).</summary>
     internal event EventHandler? MovedChanged;
 
     /// <summary>What the chosen program's console offers over its output changed, which the Debugger tab offers too.</summary>
@@ -243,6 +246,18 @@ public sealed class DebugModel
 
     /// <summary>The programs debugged, a tab each, in the order they started.</summary>
     public ObservableCollection<DebugTab> Sessions { get; } = [];
+
+    /// <summary>The most snapshots the window keeps of a folder: past them, the oldest go.</summary>
+    public const int MostSnapshots = 500;
+
+    /// <summary>The folder's snapshots, kept through its sessions and after them, the newest first.</summary>
+    public ObservableCollection<TakenSnapshot> Snapshots { get; } = [];
+
+    /// <summary>The snapshot the frames and values show, as a past stop; null while they show a stop or nothing.</summary>
+    public TakenSnapshot? ShownSnapshot { get; private set; }
+
+    /// <summary>Whether the Snapshots tab is shown.</summary>
+    public bool IsSnapshotsShown { get; private set; }
 
     public ObservableCollection<DapThread> Threads { get; } = [];
 
@@ -371,13 +386,15 @@ public sealed class DebugModel
         ToolsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Clears what the last folder's sessions left, as another opens: their tabs, and every console but the first,
-    /// which is shown empty.</summary>
+    /// <summary>Clears what the last folder's sessions left, as another opens: their tabs, their snapshots, and every console
+    /// but the first, which is shown empty.</summary>
     public void Clear()
     {
         ShowFrames([], null, [], null);
         Tree.Show([]);
         ForgetSessions();
+        Snapshots.Clear();
+        ShowSnapshot(null);
         first.Input = null;
         first.Clear();
     }
@@ -408,6 +425,7 @@ public sealed class DebugModel
     {
         IsConsoleShown = console;
         IsTelemetryShown = false;
+        IsSnapshotsShown = false;
         TabShown?.Invoke(this, EventArgs.Empty);
     }
 
@@ -416,7 +434,37 @@ public sealed class DebugModel
     {
         IsConsoleShown = false;
         IsTelemetryShown = true;
+        IsSnapshotsShown = false;
         TabShown?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Shows the Snapshots tab, the folder's snapshot points' captures.</summary>
+    public void ShowSnapshots()
+    {
+        IsConsoleShown = false;
+        IsTelemetryShown = false;
+        IsSnapshotsShown = true;
+        TabShown?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Keeps a snapshot, the newest first, the oldest past <see cref="MostSnapshots"/> let go.</summary>
+    public void Keep(TakenSnapshot snapshot)
+    {
+        Snapshots.Insert(0, snapshot);
+        while (Snapshots.Count > MostSnapshots)
+        {
+            Snapshots.RemoveAt(Snapshots.Count - 1);
+        }
+    }
+
+    /// <summary>Has the frames and values show a snapshot as a past stop, or no snapshot (null), Variables saying which.</summary>
+    public void ShowSnapshot(TakenSnapshot? snapshot)
+    {
+        if (ShownSnapshot != snapshot)
+        {
+            ShownSnapshot = snapshot;
+            MovedChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     /// <summary>A run's dashboard came up, was kept or went: the Telemetry tab follows.</summary>
@@ -474,6 +522,8 @@ public sealed class DebugModel
     internal void OpenText(VariableNode node) => TextOpened?.Invoke(this, node);
 
     internal void Choose(DebugTab tab) => SessionChosen?.Invoke(this, tab);
+
+    internal void Choose(TakenSnapshot snapshot) => SnapshotChosen?.Invoke(this, snapshot);
 
     internal void Close(DebugTab tab) => SessionClosed?.Invoke(this, tab);
 }

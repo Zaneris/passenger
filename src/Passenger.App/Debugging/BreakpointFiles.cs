@@ -35,6 +35,7 @@ public static class BreakpointFiles
                 }
                 Does(line, b.Enabled, b.Suspend, b.Condition, b.HitCondition, b.LogMessage);
                 Arranged(line, b.Temporary, b.WaitsFor, folder);
+                Captured(line, b.Snapshot);
                 return (JsonNode)line;
             })]);
         }
@@ -50,6 +51,7 @@ public static class BreakpointFiles
                 }
                 Does(method, m.Enabled, m.Suspend, m.Condition, m.HitCondition, m.LogMessage);
                 Arranged(method, m.Temporary, m.WaitsFor, folder);
+                Captured(method, m.Snapshot);
                 return (JsonNode)method;
             })]);
         }
@@ -108,6 +110,7 @@ public static class BreakpointFiles
                 LogMessage = JsonMembers.Text(line, "logMessage"),
                 Temporary = JsonMembers.Bool(line, "temporary") ?? false,
                 WaitsFor = WaitsFor(line, folder),
+                Snapshot = SnapshotOf(line),
             });
         }
         List<KeptMethodBreakpoint> methods = [];
@@ -126,6 +129,7 @@ public static class BreakpointFiles
                 LogMessage = JsonMembers.Text(method, "logMessage"),
                 Temporary = JsonMembers.Bool(method, "temporary") ?? false,
                 WaitsFor = WaitsFor(method, folder),
+                Snapshot = SnapshotOf(method),
             });
         }
         List<KeptExceptionBreakpoint> exceptions = [];
@@ -186,6 +190,41 @@ public static class BreakpointFiles
     }
 
     /// <summary>Whether a line or method breakpoint is temporary, and what it waits for.</summary>
+    /// <summary>A snapshot point's member: what it reads beside the stack and locals, and how many snapshots it takes where
+    /// that is not the default.</summary>
+    private static void Captured(JsonObject written, SnapshotPoint? snapshot)
+    {
+        if (snapshot is null)
+        {
+            return;
+        }
+        JsonObject taken = [];
+        if (snapshot.Expressions.Count > 0)
+        {
+            taken["expressions"] = new JsonArray([.. snapshot.Expressions.Select(e => (JsonNode)e)]);
+        }
+        if (snapshot.Limit is int limit)
+        {
+            taken["limit"] = limit;
+        }
+        written["snapshot"] = taken;
+    }
+
+    /// <summary>A breakpoint's snapshot member as read, or null where it has none; a limit out of range is refused.</summary>
+    private static SnapshotPoint? SnapshotOf(JsonElement written)
+    {
+        if (JsonMembers.Value(written, "snapshot") is not { ValueKind: JsonValueKind.Object } snapshot)
+        {
+            return null;
+        }
+        int? limit = JsonMembers.Number(snapshot, "limit");
+        if (limit is < 1 or > BreakpointHits.MostCaptures)
+        {
+            throw new FormatException($"A snapshot point takes from 1 to {Numbers.Said(BreakpointHits.MostCaptures)} snapshots, not {Numbers.Said(limit!.Value)}");
+        }
+        return SnapshotPoint.Of(JsonMembers.Texts(snapshot, "expressions"), limit);
+    }
+
     private static void Arranged(JsonObject written, bool temporary, KeptWaitFor? waitsFor, string folder)
     {
         if (temporary)

@@ -77,7 +77,8 @@ public abstract class Breakpoint
 
 /// <summary>A breakpoint placed in code, on a line or on a method: a temporary one is taken away once it takes a hit (its
 /// condition held and its hit count met), so it stops, or logs, once; one waiting for another passes over its hits until
-/// that one has taken a hit in the same run, and from then on takes them as any breakpoint does.</summary>
+/// that one has taken a hit in the same run, and from then on takes them as any breakpoint does; a snapshot point never
+/// stops, each hit it takes captured as the program goes on.</summary>
 public abstract class CodeBreakpoint : Breakpoint
 {
     /// <summary>Taken away once it takes a hit.</summary>
@@ -85,6 +86,74 @@ public abstract class CodeBreakpoint : Breakpoint
 
     /// <summary>The breakpoint whose hit it waits for, or null for none.</summary>
     public CodeBreakpoint? WaitsFor { get; internal set; }
+
+    /// <summary>What it captures as a snapshot point, or null for a breakpoint that stops or logs.</summary>
+    public SnapshotPoint? Snapshot { get; internal set; }
+}
+
+/// <summary>What a snapshot point asks of each hit it takes: the thread's frames and their values, read as a stop's and
+/// copied as the program goes on, with its own expressions (<see cref="Captures"/>, one to a line) read in its top frame;
+/// at most <see cref="Limit"/> captures in a session.</summary>
+public sealed record SnapshotPoint(string? Captures = null, int? Limit = null)
+{
+    /// <summary>Its own expressions, blank lines passed over.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyList<string> Expressions => [.. (Captures ?? string.Empty).Split('\n').Select(e => e.Trim()).Where(e => e.Length > 0)];
+
+    /// <summary>How many captures it takes in a session.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int Takes => Limit ?? BreakpointHits.CaptureLimit;
+
+    /// <summary>A snapshot point of expressions (none for none) and a limit (the default's none).</summary>
+    public static SnapshotPoint Of(IEnumerable<string> expressions, int? limit)
+    {
+        string[] kept = [.. expressions.Select(e => e.ReplaceLineEndings(" ").Trim()).Where(e => e.Length > 0)];
+        return new SnapshotPoint(kept.Length == 0 ? null : string.Join('\n', kept), limit == BreakpointHits.CaptureLimit ? null : limit);
+    }
+
+    /// <summary>Expressions written on one line, each ended by a ';' outside its strings and brackets.</summary>
+    public static IReadOnlyList<string> Split(string? text)
+    {
+        List<string> parts = [];
+        string written = text ?? string.Empty;
+        int depth = 0;
+        int start = 0;
+        char? quote = null;
+        for (int at = 0; at < written.Length; at++)
+        {
+            char c = written[at];
+            if (quote is char open)
+            {
+                if (c == '\\')
+                {
+                    at++;
+                }
+                else if (c == open)
+                {
+                    quote = null;
+                }
+                continue;
+            }
+            switch (c)
+            {
+                case '"' or '\'':
+                    quote = c;
+                    break;
+                case '(' or '[' or '{':
+                    depth++;
+                    break;
+                case ')' or ']' or '}':
+                    depth--;
+                    break;
+                case ';' when depth <= 0:
+                    parts.Add(written[start..at]);
+                    start = at + 1;
+                    break;
+            }
+        }
+        parts.Add(written[start..]);
+        return [.. parts.Select(p => p.Trim()).Where(p => p.Length > 0)];
+    }
 }
 
 /// <summary>A line breakpoint (lines from zero), carried with its file's text while it is open; in Avalonia XAML, on one
@@ -304,6 +373,7 @@ public sealed record KeptBreakpoint(string Path, int Line)
     public string? LogMessage { get; init; }
     public bool Temporary { get; init; }
     public KeptWaitFor? WaitsFor { get; init; }
+    public SnapshotPoint? Snapshot { get; init; }
 }
 
 /// <summary>A method breakpoint as kept: its method's name, the file and line (from zero) it was set at, if any, and what it
@@ -319,6 +389,7 @@ public sealed record KeptMethodBreakpoint(string Name)
     public string? LogMessage { get; init; }
     public bool Temporary { get; init; }
     public KeptWaitFor? WaitsFor { get; init; }
+    public SnapshotPoint? Snapshot { get; init; }
 }
 
 /// <summary>The breakpoint another waits for, as kept: a line breakpoint by its file and line (from zero), with its XAML
@@ -455,6 +526,7 @@ public sealed class BreakpointStore
             LogMessage = b.LogMessage,
             Temporary = b.Temporary,
             WaitsFor = Kept(b.WaitsFor),
+            Snapshot = b.Snapshot,
         })],
         Methods = [.. methods.Select(m => new KeptMethodBreakpoint(m.Name)
         {
@@ -467,6 +539,7 @@ public sealed class BreakpointStore
             LogMessage = m.LogMessage,
             Temporary = m.Temporary,
             WaitsFor = Kept(m.WaitsFor),
+            Snapshot = m.Snapshot,
         })],
         Exceptions = [.. exceptions.Select(e => new KeptExceptionBreakpoint(e.Type)
         {
@@ -536,6 +609,7 @@ public sealed class BreakpointStore
                     HitCondition = breakpoint.HitCondition,
                     LogMessage = breakpoint.LogMessage,
                     Temporary = breakpoint.Temporary,
+                    Snapshot = breakpoint.Snapshot,
                 });
                 list.Add(restored);
                 if (breakpoint.WaitsFor is { } waits)
@@ -559,6 +633,7 @@ public sealed class BreakpointStore
                 HitCondition = breakpoint.HitCondition,
                 LogMessage = breakpoint.LogMessage,
                 Temporary = breakpoint.Temporary,
+                Snapshot = breakpoint.Snapshot,
             });
             methods.Add(restored);
             if (breakpoint.WaitsFor is { } waits)
@@ -1027,6 +1102,32 @@ public sealed class BreakpointStore
         list.Add(Anchored(new LineBreakpoint(path, line) { Temporary = true }));
         Sort(list);
         Changed?.Invoke(this, path);
+    }
+
+    /// <summary>Sets a snapshot point on a line, capturing each hit as the program goes on, or removes those on that line.</summary>
+    public void ToggleSnapshot(string path, int line)
+    {
+        if (In(path).Any(b => b.Line == line))
+        {
+            Toggle(path, line);
+            return;
+        }
+        List<LineBreakpoint> list = For(path);
+        list.Add(Anchored(new LineBreakpoint(path, line) { Snapshot = new SnapshotPoint() }));
+        Sort(list);
+        Changed?.Invoke(this, path);
+    }
+
+    /// <summary>Makes a breakpoint a snapshot point asking <paramref name="snapshot"/> of its hits, or one that stops or logs
+    /// (null).</summary>
+    public void Capture(CodeBreakpoint breakpoint, SnapshotPoint? snapshot)
+    {
+        if (breakpoint.Snapshot == snapshot)
+        {
+            return;
+        }
+        breakpoint.Snapshot = snapshot;
+        Raise(breakpoint);
     }
 
     /// <summary>The method breakpoint on a method by its name, set if there is none, at the line (from zero) of a file where

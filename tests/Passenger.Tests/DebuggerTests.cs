@@ -182,8 +182,8 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>Conditions typed into a breakpoint's popup, a tracepoint logging and running on, Run to Cursor past a
     /// false condition or a tracepoint, the Breakpoints window listing, turning off, adding and keeping exception
     /// breakpoints, an exception breakpoint stopping by its type, its condition and its handler options, Mute letting a run
-    /// pass every breakpoint until unmuted, a temporary breakpoint and one waiting for another, method breakpoints, and the
-    /// breakpoints exported to a file and imported again.</summary>
+    /// pass every breakpoint until unmuted, a temporary breakpoint and one waiting for another, method breakpoints, the
+    /// breakpoints exported to a file and imported again, and a snapshot point's captures opened as past stops.</summary>
     [AvaloniaFact]
     public async Task A_breakpoints_condition_tracepoint_exception_type_and_mute_decide_where_a_run_stops()
     {
@@ -259,6 +259,55 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             OpenWindows.CloseAll();
             return Task.CompletedTask;
         });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a snapshot point from the gutter's menu captures each turn without a stop and a snapshot opens as a past stop", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_snapshot_point_from_the_gutters_menu_captures_each_turn_without_a_stop_and_a_snapshot_opens_as_a_past_stop();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>Add Snapshot Point in the gutter's menu marks a loop's line with a lens; given an expression of its own in its
+    /// popup, it captures each of the loop's three turns as the program runs to its end without a stop. The Snapshots tab
+    /// lists them newest first, and the oldest opened shows its frame and its values as they were at the first turn, its
+    /// expression above them, Variables saying which snapshot it shows, and Set Value greyed saying why.</summary>
+    private void A_snapshot_point_from_the_gutters_menu_captures_each_turn_without_a_stop_and_a_snapshot_opens_as_a_past_stop()
+    {
+        Write("Program.cs", "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += i;\n    Console.WriteLine($\"at {i}\");\n}\nConsole.WriteLine($\"total {total}\");\n");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Point gutter = Gutter(window, editor, 4);
+        window.MouseDown(gutter, MouseButton.Right);
+        window.MouseUp(gutter, MouseButton.Right);
+        Ui.Settle();
+        Ui.Choose(window.OpenContextMenu, "Add Snapshot Point");
+        Assert.Contains(new LineMark(4, LineMarkKind.Breakpoint, Tracepoint: true, Snapshot: true), editor.LineMarks);
+
+        editor.GoTo(new TextPosition(4, 4));
+        Ui.Run(window, AppActions.EditBreakpoint);
+        BreakpointPopup popup = Assert.IsType<BreakpointPopup>(window.Popup);
+        Ui.Settle();
+        TextBox also = popup.GetVisualDescendants().OfType<TextBox>().Single(t => t.PlaceholderText?.StartsWith("Read at each snapshot", StringComparison.Ordinal) == true);
+        Ui.Click(also);
+        window.KeyTextInput("total * 10");
+        Ui.Click(Button(popup, "Done"));
+        Assert.Equal(["total * 10"], window.Debugger.Breakpoints.In(Program).Single().Snapshot!.Expressions);
+
+        StartDebugging(window);
+        WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Ended, "the program to run to its end without stopping");
+        DebugModel debug = window.BottomPanel.Debug;
+        Assert.Contains("total 6", debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Equal([3, 2, 1], debug.Snapshots.Select(s => s.Number));
+        DebugView view = window.DebugWindow;
+        Ui.Click(view.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(t => t.Name == "debugSnapshotsTab"));
+        Ui.Click(Ui.Row(view.SnapshotsList, debug.Snapshots[^1]));
+        Ui.Press(window, "Enter");
+        Assert.True((Value(window, "total * 10"), Value(window, "i"), Value(window, "total")) == ("10", "1", "1") && debug.Frames[0].Line == 5,
+            $"The first turn's snapshot shows total * 10 {Value(window, "total * 10")}, i {Value(window, "i")} and total {Value(window, "total")} at line {debug.Frames[0].Line}, where they were 10, 1 and 1 at line 5");
+        Assert.StartsWith("Snapshot 1 of Program.cs:5 at ", view.GetVisualDescendants().OfType<Banner>().Select(b => b.Said).Single(said => said?.StartsWith("Snapshot", StringComparison.Ordinal) == true),
+            StringComparison.Ordinal);
+        Assert.Equal(Refusals.SnapshotValue, Row(window, "total")!.NoSetting);
+        window.Close();
     }
 
     /// <summary>A temporary breakpoint set by its action stops at the loop's first turn and is gone from the gutter; a

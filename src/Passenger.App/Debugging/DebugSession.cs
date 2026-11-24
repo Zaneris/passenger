@@ -227,6 +227,16 @@ public sealed class DebugSession
                 }
                 return;
             }
+            if (name == DapEvents.Snapshot)
+            {
+                // Its frames' sources named here, off the window's thread, as a stop's are.
+                if (body.ValueKind == JsonValueKind.Object && body.Deserialize<SnapshotEvent>(DapConnection.Options) is { } taken)
+                {
+                    SnapshotEvent named = taken with { Frames = [.. taken.Frames.Select(f => f with { Frame = Named(f.Frame) })] };
+                    UiThread.Post(() => TakeSnapshot(named));
+                }
+                return;
+            }
             JsonElementCopy copy = new(body);
             // Heard here, ahead of whatever the window's thread is doing, so a stop's time is the program's.
             long heard = Stopwatch.GetTimestamp();
@@ -272,6 +282,9 @@ public sealed class DebugSession
     }
 
     public event EventHandler? StateChanged;
+
+    /// <summary>A snapshot point's capture, with the point it is of where the session still knows it.</summary>
+    public event Action<SnapshotEvent, CodeBreakpoint?>? SnapshotTaken;
 
     /// <summary>Each output event as it comes, on the connection's thread in order, beside the console it goes to: for what
     /// reads a program's words as it writes them (a test run's game).</summary>
@@ -1007,11 +1020,14 @@ public sealed class DebugSession
     /// with a source, a hundred and more of them in an app's stack. A source a PDB names on a share or a device has no
     /// path, so neither this nor anything shown from the frame asks for it.</summary>
     public async Task<IReadOnlyList<DapStackFrame>> StackTraceAsync(int threadId) =>
-        [.. (await connection.RequestAsync<StackTraceResponse>(DapCommands.StackTrace, new StackTraceArguments(threadId)).ConfigureAwait(false)).StackFrames.Select(f =>
-            f.Source is not { Path: { } named } source ? f
-                : ToIde(named) is var path && !FoundPaths.Askable(path) ? f with { Source = source with { Path = null } }
-                : Path.IsPathFullyQualified(path) && File.Exists(path) ? f with { Source = source with { Path = PathNames.Canonical(path) } }
-                : f)];
+        [.. (await connection.RequestAsync<StackTraceResponse>(DapCommands.StackTrace, new StackTraceArguments(threadId)).ConfigureAwait(false)).StackFrames.Select(Named)];
+
+    /// <summary>A frame with its source named as the IDE names its files (<see cref="StackTraceAsync"/>); asks the disk.</summary>
+    private DapStackFrame Named(DapStackFrame f) =>
+        f.Source is not { Path: { } named } source ? f
+            : ToIde(named) is var path && !FoundPaths.Askable(path) ? f with { Source = source with { Path = null } }
+            : Path.IsPathFullyQualified(path) && File.Exists(path) ? f with { Source = source with { Path = PathNames.Canonical(path) } }
+            : f;
 
     public async Task<IReadOnlyList<DapScope>> ScopesAsync(int frameId) =>
         (await connection.RequestAsync<ScopesResponse>(DapCommands.Scopes, new ScopesArguments(frameId))).Scopes;
@@ -1173,17 +1189,20 @@ public sealed class DebugSession
     }
 
     /// <summary>A breakpoint as the debugger is asked for it (<see cref="Asked"/>), with its key, the key of the one it waits
-    /// for, and whether it is temporary.</summary>
+    /// for, whether it is temporary, and what it captures as a snapshot point, which never stops.</summary>
     private DapSourceBreakpoint Request(string path, LineBreakpoint breakpoint) =>
         Asked(path, breakpoint.Line, breakpoint.Attribute, breakpoint.Column ?? breakpoint.AttributeColumn) with
         {
             Condition = breakpoint.Condition,
             HitCondition = breakpoint.HitCondition,
             LogMessage = breakpoint.LogMessage,
-            Suspend = breakpoint.Suspend,
+            Suspend = breakpoint.Snapshot is null && breakpoint.Suspend,
             Key = breakpoint.Key,
             WaitFor = breakpoint.WaitsFor?.Key,
             Temporary = breakpoint.Temporary ? true : null,
+            Snapshot = breakpoint.Snapshot is null ? null : true,
+            Captures = breakpoint.Snapshot?.Captures,
+            CaptureLimit = breakpoint.Snapshot?.Limit,
         };
 
     /// <summary>A line (from zero) of a file, or a lambda's or an attribute's column (from zero) on it, as the debugger is
@@ -1256,7 +1275,7 @@ public sealed class DebugSession
     private string Signature(string path) => breakpoints.Muted ? "muted" :
         Signatures.Of([.. breakpoints.In(path).Where(b => b.Enabled).Select(b => Signatures.Of(
             lines.IsBuilt(path, b.Line) ? $"{lines.ToBuilt(path, b.Line)}" : $"new {b.Line}", b.Attribute, b.Column ?? b.AttributeColumn, b.Condition, b.HitCondition, b.LogMessage, b.Suspend,
-            b.Key, b.WaitsFor?.Key, b.Temporary))]);
+            b.Key, b.WaitsFor?.Key, b.Temporary, b.Snapshot is null, b.Snapshot?.Captures, b.Snapshot?.Limit))]);
 
     /// <summary>The exception breakpoints that are on, as the protocol's exception options, but those whose scenarios never stop
     /// (<see cref="ExceptionBreakpoint.Inactive"/>), which no debugger is to stop at; none while muted, so no exception stops
@@ -1399,7 +1418,8 @@ public sealed class DebugSession
         List<MethodBreakpoint> methods = MethodsSending();
         functionsSent = FunctionSignature();
         List<DapFunctionBreakpoint> requests = [.. sending.Select(p => new DapFunctionBreakpoint(Inspector.Wire.Changed, EngineCondition(p), null, p.LogMessage, p.Suspend)),
-            .. methods.Select(m => new DapFunctionBreakpoint(m.Name, m.Condition, m.HitCondition, m.LogMessage, m.Suspend, m.Key, m.WaitsFor?.Key, m.Temporary ? true : null))];
+            .. methods.Select(m => new DapFunctionBreakpoint(m.Name, m.Condition, m.HitCondition, m.LogMessage, m.Snapshot is null && m.Suspend, m.Key, m.WaitsFor?.Key, m.Temporary ? true : null,
+                m.Snapshot is null ? null : true, m.Snapshot?.Captures, m.Snapshot?.Limit))];
         if (bindingErrors is not null)
         {
             requests.Add(new DapFunctionBreakpoint(Inspector.Wire.Failed, BindingErrorTerms(bindingErrors.Condition), bindingErrors.HitCondition,
@@ -1523,7 +1543,7 @@ public sealed class DebugSession
     private string FunctionSignature()
     {
         List<object?> sending = [.. PropertiesSending().Select(p => Signatures.Of(p.Id, p.Condition, p.HitCondition, p.LogMessage, p.Suspend)),
-            .. MethodsSending().Select(m => Signatures.Of("method", m.Name, m.Condition, m.HitCondition, m.LogMessage, m.Suspend, m.Key, m.WaitsFor?.Key, m.Temporary))];
+            .. MethodsSending().Select(m => Signatures.Of("method", m.Name, m.Condition, m.HitCondition, m.LogMessage, m.Suspend, m.Key, m.WaitsFor?.Key, m.Temporary, m.Snapshot is null, m.Snapshot?.Captures, m.Snapshot?.Limit))];
         if (BindingErrorsSending() is { } b)
         {
             sending.Add(Signatures.Of("binding", b.Condition, b.HitCondition, b.LogMessage, b.Suspend));
@@ -1535,6 +1555,10 @@ public sealed class DebugSession
         ? ScriptErrorsSending() is { } errors ? Signatures.Of("errors", errors.Condition, errors.HitCondition, errors.LogMessage, errors.Suspend) : "none"
         : Signatures.Of([.. ExceptionOptions().Select(s => Signatures.Of(
             s.Breakpoint.Type, Signatures.Of([.. s.Option.Scenarios ?? []]), s.Option.Condition, s.Option.HitCondition, s.Option.LogMessage, s.Option.Suspend))]);
+
+    /// <summary>A snapshot point's capture, told with the point it is of where the session still knows it.</summary>
+    private void TakeSnapshot(SnapshotEvent taken) =>
+        SnapshotTaken?.Invoke(taken, byId.GetValueOrDefault(taken.BreakpointId) ?? (CodeBreakpoint?)methodById.GetValueOrDefault(taken.BreakpointId));
 
     private void OnEvent(string name, JsonElementCopy body, long heard)
     {

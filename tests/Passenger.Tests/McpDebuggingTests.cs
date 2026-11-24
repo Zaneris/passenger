@@ -230,9 +230,9 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent's debug sessions as one flow, each step one test's check in an instance of its own:
     /// Passenger's helpers on its own runtime, a stop ending a session still starting, a running configuration ended
-    /// first, output answering the program debugged, a web app answered once it serves, one the runtime gives up on
-    /// said failed and ended, a long call telling what it does, and a launch never reaching its breakpoint saying what
-    /// it waits for.</summary>
+    /// first, output answering the program debugged, a web app answered once it serves, a snapshot point in one capturing
+    /// its requests without stopping it, one the runtime gives up on said failed and ended, a long call telling what it does,
+    /// and a launch never reaching its breakpoint saying what it waits for.</summary>
     [Fact]
     public async Task An_agents_debug_sessions_start_end_and_say_what_they_wait_for_on_Passengers_own_runtime()
     {
@@ -241,6 +241,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         await Flow.StepApartAsync("an agents run and debug of a configuration that runs end it first and answer with the new start", () => new McpDebuggingTests(restored), t => t.An_agents_run_and_debug_of_a_configuration_that_runs_end_it_first_and_answer_with_the_new_start());
         await Flow.StepApartAsync("an agents output naming no console answers the program debugged naming it not the run that ended", () => new McpDebuggingTests(restored), t => t.An_agents_output_naming_no_console_answers_the_program_debugged_naming_it_not_the_run_that_ended());
         await Flow.StepApartAsync("an agents debug start of a web app answers once it serves saying where it listens", () => new McpDebuggingTests(restored), t => t.An_agents_debug_start_of_a_web_app_answers_once_it_serves_saying_where_it_listens());
+        await Flow.StepApartAsync("an agents snapshot point in a running web app captures each requests locals and never pauses it", () => new McpDebuggingTests(restored), t => t.An_agents_snapshot_point_in_a_running_web_app_captures_each_requests_locals_and_never_pauses_it());
         await Flow.StepApartAsync("an agents debug start whose debugging the runtime gives up answers that it failed and the app is ended", () => new McpDebuggingTests(restored), t => t.An_agents_debug_start_whose_debugging_the_runtime_gives_up_answers_that_it_failed_and_the_app_is_ended());
         await Flow.StepApartAsync("a call that takes a while tells its agent what it is doing and nothing reaches standard error", () => new McpDebuggingTests(restored), t => t.A_call_that_takes_a_while_tells_its_agent_what_it_is_doing_and_nothing_reaches_standard_error());
         await Flow.StepApartAsync("a launch that never reaches its breakpoint says so and its progress says what it waits for", () => new McpDebuggingTests(restored), t => t.A_launch_that_never_reaches_its_breakpoint_says_so_and_its_progress_says_what_it_waits_for());
@@ -659,6 +660,50 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         await Call(client, McpTools.Stop);
     }
 
+    /// <summary>An agent's snapshot point in a web app's handler, reading an expression of its own, captures each of three
+    /// requests as the app serves it: debug_state of snapshots lists them newest first, each with the handler's locals and the
+    /// expression as they were at that request, and how long the app was held for it, which the request's answer took in.
+    /// The app never stops: it answers every request with no continue asked, and the session runs throughout.</summary>
+    private async Task An_agents_snapshot_point_in_a_running_web_app_captures_each_requests_locals_and_never_pauses_it()
+    {
+        string folder = await WebAppAsync("WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/order/{id:int}\", (int id) =>\n{\n"
+            + "    int total = id * 3;\n    string note = $\"order {id}\";\n    return $\"{note} costs {total}\";\n});\napp.Run();\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        JsonElement set = await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 6, ["snapshot"] = true, ["capture"] = new[] { "total + 1" } });
+        Assert.True(set.EnumerateArray().Single().GetProperty("snapshot").GetString()?.StartsWith("captures the stack and locals with total + 1", StringComparison.Ordinal) == true,
+            $"breakpoint_set of a snapshot point answered {set}");
+        JsonElement started = await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Web: Serve", ["waitSeconds"] = 600 });
+        Match listening = Regex.Match(started.GetProperty("status").GetString() ?? string.Empty, @"listening at (http://127\.0\.0\.1:\d+)");
+        Assert.True(started.GetProperty("state").GetString() == "running" && listening.Success, $"debug_start of a web app answered: {started.GetRawText()}");
+        List<TimeSpan> answered = [];
+        using (System.Net.Http.HttpClient http = new())
+        {
+            for (int id = 1; id <= 3; id++)
+            {
+                long asked = Stopwatch.GetTimestamp();
+                Assert.Equal($"order {id} costs {id * 3}", await http.GetStringAsync(new Uri($"{listening.Groups[1].Value}/order/{id}"), TestContext.Current.CancellationToken));
+                answered.Add(Stopwatch.GetElapsedTime(asked));
+            }
+        }
+        Assert.Equal("running", (await Call(client, McpTools.DebugState)).GetProperty("state").GetString());
+        JsonElement[] snapshots = [.. (await Call(client, McpTools.DebugState, new() { ["of"] = "snapshots" })).EnumerateArray()];
+        Assert.True(snapshots.Length == 3, $"debug_state of snapshots listed {snapshots.Length} after three requests: {string.Join(", ", snapshots.Select(s => s.GetRawText()))}");
+        for (int at = 0; at < 3; at++)
+        {
+            JsonElement snapshot = snapshots[at];
+            int id = 3 - at;
+            Dictionary<string, string?> locals = snapshot.GetProperty("locals").EnumerateArray().ToDictionary(l => l.GetProperty("name").GetString()!, l => l.GetProperty("value").GetString());
+            Assert.True(locals.GetValueOrDefault("id") == $"{id}" && locals.GetValueOrDefault("total") == $"{id * 3}" && locals.GetValueOrDefault("note") == $"\"order {id}\""
+                && snapshot.GetProperty("asked").EnumerateArray().Single().GetProperty("value").GetString() == $"{id * 3 + 1}",
+                $"The snapshot of request {id} read: {snapshot.GetRawText()}");
+            double paused = snapshot.GetProperty("pausedMs").GetDouble();
+            Assert.True(paused > 0 && paused <= answered[id - 1].TotalMilliseconds,
+                $"The snapshot of request {id} said the app was held {paused} ms, where its answer took {answered[id - 1].TotalMilliseconds} ms in all");
+            TestContext.Current.TestOutputHelper?.WriteLine($"Request {id}: answered in {answered[id - 1].TotalMilliseconds:F1} ms, the app held {paused:F1} ms for its snapshot");
+        }
+        await Call(client, McpTools.Stop);
+    }
+
     /// <summary>An agent's debug_start of a web app whose debugging the runtime gives up for good as it starts, as it once did
     /// under load, holding the app where it stood, answers once the app is ended, saying its debugging failed and why,
     /// rather than waiting out its whole time for an app that will never serve; its console says so too.</summary>
@@ -678,14 +723,14 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             $"The Debug console of a program whose debugging failed reads:\n{console}");
     }
 
-    /// <summary>A web app that answers "served" at its root, restored, in a folder of the test's own; its launch profile Serve
-    /// listens at port 0, the port it took said only in its own words.</summary>
-    private async Task<string> WebAppAsync()
+    /// <summary>A web app that answers "served" at its root (or runs <paramref name="program"/>), restored, in a folder of the
+    /// test's own; its launch profile Serve listens at port 0, the port it took said only in its own words.</summary>
+    private async Task<string> WebAppAsync(string? program = null)
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-web-"));
         DeleteAtEnd(folder);
         TestFolders.Write(folder, "Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
-        TestFolders.Write(folder, "Program.cs", "WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/\", () => \"served\");\napp.Run();\n");
+        TestFolders.Write(folder, "Program.cs", program ?? "WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/\", () => \"served\");\napp.Run();\n");
         TestFolders.Write(folder, "Properties/launchSettings.json",
             "{\n  \"profiles\": {\n    \"Serve\": { \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:0\" }\n  }\n}\n");
         await Restore.RunAsync(Path.Combine(folder, "Web.csproj"));

@@ -117,9 +117,12 @@ public sealed class DebugController : IDisposable
         this.view = view;
         // The window's Debug tabs are this folder's from now: the last folder's, ended or ending, are let go.
         view.ForgetSessions();
+        // The folder's snapshots are its own: another folder's go with it.
+        view.Snapshots.Clear();
+        view.ShowSnapshot(null);
         clearing = new Debounce(TimeSpan.FromMilliseconds(100), () =>
         {
-            if (Session is not { State: DebugState.Paused })
+            if (Session is not { State: DebugState.Paused } && view.ShownSnapshot is null)
             {
                 view.ShowFrames([], null, [], null);
                 view.Tree.Show([]);
@@ -141,6 +144,7 @@ public sealed class DebugController : IDisposable
         EventHandler readAgain = (_, _) => IdeErrors.Observe(ShowVariables());
         EventHandler<VariableNode> textOpened = (_, node) => TextOpened?.Invoke(this, node.Value);
         EventHandler<DebugTab> tabChosen = (_, tab) => IdeErrors.Observe(ChooseAsync(tab));
+        EventHandler<TakenSnapshot> snapshotChosen = (_, snapshot) => ShowSnapshot(snapshot);
         EventHandler<DebugTab> tabClosed = (_, tab) => IdeErrors.Observe(CloseTabAsync(tab));
         EventHandler<string> unwatched = (_, expression) =>
         {
@@ -165,8 +169,10 @@ public sealed class DebugController : IDisposable
         view.WatchRemoved += unwatched;
         view.SessionChosen += tabChosen;
         view.SessionClosed += tabClosed;
+        view.SnapshotChosen += snapshotChosen;
         letGo = () =>
         {
+            view.SnapshotChosen -= snapshotChosen;
             view.SessionChosen -= tabChosen;
             view.SessionClosed -= tabClosed;
             view.ActionRequested -= asked;
@@ -235,6 +241,9 @@ public sealed class DebugController : IDisposable
 
     /// <summary>The programs debugged, each with its tab in the Debug window, in the order they started.</summary>
     public IReadOnlyList<DebugTab> Tabs => view.Sessions;
+
+    /// <summary>The folder's snapshots, the newest first.</summary>
+    public IReadOnlyList<TakenSnapshot> Snapshots => view.Snapshots;
 
     /// <summary>The tab the Debug window shows.</summary>
     public DebugTab? Chosen => chosen;
@@ -1214,6 +1223,7 @@ public sealed class DebugController : IDisposable
             {
                 starting = made;
                 tab.Session = made;
+                made.SnapshotTaken += (taken, point) => KeepSnapshot(tab, taken, point);
                 made.InBrowser = inBrowser ?? (plan is { InBrowser.Count: > 0, Project: { } project, Browser: null } ? (plan.InBrowser, project) : null);
                 if (disposed || ending || tab.OpeningStopped || !view.Sessions.Contains(tab))
                 {
@@ -1884,12 +1894,15 @@ public sealed class DebugController : IDisposable
         // Taken away once it takes a hit, so it stops (or logs) once.
         Add(AppActions.ToggleTemporaryBreakpoint, "Toggle Temporary Breakpoint", (d, c) => d.Breakpoints.ToggleTemporary(c.File!.Path, c.Caret.Line),
             (_, c) => Refusals.NeedsLines(c), new("Run", 2, 1));
+        // Captures the stack and locals at each hit and lets the program go on.
+        Add(AppActions.ToggleSnapshotPoint, "Toggle Snapshot Point", (d, c) => d.Breakpoints.ToggleSnapshot(c.File!.Path, c.Caret.Line),
+            (_, c) => Refusals.NeedsLines(c), new("Run", 2, 2));
         Add(AppActions.ToggleMethodBreakpoint, "Toggle Method Breakpoint", (d, c) =>
         {
             MethodBreakpoints.Method method = MethodAtCaret(c)!.Value;
             d.Breakpoints.ToggleMethod(method.Name, c.File!.Path, method.Line);
-        }, (_, c) => Refusals.NeedsLines(c) ?? (MethodAtCaret(c) is null ? Refusals.NoMethodAtCaret : null), new("Run", 2, 2));
-        Add(AppActions.ToggleBreakpointEnabled, "Toggle Breakpoint Enabled", (d, c) => d.Breakpoints.ToggleEnabled(c.File!.Path, c.Caret.Line), (_, c) => Refusals.NeedsLines(c), new("Run", 2, 3));
+        }, (_, c) => Refusals.NeedsLines(c) ?? (MethodAtCaret(c) is null ? Refusals.NoMethodAtCaret : null), new("Run", 2, 3));
+        Add(AppActions.ToggleBreakpointEnabled, "Toggle Breakpoint Enabled", (d, c) => d.Breakpoints.ToggleEnabled(c.File!.Path, c.Caret.Line), (_, c) => Refusals.NeedsLines(c), new("Run", 2, 4));
         Add(AppActions.Resume, "Resume Program", (d, c) =>
         {
             if (!d.IsDebugging)
@@ -1937,7 +1950,7 @@ public sealed class DebugController : IDisposable
         // Every breakpoint stays as it is, and none stops the program until it is chosen again.
         actions.Add(new IdeAction(AppActions.MuteBreakpoints, "Mute Breakpoints", "Debug", _ => current().Breakpoints.SetMuted(!current().Breakpoints.Muted))
         {
-            Menus = [new("Run", 2, 6)],
+            Menus = [new("Run", 2, 7)],
             IsChecked = _ => current().Breakpoints.Muted,
         });
 
@@ -2717,8 +2730,12 @@ public sealed class DebugController : IDisposable
                 UpdateAllMarks();
                 ClearInlineValues();
                 IdeErrors.Observe(ShowPinsAsync());
-                view.ShowFrames([], null, [], null);
-                view.Tree.Show([]);
+                // A snapshot shown stays: it is of a past moment, its session's end no matter.
+                if (view.ShownSnapshot is null)
+                {
+                    view.ShowFrames([], null, [], null);
+                    view.Tree.Show([]);
+                }
                 view.SetState(DebugState.Ended);
                 if (say)
                 {
@@ -2797,6 +2814,8 @@ public sealed class DebugController : IDisposable
         {
             return;
         }
+        // A stop shows in place of a snapshot shown as a past one.
+        view.ShowSnapshot(null);
         using IDisposable placing = BackgroundWork.Scope();
         int stop = shown;
         stopException = null;
@@ -2989,6 +3008,11 @@ public sealed class DebugController : IDisposable
 
     private async Task ChooseFrame(DapStackFrame chosen, bool navigate)
     {
+        if (view.ShownSnapshot is { } snapshot)
+        {
+            ShowSnapshotFrame(snapshot, chosen, navigate);
+            return;
+        }
         if (Session is not { State: DebugState.Paused })
         {
             return;
@@ -3001,11 +3025,83 @@ public sealed class DebugController : IDisposable
         await ShowVariables();
     }
 
+    /// <summary>How many snapshots the folder's sessions have taken, which numbers each.</summary>
+    private int snapshotsTaken;
+
+    /// <summary>A snapshot point's capture in a tab's program, kept as the folder's newest, named by its point where the
+    /// session still knew it, else by the place of its top frame.</summary>
+    private void KeepSnapshot(DebugTab tab, SnapshotEvent taken, CodeBreakpoint? point)
+    {
+        UiThread.Check();
+        if (disposed)
+        {
+            return;
+        }
+        DapStackFrame? top = taken.Frames.Select(f => f.Frame).FirstOrDefault(f => f.Source?.Path is not null);
+        string place = point?.Location ?? (top?.Source?.Path is { } path ? $"{Path.GetFileName(path)}:{top.Line}" : $"breakpoint {taken.BreakpointId}");
+        view.Keep(new TakenSnapshot(taken, place, tab.Name, ++snapshotsTaken));
+        SnapshotTaken?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>A snapshot was kept, the newest of <see cref="DebugModel.Snapshots"/>.</summary>
+    public event EventHandler? SnapshotTaken;
+
+    /// <summary>Shows a snapshot as a past stop: its thread's frames, the top one with a source chosen and gone to, and its
+    /// values, the point's own expressions above them, read as they were; nothing of the program is asked.</summary>
+    public void ShowSnapshot(TakenSnapshot snapshot)
+    {
+        UiThread.Check();
+        view.ShowSnapshot(snapshot);
+        view.ShowTab(console: false);
+        view.Tree.Load = reference => Task.FromResult(snapshot.Values(reference));
+        DapThread thread = snapshot.Thread;
+        DapStackFrame? top = snapshot.Top;
+        view.ShowFrames([thread], thread, snapshot.Frames, top);
+        if (top is not null)
+        {
+            ShowSnapshotFrame(snapshot, top, navigate: true);
+        }
+        else
+        {
+            view.Tree.Show([]);
+        }
+    }
+
+    /// <summary>A frame of a snapshot shown: its values as they were read, under the point's own expressions for its top
+    /// frame, every row marked as a snapshot's; gone to where it has a source on disk.</summary>
+    private void ShowSnapshotFrame(TakenSnapshot snapshot, DapStackFrame chosen, bool navigate)
+    {
+        frame = chosen;
+        if (navigate && chosen.Source?.Path is { } path && File.Exists(path))
+        {
+            Navigate?.Invoke(this, (path, Current(path, chosen)));
+        }
+        List<VariableNode> rows = [];
+        if (chosen.Id == snapshot.Frames.FirstOrDefault()?.Id)
+        {
+            // Each named by its expression, as a watch's row is.
+            rows.AddRange(snapshot.Taken.Asked.Select(value => VariableNode.From(value, 0, captured: true)));
+        }
+        rows.AddRange(snapshot.LocalsOf(chosen).Select(v => VariableNode.From(v, 0, captured: true)));
+        if (rows.Count == 0)
+        {
+            rows.Add(new VariableNode("Not read", chosen.PresentationHint == FrameHints.Subtle
+                ? "A snapshot reads the values of the user's code alone" : "A snapshot reads the values of its top frames of the user's code", null, 0, 0, VariableRole.Error) { Captured = true });
+        }
+        view.Tree.Show(rows);
+        view.SayMoved(null);
+    }
+
     /// <summary>The chosen frame's variables, under its watches and the last result evaluated; nothing more is asked once the
     /// program has gone on.</summary>
     private async Task ShowVariables()
     {
         UiThread.Check();
+        if (view.ShownSnapshot is { } snapshot && frame is { } past)
+        {
+            ShowSnapshotFrame(snapshot, past, navigate: false);
+            return;
+        }
         if (Session is not { State: DebugState.Paused } session || frame is not { } current)
         {
             return;
@@ -3433,6 +3529,10 @@ public sealed class DebugController : IDisposable
     public async Task<DataWatchOffer> DataWatchAsync(VariableNode node)
     {
         UiThread.Check();
+        if (node.Captured)
+        {
+            return new DataWatchOffer(DataWatchOffer.Set, Refusals.SnapshotValue);
+        }
         DebugSession? session = Session;
         (DataBreakpointInfoResponse? info, string? whyNot) = await DataInfoAsync(node);
         return info?.DataId is { } dataId && session is not null && Breakpoints.FindData(dataId, session) is not null
@@ -3558,6 +3658,11 @@ public sealed class DebugController : IDisposable
                 watches.Add(expression);
             }
         }
+        else if (view.ShownSnapshot is not null)
+        {
+            Message?.Invoke(this, Refusals.SnapshotValue);
+            return;
+        }
         else if (Session is { State: DebugState.Paused } session && frame is { } current)
         {
             int stop = shown;
@@ -3600,14 +3705,14 @@ public sealed class DebugController : IDisposable
         ParsedText? parsed = Breakpoints.In(document.Path).Any(b => b.Column is not null) && document.Syntax?.Current is { } current
             && ReferenceEquals(current.Text, text) ? current : null;
         List<LineMark> marks = [.. Breakpoints.In(document.Path).Select(b => new LineMark(b.Line, KindOf(b), Conditional: b.Condition is not null || b.HitCondition is not null,
-            Tracepoint: !b.Suspend, Muted: muted,
+            Tracepoint: !b.Suspend || b.Snapshot is not null, Muted: muted,
             // An attribute's or a lambda's breakpoint tints the attribute or the lambda; nothing once it is edited away.
             Range: b.Attribute is { } attribute ? XamlBreakpoints.AttributeRange(text, b.Line, attribute, b.AttributeColumn) ?? new TextRange(0, 0)
                 : b.Column is int column ? (parsed is not null && LambdaBreakpoints.Of(parsed, b.Line, column) is { } lambda ? LambdaBreakpoints.Tinted(text, lambda) : new TextRange(0, 0))
                 : null,
-            Temporary: b.Temporary, Waiting: b.WaitsFor is not null)),
+            Temporary: b.Temporary, Waiting: b.WaitsFor is not null, Snapshot: b.Snapshot is not null)),
             .. Breakpoints.MethodsIn(document.Path).Where(m => m.Line < text.LineCount).Select(m => new LineMark(m.Line, KindOf(m), Conditional: m.Condition is not null || m.HitCondition is not null,
-                Tracepoint: !m.Suspend, Muted: muted, Temporary: m.Temporary, Waiting: m.WaitsFor is not null, Method: true))];
+                Tracepoint: !m.Suspend || m.Snapshot is not null, Muted: muted, Temporary: m.Temporary, Waiting: m.WaitsFor is not null, Method: true, Snapshot: m.Snapshot is not null))];
         if (executionPoint is { } point && point.Path == document.Path)
         {
             marks.Add(new LineMark(Current(point.Path, point.Line), LineMarkKind.ExecutionPoint));

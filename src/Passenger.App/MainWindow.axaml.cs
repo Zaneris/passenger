@@ -276,7 +276,7 @@ public partial class MainWindow : IdeWindow
             {
                 if (active.Syntax?.Current is { } parsed && Debugging.LambdaBreakpoints.On(parsed, click.Line) is { Count: > 0 } lambdas)
                 {
-                    ShowGutterMenu(editor, active, LineBreakpointChoices(active, parsed.Text, click.Line, lambdas));
+                    ShowGutterMenu(editor, active, click.Line, LineBreakpointChoices(active, parsed.Text, click.Line, lambdas));
                 }
                 else if ((session.Debug.Breakpoints.In(active.Path).FirstOrDefault(b => b.Line == click.Line)
                     ?? (Debugging.CodeBreakpoint?)session.Debug.Breakpoints.MethodsIn(active.Path).FirstOrDefault(m => m.Line == click.Line)) is { } breakpoint)
@@ -285,7 +285,7 @@ public partial class MainWindow : IdeWindow
                 }
                 else
                 {
-                    ShowGutterMenu(editor, active);
+                    ShowGutterMenu(editor, active, click.Line);
                 }
             }
             else if (click.Modifiers.HasFlag(KeyModifiers.Shift))

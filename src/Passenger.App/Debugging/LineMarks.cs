@@ -27,12 +27,12 @@ public enum LineMarkKind
 }
 
 /// <summary>A mark on a line (from zero) of a file. A breakpoint with a condition or hit count shows a question mark on its
-/// dot, a temporary one a 1, one waiting for another a chevron, one that does not stop (a tracepoint) is amber, and a muted
-/// one (Mute Breakpoints) is grey. A breakpoint on part of its line (an XAML attribute) has that <see cref="Range"/> tinted
+/// dot, a temporary one a 1, one waiting for another a chevron, a snapshot point a lens, one that does not stop (a
+/// tracepoint, a snapshot point) is amber, and a muted one (Mute Breakpoints) is grey. A breakpoint on part of its line (an XAML attribute) has that <see cref="Range"/> tinted
 /// rather than the whole line, and its dot only where the line has no breakpoint of its own. A method breakpoint, on the
 /// line declaring its method, is a diamond, which tints nothing and gives way to the line's own dot.</summary>
 public readonly record struct LineMark(int Line, LineMarkKind Kind, bool Conditional = false, bool Tracepoint = false, bool Muted = false,
-    TextRange? Range = null, bool Temporary = false, bool Waiting = false, bool Method = false);
+    TextRange? Range = null, bool Temporary = false, bool Waiting = false, bool Method = false, bool Snapshot = false);
 
 /// <summary>The debugger's marks as the gutter draws them: a breakpoint's dot over its line's number, the execution point's
 /// arrow right of it, and the tints of their lines, each looked up once a frame for the lines on screen.</summary>
@@ -121,8 +121,8 @@ public sealed class DebugMarks
     private static bool Tinted(LineMark mark) => !mark.Tracepoint && !mark.Muted && !mark.Method && mark.Kind is LineMarkKind.Breakpoint or LineMarkKind.BreakpointBound;
 
     /// <summary>A breakpoint's dot (a method breakpoint's diamond), centred at a point: filled when set, with a tick once bound,
-    /// a ring when it cannot bind or is off; a chevron on it while it waits for another, else a 1 for a temporary one, else a
-    /// question mark for a condition; amber for a tracepoint, grey muted.</summary>
+    /// a ring when it cannot bind or is off; a chevron on it while it waits for another, else a lens for a snapshot point, else
+    /// a 1 for a temporary one, else a question mark for a condition; amber for a tracepoint or a snapshot point, grey muted.</summary>
     public static void DrawBreakpoint(GutterFrame frame, LineMark mark, double x, double y)
     {
         double radius = Math.Min(frame.LineHeight - 6, 14) / 2;
@@ -133,9 +133,16 @@ public sealed class DebugMarks
             Dot(frame, mark, null, frame.Pen(fillKey, 1.5), x, y, radius - 0.75);
             return;
         }
-        if (mark.Kind is LineMarkKind.Breakpoint or LineMarkKind.BreakpointBound && (mark.Waiting || mark.Temporary || mark.Conditional))
+        if (mark.Kind is LineMarkKind.Breakpoint or LineMarkKind.BreakpointBound && (mark.Waiting || mark.Snapshot || mark.Temporary || mark.Conditional))
         {
             Dot(frame, mark, fill, null, x, y, radius);
+            if (mark.Snapshot && !mark.Waiting)
+            {
+                // A lens: a ring in the dot, with its centre.
+                frame.Context.DrawEllipse(null, frame.Pen(TokenKeys.Editor_Background, 1.4), new Point(x, y), radius * 0.52, radius * 0.52);
+                frame.Context.DrawEllipse(frame.Brush(TokenKeys.Editor_Background), null, new Point(x, y), radius * 0.18, radius * 0.18);
+                return;
+            }
             if (mark.Waiting)
             {
                 GutterShape chevron = new(nameof(LineMark.Waiting), radius);

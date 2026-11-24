@@ -1153,6 +1153,15 @@ public static class Refusals
     /// <summary>A stack frame's Go to Source with no frame chosen.</summary>
     public const string NoFrameChosen = "No frame is chosen";
 
+    /// <summary>A snapshot point set where the debugger is not Passenger's .NET one (a page's WebAssembly, GDScript).</summary>
+    public const string SnapshotsOfDotnet = "Snapshot points are taken by Passenger's .NET debugger alone: this debugger stops or logs at a breakpoint";
+
+    /// <summary>A value of a snapshot shown, which no evaluation, setting, watch on it or mark reaches: its program has run on.</summary>
+    public const string SnapshotValue = "This value is a snapshot's, read as the program ran on, which has run on since: run to a breakpoint to change or watch it";
+
+    /// <summary>No snapshot point has taken a capture in the folder.</summary>
+    public const string NoSnapshots = "No snapshot point has taken a snapshot yet";
+
     /// <summary>A menu's list (the recent solutions) while it lists nothing.</summary>
     public const string NothingListed = "Nothing is listed here yet";
 

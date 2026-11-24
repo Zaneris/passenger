@@ -9,8 +9,9 @@ using Passenger.Dap;
 namespace Passenger.App.Debugging;
 
 /// <summary>What a breakpoint does, as its popup and the Breakpoints window edit it: on or off, whether it stops, its
-/// condition and hit count, and a message to log; for a line or method breakpoint, whether it is removed once hit and the
-/// breakpoint it waits for; for an exception breakpoint, "Suspend If", where the exception was thrown and where it is
+/// condition and hit count, and a message to log; for a line or method breakpoint, whether it is removed once hit, the
+/// breakpoint it waits for, and whether it takes a snapshot in place of stopping, with what it reads and how many it takes;
+/// for an exception breakpoint, "Suspend If", where the exception was thrown and where it is
 /// handled. Enter submits, Escape gives up. A hit count the debugger cannot read, or a log message it would misread, is said
 /// under its field as it is typed; the debugger refuses it in the same words.</summary>
 public sealed class BreakpointProperties : UserControl
@@ -21,8 +22,13 @@ public sealed class BreakpointProperties : UserControl
     private readonly CheckBox enabled = new() { Content = "Enabled" };
     private readonly CheckBox suspend = new() { Content = "Suspend execution" };
     private readonly CheckBox temporary = new() { Content = "Remove once hit" };
+    private readonly CheckBox snapshot = new() { Content = "Take a snapshot" };
     private readonly ComboBox waitFor = new FormDropDown();
     private readonly Grid waitForRow;
+    private readonly TextBox captures = Field("Read at each snapshot: order.Total; items.Count");
+    private readonly TextBox limit = Field($"{BreakpointHits.CaptureLimit}");
+    private readonly TextBlock limitProblem = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(0, Gaps.Small, 0, 0) };
+    private readonly StackPanel snapshotFields;
 
     /// <summary>The breakpoints Wait for offers, in its order: none first.</summary>
     private List<CodeBreakpoint?> waitChoices = [null];
@@ -50,11 +56,25 @@ public sealed class BreakpointProperties : UserControl
                 new StackPanel { Children = { FormRows.Of("Hit count", hitCount), FormRows.Of(null, hitCountProblem) } },
                 new StackPanel { Children = { FormRows.Of("Log message", log), FormRows.Of(null, logProblem) } },
                 (waitForRow = FormRows.Of("Wait for", waitFor)),
+                (snapshotFields = new StackPanel
+                {
+                    Spacing = Gaps.Small,
+                    Children =
+                    {
+                        FormRows.Of("Also read", captures),
+                        new StackPanel { Children = { FormRows.Of("Snapshots at most", limit), FormRows.Of(null, limitProblem) } },
+                    },
+                }),
             },
         };
         ToolTip.SetTip(waitFor, "Its hits are passed over until this breakpoint is hit in the same run");
+        ToolTip.SetTip(snapshot, "Each hit reads the stack and locals and lets the program go on, never stopping it");
+        ToolTip.SetTip(limit, "Its later hits in the session pass by, so a busy line holds the program a bounded while");
         hitCountProblem.Classes.Add(StyleClasses.Error);
         logProblem.Classes.Add(StyleClasses.Error);
+        limitProblem.Classes.Add(StyleClasses.Error);
+        limit.TextChanged += (_, _) => CheckLimit();
+        snapshot.IsCheckedChanged += (_, _) => ShowSnapshot();
         inactive.Classes.Add(StyleClasses.Error);
         hitCount.TextChanged += (_, _) => CheckHitCount();
         log.TextChanged += (_, _) => CheckLog();
@@ -85,9 +105,9 @@ public sealed class BreakpointProperties : UserControl
         Content = new StackPanel
         {
             Spacing = Gaps.Normal,
-            Children = { Row(enabled, suspend, temporary), fields, suspendIf },
+            Children = { Row(enabled, suspend, temporary, snapshot), fields, suspendIf },
         };
-        foreach (TextBox box in new[] { condition, hitCount, log })
+        foreach (TextBox box in new[] { condition, hitCount, log, captures, limit })
         {
             box.AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);
         }
@@ -110,7 +130,11 @@ public sealed class BreakpointProperties : UserControl
         Breakpoint = breakpoint;
         enabled.IsChecked = breakpoint.Enabled;
         suspend.IsChecked = breakpoint.Suspend;
-        temporary.IsVisible = waitForRow.IsVisible = breakpoint is CodeBreakpoint;
+        temporary.IsVisible = waitForRow.IsVisible = snapshot.IsVisible = breakpoint is CodeBreakpoint;
+        snapshot.IsChecked = breakpoint is CodeBreakpoint { Snapshot: not null };
+        captures.Text = breakpoint is CodeBreakpoint { Snapshot: { } taking } ? string.Join("; ", taking.Expressions) : string.Empty;
+        limit.Text = breakpoint is CodeBreakpoint { Snapshot.Limit: int most } ? Core.Numbers.Said(most) : string.Empty;
+        ShowSnapshot();
         if (breakpoint is CodeBreakpoint code)
         {
             temporary.IsChecked = code.Temporary;
@@ -170,6 +194,7 @@ public sealed class BreakpointProperties : UserControl
                 _ => false,
             };
             store.Arrange(code, temporary.IsChecked == true, stands && (waited is null || BreakpointStore.CanWaitFor(code, waited)) ? waited : null);
+            store.Capture(code, snapshot.IsChecked == true ? SnapshotPoint.Of(SnapshotPoint.Split(captures.Text), Limit() ?? code.Snapshot?.Limit) : null);
         }
         if (breakpoint is ExceptionBreakpoint exception)
         {
@@ -200,6 +225,25 @@ public sealed class BreakpointProperties : UserControl
         bool readable = string.IsNullOrWhiteSpace(hitCount.Text) || HitCondition.TryParse(hitCount.Text, out _, out problem);
         hitCountProblem.Text = problem;
         hitCountProblem.IsVisible = !readable;
+    }
+
+    /// <summary>A snapshot point's fields shown while it takes snapshots, which never stop the program.</summary>
+    private void ShowSnapshot()
+    {
+        bool taking = snapshot.IsChecked == true;
+        snapshotFields.IsVisible = taking && snapshot.IsVisible;
+        suspend.IsEnabled = !taking;
+    }
+
+    /// <summary>The number of snapshots asked for, null where the field is blank or names none it takes.</summary>
+    private int? Limit() => int.TryParse(limit.Text?.Replace(",", string.Empty, StringComparison.Ordinal), System.Globalization.NumberStyles.None,
+        System.Globalization.CultureInfo.InvariantCulture, out int most) && most is >= 1 and <= BreakpointHits.MostCaptures ? most : null;
+
+    private void CheckLimit()
+    {
+        bool readable = string.IsNullOrWhiteSpace(limit.Text) || Limit() is not null;
+        limitProblem.Text = readable ? null : $"A snapshot point takes from 1 to {Core.Numbers.Said(BreakpointHits.MostCaptures)} snapshots";
+        limitProblem.IsVisible = !readable;
     }
 
     private void CheckLog()
@@ -762,7 +806,8 @@ public sealed class BreakpointsWindow : UserControl
                 }
             }
         };
-        string what = breakpoint.LogMessage is { } message ? $"logs {message}" : breakpoint.Condition is { } condition ? $"when {condition}"
+        string what = breakpoint is CodeBreakpoint { Snapshot: not null } ? breakpoint.Condition is { } when ? $"snapshot when {when}" : "snapshot"
+            : breakpoint.LogMessage is { } message ? $"logs {message}" : breakpoint.Condition is { } condition ? $"when {condition}"
             : breakpoint is CodeBreakpoint { WaitsFor: { } waited } ? $"after {waited.Location}" : breakpoint is CodeBreakpoint { Temporary: true } ? "once"
             : breakpoint.Suspend ? string.Empty : "does not stop";
         return new ListBoxItem

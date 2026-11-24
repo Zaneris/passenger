@@ -525,6 +525,9 @@ public static class AppActions
 
     // A method breakpoint on the method at the caret, which Rider's keymaps give no keys.
     public const string ToggleMethodBreakpoint = "app.debug.toggleMethodBreakpoint";
+
+    // A snapshot point on the caret's line, capturing each hit as the program goes on, which Rider's keymaps give no keys.
+    public const string ToggleSnapshotPoint = "app.debug.toggleSnapshotPoint";
     public const string ToggleBreakpointEnabled = "app.debug.toggleBreakpointEnabled";
     public const string MuteBreakpoints = "app.debug.muteBreakpoints";
     public const string Resume = "app.debug.resume";

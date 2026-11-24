@@ -5,8 +5,8 @@ namespace Passenger.App.Debugging;
 /// <summary>A breakpoint's state in words, the same wherever it is said (the gutter's hover, Problems, an agent's
 /// breakpoint_set and debug_state): off, muted, set while nothing is debugged (where a C# line runs no code, the line it
 /// moves to), bound, moved to the nearest line with code, pending until a module holding its code loads, or not bound and
-/// why, the debugger's words saying how to put it right; then the condition, hit count and message it carries, and whether
-/// it is temporary or waits for another.</summary>
+/// why, the debugger's words saying how to put it right; then the condition, hit count and message it carries, what it
+/// captures as a snapshot point, and whether it is temporary or waits for another.</summary>
 public static class BreakpointStates
 {
     /// <summary>A breakpoint's state in a word or two: "bound", "moved to line 14", "pending", "not bound", "off", "muted"
@@ -36,27 +36,33 @@ public static class BreakpointStates
     public static string? Moves(Breakpoint breakpoint, bool debugging, bool muted, Unrun? unrun) =>
         unrun is { } none && StateOf(breakpoint, debugging, muted) == "set"
             ? none.Next is int next
-                ? $"{(breakpoint.Suspend ? "Breakpoint" : "Tracepoint")}: no code runs on this line, so it moves to line {next + 1}, the next that may, as the program is debugged"
-                : $"{(breakpoint.Suspend ? "Breakpoint" : "Tracepoint")}: no code runs on this line or after it, so it will not stop the program"
+                ? $"{Named(breakpoint)}: no code runs on this line, so it moves to line {next + 1}, the next that may, as the program is debugged"
+                : $"{Named(breakpoint)}: no code runs on this line or after it, so it will not {((breakpoint as CodeBreakpoint)?.Snapshot is null ? "stop the program" : "capture its hits")}"
             : null;
+
+    /// <summary>A breakpoint's kind as its words begin: a snapshot point, a breakpoint that stops, or a tracepoint.</summary>
+    private static string Named(Breakpoint breakpoint) =>
+        (breakpoint as CodeBreakpoint)?.Snapshot is not null ? "Snapshot point" : breakpoint.Suspend ? "Breakpoint" : "Tracepoint";
 
     /// <summary>What the hover says of a breakpoint, a line each: its kind and state (for one set on a line no code runs on,
     /// where it moves), the debugger's words of it (why it is not bound, or where it stops), then what it carries.</summary>
     public static IReadOnlyList<string> Words(Breakpoint breakpoint, bool debugging, bool muted, Unrun? unrun = null)
     {
-        string kind = (breakpoint is MethodBreakpoint ? "Method " : string.Empty) + (breakpoint.Suspend ? "breakpoint" : "tracepoint");
+        SnapshotPoint? snapshot = (breakpoint as CodeBreakpoint)?.Snapshot;
+        string kind = (breakpoint is MethodBreakpoint ? "Method " : string.Empty) + (snapshot is not null ? "snapshot point" : breakpoint.Suspend ? "breakpoint" : "tracepoint");
         kind = char.ToUpperInvariant(kind[0]) + kind[1..];
         string state = StateOf(breakpoint, debugging, muted);
+        string does = snapshot is null ? "the program stops" : "each hit is captured as the program goes on";
         List<string> words = [state switch
         {
-            "off" => $"{kind}, off: it does not stop the program",
-            "muted" => $"{kind}, muted: Mute Breakpoints is on, so no breakpoint stops the program",
+            "off" => $"{kind}, off: it does not {(snapshot is null ? "stop the program" : "capture its hits")}",
+            "muted" => $"{kind}, muted: Mute Breakpoints is on, so no breakpoint stops the program{(snapshot is null ? string.Empty : " or captures its hits")}",
             "set" when Moves(breakpoint, debugging, muted, unrun) is { } moves => moves,
             "set" => $"{kind}: it binds as the program is debugged",
-            "bound" => $"{kind}, bound: the program stops here",
+            "bound" => $"{kind}, bound: {does} here",
             "pending" => $"{kind}, pending: not bound yet",
-            "not bound" => $"{kind}, not bound: it will not stop the program",
-            _ => $"{kind}, {state}, the nearest line with code: the program stops there",
+            "not bound" => $"{kind}, not bound: it will not {(snapshot is null ? "stop the program" : "capture its hits")}",
+            _ => $"{kind}, {state}, the nearest line with code: {does} there",
         }];
         if (debugging && !muted && breakpoint.Enabled && breakpoint.Message is { Length: > 0 } why)
         {
@@ -70,11 +76,15 @@ public static class BreakpointStates
         {
             words.Add($"Hit count: {hits}");
         }
+        if (snapshot is not null)
+        {
+            words.Add($"Captures the stack and locals{(snapshot.Expressions.Count > 0 ? $" with {string.Join(", ", snapshot.Expressions)}" : string.Empty)} at each hit and goes on, {Core.Plural.Of(snapshot.Takes, "snapshot")} at most a session");
+        }
         if (breakpoint.LogMessage is { } message)
         {
             words.Add($"Logs: {message}");
         }
-        else if (!breakpoint.Suspend)
+        else if (!breakpoint.Suspend && snapshot is null)
         {
             words.Add("Logs \"Breakpoint reached\" and goes on");
         }

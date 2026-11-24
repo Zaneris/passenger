@@ -35,6 +35,9 @@ public sealed class DebugView : DockPanel, IOwnKeys
     private readonly Banner offer = new();
     private readonly Button offerLink;
     private readonly DockPanel consolePane;
+    private readonly ListBox snapshots;
+    private readonly EmptyState noSnapshots;
+    private readonly Panel snapshotsPane;
     private bool showingFrames;
 
     public DebugView(DebugModel model)
@@ -125,8 +128,17 @@ public sealed class DebugView : DockPanel, IOwnKeys
         Banner moved = new();
         moved.Link(ReadAgain, model.ReadAgain);
         moved.Say(model.Moved);
-        model.MovedChanged += (_, _) => moved.Say(model.Moved);
-        DockPanel variablesPane = new() { Children = { evaluate, moved, variables } };
+        // Over the values of a snapshot shown as a past stop: which it is, its values as they were then.
+        Banner past = Banner.Wrapping();
+        past.Link(BackToSnapshots, model.ShowSnapshots);
+        past.Say(PastSaid());
+        model.MovedChanged += (_, _) =>
+        {
+            moved.Say(model.Moved);
+            past.Say(PastSaid());
+            ShowTools();
+        };
+        DockPanel variablesPane = new() { Children = { evaluate, moved, past, variables } };
 
         // The frames a third of the window and the variables the rest, so a narrow window narrows both.
         PaneSplit split = new(framesPane, variablesPane, "*,1,2*");
@@ -137,15 +149,45 @@ public sealed class DebugView : DockPanel, IOwnKeys
         offerLink = offer.Link(null, () => model.Console.TakeOffer());
         debugger = new DockPanel { Children = { offer, new Panel { Children = { split, placeholder } } } };
 
+        // The folder's snapshots, the newest first: Enter or a double click shows one as a past stop.
+        snapshots = new ListBox { Classes = { StyleClasses.Tree }, ItemsSource = model.Snapshots };
+        Avalonia.Automation.AutomationProperties.SetName(snapshots, SnapshotsTab);
+        ReusedRows.Use(snapshots, SnapshotRow);
+        ListKeys.Act(snapshots, new ListActs
+        {
+            Open = () =>
+            {
+                if (snapshots.SelectedItem is TakenSnapshot chosen)
+                {
+                    model.Choose(chosen);
+                }
+            },
+        });
+        ListMenus.Attach(snapshots, () => snapshots.SelectedItem is not TakenSnapshot chosen ? [] :
+        [
+            ListMenus.Open(ShowAsStop, () => model.Choose(chosen)),
+            ListMenus.Item("Copy Stack", () => IdeErrors.Observe(ListMenus.CopyAsync(this, string.Join('\n', chosen.Frames.Select(f => f.Source?.Path is { } path ? $"{f.Name} in {path}:{f.Line}" : f.Name))))),
+        ]);
+        noSnapshots = new EmptyState(Refusals.NoSnapshots);
+        noSnapshots.Offer(AppActions.ToggleSnapshotPoint, "Toggle Snapshot Point");
+        noSnapshots.ActionRequested += (_, action) => model.Request(action);
+        snapshotsPane = new Panel { IsVisible = false, Children = { snapshots, noSnapshots } };
+        model.Snapshots.CollectionChanged += (_, _) => noSnapshots.IsVisible = model.Snapshots.Count == 0;
+
         tabs.Add(DebuggerTab, DebuggerTab);
         tabs.Add(ConsoleTab, ConsoleTab);
         tabs.Add(RunWindows.TelemetryTab, RunWindows.TelemetryTab, name: "debugTelemetryTab").IsVisible = false;
+        tabs.Add(SnapshotsTab, SnapshotsTab, name: "debugSnapshotsTab");
         tabs.Choice = DebuggerTab;
         tabs.Chosen += (_, tab) =>
         {
             if (tab == RunWindows.TelemetryTab)
             {
                 model.ShowTelemetry();
+            }
+            else if (tab == SnapshotsTab)
+            {
+                model.ShowSnapshots();
             }
             else
             {
@@ -194,7 +236,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
 
         Children.Add(leftBar);
         Children.Add(topBar);
-        Children.Add(new Panel { Children = { debugger, consolePane, telemetry } });
+        Children.Add(new Panel { Children = { debugger, consolePane, telemetry, snapshotsPane } });
         model.ToolsChanged += (_, _) => ShowTools();
         model.FramesShown += (_, _) => ShowChosen();
         model.TabShown += (_, _) => ShowTab();
@@ -213,9 +255,45 @@ public sealed class DebugView : DockPanel, IOwnKeys
     /// <summary>The link over Variables that reads the frame's values anew once every thread ran in an evaluation.</summary>
     public const string ReadAgain = "Read Again";
 
+    /// <summary>The link over a snapshot's values back to the list of snapshots.</summary>
+    public const string BackToSnapshots = "All Snapshots";
+
+    /// <summary>A snapshot's menu item that shows it as a past stop, as Enter does.</summary>
+    public const string ShowAsStop = "Show Frames and Values";
+
     private const string DebuggerTab = "Debugger";
 
     private const string ConsoleTab = "Console";
+
+    /// <summary>The tab of the folder's snapshots.</summary>
+    public const string SnapshotsTab = "Snapshots";
+
+    /// <summary>The Snapshots tab's list, newest first.</summary>
+    public ListBox SnapshotsList => snapshots;
+
+    /// <summary>What Variables says over a snapshot's values shown as a past stop, null while it shows none.</summary>
+    private string? PastSaid() => model.ShownSnapshot is { } shown
+        ? $"{shown.Said}: the values as they were then, which the program has run on from{(shown.Taken.Cut is { } cut ? $". {cut}" : string.Empty)}"
+        : null;
+
+    /// <summary>A snapshot's row: its point and number, then when, on which thread and how long the program was held, muted.</summary>
+    private Control SnapshotRow()
+    {
+        TextBlock point = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock when = new()
+        {
+            Classes = { StyleClasses.Caption },
+            Margin = new Thickness(Gaps.Normal, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        when.Classes.Add(StyleClasses.Muted);
+        ShrinkingRow row = new() { Height = ListRow.Height, Children = { point, when } };
+        return row.Showing<TakenSnapshot>(snapshot =>
+        {
+            point.Text = $"{snapshot.Point} #{snapshot.Number}";
+            when.Text = $"{snapshot.Time} · {snapshot.Program} · {snapshot.ThreadName} · held {Core.Durations.Said(snapshot.Paused)}";
+        });
+    }
 
     /// <summary>The window header's own tools: the sessions' tabs.</summary>
     public Control HeaderTools { get; }
@@ -284,7 +362,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
         tools[AppActions.ApplyHotReloadChanges].IsVisible = model.HotReloadShown.On;
         tools[AppActions.ApplyHotReloadChanges].IsEnabled = model.HotReloadShown.CanApply;
         mute.IsChecked = model.ShowsMuted;
-        evaluate.IsEnabled = paused;
+        evaluate.IsEnabled = paused && model.ShownSnapshot is null;
         placeholder.IsVisible = state == DebugState.Ended && model.Frames.Count == 0;
     }
 
@@ -301,10 +379,13 @@ public sealed class DebugView : DockPanel, IOwnKeys
         tabs[RunWindows.TelemetryTab].IsVisible = telemetry.Source is not null;
         bool records = model.IsTelemetryShown && telemetry.Source is not null;
         bool console = model.IsConsoleShown || model.IsTelemetryShown && !records;
-        tabs.Choice = records ? RunWindows.TelemetryTab : console ? ConsoleTab : DebuggerTab;
-        debugger.IsVisible = !console && !records;
+        bool taken = model.IsSnapshotsShown;
+        tabs.Choice = taken ? SnapshotsTab : records ? RunWindows.TelemetryTab : console ? ConsoleTab : DebuggerTab;
+        debugger.IsVisible = !console && !records && !taken;
         consolePane.IsVisible = console;
         telemetry.IsVisible = records;
+        snapshotsPane.IsVisible = taken;
+        noSnapshots.IsVisible = model.Snapshots.Count == 0;
         ShowOffer();
     }
 

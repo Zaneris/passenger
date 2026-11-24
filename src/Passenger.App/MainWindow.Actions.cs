@@ -486,10 +486,10 @@ public partial class MainWindow
                     : session.Debug.Breakpoints.In(c.File.Path).First(b => b.Line == line && b.Attribute is null);
             }
             ShowBreakpointPopup(editing);
-        }, Refusals.NeedsFile, ("Run", 2, 4));
-        Add(A.ViewBreakpoints, "View Breakpoints and Exceptions…", "Debug", _ => ShowBreakpoints(null), menu: ("Run", 2, 5));
-        Add(A.ExportBreakpoints, "Export Breakpoints…", "Debug", _ => IdeErrors.Observe(ExportBreakpointsAsync()), NeedsFolder, ("Run", 2, 7));
-        Add(A.ImportBreakpoints, "Import Breakpoints…", "Debug", _ => IdeErrors.Observe(ImportBreakpointsAsync()), NeedsFolder, ("Run", 2, 8));
+        }, Refusals.NeedsFile, ("Run", 2, 5));
+        Add(A.ViewBreakpoints, "View Breakpoints and Exceptions…", "Debug", _ => ShowBreakpoints(null), menu: ("Run", 2, 6));
+        Add(A.ExportBreakpoints, "Export Breakpoints…", "Debug", _ => IdeErrors.Observe(ExportBreakpointsAsync()), NeedsFolder, ("Run", 2, 8));
+        Add(A.ImportBreakpoints, "Import Breakpoints…", "Debug", _ => IdeErrors.Observe(ImportBreakpointsAsync()), NeedsFolder, ("Run", 2, 9));
 
         string? Unbuildable(ActionContext _) => Folder is null ? Refusals.NoFolderTo("build") : Untrusted() is { } untrusted ? untrusted : IsBuilding ? Refusals.Building
             : session.Workspace is { Solution: null, Projects.Count: 0, GodotGames.Count: > 0 } ? Refusals.NothingToBuildOfScripts : WithoutSdk();

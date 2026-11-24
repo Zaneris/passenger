@@ -56,7 +56,8 @@ public sealed class VariableNode(string name, string value, string? type, int re
     /// <summary>Why no expression reaches this row's value, so it can be neither set, watched nor inspected; null where one
     /// does.</summary>
     public string? NoExpression =>
-        Role == VariableRole.Watch ? null
+        Captured ? Refusals.SnapshotValue
+        : Role == VariableRole.Watch ? null
         : Role == VariableRole.Scope ? "A scope groups the frame's values and is no value of its own"
         : Role == VariableRole.Result ? "An evaluated result is no variable: its expression is the one evaluated"
         : Role == VariableRole.Error ? "This row says why a value could not be read and is no value of its own"
@@ -88,6 +89,9 @@ public sealed class VariableNode(string name, string value, string? type, int re
 
     /// <summary>The label of the marked object its value is ($1), which its row shows beside the value; null for any other.</summary>
     public string? Mark { get; init; }
+
+    /// <summary>A snapshot's value, read as the program ran on, which has run on since: no expression reaches it now.</summary>
+    public bool Captured { get; init; }
 
     /// <summary>Its value is being typed over, in its row (Set Value, F2).</summary>
     public bool IsEditing
@@ -134,10 +138,12 @@ public sealed class VariableNode(string name, string value, string? type, int re
         set => Set(ref isExpanded, value);
     }
 
-    public static VariableNode From(DapVariable variable, int depth, VariableNode? parent = null) =>
+    /// <summary>A row as the debugger read it, a snapshot's where it is <paramref name="captured"/> or its parent is.</summary>
+    public static VariableNode From(DapVariable variable, int depth, VariableNode? parent = null, bool captured = false) =>
         new(variable.Name, variable.Value, variable.Type, variable.VariablesReference, depth,
             variable.PresentationHint?.Has(DapAttributes.FailedEvaluation) == true ? VariableRole.Error : VariableRole.Value)
         {
+            Captured = captured || parent?.Captured == true,
             Parent = parent,
             EvaluateName = variable.EvaluateName is { Length: > 0 } named ? named : null,
             IsVirtual = variable.PresentationHint?.Kind == PresentationHintKinds.Virtual,

@@ -2269,7 +2269,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "\"%2\"; logMessage (\"count is {count}\", \\{ for a brace) is written each hit; suspend false makes a tracepoint. Or on a method " +
         "(method: Name, Type.Name or Namespace.Type.Name(int, ref string?) for one overload, Type..ctor a constructor), stopping as it begins. A line or method " +
         "breakpoint takes temporary (removed once hit) and waitFor, another's place (\"Program.cs:12\") or method, whose hit it waits " +
-        "for. Bound at once while debugging.")]
+        "for, and snapshot: each hit captures the stack and locals (and capture's expressions) and goes on, never stopping, " +
+        "snapshotLimit (100) a session; debug_state of snapshots reads them. Bound at once while debugging.")]
     public Task<IReadOnlyList<BreakpointInfo>> SetBreakpoint(
         string? path = null,
         int? line = null,
@@ -2290,13 +2291,25 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         string? method = null,
         bool temporary = false,
         string? waitFor = null,
+        bool snapshot = false,
+        IReadOnlyList<string>? capture = null,
+        int? snapshotLimit = null,
         CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         BreakpointStore store = Session.Debug.Breakpoints;
-        if ((temporary || waitFor is not null) && (remove || bindingErrors || scriptErrors || control is not null || property is not null || exception is not null))
+        if ((temporary || waitFor is not null || snapshot) && (remove || bindingErrors || scriptErrors || control is not null || property is not null || exception is not null))
         {
-            throw new ArgumentException("temporary and waitFor take a line or method breakpoint");
+            throw new ArgumentException("temporary, waitFor and snapshot take a line or method breakpoint");
         }
+        if (!snapshot && (capture is not null || snapshotLimit is not null))
+        {
+            throw new ArgumentException("capture and snapshotLimit are a snapshot point's: give snapshot true");
+        }
+        if (snapshotLimit is < 1 or > BreakpointHits.MostCaptures)
+        {
+            throw new ArgumentException($"A snapshot point takes from 1 to {Numbers.Said(BreakpointHits.MostCaptures)} snapshots, not {Numbers.Said(snapshotLimit.Value)}");
+        }
+        SnapshotPoint? taking = snapshot ? SnapshotPoint.Of(capture ?? [], snapshotLimit) : null;
         if (method is { Length: > 0 })
         {
             if (remove)
@@ -2311,6 +2324,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 MethodBreakpoint named = store.AddMethod(method);
                 store.Update(named, enabled: true, suspend, condition, hitCondition, logMessage);
                 store.Arrange(named, temporary, WaitedFor(waitFor));
+                store.Capture(named, taking);
             }
             await InTheProgram(cancel);
             return MethodBreakpointsInfo();
@@ -2356,6 +2370,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         LineBreakpoint set = column is int inside ? (await LambdaBreakpointAsync(full, at, inside, set: true))! : store.Set(full, at, attribute is { Length: > 0 } ? attribute : null);
         store.Update(set, enabled: true, suspend, condition, hitCondition, logMessage);
         store.Arrange(set, temporary, WaitedFor(waitFor));
+        store.Capture(set, taking);
         await InTheProgram(cancel);
         Passenger.Languages.CSharp.ParsedText? parsed = Session.Debug.IsDebugging || !readable ? null : await LambdaBreakpoints.ParsedAsync(Editors, full);
         // An open file's parse only as its text stands: its lines may have moved since.
@@ -2548,7 +2563,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         DebugController debugger = Session.Debug;
         return [.. debugger.Breakpoints.Methods.Select(m => new BreakpointInfo(m.Path is { } path ? Relative(path) : null, m.Path is null ? null : m.Line + 1, m.Enabled,
             BreakpointStates.StateOf(m, debugger.IsDebugging, debugger.Breakpoints.Muted), m.Condition, m.HitCondition, m.LogMessage, m.Suspend,
-            m.Status == BreakpointStatus.Bound ? null : m.Message, Method: m.Name, Temporary: m.Temporary ? true : null, WaitsFor: WaitPlace(m.WaitsFor)))];
+            m.Status == BreakpointStatus.Bound ? null : m.Message, Method: m.Name, Temporary: m.Temporary ? true : null, WaitsFor: WaitPlace(m.WaitsFor), Snapshot: SnapshotOf(m)))];
     }
 
     [McpServerTool(Name = McpTools.DebugStart, Title = "Debug a configuration", Destructive = true), Description(
@@ -2946,7 +2961,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "app.debug.muteBreakpoints) is on, none stops. of modules: the program's, each with its version, symbols and Just My " +
         "Code's verdict (userCode), as the Modules window lists them. of processes: the .NET programs here and in running containers the " +
         "debugger can attach to, program being the .dll the dotnet host runs (a container's id 0 until debug_attach puts " +
-        "Passenger's tools in).")]
+        "Passenger's tools in). of snapshots: the snapshot points' captures, newest first, each with its frames, its top frame's " +
+        "locals and their members, and how long the program was held for it.")]
     public async Task<object> GetDebugState(string? session = null, string? of = null, int? reference = null, CancellationToken cancel = default) => (of, reference) switch
     {
         (null or "stop", int members) => await DebugVariables(members, session, cancel),
@@ -2954,7 +2970,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         ("breakpoints", null) => await ListBreakpoints(cancel),
         ("processes", null) => await DebugProcesses(cancel),
         ("modules", null) => await DebugModules(session, cancel),
-        (_, null) => throw new ModelContextProtocol.McpException($"No '{of}' to give; of takes stop (the default), breakpoints, modules or processes"),
+        ("snapshots", null) => await DebugSnapshots(cancel),
+        (_, null) => throw new ModelContextProtocol.McpException($"No '{of}' to give; of takes stop (the default), breakpoints, modules, processes or snapshots"),
         _ => throw new ModelContextProtocol.McpException("A reference's members are the stop's: give reference or of, not both"),
     };
 
@@ -3688,8 +3705,27 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             .Select(b => new BreakpointInfo(Relative(b.Path), b.Line + 1, b.Enabled, BreakpointStates.StateOf(b, debugger.IsDebugging, debugger.Breakpoints.Muted), b.Condition,
                 b.HitCondition, b.LogMessage, b.Suspend, b.Status == BreakpointStatus.Bound ? null
                     : b.Message ?? BreakpointStates.Moves(b, debugger.IsDebugging, debugger.Breakpoints.Muted, BreakpointStates.UnrunAt(parsed, b)),
-                Attribute: b.Attribute, Column: b.Column + 1, Temporary: b.Temporary ? true : null, WaitsFor: WaitPlace(b.WaitsFor)))];
+                Attribute: b.Attribute, Column: b.Column + 1, Temporary: b.Temporary ? true : null, WaitsFor: WaitPlace(b.WaitsFor), Snapshot: SnapshotOf(b)))];
     }
+
+    /// <summary>A snapshot point's words as an agent reads them: what it captures and how many at most; null for a breakpoint.</summary>
+    private static string? SnapshotOf(CodeBreakpoint breakpoint) => breakpoint.Snapshot is { } taking
+        ? $"captures the stack and locals{(taking.Expressions.Count > 0 ? $" with {string.Join(", ", taking.Expressions)}" : string.Empty)}, {Plural.Of(taking.Takes, "snapshot")} at most a session"
+        : null;
+
+    /// <summary>The folder's snapshots, the newest first, each with its frames and its frames' values read to a level of
+    /// members, as Variables shows them once opened.</summary>
+    private Task<CallToolResult> DebugSnapshots(CancellationToken cancel) => OnUi(cancel, () =>
+    {
+        IReadOnlyList<TakenSnapshot> taken = Session.Debug.Snapshots;
+        return Task.FromResult(Held([.. taken.Select(s => new SnapshotInfo(s.Number, s.Point, s.Program, s.Time, s.ThreadName, Math.Round(s.Paused.TotalMilliseconds, 3),
+            [.. s.Frames.Select(f => f.Source?.Path is { } path ? $"{f.Name} at {Relative(path)}:{f.Line}" : f.Name)],
+            [.. s.Taken.Frames.FirstOrDefault(f => f.Locals > 0) is { } top ? s.Values(top.Locals).Select(v => Valued(s, v, 1)) : []],
+            s.Taken.Asked.Count == 0 ? null : [.. s.Taken.Asked.Select(v => Valued(s, v, 1))], s.Taken.Cut))], "snapshot", "the newest are listed first"));
+
+        static SnapshotValue Valued(TakenSnapshot snapshot, DapVariable value, int levels) => new(value.Name, value.Value, value.Type,
+            levels > 0 && value.VariablesReference > 0 ? [.. snapshot.Values(value.VariablesReference).Select(member => Valued(snapshot, member, levels - 1))] : null);
+    });
 
     private IReadOnlyList<BreakpointInfo> DataBreakpoints() =>
         [.. Session.Debug.Breakpoints.Data.Select(b => new BreakpointInfo(null, null, b.Enabled, b.Status.ToString().ToLowerInvariant(), b.Condition, b.HitCondition,
@@ -4712,7 +4748,17 @@ public sealed record RunResult(bool StillRunning, int? ExitCode, string Status, 
 /// TextBlock#Counter", and the element's @id).</summary>
 public sealed record BreakpointInfo(string? Path, int? Line, bool Enabled, string Status, string? Condition, string? HitCondition, string? LogMessage, bool Suspend,
     string? Message, string? Exception = null, IReadOnlyList<string>? Scenarios = null, string? Data = null, string? Attribute = null, string? Property = null,
-    bool? BindingErrors = null, string? Control = null, int? Column = null, bool? ScriptErrors = null, string? Method = null, bool? Temporary = null, string? WaitsFor = null);
+    bool? BindingErrors = null, string? Control = null, int? Column = null, bool? ScriptErrors = null, string? Method = null, bool? Temporary = null, string? WaitsFor = null,
+    string? Snapshot = null);
+
+/// <summary>A snapshot as an agent reads it: its number, point and program, when it was taken and on which thread, how long the
+/// program was held for it (ms), its frames, its top frame's locals and the point's own expressions with their members, and
+/// what it left unread.</summary>
+public sealed record SnapshotInfo(int Snapshot, string Point, string Program, string At, string Thread, double PausedMs, IReadOnlyList<string> Frames,
+    IReadOnlyList<SnapshotValue> Locals, IReadOnlyList<SnapshotValue>? Asked, string? Cut);
+
+/// <summary>A snapshot's value, with its members where it has them, as they were read.</summary>
+public sealed record SnapshotValue(string Name, string Value, string? Type, IReadOnlyList<SnapshotValue>? Members);
 
 public sealed record VariableInfo(string Name, string Value, string? Type, int Reference)
 {
