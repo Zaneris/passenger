@@ -813,11 +813,9 @@ public sealed partial class Vim
     /// the text's very start.</summary>
     private bool KeepsLines(int to, bool whole, bool bumped) => Mode == VimMode.VisualLine && (!whole || (to == 0 && bumped));
 
-    /// <summary>is and as in visual mode: at a single place the sentence there, one no bigger with the white after it,
-    /// none from the place before to there; over a longer stretch its cursor carried to the end of the sentences after it
-    /// (onto an empty line a sentence follows, short of the text's last), or back a sentence or white at a time from the
-    /// one before where the cursor begins its own, from an empty line before the last of its run to that line first; as
-    /// takes a white with the sentence before it, a sentence with the white before where the cursor stood in or after it.</summary>
+    /// <summary>is and as in visual mode: at a single place as <see cref="SentenceAt"/> takes them, <paramref name="keeps"/>
+    /// cleared where a sentence found afresh becomes the stretch, which makes it charwise; over a longer stretch as <see
+    /// cref="SentencesOn"/> carries its cursor.</summary>
     private Region? SentencesOver(TextSnapshot text, Region r, bool inner, int n, ref bool keeps)
     {
         if (r.Anchor == r.Cursor)
@@ -830,7 +828,8 @@ public sealed partial class Vim
     }
 
     /// <summary>is and as over a stretch of more than a place: its cursor carried back where it stands before where the
-    /// stretch began, else to the end of the sentences after it, onto an empty line a sentence follows.</summary>
+    /// stretch began (<see cref="SentencesBack"/>), else to the end of the sentences after it (onto an empty line a
+    /// sentence follows, short of the text's last), or as <see cref="Ended"/> says where none is left.</summary>
     private Region? SentencesOn(TextSnapshot text, Region r, bool inner, int n)
     {
         if (r.Cursor < r.Anchor)
@@ -885,7 +884,7 @@ public sealed partial class Vim
             // A sentence ending its line holds its line break: the next one is taken from the next line.
             after = line.EndIncludingBreak;
         }
-        if (after >= text.Length || (!inner && LastBefore(text, text.Length) is var written && (written is null || written < after))
+        if (after >= text.Length || (!inner && LastWrittenBefore(text, text.Length) is var written && (written is null || written < after))
             || VimTextObjects.Of(text, after, "s", inner, n, breakEnds) is not { } next)
         {
             return Ended(text, r, inner);
@@ -929,12 +928,14 @@ public sealed partial class Vim
             last--;
         }
         int end = Settled(text, text.GetLine(last).End, breakEnds);
-        int to = !inner && r.Cursor >= end ? end : LastBefore(text, inner ? Math.Min(CharEnd(text, r.Cursor), text.Length) : text.Length) ?? 0;
+        int to = !inner && r.Cursor >= end ? end : LastWrittenBefore(text, inner ? Math.Min(CharEnd(text, r.Cursor), text.Length) : text.Length) ?? 0;
         return to != r.Cursor ? r with { Cursor = to } : null;
     }
 
     /// <summary>Where is or as carries a cursor standing before where its stretch began: back a sentence or a white at a
-    /// time, from an empty line before the last of its run to that line first.</summary>
+    /// time from the one before where the cursor begins its own, from an empty line before the last of its run to that
+    /// line first; as takes a white with the sentence before it, a sentence with the white before where the cursor stood
+    /// in or after it.</summary>
     private int SentencesBack(TextSnapshot text, int at, bool inner, int n)
     {
         int left = n;
@@ -993,7 +994,7 @@ public sealed partial class Vim
     }
 
     /// <summary>The last character that is no blank or line break before an offset, null where there is none.</summary>
-    private static int? LastBefore(TextSnapshot text, int offset)
+    private static int? LastWrittenBefore(TextSnapshot text, int offset)
     {
         int at = offset;
         while (at > 0 && text[at - 1] is ' ' or '\t' or '\n' or '\r')
@@ -1028,7 +1029,7 @@ public sealed partial class Vim
                 // In a text of empty lines alone, the lines from the first to the one before the last.
                 return new Region(0, text.GetLineStart(lastLine - 1));
             }
-            if (runLast < lastLine && inner && !next && LastBefore(text, r.Cursor) is { } before)
+            if (runLast < lastLine && inner && !next && LastWrittenBefore(text, r.Cursor) is { } before)
             {
                 // From an empty line two or more above its run's last, is goes back to the last character before the run.
                 more = true;
