@@ -1093,6 +1093,9 @@ Microsoft Corporation), unchanged, from the project its header names:
   Docker's NOTICE.
 - `ini.tmLanguage.json` (VS Code 1.144.0, `extensions/ini`): converted from textmate/ini.tmbundle
   (https://github.com/textmate/ini.tmbundle), under the TextMate bundle licence below; it colours .editorconfig files.
+- `sql.tmLanguage.json` (VS Code 1.144.0, `extensions/sql`): converted from microsoft/vscode-mssql's
+  `extensions/mssql/syntaxes/SQL.plist` (https://github.com/microsoft/vscode-mssql) at commit 684648ee, MIT,
+  Copyright (c) Microsoft Corporation; it colours .sql files and the database tools' consoles.
 - `MagicPython.tmLanguage.json` (VS Code 1.144.0, `extensions/python`): converted from MagicStack/MagicPython
   (https://github.com/MagicStack/MagicPython) at commit 7d0f2b22, its 1.1.1, MIT, Copyright (c) 2015-present MagicStack
   Inc.

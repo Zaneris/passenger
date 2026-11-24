@@ -255,6 +255,10 @@ public sealed class Language
     public static readonly Language Gherkin = new("gherkin", "Gherkin", ["*.feature"], line: "#", indent: 2,
         grammar: new("text.gherkin.feature", "feature.tmLanguage.json"), folds: FoldScan.Gherkin, literals: Passenger.Workspace.Gherkin.FeatureReading.DocStringLines);
 
+    /// <summary>SQL, coloured by the SQL grammar VS Code carries, whichever database a console of it runs against.</summary>
+    public static readonly Language Sql = new("sql", "SQL", ["*.sql"], line: "--", block: ("/*", "*/"),
+        grammar: new("source.sql", "sql.tmLanguage.json"));
+
     /// <summary>Languages with no grammar here, commented as C's are or as scripts are.</summary>
     public static readonly Language Code = new("code", "Code", ["*.rs", "*.go", "*.java", "*.kt", "*.swift", "*.c", "*.h", "*.cpp"],
         line: "//", block: ("/*", "*/"));
