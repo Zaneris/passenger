@@ -904,6 +904,7 @@ public partial class ManagedDebugger
             Type = type,
             PresentationHint = failed ? FailedHint(shown) : null,
             VariablesReference = GetVariablesReference(opens?.Invoke() ?? value, threadId, stackDepth, proxy, namesPointee ? name : null, declared, expression),
+            Mark = MarkOf(value),
         };
     }
 

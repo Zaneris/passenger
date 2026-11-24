@@ -147,8 +147,22 @@ public sealed class DebugAdapter
                 Type = v.Type,
                 PresentationHint = ToProtocol(v.PresentationHint),
                 VariablesReference = v.VariablesReference,
+                Mark = v.Mark,
             })]);
         });
+        // Mark Object: an object known again at every stop and named by its label.
+        connection.Handle<MarkObjectArguments, MarkObjectResponse>(DapCommands.MarkObject, async arguments =>
+        {
+            try
+            {
+                return new MarkObjectResponse(await Read(() => debugger.MarkObject(arguments.Expression, arguments.FrameId)));
+            }
+            catch (InvalidOperationException refused)
+            {
+                throw new DapException(DapCommands.MarkObject, refused.Message);
+            }
+        });
+        connection.Handle<UnmarkObjectArguments>(DapCommands.UnmarkObject, arguments => Locked(() => debugger.UnmarkObject(arguments.Label)));
         connection.Handle<EvaluateArguments, EvaluateResponse>(DapCommands.Evaluate, async arguments =>
         {
             // A hover, or a value the client shows of itself, is an implicit evaluation.
@@ -162,6 +176,7 @@ public sealed class DebugAdapter
                 PresentationHint = ToProtocol(value.PresentationHint),
                 PassedOver = value.PassedOver,
                 ImplicitOff = value.ImplicitOff,
+                Mark = value.Mark,
             };
         });
         // Set Next Statement: a target per line (or column), in the last stopped thread's method, its id the IL offset goto takes.
@@ -342,6 +357,7 @@ public sealed class DebugAdapter
             SupportsStepInTargetsRequest = true,
             SupportsGotoTargetsRequest = true,
             SupportsDataBreakpoints = ManagedDebugger.DataBreakpointsUnavailable is null,
+            SupportsMarkObject = true,
             DataBreakpointsUnavailable = ManagedDebugger.DataBreakpointsUnavailable,
             ExceptionBreakpointFilters =
             [

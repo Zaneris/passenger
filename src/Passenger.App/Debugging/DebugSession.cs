@@ -352,6 +352,33 @@ public sealed class DebugSession
     /// <summary>A module loaded, unloaded, or had its symbols loaded.</summary>
     public event EventHandler? ModulesChanged;
 
+    /// <summary>Why the session's debugger marks no object, where it cannot; null where it does (Mark Object).</summary>
+    public string? MarksWhyNot { get; private set; } = "The debugger has not started";
+
+    /// <summary>The objects marked, each by its label, in the order they were marked; gone with the session.</summary>
+    public IReadOnlyList<string> Marks => marks;
+
+    private readonly List<string> marks = [];
+
+    /// <summary>Marks the object an expression's value is in a frame, answering its label ($1); one the debugger refuses
+    /// throws its reason.</summary>
+    public async Task<string> MarkObjectAsync(string expression, int frameId)
+    {
+        string label = (await connection.RequestAsync<MarkObjectResponse>(DapCommands.MarkObject, new MarkObjectArguments(expression, frameId))).Label;
+        if (!marks.Contains(label))
+        {
+            marks.Add(label);
+        }
+        return label;
+    }
+
+    /// <summary>Lets a marked object go: its label names nothing from then on.</summary>
+    public async Task UnmarkObjectAsync(string label)
+    {
+        marks.Remove(label);
+        await connection.RequestAsync(DapCommands.UnmarkObject, new UnmarkObjectArguments(label));
+    }
+
     /// <summary>Why the session's debugger tells of no modules, where it cannot; null where it does.</summary>
     public string? ModulesUnlisted => Engine switch
     {
@@ -551,6 +578,12 @@ public sealed class DebugSession
             session.DataBreakpointsUnavailable = capabilities.SupportsDataBreakpoints == true ? null
                 : capabilities.DataBreakpointsUnavailable ?? "The debugger sets no data breakpoints";
             session.MovesNextStatement = capabilities.SupportsGotoTargetsRequest == true;
+            session.MarksWhyNot = capabilities.SupportsMarkObject == true ? null : engine switch
+            {
+                DebugEngine.GDScript => "Godot's GDScript debugger marks no object",
+                DebugEngine.WebAssembly => "The browser's .NET debugger names an object for one stop alone, so none is marked",
+                _ => "The debugger marks no object",
+            };
             await session.connection.RequestAsync(request, arguments);
             await Task.WhenAny(session.initialized.Task, session.ending.Task).WaitAsync(TimeSpan.FromSeconds(30));
             session.GoingOn();

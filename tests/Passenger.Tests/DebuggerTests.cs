@@ -507,6 +507,47 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             OpenWindows.CloseAll();
             return Task.CompletedTask;
         });
+        await Flow.StepApartLivedAsync<DebuggerTests>("an object marked at one stop is known by its label at the next and in any expression until unmarked", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.An_object_marked_at_one_stop_is_known_by_its_label_at_the_next_and_in_any_expression_until_unmarked();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>Mark Object on a parameter's row marks the list it holds as $1, which Variables lists above the frame's values
+    /// and the row shows beside its value; at the next stop, the parameter another list, its row shows no mark while $1 still
+    /// reads the first list, and an expression of $1 reads it; Unmark Object takes it away.</summary>
+    private void An_object_marked_at_one_stop_is_known_by_its_label_at_the_next_and_in_any_expression_until_unmarked()
+    {
+        Write("Program.cs", "List<int> first = [1, 2];\nList<int> second = [3];\nCount(first);\nCount(second);\nConsole.WriteLine(first.Count);\nstatic int Count(List<int> items)\n{\n"
+            + "    return items.Count;\n}\n");
+        MainWindow window = Open();
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(7, 4));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        StartDebugging(window);
+        WaitDebugging(window, () => Value(window, "items") is not null, "the first call's stop");
+        VariablesList variables = window.DebugWindow.VariablesList;
+        variables.SelectedItem = Row(window, "items");
+        Ui.ChooseFromMenu(variables, VariablesList.MarkObject);
+        Ui.WaitFor(() => Row(window, "$1") is { Value: "Count = 2" } && Row(window, "items")?.Mark == "$1",
+            () => $"$1 listed with the first list and the parameter's row marked, not {string.Join(" | ", window.BottomPanel.Debug.Tree.Rows.Where(r => r.Depth == 0).Select(r => $"{r.Name} = {r.Value} {r.Mark}"))} ({Ui.Said(window)})");
+
+        Ui.Run(window, AppActions.Resume);
+        WaitDebugging(window, () => Value(window, "items") == "Count = 1", "the second call's stop");
+        Assert.True(Row(window, "items")?.Mark is null && Row(window, "$1") is { Value: "Count = 2", Mark: "$1" },
+            $"At the second call the rows were {string.Join(" | ", window.BottomPanel.Debug.Tree.Rows.Where(r => r.Depth == 0).Select(r => $"{r.Name} = {r.Value} {r.Mark}"))}, where items, the second list, is unmarked and $1 the first");
+        DebugSession session = window.Debugger.Session!;
+        EvaluateResponse counted = Ui.Await(session.EvaluateAsync("$1.Count + items.Count", window.BottomPanel.Debug.SelectedFrame!.Id, EvaluateContexts.Watch), "$1 in an expression");
+        Assert.Equal("3", counted.Result);
+
+        variables.SelectedItem = Row(window, "$1");
+        Ui.ChooseFromMenu(variables, $"{VariablesList.UnmarkObject} $1");
+        Ui.WaitFor(() => Row(window, "$1") is null, "$1 gone once unmarked");
+        Assert.Empty(session.Marks);
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
     }
 
     /// <summary>Pin to Line keeps the expression at the caret after its line, alone while nothing is debugged; at each stop

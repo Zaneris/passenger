@@ -26,6 +26,9 @@ public class VariableInfo
     /// or the others were held.</summary>
     public string? ImplicitOff { get; set; }
 
+    /// <summary>The label of the marked object this value is; null for any other.</summary>
+    public string? Mark { get; set; }
+
     /// <summary>The member this row is, by the name C# reaches it by from its owner's expression; null for a row reached
     /// otherwise.</summary>
     internal string? Member { get; set; }

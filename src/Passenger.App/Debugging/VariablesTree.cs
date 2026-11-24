@@ -86,6 +86,9 @@ public sealed class VariableNode(string name, string value, string? type, int re
     /// <summary>The debugger's word that it cannot set this value, and why, though an expression reaches it.</summary>
     public string? Unsettable { get; init; }
 
+    /// <summary>The label of the marked object its value is ($1), which its row shows beside the value; null for any other.</summary>
+    public string? Mark { get; init; }
+
     /// <summary>Its value is being typed over, in its row (Set Value, F2).</summary>
     public bool IsEditing
     {
@@ -142,6 +145,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
             IsLazy = variable.PresentationHint?.Lazy == true && variable.VariablesReference > 0,
             NeedsThreads = SaysNeedsThreads(variable.PresentationHint),
             Unsettable = variable.Unsettable,
+            Mark = variable.Mark,
         };
 
     /// <summary>A lazy row as what it read: the debugger's one variable in its place, by its name, or why it read none.</summary>
@@ -155,6 +159,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
             IsCopy = lazy.IsCopy,
             WasRead = true,
             NeedsThreads = SaysNeedsThreads(read?.PresentationHint),
+            Mark = read?.Mark,
         };
 
     /// <summary>A row as its expression read again with every thread let go, in its place: a watch stays a watch.</summary>
@@ -167,6 +172,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
             IsVirtual = row.IsVirtual,
             IsCopy = row.IsCopy,
             NeedsThreads = SaysNeedsThreads(read.PresentationHint),
+            Mark = read.Mark,
         };
 }
 

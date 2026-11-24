@@ -935,8 +935,14 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                 stack.Push(CilValue.FromLocation(SyntheticVariable(stack.Pop())));
                 break;
             case "GetObjectByAlias":
-                stack.Push(run.Handles.Root(SyntheticVariable(stack.Pop()).Read()));
+            {
+                // A marked object ($1) through a handle of the evaluation's own, which it lets go of; else its own variable.
+                CilValue named = stack.Pop();
+                stack.Push(named.Value is string label && label.StartsWith('$') && debugger.Marked(label) is { } marked
+                    ? CilValue.FromCorValue(run.Handles.CreateOwnedHandle(marked))
+                    : run.Handles.Root(SyntheticVariable(named).Read()));
                 break;
+            }
             case "GetException":
             {
                 ICorDebugValue exception = debugger.GetCurrentException(run.Context.ThreadId)

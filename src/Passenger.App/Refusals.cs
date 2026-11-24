@@ -1041,6 +1041,9 @@ public static class Refusals
     /// paths did not lead to.</summary>
     public const string CoverageUnplaced = "The coverage report names no file of this row's on this machine";
 
+    /// <summary>Mark Object on a row whose value is no object (a number, a bool), which is copied as it goes.</summary>
+    public const string NoObjectToMark = "The value is no object to mark: a number or a struct is copied as it goes";
+
     /// <summary>Copy Path on a module made as the program runs, or read from its memory alone.</summary>
     public const string ModuleUnplaced = "The module has no file: the program made it, or the debugger read it from its memory";
 

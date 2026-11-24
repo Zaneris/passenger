@@ -144,8 +144,10 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
         // The exception's type in the program's assemblies, where the compiler looks, not the debugger's runtime's.
         string? exception = debugger.GetCurrentException(context.ThreadId) is { } thrown ? debugger.AliasTypeName(thrown.ExactType) : null;
         IReadOnlyList<(string Name, string Type)> returnValues = context.RootValue is null ? debugger.ReturnValueAliases(context.ThreadId) : [];
+        IReadOnlyList<(string Name, string Type)> marks = context.RootValue is null ? debugger.MarkAliases() : [];
         EnsureModuleVersion();
-        CompileCacheKey key = CreateCacheKey(expression, context, frame, preferredModule, exception, string.Join(';', returnValues.Select(r => r.Type)));
+        CompileCacheKey key = CreateCacheKey(expression, context, frame, preferredModule, exception,
+            string.Join(';', returnValues.Select(r => r.Type).Concat(marks.Select(m => $"{m.Name} {m.Type}"))));
         if (TryGetCachedCompiled(key, out CompiledEvaluationMethod? cached))
         {
             return cached;
@@ -166,7 +168,7 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
         DiagnosticBag diagnostics = DiagnosticBag.GetInstance();
         try
         {
-            ImmutableArray<Alias> aliases = GetAliases(exception, returnValues);
+            ImmutableArray<Alias> aliases = GetAliases(exception, returnValues, marks);
             (CompileResult? result, bool atExactType) = CodeBrackets.OnStack(expression, () => Compile(evaluationContext, expression, aliases, diagnostics, exactType, definition));
             if (result is null || diagnostics.HasAnyErrors())
             {
@@ -336,12 +338,13 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
         _metadataBlocksCache.Clear();
     }
 
-    /// <summary>The debugger's own names an expression may use: $exception while the thread has one, and the values the
-    /// last step's calls returned, each typed as it is.</summary>
-    private static ImmutableArray<Alias> GetAliases(string? exception, IReadOnlyList<(string Name, string Type)> returnValues) =>
+    /// <summary>The debugger's own names an expression may use: $exception while the thread has one, the values the last
+    /// step's calls returned and the objects marked ($1), each typed as it is.</summary>
+    private static ImmutableArray<Alias> GetAliases(string? exception, IReadOnlyList<(string Name, string Type)> returnValues, IReadOnlyList<(string Name, string Type)> marks) =>
     [
         .. exception is not null ? [new Alias(DkmClrAliasKind.Exception, "Error", DapRows.Exception, exception, Guid.Empty, null!)] : ImmutableArray<Alias>.Empty,
         .. returnValues.Select(returned => new Alias(DkmClrAliasKind.ReturnValue, returned.Name, returned.Name, returned.Type, Guid.Empty, null!)),
+        .. marks.Select(marked => new Alias(DkmClrAliasKind.ObjectId, marked.Name, marked.Name, marked.Type, Guid.Empty, null!)),
     ];
 
     internal DelegateMaterializerAssembly GetDelegateMaterializer(CompiledExpressionEvaluationContext context)

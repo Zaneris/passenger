@@ -1167,6 +1167,10 @@ public partial class ManagedDebugger
     private async Task<VariableInfo> EvaluateInFrame(string expression, int? frameId, string named)
     {
         _logger?.Invoke($"Evaluate: {expression}");
+        if (CollectedMark(expression.Trim()) is { } collected)
+        {
+            return FailedRow(named, collected);
+        }
         CompiledExpressionEvaluationContext evalContext = ContextOf(frameId);
         (ThreadId threadId, FrameStackDepth frameStackDepth) = (evalContext.ThreadId, evalContext.StackDepth);
         ArgumentNullException.ThrowIfNull(_expressionEvaluator);

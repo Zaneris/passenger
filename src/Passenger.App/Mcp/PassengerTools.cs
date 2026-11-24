@@ -3000,12 +3000,32 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "stop's, whose locals debug_state lists), as the Debug window's evaluate box does; a result with members has a " +
         "reference debug_state opens. With value, a C# expression, assigns it to expression (a local, member or element) as " +
         "Set Value does, answering what it now is. With letThreadsRun, one that said it probably needs another thread runs " +
-        "with every thread let go, as the row's Run with every thread does, what they meet meanwhile passed over.")]
+        "with every thread let go, as the row's Run with every thread does, what they meet meanwhile passed over. With mark, " +
+        "marks the object its value is as Mark Object does ($1), which any expression names at every stop after.")]
     public Task<VariableInfo> DebugEvaluate(string expression, int? frame = null, string? session = null,
-        string? value = null, bool letThreadsRun = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
+        string? value = null, bool letThreadsRun = false, bool mark = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         DebugSession paused = await Paused(session, choose: value is not null);
         (DapStackFrame chosen, string? below) = frame is int at ? (await FrameAt(paused, at), null) : await StopFrameAsync(paused);
+        if (mark)
+        {
+            if (paused.MarksWhyNot is { } why)
+            {
+                throw new InvalidOperationException(why);
+            }
+            string label;
+            try
+            {
+                label = await paused.MarkObjectAsync(expression, chosen.Id);
+            }
+            catch (DapException refused)
+            {
+                throw new InvalidOperationException(refused.Reason);
+            }
+            await Session.Debug.RefreshAsync();
+            EvaluateResponse marked = await paused.EvaluateAsync(label, chosen.Id, EvaluateContexts.Watch);
+            return Variable(expression, marked.Result, marked.Type, marked.VariablesReference, label) with { Frame = below, Mark = label };
+        }
         if (value is not null)
         {
             SetExpressionResponse set = await paused.SetExpressionAsync(expression, value, chosen.Id);
@@ -3018,14 +3038,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             // The window shows where the threads are now, as it does after its own.
             await Session.Debug.ThreadsRanAsync(paused, expression, result);
         }
-        return Variable(expression, result.Result, result.Type, result.VariablesReference, expression) with { Frame = below, PassedOver = result.PassedOver };
+        return Variable(expression, result.Result, result.Type, result.VariablesReference, expression) with { Frame = below, PassedOver = result.PassedOver, Mark = result.Mark };
     });
 
     private Task<IReadOnlyList<VariableInfo>> DebugVariables(int reference, string? session, CancellationToken cancel) => OnUi(cancel, async () =>
     {
         DebugSession paused = await Paused(session);
         return (IReadOnlyList<VariableInfo>)[.. (await Session.Debug.MembersAsync(paused, reference))
-            .Select(v => Variable(v.Name, v.Value, v.Type, v.VariablesReference, v.EvaluateName is { } named && named != v.Name ? named : null))];
+            .Select(v => Variable(v.Name, v.Value, v.Type, v.VariablesReference, v.EvaluateName is { } named && named != v.Name ? named : null) with { Mark = v.Mark })];
     });
 
     /// <summary>A variable as a debug answer gives it, its value cut where it runs long (<see cref="AgentAnswers.Value"/>),
@@ -3429,7 +3449,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             foreach (DapScope scope in await session.ScopesAsync(top.Id))
             {
-                locals.AddRange((await session.VariablesAsync(scope.VariablesReference)).Select(v => Variable(v.Name, v.Value, v.Type, v.VariablesReference, v.EvaluateName ?? v.Name)));
+                locals.AddRange((await session.VariablesAsync(scope.VariablesReference)).Select(v => Variable(v.Name, v.Value, v.Type, v.VariablesReference, v.EvaluateName ?? v.Name) with { Mark = v.Mark }));
             }
         }
         string? exception = null;
@@ -4656,6 +4676,9 @@ public sealed record VariableInfo(string Name, string Value, string? Type, int R
 
     /// <summary>What other threads passed over while debug_evaluate ran with every thread let go.</summary>
     public string? PassedOver { get; init; }
+
+    /// <summary>The label of the marked object the value is ($1), which any expression names.</summary>
+    public string? Mark { get; init; }
 }
 
 /// <summary>A .NET program the debugger can attach to, as Attach to Process lists it, its command line's secrets masked.</summary>

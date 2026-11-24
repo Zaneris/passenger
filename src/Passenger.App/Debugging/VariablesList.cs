@@ -125,6 +125,16 @@ public sealed class VariablesList : TreeList
     /// <summary>A row's expression to pin to the line its value was read at (Pin to Line), offered only where it is heard.</summary>
     public event EventHandler<VariableNode>? PinRequested;
 
+    /// <summary>Mark Object on a row, or Unmark Object on a marked one; offered only where it is heard.</summary>
+    public event EventHandler<VariableNode>? MarkRequested;
+
+    /// <summary>Why the debugger whose values the rows are marks no object, where it cannot; Mark Object greys saying so.</summary>
+    public Func<string?> MarksWhyNot { get; set; } = () => null;
+
+    /// <summary>The menu's items for a row's object: marked, or not yet.</summary>
+    public const string MarkObject = "Mark Object";
+    public const string UnmarkObject = "Unmark Object";
+
     /// <summary>What a row that needs another thread to run offers, as its link and its menu's item.</summary>
     public const string RunWithThreads = "Run with every thread";
 
@@ -191,6 +201,12 @@ public sealed class VariablesList : TreeList
         {
             items.Add(ListMenus.Item(DebugController.PinToLineTitle, () => PinRequested?.Invoke(this, node), node.NoExpression));
         }
+        if (MarkRequested is not null)
+        {
+            items.Add(node.Mark is { } mark
+                ? ListMenus.Item($"{UnmarkObject} {mark}", () => MarkRequested?.Invoke(this, node))
+                : ListMenus.Item(MarkObject, () => MarkRequested?.Invoke(this, node), MarksWhyNot() ?? node.NoExpression ?? (node.HasChildren ? null : Refusals.NoObjectToMark)));
+        }
         if (node.NeedsThreads)
         {
             items.Add(new Separator());
@@ -239,6 +255,9 @@ public sealed class VariablesList : TreeList
         TextBlock type = new() { VerticalAlignment = VerticalAlignment.Center };
         type.Classes.Add(StyleClasses.Muted);
         TextBlock value = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 900 };
+        // The marked object's label, after its value.
+        Border mark = Tags.Of(null);
+        mark.Margin = new Thickness(Gaps.Normal, 0, 0, 0);
         ValueField editor = new() { IsVisible = false };
         // Before the words saying why, which a narrow row cuts first.
         Button again = new() { Classes = { StyleClasses.Link }, Content = RunWithThreads, Margin = new Thickness(0, 0, Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center, IsVisible = false };
@@ -247,7 +266,7 @@ public sealed class VariablesList : TreeList
         ShrinkingRow row = new()
         {
             Height = ListRow.Height,
-            Children = { chevron, icon, swatch, name, new TextBlock { Text = " = ", VerticalAlignment = VerticalAlignment.Center }, type, again, value, editor },
+            Children = { chevron, icon, swatch, name, new TextBlock { Text = " = ", VerticalAlignment = VerticalAlignment.Center }, type, again, value, mark, editor },
         };
         again.Click += (_, e) =>
         {
@@ -336,6 +355,8 @@ public sealed class VariablesList : TreeList
             type.Text = node.TypeLabel;
             value.Text = node.Shown;
             value.Resource(TextBlock.ForegroundProperty, ref valueColour, node.Role == VariableRole.Error ? TokenKeys.Error : null);
+            Tags.WordsOf(mark).Text = node.Mark;
+            mark.IsVisible = node.Mark is not null && node.Mark != node.Name;
             ToolTip.SetTip(value, node.Lines);
             editor.IsVisible = false;
             value.IsVisible = type.IsVisible = true;

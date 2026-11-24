@@ -137,6 +137,7 @@ public sealed class DebugController : IDisposable
         EventHandler<VariableNode> watchData = (_, node) => IdeErrors.Observe(ToggleDataBreakpointAsync(node));
         EventHandler<VariableNode> ranAgain = (_, node) => IdeErrors.Observe(RunWithThreadsAsync(node, view.Tree));
         EventHandler<VariableNode> pinned = (_, node) => PinRow(node);
+        EventHandler<VariableNode> marked = (_, node) => IdeErrors.Observe(MarkAsync(node, null));
         EventHandler readAgain = (_, _) => IdeErrors.Observe(ShowVariables());
         EventHandler<VariableNode> textOpened = (_, node) => TextOpened?.Invoke(this, node.Value);
         EventHandler<DebugTab> tabChosen = (_, tab) => IdeErrors.Observe(ChooseAsync(tab));
@@ -156,6 +157,8 @@ public sealed class DebugController : IDisposable
         view.DataBreakpointRequested += watchData;
         view.RunWithThreadsRequested += ranAgain;
         view.PinRequested += pinned;
+        view.MarkRequested += marked;
+        view.MarksWhyNot = () => Session is { } debugged ? debugged.MarksWhyNot : Refusals.NothingDebugged;
         view.ReadAgainRequested += readAgain;
         view.TextOpened += textOpened;
         Breakpoints.DataChanged += (_, _) => TellRefusedData();
@@ -174,6 +177,7 @@ public sealed class DebugController : IDisposable
             view.DataBreakpointRequested -= watchData;
             view.RunWithThreadsRequested -= ranAgain;
             view.PinRequested -= pinned;
+            view.MarkRequested -= marked;
             view.ReadAgainRequested -= readAgain;
             view.TextOpened -= textOpened;
             view.WatchRemoved -= unwatched;
@@ -2533,12 +2537,15 @@ public sealed class DebugController : IDisposable
         {
             list.PinRequested += (_, node) => Breakpoints.Pins.Pin(line.Path, line.Line, node.Expression!);
         }
+        list.MarkRequested += (_, node) => IdeErrors.Observe(MarkAsync(node, at));
+        list.MarksWhyNot = () => session.MarksWhyNot;
         return list;
 
         VariableNode Hovered(EvaluateResponse read) => new(expression, read.Result, read.Type, read.VariablesReference, 0, VariableRole.Value)
         {
             EvaluateName = expression,
             NeedsThreads = VariableNode.SaysNeedsThreads(read.PresentationHint),
+            Mark = read.Mark,
         };
 
         async Task SetHoveredAsync(VariableNode node, string typed)
@@ -3010,6 +3017,15 @@ public sealed class DebugController : IDisposable
             // The failed binding above the frame's own values, where $exception would be: the inspector call's parameter.
             rows.Add(new VariableNode(BindingStop.Name, failed.Value, failed.Type, failed.Reference, 0, VariableRole.Value) { EvaluateName = BindingStop.Name });
         }
+        // Each marked object, read again by its label at every stop, above the watches.
+        foreach (string mark in session.Marks.ToList())
+        {
+            rows.Add(await Evaluated(session, current, mark, VariableRole.Value));
+            if (stop != shown)
+            {
+                return;
+            }
+        }
         foreach (string watch in watches)
         {
             rows.Add(await Evaluated(session, current, watch, VariableRole.Watch));
@@ -3236,6 +3252,40 @@ public sealed class DebugController : IDisposable
         return true;
     }
 
+    /// <summary>Mark Object on a row: its object marked in the frame its value was read in (the chosen one, else
+    /// <paramref name="within"/>'s), or, marked, let go; the frame's values read again, each row of the object showing its
+    /// label, and what came of it said.</summary>
+    private async Task MarkAsync(VariableNode node, DapStackFrame? within)
+    {
+        if (Session is not { State: DebugState.Paused } session || (within ?? frame) is not { } at)
+        {
+            Message?.Invoke(this, Refusals.NothingDebugged);
+            return;
+        }
+        try
+        {
+            if (node.Mark is { } mark)
+            {
+                await session.UnmarkObjectAsync(mark);
+                Message?.Invoke(this, $"{mark} is unmarked");
+            }
+            else if (node.Expression is { } expression)
+            {
+                string label = await session.MarkObjectAsync(expression, at.Id);
+                Message?.Invoke(this, $"{expression} is marked {label}: {label} names it in any expression, at every stop, until it is collected");
+            }
+        }
+        catch (DapException refused)
+        {
+            Message?.Invoke(this, refused.Reason);
+            return;
+        }
+        if (Session == session && session.State == DebugState.Paused)
+        {
+            await ShowVariables();
+        }
+    }
+
     /// <summary>Pin to Line on a row of Variables: its expression pinned to the line the chosen frame stands at, in its file.</summary>
     private void PinRow(VariableNode node)
     {
@@ -3275,7 +3325,12 @@ public sealed class DebugController : IDisposable
         try
         {
             EvaluateResponse value = await session.EvaluateAsync(expression, frame.Id, role == VariableRole.Watch ? EvaluateContexts.Watch : EvaluateContexts.Repl);
-            return new VariableNode(expression, value.Result, value.Type, value.VariablesReference, 0, role) { NeedsThreads = VariableNode.SaysNeedsThreads(value.PresentationHint) };
+            return new VariableNode(expression, value.Result, value.Type, value.VariablesReference, 0, role)
+            {
+                NeedsThreads = VariableNode.SaysNeedsThreads(value.PresentationHint),
+                Mark = value.Mark,
+                EvaluateName = role == VariableRole.Watch ? null : expression,
+            };
         }
         catch (DapException error)
         {

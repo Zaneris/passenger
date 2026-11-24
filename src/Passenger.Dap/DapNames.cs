@@ -3,7 +3,7 @@ namespace Passenger.Dap;
 /// <summary>The requests the IDE and Passenger's debug adapter make of each other, by the protocol's names, each written once
 /// for both ends, so a name one end misspells is a build error rather than a request the other never answers. Passenger's
 /// own extend the protocol: <see cref="ResolveStackFrame"/>, <see cref="HotReloadState"/>, <see cref="ApplyChanges"/>,
-/// <see cref="HotReloadRelease"/> and <see cref="Input"/>.</summary>
+/// <see cref="HotReloadRelease"/>, <see cref="Input"/>, <see cref="MarkObject"/> and <see cref="UnmarkObject"/>.</summary>
 [IdentifierHome]
 public static class DapCommands
 {
@@ -51,6 +51,12 @@ public static class DapCommands
 
     /// <summary>Passenger's own: text for the program's standard input, or its input closed.</summary>
     public const string Input = "input";
+
+    /// <summary>Passenger's own: an object marked, to be known again at every stop and named by its label.</summary>
+    public const string MarkObject = "markObject";
+
+    /// <summary>Passenger's own: a marked object let go of.</summary>
+    public const string UnmarkObject = "unmarkObject";
 }
 
 /// <summary>The events Passenger's debug adapter tells the IDE, by the protocol's names, each written once for both ends.</summary>

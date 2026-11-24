@@ -184,6 +184,12 @@ public sealed class DebugModel
     /// <summary>A row's expression to pin to the line the chosen frame stands at (<see cref="VariablesList.PinRequested"/>).</summary>
     public event EventHandler<VariableNode>? PinRequested;
 
+    /// <summary>A row's object to mark, or a marked one to let go (<see cref="VariablesList.MarkRequested"/>).</summary>
+    public event EventHandler<VariableNode>? MarkRequested;
+
+    /// <summary>Why the chosen session's debugger marks no object, where it cannot.</summary>
+    public Func<string?> MarksWhyNot { get; set; } = () => null;
+
     /// <summary>Read Again, over Variables once every thread ran in an evaluation: the frame's values to be read anew.</summary>
     public event EventHandler? ReadAgainRequested;
 
@@ -460,6 +466,8 @@ public sealed class DebugModel
     internal void RunWithThreads(VariableNode node) => RunWithThreadsRequested?.Invoke(this, node);
 
     internal void Pin(VariableNode node) => PinRequested?.Invoke(this, node);
+
+    internal void Mark(VariableNode node) => MarkRequested?.Invoke(this, node);
 
     internal void ToggleDataBreakpoint(VariableNode node) => DataBreakpointRequested?.Invoke(this, node);
 

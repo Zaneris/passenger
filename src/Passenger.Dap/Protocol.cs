@@ -44,6 +44,9 @@ public sealed record DapCapabilities
 
     /// <summary>Passenger's own: why the debugger can set no data breakpoint where it runs, when it cannot.</summary>
     public string? DataBreakpointsUnavailable { get; init; }
+
+    /// <summary>Passenger's own: whether the debugger marks objects (<see cref="DapCommands.MarkObject"/>).</summary>
+    public bool? SupportsMarkObject { get; init; }
     public IReadOnlyList<DapExceptionFilter>? ExceptionBreakpointFilters { get; init; }
 }
 
@@ -189,6 +192,16 @@ public sealed record SetFunctionBreakpointsArguments(IReadOnlyList<DapFunctionBr
 /// <summary>Whether a data breakpoint can watch a member of a container (an object's field or property, an array's element)
 /// by the container's variables reference and the member's name as the variables request named it.</summary>
 public sealed record DataBreakpointInfoArguments(string Name, int? VariablesReference = null, int? FrameId = null);
+
+/// <summary>Passenger's own request: the object an expression's value is in a frame, marked so that it is known again at every
+/// stop and named by its label (<c>$1</c>) in any expression until it is unmarked or collected.</summary>
+public sealed record MarkObjectArguments(string Expression, int? FrameId = null);
+
+/// <summary>The label the object was marked with, the one it had where it was marked already.</summary>
+public sealed record MarkObjectResponse(string Label);
+
+/// <summary>Passenger's own request: a marked object let go of, its label named by no expression from then on.</summary>
+public sealed record UnmarkObjectArguments(string Label);
 
 public sealed record DataBreakpointInfoResponse
 {
@@ -376,6 +389,9 @@ public sealed record DapVariable
     /// <summary>Passenger's own: why the debugger cannot set this value (a frame's local Godot's debugger sets none of), where
     /// it cannot though an expression reaches it.</summary>
     public string? Unsettable { get; init; }
+
+    /// <summary>Passenger's own: the label of the marked object this value is (<c>$1</c>); null for any other.</summary>
+    public string? Mark { get; init; }
 }
 
 /// <summary>How a variable shows: its kind (<see cref="PresentationHintKinds"/>), its attributes (<see cref="DapAttributes"/>),
@@ -408,6 +424,9 @@ public sealed record EvaluateResponse
     /// <summary>Passenger's own: why implicit evaluation stays off once an evaluation with every thread let go has ended, in
     /// words; null where it is on, or the others were held.</summary>
     public string? ImplicitOff { get; init; }
+
+    /// <summary>Passenger's own: the label of the marked object the value is; null for any other.</summary>
+    public string? Mark { get; init; }
 }
 
 /// <summary>Where a paused thread could go on from in a source at a line (Set Next Statement's question).</summary>
