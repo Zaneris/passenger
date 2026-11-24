@@ -1,6 +1,7 @@
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.Debugging;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -49,6 +50,47 @@ public sealed class WinUITests : IClassFixture<WinUITests.Gallery>
         Flow.StepApart("Go to Declaration from the code-behind's use of a named element lands on its x:Name, whose rename takes its x:Bind along",
             () => new WinUITests(app), t => t.Go_to_declaration_from_the_code_behinds_use_of_a_named_element_lands_on_its_name_whose_rename_takes_its_x_bind_along());
     }
+
+    /// <summary>The unpackaged app (WindowsPackageType None, the Windows App SDK carried in its output) runs, saying in the
+    /// Run window that its window is up, and Stop ends it; Debug stops it at a breakpoint in its window's constructor, its
+    /// locals shown, and Stop ends it. Its window opens on a desktop of its own, where nobody sees it.</summary>
+    [AvaloniaFact]
+    public void An_unpackaged_winui_app_runs_and_stops_at_a_breakpoint_under_the_debugger()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("WinUI builds and runs only on Windows, whose app the test makes");
+        }
+        using IDisposable hang = Limits.BeginHang();
+        MainWindow window = app.Open(app.PathOf("MainWindow.xaml.cs"));
+        try
+        {
+            Ui.Launched(window, window.RunAsync(), "the app's build and start", Slow);
+            Ui.WaitFor(() => Output(window).Contains(Gallery.Up, StringComparison.Ordinal),
+                () => $"the app to say its window is up, in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", Slow);
+            Assert.True(window.Runner.IsRunning, $"The app ended once its window was up:\n{Output(window)}");
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the app to end once stopped", TimeSpan.FromMinutes(1));
+
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "        System.Console.WriteLine(");
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Launched(window, window.DebugAsync(), "the app's start under the debugger", Slow);
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.Debugger.Stop?.Top?.Name is { } top && top.Contains("MainWindow", StringComparison.Ordinal),
+                () => $"the stop at the breakpoint in MainWindow's constructor; the debugger is {window.Debugger.Session?.State.ToString() ?? "not debugging"}, stopped at "
+                    + $"{window.Debugger.Stop?.Top?.Name}: {Ui.Said(window)}", Slow);
+            Assert.Contains(window.BottomPanel.Debug.Tree.Rows, r => r.Depth == 0 && r.Name == "this");
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private static TimeSpan Slow => Limits.WithinHang(TimeSpan.FromMinutes(8));
+
+    private static string Output(MainWindow window) => window.BottomPanel.Run.Document.Snapshot.ToString();
 
     private void Typing_a_tag_offers_winuis_controls_then_a_controls_properties_and_events_then_an_enums_values()
     {
@@ -198,12 +240,16 @@ public sealed class WinUITests : IClassFixture<WinUITests.Gallery>
         window.Close();
     }
 
-    /// <summary>The app, as Visual Studio's WinUI template makes one, with a view model its window binds by x:Bind and a list
-    /// whose items a data template binds by its x:DataType; restored from nuget.org, on Windows alone.</summary>
+    /// <summary>The app, as Visual Studio's WinUI template makes one, unpackaged and carrying the Windows App SDK in its output
+    /// (so it runs whatever runtime the machine has), with a view model its window binds by x:Bind and a list whose items a
+    /// data template binds by its x:DataType; restored from nuget.org, on Windows alone.</summary>
     public sealed class Gallery : SharedProject
     {
         /// <summary>The Windows App SDK the app is made with, its newest release when the test was written.</summary>
         public const string WindowsAppSdk = "2.7.0";
+
+        /// <summary>What the app writes once its window is made.</summary>
+        public const string Up = "Gallery's window is up";
 
         public Gallery()
             : base("winui-")
@@ -234,6 +280,7 @@ public sealed class WinUITests : IClassFixture<WinUITests.Gallery>
                 <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
                 <UseWinUI>true</UseWinUI>
                 <WindowsPackageType>None</WindowsPackageType>
+                <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
                 <Nullable>enable</Nullable>
               </PropertyGroup>
               <ItemGroup>
@@ -324,6 +371,7 @@ public sealed class WinUITests : IClassFixture<WinUITests.Gallery>
                 public MainWindow()
                 {
                     InitializeComponent();
+                    System.Console.WriteLine("Gallery's window is up");
                 }
 
                 public MainViewModel ViewModel { get; } = new();
