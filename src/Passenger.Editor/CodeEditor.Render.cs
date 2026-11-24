@@ -314,15 +314,22 @@ public sealed partial class CodeEditor
         {
             LineAnnotation annotation = annotations[i];
             bool ground = annotation.Look == LineAnnotationLook.ErrorOnGround;
+            bool chip = annotation.Look == LineAnnotationLook.Chip;
             bool error = ground || annotation.Look == LineAnnotationLook.Error;
-            if (!labels.TryGet((annotation.Text, error ? -4 : -3), out TextLine? text))
+            // A chip's label is a folded placeholder's, in its colour upright.
+            int style = chip ? -8 : error ? -4 : -3;
+            if (!labels.TryGet((annotation.Text, style), out TextLine? text))
             {
-                text = labels.Add((annotation.Text, error ? -4 : -3), Format(annotation.Text, [], error ? annotationRuns.Error : annotationRuns.Value));
+                text = labels.Add((annotation.Text, style), Format(annotation.Text, [], chip ? RunWith(palette.Annotation) : error ? annotationRuns.Error : annotationRuns.Value));
             }
             double top = y + (metrics.LineHeight - text.Height) / 2;
             if (ground)
             {
                 context.FillRectangle(palette.ErrorGround, new Rect(x - metrics.CharWidth / 2, y + 1, text.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight - 2), 3);
+            }
+            else if (chip)
+            {
+                context.FillRectangle(palette.InlayHintBack, new Rect(x - metrics.CharWidth / 2, y + 2, text.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight - 4), 3);
             }
             text.Draw(context, new Point(x, top));
             slot.Annotations.Add((annotation, new Rect(x - metrics.CharWidth / 2, (slot.Row * metrics.LineHeight) + y, text.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight)));

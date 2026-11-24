@@ -11,6 +11,10 @@ public enum LineAnnotationLook
 
     /// <summary>In the error colour, italic, on a tinted ground that sets it apart from the rest.</summary>
     ErrorOnGround,
+
+    /// <summary>Upright on a chip, as a folded region's placeholder is: what the debugger keeps beside the code (the time a
+    /// run took to its stop, a value pinned to the line).</summary>
+    Chip,
 }
 
 /// <summary>Text drawn after a line's (from zero) code, part of no document: never selected, copied or

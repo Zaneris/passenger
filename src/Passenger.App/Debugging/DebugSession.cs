@@ -113,6 +113,14 @@ public sealed class DebugSession
 
     /// <summary>The stop last taken, shown again when the continue or step that left it is refused.</summary>
     private StoppedEvent? stoppedAt;
+
+    /// <summary>When the program was last set going (its start, a continue or step, or by itself), on the IDE's clock,
+    /// until the stop it comes to.</summary>
+    private long? setGoing;
+
+    /// <summary>How long the program ran to the stop paused at now, from what last set it going to the stop being heard, and
+    /// whether that was the session's start; null while it runs, and at a stop nothing set going before (Set Next Statement's).</summary>
+    public (TimeSpan Time, bool SinceStart)? Ran { get; private set; }
     private volatile bool killed;
 
     /// <summary>The adapter said the program ended: with its exit code, or (attached, where none can be known) without.</summary>
@@ -220,7 +228,9 @@ public sealed class DebugSession
                 return;
             }
             JsonElementCopy copy = new(body);
-            UiThread.Post(() => OnEvent(name, copy));
+            // Heard here, ahead of whatever the window's thread is doing, so a stop's time is the program's.
+            long heard = Stopwatch.GetTimestamp();
+            UiThread.Post(() => OnEvent(name, copy, heard));
         };
         Quiet = quiet;
         if (!quiet)
@@ -538,6 +548,7 @@ public sealed class DebugSession
             }
             // Never asked of an adapter already told to go: it would start the program as it went.
             session.GoingOn();
+            session.setGoing = Stopwatch.GetTimestamp();
             await session.connection.RequestAsync(DapCommands.ConfigurationDone, new DapEmpty());
             // A stop told before this answer stands, as one before a resume's does.
             if (session.State == DebugState.Starting)
@@ -1036,18 +1047,20 @@ public sealed class DebugSession
             return;
         }
         int stop = stops;
+        (TimeSpan, bool)? ran = Ran;
         AgentDrives = AgentsFlow;
         SetState(DebugState.Running);
         // Sent with the request, never awaited before it: the adapter takes the two in turn, ahead of the stop's reads.
         Task placed = before?.Invoke() ?? Task.CompletedTask;
         UnawaitedWork.Dismiss(placed);
+        setGoing = Stopwatch.GetTimestamp();
         try
         {
             await connection.RequestAsync(command, arguments?.Invoke(thread) ?? new ThreadArguments(thread));
         }
         catch (DapException) when (stops == stop && State == DebugState.Running && disconnected is null)
         {
-            TakeStop(at);
+            TakeStop(at, null, ran);
             throw;
         }
         await placed;
@@ -1424,17 +1437,21 @@ public sealed class DebugSession
     /// <summary>A stop at a breakpoint the debugger gave an id in an answer still on its way back (the answer is read off
     /// the thread pool, the event straight onto the UI thread, so the stop can come first), taken once that answer is:
     /// a property breakpoint's or XAML Binding Errors' stop is then known for one, and shown in the code that did it.</summary>
-    private async Task TakeStopAfter(Task answered, StoppedEvent stopped)
+    private async Task TakeStopAfter(Task answered, StoppedEvent stopped, long heard)
     {
         await Task.WhenAny(answered);
         if (disconnected is null && State == DebugState.Running)
         {
-            TakeStop(stopped);
+            TakeStop(stopped, heard);
         }
     }
 
-    private void TakeStop(StoppedEvent stopped)
+    /// <summary>Pauses at a stop, heard at <paramref name="heard"/> on the IDE's clock, or shown again (null) with the time
+    /// it was first shown with.</summary>
+    private void TakeStop(StoppedEvent stopped, long? heard, (TimeSpan, bool)? ranBefore = null)
     {
+        Ran = heard is long at && setGoing is long from ? (Stopwatch.GetElapsedTime(from, at), stops == 0) : ranBefore;
+        setGoing = null;
         stops++;
         stoppedAt = stopped;
         StoppedThread = stopped.ThreadId;
@@ -1469,7 +1486,7 @@ public sealed class DebugSession
         : Signatures.Of([.. ExceptionOptions().Select(s => Signatures.Of(
             s.Breakpoint.Type, Signatures.Of([.. s.Option.Scenarios ?? []]), s.Option.Condition, s.Option.HitCondition, s.Option.LogMessage, s.Option.Suspend))]);
 
-    private void OnEvent(string name, JsonElementCopy body)
+    private void OnEvent(string name, JsonElementCopy body, long heard)
     {
         switch (name)
         {
@@ -1481,10 +1498,10 @@ public sealed class DebugSession
                 if (stopped.Reason == StopReasons.Breakpoint && !functionsAnswered.IsCompleted
                     && stopped.HitBreakpointIds?.Any(id => !byId.ContainsKey(id) && !propertyById.ContainsKey(id) && !methodById.ContainsKey(id) && id != bindingErrorsId) == true)
                 {
-                    IdeErrors.Observe(TakeStopAfter(functionsAnswered, stopped));
+                    IdeErrors.Observe(TakeStopAfter(functionsAnswered, stopped, heard));
                     break;
                 }
-                TakeStop(stopped);
+                TakeStop(stopped, heard);
                 break;
             case DapEvents.Breakpoint:
                 BreakpointEvent changed = body.Read<BreakpointEvent>();
@@ -1540,6 +1557,7 @@ public sealed class DebugSession
                 break;
             case DapEvents.Continued when State == DebugState.Paused:
                 // Gone on from its stop by itself (a Godot game's script, whose debugger did not let it go).
+                setGoing = heard;
                 SetState(DebugState.Running);
                 break;
             case DapEvents.Exited:
@@ -1578,6 +1596,7 @@ public sealed class DebugSession
         }
         if (state != DebugState.Paused)
         {
+            Ran = null;
             StoppedThread = null;
             StopReason = null;
             NoSteps = null;

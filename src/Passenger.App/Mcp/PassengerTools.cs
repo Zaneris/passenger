@@ -3440,6 +3440,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             summary,
             exception)
         {
+            Elapsed = session.Ran is { } ran ? DebugController.Elapsed(ran) : null,
             BindingValues = shown ? await BindingValuesShownAsync() : null,
             Unbound = Unbound(),
         };
@@ -4660,6 +4661,9 @@ public sealed record DebugSnapshot(
     /// <summary>The state in an agent's words: starting, running or paused, else not debugging.</summary>
     [JsonPropertyOrder(-1)]
     public string State => Debugged is { } state ? state.ToString().ToLowerInvariant() : "not debugging";
+
+    /// <summary>At a stop, how long the program ran to it, as its line in the editor says.</summary>
+    public string? Elapsed { get; init; }
 
     /// <summary>At a stop in a debugged Avalonia app, the binding values after the lines of the .axaml files the editors show,
     /// as the editor shows them (path:line: Property: value).</summary>

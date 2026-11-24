@@ -3081,22 +3081,31 @@ public sealed class DebugController : IDisposable
             return;
         }
         string? path = current.Source?.Path is { } source ? PathNames.Canonical(source) : null;
+        // How long the program ran to its stop, where the stop came to, whichever frame is chosen.
+        (string Path, LineAnnotation Tip)? ran = Stop is { Top: { Source.Path: { } stoppedIn } top } && Session?.Ran is { } time
+            ? (PathNames.Canonical(stoppedIn), new LineAnnotation(Current(PathNames.Canonical(stoppedIn), top.Line - 1), Elapsed(time), LineAnnotationLook.Chip))
+            : null;
         foreach (OpenDocument document in editors.Documents)
         {
+            LineAnnotation[] tip = ran is { } perf && perf.Path == document.Path ? [perf.Tip] : [];
             if (document.Path != path)
             {
-                document.LineAnnotations = [];
+                document.LineAnnotations = tip;
                 continue;
             }
             int line = Current(document.Path, current.Line - 1);
             IReadOnlyList<LineAnnotation> inline = document.Syntax is { } syntax ? InlineValues.For(syntax.Current, line, values) : [];
             document.LineAnnotations = stopException is { } thrown && thrown.FrameId == current.Id
-                ? [new LineAnnotation(line, thrown.Text, LineAnnotationLook.ErrorOnGround), .. inline]
+                ? [new LineAnnotation(line, thrown.Text, LineAnnotationLook.ErrorOnGround), .. tip, .. inline]
                 : bindingStop is { } failed && bindingFrame == current.Id
-                    ? [new LineAnnotation(line, $"Binding error{(BindingErrors.Where(failed.Problem) is { } where ? $" at {where}" : string.Empty)}: {BindingErrors.Stopped(failed.Problem.Failure)}", LineAnnotationLook.ErrorOnGround), .. inline]
-                    : inline;
+                    ? [new LineAnnotation(line, $"Binding error{(BindingErrors.Where(failed.Problem) is { } where ? $" at {where}" : string.Empty)}: {BindingErrors.Stopped(failed.Problem.Failure)}", LineAnnotationLook.ErrorOnGround), .. tip, .. inline]
+                    : [.. tip, .. inline];
         }
     }
+
+    /// <summary>How long a program ran to its stop, as the stop's line and an agent's answer say it.</summary>
+    public static string Elapsed((TimeSpan Time, bool SinceStart) ran) =>
+        $"{Durations.Said(ran.Time)} since {(ran.SinceStart ? "debugging began" : "the last stop")}";
 
     /// <summary>An exception as a stop names it: its type without the namespace, and its message.</summary>
     public static string Describe(ExceptionInfoResponse info)

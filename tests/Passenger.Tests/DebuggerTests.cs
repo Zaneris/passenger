@@ -622,7 +622,8 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     }
 
     /// <summary>F9 and Debug stop the program at the line with its locals, in a Debug window that shares a side pane, its
-    /// next hit on Resume and the step after it; the menus of Variables and Frames copy a value, watch it and copy the stack.</summary>
+    /// next hit on Resume and the step after it, each stop's line saying how long the program ran to it; the menus of
+    /// Variables and Frames copy a value, watch it and copy the stack.</summary>
     private void A_breakpoint_set_with_F9_stops_the_program_there_with_its_locals_and_the_variables_and_frames_menus_copy_them()
     {
         MainWindow window = Open();
@@ -660,15 +661,28 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.Contains(new LineAnnotation(1, "i: 1", LineAnnotationLook.Muted), editor.LineAnnotations);
         Assert.Contains(new LineAnnotation(3, "total: 0", LineAnnotationLook.Muted), editor.LineAnnotations);
         Assert.DoesNotContain(editor.LineAnnotations, a => a.Line > 3);
+        LineAnnotation began = Assert.Single(editor.LineAnnotations, a => a.Look == LineAnnotationLook.Chip);
+        Assert.True(began.Line == 3 && began.Text.EndsWith(" since debugging began", StringComparison.Ordinal),
+            $"The first stop's line said \"{began.Text}\" at line {began.Line + 1}, where it says how long the program ran since debugging began at line 4");
 
+        long resumed = Stopwatch.GetTimestamp();
         Ui.Run(window, AppActions.Resume);
         Ui.WaitFor(() => Value(window, "i") == "2", "the second stop");
+        TimeSpan waited = Stopwatch.GetElapsedTime(resumed);
         Assert.Equal("1", Value(window, "total"));
         Assert.Contains(new LineAnnotation(1, "i: 2", LineAnnotationLook.Muted), editor.LineAnnotations);
+        Assert.True(window.Debugger.Session?.Ran is { } ran && !ran.SinceStart && ran.Time > TimeSpan.Zero && ran.Time <= waited
+            && editor.LineAnnotations.Contains(new LineAnnotation(3, DebugController.Elapsed(ran), LineAnnotationLook.Chip)),
+            $"The second stop's line said {string.Join(" | ", editor.LineAnnotations.Select(a => $"{a.Line + 1}: {a.Text}"))} of a run of {window.Debugger.Session?.Ran}, "
+            + $"where it says the time since the last stop, more than none and at most the {Durations.Said(waited)} the test waited");
 
         Ui.Run(window, AppActions.StepOver);
         Ui.WaitFor(() => editor.LineMarks.Any(m => m.Kind == LineMarkKind.ExecutionPoint && m.Line != 3), "the step");
         Ui.WaitFor(() => Value(window, "total") == "3", "the values after the step");
+        int stepLine = editor.LineMarks.First(m => m.Kind == LineMarkKind.ExecutionPoint).Line;
+        Assert.True(editor.LineAnnotations.Count(a => a.Look == LineAnnotationLook.Chip) == 1
+            && editor.LineAnnotations.Any(a => a.Look == LineAnnotationLook.Chip && a.Line == stepLine && a.Text.EndsWith(" since the last stop", StringComparison.Ordinal)),
+            $"After the step the lines said {string.Join(" | ", editor.LineAnnotations.Select(a => $"{a.Line + 1}: {a.Text}"))}, where the step's line {stepLine + 1} alone says the time since the last stop");
         Assert.True(window.Debugger.LastStopTimes is { Asked: "step over", ToStop: { } stepped, Frames: var framed, Locals: var listed }
             && stepped + listed < TimeSpan.FromSeconds(1).Scaled() && framed <= listed,
             $"The step's stop took too long to show, or was not timed: {window.Debugger.LastStopTimes}");
