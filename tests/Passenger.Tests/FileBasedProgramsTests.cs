@@ -79,8 +79,8 @@ public sealed class FileBasedProgramsTests : IDisposable
 
     /// <summary>A file-based program opened as a folder or a file, beside a solution or alone, is a project that
     /// answers across its files and references, runs with its profile, debugs into an included file, builds only what
-    /// changed and lists its tests, and what it includes is never a program itself, as one flow, each step the check
-    /// one test made in an instance of its own.</summary>
+    /// changed and lists its tests, and what it includes is never a program itself, on the earliest .NET 10 SDK too, as one
+    /// flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
     public void A_file_based_program_is_a_project_that_answers_runs_debugs_and_tests()
     {
@@ -92,6 +92,7 @@ public sealed class FileBasedProgramsTests : IDisposable
         Flow.StepApart<FileBasedProgramsTests>("files a program includes from another folder or by a wildcard are never programs themselves", t => t.Files_a_program_includes_from_another_folder_or_by_a_wildcard_are_never_programs_themselves());
         Flow.StepApart<FileBasedProgramsTests>("a program referencing another has it for a project answered across and run with it", t => t.A_program_referencing_another_has_it_for_a_project_answered_across_and_run_with_it());
         Flow.StepApart<FileBasedProgramsTests>("a file of top level statements alone with no directive is a program that completes runs and debugs", t => t.A_file_of_top_level_statements_alone_with_no_directive_is_a_program_that_completes_runs_and_debugs());
+        Flow.StepApart<FileBasedProgramsTests>("a program beside a solution on the earliest net 10 sdk is a project the language server answers in", t => t.A_program_beside_a_solution_on_the_earliest_net_10_sdk_is_a_project_the_language_server_answers_in());
     }
 
     private void A_program_opened_as_a_folder_is_a_project_that_answers_across_its_files_runs_with_its_profile_and_stops_in_its_included_file()
@@ -439,6 +440,59 @@ public sealed class FileBasedProgramsTests : IDisposable
         finally
         {
             TestFolders.Delete(plain);
+        }
+    }
+
+    /// <summary>A program in a folder of its own beside a solution, its global.json taking the earliest .NET 10 SDK installed
+    /// (one of the first, whose project the SDK makes names no place for it), is a project evaluated for .NET 10 that the
+    /// language server warns in, rather than a program the SDK made no project for; skipped where no .NET 10 SDK is.</summary>
+    private void A_program_beside_a_solution_on_the_earliest_net_10_sdk_is_a_project_the_language_server_answers_in()
+    {
+        string[] installations = OperatingSystem.IsWindows() ? [Dotnet.Root(), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet")]
+            : OperatingSystem.IsMacOS() ? [Dotnet.Root(), "/usr/local/share/dotnet"]
+            : [Dotnet.Root(), "/usr/share/dotnet", "/usr/lib/dotnet", "/usr/lib64/dotnet"];
+        string? sdk = installations.Where(Directory.Exists).SelectMany(root => DotnetInstallation.Read(root).Sdks)
+            .Where(version => version.StartsWith("10.0.", StringComparison.Ordinal) && !version.Contains('-')).MinBy(Version.Parse);
+        Assert.SkipWhen(sdk is null, $"No .NET 10 SDK is installed in {string.Join(", ", installations)}, so no program can be made on one");
+        string ten = PathNames.Canonical(TestFolders.Create("ten-program-"));
+        try
+        {
+            TestFolders.Write(ten, "global.json", $"{{ \"sdk\": {{ \"version\": \"{sdk}\", \"rollForward\": \"disable\" }} }}\n");
+            TestFolders.Write(ten, "nuget.config", """
+                <configuration>
+                  <packageSources><clear /><add key="local" value="feed" /></packageSources>
+                </configuration>
+                """);
+            Directory.CreateDirectory(Path.Combine(ten, "feed"));
+            // Restores and builds land in the folder, not the person's cache this SDK's project names, and fetch no Native AOT packs the empty feed lacks.
+            TestFolders.Write(ten, "Directory.Build.props", "<Project>\n  <PropertyGroup>\n    <UseArtifactsOutput>true</UseArtifactsOutput>\n    <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>\n    <UseDefaultPublishRuntimeIdentifier>false</UseDefaultPublishRuntimeIdentifier>\n  </PropertyGroup>\n</Project>\n");
+            TestFolders.Write(ten, "Directory.Build.targets", "<Project>\n  <PropertyGroup>\n    <PublishAot>false</PublishAot>\n  </PropertyGroup>\n</Project>\n");
+            TestFolders.Write(ten, "Lib/Lib.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
+            TestFolders.Write(ten, "Lib/Shapes.cs", "namespace Lib;\n\npublic static class Shapes\n{\n}\n");
+            TestFolders.Write(ten, "Ten.slnx", "<Solution>\n  <Project Path=\"Lib/Lib.csproj\" />\n</Solution>\n");
+            string server = Path.Combine(ten, "tools", "mcp", "server.cs");
+            TestFolders.Write(ten, "tools/mcp/server.cs", "#:property Nullable=enable\nint unused = 0;\nConsole.WriteLine(\"server\");\n");
+            Restore.Run(server, ten);
+            MainWindow window = Ui.OpenFolder(ten);
+            try
+            {
+                Ui.WaitFor(() => window.Projects.Any(p => PathNames.Same(p.Path, server) && p.Evaluated is not null),
+                    () => $"server.cs, beside Ten.slnx on SDK {sdk}, to be a program evaluated; the projects are {string.Join(", ", window.Projects.Select(p => $"{p.Path} ({p.Problem})"))}",
+                    TimeSpan.FromMinutes(2));
+                ProjectModel program = window.Projects.Single(p => PathNames.Same(p.Path, server));
+                Assert.True(program.IsEvaluated, $"server.cs on SDK {sdk} is no project the language server can load: {program.Problem}");
+                Assert.Equal(["net10.0"], program.TargetFrameworks);
+                Assert.Null(window.OpenFile(server));
+                WaitForWarning(window, server, "server.cs");
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            TestFolders.Delete(ten);
         }
     }
 

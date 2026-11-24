@@ -38,13 +38,25 @@ public static class ProgramProjects
         {
             return (new ProgramParams(path, null, null, $"{name}: the .NET SDK made no project for it: {answer.Said}"), [head], []);
         }
+        ProgramParams program = Answered(path, line);
+        (List<string> included, List<string> referenced) = Named(program.Content);
+        return (program, [head, .. included.Where(f => !PathNames.Same(f, path)).Select(Stamps.Head)], referenced);
+
+        (ProgramParams, IReadOnlyList<Stamp>, IReadOnlyList<string>) Gone() => (new ProgramParams(path, null, null, $"{name}: it is not there"), [head], []);
+    }
+
+    /// <summary>The program's project as the SDK's line of JSON gives it, at the place it names, else where an SDK naming
+    /// none builds it (app.csproj beside app.cs); or why it made none.</summary>
+    internal static ProgramParams Answered(string path, string line)
+    {
+        string name = Path.GetFileName(path);
         try
         {
             using JsonDocument read = JsonDocument.Parse(line);
             JsonElement root = read.RootElement;
             if (JsonMembers.Text(root, "$type") == "Error")
             {
-                return (new ProgramParams(path, null, null, $"{name}: {JsonMembers.Text(root, "Message") ?? "the .NET SDK made no project for it"}"), [head], []);
+                return new ProgramParams(path, null, null, $"{name}: {JsonMembers.Text(root, "Message") ?? "the .NET SDK made no project for it"}");
             }
             List<string> problems = [];
             foreach (JsonElement diagnostic in JsonMembers.Items(root, "Diagnostics"))
@@ -52,17 +64,13 @@ public static class ProgramProjects
                 problems.Add($"{At(diagnostic, name)}: {JsonMembers.Text(diagnostic, "Message")}");
             }
             string? content = JsonMembers.Text(root, "Content");
-            string? project = JsonMembers.Text(root, "ProjectPath");
-            (List<string> included, List<string> referenced) = Named(content);
-            IReadOnlyList<Stamp> heads = [head, .. included.Where(f => !PathNames.Same(f, path)).Select(Stamps.Head)];
-            return (new ProgramParams(path, project, content, problems.Count > 0 ? string.Join(" ", problems) : null), heads, referenced);
+            string? project = JsonMembers.Text(root, "ProjectPath") ?? (content is null ? null : Path.ChangeExtension(path, ".csproj"));
+            return new ProgramParams(path, project, content, problems.Count > 0 ? string.Join(" ", problems) : null);
         }
         catch (JsonException error)
         {
-            return (new ProgramParams(path, null, null, $"{name}: the .NET SDK's answer does not read: {error.Message}"), [head], []);
+            return new ProgramParams(path, null, null, $"{name}: the .NET SDK's answer does not read: {error.Message}");
         }
-
-        (ProgramParams, IReadOnlyList<Stamp>, IReadOnlyList<string>) Gone() => (new ProgramParams(path, null, null, $"{name}: it is not there"), [head], []);
     }
 
     /// <summary>Where a diagnostic of the SDK's is, as a build names a place: its file and line from 1.</summary>
