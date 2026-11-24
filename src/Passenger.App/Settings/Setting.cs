@@ -36,6 +36,10 @@ public sealed record EditorConfigOver(IReadOnlyList<string> Keys, Language? File
     /// <summary>What the row's note says of them.</summary>
     public string Words => $"A file's .editorconfig says over this by {Plural.Either(Keys)}.";
 
+    /// <summary>What a file's .editorconfig sets of them, as "key = value", where it sets one; null where it sets none.</summary>
+    public string? SetIn(Func<string, string?> conventions) =>
+        Keys.Concat(Aliases).Select(k => conventions(k) is { } value ? $"{k} = {value}" : null).FirstOrDefault(s => s is not null);
+
     /// <summary>Whether a key (as an .editorconfig's reader lowers it) is one of them.</summary>
     public bool Names(string key) => Keys.Contains(key, StringComparer.Ordinal) || Aliases.Contains(key, StringComparer.Ordinal);
 }
@@ -96,6 +100,12 @@ public sealed class ToggleSetting(Func<AppSettings, bool> get, Func<AppSettings,
     public override AppSettings Other(AppSettings settings) => set(settings, !get(settings));
 
     public override IReadOnlyList<string> EditorConfigValues => ["true", "false"];
+
+    /// <summary>Whether it is on in <paramref name="settings"/>.</summary>
+    public bool Of(AppSettings settings) => get(settings);
+
+    /// <summary>The settings with it turned on or off.</summary>
+    public AppSettings With(AppSettings settings, bool on) => set(settings, on);
 }
 
 /// <summary>A number held between <paramref name="min"/> and <paramref name="max"/>, edited by a spin box in steps of

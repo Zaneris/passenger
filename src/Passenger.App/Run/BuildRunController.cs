@@ -2415,6 +2415,11 @@ public sealed partial class BuildRunController
         return session.IsEnded ? Refusals.SolutionClosed : await RunAspireAsync(again, null, mode);
     }
 
+    /// <summary>Whether Hot Reload reaches the program a configuration runs: one program, the folder's own (not a script's,
+    /// nor Godot's editor, which loads its builds itself, nor a Functions app's, which func runs).</summary>
+    public bool ReachesHotReload(RunConfiguration chosen) =>
+        !chosen.IsScript && !chosen.GodotEditor && chosen.NamesNoOtherProgram(session.Projects) && !chosen.RunsFunctions(session.Projects);
+
     /// <summary>Resolves and builds the chosen configuration, then launches its plan under the debugger, with these arguments
     /// in place of its own if given; the Debug window opens on its Console until the program stops somewhere. Null once its
     /// session is open, or what stopped it (a failed build, no configuration, the adapter's refusal).</summary>

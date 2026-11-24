@@ -1337,18 +1337,43 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     private const string Spaced = "class Spaced\n{\n    public static int Two( )\n    {\n        return   2;\n    }\n}\n";
     private const string SpacedLaid = "class Spaced\n{\n    public static int Two()\n    {\n        return 2;\n    }\n}\n";
 
-    /// <summary>Settings' Reformat on save: File, Save lays the changed file out as Reformat Code does before writing it, and
-    /// one Undo takes the layout back; a language server that does not answer in time leaves the file saved as typed,
-    /// saying why; turned off, the file is saved as typed.</summary>
+    /// <summary>Settings' Reformat on save: the person's first save of a C# file in the folder's repository asks, without
+    /// taking the keys, whether a save tidies C# files, a key the file's .editorconfig sets said as its own, and what is ticked
+    /// is turned on; then File, Save lays the changed file out as Reformat Code does before writing it, and one Undo takes
+    /// the layout back; a language server that does not answer in time leaves the file saved as typed, saying why; turned
+    /// off, the file is saved as typed; and Optimize imports on save removes the unused usings and sorts the rest.</summary>
     private void Reformat_on_save_lays_a_file_out_before_writing_it_as_one_step_of_undo_and_without_the_server_or_turned_off_saves_it_as_typed()
     {
         const string Laid = "using System.Text;\nusing System;\nusing System.Collections.Generic;\n\nstatic class Messy\n{\n    public static int Count()\n    {\n"
             + "        List<string> names = [];\n        Console.WriteLine(names.Count);\n        int extra = names.Count;\n        return names.Count;\n    }\n}\n";
-        MainWindow window = project.Open("Messy.cs");
+        // Seen, as only a window the person sees asks them.
+        MainWindow window = project.Open("Tabs/Tabbed.cs", seen: true);
         CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument tabbed = window.EditorArea.Active!;
+        string written = tabbed.Text.Snapshot.ToString();
+        editor.ApplyEdits([new TextEdit(written.Length, 0, "\n")]);
+        Ui.Run(window, AppActions.Save);
+        Ui.WaitFor(() => window.Questions.Showing(Declared.SaveFormatting) is not null, "the question whether a save tidies C# files, at the first save of one");
+        ConfirmDialog asked = window.Questions.Showing(Declared.SaveFormatting)!;
+        Assert.False(asked.IsActive, "The question took the keys from what the person was doing");
+        Assert.DoesNotContain(asked.GetVisualDescendants().OfType<Button>(), b => b.IsDefault);
+        CheckBox[] boxes = [.. asked.GetVisualDescendants().OfType<CheckBox>()];
+        Assert.Equal(["Reformat on save", "Optimize imports on save"], boxes.Select(b => b.Content as string));
+        Assert.True(asked.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == "Ensure a final line break on save: this file's .editorconfig sets insert_final_newline = true, which every save follows."),
+            "The question did not say the file's .editorconfig decides its final line break");
+        Ui.Click(boxes[1]);
+        Ui.ClickButton(asked, "Turn On");
+        Assert.True(window.Settings is { ReformatOnSave: true, OptimizeImportsOnSave: false, EnsureFinalLineBreak: false },
+            $"Turn On did not turn on what was ticked alone: Reformat on save {window.Settings.ReformatOnSave}, Optimize imports on save {window.Settings.OptimizeImportsOnSave}, a final line break {window.Settings.EnsureFinalLineBreak}");
+        editor.ApplyEdits([new TextEdit(written.Length, 1, string.Empty)]);
+        Ui.Run(window, AppActions.Save);
+        Ui.WaitFor(() => !tabbed.IsModified, "Tabbed.cs saved as it was");
+        Assert.True(File.ReadAllText(project.PathOf("Tabs/Tabbed.cs")) == written, $"Tabbed.cs was not saved back as it was:\n{File.ReadAllText(project.PathOf("Tabs/Tabbed.cs"))}");
+        Assert.True(window.Questions.Showing(Declared.SaveFormatting) is null && window.Questions.WasAsked(Declared.SaveFormatting), "The next save in the repository asked again");
+
+        window.OpenFile(project.PathOf("Messy.cs"));
         OpenDocument document = window.EditorArea.Active!;
         string path = project.PathOf("Messy.cs");
-        window.ApplySettings(window.Settings with { ReformatOnSave = true });
         editor.ApplyEdits([new TextEdit(editor.Document.Snapshot.ToString().IndexOf("      return", StringComparison.Ordinal), 0, "        int  extra=names.Count;\n")]);
         string typed = editor.Document.Snapshot.ToString();
         Ui.Run(window, AppActions.Save);
@@ -1374,6 +1399,14 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Run(window, AppActions.Save);
         Ui.WaitFor(() => !document.IsModified, "Messy.cs saved again");
         Assert.True(File.ReadAllText(path) == kept, $"Save with Reformat on save off did not write the file as typed:\n{File.ReadAllText(path)}");
+
+        window.ApplySettings(window.Settings with { OptimizeImportsOnSave = true });
+        editor.ApplyEdits([new TextEdit(editor.Document.Snapshot.ToString().IndexOf("      return", StringComparison.Ordinal), 0, "        int  most=2;\n")]);
+        string optimized = editor.Document.Snapshot.ToString().Replace("using System.Text;\nusing System;\n", "using System;\n", StringComparison.Ordinal);
+        Ui.Run(window, AppActions.Save);
+        Ui.WaitFor(() => !document.IsModified, "Messy.cs saved with its imports optimized");
+        Assert.True(File.ReadAllText(path) == optimized, $"Save with Optimize imports on save on did not write the file with its unused using gone:\n{File.ReadAllText(path)}");
+        window.ApplySettings(window.Settings with { OptimizeImportsOnSave = false });
         window.Close();
     }
 
@@ -3402,7 +3435,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Breaks/CrlfFile.cs"), "class CrlfFile\r\n{\r\n    public int X { get; }\r\n\r\n    static void Make()\r\n    {\r\n        int made = 0;\r\n    }\r\n}\r\n");
             // Tabs: an .editorconfig asks for tabs. Detected: no .editorconfig says, and each file's own lines do.
             Directory.CreateDirectory(PathOf("Tabs"));
-            File.WriteAllText(PathOf("Tabs/.editorconfig"), "[*.cs]\nindent_style = tab\n");
+            File.WriteAllText(PathOf("Tabs/.editorconfig"), "[*.cs]\nindent_style = tab\ninsert_final_newline = true\n");
             File.WriteAllText(PathOf("Tabs/Tabbed.cs"), "class Tabbed\n{\n\tpublic int X { get; }\n\n\tstatic void Make()\n\t{\n\t\tint made = 0;\n\t}\n}\n");
             // Keys: an .editorconfig setting what Roslyn reads, and what nothing reads.
             Directory.CreateDirectory(PathOf("Keys"));

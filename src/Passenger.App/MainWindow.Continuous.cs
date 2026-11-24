@@ -15,26 +15,8 @@ namespace Passenger.App;
 /// marked with how the tests running them last ended, a press on a mark listing those tests.</summary>
 public partial class MainWindow
 {
-    private FirstTimeQuestions? questions;
-
     /// <summary>The open folder's continuous testing.</summary>
     public ContinuousTests Continuous => session.Continuous;
-
-    /// <summary>The window's first-time questions, each asked once in its scope.</summary>
-    public FirstTimeQuestions Questions => questions ??= MakeQuestions();
-
-    private FirstTimeQuestions MakeQuestions()
-    {
-        FirstTimeQuestions made = new(Store, () => Unseen);
-        made.Changed += (_, question) =>
-        {
-            if (question == Declared.ContinuousTesting)
-            {
-                session.Continuous.Turn(made.IsOn(question));
-            }
-        };
-        return made;
-    }
 
     private void AddContinuousTesting()
     {
@@ -103,9 +85,6 @@ public partial class MainWindow
         : of.Debug.IsDebugging ? "a program is debugged"
         : of.Profiled is not null || of.ProfileStarting is not null ? "a program is profiled"
         : null;
-
-    /// <summary>The person's own run of tests asks, the first time in the folder's repository, whether to test continuously.</summary>
-    private void AskContinuousTesting() => Questions.Ask(Declared.ContinuousTesting, this);
 
     private void MarkReach(ProjectSession of)
     {

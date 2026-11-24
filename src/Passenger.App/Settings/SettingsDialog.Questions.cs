@@ -11,10 +11,14 @@ public sealed partial class SettingsDialog
     /// <summary>Each question's answer as its row has it, where changed since the dialog opened or last applied.</summary>
     private readonly Dictionary<FirstTimeQuestion, bool> answering = [];
 
-    /// <summary>A question's row: a check box of its answer, greyed, saying why, where its scope is a repository and the
-    /// window has no folder.</summary>
+    /// <summary>A question's row, where it keeps its answer: a check box of its answer, greyed, saying why, where its scope is
+    /// a repository and the window has no folder.</summary>
     private void Add(FirstTimeQuestion question)
     {
+        if (question.Row is not { } row)
+        {
+            return;
+        }
         CheckBox box = new() { IsChecked = questions?.IsOn(question) ?? question.Default };
         box.IsCheckedChanged += (_, _) => answering[question] = box.IsChecked == true;
         if (question.Scope == QuestionScope.Repository && questions?.Repository is null)
@@ -23,7 +27,7 @@ public sealed partial class SettingsDialog
             ToolTip.SetShowOnDisabled(box, true);
             ToolTip.SetTip(box, "Open a folder to choose this for its repository");
         }
-        Add(question.Row.Page, question.Row.Label, box, question.Row.Words, question.Row.Note);
+        Add(row.Page, row.Label, box, row.Words, row.Note);
     }
 
     private void ApplyQuestions()

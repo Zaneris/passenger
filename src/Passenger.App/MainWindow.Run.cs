@@ -541,7 +541,11 @@ public partial class MainWindow
     }
 
     /// <summary>Run, from its key, the toolbar or the Run window: what stopped it, if anything, is in the status bar.</summary>
-    private void RunSelected() => IdeErrors.Observe(RunAsync());
+    private void RunSelected()
+    {
+        AskHotReload();
+        IdeErrors.Observe(RunAsync());
+    }
 
     /// <summary>A program run with the Run window's console, or a Debug tab's, said it needs a terminal: that console offers,
     /// over what it wrote, to start it again in one, as the Profiler window does over its run for a program Profile started.</summary>
@@ -591,6 +595,7 @@ public partial class MainWindow
     /// <summary>Debug, from its key or the toolbar: what stopped it, if anything, goes to the status bar.</summary>
     public void DebugSelected()
     {
+        AskHotReload();
         IdeErrors.Observe(Debug());
 
         async Task Debug()

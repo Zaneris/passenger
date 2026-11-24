@@ -1072,6 +1072,38 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
     }
 
+    /// <summary>Optimize imports on save: a changed C# file's unused usings removed and the rest sorted, as Optimize Imports
+    /// does, its language server given <see cref="SaveLimit"/> to answer. Null once done, or where nothing serves the file;
+    /// else why it was left as it was, in the status bar's words, the save going on regardless.</summary>
+    internal async Task<string?> OptimizeImportsOnSaveAsync(OpenDocument document)
+    {
+        const string what = "Optimize imports on save";
+        if (context.ServerOf(document) is not { } served)
+        {
+            return null;
+        }
+        if (served.Lsp is not { } lsp)
+        {
+            return context.CSharp?.Unready(what, document);
+        }
+        Task tidying = TidyUsings(lsp, document);
+        try
+        {
+            await tidying.WaitAsync(Waits.Of(SaveLimit));
+            return null;
+        }
+        catch (TimeoutException)
+        {
+            // Its edits, should they come, are carried through what was typed as Optimize Imports' are.
+            UnawaitedWork.Dismiss(tidying);
+            return $"{what} was not applied to {document.Name}: its language server did not answer within {Durations.Said(Waits.Of(SaveLimit))}";
+        }
+        catch (LanguageServerFailed failed)
+        {
+            return $"{what} failed: {failed.Reason}";
+        }
+    }
+
     /// <summary>A selection ending at a line's start, as one of whole lines does, kept to the lines before it: the line it
     /// ends at is not among those to lay out.</summary>
     private static TextRange WholeLines(TextSnapshot text, TextRange range)

@@ -201,6 +201,7 @@ public partial class MainWindow
         assist.XamlFormat = next.XamlFormat;
         assist.GDScriptFormat = (next.GDScriptFormat, next.GDScriptFormatOnSave);
         assist.ReformatsOnSave = next.ReformatOnSave;
+        assist.OptimizesImportsOnSave = next.OptimizeImportsOnSave;
         assist.CSharpFormatter = next.CSharpFormatter;
         if (terminal is { } panel)
         {

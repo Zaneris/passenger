@@ -878,6 +878,9 @@ public sealed class CodeAssist
     /// <summary>Settings' Reformat on save, for every file a language's own on-save formatting leaves.</summary>
     public bool ReformatsOnSave { get; set; }
 
+    /// <summary>Settings' Optimize imports on save, for C# files.</summary>
+    public bool OptimizesImportsOnSave { get; set; }
+
     /// <summary>Settings' C# formatter (<see cref="AssistContext.CSharpFormatter"/>).</summary>
     public Settings.CSharpFormatter CSharpFormatter
     {
@@ -893,13 +896,14 @@ public sealed class CodeAssist
     }
 
     /// <summary>What a save does first to a changed file, as Settings ask: <c>eslint --fix</c>, then Prettier, or a
-    /// GDScript's Reformat on save, else Reformat on save's Reformat Code, so one formatter at most lays it out. Each its
-    /// own undoable edit. Why Reformat on save left the file as it was, or null.</summary>
+    /// GDScript's Reformat on save, else a C# file's Optimize imports on save, then Reformat on save's Reformat Code, so
+    /// one formatter at most lays it out. Each its own undoable edit. Why one left the file as it was, or null.</summary>
     public async Task<string?> BeforeSave(OpenDocument document)
     {
         bool prettier = await context.Languages.Web.BeforeSave(document);
         bool script = await context.Languages.GDScript.BeforeSave(document);
-        return ReformatsOnSave && !prettier && !script ? await actions.ReformatOnSaveAsync(document) : null;
+        string? imports = OptimizesImportsOnSave && document.Language == Passenger.Languages.Language.CSharp ? await actions.OptimizeImportsOnSaveAsync(document) : null;
+        return ReformatsOnSave && !prettier && !script ? await actions.ReformatOnSaveAsync(document) ?? imports : imports;
     }
 
     /// <summary>A service's or an AppHost's Aspire fixes on an offset's line (<see cref="CSharpAssist.AspireFixes"/>).</summary>

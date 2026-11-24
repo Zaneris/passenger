@@ -261,6 +261,11 @@ public static class Declared
             + "does. A web file whose folder names Oxfmt or Biome is laid out by it, one Prettier's Run on save covers otherwise by "
             + "Prettier alone, and GDScript's own Reformat on save (Code Style: GDScript) turns this on for scripts alone."));
 
+    public static readonly ToggleSetting OptimizeImportsOnSave = new(s => s.OptimizeImportsOnSave, (s, v) => s with { OptimizeImportsOnSave = v },
+        new(D.EditorPage, "Optimize imports on save", "save actions on save optimize imports usings unused remove sort c#",
+            "File, Save and Save All first remove a changed C# file's unused usings and sort the rest, as Optimize Imports does, before "
+            + "Reformat on save; autosave never does."));
+
     public static readonly ChoiceSetting<CSharpFormatter> CSharpFormatter = new(s => s.CSharpFormatter, (s, v) => s with { CSharpFormatter = v },
         [(Settings.CSharpFormatter.Passenger, "Passenger's own"), (Settings.CSharpFormatter.DotnetFormat, "dotnet format")],
         new(D.EditorPage, "C# formatter", "c# formatter dotnet format reformat code cleanup on save layout whitespace style analyzers sdk editorconfig",
@@ -456,21 +461,21 @@ public static class Declared
 
     /// <summary>Whether a repository's tests run continuously (<see cref="Testing.ContinuousTests"/>): off until the person says,
     /// asked the first time they run tests in it.</summary>
-    public static readonly FirstTimeQuestion ContinuousTesting = new("continuousTesting", QuestionScope.Repository, Default: false,
-        new(D.BuildPage, "Test continuously as files are saved, in this repository", "continuous testing tests rerun run again save background build affected covered coverage unit",
+    public static readonly FirstTimeQuestion ContinuousTesting = new("continuousTesting", QuestionScope.Repository,
+        "Test Continuously?",
+        "Passenger can build this repository's tests in a folder of its own as you save, and run again only the tests that run "
+        + "what changed, each line showing whether its tests pass. It takes a little more memory than the tests take, and tests "
+        + $"that write to a database, files or containers do so at each save. {SettingsDialog.PlaceOfPage(SettingsDialog.BuildPage)} changes it later.",
+        "Turn On", "Not Now")
+    {
+        Default = false,
+        Row = new(D.BuildPage, "Test continuously as files are saved, in this repository", "continuous testing tests rerun run again save background build affected covered coverage unit",
             "Passenger builds the test projects in a folder of its own and runs again, one at a time, the tests that ran the lines a save "
             + "changed, each line then showing whether its tests pass. It counts each line a test runs, which adds a little to the memory "
             + "the tests take: Passenger's own 606 unit tests peaked at 1.9 GB in their test host, about 0.1 GB above the same tests run one "
             + "at a time uncounted. Tests that write to a database, files or containers do so at each save. What it builds is kept in "
             + "Passenger's own cache, removed as it is turned off for a repository and for folders not opened for 30 days."),
-        "Test Continuously?",
-        "Passenger can build this repository's tests in a folder of its own as you save, and run again only the tests that run "
-        + "what changed, each line showing whether its tests pass. It takes a little more memory than the tests take, and tests "
-        + $"that write to a database, files or containers do so at each save. {SettingsDialog.PlaceOfPage(SettingsDialog.BuildPage)} changes it later.",
-        "Turn On", "Not Now");
-
-    /// <summary>Every first-time question, which Settings shows a row of each.</summary>
-    public static IReadOnlyList<FirstTimeQuestion> Questions { get; } = [ContinuousTesting];
+    };
 
     public static readonly ToggleSetting HotReloadWhileDebugging = new(s => s.HotReloadWhileDebugging, (s, v) => s with { HotReloadWhileDebugging = v },
         new(D.HotReloadPage, "Hot Reload when debugging (Edit and Continue)", "hot reload edit and continue enc debug apply changes paused running alt f10"));
@@ -487,6 +492,32 @@ public static class Declared
 
     public static readonly ToggleSetting RestartOnRudeEdit = new(s => s.RestartOnRudeEdit, (s, v) => s with { RestartOnRudeEdit = v },
         new(D.HotReloadPage, "Always restart for a change it cannot apply", "hot reload rude edit restart ask always never dotnet watch"));
+
+    /// <summary>Whether a save tidies C# files, asked at the person's first save of one in a repository: Reformat on save,
+    /// Optimize imports on save and a final line break, each as its box says, one an .editorconfig decides left to it.</summary>
+    public static readonly FirstTimeQuestion SaveFormatting = new("saveFormatting", QuestionScope.Repository,
+        "Tidy C# Files as You Save?",
+        "Passenger can tidy each C# file as you save it, before writing it, each change one step of Undo; autosave never does. "
+        + $"What you choose applies in every folder, and {SettingsDialog.PlaceOfPage(SettingsDialog.EditorPage)} changes it later.",
+        "Turn On", "Not Now")
+    {
+        Settings = [ReformatOnSave, OptimizeImportsOnSave, EnsureFinalLineBreak],
+    };
+
+    /// <summary>Whether Run runs with Hot Reload, asked at the person's first Run or Debug in a repository of a program Hot
+    /// Reload reaches.</summary>
+    public static readonly FirstTimeQuestion RunWithHotReload = new("hotReload", QuestionScope.Repository,
+        "Run with Hot Reload?",
+        "Passenger can run your programs with Hot Reload: a save applies your changes to the program as it runs, without starting "
+        + "it again, and a change it cannot apply starts it again. Debugging applies them as it always does. It applies to Run in "
+        + $"every folder, and {SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)} changes it later.",
+        "Run with Hot Reload", "Not Now")
+    {
+        Settings = [HotReload],
+    };
+
+    /// <summary>Every first-time question.</summary>
+    public static IReadOnlyList<FirstTimeQuestion> Questions { get; } = [ContinuousTesting, SaveFormatting, RunWithHotReload];
 
     public static readonly ChoiceSetting<DebuggerStop> WhenDebuggerStops = new(s => s.WhenDebuggerStops, (s, v) => s with { WhenDebuggerStops = v },
         [(DebuggerStop.ComeForward, "Bring Passenger to the front"), (DebuggerStop.AskForAttention, "Ask for attention"), (DebuggerStop.Nothing, "Nothing")],

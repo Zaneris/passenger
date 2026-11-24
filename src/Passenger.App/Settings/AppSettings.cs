@@ -152,6 +152,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// a language's own on-save formatting takes (Prettier's Run on save, GDScript's Reformat on save).</summary>
     public bool ReformatOnSave { get; init; }
 
+    /// <summary>"Optimize imports on save": a save (File, Save All) first removes a changed C# file's unused usings and sorts
+    /// the rest, as Optimize Imports does, before Reformat on save.</summary>
+    public bool OptimizeImportsOnSave { get; init; }
+
     /// <summary>"C# formatter": what lays C# out for Reformat Code, Code Cleanup and Reformat on save, Passenger's own (the
     /// language server's) at first.</summary>
     public CSharpFormatter CSharpFormatter { get; init; }

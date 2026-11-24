@@ -205,6 +205,7 @@ public partial class MainWindow
         {
             await EditorArea.LandedAsync(saving.Select(d => d.Path), null);
         }
+        AskSaveFormatting(saving);
         // Not held while the person is asked, so a screenshot or a test finds the question.
         await SaveReadOnlyAsync(saving);
     }

@@ -7,6 +7,7 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Explorer;
 using Passenger.App.Run;
+using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
@@ -166,7 +167,8 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
 
     /// <summary>With Ask before stopping a running configuration to start it again on, Run of the program that runs asks
     /// first: Cancel leaves it running, Stop ends it and starts nothing, a Run with nothing running asks nothing, and Stop and
-    /// Rerun with Don't ask again ticked runs it again and turns the question off.</summary>
+    /// Rerun with Don't ask again ticked runs it again and turns the question off. The first Run in the folder's repository
+    /// asks too, without taking the keys, whether Run runs with Hot Reload, once, its answer Settings' Hot Reload.</summary>
     private void Asked_before_a_rerun_cancel_leaves_the_program_running_stop_ends_it_and_stop_and_rerun_starts_it_again()
     {
         string started = Path.Combine(Folder, "program.pid");
@@ -188,7 +190,12 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         try
         {
             Assert.True(window.Perform(AppActions.RunProgram), $"Run could not run: {window.Status}");
+            ConfirmDialog hotReload = window.Questions.Showing(Declared.RunWithHotReload)
+                ?? throw new Xunit.Sdk.XunitException("The first Run in the repository did not ask whether to run with Hot Reload");
+            Assert.False(hotReload.IsActive, "The question took the keys from what the person was doing");
+            Assert.DoesNotContain(hotReload.GetVisualDescendants().OfType<Button>(), b => b.IsDefault);
             Ui.WaitFor(() => window.Runner.IsRunning && Processes.ReadId(started) > 0, "the program to run", TimeSpan.FromMinutes(2));
+            Assert.False(window.Builds.WatchesHotReload, "The run the question came with ran with Hot Reload before it was answered");
             int first = Processes.ReadId(started);
 
             ChoiceDialog cancelled = RunAgainAsked(window);
@@ -212,6 +219,11 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Ui.WaitFor(() => window.Runner.IsRunning && Processes.ReadId(started) is int third && third > 0 && third != second, "the program to run again", TimeSpan.FromMinutes(2));
             Assert.False(Processes.IsRunning(second), "Stop and Rerun left the program it stopped running beside the new one");
             Assert.False(window.Settings.AskBeforeRerun, "Don't ask again left the question on");
+
+            Assert.True(window.Questions.Showing(Declared.RunWithHotReload) == hotReload, "The Hot Reload question was asked again while it showed");
+            Ui.ClickButton(hotReload, "Run with Hot Reload");
+            Assert.True(window.Settings.HotReload, "Run with Hot Reload did not turn on Settings' Hot Reload");
+            Assert.False(window.Questions.WouldAsk(Declared.RunWithHotReload), "The repository's Hot Reload question would be asked again");
         }
         finally
         {
