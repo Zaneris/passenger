@@ -346,7 +346,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
             dialog.Attach();
             Ui.WaitFor(() => refused.Status is { } said && (said.Contains("SHA256SUMS", StringComparison.Ordinal) || said.StartsWith("Could not", StringComparison.Ordinal)),
                 "the status bar to say the download was refused");
-            Assert.Contains("are not what the", refused.Status, StringComparison.Ordinal);
+            Assert.Contains($"downloaded from the {tag} release did not match its SHA256SUMS", refused.Status, StringComparison.Ordinal);
             Assert.False(refused.Debugger.IsDebugging, "A session started with tools whose checksum did not match");
             Assert.Empty(Directory.GetFileSystemEntries(Path.Combine(badCache, Product.Version)));
             Assert.Contains("No such file", Docker.Ask(["exec", refusing, "ls", ContainerTools.Copied]), StringComparison.Ordinal);
