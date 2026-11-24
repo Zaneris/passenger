@@ -364,7 +364,7 @@ public sealed partial class Vim
                     changeExtent = extent with
                     {
                         Again = !after ? InsertAgain.AtCursor
-                            : aim == int.MaxValue && !above ? InsertAgain.OnLastBelow
+                            : aim == int.MaxValue ? InsertAgain.OnLastBelow
                             : InsertAgain.AtColumnBelow,
                     };
                 }

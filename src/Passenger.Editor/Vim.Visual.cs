@@ -20,10 +20,10 @@ public sealed partial class Vim
     /// for I or A over characters or lines, where . types again (<see cref="InsertAgain"/>).</summary>
     private readonly record struct VisualExtent(VimMode Mode, int Lines, int Columns, bool ToEnd, InsertAgain Again = InsertAgain.None);
 
-    /// <summary>Where . types again what I or A over characters or lines typed: at the caret, as I did (and A over a
-    /// cursor above where the stretch began, unless its last block began past the first column, or on a single place in
-    /// the first column), else as many lines below as the stretch had, at the caret's place in its line or, as A after $
-    /// did, that line's last character, past it where the columns the last visual change kept widen.</summary>
+    /// <summary>Where . types again what I or A over characters or lines typed: at the caret, as I did; else as many
+    /// lines below as the stretch had, at the caret's place in its line or, as A after $ did (its cursor above where the
+    /// stretch began too), that line's last character, past it where the columns the last visual change kept
+    /// differ.</summary>
     private enum InsertAgain
     {
         None,
