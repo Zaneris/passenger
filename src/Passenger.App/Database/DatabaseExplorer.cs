@@ -444,7 +444,10 @@ public sealed class DatabaseExplorer : DockPanel
     private void Show()
     {
         List<DatabaseNode> wanted = [.. controller.Sources.Select(s => roots.FirstOrDefault(r => r.Source with { Mark = s.Mark } == s)
-            ?? new DatabaseNode(DatabaseNodeKind.Connection, s.Name, 0, s) { Database = s.Database, Detail = s.Found ?? DatabaseKinds.Title(s.Kind) })];
+            ?? new DatabaseNode(DatabaseNodeKind.Connection, s.Name, 0, s)
+            {
+                Database = s.Database, Detail = (s.Found ?? DatabaseKinds.Title(s.Kind)) + (s.Tunnel is { } tunnel ? $" · through {tunnel.Host}" : string.Empty),
+            })];
         foreach ((DatabaseNode root, DatabaseSource source) in wanted.Zip(controller.Sources))
         {
             root.Mark = source.Mark;

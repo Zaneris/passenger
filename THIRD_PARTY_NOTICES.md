@@ -25,6 +25,8 @@ out; dbgshim's musl Linux natives are the container tools' (below), which the ap
 | `SQLitePCLRaw.bundle_e_sqlite3`, `SQLitePCLRaw.lib.e_sqlite3`, `SQLitePCLRaw.provider.e_sqlite3` | The SQLite provider's native runtime and interop | Apache-2.0 | Copyright 2014-2024 SourceGear, LLC |
 | `Npgsql` | The Database window's PostgreSQL provider | PostgreSQL | Copyright 2025 © The Npgsql Development Team |
 | `MySqlConnector` | The Database window's MySQL and MariaDB provider | MIT | Copyright 2016–2026 Bradley Grainger |
+| `SSH.NET` | A database connection's SSH tunnel through a bastion | MIT | Copyright © Renci 2010-2026 |
+| `BouncyCastle.Cryptography` | SSH.NET's ciphers, keys and key exchange | MIT | Copyright © Legion of the Bouncy Castle Inc. 2000-2026 |
 | `Microsoft.Data.SqlClient`, `Microsoft.Data.SqlClient.Extensions.Abstractions`, `Microsoft.Data.SqlClient.Internal.Logging`, `Microsoft.Data.SqlClient.SNI.runtime` | The Database window's SQL Server provider and its native transport | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Bcl.Cryptography`, `Microsoft.IdentityModel.JsonWebTokens`, `Microsoft.IdentityModel.Logging`, `Microsoft.IdentityModel.Protocols`, `Microsoft.IdentityModel.Protocols.OpenIdConnect`, `Microsoft.IdentityModel.Tokens`, `Microsoft.SqlServer.Server`, `System.IdentityModel.Tokens.Jwt`, `System.Threading.RateLimiting`, `System.Security.Cryptography.Pkcs` | SQL Server's authentication, cryptography and protocol dependencies | MIT | © Microsoft Corporation. All rights reserved. |
 | `Google.Protobuf` | Aspire resource service protocol messages | BSD-3-Clause | Copyright 2015, Google Inc. |

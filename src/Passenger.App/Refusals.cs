@@ -737,6 +737,22 @@ public static class Refusals
     /// <summary>Export Data into a folder that is not there.</summary>
     public static string NoFolderThere(string folder) => $"{folder} is not there to write into";
 
+    /// <summary>A connection's SSH tunnel whose bastion gave a host key the person has not trusted.</summary>
+    public static string SshHostKeyUnknown(string host) => $"{host}'s SSH host key is not trusted yet: edit the connection to see and trust it";
+
+    /// <summary>A connection's SSH tunnel whose bastion gave another host key than the one the person trusted.</summary>
+    public static string SshHostKeyChanged(string host, string seen) =>
+        $"{host}'s SSH host key changed to {seen} since it was trusted, so nothing was sent: edit the connection to trust the new key if its administrator changed it";
+
+    /// <summary>A connection's SSH tunnel that could not be opened.</summary>
+    public static string SshUnreachable(string host, string why) => $"The SSH tunnel through {host} could not be opened: {why}";
+
+    /// <summary>Why only the person answers whether to trust an SSH host key.</summary>
+    public const string SshHostKeyByThePerson = "Only the person answers whether to trust an SSH host key: no agent's input reaches the question";
+
+    /// <summary>A connection through an SSH tunnel with no bastion, or no user on it, named.</summary>
+    public const string NoSshHost = "Name the SSH host and its user";
+
     /// <summary>Import Data with none of the file's columns going into the table.</summary>
     public const string NoColumnImported = "Choose a column of the table for at least one of the file's columns";
 

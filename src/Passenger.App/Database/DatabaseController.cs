@@ -59,6 +59,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
     {
         UiThread.Check();
         lifetime.Cancel();
+        SshTunnels.Close([.. Sources.Select(s => s.Id)]);
         foreach (SqlConsole console in consoles.Values)
         {
             LetGo(console);
@@ -79,6 +80,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
     {
         UiThread.Check();
         lifetime.Cancel();
+        SshTunnels.Close([.. Sources.Select(s => s.Id)]);
         lifetime = new CancellationTokenSource();
         session = next;
         kept = null;
@@ -112,6 +114,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             ConnectionString = connection.ConnectionString,
             SecretKept = true,
             Mark = connection.Mark,
+            Tunnel = connection.Tunnel,
         }));
         foreach ((string path, Guid id) in state.Value.Consoles)
         {
@@ -465,7 +468,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         }
         kept.Set((kept.Value with
         {
-            Connections = [.. made.Select(source => new KeptConnection(source.Id, source.Name, source.Kind, source.ConnectionString, source.Mark))],
+            Connections = [.. made.Select(source => new KeptConnection(source.Id, source.Name, source.Kind, source.ConnectionString, source.Mark, source.Tunnel))],
             Consoles = consoles.Values.Where(c => c.Connection is { } id && made.Any(m => m.Id == id)).ToDictionary(c => c.Path, c => c.Connection!.Value),
             ManualCommit = [.. consoles.Values.Where(c => c.Manual).Select(c => c.Path)],
             FoundMarks = new Dictionary<string, DatabaseMark>(kept.Value.FoundMarks.Where(m => !found.Any(f => f.FoundKey == m.Key))
@@ -591,9 +594,10 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             found = [.. found.Where(s => s.Id != original.Id)];
             made.Add(changed);
         }
-        if (original.ConnectionString != changed.ConnectionString || original.Kind != changed.Kind)
+        if (original.ConnectionString != changed.ConnectionString || original.Kind != changed.Kind || original.Tunnel != changed.Tunnel)
         {
             connected.Remove(original.Id);
+            SshTunnels.Close([original.Id]);
         }
         Keep();
         Changed?.Invoke(this, EventArgs.Empty);
@@ -607,12 +611,15 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         found = [.. found.Where(s => s.Id != source.Id)];
         connected.Remove(source.Id);
         SystemCredentials.Forget(CredentialService, source.Account);
+        SystemCredentials.Forget(CredentialService, source.TunnelAccount);
+        SshTunnels.Close([source.Id]);
         Keep();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>A connection as kept: its secret parts put in the system's store and taken out of its string. One given with
-    /// none keeps those stored already where <paramref name="keepsOld"/> (an edit that left the password as it was).</summary>
+    /// <summary>A connection as kept: its secret parts, and its tunnel's password or passphrase, put in the system's store
+    /// and taken out of it. One given with none keeps those stored already where <paramref name="keepsOld"/> (an edit that
+    /// left the password as it was).</summary>
     private static DatabaseSource Kept(DatabaseSource source, bool keepsOld)
     {
         (string rest, string secret) = KeptConnection.Split(source.Kind, source.ConnectionString);
@@ -624,7 +631,15 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         {
             SystemCredentials.Forget(CredentialService, source.Account);
         }
-        return source with { ConnectionString = rest, SecretKept = true };
+        if (source is { Tunnel: not null, TunnelSecret.Length: > 0 })
+        {
+            SystemCredentials.Store(CredentialService, source.TunnelAccount, source.TunnelSecret);
+        }
+        else if (source.Tunnel is null || !keepsOld)
+        {
+            SystemCredentials.Forget(CredentialService, source.TunnelAccount);
+        }
+        return source with { ConnectionString = rest, SecretKept = true, TunnelSecret = null };
     }
 
     /// <summary>Forgets that a connection was opened, so its explorer reads it again when next opened.</summary>
@@ -632,6 +647,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
     {
         UiThread.Check();
         connected.Remove(source.Id);
+        SshTunnels.Close([source.Id]);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 

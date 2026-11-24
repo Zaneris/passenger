@@ -36,7 +36,8 @@ public sealed record DatabaseState : IStateDocument<DatabaseState>
     public DatabaseState Clamped() => this with
     {
         Connections = [.. (Connections ?? []).Where(c => c is { Name.Length: > 0 } && Enum.IsDefined(c.Kind))
-            .Select(c => Enum.IsDefined(c.Mark) ? c : c with { Mark = DatabaseMark.None }).DistinctBy(c => c.Id).Take(200)],
+            .Select(c => Enum.IsDefined(c.Mark) ? c : c with { Mark = DatabaseMark.None })
+            .Select(c => c.Tunnel is { Host.Length: > 0, User.Length: > 0, Port: > 0 and < 65536 } ? c : c with { Tunnel = null }).DistinctBy(c => c.Id).Take(200)],
         Consoles = (Consoles ?? []).Where(c => c.Key.Length > 0).Take(500).ToDictionary(),
         ManualCommit = [.. (ManualCommit ?? []).Where(p => p is { Length: > 0 }).Distinct().Take(500)],
         FoundMarks = (FoundMarks ?? []).Where(m => m.Key.Length > 0 && m.Value != DatabaseMark.None && Enum.IsDefined(m.Value)).Take(500).ToDictionary(),
@@ -50,8 +51,8 @@ public sealed record DatabaseState : IStateDocument<DatabaseState>
 /// <summary>A statement or batch run on a connection, when, and what it came to.</summary>
 public sealed record SqlRan(string Statement, DateTime At, string Outcome, bool Failed = false);
 
-/// <summary>A connection made by hand, its connection string with every secret part taken out, and its mark.</summary>
-public sealed record KeptConnection(Guid Id, string Name, DatabaseKind Kind, string ConnectionString, DatabaseMark Mark = DatabaseMark.None)
+/// <summary>A connection made by hand, its connection string with every secret part taken out, its mark and its tunnel.</summary>
+public sealed record KeptConnection(Guid Id, string Name, DatabaseKind Kind, string ConnectionString, DatabaseMark Mark = DatabaseMark.None, SshTunnel? Tunnel = null)
 {
     /// <summary>A connection's string split in two: what may be kept in a file, and its secret parts as a connection string.</summary>
     public static (string Kept, string Secret) Split(DatabaseKind kind, string connection)

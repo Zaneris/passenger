@@ -1,5 +1,8 @@
+using System.Buffers.Binary;
 using System.Data.Common;
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -7,6 +10,7 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Database;
 using Passenger.App.Tables;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -16,12 +20,16 @@ namespace Passenger.Tests;
 /// settings, its explorer down to a table's key column and trigger, the table's DDL as the server gives it, a console's
 /// statement run into a grid, its parameter asked for and kept in its history, completion of the table's columns, a table's
 /// changes submitted as one, a console's manual transaction rolled back and committed, the table exported as CSV, its rows
-/// copied as inserts and run again, a CSV imported into a new table and a refused row writing nothing, and a production
-/// connection asking before an UPDATE, each through its own driver. Skipped, naming the image, where the engine lacks it,
-/// as it is never pulled.</summary>
+/// copied as inserts and run again, a CSV imported into a new table and a refused row writing nothing, a production
+/// connection asking before an UPDATE, and a connection made through an SSH bastion with its SSL verified, each through
+/// its own driver. Skipped, naming the image, where the engine lacks it, as it is never pulled.</summary>
 public sealed class DatabaseServersTests
 {
     private const string Password = "Passenger-db-7c1d";
+    private const string SshPassword = "Passenger-ssh-4e2a";
+
+    /// <summary>The bastion's image, pinned to the one the test was written against.</summary>
+    private const string SshImage = "lscr.io/linuxserver/openssh-server@sha256:c8431b8982e7eb3935ebf9c46607d19c6417e39c12ce884cc66945df2e9334e8";
 
     [AvaloniaTheory]
     [InlineData(DatabaseKind.Postgres, "postgres:17-alpine")]
@@ -31,6 +39,7 @@ public sealed class DatabaseServersTests
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         Assert.SkipWhen(Docker.Said("image", "inspect", image) is null, $"The engine lacks {image}, which this test never pulls: pull it to run the test");
+        Assert.SkipWhen(Docker.Said("image", "inspect", SshImage) is null, $"The engine lacks {SshImage}, which this test never pulls: pull it to run the test");
         string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}db{kind}".ToLowerInvariant();
         (int port, string[] environment) = kind switch
         {
@@ -38,9 +47,40 @@ public sealed class DatabaseServersTests
             DatabaseKind.MySql => (3306, ["MARIADB_ROOT_PASSWORD=" + Password, "MARIADB_DATABASE=shop"]),
             _ => (1433, ["ACCEPT_EULA=Y", "MSSQL_SA_PASSWORD=" + Password]),
         };
-        Docker.Run(["run", "-d", "--name", name, "--label", Docker.RunLabel, "-p", $"127.0.0.1::{port}", .. environment.SelectMany(e => new[] { "-e", e }), image]);
+        // The server's SSL is its certificate for "db", its name on a network it shares only with the bastion.
+        string certificates = TestFolders.Create("database-certificates");
+        Certify(certificates);
+        string[] serving = kind switch
+        {
+            DatabaseKind.Postgres => ["--entrypoint", "sh", image, "-c", "chown postgres /certs/server.key && chmod 600 /certs/server.key && exec docker-entrypoint.sh postgres "
+                + "-c ssl=on -c ssl_cert_file=/certs/server.crt -c ssl_key_file=/certs/server.key"],
+            DatabaseKind.MySql => [image, "--ssl-cert=/certs/server.crt", "--ssl-key=/certs/server.key"],
+            _ => [image],
+        };
+        string ssh = name + "ssh";
         try
         {
+            Docker.Run(["network", "create", "--label", Docker.RunLabel, name]);
+            Docker.Run(["create", "--name", name, "--label", Docker.RunLabel, "--network", name, "--network-alias", "db", "-p", $"127.0.0.1::{port}",
+                .. environment.SelectMany(e => new[] { "-e", e }), .. serving]);
+            Docker.Run("cp", certificates, $"{name}:/certs");
+            if (kind == DatabaseKind.SqlServer)
+            {
+                File.WriteAllText(Path.Combine(certificates, "mssql.conf"), "[network]\ntlscert = /certs/server.crt\ntlskey = /certs/server.key\nforceencryption = 0\n");
+                Docker.Run("cp", Path.Combine(certificates, "mssql.conf"), $"{name}:/var/opt/mssql/mssql.conf");
+            }
+            Docker.Run("start", name);
+            // The bastion forwards to the server, signing in with a password, or for PostgreSQL a key of the test's own.
+            string sshd = Path.Combine(certificates, "sshd", "sshd_config.d");
+            Directory.CreateDirectory(sshd);
+            File.WriteAllText(Path.Combine(sshd, "forward.conf"), "AllowTcpForwarding yes\n");
+            string keyFile = Path.Combine(certificates, "id_rsa");
+            string publicKey = SshKey(keyFile);
+            Docker.Run(["create", "--name", ssh, "--label", Docker.RunLabel, "--network", name, "-p", "127.0.0.1::2222", "-e", "USER_NAME=passenger",
+                "-e", "PASSWORD_ACCESS=true", "-e", "USER_PASSWORD=" + SshPassword, "-e", "PUBLIC_KEY=" + publicKey, SshImage]);
+            Docker.Run("cp", Path.Combine(certificates, "sshd"), $"{ssh}:/config/sshd");
+            Docker.Run("start", ssh);
+            int bastion = int.Parse(Docker.Run("port", ssh, "2222").Trim().Split(':')[^1], CultureInfo.InvariantCulture);
             int published = int.Parse(Docker.Run("port", name, port.ToString(CultureInfo.InvariantCulture)).Trim().Split(':')[^1], CultureInfo.InvariantCulture);
             string connection = kind switch
             {
@@ -239,6 +279,57 @@ public sealed class DatabaseServersTests
                 Run(window, "SELECT name FROM products WHERE id = 2");
                 Assert.True(console.Results is [{ Error: null }], console.Said);
                 Assert.Equal("coffee", console.Results[0].Sets[0].Cell(0, 0));
+
+                // A connection made by hand reaches "db" through the bastion, its host key trusted once, its SSL verified.
+                Assert.True(window.Perform(AppActions.DatabaseAdd), "New Database Connection did not run");
+                Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "the connection dialog");
+                DatabaseConnectionDialog dialog = window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible);
+                T Field<T>(string field) where T : Control => dialog.GetVisualDescendants().OfType<T>().Single(c => c.Name == field);
+                Field<ComboBox>("DatabaseProvider").SelectedIndex = (int)kind;
+                Field<TextBox>("DatabaseConnectionName").Text = "Behind";
+                Field<TextBox>("DatabaseHost").Text = "db";
+                Field<TextBox>("DatabaseName").Text = "shop";
+                Field<TextBox>("DatabaseUser").Text = kind switch { DatabaseKind.Postgres => "postgres", DatabaseKind.MySql => "root", _ => "sa" };
+                Field<TextBox>("DatabasePassword").Text = Password;
+                Field<ComboBox>("DatabaseSsl").SelectedIndex = (int)(kind == DatabaseKind.SqlServer ? SslChoice.VerifyAuthority : SslChoice.VerifyHost);
+                Field<TextBox>("DatabaseSslCertificate").Text = Path.Combine(certificates, kind == DatabaseKind.SqlServer ? "server.crt" : "ca.crt");
+                Field<CheckBox>("DatabaseSshTunnel").IsChecked = true;
+                Field<TextBox>("DatabaseSshHost").Text = "127.0.0.1";
+                Field<NumericUpDown>("DatabaseSshPort").Value = bastion;
+                Field<TextBox>("DatabaseSshUser").Text = "passenger";
+                if (kind == DatabaseKind.Postgres)
+                {
+                    Field<TextBox>("DatabaseSshKey").Text = keyFile;
+                }
+                else
+                {
+                    Field<TextBox>("DatabaseSshPassword").Text = SshPassword;
+                }
+                Ui.ClickButton(dialog, "Connect");
+                Ui.WaitFor(() => dialog.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible) || !dialog.IsVisible,
+                    () => Field<TextBlock>("DatabaseConnectionError").Text ?? "the host key's question", TimeSpan.FromMinutes(1));
+                ConfirmDialog trust = dialog.OwnedWindows.OfType<ConfirmDialog>().Single(d => d.IsVisible);
+                Assert.Contains("SHA256:", string.Join(" ", trust.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)), StringComparison.Ordinal);
+                Ui.ClickButton(trust, "Trust");
+                Ui.WaitFor(() => !dialog.IsVisible && window.Database.Sources.Any(s => s.Name == "Behind"), () => window.Database.Said);
+                DatabaseSource behind = window.Database.Sources.Single(s => s.Name == "Behind");
+                Assert.StartsWith("SHA256:", behind.Tunnel?.HostKey, StringComparison.Ordinal);
+                Assert.Equal(kind == DatabaseKind.Postgres ? null : SshPassword, SystemCredentials.Read(DatabaseController.CredentialService, behind.TunnelAccount));
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == behind.Id));
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is { } opened && opened != console, "a console of the connection through the bastion");
+                SqlConsole through = window.EditorArea.ActiveGroup.Console!.Console!;
+                Replace(window, kind switch
+                {
+                    DatabaseKind.Postgres => "SELECT CASE WHEN ssl THEN 'encrypted' ELSE 'plain' END FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
+                    DatabaseKind.MySql => "SELECT CASE WHEN LENGTH(VARIABLE_VALUE) > 0 THEN 'encrypted' ELSE 'plain' END FROM information_schema.SESSION_STATUS WHERE VARIABLE_NAME = 'Ssl_cipher'",
+                    _ => "SELECT CASE WHEN encrypt_option = 'TRUE' THEN 'encrypted' ELSE 'plain' END FROM sys.dm_exec_connections WHERE session_id = @@SPID",
+                });
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                Ui.WaitFor(() => !through.Running && through.Results.Count == 1, () => through.Said, TimeSpan.FromMinutes(1));
+                Assert.True(through.Results[0].Error is null, $"{through.Said}, running {through.Results[0].Statement}");
+                Assert.Equal("encrypted", through.Results[0].Sets[0].Cell(0, 0));
+                Assert.DoesNotContain(SshPassword, through.Said, StringComparison.Ordinal);
             }
             finally
             {
@@ -247,8 +338,53 @@ public sealed class DatabaseServersTests
         }
         finally
         {
-            Docker.Remove(name);
+            Docker.Remove(name, ssh);
+            Docker.Ask(["network", "rm", name]);
         }
+    }
+
+    /// <summary>Writes an authority's certificate (ca.crt), and a server's for "db" alone that it signed, with its key
+    /// (server.crt, server.key), into a folder.</summary>
+    private static void Certify(string folder)
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        using RSA authorityKey = RSA.Create(2048);
+        CertificateRequest authorityAsk = new("CN=Passenger Test Authority", authorityKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        authorityAsk.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        authorityAsk.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
+        using X509Certificate2 authority = authorityAsk.CreateSelfSigned(now.AddDays(-1), now.AddDays(30));
+        using RSA serverKey = RSA.Create(2048);
+        CertificateRequest serverAsk = new("CN=db", serverKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        SubjectAlternativeNameBuilder names = new();
+        names.AddDnsName("db");
+        serverAsk.CertificateExtensions.Add(names.Build());
+        serverAsk.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
+        serverAsk.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, true));
+        serverAsk.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.1")], false));
+        using X509Certificate2 server = serverAsk.Create(authority, now.AddDays(-1), now.AddDays(29), RandomNumberGenerator.GetBytes(16));
+        File.WriteAllText(Path.Combine(folder, "ca.crt"), authority.ExportCertificatePem() + "\n");
+        File.WriteAllText(Path.Combine(folder, "server.crt"), server.ExportCertificatePem() + "\n");
+        File.WriteAllText(Path.Combine(folder, "server.key"), serverKey.ExportPkcs8PrivateKeyPem() + "\n");
+    }
+
+    /// <summary>Writes an RSA private key file as ssh-keygen's PEM does, returning its public key as authorized_keys takes it.</summary>
+    private static string SshKey(string file)
+    {
+        using RSA key = RSA.Create(2048);
+        File.WriteAllText(file, key.ExportRSAPrivateKeyPem() + "\n");
+        RSAParameters parts = key.ExportParameters(false);
+        using MemoryStream blob = new();
+        byte[] length = new byte[4];
+        foreach (byte[] field in (byte[][])[System.Text.Encoding.ASCII.GetBytes("ssh-rsa"), Unsigned(parts.Exponent!), Unsigned(parts.Modulus!)])
+        {
+            BinaryPrimitives.WriteInt32BigEndian(length, field.Length);
+            blob.Write(length);
+            blob.Write(field);
+        }
+        return "ssh-rsa " + Convert.ToBase64String(blob.ToArray()) + " passenger-test";
+
+        // SSH's mpint: a positive number whose first byte has its high bit set leads with a zero.
+        static byte[] Unsigned(byte[] number) => number[0] >= 0x80 ? [0, .. number] : number;
     }
 
     /// <summary>Writes a cell as the person does: chosen, opened for writing, its text and Enter.</summary>

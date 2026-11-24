@@ -26,6 +26,45 @@ public static class DatabaseKinds
         _ => new MySqlConnectionStringBuilder(connection),
     };
 
+    /// <summary>The host and port a connection string reaches its server at, its driver's default port where it names none.</summary>
+    public static (string Host, int Port) Endpoint(DatabaseKind kind, string connection)
+    {
+        switch (kind)
+        {
+            case DatabaseKind.Postgres:
+                NpgsqlConnectionStringBuilder pg = new(connection);
+                return (pg.Host ?? "localhost", pg.Port);
+            case DatabaseKind.SqlServer:
+                string source = new SqlConnectionStringBuilder(connection).DataSource;
+                string address = source.StartsWith("tcp:", StringComparison.OrdinalIgnoreCase) ? source[4..] : source;
+                string[] parts = address.Split(',', 2);
+                return (parts[0].Split('\\')[0].Trim(), parts.Length == 2 && int.TryParse(parts[1].Trim(), out int number) ? number : Port(kind));
+            default:
+                MySqlConnectionStringBuilder my = new(connection);
+                return (my.Server, (int)my.Port);
+        }
+    }
+
+    /// <summary>A connection string reaching its server at a loopback port, its tunnel's, where it reached <paramref name="host"/>:
+    /// SQL Server still checking its certificate's name as <paramref name="host"/>'s.</summary>
+    public static string AtLoopback(DatabaseKind kind, string connection, int port, string host)
+    {
+        switch (kind)
+        {
+            case DatabaseKind.Postgres:
+                return new NpgsqlConnectionStringBuilder(connection) { Host = "127.0.0.1", Port = port }.ConnectionString;
+            case DatabaseKind.SqlServer:
+                SqlConnectionStringBuilder sql = new(connection) { DataSource = $"127.0.0.1,{port}" };
+                if (string.IsNullOrEmpty(sql.HostNameInCertificate))
+                {
+                    sql.HostNameInCertificate = host;
+                }
+                return sql.ConnectionString;
+            default:
+                return new MySqlConnectionStringBuilder(connection) { Server = "127.0.0.1", Port = (uint)port }.ConnectionString;
+        }
+    }
+
     public static int Port(DatabaseKind kind) => kind switch
     {
         DatabaseKind.Postgres => 5432,

@@ -16,9 +16,10 @@ internal static class DatabaseClient
 {
     internal const int PageSize = 100;
 
-    /// <summary>Opens a connection, its secret parts read from the system's store where they are kept there. A read-only
-    /// connection is one the server holds read-only too where it can: SQLite's file opened read-only, PostgreSQL's and
-    /// MySQL's sessions' transactions read-only.</summary>
+    /// <summary>Opens a connection, its secret parts read from the system's store where they are kept there, through its SSH
+    /// tunnel where it has one (its certificate still checked against its server's own name). A read-only connection is
+    /// one the server holds read-only too where it can: SQLite's file opened read-only, PostgreSQL's and MySQL's sessions'
+    /// transactions read-only.</summary>
     internal static async Task<DbConnection> OpenAsync(DatabaseSource source, CancellationToken cancel)
     {
         string whole = source.ConnectionString;
@@ -31,6 +32,13 @@ internal static class DatabaseClient
             }
             whole = KeptConnection.Joined(source.Kind, whole, secret);
         }
+        string? through = null;
+        if (source.Tunnel is { } tunnel && source.Kind != DatabaseKind.Sqlite)
+        {
+            (string host, int port) = DatabaseKinds.Endpoint(source.Kind, whole);
+            whole = DatabaseKinds.AtLoopback(source.Kind, whole, await SshTunnels.PortAsync(source, tunnel, host, port, cancel), host);
+            through = host;
+        }
         bool readOnly = source.Mark == DatabaseMark.ReadOnly;
         NpgsqlConnectionStringBuilder? postgres = source.Kind == DatabaseKind.Postgres ? new NpgsqlConnectionStringBuilder(whole) { Pooling = false } : null;
         if (postgres is not null && readOnly)
@@ -42,10 +50,13 @@ internal static class DatabaseClient
             DatabaseKind.Sqlite => new SqliteConnection(new SqliteConnectionStringBuilder(whole) { Mode = readOnly ? SqliteOpenMode.ReadOnly : SqliteOpenMode.ReadWrite, Pooling = false }.ConnectionString),
             DatabaseKind.Postgres => new NpgsqlConnection(postgres!.ConnectionString),
             DatabaseKind.SqlServer => new SqlConnection(new SqlConnectionStringBuilder(whole) { Pooling = false }.ConnectionString),
-            // A console's SET @a and SELECT @a are the session's own variables, its parameters bound by name over them.
-            DatabaseKind.MySql => new MySqlConnection(new MySqlConnectionStringBuilder(whole) { Pooling = false, AllowUserVariables = true }.ConnectionString),
+            DatabaseKind.MySql => MySql(whole, through),
             _ => throw new InvalidOperationException("Unknown database provider"),
         };
+        if (through is not null && connection is NpgsqlConnection npgsql)
+        {
+            npgsql.SslClientAuthenticationOptionsCallback = options => options.TargetHost = through;
+        }
         try
         {
             await connection.OpenAsync(cancel);
@@ -62,6 +73,23 @@ internal static class DatabaseClient
             await connection.DisposeAsync();
             throw;
         }
+    }
+
+    /// <summary>A MySQL connection, its console's SET @a and SELECT @a the session's own variables, its parameters bound by
+    /// name over them; through a tunnel, its certificate verified here against its authority and its server's own name,
+    /// as the driver would check the tunnel's address.</summary>
+    private static MySqlConnection MySql(string whole, string? through)
+    {
+        MySqlConnectionStringBuilder my = new(whole) { Pooling = false, AllowUserVariables = true };
+        if (through is null || my.SslMode is not (MySqlSslMode.VerifyCA or MySqlSslMode.VerifyFull))
+        {
+            return new MySqlConnection(my.ConnectionString);
+        }
+        string authority = my.SslCa;
+        string? named = my.SslMode == MySqlSslMode.VerifyFull ? through : null;
+        my.SslMode = MySqlSslMode.Required;
+        my.SslCa = string.Empty;
+        return new MySqlConnection(my.ConnectionString) { RemoteCertificateValidationCallback = (_, certificate, _, _) => DatabaseSsl.Verified(certificate, authority, named) };
     }
 
     internal static string Quote(DatabaseKind kind, string name) => SqlText.QuotedName(kind, name);

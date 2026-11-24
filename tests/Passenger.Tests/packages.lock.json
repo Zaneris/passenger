@@ -138,6 +138,11 @@
           "Azure.Core": "1.53.0"
         }
       },
+      "BouncyCastle.Cryptography": {
+        "type": "Transitive",
+        "resolved": "2.7.0",
+        "contentHash": "U+12df8UEWHgBi04YVf/Lgi2dy3SItlIYvHjjEVa/BngCQIzDCDRBk50DDByCfDvSbe5pRNFr3b7UrVK2kMcLw=="
+      },
       "Cucumber.Messages": {
         "type": "Transitive",
         "resolved": "29.0.1",
@@ -674,6 +679,7 @@
           "Passenger.Vcs": "[0.4.3, )",
           "Passenger.Workspace": "[0.4.3, )",
           "Passenger.Xaml": "[0.4.3, )",
+          "SSH.NET": "[2026.0.1, )",
           "SkiaSharp": "[4.157.0, )",
           "SkiaSharp.NativeAssets.Linux": "[4.157.0, )",
           "Svg.Skia": "[5.2.3, )",
@@ -1054,6 +1060,15 @@
         "requested": "[4.157.0, )",
         "resolved": "4.157.0",
         "contentHash": "1+xcqjIcXWYJgOh6gLj2noeJRicrqRYt2Y5CPVDH74X/uqHeCpnM1gR+CvUpHKNlfvBsD9WVxqw2zPU01MxCCg=="
+      },
+      "SSH.NET": {
+        "type": "CentralTransitive",
+        "requested": "[2026.0.1, )",
+        "resolved": "2026.0.1",
+        "contentHash": "74/nnq/n7EZLGLsUTt4aEE+/iet3B6ahi2iFfXgRXb6rNAvxsxLwbhLZ6lzITfAEB1vkmuAI3gXxOp2HcUMa2g==",
+        "dependencies": {
+          "BouncyCastle.Cryptography": "2.7.0"
+        }
       },
       "StreamJsonRpc": {
         "type": "CentralTransitive",

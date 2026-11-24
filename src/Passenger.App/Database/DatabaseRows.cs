@@ -25,8 +25,18 @@ public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folde
     /// <summary>The account the system's credential store keeps its secret parts under.</summary>
     public string Account => Id.ToString("D", CultureInfo.InvariantCulture);
 
+    /// <summary>The account the system's credential store keeps its SSH tunnel's password or key passphrase under.</summary>
+    public string TunnelAccount => Account + ".ssh";
+
     /// <summary>Whether what runs on it may change it freely, never (read-only), or only once the person agrees (production).</summary>
     public DatabaseMark Mark { get; init; }
+
+    /// <summary>The SSH tunnel it reaches its server through, null for none.</summary>
+    public SshTunnel? Tunnel { get; init; }
+
+    /// <summary>The tunnel's password or key passphrase as the connection dialog was given it, until the connection is kept
+    /// and it is put in the system's credential store (<see cref="TunnelAccount"/>); never kept here.</summary>
+    internal string? TunnelSecret { get; init; }
 
     /// <summary>What a found connection's mark is kept by, the same each time the folder's files name it.</summary>
     public string FoundKey => $"{Kind}|{Found}|{Name}";
