@@ -2955,6 +2955,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains("cannot run: No Avalonia or WPF app is being debugged", selectElement, StringComparison.Ordinal);
         string restart = Assert.Single(listed, l => l.StartsWith($"{AppActions.RestartCSharpServer}: Restart C# Language Server [IDE]", StringComparison.Ordinal));
         Assert.Contains($" - cannot run: {Refusals.NoCSharp}", restart, StringComparison.Ordinal);
+        // An action that turns something on and off says which it is, so an agent never turns one blind.
+        Assert.Contains(listed, l => l.StartsWith($"{AppActions.ContinuousTesting}: Continuous Testing [Unit Tests] (off)", StringComparison.Ordinal));
 
         Assert.Equal($"Ran {AppActions.ShowStructure}", (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ShowStructure })).GetString());
         // A console app's folder holds no Godot project, which the Game window serves.

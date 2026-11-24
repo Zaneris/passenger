@@ -3161,7 +3161,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.IdeActions, Title = "The IDE's actions", ReadOnly = true), Description(
         "Every action ide_action runs (those with no shortcut too), as id: name [group] (shortcut on this platform), " +
-        "and why one cannot run here now.")]
+        "(on) or (off) for one that turns something on and off, and why one cannot run here now.")]
     public Task<CallToolResult> IdeActions(
         [Description("Only those whose id, name or group holds it (\"rebase\", \"Git\")")] string? query = null,
         CancellationToken cancel = default) => OnUi(cancel, () =>
@@ -3172,7 +3172,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             : [.. actions.All.Where(a => a.Id.Contains(words, StringComparison.OrdinalIgnoreCase) || a.Title.Contains(words, StringComparison.OrdinalIgnoreCase)
                 || a.Group.Contains(words, StringComparison.OrdinalIgnoreCase))];
         string[] lines = [.. asked.Select(a =>
-            $"{a.Id}: {a.Title} [{a.Group}]{(actions.Shortcut(a.Id) is { } keys ? $" ({keys})" : string.Empty)}{(a.WhyNot(context) is { } why ? $" - cannot run: {why}" : string.Empty)}")];
+            $"{a.Id}: {a.Title} [{a.Group}]{(actions.Shortcut(a.Id) is { } keys ? $" ({keys})" : string.Empty)}"
+            + $"{(a.IsChecked?.Invoke(context) is { } on ? on ? " (on)" : " (off)" : string.Empty)}{(a.WhyNot(context) is { } why ? $" - cannot run: {why}" : string.Empty)}")];
         // Cut short, it names the groups of those it left out, which a query of each lists.
         return Task.FromResult(Held(lines, "action", "query, a group's name or a word of the action's, narrows them", readOn: last =>
         {
