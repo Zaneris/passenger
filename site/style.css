@@ -290,7 +290,7 @@ h3 { margin: 0 0 8px; font-size: 19px; line-height: 1.3; font-weight: 650; }
 
 /* Downloads. */
 .downloads { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 28px; }
-.platform { padding: 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.platform { padding: 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); scroll-margin-top: 84px; }
 .platform h3 { margin-bottom: 12px; }
 .platform ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .platform li > a, .platform li > span {
