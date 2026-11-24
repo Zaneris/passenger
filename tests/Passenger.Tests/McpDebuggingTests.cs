@@ -187,7 +187,8 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent's debug_start with record true runs Twice(1) and stops before Twice(2): debug_step back reads Twice's
     /// return, 2, beside its argument 1 as it was, Twice on top at its end above the loop's line; back again its call; of
-    /// timeline lists the moments newest first; and debug_step forward twice comes back to the live stop.</summary>
+    /// timeline lists the moments newest first, the breakpoint's first hit going on before them; and debug_step forward twice
+    /// comes back to the live stop.</summary>
     private async Task An_agents_recorded_run_steps_back_into_a_call_it_ran_past_and_reads_its_argument_and_return()
     {
         await TakeFolderAsync();
@@ -205,7 +206,9 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(back.GetProperty("kind").GetString() == DapMomentKinds.Call && back.GetProperty("said").GetString()?.Contains("Twice(1) called", StringComparison.Ordinal) == true
             && Valued(back, "value") == "1", $"debug_step back again answered {back}, where Twice was called with 1");
         JsonElement timeline = await Call(client, McpTools.DebugState, new() { ["of"] = "timeline" });
-        Assert.Equal(["Twice() returned 2", "Twice(1)"], timeline.EnumerateArray().Take(2).Select(m => m.GetProperty("said").GetString()));
+        // The breakpoint's first hit went on before Twice(1), its condition false.
+        Assert.Equal(["Twice() returned 2", "Twice(1)", "The breakpoint went on: its condition i == 2 was false"],
+            timeline.EnumerateArray().Take(3).Select(m => m.GetProperty("said").GetString()));
 
         await Call(client, McpTools.DebugStep, new() { ["kind"] = "forward" });
         stop = await Call(client, McpTools.DebugStep, new() { ["kind"] = "forward" });

@@ -44,7 +44,12 @@ public sealed class TakenSnapshot(SnapshotEvent taken, string point, string prog
     /// taken at 14:02:11.532 on Main Thread. The program was held 1.3 ms."</summary>
     public string Said => Moment is { } recorded
         ? $"Recorded moment {Numbers.Said(recorded.Index)}: {recorded.Said}{(recorded.Kind == DapMomentKinds.Call ? " called" : "")}, at {Time} on {ThreadWords}. "
-            + (recorded.Kind == DapMomentKinds.Call ? "Its arguments are as they were then." : "Its arguments are as they were at its call.")
+            + recorded.Kind switch
+            {
+                DapMomentKinds.Call => "Its arguments are as they were then.",
+                DapMomentKinds.Return => "Its arguments are as they were at its call.",
+                _ => "Its values are as they were then.",
+            }
         : $"Snapshot {Number} of {Point}, taken at {Time} on {ThreadWords}. The program was held {Durations.Said(Paused)}.";
 
     private string ThreadWords => string.IsNullOrEmpty(Taken.ThreadName) ? $"thread {Taken.ThreadId}" : Taken.ThreadName;

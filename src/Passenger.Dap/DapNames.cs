@@ -326,4 +326,14 @@ public static class DapMomentKinds
 
     /// <summary>A call returning to its caller, the value it returned read.</summary>
     public const string Return = "return";
+
+    /// <summary>An exception thrown in the user's code, or reaching it from code that is not.</summary>
+    public const string Thrown = "thrown";
+
+    /// <summary>An exception caught in the user's code.</summary>
+    public const string Caught = "caught";
+
+    /// <summary>One of the person's breakpoints passed by: its condition false, its hit count not reached, a tracepoint's
+    /// message logged, a snapshot taken.</summary>
+    public const string Passed = "passed";
 }

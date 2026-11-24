@@ -46,8 +46,22 @@ public partial class ManagedDebugger
     /// its condition and message read in the thread's top frame, a condition that cannot be told written to the breakpoint as
     /// <paramref name="named"/> having stopped; <paramref name="reached"/> said where it neither logs nor stops; a snapshot
     /// point's capture taken where the program has been held since <paramref name="came"/>. Whether the hit stops the program.</summary>
-    private Task<bool> HitStopsAsync(ICorDebugThread thread, IHitBreakpoint breakpoint, string named, Func<string> reached, long? came = null) => BreakpointHits.StopsAsync(breakpoint, new HitReading
+    private async Task<bool> HitStopsAsync(ICorDebugThread thread, IHitBreakpoint breakpoint, string named, Func<string> reached, long? came = null)
     {
+        string? passed = null;
+        bool stops = await HitStopsAsync(thread, breakpoint, named, reached, came, _records ? why => passed = why : null);
+        if (!stops && passed is not null)
+        {
+            // While the program records, a hit that went on is a moment of its run.
+            await RecordPassedAsync(thread, named, passed, came ?? System.Diagnostics.Stopwatch.GetTimestamp());
+        }
+        return stops;
+    }
+
+    private Task<bool> HitStopsAsync(ICorDebugThread thread, IHitBreakpoint breakpoint, string named, Func<string> reached, long? came, Action<string>? passed) =>
+        BreakpointHits.StopsAsync(breakpoint, new HitReading
+    {
+        Passed = passed,
         Named = named,
         Holds = condition => EvaluateBreakpointCondition(thread, condition),
         Logged = async message => (await RenderDebuggerDisplayAsync(message, null, new ThreadId(thread.Id), new FrameStackDepth(0), 0)).Text,

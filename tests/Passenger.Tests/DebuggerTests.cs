@@ -273,13 +273,15 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         });
     }
 
-    /// <summary>Record Calls on before Debug, the program runs past Add(2, 3) to a breakpoint: Step Back shows Add's return
-    /// as a past stop, Add on top at its end with 5 returned and its arguments 2 and 3, Variables saying which moment it is
-    /// and Set Value greyed; Step Back again shows its call, Add at its first line above Main at the call; the Timeline tab
-    /// lists both, the one shown chosen; Step Forward twice comes back to the live stop, which Step Forward says it is.</summary>
+    /// <summary>Record Calls on before Debug, the program runs past a caught exception and Add(2, 3) to a breakpoint: Step Back
+    /// shows Add's return as a past stop, Add on top at its end with 5 returned and its arguments 2 and 3, Variables saying
+    /// which moment it is and Set Value greyed; then its call, Add at its first line above Main; the Timeline tab lists both,
+    /// the one shown chosen; then the exception caught in Main, then thrown in Fail with its message; Step Forward four times
+    /// comes back to the live stop, which Step Forward says it is.</summary>
     private void Record_calls_keeps_a_calls_arguments_and_its_return_and_step_back_shows_each_as_it_was()
     {
-        Write("Program.cs", "int sum = Add(2, 3);\nConsole.WriteLine($\"sum {sum}\");\n\nint Add(int a, int b)\n{\n    return a + b;\n}\n");
+        Write("Program.cs", "try { Fail(); } catch (InvalidOperationException) { } int sum = Add(2, 3);\nConsole.WriteLine($\"sum {sum}\");\n\nint Add(int a, int b)\n{\n"
+            + "    return a + b;\n}\nvoid Fail() => throw new InvalidOperationException(\"no\");\n");
         MainWindow window = Open();
         window.Debugger.Breakpoints.Toggle(Program, 1);
         Assert.True(window.Perform(AppActions.RecordCalls) && window.Debugger.RecordsCalls, $"Record Calls did not turn on: {Ui.Said(window)}");
@@ -307,8 +309,22 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.Equal(["Add(2, 3)", "Add() returned 5"], debug.Moments.TakeLast(2).Select(m => m.Said));
         Assert.Equal("Add(2, 3)", (view.MomentsList.SelectedItem as DapMoment)?.Said);
 
-        Assert.True(window.Perform(AppActions.StepForward), $"Step Forward did not run: {Ui.Said(window)}");
-        Ui.WaitFor(() => window.Debugger.MomentShown?.Kind == DapMomentKinds.Return, "Add's return shown again");
+        Assert.True(window.Perform(AppActions.StepBack), $"Step Back did not run: {Ui.Said(window)}");
+        Ui.WaitFor(() => window.Debugger.MomentShown?.Kind == DapMomentKinds.Caught, "the exception caught shown as a past stop");
+        Assert.True((window.Debugger.MomentShown?.Said, debug.Frames[0].Line) == ("System.InvalidOperationException caught", 1),
+            $"The moment before Add's call is {window.Debugger.MomentShown?.Said} at line {debug.Frames[0].Line}, where Main caught the exception at line 1");
+        Assert.True(window.Perform(AppActions.StepBack), $"Step Back did not run: {Ui.Said(window)}");
+        Ui.WaitFor(() => window.Debugger.MomentShown?.Kind == DapMomentKinds.Thrown, "the exception thrown shown as a past stop");
+        Assert.True((window.Debugger.MomentShown?.Said, debug.Frames[0].Line, Row(window, DapRows.Exception)?.Value?.Contains("InvalidOperationException", StringComparison.Ordinal))
+            == ("System.InvalidOperationException thrown: no", 8, true),
+            $"The moment before it is {window.Debugger.MomentShown?.Said} at line {debug.Frames[0].Line} with $exception {Row(window, DapRows.Exception)?.Value}, "
+            + "where Fail threw it at line 8");
+
+        foreach (string kind in new[] { DapMomentKinds.Caught, DapMomentKinds.Call, DapMomentKinds.Return })
+        {
+            Assert.True(window.Perform(AppActions.StepForward), $"Step Forward did not run: {Ui.Said(window)}");
+            Ui.WaitFor(() => window.Debugger.MomentShown?.Kind == kind, $"the {kind} moment shown again");
+        }
         Assert.True(window.Perform(AppActions.StepForward), $"Step Forward did not run: {Ui.Said(window)}");
         Ui.WaitFor(() => window.Debugger.MomentShown is null && debug.ShownSnapshot is null && debug.Frames.Count > 0 && debug.Frames[0].Line == 2, "the live stop shown again");
         Assert.Equal("5", Value(window, "sum"));

@@ -862,6 +862,11 @@ public partial class ManagedDebugger
             return;
         }
 
+        if (_records && !EvalStatus.IsRunning && !_stopShown)
+        {
+            await RecordExceptionAsync(corThread, exceptionEventArgs,
+                _hitCame.TryGetValue(exceptionEventArgs, out StrongBox<long>? stamped) ? stamped.Value : System.Diagnostics.Stopwatch.GetTimestamp());
+        }
         ThreadId threadId = new ThreadId(corThread.Id);
         string exceptionType = GetCurrentExceptionType(corThread);
         bool shouldStop = false;

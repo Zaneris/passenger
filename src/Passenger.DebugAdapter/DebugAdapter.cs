@@ -159,7 +159,14 @@ public sealed class DebugAdapter
         connection.Handle<TimelineArguments, TimelineResponse>(DapCommands.Timeline, async arguments =>
         {
             RecordedTimeline timeline = await Read(() => debugger.Timeline(arguments.ThreadId));
-            return new TimelineResponse(timeline.Recording, [.. timeline.Moments.Select(m => new DapMoment(m.Index, m.Kind == MomentKind.Call ? DapMomentKinds.Call : DapMomentKinds.Return,
+            return new TimelineResponse(timeline.Recording, [.. timeline.Moments.Select(m => new DapMoment(m.Index, m.Kind switch
+                {
+                    MomentKind.Call => DapMomentKinds.Call,
+                    MomentKind.Return => DapMomentKinds.Return,
+                    MomentKind.Thrown => DapMomentKinds.Thrown,
+                    MomentKind.Caught => DapMomentKinds.Caught,
+                    _ => DapMomentKinds.Passed,
+                },
                 m.ThreadId, m.At, ToProtocol(m.Place), m.Depth, m.Said))], timeline.Dropped, timeline.Recorded, timeline.Held.TotalMilliseconds, timeline.MostMoments, timeline.MostBytes);
         });
         connection.Handle<MomentArguments, SnapshotEvent>(DapCommands.Moment, async arguments =>

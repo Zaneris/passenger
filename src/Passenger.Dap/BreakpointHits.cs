@@ -1,4 +1,5 @@
 using System.Text;
+using Passenger.Core;
 
 namespace Passenger.Dap;
 
@@ -83,6 +84,10 @@ public sealed class HitReading
 
     /// <summary>A snapshot point's capture, taken where the hit stands; null where the debugger takes none.</summary>
     public Func<IHitBreakpoint, Task>? Capture { get; init; }
+
+    /// <summary>Why a hit went on without stopping, in words ("its condition i == 3 was false"), for a recording; null where
+    /// nothing records.</summary>
+    public Action<string>? Passed { get; init; }
 }
 
 /// <summary>What one debugging session's breakpoints have come to between them, by their keys
@@ -205,6 +210,7 @@ public static class BreakpointHits
         if (breakpoint.WaitFor is int awaited && !hit.Session.WasHit(awaited))
         {
             hit.Log?.Invoke($"Breakpoint {breakpoint.Id}: waits for another breakpoint to be hit first");
+            hit.Passed?.Invoke("it waits for another breakpoint's hit");
             return breakpoint.RunTo;
         }
         if (breakpoint.Temporary && breakpoint.Key is int once && hit.Session.Went(once))
@@ -222,6 +228,7 @@ public static class BreakpointHits
             else if (!read.Holds)
             {
                 hit.Log?.Invoke($"Breakpoint {breakpoint.Id}: condition not met: {condition}");
+                hit.Passed?.Invoke($"its condition {condition} was false");
                 return breakpoint.RunTo;
             }
         }
@@ -229,6 +236,7 @@ public static class BreakpointHits
         if (breakpoint.HitCondition is { } hits && !(HitCondition.TryParse(hits, out HitCondition parsed, out _) && parsed.IsMet(breakpoint.HitCount)))
         {
             hit.Log?.Invoke($"Breakpoint {breakpoint.Id}: hit count not met: count={breakpoint.HitCount}, condition={hits}");
+            hit.Passed?.Invoke($"its hit count {hits} was not met at hit {Numbers.Said(breakpoint.HitCount)}");
             return breakpoint.RunTo;
         }
         if (breakpoint.Key is int key)
@@ -252,19 +260,24 @@ public static class BreakpointHits
         }
         if (breakpoint.Snapshot)
         {
-            if (await CaptureAsync(breakpoint, hit) && breakpoint.LogMessage is { } said)
+            bool taken = await CaptureAsync(breakpoint, hit);
+            if (taken && breakpoint.LogMessage is { } said)
             {
                 hit.Say(await hit.Logged(said));
             }
+            hit.Passed?.Invoke(taken ? "it took a snapshot" : "it took all the snapshots it takes");
             return breakpoint.RunTo;
         }
         if (breakpoint.LogMessage is { } message)
         {
-            hit.Say(await hit.Logged(message));
+            string logged = await hit.Logged(message);
+            hit.Say(logged);
+            hit.Passed?.Invoke($"it logged {logged}");
         }
         else if (!breakpoint.Suspend)
         {
             hit.Say(hit.Reached());
+            hit.Passed?.Invoke("it was reached");
         }
         return breakpoint.Suspend || unread is not null || breakpoint.RunTo;
     }
