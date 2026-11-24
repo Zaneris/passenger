@@ -1,9 +1,13 @@
 using System.Diagnostics;
+using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Editors;
 using Passenger.App.Run;
+using Passenger.App.Updates;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
@@ -14,7 +18,7 @@ namespace Passenger.Tests;
 /// 64-bit .NET, which cannot load its assembly; Debug follows it from the debugger's 32-bit host, stopping at a breakpoint,
 /// reading its locals and stepping, as Attach does a 32-bit program running, and a 32-bit WPF app too; an x86 .NET lacking
 /// what the program runs on is named before it starts; and off Windows it is refused, as .NET runs x86 programs on Windows
-/// alone. Profile records it as Run starts it, and Run with Hot Reload runs it under dotnet watch. Its packs come from
+/// alone. A release, which carries no 32-bit debugger, downloads its own the first time it debugs a 32-bit program. Profile records it as Run starts it, and Run with Hot Reload runs it under dotnet watch. Its packs come from
 /// nuget.org, which the test folder names. Debugged through the window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class X86ProgramTests
@@ -85,8 +89,9 @@ public sealed class X86ProgramTests
     }
 
     /// <summary>On Windows a running 32-bit program is listed for Attach and attached to, a 32-bit WPF app debugs, a 32-bit
-    /// program run with Hot Reload runs as x86 under dotnet watch, and one whose x86 .NET is missing has it named for the
-    /// person to install before it starts, as one flow of Windows's steps, each in an instance of its own.</summary>
+    /// program run with Hot Reload runs as x86 under dotnet watch, one whose x86 .NET is missing has it named for the
+    /// person to install before it starts, and a release downloads its 32-bit debugger on a first Debug, as one flow of
+    /// Windows's steps, each in an instance of its own.</summary>
     [AvaloniaFact]
     public void On_Windows_32_bit_programs_attach_debug_as_wpf_apps_run_under_dotnet_watch_and_name_a_missing_x86_dotnet()
     {
@@ -96,6 +101,80 @@ public sealed class X86ProgramTests
             t => t.A_32_bit_wpf_app_stops_at_a_breakpoint_reads_its_locals_and_steps());
         Flow.StepApart<X86ProgramTests>("a 32 bit program run with hot reload runs as x86 under dotnet watch", t => t.A_32_bit_program_run_with_hot_reload_runs_as_x86_under_dotnet_watch());
         Flow.StepApart<X86ProgramTests>("a 32 bit programs missing x86 net is named for the person to install before it starts", t => t.A_32_bit_programs_missing_x86_net_is_named_for_the_person_to_install_before_it_starts());
+        Flow.StepApart<X86ProgramTests>("a release downloads its 32 bit debugger on a first debug checked against its sha256sums refusing a wrong sum and ending at stop",
+            t => t.A_release_downloads_its_32_bit_debugger_on_a_first_debug_checked_against_its_sha256sums_refusing_a_wrong_sum_and_ending_at_stop());
+    }
+
+    /// <summary>A release carries no 32-bit debugger: the first Debug of a 32-bit program downloads its own version's from its
+    /// release (a stand-in on loopback serving this build's), checked against the release's SHA256SUMS, into the state's
+    /// cache. A SHA256SUMS naming other bytes is refused, saying so, and a download Stop ends keeps nothing; the whole one
+    /// debugs, and the next Debug downloads nothing.</summary>
+    private void A_release_downloads_its_32_bit_debugger_on_a_first_debug_checked_against_its_sha256sums_refusing_a_wrong_sum_and_ending_at_stop()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip(".NET runs x86 programs only on Windows, the one system Passenger debugs one on");
+        }
+        string carried = X86DebuggerSource.Default(ReleaseFeed.Default).Carried;
+        Assert.True(File.Exists(Path.Combine(carried, ChildProcesses.HelperHost + ".exe")), $"This build carries no 32-bit debugger in {carried} for its stand-in release to serve");
+        byte[] zip;
+        using (MemoryStream packed = new())
+        {
+            ZipFile.CreateFromDirectory(carried, packed);
+            zip = packed.ToArray();
+        }
+        using UpdatesTests.StandIn github = new();
+        string tag = $"v{Product.Version}";
+        github.Serve(tag, X86DebuggerSource.Asset, zip);
+        github.Serve(tag, "SHA256SUMS", Encoding.UTF8.GetBytes($"{Convert.ToHexStringLower(SHA256.HashData((byte[])[1, 2, 3]))}  {X86DebuggerSource.Asset}\n"));
+        string cache = TestFolders.Create("x86-debugger-cache-");
+        X86DebuggerSource source = new(Path.Combine(cache, "carried-none"), new ReleaseFeed(github.Listing, TimeSpan.FromSeconds(5)), cache);
+        string folder = Folder("x86-download-", "<RuntimeIdentifier>win-x86</RuntimeIdentifier>", "<SelfContained>true</SelfContained>");
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, X86DebuggerFrom = source };
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        try
+        {
+            window.Debugger.Breakpoints.Toggle(Path.Combine(PathNames.Canonical(folder), "Program.cs"), Started);
+            string? refused = Ui.Await(window.DebugAsync(), "Debug's refusal of a 32-bit debugger whose download did not match", TimeSpan.FromMinutes(4));
+            string mismatched = Refusals.Undebugged("Hello",
+                Refusals.X86DebuggerMissing($"{X86DebuggerSource.Named} downloaded from the {tag} release did not match its SHA256SUMS, and nothing of it was used"));
+            Assert.True(refused == mismatched, $"Debug with a 32-bit debugger whose download did not match its SHA256SUMS answered\n{refused ?? "nothing: it debugged"}\nwhere it should say\n{mismatched}");
+            Assert.False(window.Debugger.IsDebugging, "A session started on a 32-bit debugger whose download did not match its SHA256SUMS");
+            Assert.Empty(Directory.GetFileSystemEntries(Path.Combine(cache, Product.Version)));
+
+            // The download held half sent: the work says what it is doing, and Stop ends it, keeping nothing.
+            github.Serve(tag, "SHA256SUMS", Encoding.UTF8.GetBytes($"{Convert.ToHexStringLower(SHA256.HashData(zip))}  {X86DebuggerSource.Asset}\n"));
+            github.Hold(X86DebuggerSource.Asset);
+            Task<string?> held = window.DebugAsync();
+            Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.Debug)?.Stage.StartsWith($"Downloading {X86DebuggerSource.Named}", StringComparison.Ordinal) == true
+                || held.IsCompleted, "Debug's work to say it is downloading the 32-bit debugger", TimeSpan.FromMinutes(4));
+            Assert.False(held.IsCompleted, $"Debug ended before it downloaded the 32-bit debugger: {(held.IsCompleted ? held.Result : null)}");
+            Ui.Run(window, AppActions.Stop, settle: false);
+            github.Let();
+            string? stopped = Ui.Await(held, "Debug's start to end at Stop as it downloaded");
+            Assert.True(stopped == "Debugging Hello was stopped as it started", $"Stop as the 32-bit debugger downloaded ended Debug's start saying {stopped ?? "nothing: it debugged"}");
+            Assert.Empty(Directory.GetFileSystemEntries(Path.Combine(cache, Product.Version)));
+
+            int asked = github.RequestsFor(X86DebuggerSource.Asset).Length;
+            Ui.Launched(window, window.DebugAsync(), "the debug session's start on the 32-bit debugger downloaded", TimeSpan.FromMinutes(4));
+            StoppedAt(window, Started, "the breakpoint in the x86 program its downloaded debugger follows");
+            Assert.True(File.Exists(Path.Combine(source.Downloaded, ChildProcesses.HelperHost + ".exe")), $"The 32-bit debugger downloaded was not kept in {source.Downloaded}");
+            Assert.Equal(asked + 1, github.RequestsFor(X86DebuggerSource.Asset).Length);
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, () => $"the x86 program to run to its end: {window.Debugger.Output()}");
+
+            Ui.Launched(window, window.DebugAsync(), "the debug session's start on the 32-bit debugger kept", TimeSpan.FromMinutes(2));
+            StoppedAt(window, Started, "the breakpoint in the x86 program debugged again");
+            Assert.True(github.RequestsFor(X86DebuggerSource.Asset).Length == asked + 1, "The 32-bit debugger was downloaded again where the cache kept it");
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, () => $"the x86 program debugged again to run to its end: {window.Debugger.Output()}");
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     private void A_running_32_bit_program_is_listed_for_attach_and_attached_to_stopped_at_a_breakpoint_with_its_locals()

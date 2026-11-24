@@ -61,6 +61,9 @@ public sealed record SessionSetup(
     /// <summary>Where the container tools come from that reach a program in a container: the window's.</summary>
     public required Func<Containers.ContainerToolsSource> ContainerTools { get; init; }
 
+    /// <summary>Where the debugger's 32-bit host comes from, for a program that runs as a 32-bit one: the window's.</summary>
+    public required Func<Debugging.X86DebuggerSource> X86Debugger { get; init; }
+
     /// <summary>The opening of a folder begun as the process started, which the session that opens that folder takes up:
     /// the first of a windowless Passenger's window.</summary>
     public HeadStart? HeadStart { get; init; }
@@ -191,6 +194,7 @@ public sealed class ProjectSession : IAsyncDisposable
             Server = () => CSharp?.Session,
             Reads = () => Workspace,
             HotReloadOn = () => setup.Settings().HotReloadWhileDebugging,
+            X86Debugger = setup.X86Debugger,
             HotReloadOnSave = () => setup.Settings().HotReloadOnSave,
             XamlOnSave = () => setup.Settings().XamlHotReloadOnSave,
             ShowsElapsed = setup.Settings().ShowElapsedAtStops,

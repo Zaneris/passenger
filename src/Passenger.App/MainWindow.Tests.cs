@@ -361,7 +361,7 @@ public partial class MainWindow
             RunsOn = start.Framework,
         };
         ShowToolWindow(ToolWindowIds.Debug);
-        Debugging.DebugLaunch launched = await running.Debug.StartAdditionalAsync(plan, cancel, tab => testHosts.Add(tab));
+        Debugging.DebugLaunch launched = await running.Debug.StartAdditionalAsync(plan, cancel, tab => testHosts.Add(tab), work.Of(AppActions.RunTests));
         try
         {
             CheckTestSession(running);
@@ -375,18 +375,30 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>A test host a runner started itself, attached to: true once the debugger has hold of it; a 32-bit one where
-    /// the debugger's 32-bit host is missing refused saying why.</summary>
+    /// <summary>A test host a runner started itself, attached to: true once the debugger has hold of it; a 32-bit one once
+    /// the debugger's 32-bit host is had, the run's work saying each stage of its download, refused saying why where it could
+    /// not be.</summary>
     private async Task<bool> AttachTestHost(ProjectSession running, int processId, Testing.TestHostReload? reload, HashSet<DebugTab> testHosts)
     {
         CheckTestSession(running);
-        if (DotnetProcesses.Runs32Bit(processId) && Debugging.DebugSession.WhyNoX86Adapter is { } unattached)
+        CancellationToken cancel = running.Tests.RunCancellation;
+        string? unattached;
+        try
+        {
+            (_, unattached) = await running.Debug.X86HostAsync(DotnetProcesses.Runs32Bit(processId), work.Of(AppActions.RunTests), cancel);
+        }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+        {
+            reload?.Hook.Dispose();
+            return false;
+        }
+        if (unattached is not null)
         {
             reload?.Hook.Dispose();
             Say(Refusals.Unattached("Tests", unattached));
             return false;
         }
-        CancellationToken cancel = running.Tests.RunCancellation;
+        CheckTestSession(running);
         ShowToolWindow(ToolWindowIds.Debug);
         Debugging.DebugLaunch? attached = null;
         try

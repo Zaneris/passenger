@@ -1036,8 +1036,13 @@ public static class Refusals
     public static string MacCatalystUnprofiled(string app) =>
         $"Passenger's profiler does not record a Mac Catalyst app yet, so {app} cannot be profiled: Run starts it";
 
-    /// <summary>A program the debugger cannot follow, by its name, and why (<see cref="Debugging.DebugSession.WhyNoX86Adapter"/>).</summary>
+    /// <summary>A program the debugger cannot follow, by its name, and why (<see cref="X86DebuggerMissing"/>).</summary>
     public static string Undebugged(string program, string why) => $"Could not debug {program}: {why}";
+
+    /// <summary>A 32-bit program debugged where the debugger's 32-bit host, which a release downloads the first time one is
+    /// (<see cref="Debugging.X86DebuggerSource"/>), could not be had, and why: its download failed, did not match the
+    /// release's SHA256SUMS, or would not unpack.</summary>
+    public static string X86DebuggerMissing(string why) => $"it {DotnetProcesses.RunsAs32Bit}, and {why}";
 
     /// <summary>A running program the debugger cannot attach to (a test host a runner started), by the name its tab takes, and why.</summary>
     public static string Unattached(string name, string why) => $"Cannot attach to {name}: {why}";

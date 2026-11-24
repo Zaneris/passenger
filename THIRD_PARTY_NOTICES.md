@@ -16,7 +16,9 @@ HTML, CSS, JSON, Dockerfile and YAML language servers' npm packages under `web/`
 adds to it (`just package-win`), and in the Linux archive Passenger's own launcher, install script, desktop entry and
 file types beside it (`just package-linux`). The Linux build carries the Linux natives of SkiaSharp, HarfBuzzSharp and
 dbgshim for its processor (x64 or Arm64), each named below; the Windows build carries the debugger's 32-bit host under
-`debugger/x86/` too, with its x86 .NET runtime and dbgshim for 32-bit Windows. Packages restored with these whose files
+`debugger/x86/` too, with its x86 .NET runtime and dbgshim for 32-bit Windows, which a release leaves out of its installer
+and portable zip as `Passenger-debugger-win-x86.zip` of its own, downloaded into the state's cache the first time a 32-bit
+program is debugged. Packages restored with these whose files
 no build carries (SkiaSharp's and HarfBuzzSharp's natives for the browser, dbgshim's for 32-bit Arm) are left out;
 dbgshim's musl Linux natives are the container tools' (below), which the app never carries.
 
@@ -34,7 +36,7 @@ dbgshim's musl Linux natives are the container tools' (below), which the app nev
 | `Grpc.Net.Client`, `Grpc.Net.Common`, `Grpc.Core.Api` | Native Aspire interactions and resource commands | Apache-2.0 | Copyright 2019 The gRPC Authors |
 | `Microsoft.Extensions.Logging.Abstractions` | gRPC client's logging contracts | MIT | © Microsoft Corporation. All rights reserved. |
 | The .NET runtime (`Microsoft.NETCore.App`) | the app and the debugger are self-contained; Roslyn's server and the project host run on that .NET | MIT | © Microsoft Corporation. All rights reserved. |
-| The x86 .NET runtime and apphost (`Microsoft.NETCore.App.Runtime.win-x86`, `Microsoft.NETCore.App.Host.win-x86`) | on Windows, the debugger's 32-bit host (`debugger/x86/`), which runs the debugger for a 32-bit program, as a runtime's debugging library loads only into a process of its program's processor | MIT | © Microsoft Corporation. All rights reserved. |
+| The x86 .NET runtime and apphost (`Microsoft.NETCore.App.Runtime.win-x86`, `Microsoft.NETCore.App.Host.win-x86`) | on Windows, the debugger's 32-bit host (`debugger/x86/`, a release's `Passenger-debugger-win-x86.zip`), which runs the debugger for a 32-bit program, as a runtime's debugging library loads only into a process of its program's processor | MIT | © Microsoft Corporation. All rights reserved. |
 | `Avalonia`, `Avalonia.Desktop`, `Avalonia.Native`, `Avalonia.Win32`, `Avalonia.X11`, `Avalonia.FreeDesktop`, `Avalonia.FreeDesktop.AtSpi`, `Avalonia.Remote.Protocol`, `Avalonia.Themes.Fluent`, `Avalonia.Skia`, `Avalonia.HarfBuzz`, `Avalonia.Headless` | the UI, and the headless platform the screenshots draw on, `Avalonia.Headless` carried beside the inspector too (`inspector/`, and older Avalonia 12s' builds under `inspector/avalonia/`) for an Avalonia app a Passenger nobody sees runs | MIT | Copyright 2013-2026 © The AvaloniaUI Project |
 | `Avalonia.Markup.Xaml.Loader` | XAML Hot Reload's compiler, carried beside the inspector into an Avalonia app Passenger runs or debugs (`inspector/`, and older Avalonia 12s' builds under `inspector/avalonia/`) | MIT | Copyright 2013-2026 © The AvaloniaUI Project |
 | `Avalonia.Controls.WebView` | an HTML file's preview beside its text, in the system's own web view (WebView2, WKWebView, WebKitGTK) | MIT | Copyright 2019-2026 © AvaloniaUI OÜ |

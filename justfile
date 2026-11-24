@@ -108,7 +108,8 @@ package-mac *args:
 # administrator, adds a Start menu entry, opens .sln, .slnx and .csproj in Passenger, and uninstalls from Settings > Apps.
 # Signed on Windows by PASSENGER_SIGNTOOL_PARAMS or PASSENGER_ARTIFACT_SIGNING_METADATA (tools/package-win.sh).
 # The Windows installer, artifacts/package/Passenger-windows-x64.exe or -arm64.exe, and beside it the portable build,
-# -x64-portable.zip or -arm64-portable.zip, run as a portable copy on Windows: just package-win [win-x64|win-arm64]
+# -x64-portable.zip or -arm64-portable.zip, run as a portable copy on Windows, and win-x64's Passenger-debugger-win-x86.zip,
+# the debugger's 32-bit host a release downloads: just package-win [win-x64|win-arm64]
 [unix]
 package-win rid="win-x64":
     tools/package-win.sh {{rid}}

@@ -182,6 +182,9 @@ jobs:
           foreach ($path in $exe, (Join-Path $root 'Update.exe'), (Join-Path $root 'current\roslyn'), (Join-Path $root 'current\roslyn-extension'), (Join-Path $root 'current\debugger'), $shortcut) {
             if (-not (Test-Path $path)) { throw "The install has no $path" }
           }
+          # The debugger's 32-bit host is a release file of its own, downloaded the first time a 32-bit program is debugged.
+          if (Test-Path (Join-Path $root 'current\debugger\x86')) { throw "The install carries the debugger's 32-bit host, which it should download" }
+          if (-not (Test-Path artifacts/package/Passenger-debugger-win-x86.zip)) { throw 'tools/package-win.sh made no Passenger-debugger-win-x86.zip' }
           $entry = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\PassengerIDE'
           if ($entry.DisplayName -ne 'Passenger') { throw "Settings > Apps lists the install as '$($entry.DisplayName)'" }
           # The runner's Visual Studio keeps these types' default, so Passenger is among the programs that open them.

@@ -954,11 +954,10 @@ public sealed partial class BuildRunController
 
     /// <summary>A configuration's plan with its build before launch done: the plan to start, or why there is none, the folder
     /// left or Stop meanwhile among the reasons; <c>Unresolved</c> when the problem is the plan's own (what the configuration
-    /// runs could not be worked out, or that the debugger a start <paramref name="debugs"/> with cannot follow it), which a start
-    /// shows where it shows its own state. Where the start <paramref name="collects"/> (Run's, Debug's, Profile's) and its configuration
+    /// runs could not be worked out), which a start shows where it shows its own state. Where the start <paramref name="collects"/> (Run's, Debug's, Profile's) and its configuration
     /// collects its logs and traces, its dashboard comes up as its project builds (<see cref="RunDashboard.CollectAsync"/>), ended with the program.</summary>
     public async Task<(LaunchPlan? Plan, string? Problem, bool Unresolved)> PrepareAsync(RunConfiguration chosen, string? arguments, Working work, bool build = true,
-        Action? reading = null, bool collects = false, bool debugs = false)
+        Action? reading = null, bool collects = false)
     {
         (LaunchPlan? plan, string? problem) = await ResolvePlanAsync(chosen, arguments, work.Stopping);
         if (Checkpoint(work, chosen.Name) is { } stopped)
@@ -968,10 +967,6 @@ public sealed partial class BuildRunController
         if (plan is null)
         {
             return (null, problem, true);
-        }
-        if (debugs && plan.WhyNotDebugged is { } undebugged)
-        {
-            return (null, undebugged, true);
         }
         using CancellationTokenSource collecting = CancellationTokenSource.CreateLinkedTokenSource(work.Stopping);
         Task<LaunchPlan>? told = collects && Collects(chosen, plan) ? CollectAsync(plan, collecting.Token) : null;
@@ -1371,8 +1366,16 @@ public sealed partial class BuildRunController
             {
                 return Said(why);
             }
-            // Hot Reload through the debugger reaches no program it cannot follow, which runs as it is.
-            string? unreloaded = reloaded && plan.RunsAsX86 ? Debugging.DebugSession.WhyNoX86Adapter : null;
+            // Hot Reload reaches a 32-bit program by the 32-bit debugger, had before it starts held: without, it runs as it is.
+            string? unreloaded = null;
+            try
+            {
+                (_, unreloaded) = await session.Debug.X86HostAsync(reloaded && plan.RunsAsX86, work, work.Stopping);
+            }
+            catch (OperationCanceledException) when (work.Stopping.IsCancellationRequested)
+            {
+                return Said(Checkpoint(work, chosen.Name) ?? StoppedStarting(chosen.Name));
+            }
             if (unreloaded is not null)
             {
                 reloaded = false;
@@ -2597,7 +2600,7 @@ public sealed partial class BuildRunController
             {
                 edits?.Dispose();
                 edits = session.Debug.Building(session.Debug.HotReloadOn());
-            }, collects: true, debugs: true);
+            }, collects: true);
             if (plan is null)
             {
                 return problem;
@@ -2718,7 +2721,7 @@ public sealed partial class BuildRunController
     /// build; null once its session is open, else why not.</summary>
     private async Task<string?> LaunchDebuggedAsync(RunConfiguration chosen, LaunchPlan plan, Working work, BuiltEdits? edits, string? copies = null)
     {
-        if ((plan.WhyNotDebugged ?? plan.WhyNot("debug")) is { } why)
+        if (plan.WhyNot("debug") is { } why)
         {
             return why;
         }
@@ -2773,7 +2776,7 @@ public sealed partial class BuildRunController
         }
         // An Avalonia or WPF app is launched with the Live Visual Tree's inspector, held by its tab, ending with this debugging.
         (LaunchPlan launched, LiveApp? inspected) = session.Inspected(listened);
-        Task<string?> starting = debug.StartAsync(launched, app: inspected, edits: edits, copies: copies);
+        Task<string?> starting = debug.StartAsync(launched, app: inspected, edits: edits, copies: copies, work: work);
         // Its tab, chosen as the start began, has its console where the program writes there.
         HearNeeds(copies is null && launched.Console == ConsoleKind.Internal ? debug.Chosen?.Console : null, chosen.Name, debugged: true);
         if (game is not null && debug.Chosen?.Console is { } gameConsole)
@@ -2818,7 +2821,8 @@ public sealed partial class BuildRunController
         parts.Dock.Show(ToolWindowIds.Debug);
         parts.Views.Debug.ShowTab(console: true);
         DebugProject = Path.GetDirectoryName(plan.Project);
-        string? refused = await session.Debug.StartThroughAsync(Aspire.FunctionsHost.Debugged(plan), Aspire.FunctionsHost.StartedWorkerAsync, Aspire.FunctionsHost.NoWorker, edits);
+        string? refused = await session.Debug.StartThroughAsync(Aspire.FunctionsHost.Debugged(plan), Aspire.FunctionsHost.StartedWorkerAsync, Aspire.FunctionsHost.NoWorker, edits,
+            work);
         if (refused is null)
         {
             parts.OpenBrowser(plan, DebugEnded(session.Debug.SessionNamed(plan.Name)));

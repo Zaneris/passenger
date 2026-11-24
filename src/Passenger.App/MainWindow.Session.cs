@@ -49,11 +49,12 @@ public partial class MainWindow
 
     /// <summary>What a session of this window is made with: its editors, where it keeps state, how it watches folders, the
     /// warm server it may take up, its consoles, Debug window and tests tree, a test run's build (which the session's builds
-    /// and runs make), the Terminal tab the debugger asks for, and where its container tools come from.</summary>
+    /// and runs make), the Terminal tab the debugger asks for, and where its container tools and 32-bit debugger come from.</summary>
     private SessionSetup Setup() => new(Editors, StateFolder, HistoryKeeping, Watching, () => settings.SolutionWideAnalysis, WarmServer, Bottom,
         (projects, cancel) => buildRun.BuildTestsAsync(projects, cancel), RunForDebugger, () => settings, work, () => Engine)
     {
         ContainerTools = () => ContainerToolsFrom ?? Containers.ContainerToolsSource.Default(Releases),
+        X86Debugger = () => X86DebuggerFrom ?? Debugging.X86DebuggerSource.Default(Releases),
         DockerHub = DockerHub,
         GodotEnvironment = GodotFolders,
         StartsLanguageServer = StartsLanguageServer,

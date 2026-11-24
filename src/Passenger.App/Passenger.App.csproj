@@ -545,8 +545,9 @@
 
   <!-- The debug adapter's 32-bit host becomes this project's output under debugger/x86/ in a build for Windows: the helper
        host built self-contained for win-x86, with its x86 runtime and dbgshim for x86 (GetX86AdapterHost), which runs the
-       adapter above for a 32-bit program (DebugSession.X86AdapterHost), as a runtime's debugging library loads only into
-       a process of its program's processor. -->
+       adapter above for a 32-bit program (X86DebuggerSource), as a runtime's debugging library loads only into a process
+       of its program's processor. A release's installer and portable zip leave it out, a release file of its own that
+       Passenger downloads the first time it debugs a 32-bit program (tools/package-win.sh). -->
   <Target Name="IncludeX86AdapterHost" BeforeTargets="AssignTargetPaths" Condition="'$(CommandFor)' == 'windows'">
     <MSBuild Projects="../Passenger.Helper/Passenger.Helper.csproj" Targets="GetX86AdapterHost" Properties="RuntimeIdentifier=win-x86"
              RemoveProperties="SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">

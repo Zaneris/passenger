@@ -1,13 +1,13 @@
 # A release, run by hand from a vX.Y.Z tag with Dry run unticked (Actions > Release > Run workflow, or `gh workflow run
 # Release --ref vX.Y.Z -f dry_run=false`; pushing the tag alone runs nothing): the gate's tests (unless Skip the tests
-# is ticked), then each system's package, its portable build and the container tools at the tag's version, each build
-# checked to say that version, published as the tag's GitHub release with SHA256SUMS, the version's notes and Velopack's
-# feed for each Windows channel, then told to Homebrew, WinGet and the AUR. The files' names never change, since the
-# site's download links, an installed Passenger and a package manager's manifest take them by name. Signed only when the
-# repository's secrets hold the credentials (the signing steps name them), else unsigned. A dry run, the default and
-# from a branch the only kind, builds and checks everything and keeps what the release would carry as the run's
-# artifact. Only the job that publishes writes to this repository, and only the last, with secrets of its own, reaches
-# the package managers. Actions are pinned to a release's commit.
+# is ticked), then each system's package, its portable build, the container tools and the debugger's 32-bit host at the
+# tag's version, each build checked to say that version, published as the tag's GitHub release with SHA256SUMS, the
+# version's notes and Velopack's feed for each Windows channel, then told to Homebrew, WinGet and the AUR. The files'
+# names never change, since the site's download links, an installed Passenger and a package manager's manifest take them
+# by name. Signed only when the repository's secrets hold the credentials (the signing steps name them), else unsigned.
+# A dry run, the default and from a branch the only kind, builds and checks everything and keeps what the release would
+# carry as the run's artifact. Only the job that publishes writes to this repository, and only the last, with secrets of
+# its own, reaches the package managers. Actions are pinned to a release's commit.
 name: Release
 
 on:
@@ -367,7 +367,8 @@ jobs:
 
       # Each Windows channel's update feed, releases.<rid>.json, naming the full package and its SHA-256, beside it: an
       # installed Passenger reads the newer release's by these names. The portable builds beside the packages: the Mac's
-      # app zipped, Windows' app folder zipped, and Linux's archive, which is its own.
+      # app zipped, Windows' app folder zipped, and Linux's archive, which is its own. The debugger's 32-bit host, which a
+      # Windows Passenger downloads the first time it debugs a 32-bit program, made once, from win-x64's publish.
       - name: Gather the release's files
         run: |
           mkdir -p artifacts/release
@@ -379,6 +380,9 @@ jobs:
               cp "artifacts/package/Passenger-windows-${RID#win-}.exe" "artifacts/package/Passenger-windows-${RID#win-}-portable.zip" \
                 "artifacts/package/$RID/velopack/releases.$RID.json" "artifacts/package/$RID/velopack/PassengerIDE-$VERSION-$RID-full.nupkg" \
                 artifacts/release/
+              if [ "$RID" = win-x64 ]; then
+                cp artifacts/package/Passenger-debugger-win-x86.zip artifacts/release/
+              fi
               ;;
             linux-*)
               cp "artifacts/package/Passenger-linux-${RID#linux-}.tar.gz" artifacts/release/
@@ -495,6 +499,7 @@ jobs:
           Passenger-container-tools-linux-musl-arm64.tar.gz
           Passenger-container-tools-linux-musl-x64.tar.gz
           Passenger-container-tools-linux-x64.tar.gz
+          Passenger-debugger-win-x86.zip
           Passenger-linux-arm64.tar.gz
           Passenger-linux-x64.tar.gz
           Passenger-macos-arm64.dmg

@@ -31,6 +31,10 @@ public partial class MainWindow
     /// build's artifacts and the state's cache, downloaded from <see cref="Releases"/>' release of this version.</summary>
     public ContainerToolsSource? ContainerToolsFrom { get; init; }
 
+    /// <summary>Where this window's debugger's 32-bit host comes from, which its sessions hold: by default beside the app (a
+    /// build of one's own) and the state's cache, downloaded from <see cref="Releases"/>' release of this version.</summary>
+    public X86DebuggerSource? X86DebuggerFrom { get; init; }
+
     /// <summary>Attach to Process and Reattach to Process, in the Run menu before Edit Configurations.</summary>
     private void AddAttaching()
     {
@@ -94,7 +98,8 @@ public partial class MainWindow
     /// <summary>Attaches the debugger to a .NET program, the Debug window open on its frames, beside any other program
     /// debugged: null once the session is open, else why it could not, as the status bar says. The program's last session,
     /// still attached (Reattach), is let go of first, the program running on. A container's program is attached to from
-    /// inside its container, Passenger's tools copied in first when they are not there.</summary>
+    /// inside its container, Passenger's tools copied in first when they are not there; a 32-bit program by the debugger's
+    /// 32-bit host, downloaded first where this build has none (<see cref="DebugController.X86HostAsync"/>).</summary>
     public async Task<string?> AttachAsync(DotnetProcess process)
     {
         UiThread.Check();
@@ -132,7 +137,7 @@ public partial class MainWindow
         attachedTo.Add(target);
         ShowToolWindow(ToolWindowIds.Debug);
         Bottom.Debug.ShowTab(console: false);
-        string? refused = await session.Debug.AttachAsync(target.Id, name, hotReload: place is not null && target.HotReload, place: place);
+        string? refused = await session.Debug.AttachAsync(target.Id, name, hotReload: place is not null && target.HotReload, place: place, work: held);
         attachSession = session.Debug.SessionNamed(name);
         if (refused is not null && target.Note is { } note && place is not null)
         {
