@@ -52,7 +52,7 @@ internal static class DatabaseDiscovery
             {
                 foreach ((string name, string value) in values)
                 {
-                    if (Source(name, from, value, project.Folder, project.Packages.Select(p => p.Name)) is { } source
+                    if (Source(name, $"found in {from}", value, project.Folder, project.Packages.Select(p => p.Name)) is { } source
                         && !found.Any(s => s.Kind == source.Kind && s.ConnectionString == source.ConnectionString))
                     {
                         found.Add(source);
@@ -64,7 +64,9 @@ internal static class DatabaseDiscovery
         return found;
     }
 
-    private static Dictionary<string, string> Configured(ProjectModel project, string environment)
+    /// <summary>The connection strings a project reads running in an environment, by name: its appsettings.json's, then the
+    /// environment's, then its user secrets' in Development.</summary>
+    internal static Dictionary<string, string> Configured(ProjectModel project, string environment)
     {
         Dictionary<string, string> values = new(StringComparer.OrdinalIgnoreCase);
         foreach (string file in (string[])["appsettings.json", $"appsettings.{environment}.json"])
@@ -96,7 +98,8 @@ internal static class DatabaseDiscovery
         return values;
     }
 
-    private static void Take(Dictionary<string, string> values, string key, string value)
+    /// <summary>A variable taken as the configuration reads it, where it names a connection string (ConnectionStrings__NAME).</summary>
+    internal static void Take(Dictionary<string, string> values, string key, string value)
     {
         string normalized = key.Replace("__", ":", StringComparison.Ordinal);
         if (normalized.StartsWith("ConnectionStrings:", StringComparison.OrdinalIgnoreCase))
@@ -105,7 +108,9 @@ internal static class DatabaseDiscovery
         }
     }
 
-    private static DatabaseSource? Source(string name, string from, string value, string folder, IEnumerable<string> packages)
+    /// <summary>A connection string as a connection of its kind, its secrets marked, a SQLite file's path made whole from
+    /// <paramref name="folder"/>; null for one that names no database Passenger opens.</summary>
+    internal static DatabaseSource? Source(string name, string found, string value, string folder, IEnumerable<string> packages)
     {
         if (string.IsNullOrWhiteSpace(value) || !value.Contains('=') || value.Contains("://", StringComparison.Ordinal))
         {
@@ -138,6 +143,6 @@ internal static class DatabaseDiscovery
             sqlite.DataSource = PathNames.Canonical(Path.GetFullPath(sqlite.DataSource, folder));
             value = sqlite.ConnectionString;
         }
-        return kind is { } provider ? new DatabaseSource(name, provider, folder) { ConnectionString = value, Found = $"found in {from}" } : null;
+        return kind is { } provider ? new DatabaseSource(name, provider, folder) { ConnectionString = value, Found = found } : null;
     }
 }

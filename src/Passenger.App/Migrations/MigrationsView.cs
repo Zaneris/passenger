@@ -112,7 +112,9 @@ public sealed class MigrationsView : DockPanel
             ToolButtons.Of(AppActions.RemoveLastMigration, IconKeys.Clear, "Remove Last Migration", Request),
             ToolBars.Gap(),
             ToolButtons.Of(AppActions.ScriptMigrations, IconKeys.DocumentText, "Script Migrations…", Request),
-            ToolButtons.Of(AppActions.BundleMigrations, IconKeys.Package, "Bundle Migrations", Request));
+            ToolButtons.Of(AppActions.BundleMigrations, IconKeys.Package, "Bundle Migrations", Request),
+            ToolBars.Gap(),
+            ToolButtons.Of(AppActions.MigrationsDatabase, IconKeys.Database, "Open Context's Database", Request));
 
         gaps = new StackPanel { [DockProperty] = Dock.Top, Name = "MigrationsGaps", Spacing = Gaps.Tight, Margin = new Thickness(Gaps.Normal, Gaps.Small, Gaps.Normal, 0) };
         list = new ListBox

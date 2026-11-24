@@ -239,6 +239,7 @@ public static class AppActions
     public const string BundleMigrations = "app.migrations.bundle";
     public const string MigrationsFix = "app.migrations.fix";
     public const string MigrationsEnvironment = "app.migrations.environment";
+    public const string MigrationsDatabase = "app.migrations.database";
 
     // The Containers window over the person's container engine and its actions on the row chosen there: no keys of Rider's,
     // whose Services window has none in its Visual Studio keymaps.

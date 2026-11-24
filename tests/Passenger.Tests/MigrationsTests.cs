@@ -100,6 +100,19 @@ public sealed class MigrationsTests
                 $"dotnet ef's lines did not reach the Build window as a program's output, which was:\n{programs}\nThe window's:\n{console}");
             runs.Ran("Updating the database after Add Migration", "database update");
 
+            // The context's database, written in its code, opens in the Database window down to the migrated table.
+            Tool(window, AppActions.MigrationsDatabase);
+            Ui.WaitFor(() => window.Database.Sources.Any(s => s.Found == "used by ShopContext's migrations") && !window.Database.Busy
+                && window.DatabaseExplorer.Rows.Any(r => r.Title == "Tables"), () => $"the context's database opened ({window.Status}; {window.Database.Said}; databases: {string.Join(", ", Directory.GetFiles(folder, "*.db", SearchOption.AllDirectories))}; "
+                + $"opened: {string.Join(", ", window.Database.Sources.Select(s => $"{s.Name} {s.Found} {s.Folder}"))})", Slow);
+            Passenger.App.Database.DatabaseSource used = window.Database.Sources.Single(s => s.Found == "used by ShopContext's migrations");
+            Assert.Equal(("Shop", Passenger.App.Database.DatabaseKind.Sqlite, "shop.db"), (used.Name, used.Kind, used.Database));
+            DatabaseTests.Open(window, "Tables");
+            Assert.Contains(window.DatabaseExplorer.Rows, r => r.Title == "Products");
+            Assert.True(window.Perform(AppActions.DatabaseRefresh), $"Refresh Database Connections did not run: {window.Status}");
+            Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
+            Assert.Contains(window.Database.Sources, s => s.Id == used.Id);
+
             // A model change no migration covers, which the build after it says in Problems at the context.
             ShopApp.AddPrice(folder);
             Ui.Run(window, AppActions.Build);

@@ -1038,6 +1038,48 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>Shows a connection another window uses in the Database window and opens its row as a click would, the folder's
+    /// connections found first: one listed with its connection string taken, else <paramref name="wanted"/> listed beside them
+    /// (until the folder's end where <paramref name="lasting"/>). Null once refused, said.</summary>
+    internal async Task<DatabaseSource?> ShowDatabaseOfAsync(DatabaseSource wanted, bool lasting)
+    {
+        ProjectSession asked = session;
+        DatabaseController controller = Database;
+        ShowToolWindow(ToolWindowIds.Database);
+        await DatabasesFoundAsync();
+        if (session != asked)
+        {
+            return null;
+        }
+        DatabaseSource used = controller.Use(wanted, lasting);
+        if (WhyNotOpened(used) is { } why)
+        {
+            Refuse(why);
+            return null;
+        }
+        if (DatabaseExplorer.Rows.FirstOrDefault(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == used.Id) is { } row)
+        {
+            DatabaseExplorer.Choose(row);
+            if (!row.IsExpanded)
+            {
+                await DatabaseExplorer.ToggleAsync(row);
+            }
+        }
+        return used;
+    }
+
+    /// <summary>Ends once the folder's connections are found, shown or not (another window's ask).</summary>
+    internal async Task DatabasesFoundAsync()
+    {
+        DatabaseController controller = Database;
+        await controller.Idle;
+        if (Folder is not null && !controller.Discovered)
+        {
+            await controller.RefreshAsync();
+        }
+        await controller.Idle;
+    }
+
     private void BindDatabase(ProjectSession next)
     {
         database?.Bind(next);

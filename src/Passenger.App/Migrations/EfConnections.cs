@@ -46,6 +46,23 @@ public static class EfConnections
             : null;
     }
 
+    /// <summary>The connection string a context's registration or the context itself writes whole, given to its provider
+    /// (<c>options.UseSqlite("Data Source=shop.db")</c>); null where none is written.</summary>
+    public static string? WrittenOf(string context, IEnumerable<(string Path, string Text)> code, CSharpParseOptions options)
+    {
+        List<SyntaxNode> roots = [.. code.Select(c => CSharpParsing.Parse(c.Text, options, c.Path).GetRoot())];
+        IEnumerable<SyntaxNode> places = roots.SelectMany(root => root.DescendantNodes().OfType<InvocationExpressionSyntax>().Where(i => Registers(i, context)).Cast<SyntaxNode>())
+            .Concat(roots.SelectMany(root => root.DescendantNodes().OfType<ClassDeclarationSyntax>().Where(c => c.Identifier.ValueText == context)));
+        return places.SelectMany(place => place.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>()).Select(Written).FirstOrDefault(s => s is not null);
+    }
+
+    /// <summary>The connection string a provider's Use… call is given as a literal.</summary>
+    private static string? Written(InvocationExpressionSyntax call) =>
+        call.Expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: var method } && method.StartsWith("Use", StringComparison.Ordinal)
+        && call.ArgumentList.Arguments.FirstOrDefault()?.Expression is LiteralExpressionSyntax { RawKind: (int)SyntaxKind.StringLiteralExpression } given
+        && given.Token.ValueText.Contains('=', StringComparison.Ordinal)
+            ? given.Token.ValueText : null;
+
     /// <summary>The name a context's connection takes where nothing tells it: the context's name without "Context".</summary>
     public static string Assumed(string context) =>
         context.EndsWith("DbContext", StringComparison.Ordinal) && context.Length > 9 ? context[..^9]

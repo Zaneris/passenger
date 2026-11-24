@@ -37,6 +37,11 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
     private CancellationTokenSource lifetime = new();
     private readonly List<DatabaseSource> made = [];
     private IReadOnlyList<DatabaseSource> found = [];
+
+    /// <summary>Connections the IDE's other windows asked for that the folder's files do not name (a context's database written
+    /// in its code), listed with those found until the folder's end.</summary>
+    private readonly List<DatabaseSource> asked = [];
+    private Task? under;
     private readonly HashSet<Guid> connected = [];
     private readonly Dictionary<string, SqlConsole> consoles = new(PathNames.Comparer);
     private readonly Dictionary<Guid, Task<SqlCatalog?>> catalogs = [];
@@ -87,6 +92,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         unkept = new DatabaseState();
         made.Clear();
         found = [];
+        asked.Clear();
         connected.Clear();
         foreach (SqlConsole console in consoles.Values)
         {
@@ -627,6 +633,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         UiThread.Check();
         made.RemoveAll(s => s.Id == source.Id);
         found = [.. found.Where(s => s.Id != source.Id)];
+        asked.RemoveAll(s => s.Id == source.Id);
         connected.Remove(source.Id);
         if (source.Found is null)
         {
@@ -725,9 +732,9 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         IReadOnlyList<DatabaseSource> before = found;
         IReadOnlyList<DatabaseSource> read = await DatabaseDiscovery.ReadAsync(session, cancel);
         cancel.ThrowIfCancellationRequested();
-        found = [.. read.Where(s => !made.Any(m => m.Kind == s.Kind && m.ConnectionString == s.ConnectionString))
-            .Select(s => before.FirstOrDefault(old => old.Name == s.Name && old.Kind == s.Kind && old.ConnectionString == s.ConnectionString) is { } old ? s with { Id = old.Id } : s)
-            .Select(Marked)];
+        IReadOnlyList<DatabaseSource> taken = [.. read.Where(s => !made.Any(m => m.Kind == s.Kind && m.ConnectionString == s.ConnectionString))
+            .Select(s => before.FirstOrDefault(old => old.Name == s.Name && old.Kind == s.Kind && old.ConnectionString == s.ConnectionString) is { } old ? s with { Id = old.Id } : s)];
+        found = [.. taken.Concat(asked.Where(a => !made.Concat(taken).Any(s => s.Kind == a.Kind && s.ConnectionString == a.ConnectionString))).Select(Marked)];
         connected.RemoveWhere(id => Find(id) is null);
         catalogs.Clear();
         Discovered = true;
@@ -735,6 +742,29 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             : $"{Plural.Of(Sources.Count, "connection")}. Open one to read its databases.";
         return true;
     }) ?? Task.CompletedTask;
+
+    /// <summary>The connection reaching a database: one listed with its kind and connection string, else <paramref name="wanted"/>
+    /// listed with those found, kept until the folder's end where <paramref name="lasting"/> (a running service's goes with
+    /// its run at the next refresh).</summary>
+    public DatabaseSource Use(DatabaseSource wanted, bool lasting)
+    {
+        UiThread.Check();
+        if (Sources.FirstOrDefault(s => s.Kind == wanted.Kind && s.ConnectionString == wanted.ConnectionString) is { } listed)
+        {
+            return listed;
+        }
+        if (lasting)
+        {
+            asked.Add(wanted);
+        }
+        DatabaseSource added = Marked(wanted);
+        found = [.. found, added];
+        Changed?.Invoke(this, EventArgs.Empty);
+        return added;
+    }
+
+    /// <summary>Ends once the operation under way has, at once with none.</summary>
+    public Task Idle => under is { IsCompleted: false } pending ? pending : Task.CompletedTask;
 
     /// <summary>Reads what the explorer shows under a connection, a database or a table, opening the connection as the person
     /// asked; null where it failed or was stopped, said in <see cref="Said"/>.</summary>
@@ -807,7 +837,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         {
             return null;
         }
-        return RunAsync(started, run, source);
+        return under = RunAsync(started, run, source);
     }
 
     private async Task RunAsync(Working started, Func<CancellationToken, Task<bool>> run, DatabaseSource? source)

@@ -128,6 +128,13 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools/Migrations", 3, 0)],
             Words = [Core.AspNetCoreVariables.AspNetCoreEnvironment, Core.AspNetCoreVariables.DotnetEnvironment, "appsettings", "Staging", "Production"],
         });
+        actions.Add(new IdeAction(A.MigrationsDatabase, "Open Context's Database", "Migrations", c => IdeErrors.Observe(OpenMigrationsDatabaseAsync()))
+        {
+            WhyNot = context => none(context) ?? (controller.Startup is null ? Refusals.NoEfCore : null),
+            TitleIn = _ => controller.Context is { } context ? $"Open {context}'s Database" : "Open Context's Database",
+            Menus = [new MenuPlace("Tools/Migrations", 1, 2)],
+            Words = ["Database window", "connection string", "SQL console"],
+        });
         actions.Add(new IdeAction(A.MigrationsFix, "Fix What Migrations Lack", "Migrations", c =>
         {
             if (FirstFix() is { } fix)
@@ -142,6 +149,21 @@ public partial class MainWindow
         });
 
         EfFix? FirstFix() => controller.Gaps.Concat(controller.Failure is { } failed ? [failed] : []).SelectMany(g => g.Fixes).FirstOrDefault();
+    }
+
+    /// <summary>The chosen context's database, by the connection its migrations use, opened in the Database window.</summary>
+    private async Task OpenMigrationsDatabaseAsync()
+    {
+        if (await Migrations.ConnectionAsync(A.MigrationsDatabase) is not { } connection)
+        {
+            return;
+        }
+        if (Passenger.App.Database.DatabaseDiscovery.Source(connection.Name, connection.Used, connection.Value, connection.Folder, connection.Packages) is not { } wanted)
+        {
+            Refuse(Refusals.NoDatabaseOf(connection.Name));
+            return;
+        }
+        await ShowDatabaseOfAsync(wanted, lasting: !connection.Running);
     }
 
     /// <summary>The session's projects as the Migrations window follows them, from the session's first moment: what they

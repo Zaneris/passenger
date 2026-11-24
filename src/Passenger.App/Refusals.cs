@@ -784,6 +784,16 @@ public static class Refusals
     /// <summary>The Migrations window, or an EF Core action, in a folder none of whose projects references EF Core.</summary>
     public const string NoEfCore = "No project here uses EF Core";
 
+    /// <summary>A Migrations action on a context before the project's contexts were listed.</summary>
+    public const string NoEfContext = "List the project's contexts first";
+
+    /// <summary>A connection string asked to open in the Database window that names no database of a kind it opens.</summary>
+    public static string NoDatabaseOf(string connection) => $"{connection} names no SQLite, PostgreSQL, SQL Server or MySQL database the Database window opens";
+
+    /// <summary>A context's database asked for where nothing tells the connection it uses.</summary>
+    public static string NoEfConnection(string context, string environment) =>
+        $"Nothing tells {context}'s connection string in the {environment} environment: name it in the startup project's settings or its run's ConnectionStrings__ variables";
+
     /// <summary>A publish asked for with no folder chosen to publish into.</summary>
     public const string NoOutputFolder = "An output folder is needed";
 

@@ -10,6 +10,7 @@ using Passenger.Core;
 using Passenger.Packages;
 using Passenger.Text;
 using Passenger.Workspace;
+using DatabaseDiscovery = Passenger.App.Database.DatabaseDiscovery;
 
 namespace Passenger.App.Migrations;
 
@@ -62,6 +63,14 @@ internal sealed record EfSetting(ProjectModel Project, ProjectModel Startup, str
 
     /// <summary>ef.dll started as dotnet ef would start it; null where dotnet ef runs.</summary>
     public EfLaunch? Launch { get; init; }
+}
+
+/// <summary>The database a context's migrations go to: its connection string as dotnet ef reads it, the name it has, what
+/// it is used by, the folder a SQLite file's path is read from, and the startup project's packages, which tell its kind.</summary>
+public sealed record EfConnection(string Name, string Value, string Used, string Folder, IReadOnlyList<string> Packages)
+{
+    /// <summary>Whether a compose run or an AppHost gave it, so it goes with the run.</summary>
+    public bool Running { get; init; }
 }
 
 /// <summary>The Migrations window's model and commands over each session it binds: the folder's EF Core projects, the
@@ -872,9 +881,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             return (null, $"dotnet ef is not installed here: {EfGaps.PinFix(runtime).Title} first");
         }
         // The run's database where the environment is the run's: a compose run's or an AppHost's, as this machine reaches it.
-        bool chosen = session.MigrationEnvironments.Of(startup) is not null;
-        EfRunDatabase? database = !chosen && session.ContainerRun is { IsStopped: false } containers ? await EfDatabases.OfComposeAsync(containers, startup, work.Stopping) : null;
-        database ??= chosen ? null : EfDatabases.OfAspire(session.Aspire, startup);
+        EfRunDatabase? database = await RunDatabaseAsync(session, startup, work.Stopping);
         if (database is not null)
         {
             environment = new Dictionary<string, string>(environment.Concat(database.Environment).GroupBy(e => e.Key).Select(g => g.Last()));
@@ -887,6 +894,78 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         string? context = Context ?? (EfDefaults.ReadsDefaults(tool) ? defaults?.Context : null);
         return (new EfSetting(project, startup, framework, folder, environment, context, tool, restore.Runtime ?? runtime)
             { Database = database, Outputs = outputs, Launch = launch }, null);
+    }
+
+    /// <summary>The database a compose run's or an AppHost's run of the startup project gives it, as this machine reaches it,
+    /// where the environment is the run's (none chosen in the window); null for the one its configuration gives.</summary>
+    private static async Task<EfRunDatabase?> RunDatabaseAsync(ProjectSession session, ProjectModel startup, CancellationToken cancel)
+    {
+        if (session.MigrationEnvironments.Of(startup) is not null)
+        {
+            return null;
+        }
+        return (session.ContainerRun is { IsStopped: false } containers ? await EfDatabases.OfComposeAsync(containers, startup, cancel) : null)
+            ?? EfDatabases.OfAspire(session.Aspire, startup);
+    }
+
+    /// <summary>The database the chosen context's migrations go to, as dotnet ef reaches it: the connection its registration
+    /// or the context names, read from the startup project's run as a command gives it (a compose run's or an AppHost's
+    /// database first) then the settings its environment reads; else the connection string its code writes whole. Null
+    /// where none is told or the window is busy, said.</summary>
+    public async Task<EfConnection?> ConnectionAsync(string action)
+    {
+        UiThread.Check();
+        ProjectSession session = parts.Session();
+        if (Project is not { } project || Startup is not { } startup)
+        {
+            Said(new EfDone(false, Refusals.NoEfCore));
+            return null;
+        }
+        if ((Context ?? (Contexts is [var only] ? only.Name : null)) is not { } context)
+        {
+            Said(new EfDone(false, Refusals.NoEfContext));
+            return null;
+        }
+        if (parts.Work.Begin(action, $"Finding {context}'s database…") is not { } work)
+        {
+            Said(new EfDone(false, ActionWork.Busy(parts.Work.Of(action)!)));
+            return null;
+        }
+        using (work)
+        {
+            (_, _, IReadOnlyDictionary<string, string> environment) = await RunOfAsync(startup, work);
+            // dotnet ef runs in the startup project's folder, where a SQLite file's relative path is read.
+            string folder = startup.Folder;
+            EfRunDatabase? database = await RunDatabaseAsync(session, startup, work.Stopping);
+            string named = EnvironmentOf(startup).Name;
+            CSharpParseOptions options = CompilationSymbols.Of(project);
+            ProjectModel[] reading = [.. new[] { startup, project }.Distinct()];
+            (EfConnection? found, string? why) = await BackgroundWork.Run(() =>
+            {
+                Dictionary<string, string> values = DatabaseDiscovery.Configured(startup, named);
+                foreach ((string key, string given) in environment.Concat(database?.Environment ?? new Dictionary<string, string>()))
+                {
+                    DatabaseDiscovery.Take(values, key, given);
+                }
+                (string Path, string Text)[] code = [.. reading.SelectMany(p => FolderWalk.ProjectFiles(p, ".cs")).Distinct(PathNames.Comparer).Select(f => (f, Code(f)))];
+                string[] packages = [.. startup.Packages.Select(p => p.Name)];
+                if (EfConnections.NameOf(context, code, options, [.. values.Keys]) is { } told && values.TryGetValue(told.Name, out string? value))
+                {
+                    return ((EfConnection?)new EfConnection(told.Name, value, database is null ? $"used by {context}'s migrations" : $"used by {context}'s migrations: {database.Where}",
+                        folder, packages) { Running = database is not null && database.Environment.ContainsKey($"ConnectionStrings__{told.Name}") }, (string?)null);
+                }
+                return EfConnections.WrittenOf(context, code, options) is { } written
+                    ? (new EfConnection(EfConnections.Assumed(context), written, $"used by {context}'s migrations", folder, packages), null)
+                    : (null, Refusals.NoEfConnection(context, named));
+            }, work.Stopping);
+            if (found is null)
+            {
+                Said(new EfDone(false, why!));
+                return null;
+            }
+            work.Tell(true, $"{context}'s migrations use {found.Name}");
+            return found;
+        }
     }
 
     /// <summary>The folders a build puts the startup project's assembly in, and the project's where the startup project does
@@ -1225,7 +1304,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         EfContext? context = Contexts.FirstOrDefault(c => c.Name == named || c.FullName == named) ?? (named is null ? null : new EfContext(named, named));
         if (context is null)
         {
-            return "List the project's contexts first";
+            return Refusals.NoEfContext;
         }
         EfRestore? restore = EfRestore.Of(project.Path);
         string file = Path.Combine(project.Folder, $"{context.Name}Factory.cs");
