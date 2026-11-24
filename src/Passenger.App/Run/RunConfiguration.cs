@@ -299,6 +299,10 @@ public sealed record RunConfiguration
         {
             return "it starts no part: each is set to None";
         }
+        if (starting.Count(s => s.Kind == RunPartKind.Compose) > 1)
+        {
+            return "it starts two Compose parts, where the folder runs one Compose application at a time: name their files in one part";
+        }
         List<ProjectModel> loaded = [.. projects];
         foreach (RunPart start in starting)
         {
@@ -314,6 +318,10 @@ public sealed record RunConfiguration
             if (start.Kind == RunPartKind.Command && start.Command.Trim().Length == 0)
             {
                 return $"{name} names no command to run";
+            }
+            if (start.Kind == RunPartKind.Compose && start.ComposeFiles.Count == 0)
+            {
+                return $"{name} names no compose file";
             }
             if (start.Kind == RunPartKind.Script && start.Script.Length == 0)
             {
@@ -560,8 +568,12 @@ public sealed record RunConfiguration
         Context = Context ?? string.Empty,
         BuildArguments = BuildArguments ?? string.Empty,
         RunArguments = RunArguments ?? string.Empty,
-        Starts = [.. (Starts ?? []).Where(s => s is not null && (s.Kind == RunPartKind.Command || !string.IsNullOrWhiteSpace(s.Project))).Select(Clamped)],
+        Starts = [.. (Starts ?? []).Where(s => s is not null && (s.Kind is RunPartKind.Command or RunPartKind.Compose || !string.IsNullOrWhiteSpace(s.Project))).Select(Clamped)],
     };
+
+    /// <summary>Whether two lists of files name the same files in the same order.</summary>
+    public static bool SameFiles(IReadOnlyList<string> one, IReadOnlyList<string> other) =>
+        one.Count == other.Count && one.Zip(other).All(f => Core.PathNames.Same(f.First, f.Second));
 
     /// <summary>A part's values brought into range, as <see cref="Clamped()"/> brings the configuration's.</summary>
     private static RunPart Clamped(RunPart part) => part with
@@ -577,12 +589,14 @@ public sealed record RunConfiguration
         ReadyText = part.ReadyText ?? string.Empty,
         Browser = part.Browser ?? string.Empty,
         Name = part.Name ?? string.Empty,
+        ComposeFiles = [.. (part.ComposeFiles ?? []).Where(f => !string.IsNullOrWhiteSpace(f))],
+        Services = [.. (part.Services ?? []).Where(s => !string.IsNullOrWhiteSpace(s))],
     };
 
     /// <summary>A deep enough copy to edit in Edit Configurations without touching the one it came from.</summary>
     public RunConfiguration Copied() => this with
     {
-        Starts = [.. Starts.Select(s => s with { Environment = new Dictionary<string, string>(s.Environment) })],
+        Starts = [.. Starts.Select(s => s with { Environment = new Dictionary<string, string>(s.Environment), ComposeFiles = [.. s.ComposeFiles], Services = [.. s.Services] })],
         Environment = new Dictionary<string, string>(Environment),
         LinkedAppHosts = [.. LinkedAppHosts],
         ComposeFiles = [.. ComposeFiles],

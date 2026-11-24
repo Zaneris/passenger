@@ -58,7 +58,11 @@ public sealed class RunPane : DockPanel
         foreach (PartRun part in parts)
         {
             part.StateChanged -= OnStateChanged;
-            consoles.Children.Remove(part.Console);
+            // A Compose part's console is the window's own, which stays.
+            if (part.Console != Console)
+            {
+                consoles.Children.Remove(part.Console);
+            }
         }
         parts.Clear();
         partTabs.Clear();
@@ -69,8 +73,11 @@ public sealed class RunPane : DockPanel
             partTabs.Add(part, new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Children = { new TextBlock { Text = part.Name }, state } },
                 name: $"runPart{part.Place}Tab");
             part.StateChanged += OnStateChanged;
-            part.Console.IsVisible = false;
-            consoles.Children.Add(part.Console);
+            if (part.Console != Console)
+            {
+                part.Console.IsVisible = false;
+                consoles.Children.Add(part.Console);
+            }
         }
         partBar.IsVisible = parts.Count > 0;
         if (parts.Count > 0)
@@ -93,12 +100,12 @@ public sealed class RunPane : DockPanel
             return;
         }
         partTabs.Choice = part;
-        Console.IsVisible = false;
         Telemetry.IsVisible = false;
-        foreach (PartRun each in parts)
+        foreach (PartRun each in parts.Where(p => p.Console != Console))
         {
             each.Console.IsVisible = each == part;
         }
+        Console.IsVisible = part.Console == Console;
     }
 
     /// <summary>A part's tab says where it stands now.</summary>

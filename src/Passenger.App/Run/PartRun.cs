@@ -17,26 +17,43 @@ public enum PartState
 }
 
 /// <summary>A part of a run of several parts in a tab of the Run window: its own console, the program running in it (a
-/// ProcessRunner of its own, which Stop and Restart end and start again), what it runs and where it stands. Its tab's Rerun
+/// ProcessRunner of its own, which Stop and Restart end and start again), what it runs and where it stands; a Compose part
+/// shows the Run window's own console, where its run's log is followed (<see cref="OfContainers"/>). Its tab's Rerun
 /// restarts it alone and its Stop ends it alone; the run's Stop ends every part. A UI-thread object.</summary>
 public sealed class PartRun : INamedRun, IDisposable
 {
     public PartRun(string name, string run, int place, RunPart part)
+        : this(name, run, place, part, new OutputView { RerunsWhileRunning = true }, null)
+    {
+    }
+
+    private PartRun(string name, string run, int place, RunPart part, OutputView console, ProcessRunner? runner)
     {
         Name = name;
         Run = run;
         Place = place;
         Part = part;
-        Console = new OutputView { RerunsWhileRunning = true };
-        Runner = new ProcessRunner(Console, takesInput: true);
-        Runner.Exited += (_, code) =>
-        {
-            exitCode = code;
-            Set(PartState.Ended);
-        };
+        Console = console;
+        owned = runner is null;
+        Runner = runner ?? new ProcessRunner(Console, takesInput: true);
+        Runner.Exited += OnExited;
     }
 
+    /// <summary>A Compose part, whose containers' log the Run window's console follows through its runner while
+    /// <paramref name="ours"/> says the folder's container run is this part's; <paramref name="stop"/> takes them down.</summary>
+    public static PartRun OfContainers(string name, string run, int place, RunPart part, OutputView console, ProcessRunner runner, Func<bool> ours, Action stop) =>
+        new(name, run, place, part, console, runner) { ours = ours, stopContainers = stop };
+
+    private readonly bool owned;
+    private Func<bool> ours = () => true;
+    private Action? stopContainers;
     private int? exitCode;
+
+    private void OnExited(object? sender, int code)
+    {
+        exitCode = code;
+        Set(PartState.Ended);
+    }
 
     /// <summary>What its tab and the status bar call it.</summary>
     public string Name { get; }
@@ -64,7 +81,7 @@ public sealed class PartRun : INamedRun, IDisposable
     /// <summary>Where it stands changed, for its tab's words.</summary>
     public event EventHandler? StateChanged;
 
-    public bool IsRunning => Runner.IsRunning;
+    public bool IsRunning => Runner.IsRunning && ours();
 
     public int? ProcessId => Runner.ProcessId;
 
@@ -73,7 +90,18 @@ public sealed class PartRun : INamedRun, IDisposable
 
     public bool WasStopped => Runner.WasStopped;
 
-    public void Stop() => Runner.Stop();
+    public void Stop()
+    {
+        if (stopContainers is { } down)
+        {
+            down();
+            return;
+        }
+        Runner.Stop();
+    }
+
+    /// <summary>Whether it shows the Run window's own console, a Compose part's.</summary>
+    public bool IsContainers => stopContainers is not null;
 
     /// <summary>Starts its program in its console, which says what is started below what the last start wrote; null once it
     /// runs, else why not.</summary>
@@ -114,5 +142,12 @@ public sealed class PartRun : INamedRun, IDisposable
         _ => exitCode is { } code ? $"ended {code}" : "ended",
     };
 
-    public void Dispose() => Runner.Dispose();
+    public void Dispose()
+    {
+        Runner.Exited -= OnExited;
+        if (owned)
+        {
+            Runner.Dispose();
+        }
+    }
 }

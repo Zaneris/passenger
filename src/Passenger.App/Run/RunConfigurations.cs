@@ -178,6 +178,7 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
             ReadyWhen.Exited => ", next once it ends with 0",
             ReadyWhen.Line => $", next once a line matches {part.ReadyText}",
             ReadyWhen.Listening => part.ReadyText.Length > 0 ? $", next once {part.ReadyText} listens" : ", next once its host has started",
+            ReadyWhen.Healthy => ", next once its services are up",
             _ => string.Empty,
         };
         return part.Unread is { } unread ? $"{what}: {unread}" : what + ready;
@@ -444,7 +445,7 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         Dockerfile = Relative(configuration.Dockerfile),
         Context = Relative(configuration.Context),
         ServiceProjects = configuration.ServiceProjects.ToDictionary(p => p.Key, p => Relative(p.Value)),
-        Starts = [.. configuration.Starts.Select(s => s with { Project = Relative(s.Project), Folder = Relative(s.Folder) })],
+        Starts = [.. configuration.Starts.Select(s => s with { Project = Relative(s.Project), Folder = Relative(s.Folder), ComposeFiles = [.. s.ComposeFiles.Select(Relative)] })],
     };
 
     private RunConfiguration FromStore(RunConfiguration configuration) => folder is null ? configuration : configuration with
@@ -456,7 +457,7 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         Dockerfile = Full(configuration.Dockerfile),
         Context = Full(configuration.Context),
         ServiceProjects = configuration.ServiceProjects.ToDictionary(p => p.Key, p => Full(p.Value)),
-        Starts = [.. configuration.Starts.Select(s => s with { Project = Full(s.Project), Folder = Full(s.Folder) })],
+        Starts = [.. configuration.Starts.Select(s => s with { Project = Full(s.Project), Folder = Full(s.Folder), ComposeFiles = [.. s.ComposeFiles.Select(Full)] })],
     };
 
     private string Relative(string path) => folder is not null && path.Length > 0 && PathNames.Relative(path, folder) is { } relative ? relative : path;

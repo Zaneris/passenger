@@ -1077,8 +1077,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
         menu.Open(AddButton);
     }
 
-    /// <summary>Add Part's menu: each package's scripts, each package's dependencies' install, and a command, each added to the
-    /// run as the last part it starts, its details open.</summary>
+    /// <summary>Add Part's menu: each package's scripts, each package's dependencies' install, a command, and the services of
+    /// each set of compose files, each added to the run as the last part it starts, its details open.</summary>
     private void ChoosePart()
     {
         ContextMenu menu = new();
@@ -1090,6 +1090,19 @@ public sealed class RunConfigurationsDialog : IdeWindow
         menu.Items.Add(installs.Count > 0 ? ToolWindows.ListMenus.Sub("Install a Package's Dependencies", installs)
             : ToolWindows.ListMenus.Item("Install a Package's Dependencies", () => { }, NoPackage));
         menu.Items.Add(ToolWindows.ListMenus.Item("Command", () => Added(menu, new RunPart(string.Empty, ProjectLaunchAction.Start, string.Empty) { Kind = RunPartKind.Command })));
+        // Each set of compose files the folder's Compose configurations bring up, as their run takes them.
+        List<RunConfiguration> sets = [];
+        foreach (RunConfiguration each in generated.Select(e => e.Configuration).Where(c => c.Kind == RunKind.Compose && c.ComposeFiles.Count > 0))
+        {
+            if (!sets.Any(s => RunConfiguration.SameFiles(s.ComposeFiles, each.ComposeFiles)))
+            {
+                sets.Add(each);
+            }
+        }
+        List<Control> composed = [.. sets
+            .Select(c => (Control)ToolWindows.ListMenus.Item(string.Join("; ", c.ComposeFiles.Select(Shown)), () => Added(menu,
+                new RunPart(string.Empty, ProjectLaunchAction.Start, string.Empty) { Kind = RunPartKind.Compose, ComposeFiles = [.. c.ComposeFiles], Ready = ReadyWhen.Healthy })))];
+        menu.Items.Add(composed.Count > 0 ? ToolWindows.ListMenus.Sub("Compose Services", composed) : ToolWindows.ListMenus.Item("Compose Services", () => { }, NoCompose));
         menu.Closed += (_, _) =>
         {
             if (PartMenu == menu)
@@ -1108,6 +1121,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
     }
 
     private const string NoPackage = "The folder has no package.json";
+
+    private const string NoCompose = "The folder has no compose file";
 
     /// <summary>Add New Configuration: a configuration of the kind chosen named Unnamed, of the first executable project (a
     /// Compose one of the folder's first compose file).</summary>

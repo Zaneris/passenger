@@ -210,6 +210,14 @@ public sealed class SolutionLaunchTests : IDisposable
         Assert.True(web.All(p => p.Unread is null) && runs[1].Parts.All(p => p.Unread is not null),
             "A part of a kind or readiness Passenger does not know is not said to be one, so its run would start something else");
         Assert.False(web.All(p => p.FitsSolutionLaunch), "A run of a script and a command is taken for one Visual Studio's file can hold");
+        const string Composed = "{ \"runs\": [ { \"name\": \"Stack\", \"parts\": [ { \"compose\": [\"compose.yaml\", \"compose.dev.yaml\"], \"services\": [\"db\"] },"
+            + " { \"compose\": \"other.yaml\", \"readyWhen\": \"started\" }, { \"command\": \"x\", \"readyWhen\": \"healthy\" } ] } ] }";
+        IReadOnlyList<RunPart> stack = RunsFile.Parse(Composed, root).Runs[0].Parts;
+        Assert.True(stack[0] is { Kind: RunPartKind.Compose, Ready: ReadyWhen.Healthy, Unread: null } && stack[0].ComposeFiles.SequenceEqual([At("compose.yaml"), At("compose.dev.yaml")])
+            && stack[0].Services.SequenceEqual(["db"]) && RunsFile.NameOf(stack[0]) == "compose: db",
+            "A Compose part's files, services or readiness are not read as written, so the run brings up what its file does not say");
+        Assert.True(stack[1] is { Kind: RunPartKind.Compose, Unread: not null } && stack[2].Unread is not null,
+            "A Compose part waiting other than for its services, or another part waiting for health, is not said to be one Passenger cannot start");
         (IReadOnlyList<RunsFileRun> later, string? refused) = RunsFile.Parse("{ \"passengerRuns\": 2, \"runs\": [] }", root);
         Assert.True(later.Count == 0 && refused is not null, "A file of a later format is read as this one");
         Assert.True(RunsFile.Parse("{ \"runs\": [", root).Problem is not null && RunsFile.Written("[ 1 ]", [], root).Problem is not null,
@@ -233,6 +241,16 @@ public sealed class SolutionLaunchTests : IDisposable
         Assert.Equal("{\n  \"passengerRuns\": 1,\n  \"runs\": [\n    {\n      \"name\": \"Up\",\n      \"parts\": [\n        {\n          \"project\": \"Api/Api.csproj\"\n        },\n"
             + "        {\n          \"command\": \"make watch\",\n          \"readyWhen\": {\n            \"line\": \"ready\"\n          }\n        }\n      ]\n    }\n  ]\n}\n",
             RunsFile.Written(null, [made], root).Text);
+
+        RunsFileRun stack = new("Stack", [new RunPart(string.Empty, ProjectLaunchAction.Start, string.Empty)
+        {
+            Kind = RunPartKind.Compose, ComposeFiles = [At("compose.yaml")], Services = ["db"], Ready = ReadyWhen.Healthy,
+        }]);
+        string? composed = RunsFile.Written(null, [stack], root).Text;
+        Assert.True(composed is not null && composed.Contains("\"compose\": [\n            \"compose.yaml\"\n          ],\n          \"services\": [\n            \"db\"\n          ]", StringComparison.Ordinal)
+            && !composed.Contains("readyWhen", StringComparison.Ordinal) && RunsFile.Written(composed, RunsFile.Parse(composed, root).Runs, root).Text == composed,
+            $"A Compose part is not written as its file reads it, or not kept as written once read:\n{composed}");
+        Assert.Contains("\"infra/compose.yaml\"", RunsFile.Moved(composed, root, [(At("compose.yaml"), At("infra", "compose.yaml"))]), StringComparison.Ordinal);
 
         string? moved = RunsFile.Moved(Runs, root, [(At("web"), At("apps", "web")), (At("Api", "Api.csproj"), At("Api", "Gateway.csproj"))]);
         Assert.Equal(Runs.Replace("\"web/package.json\"", "\"apps/web/package.json\"", StringComparison.Ordinal).Replace("Api/Api.csproj", "Api/Gateway.csproj", StringComparison.Ordinal), moved);

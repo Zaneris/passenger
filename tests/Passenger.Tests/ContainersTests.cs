@@ -497,6 +497,7 @@ public sealed class ContainersTests
         Flow.StepApart<ContainersTests>("a remote engines port opens on its own machine", t => t.A_remote_engines_port_opens_on_its_own_machine());
         Flow.StepApart<ContainersTests>("a compose run on an engine of another machine opens the browser on that machine", t => t.A_compose_run_on_an_engine_of_another_machine_opens_the_browser_on_that_machine());
         Flow.StepApart<ContainersTests>("a Docker Compose projects own project name is its runs from reading its files to its take down", t => t.A_Docker_Compose_projects_own_project_name_is_its_runs_from_reading_its_files_to_its_take_down());
+        Flow.StepApart<ContainersTests>("a runs Compose part comes up before the part after it starts in the Run windows console and Stop takes it down", t => t.A_runs_Compose_part_comes_up_before_the_part_after_it_starts_in_the_Run_windows_console_and_Stop_takes_it_down());
         Flow.StepApart<ContainersTests>("a Docker Compose projects browser opens once its service answers HTTP the status saying meanwhile that it waits", t => t.A_Docker_Compose_projects_browser_opens_once_its_service_answers_HTTP_the_status_saying_meanwhile_that_it_waits());
         Flow.StepApart<ContainersTests>("detach lets go of a Docker Compose projects run and the windows close asks and stops its containers", t => t.Detach_lets_go_of_a_Docker_Compose_projects_run_and_the_windows_close_asks_and_stops_its_containers());
         Flow.StepApart<ContainersTests>("leave Running keeps a runs containers let go of as the solution closes and records them as the persons", t => t.Leave_Running_keeps_a_runs_containers_let_go_of_as_the_solution_closes_and_records_them_as_the_persons());
@@ -1356,6 +1357,53 @@ public sealed class ContainersTests
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => File.ReadAllLines(calls).Any(c => c.StartsWith("ps -aq ", StringComparison.Ordinal) && c.Contains($"label={ComposeLabels.Project}=my-shop", StringComparison.Ordinal)),
                 "Stop to take down the containers carrying the .dcproj's project name");
+        }
+        finally
+        {
+            window.Close();
+            File.WriteAllText(Path.Combine(engineFolder, "down"), string.Empty);
+        }
+    }
+
+    /// <summary>A run of several parts in the folder's passenger-runs.json whose Compose part names the project's compose file:
+    /// Run brings its services up as the folder's container run (its .dcproj's project name kept) before the command after it
+    /// starts, the Compose part's tab the Run window's own console with its log followed, and Stop takes its containers down
+    /// with the rest.</summary>
+    private void A_runs_Compose_part_comes_up_before_the_part_after_it_starts_in_the_Run_windows_console_and_Stop_takes_it_down()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        using StandInHttp web = new(exchange => exchange.ReplyAsync(200, "text/plain", "web"));
+        string engineFolder = TestFolders.Create("ctr-parts-");
+        string cli = StandInComposeEngine(engineFolder, "tcp://127.0.0.1:2376", web.Port);
+        string folder = ComposeProject("ctr-parts-window-", "<DockerComposeProjectName>my-shop</DockerComposeProjectName>");
+        TestFolders.Write(folder, Passenger.Workspace.RunsFile.FileName, """
+            { "passengerRuns": 1, "runs": [ { "name": "Stack", "parts": [
+              { "compose": ["docker-compose.yml"], "services": ["web"] },
+              { "command": "sh -c \"echo after the services\"", "name": "after" }
+            ] } ] }
+            """);
+        MainWindow window = new() { Width = 1200, Height = 800, Engine = new ContainerEngine(cli: cli) };
+        window.Show();
+        window.OpenFolder(Path.Combine(folder, "Shop.slnx"));
+        Ui.Settle();
+        string calls = Path.Combine(engineFolder, "calls");
+        try
+        {
+            Ui.WaitFor(() => window.SelectConfiguration("Stack"), () => $"the folder's run to be listed ({string.Join(", ", window.Configurations.Select(c => c.Name))})");
+            Ui.Launched(window, window.RunAsync(), "the run's Compose part and the command after it to start");
+            Ui.WaitFor(() => window.RunParts.Select(p => p.Name).SequenceEqual(["docker-compose: web", "after"])
+                    && window.RunParts[1].Runner.Shown().ToString().Contains("after the services", StringComparison.Ordinal),
+                () => $"the Compose part and the command after it, each in its tab ({string.Join("; ", window.RunParts.Select(p => $"{p.Name} {p.Said}"))}; {window.Status})");
+            PartRun compose = window.RunParts[0];
+            Assert.True(compose.IsRunning && compose.Console == window.BottomPanel.Run,
+                $"The Compose part's tab is not the Run window's console following its log: {compose.Said}");
+            string[] run = [.. File.ReadAllLines(calls).Where(c => c.Contains(" -f ", StringComparison.Ordinal))];
+            Assert.True(run.Any(c => c.Contains(" up ", StringComparison.Ordinal) && c.EndsWith("-- web", StringComparison.Ordinal) && c.StartsWith("compose -p my-shop -f ", StringComparison.Ordinal)),
+                $"The Compose part did not bring up its service web as its .dcproj's project:\n{string.Join('\n', run)}");
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => File.ReadAllLines(calls).Any(c => c.StartsWith("ps -aq ", StringComparison.Ordinal) && c.Contains($"label={ComposeLabels.Project}=my-shop", StringComparison.Ordinal))
+                    && !window.IsRunning,
+                "Stop to take down the Compose part's containers with the rest");
         }
         finally
         {

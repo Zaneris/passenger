@@ -10,8 +10,9 @@ namespace Passenger.App.Run;
 /// <summary>A run of several parts' parts, one row each: the parts it names in the order they start, then the folder's other
 /// executable projects, each with what Run and Debug do with it (Start, under the debugger when a .NET project is debugged;
 /// Start without debugging; None) and when the parts after it may start (once it has started, ended with exit code 0, said a
-/// line matching a pattern, or listens). A row's Details holds the rest of it: a .NET project's launch profile, a script's
-/// arguments, a command and its folder, its name, its page, its variables. A .NET project it names that is not loaded keeps
+/// line matching a pattern, or listens; a Compose part once its services are up). A row's Details holds the rest of it: a
+/// .NET project's launch profile, a script's arguments, a command and its folder, a Compose part's files and services, its
+/// name, its page, its variables. A .NET project it names that is not loaded keeps
 /// its row, unchosen; any other part comes from Add Part and goes with Remove Part. Up and down move a row, which is the
 /// order they start in.</summary>
 public sealed class RunPartsTable : EditableTable
@@ -63,7 +64,7 @@ public sealed class RunPartsTable : EditableTable
     public static readonly IReadOnlyList<string> ActionWords = ["Start", "Start without debugging", "None"];
 
     /// <summary>Each readiness's words, in <see cref="ReadyWhen"/>'s order.</summary>
-    public static readonly IReadOnlyList<string> ReadyWords = ["Started", "Exited OK", "Prints a line", "Listening"];
+    public static readonly IReadOnlyList<string> ReadyWords = ["Started", "Exited OK", "Prints a line", "Listening", "Healthy"];
 
     private const string DefaultProfile = "Default";
 
@@ -130,7 +131,9 @@ public sealed class RunPartsTable : EditableTable
                 ? chosen is >= 0 and < 3 ? (ProjectLaunchAction)chosen : row.Was?.Action
                 : chosen switch { 0 => ProjectLaunchAction.Start, 1 => ProjectLaunchAction.None, _ => row.Was?.Action };
             string profile = row.Profile.SelectedIndex > 0 && row.Profile.SelectedIndex < row.Profiles.Count ? row.Profiles[row.Profile.SelectedIndex] : string.Empty;
-            ReadyWhen ready = row.Ready.SelectedIndex is >= 0 and < 4 ? (ReadyWhen)row.Ready.SelectedIndex : row.Part.Ready;
+            // A Compose part is ready once its services are, its one choice.
+            ReadyWhen ready = row.Part.Kind == RunPartKind.Compose ? ReadyWhen.Healthy
+                : row.Ready.SelectedIndex is >= 0 and < 4 ? (ReadyWhen)row.Ready.SelectedIndex : row.Part.Ready;
             RunPart now = row.Part with
             {
                 Action = action,
@@ -173,17 +176,18 @@ public sealed class RunPartsTable : EditableTable
         ToolTip.SetTip(action, project
             ? "Start runs it, under the debugger when the run is debugged; Start without debugging runs it either way; None leaves it"
             : "Start runs it, Run and Debug alike; None leaves it");
+        bool compose = part.Kind == RunPartKind.Compose;
         ComboBox ready = new()
         {
             Classes = { StyleClasses.Cell },
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            IsEnabled = known,
-            ItemsSource = ReadyWords,
-            SelectedIndex = (int)part.Ready,
+            IsEnabled = known && !compose,
+            ItemsSource = compose ? [ReadyWords[(int)ReadyWhen.Healthy]] : ReadyWords.Take((int)ReadyWhen.Healthy).ToArray(),
+            SelectedIndex = compose ? 0 : Math.Min((int)part.Ready, (int)ReadyWhen.Healthy - 1),
         };
         ToolTip.SetTip(ready, "When the parts after it may start: once it has started, once it has ended with exit code 0 (a step, as an install), "
-            + "once a line of its output matches a pattern, or once something listens at its address (a .NET project naming none: once its host says it has started); "
-            + "Details holds the pattern or address");
+            + "once a line of its output matches a pattern, or once something listens at its address (a .NET project naming none: once its host says it has started), "
+            + "a Compose part once its services are up, healthy where they check; Details holds the pattern or address");
         // Its default first, then its own profiles, and one named that its launchSettings.json lacks, kept as named.
         List<string> listed = [string.Empty, .. profiles];
         if (project && part.LaunchProfile.Length > 0 && !profiles.Contains(part.LaunchProfile))
@@ -238,6 +242,7 @@ public sealed class RunPartsTable : EditableTable
         RunPartKind.Script => "package.json script",
         RunPartKind.Install => "dependencies' install",
         RunPartKind.Command => "command",
+        RunPartKind.Compose => "Compose services",
         _ => ".NET project",
     };
 
@@ -260,6 +265,7 @@ public sealed class RunPartsTable : EditableTable
         StackPanel form = new() { Spacing = Gaps.Normal, Margin = new Thickness(Gaps.Wide, Gaps.Small, Gaps.Normal, Gaps.Normal) };
         FormRows.Scope(form);
         RunPart part = row.Part;
+        bool compose = part.Kind == RunPartKind.Compose;
         TextBox Field(string label, string? text, string placeholder, Func<RunPart, string, RunPart> set) => Typed(label, text, placeholder, typed => row.Part = set(row.Part, typed));
         TextBox Typed(string label, string? text, string placeholder, Action<string> take)
         {
@@ -285,6 +291,12 @@ public sealed class RunPartsTable : EditableTable
                 form.Children.Add(FormRows.Of("Folder", Field("Folder", part.Folder.Length > 0 ? shown(part.Folder) : string.Empty, "The open folder",
                     (p, t) => p with { Folder = t.Trim().Length > 0 ? full(t.Trim()) : string.Empty })));
                 break;
+            case RunPartKind.Compose:
+                form.Children.Add(FormRows.Of("Compose files", Field("Compose files", string.Join("; ", part.ComposeFiles.Select(shown)), "compose.yaml; compose.override.yaml",
+                    (p, t) => p with { ComposeFiles = [.. t.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(f => full(f))] })));
+                form.Children.Add(FormRows.Of("Services", Field("Services", string.Join(", ", part.Services), "Every service its files start",
+                    (p, t) => p with { Services = [.. t.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)] })));
+                break;
         }
         form.Children.Add(FormRows.Of("Name", Field("Name", part.Name, nameOf(part with { Name = string.Empty }), (p, t) => p with { Name = t.Trim() })));
         Control line = FormRows.Of("Pattern", Typed("Pattern", row.Line, "A regular expression a line of its output matches", typed => row.Line = typed));
@@ -294,19 +306,23 @@ public sealed class RunPartsTable : EditableTable
         form.Children.Add(address);
         waitFields[row] = (line, address);
         ShowWaitField(row);
-        form.Children.Add(FormRows.Of("Open page", Field("Open page", part.Browser, part.Kind == RunPartKind.Project ? "As its launch profile says" : "None",
-            (p, t) => p with { Browser = t.Trim() })));
-        VariablesEditor variables = new();
-        variables.Set(part.Environment);
-        variables.Changed += (_, _) =>
+        // A Compose part's page and variables are its compose files' and its configuration's.
+        if (!compose)
         {
-            if (!variables.Gives(row.Part.Environment))
+            form.Children.Add(FormRows.Of("Open page", Field("Open page", part.Browser, part.Kind == RunPartKind.Project ? "As its launch profile says" : "None",
+                (p, t) => p with { Browser = t.Trim() })));
+            VariablesEditor variables = new();
+            variables.Set(part.Environment);
+            variables.Changed += (_, _) =>
             {
-                row.Part = row.Part with { Environment = variables.Values };
-                Tell();
-            }
-        };
-        form.Children.Add(FormRows.Of("Environment variables", variables, top: true));
+                if (!variables.Gives(row.Part.Environment))
+                {
+                    row.Part = row.Part with { Environment = variables.Values };
+                    Tell();
+                }
+            };
+            form.Children.Add(FormRows.Of("Environment variables", variables, top: true));
+        }
         if (part.Kind != RunPartKind.Project)
         {
             Button remove = new() { Content = "Remove Part", HorizontalAlignment = HorizontalAlignment.Left };

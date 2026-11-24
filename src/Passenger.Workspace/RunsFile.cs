@@ -7,24 +7,27 @@ using Passenger.Text;
 namespace Passenger.Workspace;
 
 /// <summary>What a part of a run of several parts runs: a .NET project, a Node package's script by its own package manager,
-/// that package's dependencies installed by it, or a command.</summary>
+/// that package's dependencies installed by it, a command, or a Compose application's services.</summary>
 public enum RunPartKind
 {
     Project,
     Script,
     Install,
     Command,
+    Compose,
 }
 
 /// <summary>How a part of a run is known to be ready, which every part after it waits for: once it has started, once it has
-/// ended with exit code 0 (a step), once a line of its output matches a pattern, or once something listens at an address
-/// (for a .NET part naming none, once its host says it has started).</summary>
+/// ended with exit code 0 (a step), once a line of its output matches a pattern, once something listens at an address
+/// (for a .NET part naming none, once its host says it has started), or for a Compose part once its services are up,
+/// healthy where they check.</summary>
 public enum ReadyWhen
 {
     Started,
     Exited,
     Line,
     Listening,
+    Healthy,
 }
 
 /// <summary>One part of a run of several parts, in the order they start: what it runs (<see cref="Kind"/>), what Run and
@@ -43,6 +46,12 @@ public sealed record RunPart(string Project, ProjectLaunchAction? Action, string
 
     /// <summary>Where a command part runs (canonical); empty for the open folder.</summary>
     public string Folder { get; init; } = string.Empty;
+
+    /// <summary>A Compose part's files, the first the base and the rest its overrides, as <c>-f</c> gives them (canonical).</summary>
+    public List<string> ComposeFiles { get; init; } = [];
+
+    /// <summary>A Compose part's services started, with what they depend on; none for every one its files start.</summary>
+    public List<string> Services { get; init; } = [];
 
     /// <summary>A script part's arguments after its script, as one command line.</summary>
     public string Arguments { get; init; } = string.Empty;
@@ -92,7 +101,7 @@ public sealed record RunsFileRun(string Name, IReadOnlyList<RunPart> Parts)
 /// <summary>A folder's <c>passenger-runs.json</c> at its top (docs/runs.md): the runs of several parts its team shares that
 /// Visual Studio's <c>.slnLaunch</c> cannot hold, each a <c>name</c> and its <c>parts</c> in the order they start, a part's
 /// kind by the member naming what it runs (<c>project</c>, <c>script</c> with its <c>package</c>, <c>install</c>,
-/// <c>command</c>), its paths from the folder in forward slashes. Read as JSON with comments, and written back as text where
+/// <c>command</c>, <c>compose</c> with its <c>services</c>), its paths from the folder in forward slashes. Read as JSON with comments, and written back as text where
 /// each run stands (<see cref="JsonText.ItemsInPlace"/>), so a run unchanged keeps its every character.</summary>
 public static class RunsFile
 {
@@ -172,7 +181,9 @@ public static class RunsFile
     {
         string? action = JsonMembers.Text(part, "action");
         ProjectLaunchAction? known = action is null ? ProjectLaunchAction.Start : ActionOf(action);
-        (ReadyWhen ready, string readyText, string? unready) = ReadyOf(JsonMembers.Value(part, "readyWhen"), JsonMembers.Text(part, "install") is { Length: > 0 });
+        IReadOnlyList<string> compose = JsonMembers.Text(part, "compose") is { Length: > 0 } one ? [one] : JsonMembers.Texts(part, "compose");
+        RunPartKind? defaulted = JsonMembers.Text(part, "install") is { Length: > 0 } ? RunPartKind.Install : compose.Count > 0 ? RunPartKind.Compose : null;
+        (ReadyWhen ready, string readyText, string? unready) = ReadyOf(JsonMembers.Value(part, "readyWhen"), defaulted);
         RunPart read = new(string.Empty, known, JsonMembers.Text(part, "launchProfile") ?? string.Empty)
         {
             Name = JsonMembers.Text(part, "name") ?? string.Empty,
@@ -198,6 +209,16 @@ public static class RunsFile
         {
             return read with { Kind = RunPartKind.Install, Project = Named(install, folder), Unread = unread };
         }
+        if (compose.Count > 0)
+        {
+            return read with
+            {
+                Kind = RunPartKind.Compose,
+                ComposeFiles = [.. compose.Select(f => Named(f, folder))],
+                Services = [.. JsonMembers.Texts(part, "services").Where(s => s.Length > 0)],
+                Unread = unread ?? (ready == ReadyWhen.Healthy ? null : "a Compose part is ready once its services are up, healthy where they check: its readyWhen is healthy"),
+            };
+        }
         if (JsonMembers.Text(part, "command") is { Length: > 0 } command)
         {
             return read with
@@ -208,7 +229,7 @@ public static class RunsFile
                 Unread = unread,
             };
         }
-        return read with { Kind = RunPartKind.Command, Unread = "it names no project, script, install or command this Passenger runs" };
+        return read with { Kind = RunPartKind.Command, Unread = "it names no project, script, install, command or compose files this Passenger runs" };
     }
 
     /// <summary>An object of variables, each a string, number or truth as written; the last of a name, as a reader takes it.</summary>
@@ -231,11 +252,11 @@ public static class RunsFile
 
     /// <summary>A part's readiness as written: a word, or an object of the one thing it waits for; for none, the default (an
     /// install's once it has ended, being a step), and why for one this Passenger does not know.</summary>
-    private static (ReadyWhen Ready, string Text, string? Problem) ReadyOf(JsonElement? written, bool install)
+    private static (ReadyWhen Ready, string Text, string? Problem) ReadyOf(JsonElement? written, RunPartKind? kind)
     {
         if (written is not { } given || given.ValueKind == JsonValueKind.Null)
         {
-            return (install ? ReadyWhen.Exited : ReadyWhen.Started, string.Empty, null);
+            return (kind switch { RunPartKind.Install => ReadyWhen.Exited, RunPartKind.Compose => ReadyWhen.Healthy, _ => ReadyWhen.Started }, string.Empty, null);
         }
         if (given.ValueKind == JsonValueKind.String)
         {
@@ -244,6 +265,7 @@ public static class RunsFile
                 "started" => (ReadyWhen.Started, string.Empty, null),
                 "exited" => (ReadyWhen.Exited, string.Empty, null),
                 "listening" => (ReadyWhen.Listening, string.Empty, null),
+                "healthy" => kind == RunPartKind.Compose ? (ReadyWhen.Healthy, string.Empty, null) : (ReadyWhen.Started, string.Empty, "only a Compose part's services are healthy"),
                 string said => (ReadyWhen.Started, string.Empty, $"its readyWhen {said} is not one Passenger knows"),
                 null => (ReadyWhen.Started, string.Empty, "its readyWhen is not one Passenger knows"),
             };
@@ -271,12 +293,13 @@ public static class RunsFile
 
     /// <summary>The name a part goes by where it names none of its own: a .NET project's file name and launch profile, a
     /// script's package and script, an install's package (by the name <paramref name="packageOf"/> gives a package.json, else
-    /// its folder's), a command's program.</summary>
+    /// its folder's), a command's program, a Compose part's first file and the services it names.</summary>
     public static string NameOf(RunPart part, Func<string, string?>? packageOf = null) => part.Name.Length > 0 ? part.Name : part.Kind switch
     {
         RunPartKind.Project => part.LaunchProfile.Length > 0 ? $"{Path.GetFileNameWithoutExtension(part.Project)}: {part.LaunchProfile}" : Path.GetFileNameWithoutExtension(part.Project),
         RunPartKind.Script => $"{packageOf?.Invoke(part.Project) ?? PackageName(part.Project)}: {part.Script}",
         RunPartKind.Install => $"{packageOf?.Invoke(part.Project) ?? PackageName(part.Project)}: install",
+        RunPartKind.Compose => $"{(part.ComposeFiles.Count > 0 ? Path.GetFileNameWithoutExtension(part.ComposeFiles[0]) : "compose")}{(part.Services.Count > 0 ? $": {string.Join(", ", part.Services)}" : string.Empty)}",
         _ => ProgramOf(part.Command) is { Length: > 0 } program ? Path.GetFileNameWithoutExtension(program) : "command",
     };
 
@@ -313,7 +336,7 @@ public static class RunsFile
     }
 
     /// <summary>A folder's file of runs following files and folders moved or renamed, as a save writes it: each path a part
-    /// names (its project, package, install or folder) that moved named where it is now (<see cref="Moved"/>). Whether it
+    /// names (its project, package, install, folder or compose files) that moved named where it is now (<see cref="Moved"/>). Whether it
     /// changed; a file that does not read as runs is left as it is.</summary>
     public static bool Move(string file, IReadOnlyList<(string From, string To)> moves)
     {
@@ -349,10 +372,11 @@ public static class RunsFile
         {
             foreach (JsonText.Node part in run.Member(PartsKey)?.Value is { Kind: JsonText.Kind.Array } parts ? parts.Items : [])
             {
-                foreach (string member in (string[])["project", "package", "install", "folder"])
+                List<JsonText.Node> named = [.. ((string[])["project", "package", "install", "folder", "compose"]).Select(m => part.Member(m)?.Value).OfType<JsonText.Node>()
+                    .SelectMany(v => v.Kind == JsonText.Kind.Array ? v.Items : [v])];
+                foreach (JsonText.Node value in named)
                 {
-                    if (part.Member(member)?.Value is not { } value || ItemOf(text[value.Start..value.End]) is not JsonValue literal
-                        || !literal.TryGetValue(out string? written) || written.Length == 0)
+                    if (ItemOf(text[value.Start..value.End]) is not JsonValue literal || !literal.TryGetValue(out string? written) || written.Length == 0)
                     {
                         continue;
                     }
@@ -397,6 +421,9 @@ public static class RunsFile
             RunPartKind.Project => new() { ["project"] = Written(part.Project, folder) },
             RunPartKind.Script => new() { ["script"] = part.Script, ["package"] = Written(part.Project, folder) },
             RunPartKind.Install => new() { ["install"] = Written(part.Project, folder) },
+            RunPartKind.Compose => part.Services.Count > 0
+                ? new() { ["compose"] = Paths(part.ComposeFiles, folder), ["services"] = new JsonArray([.. part.Services.Select(v => (JsonNode)v)]) }
+                : new() { ["compose"] = Paths(part.ComposeFiles, folder) },
             _ => part.Folder.Length > 0 ? new() { ["command"] = part.Command, ["folder"] = Written(part.Folder, folder) } : new() { ["command"] = part.Command },
         };
         if (KindMembers.All(k => what.ContainsKey(k) == value.ContainsKey(k)))
@@ -409,6 +436,8 @@ public static class RunsFile
                     "script" => was.Script == part.Script,
                     "command" => was.Command == part.Command,
                     "folder" => PathNames.Same(was.Folder, part.Folder),
+                    "compose" => was.ComposeFiles.Count == part.ComposeFiles.Count && was.ComposeFiles.Zip(part.ComposeFiles).All(f => PathNames.Same(f.First, f.Second)),
+                    "services" => was.Services.SequenceEqual(part.Services, StringComparer.Ordinal),
                     _ => PathNames.Same(was.Project, part.Project),
                 };
                 if (!same)
@@ -448,7 +477,8 @@ public static class RunsFile
             part.Environment.Count == 0 ? null : new JsonObject(part.Environment.Select(v => KeyValuePair.Create(v.Key, (JsonNode?)v.Value))));
         Keep("readyWhen", was is not null && was.Ready == part.Ready && was.ReadyText == part.ReadyText, (part.Ready, part.Kind) switch
         {
-            (ReadyWhen.Exited, RunPartKind.Install) or (ReadyWhen.Started, not RunPartKind.Install) => null,
+            (ReadyWhen.Exited, RunPartKind.Install) or (ReadyWhen.Healthy, RunPartKind.Compose) or (ReadyWhen.Started, not (RunPartKind.Install or RunPartKind.Compose)) => null,
+            (ReadyWhen.Healthy, _) => JsonValue.Create("healthy"),
             (ReadyWhen.Started, _) => JsonValue.Create("started"),
             (ReadyWhen.Exited, _) => JsonValue.Create("exited"),
             (ReadyWhen.Line, _) => new JsonObject { ["line"] = part.ReadyText },
@@ -459,7 +489,10 @@ public static class RunsFile
     }
 
     /// <summary>The members naming what a part runs, one kind's or another's.</summary>
-    private static readonly string[] KindMembers = ["project", "script", "package", "install", "command", "folder"];
+    private static readonly string[] KindMembers = ["project", "script", "package", "install", "command", "folder", "compose", "services"];
+
+    /// <summary>Paths as the file writes them, a list of each from its folder.</summary>
+    private static JsonArray Paths(IEnumerable<string> paths, string folder) => new([.. paths.Select(p => (JsonNode)Written(p, folder))]);
 
     /// <summary>A path as the file writes it: from its folder in forward slashes.</summary>
     private static string Written(string path, string folder) => PathNames.Route(path, folder);

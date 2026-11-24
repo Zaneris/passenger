@@ -1381,7 +1381,11 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             RunConfigurationsDialog dialog = window.ShowRunConfigurations();
             Assert.True(dialog.Choose("Both"));
             Ui.Click(dialog.AddPartButton);
-            Ui.Click(Assert.IsType<ContextMenu>(dialog.PartMenu).Items.OfType<MenuItem>().Single(i => (string?)i.Header == "Command"));
+            MenuItem[] kinds = [.. Assert.IsType<ContextMenu>(dialog.PartMenu).Items.OfType<MenuItem>()];
+            Assert.True(kinds.Select(i => (string?)i.Header).SequenceEqual(["package.json Script", "Install a Package's Dependencies", "Command", "Compose Services"])
+                && kinds.Select(i => i.IsEnabled).SequenceEqual([false, false, true, false]),
+                $"Add Part does not offer each kind of part, greying those the folder has nothing for: {string.Join(", ", kinds.Select(i => $"{i.Header} {i.IsEnabled}"))}");
+            Ui.Click(kinds.Single(i => (string?)i.Header == "Command"));
             RunPartsTable.Row command = dialog.StartsTable.Rows[2];
             Assert.True(command.DetailsView?.IsEffectivelyVisible == true, "An added part's details are not shown, so its command has nowhere to be typed");
             Type(command.Fields["Command"], "dotnet --version");
