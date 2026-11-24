@@ -66,11 +66,11 @@ public sealed partial class Vim
         bool reachesNothing = right == int.MaxValue && Enumerable.Range(top, bottom - top + 1).All(l => TextNavigation.VisualColumn(text, text.GetLine(l).End, tab) <= left);
         (keptBlockLeft, keptBlockRight) = block && !lines ? (left, reachesNothing ? left : right)
             : toEnd ? (keptBlockLeft, keptBlockRight)
-            : inserts && !lines ? (0, stretch.Cursor < stretch.Anchor && overLines ? 0 : CaretColumn(text, stretch.Cursor, tab))
+            : inserts && !lines ? (overLines ? keptBlockLeft : 0, stretch.Cursor < stretch.Anchor && overLines ? 0 : CaretColumn(text, stretch.Cursor, tab))
             : lines || overLines
                 ? (overLines ? keptBlockLeft : 0,
                     stretch.Cursor >= stretch.Anchor || !lines ? CaretColumn(text, stretch.High, tab) : !overLines ? CaretColumn(text, stretch.Cursor, tab) : 0)
-            : (CaretColumn(text, stretch.Low, tab), CaretColumn(text, stretch.High, tab));
+            : (TextNavigation.VisualColumn(text, stretch.Low, tab), CaretColumn(text, stretch.High, tab));
         // A tab the block's edge cuts in two (r: any tab it takes) is first made the spaces it shows.
         EditPlan? split = block && !lines && (op is "I" or "A" or "r" || basic is "d" or "c" or "y")
             ? SplitTabs(text, top, bottom, left, right, tab, cutsLeft: op != "A", cutsRight: op != "I", inside: op == "r")
@@ -438,8 +438,8 @@ public sealed partial class Vim
             int last = LastCharOf(text, text.GetLineStart(line));
             // The column is the caret's place in its line, counted in characters, not cells; after $ the line's last.
             int at = extent.Again == InsertAgain.OnLastBelow ? last : Math.Min(text.GetLineStart(line) + (c.Caret - VimMotions.LineOf(text, c.Caret).Start), last);
-            // A goes past that character where the columns the last visual change kept widen, on it otherwise.
-            return Selection.At(keptBlockLeft < keptBlockRight ? Math.Min(CharEnd(text, at), text.GetLine(line).End) : at);
+            // A goes past that character where the last visual change kept two columns, on it where it kept one.
+            return Selection.At(keptBlockLeft != keptBlockRight ? Math.Min(CharEnd(text, at), text.GetLine(line).End) : at);
         });
         return Insert(text, places, command, extent.Again == InsertAgain.AtCursor ? "I" : "A");
     }
