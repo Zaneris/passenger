@@ -377,7 +377,7 @@ public sealed partial class VimTests
                     if (random.Next(4) == 0)
                     {
                         string inVisual = Pick(random, ["o", "iw", "ip", "a(", "is", "as"]);
-                        keys.AddRange(Each(inVisual));
+                        keys.AddRange(Each((inVisual is "is" or "as" ? Counted(random) : string.Empty) + inVisual));
                         uses.UnionWith(inVisual is "is" or "as" ? [SentenceObject] : []);
                     }
                     else
