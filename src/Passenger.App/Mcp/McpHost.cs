@@ -58,8 +58,8 @@ public static partial class McpHost
         "Lines and columns count from 1; relative paths are the open folder's; a file outside it, but in a project a trusted solution or AppHost names beside it, is read only where definition and usages lead (a package's file, generated or decompiled code) and never changed. Parameters several tools share: configuration, a run " +
         "configuration (the chosen one by default); arguments, a command line in place of its own; waitSeconds, how long a call " +
         "waits for the program to stop, end or show its UI; session, a debugged program as debug_state's sessions name it (by " +
-        "default the one paused, else the only one); resource, an Aspire resource (name or AppHostPath::name) or a compose " +
-        "service of the run, as workspace lists them; terminal, true to start it in a Terminal tab from now on (false: the Run " +
+        "default the one paused, else the only one); resource, an Aspire resource (name or AppHostPath::name), a compose " +
+        "service of the run, or a part of a run of several parts by its Run window tab's name, as workspace lists them; terminal, true to start it in a Terminal tab from now on (false: the Run " +
         "and Debug windows), as Edit Configurations' Use external console; symbol, in place of path, line and column, a C# symbol of the solution's " +
         "own code by name: Name, Type.Member or Namespace.Type, an overload as Member(string, int), or its documentation id " +
         "(M:Namespace.Type.Member(System.String)); within, a folder or file whose places alone usages or hierarchy lists, or whose projects, run configurations, open files and routes workspace; from, the line " +

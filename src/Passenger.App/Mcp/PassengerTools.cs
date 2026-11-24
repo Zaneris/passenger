@@ -1699,6 +1699,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 throw new ArgumentException("An AppHost's resource sends its logs and traces to the AppHost's own dashboard; omit telemetry");
             }
             NoTerminalFor(terminal);
+            if (PartNamed(resource) is { } part)
+            {
+                return arguments is null ? await RestartPartAsync(part, waitSeconds, cancel)
+                    : throw new ArgumentException($"{part.Name} starts as its run says; omit arguments");
+            }
             if (await ComposeTargetAsync(resource, configuration, starts: true, cancel) is { } service)
             {
                 return arguments is null ? await RunComposeServiceAsync(service, waitSeconds, cancel)
@@ -1886,6 +1891,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         if (resource is not null)
         {
+            if (PartNamed(resource) is { } part)
+            {
+                return $"{part.Name} ({part.Said}):\n{Tail(part.Runner.Shown(), lines)}";
+            }
             if (await ComposeTargetAsync(resource, null, starts: false, cancel) is { } compose)
             {
                 return await ComposeLogAsync(Builds.Containers!, compose.Service, lines, cancel);
@@ -1902,6 +1911,28 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         return Builds.Containers is { } running ? $"{await ServicesAsync(running, cancel)}\n{RunOutput(lines)}" : RunHeaded(lines);
     });
+
+    /// <summary>The part of a run of several parts in the Run window by its tab's name, the last started of that name; null for none.</summary>
+    private PartRun? PartNamed(string resource) => Builds.PartRuns.LastOrDefault(p => string.Equals(p.Name, resource, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>run of a part of a run of several parts: it restarted alone in its tab, the others running on, and waited for
+    /// until it ends or its host starts, within the wait; how it stands and its last lines.</summary>
+    private async Task<RunResult> RestartPartAsync(PartRun part, int waitSeconds, CancellationToken cancel)
+    {
+        BuildRunController builds = Builds;
+        AgentCall.Follow(window.Actions.Work, AppActions.RunProgram, AppActions.Build);
+        if (!await builds.RestartPartAsync(part).WaitAsync(cancel))
+        {
+            throw new InvalidOperationException($"{part.Name} could not restart: {Tail(part.Runner.Shown(), 5)}");
+        }
+        HeardServing serving = new(() => part, () => null, part.Runner.Shown);
+        // A part's console raises nothing an agent's wait can hear as a whole: looked at every 50 ms.
+        await Until(() => part.Ended.IsCompleted || serving.Serves(), TimeSpan.FromSeconds(Math.Max(0, waitSeconds)), cancel);
+        Task<int> ended = part.Ended;
+        string stands = ended.IsCompletedSuccessfully ? BuildRunController.RunEnded(part.Name, await ended) : serving.Said is { } said ? $"{part.Name}, {said}" : $"{part.Name}, running";
+        return new RunResult(!ended.IsCompleted, ended.IsCompletedSuccessfully ? await ended : null, $"Restarted {part.Name}, its run's other parts running on. {stands}",
+            Tail(part.Runner.Shown(), 40));
+    }
 
     /// <summary>The last lines of the console of the AppHost the chosen configuration runs (or ran last), which Run's own
     /// console never holds; null where the configuration is no AppHost's.</summary>
@@ -1963,6 +1994,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             if (session is not null)
             {
                 throw new ArgumentException("Name session or resource, not both");
+            }
+            if (PartNamed(resource) is { } part)
+            {
+                part.Stop();
+                await part.Ended;
+                return $"Stopped {part.Name}, its run's other parts running on";
             }
             if (await ComposeTargetAsync(resource, null, starts: false, cancel) is { Service: { } service })
             {
