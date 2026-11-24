@@ -269,11 +269,12 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
     /// <summary>Add Snapshot Point in the gutter's menu marks a loop's line with a lens; given an expression of its own in its
     /// popup, it captures each of the loop's three turns as the program runs to its end without a stop. The Snapshots tab
-    /// lists them newest first, and the oldest opened shows its frame and its values as they were at the first turn, its
-    /// expression above them, Variables saying which snapshot it shows, and Set Value greyed saying why.</summary>
+    /// lists them newest first, and the oldest opened shows its frame and its values as they were at the first turn (a list and
+    /// a record as a stop shows them), its expression above them, Variables saying which snapshot it is, Set Value greyed.</summary>
     private void A_snapshot_point_from_the_gutters_menu_captures_each_turn_without_a_stop_and_a_snapshot_opens_as_a_past_stop()
     {
-        Write("Program.cs", "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += i;\n    Console.WriteLine($\"at {i}\");\n}\nConsole.WriteLine($\"total {total}\");\n");
+        Write("Program.cs", "int total = 0; List<int> seen = [];\nfor (int i = 1; i <= 3; i++)\n{\n    total += i; seen.Add(i); Turn turn = new($\"turn {i}\", total);\n"
+            + "    Console.WriteLine($\"at {i}\");\n}\nConsole.WriteLine($\"total {total}\");\n\nrecord Turn(string Name, int Total);\n");
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
         Point gutter = Gutter(window, editor, 4);
@@ -307,6 +308,13 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.Matches(@"^Snapshot 1 of Program\.cs:5, taken at \d\d:\d\d:\d\d\.\d{3} on Main Thread\. The program was held [\d.,]+ (ms|s)\.$",
             view.GetVisualDescendants().OfType<Banner>().Select(b => b.Said).Single(said => said?.StartsWith("Snapshot", StringComparison.Ordinal) == true)!);
         Assert.Equal(Refusals.SnapshotValue, Row(window, "total")!.NoSetting);
+        // A list and a record read from what each stores, shown as a stop shows them.
+        VariableNode seen = Row(window, "seen")!;
+        VariableNode turn = Row(window, "turn")!;
+        Assert.True((seen.TypeLabel, seen.Value, turn.TypeLabel, turn.Value) == ("{System.Collections.Generic.List<int>} ", "Count = 1", "", "Turn { Name = turn 1, Total = 1 }"),
+            $"The snapshot shows seen as {seen.TypeLabel}{seen.Value} and turn as {turn.TypeLabel}{turn.Value}");
+        Ui.Await(debug.Tree.Expand(seen), "seen's items to open");
+        Assert.Equal(["1"], debug.Tree.Rows.Where(r => r.Parent == seen && r.Name.StartsWith('[')).Select(r => r.Value));
         window.Close();
     }
 

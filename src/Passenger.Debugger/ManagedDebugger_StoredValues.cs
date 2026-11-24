@@ -168,9 +168,9 @@ public partial class ManagedDebugger
         await WithFailureHandling(result, named, async () => result.Add(await ValueRow(named, null, value, threadId, stackDepth, displayed: false, namesPointee: false)));
     }
 
-    /// <summary>A record's members as its printing names them, "Order { Id = 1, Name = "Tea" }", each value as the debugger
-    /// shows it, its base record's first; null for a value that is no record, one whose printing or ToString is its own, or
-    /// one with a public member whose value only its code gives (a property with a body).</summary>
+    /// <summary>A record's members as its printing writes them, "Order { Id = 1, Name = Tea }", its base record's first, each
+    /// value as its ToString writes it in the program's culture (<see cref="PrintedAsync"/>); null for a value that is no
+    /// record, one whose printing or ToString is its own, or one with a member whose text only its code gives.</summary>
     private async Task<string?> RecordShownAsync(ICorDebugObjectValue value, ThreadId threadId, FrameStackDepth stackDepth, int nesting)
     {
         List<ICorDebugType> chain = [];
@@ -221,9 +221,11 @@ public partial class ManagedDebugger
             }
             foreach ((_, string name, mdFieldDef field) in printed.OrderBy(p => p.Order))
             {
-                ICorDebugValue member = value.GetFieldValue(declaring, field);
-                FormattedValue shown = await FormatCorDebugValueAsync(ResolveCorDebugValue(member), threadId, stackDepth, escapeStringValue: true, nesting + 1);
-                members.Add($"{name} = {shown.Value}");
+                if (await PrintedAsync(value.GetFieldValue(declaring, field), threadId, stackDepth, nesting) is not { } written)
+                {
+                    return null;
+                }
+                members.Add($"{name} = {written}");
             }
         }
         string typeName = GetCorDebugTypeFriendlyName(value.ExactType);
@@ -234,6 +236,55 @@ public partial class ManagedDebugger
 
         static bool Generated(IMetaDataImport metadata, mdTypeDef type, string method) =>
             metadata.EnumMethodsWithName(type, method).ToArray() is [var only] && IsCompilerGenerated(metadata, only);
+    }
+
+    /// <summary>A record's member as its printing writes it, by its ToString, read from what it stores: nothing for null, a
+    /// string as it is, a bool, a character, a number (in the program's culture, the invariant one where that cannot be
+    /// read), an enum's names and a record of its own; null for any other kind, whose ToString only its code gives.</summary>
+    private async Task<string?> PrintedAsync(ICorDebugValue member, ThreadId threadId, FrameStackDepth stackDepth, int nesting)
+    {
+        if (member is ICorDebugReferenceValue { IsNull: true })
+        {
+            return string.Empty;
+        }
+        IFormatProvider numbers = ProgramNumberFormat(threadId, stackDepth) ?? (IFormatProvider)System.Globalization.CultureInfo.InvariantCulture;
+        switch (member.UnwrapDebugValue())
+        {
+            case ICorDebugStringValue text:
+                return text.String;
+            case ICorDebugGenericValue primitive and not ICorDebugObjectValue:
+                byte[] bytes = primitive.GetValueAsBytes();
+                return primitive.Type switch
+                {
+                    CorElementType.BOOLEAN => bytes[0] != 0 ? bool.TrueString : bool.FalseString,
+                    CorElementType.CHAR => ((char)BitConverter.ToUInt16(bytes)).ToString(),
+                    CorElementType.I1 => ((sbyte)bytes[0]).ToString(numbers),
+                    CorElementType.U1 => bytes[0].ToString(numbers),
+                    CorElementType.I2 => BitConverter.ToInt16(bytes).ToString(numbers),
+                    CorElementType.U2 => BitConverter.ToUInt16(bytes).ToString(numbers),
+                    CorElementType.I4 => BitConverter.ToInt32(bytes).ToString(numbers),
+                    CorElementType.U4 => BitConverter.ToUInt32(bytes).ToString(numbers),
+                    CorElementType.I8 => BitConverter.ToInt64(bytes).ToString(numbers),
+                    CorElementType.U8 => BitConverter.ToUInt64(bytes).ToString(numbers),
+                    CorElementType.R4 => BitConverter.ToSingle(bytes).ToString(numbers),
+                    CorElementType.R8 => BitConverter.ToDouble(bytes).ToString(numbers),
+                    _ => null,
+                };
+            case ICorDebugObjectValue stored:
+                string type = GetCorDebugTypeFriendlyName(stored.ExactType);
+                if (type == "decimal")
+                {
+                    return decimal.Parse(GetDecimalValueString(stored), System.Globalization.CultureInfo.InvariantCulture).ToString(numbers);
+                }
+                if (stored.ExactType.Base is { } baseType && GetCorDebugTypeFriendlyName(baseType) == "System.Enum")
+                {
+                    // An enum's flags as its ToString joins them.
+                    return GetValueForCorDebugValue(stored, false).Value.Replace(" | ", ", ", StringComparison.Ordinal);
+                }
+                return nesting + 1 < DisplayNesting ? await RecordShownAsync(stored, threadId, stackDepth, nesting + 1) : null;
+            default:
+                return null;
+        }
     }
 
     /// <summary>A field of a value's own type by its name, or null where its type has none so named.</summary>

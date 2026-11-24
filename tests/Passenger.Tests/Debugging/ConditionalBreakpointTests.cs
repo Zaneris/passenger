@@ -100,8 +100,11 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
             // A list's, a dictionary's and a record's values read from what each stores, as no code of the program runs.
             DapVariable list = self.Single(v => v.Name == "_intList");
             DapVariable dictionary = self.Single(v => v.Name == "_intDictionary");
-            Assert.True((list.Value, dictionary.Value, Value(self, "_recordField")) == ("Count = 4", "Count = 3", "MyRecord1 { X = 1, Y = 2 }"),
-                $"The snapshot shows the list as {list.Value}, the dictionary as {dictionary.Value} and the record as {Value(self, "_recordField")}");
+            // Each as a stop shows it, its type and value both (VariablesTests).
+            DapVariable record = self.Single(v => v.Name == "_recordField");
+            Assert.True((list.Type, list.Value, dictionary.Value, record.Type, record.Value)
+                == ("System.Collections.Generic.List<int>", "Count = 4", "Count = 3", "DebuggableConsoleApp.MyRecord1", "MyRecord1 { X = 1, Y = 2 }"),
+                $"The snapshot shows the list as {{{list.Type}}} {list.Value}, the dictionary as {dictionary.Value} and the record as {{{record.Type}}} {record.Value}");
             Assert.Equal(["1", "4", "8", "25"], snapshot.Values[list.VariablesReference].Where(v => v.Name.StartsWith('[')).Select(v => v.Value));
             Assert.Equal([("[5]", "50"), ("[10]", "100"), ("[15]", "150")], snapshot.Values[dictionary.VariablesReference].Where(v => v.Name.StartsWith('[')).Select(v => (v.Name, v.Value)));
             Assert.Equal(["40", "4"], snapshot.Asked.Select(a => a.Value));
