@@ -40,6 +40,15 @@ public sealed partial class GamePane : Border, IOwnKeys
     /// (<see cref="GameWindows.Disown"/>), neither held on its place nor given the keys.</summary>
     private Debugging.DebugSession? stoppedBy;
 
+    /// <summary>The wait for a game run on after a stop to take its window back (<see cref="GameWindows.Return"/>), while one
+    /// waits: its window still let go of, neither held on its place nor given the keys.</summary>
+    private CancellationTokenSource? returning;
+
+    /// <summary>What the pane shows of a game stopped in the debugger: its last picture under a banner saying so.</summary>
+    private readonly DockPanel stoppedView = new() { IsVisible = false };
+    private readonly Banner stoppedBanner = Banner.Wrapping();
+    private readonly Image stoppedPicture = new() { Stretch = Avalonia.Media.Stretch.Uniform };
+
     public GamePane(string empty)
     {
         Focusable = true;
@@ -47,6 +56,9 @@ public sealed partial class GamePane : Border, IOwnKeys
         Background = Avalonia.Media.Brushes.Transparent;
         words = new EmptyState { Text = empty };
         content.Children.Add(words);
+        stoppedView.Children.Add(stoppedBanner);
+        stoppedView.Children.Add(stoppedPicture);
+        content.Children.Add(stoppedView);
         Child = content;
         Empty = empty;
         LayoutUpdated += (_, _) =>
@@ -150,7 +162,7 @@ public sealed partial class GamePane : Border, IOwnKeys
         while (game == started && window == found)
         {
             await Task.Delay(System.Diagnostics.Stopwatch.GetElapsedTime(began) < Settling ? TimeSpan.FromMilliseconds(250) : TimeSpan.FromSeconds(1));
-            if (game != started || window != found || windows is null || stoppedBy is not null || held is not { } place || !shown || windows.PlaceOf(found) is not { } at || at == place)
+            if (game != started || window != found || windows is null || LetGo || held is not { } place || !shown || windows.PlaceOf(found) is not { } at || at == place)
             {
                 continue;
             }
@@ -199,7 +211,7 @@ public sealed partial class GamePane : Border, IOwnKeys
     /// <summary>The game's window on its place, shown while the pane is and the main window is not minimized.</summary>
     private void Follow(bool force = false)
     {
-        if (window == 0 || windows is null || stoppedBy is not null || TopLevel.GetTopLevel(this) is not { } main)
+        if (window == 0 || windows is null || LetGo || TopLevel.GetTopLevel(this) is not { } main)
         {
             return;
         }
@@ -246,7 +258,7 @@ public sealed partial class GamePane : Border, IOwnKeys
             Focus();
             return;
         }
-        if (window != 0 && windows is not null && shown && stoppedBy is null)
+        if (window != 0 && windows is not null && shown && !LetGo)
         {
             windows.Focus(window);
         }
@@ -265,18 +277,63 @@ public sealed partial class GamePane : Border, IOwnKeys
 
     /// <summary>A program the debugger debugs stopped: where it is the game held here, every thread of it held by .NET's
     /// debugger, its window is let go of until it runs on, so the main window's moves among the windows (called in front at
-    /// the stop, a click on it) wait for no answer from it. Told before anything at the stop moves the main window.</summary>
+    /// the stop, a click on it) wait for no answer from it, the pane showing its last picture, read from the screen, under a
+    /// banner saying it is stopped. Told before anything at the stop moves the main window.</summary>
     public void DebuggerStopped(Debugging.DebugSession session)
     {
         UiThread.Check();
-        if (stoppedBy is not null || window == 0 || windows is null || game is not { } held || session.Engine != Debugging.DebugEngine.Managed
-            || !(session == held.Debugged || (held.ProcessId is int id && session.ProcessStarted is { IsCompletedSuccessfully: true } started && started.Result == id)))
+        if (stoppedBy is not null || window == 0 || windows is null || game is not { } stopped || session.Engine != Debugging.DebugEngine.Managed
+            || !(session == stopped.Debugged || (stopped.ProcessId is int id && session.ProcessStarted is { IsCompletedSuccessfully: true } started && started.Result == id)))
         {
             return;
         }
         stoppedBy = session;
-        windows.Disown(window);
+        if (returning is { } back)
+        {
+            // Stopped again before its window came back: still let go of, its picture the one kept.
+            returning = null;
+            back.Cancel();
+        }
+        else
+        {
+            // Read from the screen before the window is let go of, while it still shows over the pane's place.
+            GamePicture? last = shown && held is { } place ? windows.Picture(place) : null;
+            windows.Disown(window);
+            ShowStopped(stopped.Name, last);
+        }
         session.StateChanged += RunsOn;
+    }
+
+    /// <summary>Whether the game's window is let go of: its game stopped in the debugger, or run on and not yet back.</summary>
+    private bool LetGo => stoppedBy is not null || returning is not null;
+
+    /// <summary>The game's last picture over its place in the pane, under a banner saying it is stopped in the debugger.</summary>
+    private void ShowStopped(string name, GamePicture? last)
+    {
+        Avalonia.Media.Imaging.Bitmap? was = stoppedPicture.Source as Avalonia.Media.Imaging.Bitmap;
+        stoppedPicture.Source = last is null ? null : Bitmap(last);
+        was?.Dispose();
+        stoppedBanner.Say($"{name} is stopped in the debugger, as it last showed here, and comes back on Continue.");
+        stoppedView.IsVisible = true;
+    }
+
+    /// <summary>The pane without a stopped game's picture and banner, its picture let go of.</summary>
+    private void HideStopped()
+    {
+        stoppedView.IsVisible = false;
+        stoppedBanner.Say(null);
+        (stoppedPicture.Source as Avalonia.Media.Imaging.Bitmap)?.Dispose();
+        stoppedPicture.Source = null;
+    }
+
+    /// <summary>A picture of the screen as a bitmap the pane draws fitted to its place.</summary>
+    private static unsafe Avalonia.Media.Imaging.Bitmap Bitmap(GamePicture picture)
+    {
+        fixed (byte* pixels = picture.Bgra)
+        {
+            return new Avalonia.Media.Imaging.Bitmap(Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Opaque, (nint)pixels,
+                new PixelSize(picture.Width, picture.Height), new Vector(96, 96), picture.Width * 4);
+        }
     }
 
     /// <summary>The stopped game's debugger let it run on, or ended: its window owned again before it runs.</summary>
@@ -288,9 +345,7 @@ public sealed partial class GamePane : Border, IOwnKeys
         }
     }
 
-    /// <summary>The game's window, let go of while it was stopped, owned again and held on its place, then brought in front of
-    /// the main window, whose moves meanwhile may have left it behind, once the game answers: on a thread apart from the
-    /// window's, which a game stopped again at once would hold.</summary>
+    /// <summary>The game's window, let go of while it was stopped, taken back once the game runs on (<see cref="ReturnAsync"/>).</summary>
     private void TakeBack()
     {
         if (stoppedBy is not { } session)
@@ -299,13 +354,44 @@ public sealed partial class GamePane : Border, IOwnKeys
         }
         session.StateChanged -= RunsOn;
         stoppedBy = null;
-        if (window != 0 && windows is { } embedding)
+        if (window == 0 || windows is not { } embedding)
         {
-            nint taken = window;
-            embedding.Own(taken);
+            HideStopped();
+            return;
+        }
+        CancellationTokenSource back = new();
+        returning = back;
+        IdeErrors.Observe(ReturnAsync(embedding, window, back));
+    }
+
+    /// <summary>The game's window owned again and in front of the main window once the game answers, waited for on a thread
+    /// apart from the window's, which the game's thread would hold, then held on its place in place of its picture; a game
+    /// stopped again meanwhile keeps its window let go of and its picture.</summary>
+    private async Task ReturnAsync(GameWindows embedding, nint taken, CancellationTokenSource back)
+    {
+        try
+        {
             // Unheld: it waits for the game to answer, which no wait for the IDE's quiet waits for.
-            IdeErrors.Observe(BackgroundWork.Unheld(() => embedding.Raise(taken)));
-            Follow(force: true);
+            bool returned = await BackgroundWork.Unheld(() => embedding.Return(taken, back.Token));
+            if (returning != back)
+            {
+                return;
+            }
+            returning = null;
+            HideStopped();
+            if (returned && window == taken)
+            {
+                if (TopLevel.GetTopLevel(this) is null && held is { } place)
+                {
+                    shown = false;
+                    embedding.Hold(taken, place, false);
+                }
+                Follow(force: true);
+            }
+        }
+        finally
+        {
+            back.Dispose();
         }
     }
 
@@ -336,6 +422,12 @@ public sealed partial class GamePane : Border, IOwnKeys
             stopping.StateChanged -= RunsOn;
             stoppedBy = null;
         }
+        if (returning is { } back)
+        {
+            returning = null;
+            back.Cancel();
+        }
+        HideStopped();
         game = null;
         window = 0;
         held = null;
@@ -346,7 +438,8 @@ public sealed partial class GamePane : Border, IOwnKeys
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
-        if (window != 0 && windows is not null && held is { } place)
+        // A window let go of is hidden as it comes back (ReturnAsync).
+        if (window != 0 && windows is not null && !LetGo && held is { } place)
         {
             shown = false;
             windows.Hold(window, place, false);

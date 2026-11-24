@@ -90,22 +90,21 @@ public abstract partial class GameWindows : IDisposable
 
     /// <summary>A game's window let go of while every thread of its game is held by a debugger: on Windows owned by none, as
     /// each move of the host among the windows (its activation, coming in front) waits for every window it owns to answer,
-    /// which a stopped game's never does. Nothing under X11, whose requests wait for no client.</summary>
+    /// which a stopped game's never does, and the host put in front of it, so what the host shows over its place is seen.
+    /// Nothing under X11, whose requests wait for no client.</summary>
     public virtual void Disown(nint window)
     {
     }
 
-    /// <summary>A game's window let go of while its game was stopped (<see cref="Disown"/>) owned by the host again, before
-    /// its game runs on.</summary>
-    public virtual void Own(nint window)
-    {
-    }
+    /// <summary>What the screen shows on a place of it, in its pixels, read from the screen alone, never asked of the window
+    /// there (a stopped game's answers nothing): the game's last picture as it stops. Null where the screen cannot be read so.</summary>
+    public virtual GamePicture? Picture(PixelRect place) => null;
 
-    /// <summary>A game's window owned again (<see cref="Own"/>) brought in front of the host, where the host's moves left it
-    /// meanwhile: it waits for the game to answer, so never on the host's thread.</summary>
-    public virtual void Raise(nint window)
-    {
-    }
+    /// <summary>A game's window let go of while its game was stopped (<see cref="Disown"/>) taken back once the game runs on:
+    /// once its window answers, owned by the host again, its input kept apart from the host's, and in front of the host,
+    /// where the host's moves left it meanwhile. It waits for the game, so never on the host's thread: false where the game
+    /// never answered (stopped again, ended, the wait <paramref name="cancel"/>led).</summary>
+    public virtual bool Return(nint window, CancellationToken cancel) => true;
 
     /// <summary>A game's window given the keys, brought in front of the host.</summary>
     public abstract void Focus(nint window);
@@ -127,13 +126,27 @@ public abstract partial class GameWindows : IDisposable
         /// <summary>DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2.</summary>
         private const nint PerMonitorAware = -4;
         private const string User32 = "user32.dll";
+        private const string Gdi32 = "gdi32.dll";
         private const uint Owner = 4;
 
         /// <summary>GW_HWNDPREV: the window just in front of one.</summary>
         private const uint InFront = 3;
 
+        /// <summary>WM_NULL: a message a window answers by doing nothing, which tells whether its thread runs.</summary>
+        private const uint Nothing = 0;
+
+        /// <summary>SMTO_ABORTIFHUNG: no wait for a window Windows already counts as not responding.</summary>
+        private const uint AbortIfHung = 0x2;
+
+        /// <summary>SRCCOPY with CAPTUREBLT: the screen's pixels as shown, windows layered over them included.</summary>
+        private const uint CopyFromScreen = 0x00CC0020 | 0x40000000;
+
         /// <summary>GWLP_HWNDPARENT: a top-level window's owner.</summary>
         private const int OwnerIndex = -8;
+
+        /// <summary>GWL_EXSTYLE, and its WS_EX_TOPMOST: a window kept over all others.</summary>
+        private const int ExtendedStyle = -20;
+        private const nint Topmost = 0x8;
 
         /// <summary>ERROR_INVALID_WINDOW_HANDLE: the window is gone, its game with it.</summary>
         private const int InvalidWindow = 1400;
@@ -209,17 +222,84 @@ public abstract partial class GameWindows : IDisposable
             }
         }
 
-        public override void Disown(nint window) => SetOwner(window, 0);
-
-        public override void Own(nint window) => SetOwner(window, Host);
-
-        public override void Raise(nint window)
+        public override void Disown(nint window)
         {
+            SetOwner(window, 0);
+            if (InFrontOf(Host, window) && SetWindowPos(Host, GetWindow(window, InFront), 0, 0, 0, 0, NoMove | NoSize | NoActivate) == 0)
+            {
+                IdeLog.Write(IdeLog.Ide, $"Game window: Windows refused to put 0x{Host:X} in front of 0x{window:X} (error {Marshal.GetLastPInvokeError()})");
+            }
+        }
+
+        /// <summary>Whether <paramref name="window"/> is in front of <paramref name="behind"/> among the windows.</summary>
+        private static bool InFrontOf(nint behind, nint window)
+        {
+            for (nint front = GetWindow(behind, InFront); front != 0; front = GetWindow(front, InFront))
+            {
+                if (front == window)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public override unsafe GamePicture? Picture(PixelRect place)
+        {
+            if (place.Width <= 0 || place.Height <= 0)
+            {
+                return null;
+            }
+            using Physical pixels = new();
+            nint screen = GetDC(0);
+            nint drawn = CreateCompatibleDC(screen);
+            nint bitmap = CreateCompatibleBitmap(screen, place.Width, place.Height);
+            nint was = SelectObject(drawn, bitmap);
+            try
+            {
+                if (BitBlt(drawn, 0, 0, place.Width, place.Height, screen, place.X, place.Y, CopyFromScreen) == 0)
+                {
+                    return null;
+                }
+                SelectObject(drawn, was);
+                byte[] bgra = new byte[place.Width * place.Height * 4];
+                // A top-down 32-bit DIB: its rows as the screen's, from the top.
+                BitmapInfo format = new() { Size = sizeof(BitmapInfo), Width = place.Width, Height = -place.Height, Planes = 1, BitCount = 32 };
+                fixed (byte* into = bgra)
+                {
+                    return GetDIBits(drawn, bitmap, 0, (uint)place.Height, into, &format, 0) == place.Height ? new GamePicture(place.Width, place.Height, bgra) : null;
+                }
+            }
+            finally
+            {
+                SelectObject(drawn, was);
+                DeleteObject(bitmap);
+                DeleteDC(drawn);
+                ReleaseDC(0, screen);
+            }
+        }
+
+        public override bool Return(nint window, CancellationToken cancel)
+        {
+            // Owned again only once it runs: one owned again while its thread was held held the host's thread as it ran on.
+            while (SendMessageTimeoutW(window, Nothing, 0, 0, AbortIfHung, 250, out _) == 0)
+            {
+                if (IsWindow(window) == 0 || cancel.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(100)))
+                {
+                    return false;
+                }
+            }
+            SetOwner(window, Host);
+            // As Godot keeps them as it makes the window: a thread whose input is joined to a stopped one's waits on it.
+            AttachThreadInput(GetWindowThreadProcessId(window, out _), GetWindowThreadProcessId(Host, out _), 0);
+            // Just in front of the host: behind the window in front of it, or first of the windows kept under those on top.
             nint front = GetWindow(Host, InFront);
-            if (front != window && SetWindowPos(window, front, 0, 0, 0, 0, NoMove | NoSize | NoActivate) == 0 && Marshal.GetLastPInvokeError() != InvalidWindow)
+            nint after = front != 0 && (GetWindowLongPtrW(front, ExtendedStyle) & Topmost) == 0 ? front : 0;
+            if (front != window && SetWindowPos(window, after, 0, 0, 0, 0, NoMove | NoSize | NoActivate) == 0 && Marshal.GetLastPInvokeError() != InvalidWindow)
             {
                 IdeLog.Write(IdeLog.Ide, $"Game window: Windows refused to bring 0x{window:X} in front of 0x{Host:X} (error {Marshal.GetLastPInvokeError()})");
             }
+            return true;
         }
 
         /// <summary>A game's window given an owner, or none (0), without waiting for its game to answer.</summary>
@@ -269,6 +349,23 @@ public abstract partial class GameWindows : IDisposable
             public List<string> Seen { get; } = [];
         }
 
+        /// <summary>BITMAPINFOHEADER, with no colour table after it (a 32-bit DIB needs none).</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        private struct BitmapInfo
+        {
+            public int Size;
+            public int Width;
+            public int Height;
+            public short Planes;
+            public short BitCount;
+            public int Compression;
+            public int SizeImage;
+            public int XPixelsPerMeter;
+            public int YPixelsPerMeter;
+            public int ColoursUsed;
+            public int ColoursImportant;
+        }
+
         [StructLayout(LayoutKind.Sequential)]
         private struct Rect
         {
@@ -299,8 +396,47 @@ public abstract partial class GameWindows : IDisposable
         [LibraryImport(User32)]
         private static partial int ShowWindowAsync(nint window, int show);
 
+        [LibraryImport(User32)]
+        private static partial nint SendMessageTimeoutW(nint window, uint message, nint wParam, nint lParam, uint flags, uint timeout, out nint result);
+
+        [LibraryImport(User32)]
+        private static partial int IsWindow(nint window);
+
+        [LibraryImport(User32)]
+        private static partial int AttachThreadInput(uint attach, uint to, int attached);
+
+        [LibraryImport(User32)]
+        private static partial nint GetDC(nint window);
+
+        [LibraryImport(User32)]
+        private static partial int ReleaseDC(nint window, nint context);
+
+        [LibraryImport(Gdi32)]
+        private static partial nint CreateCompatibleDC(nint context);
+
+        [LibraryImport(Gdi32)]
+        private static partial nint CreateCompatibleBitmap(nint context, int width, int height);
+
+        [LibraryImport(Gdi32)]
+        private static partial nint SelectObject(nint context, nint chosen);
+
+        [LibraryImport(Gdi32)]
+        private static partial int BitBlt(nint into, int x, int y, int width, int height, nint from, int fromX, int fromY, uint operation);
+
+        [LibraryImport(Gdi32)]
+        private static unsafe partial int GetDIBits(nint context, nint bitmap, uint first, uint lines, byte* bits, BitmapInfo* format, uint usage);
+
+        [LibraryImport(Gdi32)]
+        private static partial int DeleteObject(nint chosen);
+
+        [LibraryImport(Gdi32)]
+        private static partial int DeleteDC(nint context);
+
         [LibraryImport(User32, SetLastError = true)]
         private static partial nint SetWindowLongPtrW(nint window, int index, nint value);
+
+        [LibraryImport(User32)]
+        private static partial nint GetWindowLongPtrW(nint window, int index);
 
         [LibraryImport(User32)]
         private static partial int IsWindowVisible(nint window);
@@ -435,3 +571,6 @@ public abstract partial class GameWindows : IDisposable
         public override void Dispose() => Xlib.CloseDisplay(display);
     }
 }
+
+/// <summary>A picture of a place of the screen: its pixels, blue, green, red and a fourth byte, row after row from the top.</summary>
+public sealed record GamePicture(int Width, int Height, byte[] Bgra);
