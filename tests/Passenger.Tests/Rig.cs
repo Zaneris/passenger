@@ -3678,6 +3678,23 @@ public readonly struct OwnProcess
         Assert.True(Libc.Signal(Id, OperatingSystem.IsMacOS() ? 17 : 19) == 0, $"{what} could not be stopped (errno {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()})");
     }
 
+    /// <summary>Lets it run on from where <see cref="Suspend"/> stopped it: SIGCONT on macOS and Linux, and on Windows every
+    /// thread resumed (NtResumeProcess).</summary>
+    public void Resume(string what)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Process? held = Held();
+            Assert.True(held is not null, $"{what} (process {Id}) had ended before it could be resumed");
+            using Process process = held;
+            int status = NtResumeProcess(process.Handle);
+            Assert.True(status == 0, $"{what} could not be resumed (NTSTATUS 0x{status:X8})");
+            return;
+        }
+        Assert.True(Runs(), $"{what} (process {Id}) had ended before it could be let run on");
+        Assert.True(Libc.Signal(Id, OperatingSystem.IsMacOS() ? 19 : 18) == 0, $"{what} could not be let run on (errno {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()})");
+    }
+
     /// <summary>Asks it to end (SIGTERM), as the system asks a program, while it is still the process the test knew: on
     /// macOS and Linux, which have the signal. One that ends meanwhile is as good.</summary>
     public void Terminate()
@@ -3802,6 +3819,9 @@ public readonly struct OwnProcess
 
     [System.Runtime.InteropServices.DllImport("ntdll.dll")]
     private static extern int NtSuspendProcess(IntPtr process);
+
+    [System.Runtime.InteropServices.DllImport("ntdll.dll")]
+    private static extern int NtResumeProcess(IntPtr process);
 }
 
 /// <summary>Where a process's threads wait, as macOS's sample sees them (it may read any of the user's processes): each

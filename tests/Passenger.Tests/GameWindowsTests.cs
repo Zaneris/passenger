@@ -12,8 +12,9 @@ namespace Passenger.Tests;
 /// (transient for it under X11) and held over the place, takes a key, and follows the place as it grows. The host is a
 /// native window the test makes, as a headless window has no handle; Windows, or Linux with an X11 session (DISPLAY), and a
 /// Godot 4.4 or newer are needed, or the test skips saying why, as it does in Godot's words where none of Godot's renderers
-/// starts. Godot runs with a window, on its Compatibility renderer, so run alone, and never on the Mac. Past its one wait for
-/// Godot's version it runs on one thread, the host's, whose messages it handles as it waits.</summary>
+/// starts; stopped as a debugger's stop holds it, with its window let go of, the host's moves wait for none of it. Godot runs
+/// with a window, on its Compatibility renderer, so run alone, and never on the Mac. Past its one wait for Godot's version it
+/// runs on one thread, the host's, whose messages it handles as it waits.</summary>
 [Collection(Alone.Name)]
 public sealed partial class GameWindowsTests
 {
@@ -23,7 +24,7 @@ public sealed partial class GameWindowsTests
         + "\tif key != null and key.pressed:\n\t\tprint(\"TEST: key %s\" % OS.get_keycode_string(key.keycode))\n";
 
     [Fact]
-    public async Task A_games_window_is_owned_by_passengers_window_held_over_the_pane_takes_a_key_and_follows_the_pane_as_it_grows()
+    public async Task A_games_window_is_owned_by_passengers_window_held_over_the_pane_takes_a_key_follows_the_pane_and_holds_none_of_its_moves_while_stopped()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows() || OperatingSystem.IsLinux(),
             "Passenger holds a game's window over its Game window on Windows and under X11; macOS draws an embedded game as a layer");
@@ -87,6 +88,41 @@ public sealed partial class GameWindowsTests
             windows.Hold(window, place.WithWidth(800).WithHeight(450), shown: true);
             Assert.True(Waiting.Until(() => host.Pump() && Told("TEST: size 800x450"), TimeSpan.FromSeconds(30)),
                 $"The game's window did not follow the pane's place as it grew to 800x450: it is {windows.PlaceOf(window)} (Godot said: {Said()})");
+
+            // Stopped as a debugger's stop holds it, its window let go of as the Game window lets it go: the host waits for none of it.
+            OwnProcess stopped = OwnProcess.Of(game);
+            stopped.Suspend("the game, as a debugger's stop holds it");
+            windows.Disown(window);
+            bool freed = false;
+            using CancellationTokenSource answered = new();
+            Task freeing = Waiting.Apart(async () =>
+            {
+                await Waiting.ForAsync(TimeSpan.FromSeconds(15), "the host's moves, which a stopped game would hold", answered.Token).Ended();
+                if (!answered.IsCancellationRequested)
+                {
+                    freed = true;
+                    stopped.Resume("the game, so a move of the host's it held ends");
+                }
+            }, TestContext.Current.CancellationToken);
+            host.Raise();
+            windows.Hold(window, place, shown: false);
+            windows.Hold(window, place, shown: true);
+            answered.Cancel();
+            Assert.True(Waiting.Until(() => host.Pump() && freeing.IsCompleted, TimeSpan.FromSeconds(30)), "The wait for the host's moves never ended");
+            Assert.False(freed, "The host's coming in front, or the game's window hidden and shown, waited for the game a debugger stopped until it ran "
+                + "again: Passenger would freeze at a breakpoint in a game its Game window holds");
+
+            // Owned again before it runs on, and brought in front of the host once it answers, it takes a key.
+            windows.Own(window);
+            stopped.Resume("the game, as its debugger lets it run on");
+            Task raised = Waiting.Apart(() => windows.Raise(window), TestContext.Current.CancellationToken);
+            Assert.True(Waiting.Until(() => host.Pump() && raised.IsCompleted && host.Behind(window), TimeSpan.FromSeconds(30)),
+                $"The game's window, run on, did not come in front of the host again (Godot said: {Said()})");
+            Assert.Equal(host.Handle, windows.OwnerOf(window));
+            int keys = said.Count(l => l.Contains("TEST: key A", StringComparison.Ordinal));
+            host.Press(window);
+            Assert.True(Waiting.Until(() => host.Pump() && said.Count(l => l.Contains("TEST: key A", StringComparison.Ordinal)) > keys, TimeSpan.FromSeconds(30)),
+                $"The game run on after its stop took no key A (Godot said: {Said()})");
         }
         finally
         {
@@ -114,6 +150,12 @@ public sealed partial class GameWindowsTests
         /// <summary>A press and release of A sent to a game's window.</summary>
         public abstract void Press(nint window);
 
+        /// <summary>The host brought in front of the windows, as Passenger's is called in front at a debugger's stop.</summary>
+        public abstract void Raise();
+
+        /// <summary>Whether a game's window is in front of the host's.</summary>
+        public abstract bool Behind(nint game);
+
         public abstract void Dispose();
     }
 
@@ -125,6 +167,9 @@ public sealed partial class GameWindowsTests
         private const uint KeyDown = 0x100;
         private const uint KeyUp = 0x101;
         private const nint KeyA = 0x41;
+
+        /// <summary>GW_HWNDPREV: the window just in front of one.</summary>
+        private const uint InFront = 3;
         private readonly nint window;
 
         public Win32Host()
@@ -156,6 +201,20 @@ public sealed partial class GameWindowsTests
         {
             PostMessageW(game, KeyDown, KeyA, 1);
             PostMessageW(game, KeyUp, KeyA, unchecked((nint)0xC0000001));
+        }
+
+        public override void Raise() => BringWindowToTop(window);
+
+        public override bool Behind(nint game)
+        {
+            for (nint front = GetWindow(window, InFront); front != 0; front = GetWindow(front, InFront))
+            {
+                if (front == game)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         public override void Dispose() => DestroyWindow(window);
@@ -191,6 +250,12 @@ public sealed partial class GameWindowsTests
 
         [LibraryImport(User32)]
         private static partial int PostMessageW(nint window, uint message, nint wParam, nint lParam);
+
+        [LibraryImport(User32)]
+        private static partial int BringWindowToTop(nint window);
+
+        [LibraryImport(User32)]
+        private static partial nint GetWindow(nint window, uint relation);
     }
 
     private sealed unsafe partial class X11Host : Host
@@ -246,6 +311,15 @@ public sealed partial class GameWindowsTests
             XFlush(display);
         }
 
+        public override void Raise()
+        {
+            XRaiseWindow(display, window);
+            XFlush(display);
+        }
+
+        /// <summary>Always: the window manager keeps a window transient for the host in front of it.</summary>
+        public override bool Behind(nint game) => true;
+
         public override void Dispose()
         {
             XDestroyWindow(display, window);
@@ -287,6 +361,9 @@ public sealed partial class GameWindowsTests
 
         [LibraryImport(Library)]
         private static partial int XMapWindow(nint display, nint window);
+
+        [LibraryImport(Library)]
+        private static partial int XRaiseWindow(nint display, nint window);
 
         [LibraryImport(Library)]
         private static partial int XDestroyWindow(nint display, nint window);

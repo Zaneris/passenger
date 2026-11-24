@@ -84,8 +84,28 @@ public abstract partial class GameWindows : IDisposable
     /// <summary>The window a game's is owned by (Windows) or transient for (X11); 0 for none.</summary>
     public abstract nint OwnerOf(nint window);
 
-    /// <summary>A game's window held on a place of the screen in its pixels, shown, or hidden.</summary>
+    /// <summary>A game's window held on a place of the screen in its pixels, shown, or hidden, asked of it without waiting for
+    /// its answer: a game a debugger stopped answers nothing.</summary>
     public abstract void Hold(nint window, PixelRect place, bool shown);
+
+    /// <summary>A game's window let go of while every thread of its game is held by a debugger: on Windows owned by none, as
+    /// each move of the host among the windows (its activation, coming in front) waits for every window it owns to answer,
+    /// which a stopped game's never does. Nothing under X11, whose requests wait for no client.</summary>
+    public virtual void Disown(nint window)
+    {
+    }
+
+    /// <summary>A game's window let go of while its game was stopped (<see cref="Disown"/>) owned by the host again, before
+    /// its game runs on.</summary>
+    public virtual void Own(nint window)
+    {
+    }
+
+    /// <summary>A game's window owned again (<see cref="Own"/>) brought in front of the host, where the host's moves left it
+    /// meanwhile: it waits for the game to answer, so never on the host's thread.</summary>
+    public virtual void Raise(nint window)
+    {
+    }
 
     /// <summary>A game's window given the keys, brought in front of the host.</summary>
     public abstract void Focus(nint window);
@@ -108,6 +128,17 @@ public abstract partial class GameWindows : IDisposable
         private const nint PerMonitorAware = -4;
         private const string User32 = "user32.dll";
         private const uint Owner = 4;
+
+        /// <summary>GW_HWNDPREV: the window just in front of one.</summary>
+        private const uint InFront = 3;
+
+        /// <summary>GWLP_HWNDPARENT: a top-level window's owner.</summary>
+        private const int OwnerIndex = -8;
+
+        /// <summary>ERROR_INVALID_WINDOW_HANDLE: the window is gone, its game with it.</summary>
+        private const int InvalidWindow = 1400;
+        private const uint NoSize = 0x1;
+        private const uint NoMove = 0x2;
         private const uint NoZOrder = 0x4;
         private const uint NoActivate = 0x10;
         private const uint AsyncPosition = 0x4000;
@@ -174,7 +205,29 @@ public abstract partial class GameWindows : IDisposable
             }
             if ((IsWindowVisible(window) != 0) != shown)
             {
-                ShowWindow(window, shown ? ShowUnactivated : Hide);
+                ShowWindowAsync(window, shown ? ShowUnactivated : Hide);
+            }
+        }
+
+        public override void Disown(nint window) => SetOwner(window, 0);
+
+        public override void Own(nint window) => SetOwner(window, Host);
+
+        public override void Raise(nint window)
+        {
+            nint front = GetWindow(Host, InFront);
+            if (front != window && SetWindowPos(window, front, 0, 0, 0, 0, NoMove | NoSize | NoActivate) == 0 && Marshal.GetLastPInvokeError() != InvalidWindow)
+            {
+                IdeLog.Write(IdeLog.Ide, $"Game window: Windows refused to bring 0x{window:X} in front of 0x{Host:X} (error {Marshal.GetLastPInvokeError()})");
+            }
+        }
+
+        /// <summary>A game's window given an owner, or none (0), without waiting for its game to answer.</summary>
+        private static void SetOwner(nint window, nint owner)
+        {
+            if (SetWindowLongPtrW(window, OwnerIndex, owner) == 0 && Marshal.GetLastPInvokeError() is var error and not (0 or InvalidWindow))
+            {
+                IdeLog.Write(IdeLog.Ide, $"Game window: Windows refused 0x{window:X} the owner 0x{owner:X} (error {error})");
             }
         }
 
@@ -244,7 +297,10 @@ public abstract partial class GameWindows : IDisposable
         private static partial nint SetThreadDpiAwarenessContext(nint context);
 
         [LibraryImport(User32)]
-        private static partial int ShowWindow(nint window, int show);
+        private static partial int ShowWindowAsync(nint window, int show);
+
+        [LibraryImport(User32, SetLastError = true)]
+        private static partial nint SetWindowLongPtrW(nint window, int index, nint value);
 
         [LibraryImport(User32)]
         private static partial int IsWindowVisible(nint window);

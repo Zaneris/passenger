@@ -36,6 +36,10 @@ public sealed partial class GamePane : Border, IOwnKeys
     private bool shown;
     private TopLevel? top;
 
+    /// <summary>The debugger's session holding the game stopped, while one does: its window let go of meanwhile
+    /// (<see cref="GameWindows.Disown"/>), neither held on its place nor given the keys.</summary>
+    private Debugging.DebugSession? stoppedBy;
+
     public GamePane(string empty)
     {
         Focusable = true;
@@ -115,6 +119,10 @@ public sealed partial class GamePane : Border, IOwnKeys
             {
                 IdeLog.Write(IdeLog.Ide, $"Game window: {started.Name}'s window 0x{found:X} found, {windows.Seen}");
                 window = found;
+                if (started.Debugged is { State: Debugging.DebugState.Paused } stopped)
+                {
+                    DebuggerStopped(stopped);
+                }
                 Follow(force: true);
                 if (IsFocused)
                 {
@@ -142,7 +150,7 @@ public sealed partial class GamePane : Border, IOwnKeys
         while (game == started && window == found)
         {
             await Task.Delay(System.Diagnostics.Stopwatch.GetElapsedTime(began) < Settling ? TimeSpan.FromMilliseconds(250) : TimeSpan.FromSeconds(1));
-            if (game != started || window != found || windows is null || held is not { } place || !shown || windows.PlaceOf(found) is not { } at || at == place)
+            if (game != started || window != found || windows is null || stoppedBy is not null || held is not { } place || !shown || windows.PlaceOf(found) is not { } at || at == place)
             {
                 continue;
             }
@@ -191,7 +199,7 @@ public sealed partial class GamePane : Border, IOwnKeys
     /// <summary>The game's window on its place, shown while the pane is and the main window is not minimized.</summary>
     private void Follow(bool force = false)
     {
-        if (window == 0 || windows is null || TopLevel.GetTopLevel(this) is not { } main)
+        if (window == 0 || windows is null || stoppedBy is not null || TopLevel.GetTopLevel(this) is not { } main)
         {
             return;
         }
@@ -238,7 +246,7 @@ public sealed partial class GamePane : Border, IOwnKeys
             Focus();
             return;
         }
-        if (window != 0 && windows is not null && shown)
+        if (window != 0 && windows is not null && shown && stoppedBy is null)
         {
             windows.Focus(window);
         }
@@ -254,6 +262,52 @@ public sealed partial class GamePane : Border, IOwnKeys
     }
 
     private void GameAskedKeys(object? sender, EventArgs e) => UiThread.Post(() => KeysAsked?.Invoke(this, EventArgs.Empty));
+
+    /// <summary>A program the debugger debugs stopped: where it is the game held here, every thread of it held by .NET's
+    /// debugger, its window is let go of until it runs on, so the main window's moves among the windows (called in front at
+    /// the stop, a click on it) wait for no answer from it. Told before anything at the stop moves the main window.</summary>
+    public void DebuggerStopped(Debugging.DebugSession session)
+    {
+        UiThread.Check();
+        if (stoppedBy is not null || window == 0 || windows is null || game is not { } held || session.Engine != Debugging.DebugEngine.Managed
+            || !(session == held.Debugged || (held.ProcessId is int id && session.ProcessStarted is { IsCompletedSuccessfully: true } started && started.Result == id)))
+        {
+            return;
+        }
+        stoppedBy = session;
+        windows.Disown(window);
+        session.StateChanged += RunsOn;
+    }
+
+    /// <summary>The stopped game's debugger let it run on, or ended: its window owned again before it runs.</summary>
+    private void RunsOn(object? sender, EventArgs e)
+    {
+        if (sender is Debugging.DebugSession { State: not Debugging.DebugState.Paused } session && session == stoppedBy)
+        {
+            TakeBack();
+        }
+    }
+
+    /// <summary>The game's window, let go of while it was stopped, owned again and held on its place, then brought in front of
+    /// the main window, whose moves meanwhile may have left it behind, once the game answers: on a thread apart from the
+    /// window's, which a game stopped again at once would hold.</summary>
+    private void TakeBack()
+    {
+        if (stoppedBy is not { } session)
+        {
+            return;
+        }
+        session.StateChanged -= RunsOn;
+        stoppedBy = null;
+        if (window != 0 && windows is { } embedding)
+        {
+            nint taken = window;
+            embedding.Own(taken);
+            // Unheld: it waits for the game to answer, which no wait for the IDE's quiet waits for.
+            IdeErrors.Observe(BackgroundWork.Unheld(() => embedding.Raise(taken)));
+            Follow(force: true);
+        }
+    }
 
     private void GameStateChanged(object? sender, EventArgs e) => UiThread.Post(() =>
     {
@@ -276,6 +330,11 @@ public sealed partial class GamePane : Border, IOwnKeys
             was.StateChanged -= GameStateChanged;
             was.KeysAsked -= GameAskedKeys;
             LetLayer(was);
+        }
+        if (stoppedBy is { } stopping)
+        {
+            stopping.StateChanged -= RunsOn;
+            stoppedBy = null;
         }
         game = null;
         window = 0;

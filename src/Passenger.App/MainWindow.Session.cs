@@ -606,6 +606,8 @@ public partial class MainWindow
         {
             if (session == next && next.Debug == debugger)
             {
+                // Before the window moves among the others, which a stopped game's window it owns would hold.
+                gamePane?.DebuggerStopped(stopped);
                 FollowStop(stopped);
             }
         };
