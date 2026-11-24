@@ -30,6 +30,17 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-24
 
+- `MauiSimulatorTests`' `A_maui_apps_ios_head_debugged_on_a_simulator_stops_steps_evaluates_and_takes_a_hot_reload_edit`,
+  CI 45453743296 and 45463483590 (macOS report shard 3), at 329200ec7 and 1d74d7984, after 9:51 and 9:38: "Waited 16.9 s,
+  all the test had left of its 9.5 minutes … for the stop at the breakpoint in MainPage's constructor" and "Waited 0 s …
+  for the click handler the edit changed". **Outside the code: the runner starved**, as on 2026-11-23. The class is its
+  shard's first iOS test, so it takes the runner's first boot of the simulator and the first install there. The IDE's
+  log times the build at 1.1 minutes in both runs, the boot at 2 and 1.9, and the install at 1.9 and 4.2, which began
+  about 3 minutes and 1 minute after the boot ended, the IDE logging nothing between; the runner has three processors
+  and kept at least 0.8 GB of its 7 free. The Mac boots the simulator in 8 s and installs in 17. McpIosSimulatorTests,
+  which boots and installs again after it, passed in 4:58 and 5:31. No change in the IDE shortens the simulator's boot or
+  install; booting it once before the shard's device classes, outside any test's minutes, is the deal's to weigh
+  (b98279487).
 - `EslintPrettierTests`' `Eslint_checks_and_fixes_as_its_server_says`, CI 45453743296 (Windows report shard 1), at
   329200ec7: "Waited 225 s for the problem from the ESLint the project's .pnp.cjs places". **A bug in the IDE, on
   Windows**: Yarn writes a Plug'n'Play package's location from the project's folder on its portable paths, which climb
