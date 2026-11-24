@@ -224,24 +224,36 @@ public sealed class SqlTextTests
             ("by name, case aside, a column the table lacks passed over", ["NAME", "id", "extra"], true, [1, 0, null]),
             ("a file naming none by place, a name matched first", ["column1", "name", "column3"], false, [0, 1, 2]),
         }, row => Assert.Equal(row.Into, ImportTypes.Mapped(row.File, ["id", "name", "price"], row.Named)), row => row.Holds);
-        Cases.Each(new (string Holds, string Alias, string Config, string Said)[]
+        Cases.Each(new (string Holds, string Alias, string Config, string System, string Said)[]
         {
             ("the first value wins, IdentityFile's add up, and %-tokens and ~ are expanded", "bastion",
-                "Host bastion\n  HostName %h.example.com\n  Port=2200\n  IdentityFile ~/.ssh/one\nHost *\n  User everyone\n  Port 22\n  IdentityFile %d/.ssh/two_%r\n",
-                "bastion.example.com:2200 as everyone; keys /h/.ssh/one, /h/.ssh/two_everyone; jumps ; agent "),
+                "Host bastion\n  HostName %h.example.com\n  Port=2200\n  IdentityFile ~/.ssh/one\nHost *\n  User everyone\n  Port 22\n  IdentityFile %d/.ssh/two_%r\n", "",
+                "bastion.example.com:2200 as everyone; keys /h/.ssh/one, /h/.ssh/two_everyone; jumps ; agent ; proxy "),
             ("a pattern written with ! takes a host out, Match host reads its HostName, and a quoted value keeps its space; ssh's usual keys", "db.internal",
-                "Host db.internal\n  HostName 10.0.0.5\nHost *.internal !db.internal\n  User inside\nMatch host 10.*\n  IdentityAgent \"/run/agent sock\"\n",
-                "10.0.0.5:22 as me; keys /h/.ssh/id_rsa, /h/.ssh/id_ecdsa, /h/.ssh/id_ed25519; jumps ; agent /run/agent sock"),
+                "Host db.internal\n  HostName 10.0.0.5\nHost *.internal !db.internal\n  User inside\nMatch host 10.*\n  IdentityAgent \"/run/agent sock\"\n", "",
+                "10.0.0.5:22 as me; keys /h/.ssh/id_rsa, /h/.ssh/id_ecdsa, /h/.ssh/id_ed25519; jumps ; agent /run/agent sock; proxy "),
             ("Include's files are read in place, relative to ~/.ssh, ProxyJump kept as written", "app",
-                "# hosts\nInclude conf.d/*\n", "app:22 as me; keys /h/.ssh/id_rsa, /h/.ssh/id_ecdsa, /h/.ssh/id_ed25519; jumps alice@jump1:2201, jump2; agent "),
+                "# hosts\nInclude conf.d/*\n", "", "app:22 as me; keys /h/.ssh/id_rsa, /h/.ssh/id_ecdsa, /h/.ssh/id_ed25519; jumps alice@jump1:2201, jump2; agent ; proxy "),
+            ("the person's file before the system's, Match user and localuser, one negated", "bastion", "Host bastion\n  User alice\n",
+                "Match user alice !localuser me\n  Port 2200\nMatch user alice localuser me\n  Port 2201\nHost *\n  User root\n",
+                "bastion:2201 as alice; keys /h/.ssh/id_rsa, /h/.ssh/id_ecdsa, /h/.ssh/id_ed25519; jumps ; agent ; proxy "),
+            ("Match exec runs its command, tokens expanded, tagged follows Tag, and final reads the files again for ProxyCommand", "app",
+                "Host app\n  Tag edge\nMatch tagged edge exec \"ping %h\"\n  HostName app.internal\nMatch final host app.internal\n  ProxyCommand ssh -W %h:%p jump\n", "",
+                "app.internal:22 as me; keys /h/.ssh/id_rsa, /h/.ssh/id_ecdsa, /h/.ssh/id_ed25519; jumps ; agent ; proxy ssh -W app.internal:22 jump"),
         }, row =>
         {
             Dictionary<string, string> files = new() { ["/h/.ssh/config"] = row.Config, ["/h/.ssh/conf.d/a"] = "Host app\n  ProxyJump alice@jump1:2201,jump2\n" };
             static string Slashed(string path) => path.Replace('\\', '/');
-            SshHost host = SshConfig.Resolve(row.Alias, "/h/.ssh/config", "/h", "me", path => files.GetValueOrDefault(Slashed(path)),
-                pattern => [.. files.Keys.Where(f => Path.GetDirectoryName(Slashed(f))!.Replace('\\', '/') == Path.GetDirectoryName(Slashed(pattern))!.Replace('\\', '/')
-                    && SshConfig.Wildcard(Path.GetFileName(f), Path.GetFileName(Slashed(pattern))))]);
-            Assert.Equal(row.Said, Slashed($"{host.HostName}:{host.Port} as {host.User}; keys {string.Join(", ", host.IdentityFiles)}; jumps {string.Join(", ", host.Jumps)}; agent {host.IdentityAgent}"));
+            files["/etc/ssh/ssh_config"] = row.System;
+            SshHost host = SshConfig.Resolve(row.Alias, [("/h/.ssh/config", "/h/.ssh"), ("/etc/ssh/ssh_config", "/etc/ssh")],
+                new SshReading("/h", "me", path => files.GetValueOrDefault(Slashed(path)),
+                    pattern => [.. files.Keys.Where(f => Path.GetDirectoryName(Slashed(f))!.Replace('\\', '/') == Path.GetDirectoryName(Slashed(pattern))!.Replace('\\', '/')
+                        && SshConfig.Wildcard(Path.GetFileName(f), Path.GetFileName(Slashed(pattern))))])
+                {
+                    Exec = command => command == "ping app",
+                });
+            Assert.Equal(row.Said, Slashed($"{host.HostName}:{host.Port} as {host.User}; keys {string.Join(", ", host.IdentityFiles)}; jumps {string.Join(", ", host.Jumps)}; "
+                + $"agent {host.IdentityAgent}; proxy {host.ProxyCommand}"));
         }, row => row.Holds);
         Cases.Each(new (string Written, string Host, string? User, int? Port)[]
         {

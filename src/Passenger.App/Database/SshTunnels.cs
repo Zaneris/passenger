@@ -48,11 +48,73 @@ public static class SshFiles
     public static string Home => Environment.GetEnvironmentVariable(HomeVariable) is { Length: > 0 } home
         ? Path.GetFullPath(home) : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
-    /// <summary>What ssh's configuration says of a host, read now.</summary>
+    /// <summary>The system's own configuration, read after the person's: in place of /etc/ssh's (Windows' under its program
+    /// data), the file of that name in the home <see cref="HomeVariable"/> names.</summary>
+    public static string SystemConfig => !PersonsHome ? Path.Combine(Home, "system_ssh_config")
+        : OperatingSystem.IsWindows() ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ssh", "ssh_config")
+        : "/etc/ssh/ssh_config";
+
+    /// <summary>What ssh's configuration, the person's and then the system's, says of a host, read now: on a thread of its
+    /// own, as a Match exec runs its command to its end.</summary>
     public static SshHost Resolve(string alias)
     {
         string home = Home;
-        return SshConfig.Resolve(alias, Path.Combine(home, ".ssh", "config"), home, Environment.UserName, Read, Matching);
+        return SshConfig.Resolve(alias, [(Path.Combine(home, ".ssh", "config"), Path.Combine(home, ".ssh")), (SystemConfig, Path.GetDirectoryName(SystemConfig)!)],
+            new SshReading(home, Environment.UserName, Read, Matching) { Exec = Succeeds, LocalNetwork = OnLocalNetwork });
+    }
+
+    /// <summary>A command run as ssh runs one, by /bin/sh (on Windows as its words name a program), to its end: whether it
+    /// exited 0.</summary>
+    private static bool Succeeds(string command) =>
+        Synchronously.Run(async () => (await ChildProcesses.RunAsync(Shell(command), limit: TimeSpan.FromSeconds(30))).Succeeded);
+
+    /// <summary>How a command of ssh's configuration is started: by /bin/sh, or on Windows as its words name a program (a
+    /// batch file's through cmd.exe, as every child's is).</summary>
+    public static System.Diagnostics.ProcessStartInfo Shell(string command)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return ChildProcesses.Command("/bin/sh", ["-c", command]);
+        }
+        IReadOnlyList<string> words = SshConfig.Words(command);
+        return ChildProcesses.Command(words.Count > 0 ? words[0] : command, words.Skip(1));
+    }
+
+    /// <summary>Whether a local address stands in one of the networks a Match localnetwork lists (CIDR, comma separated).</summary>
+    private static bool OnLocalNetwork(string networks)
+    {
+        List<System.Net.IPAddress> mine = [.. System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+            .SelectMany(n => n.GetIPProperties().UnicastAddresses).Select(a => a.Address)];
+        foreach (string network in networks.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string[] parts = network.Split('/');
+            if (System.Net.IPAddress.TryParse(parts[0], out System.Net.IPAddress? address)
+                && int.TryParse(parts.Length > 1 ? parts[1] : (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? "32" : "128"), out int bits)
+                && mine.Any(m => Within(m, address, bits)))
+            {
+                return true;
+            }
+        }
+        return false;
+
+        static bool Within(System.Net.IPAddress address, System.Net.IPAddress network, int bits)
+        {
+            byte[] a = address.GetAddressBytes();
+            byte[] n = network.GetAddressBytes();
+            if (a.Length != n.Length || bits < 0 || bits > a.Length * 8)
+            {
+                return false;
+            }
+            for (int i = 0; i < bits; i++)
+            {
+                int mask = 0x80 >> (i % 8);
+                if ((a[i / 8] & mask) != (n[i / 8] & mask))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
     }
 
     /// <summary>A file's text, or null where it cannot be read.</summary>
@@ -93,6 +155,9 @@ internal static class SshTunnels
     /// <summary>A forward open: its clients, each through the one before, and their forwards, the last to the server.</summary>
     private sealed record Forward(List<SshClient> Clients, List<ForwardedPortLocal> Ports)
     {
+        /// <summary>The ProxyCommand the first host is reached through, where it is.</summary>
+        public ProxyBridge? Proxy { get; set; }
+
         public bool Live => Clients.All(c => c.IsConnected) && Ports.All(p => p.IsStarted);
 
         public uint Bound => Ports[^1].BoundPort;
@@ -104,6 +169,124 @@ internal static class SshTunnels
                 Clients[i].Dispose();
             }
             Ports.ForEach(p => p.Dispose());
+            Proxy?.Dispose();
+        }
+    }
+
+    /// <summary>A ProxyCommand's program, its input and output carried to and from the one connection a port of loopback's
+    /// takes, which the SSH client makes: ended with the tunnel.</summary>
+    private sealed class ProxyBridge : IDisposable
+    {
+        private readonly TcpListener listener = new(System.Net.IPAddress.Loopback, 0);
+        private readonly System.Diagnostics.Process process;
+
+        public ProxyBridge(string command)
+        {
+            System.Diagnostics.ProcessStartInfo start = SshFiles.Shell(command);
+            start.RedirectStandardInput = true;
+            start.RedirectStandardOutput = true;
+            start.RedirectStandardError = true;
+            listener.Start();
+            process = ChildProcesses.Start(start);
+            // The bridge lives as long as its tunnel, which no test's quiet waits for.
+            UnawaitedWork.Dismiss(BackgroundWork.Unheld(CarryAsync));
+            UnawaitedWork.Dismiss(ChildProcesses.Hear(process, errors: line =>
+            {
+                IdeLog.Write(IdeLog.Ide, $"SSH ProxyCommand: {ContainerSecrets.InSaid(line)}");
+                lock (said)
+                {
+                    said.Enqueue(ContainerSecrets.InSaid(line));
+                    while (said.Count > 3)
+                    {
+                        said.Dequeue();
+                    }
+                }
+            }));
+        }
+
+        private readonly Queue<string> said = new();
+
+        /// <summary>The last lines the program wrote to its errors, which say why a tunnel through it failed, once it ended
+        /// (or two seconds passed).</summary>
+        public async Task<string> SaidAsync()
+        {
+            using CancellationTokenSource wait = new(TimeSpan.FromSeconds(2));
+            try
+            {
+                await process.WaitForExitAsync(wait.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                IdeLog.Write(IdeLog.Ide, "SSH ProxyCommand: still running as its tunnel failed");
+            }
+            lock (said)
+            {
+                return string.Join(" ", said);
+            }
+        }
+
+        public int Port => ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+
+        /// <summary>Takes the client's one connection and carries its bytes both ways until either side ends.</summary>
+        private async Task CarryAsync()
+        {
+            TcpClient client;
+            try
+            {
+                client = await listener.AcceptTcpClientAsync();
+            }
+            catch (Exception stopped) when (stopped is SocketException or ObjectDisposedException or InvalidOperationException)
+            {
+                IdeLog.Write(IdeLog.Ide, $"SSH ProxyCommand: no client came: {stopped.Message}");
+                return;
+            }
+            using (client)
+            {
+                listener.Stop();
+                NetworkStream network = client.GetStream();
+                await Task.WhenAll(OutwardAsync(network), InwardAsync(network, client));
+            }
+        }
+
+        /// <summary>The client's bytes to the program, whose input closes as the client's end.</summary>
+        private async Task OutwardAsync(NetworkStream network)
+        {
+            try
+            {
+                await network.CopyToAsync(process.StandardInput.BaseStream);
+            }
+            catch (Exception ended) when (ended is IOException or ObjectDisposedException or SocketException)
+            {
+                IdeLog.Write(IdeLog.Ide, $"SSH ProxyCommand: its input ended: {ended.Message}");
+            }
+            finally
+            {
+                process.StandardInput.Close();
+            }
+        }
+
+        /// <summary>The program's bytes to the client, whose connection closes as the program's output ends.</summary>
+        private async Task InwardAsync(NetworkStream network, TcpClient client)
+        {
+            try
+            {
+                await ChildProcesses.OutputStream(process).CopyToAsync(network);
+            }
+            catch (Exception ended) when (ended is IOException or ObjectDisposedException or SocketException)
+            {
+                IdeLog.Write(IdeLog.Ide, $"SSH ProxyCommand: its output ended: {ended.Message}");
+            }
+            finally
+            {
+                client.Close();
+            }
+        }
+
+        public void Dispose()
+        {
+            listener.Stop();
+            ChildProcesses.Kill(process);
+            process.Dispose();
         }
     }
 
@@ -196,6 +379,12 @@ internal static class SshTunnels
         {
             string address = hops[0].HostName;
             int port = hops[0].Port;
+            if (hops[0].ProxyCommand is { } command)
+            {
+                route.Proxy = new ProxyBridge(command);
+                address = "127.0.0.1";
+                port = route.Proxy.Port;
+            }
             for (int i = 0; i < hops.Count; i++)
             {
                 SshHost hop = hops[i];
@@ -221,7 +410,8 @@ internal static class SshTunnels
                 catch (Exception failed) when (failed is SshException or SocketException or IOException or InvalidOperationException)
                 {
                     client.Dispose();
-                    throw refused ?? new IOException(Refusals.SshUnreachable(hop.HostName, ContainerSecrets.InSaid(failed.Message)), failed);
+                    string why = i == 0 && route.Proxy is { } proxy && await proxy.SaidAsync() is { Length: > 0 } said ? $"{failed.Message} ProxyCommand said: {said}" : failed.Message;
+                    throw refused ?? new IOException(Refusals.SshUnreachable(hop.HostName, ContainerSecrets.InSaid(why)), failed);
                 }
                 route.Clients.Add(client);
                 (string Host, int Port)? next = last ? server : (hops[i + 1].HostName, hops[i + 1].Port);
@@ -259,7 +449,7 @@ internal static class SshTunnels
         {
             return null;
         }
-        List<KnownHostKey> said = [.. hop.KnownHostsFiles.Select(SshFiles.Read).OfType<string>().Select(text => KnownHosts.Judge(text, hop.KeyAlias, hop.Port, kind, key.HostKey))];
+        List<KnownHostKey> said = [.. hop.KnownHostsFiles.Select(SshFiles.Read).OfType<string>().Select(text => KnownHosts.Judge(text, hop.KeyAlias, hop.KeyAliased ? 22 : hop.Port, kind, key.HostKey))];
         // As ssh: a key revoked anywhere is refused, one known anywhere taken, one known otherwise refused as changed.
         return !said.Contains(KnownHostKey.Revoked) && said.Contains(KnownHostKey.Known) ? null
             : new SshHostKeyException(hop.HostName, hop.Port, kind, fingerprint, kept is not null || said.Contains(KnownHostKey.Changed) || said.Contains(KnownHostKey.Revoked));

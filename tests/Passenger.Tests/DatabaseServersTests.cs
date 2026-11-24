@@ -46,7 +46,8 @@ public sealed class DatabaseServersTests
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         Assert.SkipWhen(Docker.Said("image", "inspect", image) is null, $"The engine lacks {image}, which this test never pulls: pull it to run the test");
         Assert.SkipWhen(Docker.Said("image", "inspect", SshImage) is null, $"The engine lacks {SshImage}, which this test never pulls: pull it to run the test");
-        Assert.SkipWhen(Programs.OnPath("ssh-agent") is null || Programs.OnPath("ssh-add") is null, "ssh-agent and ssh-add, which hold the tunnel's key, are not on PATH");
+        Assert.SkipWhen(Programs.OnPath("ssh-agent") is null || Programs.OnPath("ssh-add") is null || Programs.OnPath("ssh") is null,
+            "ssh, ssh-agent and ssh-add, which hold the tunnel's key and carry a ProxyCommand, are not on PATH");
         string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}db{kind}".ToLowerInvariant();
         (int port, string[] environment) = kind switch
         {
@@ -104,7 +105,8 @@ public sealed class DatabaseServersTests
             Docker.Run("start", inner);
             string? hostKeys = null;
             Ui.WaitFor(() => (hostKeys = Docker.Said("exec", ssh, "sh", "-c", "cat /config/ssh_host_keys/ssh_host_*_key.pub")) is { Length: > 0 }, "the first bastion's host keys");
-            string home = SshHome(bastion, agentSocket, hostKeys!);
+            File.WriteAllText(keyFile + ".pub", publicKey + "\n");
+            string home = SshHome(bastion, agentSocket, hostKeys!, keyFile);
             Environment.SetEnvironmentVariable(SshFiles.HomeVariable, home);
             File.Delete(agentSocket);
             agent = ChildProcesses.Start(ChildProcesses.Command("ssh-agent", ["-D", "-a", agentSocket]));
@@ -420,6 +422,35 @@ public sealed class DatabaseServersTests
                 Assert.True(jumped.Results[0].Error is null, $"{jumped.Said}, running {jumped.Results[0].Statement}");
                 Assert.Equal(kind == DatabaseKind.SqlServer ? "encrypted as sa" : "encrypted as certified", jumped.Results[0].Sets[0].Cell(0, 0));
 
+                // A tunnel through ssh's ProxyCommand, its port from the system's file under a Match exec, reaches the server too.
+                Assert.True(window.Perform(AppActions.DatabaseAdd), "New Database Connection did not run");
+                Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "the connection dialog");
+                dialog = window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible);
+                Field<ComboBox>("DatabaseProvider").SelectedIndex = (int)kind;
+                Field<TextBox>("DatabaseConnectionName").Text = "Proxied";
+                Field<TextBox>("DatabaseHost").Text = "db";
+                Field<TextBox>("DatabaseName").Text = "shop";
+                Field<TextBox>("DatabaseUser").Text = kind switch { DatabaseKind.Postgres => "postgres", DatabaseKind.MySql => "root", _ => "sa" };
+                Field<TextBox>("DatabasePassword").Text = Password;
+                Field<ComboBox>("DatabaseSsl").SelectedIndex = (int)SslChoice.Required;
+                Field<CheckBox>("DatabaseSshTunnel").IsChecked = true;
+                Field<TextBox>("DatabaseSshHost").Text = "proxied";
+                Ui.ClickButton(dialog, "Connect");
+                Ui.WaitFor(() => dialog.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible) || !dialog.IsVisible,
+                    () => Field<TextBlock>("DatabaseConnectionError").Text ?? "the proxied bastion's host key's question", TimeSpan.FromMinutes(1));
+                trust = dialog.OwnedWindows.OfType<ConfirmDialog>().Single(d => d.IsVisible);
+                Assert.Contains("bastion:2222 gives", string.Join(" ", trust.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)), StringComparison.Ordinal);
+                Ui.ClickButton(trust, "Trust");
+                Ui.WaitFor(() => !dialog.IsVisible, () => Field<TextBlock>("DatabaseConnectionError").Text ?? "the proxied connection kept", TimeSpan.FromMinutes(1));
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Proxied"));
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is { } opened && opened != jumped && opened != through && opened != console, "a console of the proxied connection");
+                SqlConsole proxied = window.EditorArea.ActiveGroup.Console!.Console!;
+                Run(window, "SELECT name FROM products WHERE id = 2");
+                Assert.True(proxied.Results is [{ Error: null }], proxied.Said);
+                Assert.Equal("coffee", proxied.Results[0].Sets[0].Cell(0, 0));
+                window.EditorArea.Activate(window.EditorArea.TabDocuments.Single(d => d.Name == "Behind.sql"));
+
                 // Stop Statement ends a statement through the tunnel on the server, well before it would have ended itself.
                 (string sleeping, string running) = kind switch
                 {
@@ -573,13 +604,16 @@ public sealed class DatabaseServersTests
     }
 
     /// <summary>An SSH home of the test's own: ~/.ssh/config naming "outer", the first bastion by its published port under the
-    /// key alias "jumphost", and "inner", the second, through it; every host's keys from the test's agent; and known_hosts
-    /// knowing the first bastion's keys, so only the second's is asked about.</summary>
-    private static string SshHome(int outerPort, string agentSocket, string hostKeys)
+    /// key alias "jumphost", "inner", the second, through it, and "proxied", the second through a ProxyCommand of ssh's own
+    /// (given the test's configuration, known hosts and key alone), its port from the system's file under a Match exec;
+    /// every host's keys from the test's agent; and known_hosts knowing the first bastion's keys.</summary>
+    private static string SshHome(int outerPort, string agentSocket, string hostKeys, string keyFile)
     {
         string home = TestFolders.Create("ssh-home");
         string ssh = Directory.CreateDirectory(Path.Combine(home, ".ssh")).FullName;
-        File.WriteAllText(Path.Combine(ssh, "config"), $"""
+        string config = Path.Combine(ssh, "config");
+        string known = Path.Combine(ssh, "known_hosts");
+        File.WriteAllText(config, $"""
             Host outer
               HostName 127.0.0.1
               Port {outerPort}
@@ -590,12 +624,17 @@ public sealed class DatabaseServersTests
               Port 2222
               User passenger
               ProxyJump outer
+            Host proxied
+              HostName bastion
+              User passenger
+              ProxyCommand ssh -F "{config}" -o BatchMode=yes -o UserKnownHostsFile="{known}" -o GlobalKnownHostsFile=/dev/null -o IdentitiesOnly=yes -o IdentityFile="{keyFile}.pub" -W %h:%p outer
             Host *
               IdentityAgent "{agentSocket}"
 
             """);
-        File.WriteAllLines(Path.Combine(ssh, "known_hosts"), hostKeys.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(line => line.Split(' ')).Select(key => $"[jumphost]:{outerPort} {key[0]} {key[1]}"));
+        File.WriteAllText(Path.Combine(home, "system_ssh_config"), "Match originalhost proxied exec \"test %h = bastion\"\n  Port 2222\n");
+        File.WriteAllLines(known, hostKeys.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => line.Split(' ')).Select(key => $"jumphost {key[0]} {key[1]}"));
         return home;
     }
 

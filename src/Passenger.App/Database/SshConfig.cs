@@ -15,6 +15,9 @@ public sealed record SshHost(string Alias, string HostName, int Port, string Use
     public bool IdentitiesOnly { get; init; }
     public IReadOnlyList<string> Jumps { get; init; } = [];
 
+    /// <summary>The command whose input and output the host is reached through, its tokens expanded; null for none.</summary>
+    public string? ProxyCommand { get; init; }
+
     /// <summary>IdentityAgent's socket or pipe, "none" for no agent, or null for SSH_AUTH_SOCK's.</summary>
     public string? IdentityAgent { get; init; }
 
@@ -22,50 +25,88 @@ public sealed record SshHost(string Alias, string HostName, int Port, string Use
 
     /// <summary>The name its key is known by in the known hosts files (HostKeyAlias, else its host name).</summary>
     public string KeyAlias { get; init; } = string.Empty;
+
+    /// <summary>Whether HostKeyAlias named it, which ssh looks up alone, without the port.</summary>
+    public bool KeyAliased { get; init; }
 }
 
-/// <summary>ssh's own configuration read as ssh reads it (ssh_config(5)): keywords in any case, a value after white space
-/// or "=", quoted where it holds spaces; a Host line's patterns (* and ?, ! for none) deciding which lines after it apply,
-/// Match only for "all" and "host"/"originalhost" (any other criterion applies nowhere, as nothing is run to test it);
-/// Include's files read in place, relative to ~/.ssh; the first value of a keyword winning, IdentityFile's adding up; and
-/// the tokens %h, %p, %r, %u, %d and %% and ~ expanded in a file's path. Only what a tunnel takes is read.</summary>
+/// <summary>What reading ssh's configuration needs of the machine: the home and user, a file's text (null where there is
+/// none), the files an Include's pattern names, whether a Match exec's command succeeds, and whether a local address stands
+/// in one of a Match localnetwork's networks.</summary>
+public sealed record SshReading(string Home, string LocalUser, Func<string, string?> Read, Func<string, IReadOnlyList<string>> Matching)
+{
+    public Func<string, bool> Exec { get; init; } = _ => false;
+    public Func<string, bool> LocalNetwork { get; init; } = _ => false;
+}
+
+/// <summary>ssh's own configuration read as ssh reads it (ssh_config(5)): the person's file, then the system's, the first
+/// value of a keyword winning and IdentityFile's adding up; keywords in any case, a value after white space or "=", quoted
+/// where it holds spaces; a Host line's patterns (* and ?, ! for none) deciding which lines after it apply, and a Match line's
+/// criteria, each negated by a leading !: all, host, originalhost, user, localuser, tagged, exec (its command run), localnetwork,
+/// final (a second reading, as ssh makes one) and canonical (never, as Passenger canonicalizes no name); Include's files read
+/// in place, relative to the folder of the file including them; and %-tokens and ~ expanded in a path or command. ProxyJump
+/// and ProxyCommand, whichever comes first, say how the host is reached. Only what a tunnel takes is read.</summary>
 public static class SshConfig
 {
     /// <summary>ssh's own key files, looked for in its order where IdentityFile names none.</summary>
     public static readonly string[] UsualKeys = ["id_rsa", "id_ecdsa", "id_ed25519"];
 
-    /// <summary>What the configuration at <paramref name="file"/> says of <paramref name="alias"/>, for <paramref name="localUser"/>
-    /// whose home is <paramref name="home"/>; <paramref name="read"/> gives a file's text or null, <paramref name="matching"/>
-    /// the files an Include's pattern names.</summary>
-    public static SshHost Resolve(string alias, string file, string home, string localUser, Func<string, string?> read, Func<string, IReadOnlyList<string>> matching)
+    /// <summary>What the configuration's <paramref name="files"/>, in order, each with the folder its Include's relative
+    /// patterns stand in, say of <paramref name="alias"/>.</summary>
+    public static SshHost Resolve(string alias, IReadOnlyList<(string File, string Folder)> files, SshReading reading)
     {
+        string home = reading.Home;
+        string localUser = reading.LocalUser;
         Dictionary<string, string> first = new(StringComparer.Ordinal);
         List<string> identities = [];
         string ssh = Path.Combine(home, ".ssh");
-        Read(file, true, 0);
-        string hostName = first.TryGetValue("hostname", out string? named) ? Tokens(named, alias, alias, 22, string.Empty, localUser, home) : alias;
-        int port = first.TryGetValue("port", out string? written) && int.TryParse(written, NumberStyles.None, CultureInfo.InvariantCulture, out int number)
-            && number is > 0 and < 65536 ? number : 22;
-        string user = first.GetValueOrDefault("user") is { Length: > 0 } given ? given : localUser;
+        bool final = false;
+        bool asksFinal = false;
+        foreach ((string file, string folder) in files)
+        {
+            Read(file, folder, true, 0);
+        }
+        if (asksFinal)
+        {
+            final = true;
+            foreach ((string file, string folder) in files)
+            {
+                Read(file, folder, true, 0);
+            }
+        }
+        string hostName = HostName();
+        int port = Port();
+        string user = User();
         string Expanded(string path) => Rooted(Tokens(path, alias, hostName, port, user, localUser, home), home);
+        (string Kind, string Value)? proxy = first.TryGetValue("proxy", out string? way) ? (way[..way.IndexOf(' ', StringComparison.Ordinal)], way[(way.IndexOf(' ', StringComparison.Ordinal) + 1)..]) : null;
         return new SshHost(alias, hostName, port, user)
         {
             IdentityFiles = identities.Count > 0 ? [.. identities.Select(Expanded)] : [.. UsualKeys.Select(k => Path.Combine(ssh, k))],
             IdentityFilesNamed = identities.Count > 0,
             IdentitiesOnly = first.GetValueOrDefault("identitiesonly") is { } only && only.Equals("yes", StringComparison.OrdinalIgnoreCase),
-            Jumps = first.GetValueOrDefault("proxyjump") is { } jumps && !jumps.Equals("none", StringComparison.OrdinalIgnoreCase)
+            Jumps = proxy is ("proxyjump", var jumps) && !jumps.Equals("none", StringComparison.OrdinalIgnoreCase)
                 ? [.. jumps.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)] : [],
+            ProxyCommand = proxy is ("proxycommand", var command) && !command.Equals("none", StringComparison.OrdinalIgnoreCase)
+                ? Tokens(command, alias, hostName, port, user, localUser, home) : null,
             IdentityAgent = first.GetValueOrDefault("identityagent") is { } agent
                 ? agent is "none" or "SSH_AUTH_SOCK" || agent.StartsWith('$') ? agent : Expanded(agent) : null,
             KnownHostsFiles = first.GetValueOrDefault("userknownhostsfile") is { } known
                 ? [.. Words(known).Where(k => !k.Equals("none", StringComparison.OrdinalIgnoreCase)).Select(Expanded)]
                 : [Path.Combine(ssh, "known_hosts"), Path.Combine(ssh, "known_hosts2")],
             KeyAlias = first.GetValueOrDefault("hostkeyalias") ?? hostName,
+            KeyAliased = first.ContainsKey("hostkeyalias"),
         };
 
-        void Read(string path, bool active, int depth)
+        string HostName() => first.TryGetValue("hostname", out string? named) ? Tokens(named, alias, alias, 22, string.Empty, localUser, home) : alias;
+
+        int Port() => first.TryGetValue("port", out string? written) && int.TryParse(written, NumberStyles.None, CultureInfo.InvariantCulture, out int number)
+            && number is > 0 and < 65536 ? number : 22;
+
+        string User() => first.GetValueOrDefault("user") is { Length: > 0 } given ? given : localUser;
+
+        void Read(string path, string folder, bool active, int depth)
         {
-            if (depth > 16 || read(path) is not { } text)
+            if (depth > 16 || reading.Read(path) is not { } text)
             {
                 return;
             }
@@ -80,7 +121,7 @@ public static class SshConfig
                         active = Matches(alias, Words(value));
                         continue;
                     case "match":
-                        active = MatchApplies(Words(value), alias, first.GetValueOrDefault("hostname") is { } host ? Tokens(host, alias, alias, 22, string.Empty, localUser, home) : alias);
+                        active = MatchApplies(Words(value));
                         continue;
                 }
                 if (!active)
@@ -91,9 +132,9 @@ public static class SshConfig
                 {
                     foreach (string pattern in Words(value))
                     {
-                        foreach (string included in matching(pattern.StartsWith('~') || Path.IsPathRooted(pattern) ? Rooted(pattern, home) : Path.Combine(ssh, pattern)))
+                        foreach (string included in reading.Matching(pattern.StartsWith('~') || Path.IsPathRooted(pattern) ? Rooted(pattern, home) : Path.Combine(folder, pattern)))
                         {
-                            Read(included, true, depth + 1);
+                            Read(included, folder, true, depth + 1);
                         }
                     }
                 }
@@ -101,11 +142,67 @@ public static class SshConfig
                 {
                     identities.AddRange(Words(value));
                 }
+                else if (keyword is "proxyjump" or "proxycommand")
+                {
+                    // Either says how the host is reached, so the first of the two read stands.
+                    first.TryAdd("proxy", keyword + " " + (keyword == "proxycommand" ? value : Words(value).FirstOrDefault() ?? string.Empty));
+                }
                 else
                 {
                     first.TryAdd(keyword, keyword is "userknownhostsfile" ? value : Words(value).FirstOrDefault() ?? string.Empty);
                 }
             }
+        }
+
+        // A Match line's criteria, each holding of the host as read so far.
+        bool MatchApplies(IReadOnlyList<string> words)
+        {
+            if (words.Count == 0)
+            {
+                return false;
+            }
+            for (int i = 0; i < words.Count; i++)
+            {
+                string criterion = words[i].ToLowerInvariant();
+                bool negated = criterion.StartsWith('!');
+                criterion = criterion.TrimStart('!');
+                bool holds;
+                if (criterion is "all" or "canonical" or "final")
+                {
+                    asksFinal |= criterion == "final";
+                    holds = criterion switch
+                    {
+                        "all" => true,
+                        "final" => final,
+                        _ => false,
+                    };
+                }
+                else if (i + 1 < words.Count)
+                {
+                    string argument = words[++i];
+                    IEnumerable<string> list = argument.Split(',');
+                    holds = criterion switch
+                    {
+                        "host" => Matches(HostName(), list),
+                        "originalhost" => Matches(alias, list),
+                        "user" => Matches(User(), list),
+                        "localuser" => Matches(localUser, list),
+                        "tagged" => Matches(first.GetValueOrDefault("tag") ?? string.Empty, list),
+                        "exec" => reading.Exec(Tokens(argument, alias, HostName(), Port(), User(), localUser, home)),
+                        "localnetwork" => reading.LocalNetwork(argument),
+                        _ => false,
+                    };
+                }
+                else
+                {
+                    return false;
+                }
+                if (holds == negated)
+                {
+                    return false;
+                }
+            }
+            return true;
         }
     }
 
@@ -190,31 +287,6 @@ public static class SshConfig
             p++;
         }
         return p == pattern.Length;
-    }
-
-    /// <summary>A Match line's criteria: "all", or host and originalhost lists, each of which must take its name.</summary>
-    private static bool MatchApplies(IReadOnlyList<string> words, string alias, string host)
-    {
-        if (words is [var all] && all.Equals("all", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-        for (int i = 0; i + 1 < words.Count; i += 2)
-        {
-            string criterion = words[i].ToLowerInvariant();
-            IEnumerable<string> list = words[i + 1].Split(',');
-            bool holds = criterion switch
-            {
-                "host" => Matches(host, list),
-                "originalhost" => Matches(alias, list),
-                _ => false,
-            };
-            if (!holds)
-            {
-                return false;
-            }
-        }
-        return words.Count > 0 && words.Count % 2 == 0;
     }
 
     /// <summary>A line's keyword (lower case; empty for none) and its value.</summary>
