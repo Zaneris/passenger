@@ -5,7 +5,7 @@ namespace Passenger.UnitTests.Godot;
 
 /// <summary>Godot's shading language compiler as Passenger ports it, checked as Godot's shader editor checks a shader:
 /// shaders of every type compile clean, an error is said in Godot's words at its line (each case's words and line as
-/// Godot 4.7.2's and 4.8 beta 2's own compilers gave them), every error at once, an include's error naming the include,
+/// Godot 4.7.2's and 4.8 beta 5's own compilers give them), every error at once, an include's error naming the include,
 /// and the warnings as the editor gives them.</summary>
 public class GodotShaderLanguageTests
 {
