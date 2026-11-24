@@ -157,9 +157,10 @@ public sealed record DapSource
 /// breakpoint can log and stop, or neither stop nor log a message of its own ("Breakpoint reached"); without it,
 /// a log message alone means no stop, as the protocol has it. <c>RunTo</c> is Passenger's own too: Run to Cursor's line,
 /// whose next hit stops whatever the condition, hit count and Suspend say, tried as the breakpoint's own hit all the same.
-/// So are <c>Key</c>, <c>WaitFor</c> and <c>Temporary</c> (<see cref="IHitBreakpoint"/>).</summary>
+/// So are <c>Key</c>, <c>WaitFor</c>, <c>Temporary</c>, <c>Snapshot</c>, <c>Captures</c> and <c>CaptureLimit</c>
+/// (<see cref="IHitBreakpoint"/>).</summary>
 public sealed record DapSourceBreakpoint(int Line, int? Column = null, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool? Suspend = null,
-    bool? RunTo = null, int? Key = null, int? WaitFor = null, bool? Temporary = null) : IAskedBreakpoint;
+    bool? RunTo = null, int? Key = null, int? WaitFor = null, bool? Temporary = null, bool? Snapshot = null, string? Captures = null, int? CaptureLimit = null) : IAskedBreakpoint;
 
 public sealed record SetBreakpointsArguments(DapSource Source, IReadOnlyList<DapSourceBreakpoint>? Breakpoints);
 
@@ -182,10 +183,10 @@ public sealed record DapBreakpoint
     public int? Offset { get; init; }
 }
 
-/// <summary>A function breakpoint as asked for; <c>Suspend</c>, <c>Key</c>, <c>WaitFor</c> and <c>Temporary</c> are
-/// Passenger's own, as a line breakpoint's are.</summary>
+/// <summary>A function breakpoint as asked for; <c>Suspend</c>, <c>Key</c>, <c>WaitFor</c>, <c>Temporary</c>,
+/// <c>Snapshot</c>, <c>Captures</c> and <c>CaptureLimit</c> are Passenger's own, as a line breakpoint's are.</summary>
 public sealed record DapFunctionBreakpoint(string Name, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool? Suspend = null,
-    int? Key = null, int? WaitFor = null, bool? Temporary = null);
+    int? Key = null, int? WaitFor = null, bool? Temporary = null, bool? Snapshot = null, string? Captures = null, int? CaptureLimit = null);
 
 public sealed record SetFunctionBreakpointsArguments(IReadOnlyList<DapFunctionBreakpoint>? Breakpoints);
 
@@ -566,6 +567,36 @@ public sealed record ThreadEvent([IdentifierOf(typeof(EventReasons))][property: 
 
 /// <summary>Output, of category stdout, stderr or console.</summary>
 public sealed record OutputEvent(string Output, string? Category = null);
+
+/// <summary>Passenger's own event: a snapshot point's capture, the program's state where one of its threads took the point's
+/// hit, read as a stop's frames and values are and copied whole, so it reads alike once the program has run on. The
+/// program was held <see cref="Paused"/> for it and then went on; <see cref="Values"/> holds each frame's locals and each
+/// row's members read, by the reference that names them (a row's own <see cref="DapVariable.VariablesReference"/>), and
+/// <see cref="Asked"/> the point's own expressions, read in its top frame.</summary>
+public sealed record SnapshotEvent
+{
+    /// <summary>The snapshot point, by the id the debugger gave it.</summary>
+    public int BreakpointId { get; init; }
+
+    public int ThreadId { get; init; }
+    public string? ThreadName { get; init; }
+
+    /// <summary>When it was taken, by the machine's clock.</summary>
+    public DateTimeOffset At { get; init; }
+
+    /// <summary>How long the program was held for it, from the hit to its going on, in milliseconds.</summary>
+    public double PausedMilliseconds { get; init; }
+
+    public IReadOnlyList<DapSnapshotFrame> Frames { get; init; } = [];
+    public IReadOnlyDictionary<int, IReadOnlyList<DapVariable>> Values { get; init; } = new Dictionary<int, IReadOnlyList<DapVariable>>();
+    public IReadOnlyList<DapVariable> Asked { get; init; } = [];
+
+    /// <summary>What the capture left unread, where it read less than the frames and values asked of it; null for none.</summary>
+    public string? Cut { get; init; }
+}
+
+/// <summary>A frame of a snapshot, its locals by their reference among the snapshot's values, 0 where they were not read.</summary>
+public sealed record DapSnapshotFrame(DapStackFrame Frame, int Locals);
 
 /// <summary>A breakpoint changed (bound, or moved), new or removed.</summary>
 public sealed record BreakpointEvent

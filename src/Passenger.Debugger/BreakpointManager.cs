@@ -60,6 +60,12 @@ public class BreakpointManager
 
         public bool Temporary { get; set; }
 
+        public bool Snapshot { get; set; }
+
+        public string? Captures { get; set; }
+
+        public int? CaptureLimit { get; set; }
+
         /// <summary>A function breakpoint's request as the client made it: one made again just so keeps this breakpoint.</summary>
         public FunctionBreakpointRequest? FunctionRequest { get; set; }
 

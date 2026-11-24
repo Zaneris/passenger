@@ -330,6 +330,10 @@ public partial class ManagedDebugger
         {
             EvalStatus.EndCame(e, EvaluationThread(e)?.TryGetID(out uint thread) is Cor.S_OK ? (int)thread : null);
         }
+        else if (e is BreakpointCorDebugManagedCallbackEventArgs)
+        {
+            _hitCame.AddOrUpdate(e, new StrongBox<long>(System.Diagnostics.Stopwatch.GetTimestamp()));
+        }
         _runtimeEventChannel.Writer.TryWrite(e);
     }
 

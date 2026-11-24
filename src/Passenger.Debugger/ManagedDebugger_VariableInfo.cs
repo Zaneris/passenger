@@ -708,6 +708,25 @@ public partial class ManagedDebugger
                     return;
                 }
 
+                if (EvalStatus.ImplicitOff is { } off && !EvalStatus.Explicit)
+                {
+                    // An auto-property's value is its field's, read there while its getter may not run; another's says why it is not read.
+                    if (IsCompilerGenerated(metadataImport, getMethodDef)
+                        && metadataImport.EnumFieldsWithName(corDebugClass.Token, $"<{propertyName}>k__BackingField").FirstOrDefault() is { IsNil: false } backing)
+                    {
+                        ICorDebugValue stored = isStatic ? await GetStaticFieldValueAsync(declaringType, backing, threadId, stackDepth)
+                            : corDebugValue.UnwrapDebugValueToObject().GetFieldValue(corDebugClass, backing);
+                        VariableInfo kept = await ValueRow(propertyName, null, stored, threadId, stackDepth, DeclaredProperty(corDebugClass, mdProperty), displayed: true, namesPointee: false);
+                        kept.Member = propertyName;
+                        result.Add(kept);
+                    }
+                    else
+                    {
+                        result.Add(FailedRow(propertyName, off));
+                    }
+                    return;
+                }
+
                 ICorDebugFunction getMethod = corDebugClass.Module.GetFunctionFromToken(getMethodDef);
                 ICorDebugEval eval = variablesReferenceIlFrame.Chain.Thread.CreateEval();
 

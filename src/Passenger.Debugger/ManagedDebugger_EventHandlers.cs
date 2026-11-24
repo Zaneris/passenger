@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Debugger.ExpressionEvaluator;
@@ -511,13 +512,17 @@ public partial class ManagedDebugger
         }
 
         BreakpointManager.BreakpointBinding? hit = managedBreakpoint.Bindings.Find(binding => binding.CorBreakpoint == functionBreakpoint);
+        long came = _hitCame.TryGetValue(breakpointCorDebugManagedCallbackEventArgs, out StrongBox<long>? held) ? held.Value : System.Diagnostics.Stopwatch.GetTimestamp();
         if (!await HitStopsAsync(corThread, managedBreakpoint, "the breakpoint", () => hit?.Source is { } where
             ? BreakpointHits.Reached(managedBreakpoint.IsFunctionBreakpoint ? where.DocumentPath : managedBreakpoint.FilePath, where.StartLine)
-            : BreakpointHits.Reached(managedBreakpoint.FilePath, managedBreakpoint.Line)))
+            : BreakpointHits.Reached(managedBreakpoint.FilePath, managedBreakpoint.Line), came))
         {
             Continue(clearVariables: true);
+            TellTaken();
             return;
         }
+        // Run to Cursor's hold on a snapshot point: its capture is told with the stop.
+        TellTaken();
 
         EndStepForStop();
         if (managedBreakpoint.IsFunctionBreakpoint)

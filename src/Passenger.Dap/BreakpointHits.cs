@@ -32,6 +32,17 @@ public interface IHitBreakpoint
     /// <summary>Removed once hit: the first hit it takes is its last, which the session is told of.</summary>
     bool Temporary => false;
 
+    /// <summary>A snapshot point: each hit it takes reads the program's state where it stands and lets the program go on,
+    /// never stopping it, at most <see cref="CaptureLimit"/> times in a session.</summary>
+    bool Snapshot => false;
+
+    /// <summary>A snapshot point's own expressions, one to a line, read in its top frame at each capture.</summary>
+    string? Captures => null;
+
+    /// <summary>How many captures a snapshot point takes in a session, its later hits passed by; null for
+    /// <see cref="BreakpointHits.CaptureLimit"/>.</summary>
+    int? CaptureLimit => null;
+
     /// <summary>The hits where its condition held (or every hit, where it has none).</summary>
     int HitCount { get; set; }
     string? Message { get; set; }
@@ -69,6 +80,9 @@ public sealed class HitReading
 
     /// <summary>A temporary breakpoint's hit was its last: the session is to take it away.</summary>
     public required Action<IHitBreakpoint> Removed { get; init; }
+
+    /// <summary>A snapshot point's capture, taken where the hit stands; null where the debugger takes none.</summary>
+    public Func<IHitBreakpoint, Task>? Capture { get; init; }
 }
 
 /// <summary>What one debugging session's breakpoints have come to between them, by their keys
@@ -78,6 +92,7 @@ public sealed class SessionHits
 {
     private readonly HashSet<int> hit = [];
     private readonly HashSet<int> gone = [];
+    private readonly Dictionary<int, int> captured = [];
     private readonly Lock gate = new();
 
     /// <summary>Whether the breakpoint of a key has taken a hit.</summary>
@@ -114,15 +129,32 @@ public sealed class SessionHits
             return gone.Add(key);
         }
     }
+
+    /// <summary>How many captures the snapshot point of an id has taken, with this one: past its limit, none was.</summary>
+    internal int Capture(int id)
+    {
+        lock (gate)
+        {
+            return captured[id] = captured.GetValueOrDefault(id) + 1;
+        }
+    }
 }
 
 /// <summary>Every debugger's one way with a breakpoint's hits: a hit counts only where the condition held (or there is
 /// none), as a person reads "stop the 3rd time i &gt; 10", and a breakpoint takes a hit where its hit count is met too,
-/// arming those waiting for it, whose hits are passed over until then; a temporary breakpoint's first hit taken is its last. A breakpoint asked for again keeps its count while
+/// arming those waiting for it, whose hits are passed over until then; a temporary breakpoint's first hit taken is its last,
+/// and a snapshot point's hit taken is captured and goes on. A breakpoint asked for again keeps its count while
 /// its place, condition and hit count stay (an edit of its message, of whether it stops, of what it waits for or whether it
 /// is temporary keeps it), and counts again from the edit where any of those change.</summary>
 public static class BreakpointHits
 {
+    /// <summary>How many captures a snapshot point takes in a session where it asks for no other number, so a line hit
+    /// thousands of times a second holds the program a bounded while.</summary>
+    public const int CaptureLimit = 100;
+
+    /// <summary>The most captures a snapshot point may ask for.</summary>
+    public const int MostCaptures = 10_000;
+
     /// <summary>Matches the breakpoints asked for with those set: one asked for again just as it was keeps the one set (each
     /// kept once), else counts on from the hits of one it replaces at its place (<paramref name="samePlace"/>) with the same
     /// condition and hit count. Those set that no request keeps are <paramref name="gone"/>.</summary>
@@ -164,10 +196,10 @@ public static class BreakpointHits
         hitCondition is { } hits && !HitCondition.TryParse(hits, out _, out string? problem) ? problem : null;
 
     /// <summary>A hit of a breakpoint of any kind: passed over while what it waits for has taken no hit, or once it went as
-    /// temporary; else its condition tried (one that cannot be told taken as held, said once the hit stops, as
-    /// <see cref="HitReading.Named"/> having stopped), counted where it held, then tried by its hit count. A hit taken arms those
-    /// waiting for it, is a temporary one's last (<see cref="HitReading.Removed"/>), and logs its message, or says
-    /// <see cref="HitReading.Reached"/> where it neither logs nor stops. Whether the hit stops the program.</summary>
+    /// temporary; else its condition tried (one that cannot be told taken as held and said), counted where it held, then tried
+    /// by its hit count. A hit taken arms those waiting for it, is a temporary one's last (<see cref="HitReading.Removed"/>), is
+    /// a snapshot point's capture within its limit, and logs its message, or says <see cref="HitReading.Reached"/> where it
+    /// neither logs, stops nor captures. Whether it stops the program, as a snapshot point's never does but for Run to Cursor.</summary>
     public static async Task<bool> StopsAsync(IHitBreakpoint breakpoint, HitReading hit)
     {
         if (breakpoint.WaitFor is int awaited && !hit.Session.WasHit(awaited))
@@ -185,7 +217,7 @@ public static class BreakpointHits
             ConditionRead read = await holds(condition);
             if (read.Unread is { } why)
             {
-                unread = $"{BreakpointConditions.NotEvaluated(condition)}, so {hit.Named} stopped: {why}";
+                unread = $"{BreakpointConditions.NotEvaluated(condition)}, so {(breakpoint.Snapshot ? "a snapshot was taken" : $"{hit.Named} stopped")}: {why}";
             }
             else if (!read.Holds)
             {
@@ -218,6 +250,14 @@ public static class BreakpointHits
             hit.Told(breakpoint);
             hit.Say(unread);
         }
+        if (breakpoint.Snapshot)
+        {
+            if (await CaptureAsync(breakpoint, hit) && breakpoint.LogMessage is { } said)
+            {
+                hit.Say(await hit.Logged(said));
+            }
+            return breakpoint.RunTo;
+        }
         if (breakpoint.LogMessage is { } message)
         {
             hit.Say(await hit.Logged(message));
@@ -228,6 +268,32 @@ public static class BreakpointHits
         }
         return breakpoint.Suspend || unread is not null || breakpoint.RunTo;
     }
+
+    /// <summary>A snapshot point's hit captured, while it has taken fewer than its limit; the first hit past it tells the
+    /// session so, on the point. Whether it took the hit.</summary>
+    private static async Task<bool> CaptureAsync(IHitBreakpoint point, HitReading hit)
+    {
+        int limit = point.CaptureLimit ?? CaptureLimit;
+        int count = hit.Session.Capture(point.Id);
+        if (count > limit)
+        {
+            if (count == limit + 1)
+            {
+                point.Message = LimitReached(limit);
+                hit.Told(point);
+            }
+            hit.Log?.Invoke($"Breakpoint {point.Id}: took its {limit} snapshots already");
+            return false;
+        }
+        if (hit.Capture is { } capture)
+        {
+            await capture(point);
+        }
+        return true;
+    }
+
+    /// <summary>What a snapshot point says once it has taken its limit of captures.</summary>
+    public static string LimitReached(int limit) => $"Took its {limit} {(limit == 1 ? "snapshot" : "snapshots")}, so its later hits pass by until debugging starts again";
 
     /// <summary>What a line breakpoint that neither stops nor logs says at a hit: its file's name and line (from one).</summary>
     public static string Reached(string file, int line) => $"Breakpoint reached at {Path.GetFileName(file)}:{line}";

@@ -139,16 +139,7 @@ public sealed class DebugAdapter
         connection.Handle<VariablesArguments, VariablesResponse>(DapCommands.Variables, async arguments =>
         {
             List<VariableInfo> variables = await Read(() => debugger.GetVariables(arguments.VariablesReference));
-            return new VariablesResponse([.. variables.Select(v => new DapVariable
-            {
-                Name = v.Name,
-                EvaluateName = v.EvaluateName,
-                Value = v.Value,
-                Type = v.Type,
-                PresentationHint = ToProtocol(v.PresentationHint),
-                VariablesReference = v.VariablesReference,
-                Mark = v.Mark,
-            })]);
+            return new VariablesResponse([.. variables.Select(ToProtocol)]);
         });
         // Mark Object: an object known again at every stop and named by its label.
         connection.Handle<MarkObjectArguments, MarkObjectResponse>(DapCommands.MarkObject, async arguments =>
@@ -312,6 +303,18 @@ public sealed class DebugAdapter
         debugger.OnBreakpointChanged += breakpoint => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = EventReasons.Changed, Breakpoint = ToProtocol(breakpoint, isEvent: true) });
         debugger.OnBreakpointMessage += (id, message) => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = EventReasons.Changed, Breakpoint = new DapBreakpoint { Id = id, Verified = true, Message = message } });
         debugger.OnBreakpointRemoved += id => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = EventReasons.Removed, Breakpoint = new DapBreakpoint { Id = id } });
+        debugger.OnSnapshot += snapshot => connection.SendEvent(DapEvents.Snapshot, new SnapshotEvent
+        {
+            BreakpointId = snapshot.BreakpointId,
+            ThreadId = snapshot.ThreadId,
+            ThreadName = snapshot.ThreadName,
+            At = snapshot.At,
+            PausedMilliseconds = snapshot.Paused.TotalMilliseconds,
+            Frames = [.. snapshot.Frames.Select(f => new DapSnapshotFrame(ToProtocol(f.Frame), f.Locals))],
+            Values = snapshot.Values.ToDictionary(v => v.Key, v => (IReadOnlyList<DapVariable>)[.. v.Value.Select(ToProtocol)]),
+            Asked = [.. snapshot.Asked.Select(ToProtocol)],
+            Cut = snapshot.Cut,
+        });
         // Told only when known: a process attached to on macOS or Linux tells its exit code to its parent alone.
         debugger.OnExited += exitCode =>
         {
@@ -479,7 +482,10 @@ public sealed class DebugAdapter
             b.RunTo == true,
             b.Key,
             b.WaitFor,
-            b.Temporary == true))];
+            b.Temporary == true,
+            b.Snapshot == true,
+            b.Captures,
+            b.CaptureLimit))];
         List<BreakpointManager.BreakpointInfo> breakpoints = await Locked(() => debugger.SetBreakpoints(path, requests));
         return new SetBreakpointsResponse([.. breakpoints.Select(b => ToProtocol(b, isEvent: false))]);
     }
@@ -487,7 +493,7 @@ public sealed class DebugAdapter
     private async Task<SetBreakpointsResponse> SetFunctionBreakpoints(SetFunctionBreakpointsArguments arguments)
     {
         FunctionBreakpointRequest[] requests = [.. (arguments.Breakpoints ?? []).Select(b => new FunctionBreakpointRequest(b.Name, b.Condition, b.HitCondition, b.LogMessage, b.Suspend,
-            b.Key, b.WaitFor, b.Temporary == true))];
+            b.Key, b.WaitFor, b.Temporary == true, b.Snapshot == true, b.Captures, b.CaptureLimit))];
         List<BreakpointManager.BreakpointInfo> breakpoints = await Locked(() => debugger.SetFunctionBreakpoints(requests));
         return new SetBreakpointsResponse([.. breakpoints.Select(b => new DapBreakpoint { Id = b.Id, Verified = b.Verified, Message = b.Message, Reason = b.Refused ? BreakpointReasons.Failed : null })]);
     }
@@ -752,6 +758,17 @@ public sealed class DebugAdapter
         DecompiledSourceInfo = frame.DecompiledSourceInfo is { } decompiled
             ? new DapDecompiledSource(decompiled.TypeFullName, new DapAssembly(decompiled.Assembly.AssemblyPath, decompiled.Assembly.Mvid), decompiled.CallingUserCodeAssemblyPath)
             : null,
+    };
+
+    private static DapVariable ToProtocol(VariableInfo variable) => new()
+    {
+        Name = variable.Name,
+        EvaluateName = variable.EvaluateName,
+        Value = variable.Value,
+        Type = variable.Type,
+        PresentationHint = ToProtocol(variable.PresentationHint),
+        VariablesReference = variable.VariablesReference,
+        Mark = variable.Mark,
     };
 
     private static DapPresentationHint? ToProtocol(VariablePresentationHint? hint)

@@ -73,6 +73,9 @@ public static class DapEvents
     public const string Process = "process";
     public const string Output = "output";
     public const string Continued = "continued";
+
+    /// <summary>Passenger's own: a snapshot point's capture (<see cref="SnapshotEvent"/>).</summary>
+    public const string Snapshot = "snapshot";
 }
 
 /// <summary>Why the program stopped, the stopped event's reason, by the protocol's names: what the engine reports, what the

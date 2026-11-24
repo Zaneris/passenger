@@ -52,7 +52,8 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A condition nested past what the parser reads is refused saying so and the adapter runs on, and a
     /// condition reading a pattern's variable stops only where it holds; which hits stop, by what a breakpoint asks beside
-    /// its condition: one waiting for another passes its hits by until that one takes a hit, and a temporary one stops once.</summary>
+    /// its condition: one waiting for another passes its hits by until that one takes a hit, a temporary one stops once, and
+    /// a snapshot point never stops, capturing its hits' frames and values within its limit.</summary>
     [Fact]
     public async Task A_condition_the_parser_cannot_read_or_a_patterns_variable_reads_is_refused_or_held_where_it_holds()
     {
@@ -60,6 +61,52 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         await Flow.StepApartAsync<ConditionalBreakpointTests>("a condition reading a pattern's variable stops only where it holds", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_condition_reading_a_patterns_variable_stops_only_where_it_holds());
         await Flow.StepApartAsync<ConditionalBreakpointTests>("a breakpoint waiting for a method's tracepoint stops only once the tracepoint took a hit", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_breakpoint_waiting_for_a_methods_tracepoint_stops_only_once_the_tracepoint_took_a_hit());
         await Flow.StepApartAsync<ConditionalBreakpointTests>("a temporary breakpoint stops once and the session is told it went", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_temporary_breakpoint_stops_once_and_the_session_is_told_it_went());
+        await Flow.StepApartAsync<ConditionalBreakpointTests>("a snapshot point captures its hits frames and values within its limit and never stops", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_snapshot_point_captures_its_hits_frames_and_values_within_its_limit_and_never_stops());
+    }
+
+    /// <summary>A snapshot point at MyMethod's end, limited to 3 captures, with two expressions of its own: each of its first
+    /// three hits is told as a capture, MyMethod on top, its locals and arguments read whole (a struct's members, an
+    /// auto-property of this through its field, running none of the program's code), its expressions read in its frame, and
+    /// how long the program was held for it; its fourth hit tells the point its limit is reached, and the program never
+    /// stops there: its first stop is a breakpoint's at Test's fourth call, after MyMethod's fourth.</summary>
+    private async Task A_snapshot_point_captures_its_hits_frames_and_values_within_its_limit_and_never_stops()
+    {
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended: true, out Process program);
+        await host.InitializeAsync().AttachAsync(program.Id).WaitForInitializedEvent();
+        SetBreakpointsResponse set = await host.SetBreakpointsAsync(Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"),
+            [new DapSourceBreakpoint(Debuggees.MyMethodEnd, Condition: "myInt == 4", Snapshot: true, Captures: "myInt * 10\n\nanotherVar.Length", CaptureLimit: 3)]);
+        int point = set.Breakpoints.Single().Id!.Value;
+        await host
+            .BreakpointsAsync(Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs"), [new DapSourceBreakpoint(AfterCount, HitCondition: "==4")])
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(program.Id, startSuspended: true);
+
+        List<SnapshotEvent> taken = [];
+        for (int i = 0; i < 3; i++)
+        {
+            taken.Add(await host.WaitForEvent<SnapshotEvent>());
+        }
+        foreach (SnapshotEvent snapshot in taken)
+        {
+            Assert.Equal(point, snapshot.BreakpointId);
+            DapSnapshotFrame top = snapshot.Frames[0];
+            Assert.True(top.Frame.Name.Contains("MyMethod", StringComparison.Ordinal) && top.Frame.Line == Debuggees.MyMethodEnd && top.Locals > 0,
+                $"The snapshot's top frame is {top.Frame.Name} at line {top.Frame.Line}, its locals {top.Locals}, where MyMethod stands at line {Debuggees.MyMethodEnd} with its locals read");
+            IReadOnlyList<DapVariable> locals = snapshot.Values[top.Locals];
+            Assert.Equal(("4", "\"asdf\"", "13"), (Value(locals, "myInt"), Value(locals, "anotherVar"), Value(locals, "myParam")));
+            Assert.Equal("5", Value(snapshot.Values[locals.Single(v => v.Name == "structVar").VariablesReference], "Id"));
+            Assert.Equal("10", Value(snapshot.Values[locals.Single(v => v.Name == "this").VariablesReference], "IntProperty"));
+            Assert.Equal(["40", "4"], snapshot.Asked.Select(a => a.Value));
+            Assert.True(snapshot.PausedMilliseconds > 0, $"The snapshot said the program was held {snapshot.PausedMilliseconds} ms for it");
+            testOutputHelper.WriteLine($"The program was held {snapshot.PausedMilliseconds:F2} ms for a snapshot of {snapshot.Values.Sum(v => v.Value.Count)} values");
+        }
+        BreakpointEvent limit = await host.WaitForEvent<BreakpointEvent>(e => e.Breakpoint.Id == point && e.Breakpoint.Message is not null);
+        Assert.Equal(BreakpointHits.LimitReached(3), limit.Breakpoint.Message);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        Assert.True(stop.Source?.Path?.EndsWith("HitConditionClass.cs", StringComparison.Ordinal) == true && stop.ReadStopInfo().line == AfterCount,
+            $"The program's first stop was at {stop.Source?.Path}:{stop.Line}, where a snapshot point never stops and the breakpoint at Test's fourth call does");
+
+        static string? Value(IReadOnlyList<DapVariable> rows, string name) => rows.FirstOrDefault(v => v.Name == name)?.Value;
     }
 
     /// <summary>A line breakpoint waiting for a method breakpoint, a tracepoint whose condition first holds as Test begins its

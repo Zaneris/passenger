@@ -14,15 +14,16 @@ using ZLinq;
 namespace Passenger.Debugger;
 
 /// <summary>A line breakpoint as asked for; <paramref name="RunTo"/> holds it for Run to Cursor, its next hit stopping whatever
-/// its condition, hit count and <paramref name="Suspend"/> say; <paramref name="Key"/>, <paramref name="WaitFor"/> and
-/// <paramref name="Temporary"/> as <see cref="IHitBreakpoint"/> has them.</summary>
+/// its condition, hit count and <paramref name="Suspend"/> say; <paramref name="Key"/>, <paramref name="WaitFor"/>,
+/// <paramref name="Temporary"/>, <paramref name="Snapshot"/>, <paramref name="Captures"/> and <paramref name="CaptureLimit"/>
+/// as <see cref="IHitBreakpoint"/> has them.</summary>
 public record BreakpointRequest(int Line, string? Condition = null, string? HitCondition = null, int? Column = null, string? LogMessage = null, bool? Suspend = null,
-    bool RunTo = false, int? Key = null, int? WaitFor = null, bool Temporary = false) : IAskedBreakpoint;
+    bool RunTo = false, int? Key = null, int? WaitFor = null, bool Temporary = false, bool Snapshot = false, string? Captures = null, int? CaptureLimit = null) : IAskedBreakpoint;
 
 /// <summary>A function breakpoint as asked for: a method by its name (<see cref="FunctionBreakpointPattern"/>), and what a line
 /// breakpoint asks of its hits.</summary>
 public record FunctionBreakpointRequest(string Name, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool? Suspend = null,
-    int? Key = null, int? WaitFor = null, bool Temporary = false) : IAskedBreakpoint;
+    int? Key = null, int? WaitFor = null, bool Temporary = false, bool Snapshot = false, string? Captures = null, int? CaptureLimit = null) : IAskedBreakpoint;
 public record ExceptionBreakpointRequest(ExceptionBreakpointFilter Filter, string? Condition = null);
 public enum ExceptionBreakpointFilter { All, UserUnhandled }
 
@@ -246,7 +247,7 @@ public partial class ManagedDebugger
     /// saying why.</summary>
     private static bool RefusedUnread(BreakpointManager.BreakpointInfo bp)
     {
-        if (Unreadable(bp.Condition, bp.HitCondition, bp.LogMessage) is not { } unreadable)
+        if ((Unreadable(bp.Condition, bp.HitCondition, bp.LogMessage) ?? (bp.Snapshot ? UnreadableCapture(bp.Captures, bp.CaptureLimit) : null)) is not { } unreadable)
         {
             return false;
         }
@@ -572,6 +573,7 @@ public partial class ManagedDebugger
             BreakpointManager.BreakpointInfo bp = _breakpointManager.CreateBreakpoint(filePath, request.Line, request.Column, request.Condition, request.HitCondition, request.LogMessage, request.Suspend);
             bp.Request = request;
             (bp.Key, bp.WaitFor, bp.Temporary) = (request.Key, request.WaitFor, request.Temporary);
+            (bp.Snapshot, bp.Captures, bp.CaptureLimit) = (request.Snapshot, request.Captures, request.CaptureLimit);
             bp.HitCount = matched[i].Hits;
             if (RefusedUnread(bp))
             {
@@ -616,6 +618,7 @@ public partial class ManagedDebugger
             BreakpointManager.BreakpointInfo bp = _breakpointManager.CreateFunctionBreakpoint(request.Name, request.Condition, request.HitCondition, request.LogMessage, request.Suspend);
             bp.FunctionRequest = request;
             (bp.Key, bp.WaitFor, bp.Temporary) = (request.Key, request.WaitFor, request.Temporary);
+            (bp.Snapshot, bp.Captures, bp.CaptureLimit) = (request.Snapshot, request.Captures, request.CaptureLimit);
             bp.HitCount = matched[i].Hits;
             if (RefusedUnread(bp))
             {

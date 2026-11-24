@@ -44,9 +44,9 @@ public partial class ManagedDebugger
 
     /// <summary>A hit of a breakpoint of any kind, tried as every debugger tries one (<see cref="BreakpointHits.StopsAsync"/>):
     /// its condition and message read in the thread's top frame, a condition that cannot be told written to the breakpoint as
-    /// <paramref name="named"/> having stopped; <paramref name="reached"/> said where it neither logs nor stops. Whether the
-    /// hit stops the program.</summary>
-    private Task<bool> HitStopsAsync(ICorDebugThread thread, IHitBreakpoint breakpoint, string named, Func<string> reached) => BreakpointHits.StopsAsync(breakpoint, new HitReading
+    /// <paramref name="named"/> having stopped; <paramref name="reached"/> said where it neither logs nor stops; a snapshot
+    /// point's capture taken where the program has been held since <paramref name="came"/>. Whether the hit stops the program.</summary>
+    private Task<bool> HitStopsAsync(ICorDebugThread thread, IHitBreakpoint breakpoint, string named, Func<string> reached, long? came = null) => BreakpointHits.StopsAsync(breakpoint, new HitReading
     {
         Named = named,
         Holds = condition => EvaluateBreakpointCondition(thread, condition),
@@ -57,6 +57,7 @@ public partial class ManagedDebugger
         Log = _logger,
         Session = _sessionHits,
         Removed = gone => OnBreakpointRemoved?.Invoke(gone.Id),
+        Capture = came is long held ? point => CaptureAsync(thread, point, held) : null,
     });
 
     /// <summary>A breakpoint's message changed at a hit, told as its kind tells one.</summary>

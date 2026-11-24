@@ -85,7 +85,7 @@ public sealed class DebugSession : IAsyncDisposable
             {
                 launched.TrySetResult(process);
             }
-            else if (name is DapEvents.Stopped or DapEvents.Breakpoint or DapEvents.Output or DapEvents.Exited or DapEvents.Terminated)
+            else if (name is DapEvents.Stopped or DapEvents.Breakpoint or DapEvents.Output or DapEvents.Exited or DapEvents.Terminated or DapEvents.Snapshot)
             {
                 events.Writer.TryWrite((name, body.Clone()));
             }
@@ -576,14 +576,15 @@ public sealed class DebugSession : IAsyncDisposable
         return stopped;
     }
 
-    /// <summary>The next stop or breakpoint change of type <typeparamref name="T"/> that meets the
+    /// <summary>The next stop, breakpoint change, output or snapshot of type <typeparamref name="T"/> that meets the
     /// condition; the other events before it are passed over.</summary>
     public async Task<T> WaitForEvent<T>(Predicate<T>? condition = null)
     {
         string name = typeof(T) == typeof(StoppedEvent) ? DapEvents.Stopped
             : typeof(T) == typeof(BreakpointEvent) ? DapEvents.Breakpoint
             : typeof(T) == typeof(OutputEvent) ? DapEvents.Output
-            : throw new ArgumentException($"Only stops, breakpoint changes and output are queued, not {typeof(T).Name}");
+            : typeof(T) == typeof(SnapshotEvent) ? DapEvents.Snapshot
+            : throw new ArgumentException($"Only stops, breakpoint changes, output and snapshots are queued, not {typeof(T).Name}");
         using EventWait wait = new(this);
         while (true)
         {
