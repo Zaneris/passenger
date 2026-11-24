@@ -234,7 +234,10 @@ public static class Declared
             + "any of them chosen in the others."));
 
     public static readonly ToggleSetting SolutionWideAnalysis = new(s => s.SolutionWideAnalysis, (s, v) => s with { SolutionWideAnalysis = v },
-        new(D.EditorPage, "Solution-wide analysis", "errors problems whole solution analysis inspections without build"));
+        new(D.EditorPage, "Solution-wide analysis", "errors problems whole solution analysis inspections without build cost memory processor slow large",
+            "Every C# file's errors and warnings, open or not, are listed in Problems' Solution tab as the code changes, without a build. "
+            + "The language server analyses the whole solution for it, which in a large solution takes more processor time and memory; "
+            + "off, it analyses the open files alone. The status bar's analysis icon turns it on and off too."));
 
     public static readonly ToggleSetting ParameterHints = new(s => s.ParameterHints, (s, v) => s with { ParameterHints = v },
         new(D.EditorPage, "Show parameter name hints", "inlay hints parameter names arguments"));

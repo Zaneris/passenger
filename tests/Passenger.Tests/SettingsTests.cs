@@ -106,11 +106,14 @@ public sealed class SettingsTests : IDisposable
             Ui.Settle();
             Editor<NumericUpDown>(dialog, "Font size").Value = 19;
             Ui.Click(Editor<CheckBox>(dialog, "Show line numbers"));
-            dialog.Change(s => s with { CloseTags = false, TerminalFontSize = 21, SolutionWideAnalysis = true });
+            Assert.True(dialog.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text?.Contains("takes more processor time and memory", StringComparison.Ordinal) == true && t.IsEffectivelyVisible),
+                "Solution-wide analysis's row does not say what it costs");
+            bool analysed = window.Settings.SolutionWideAnalysis;
+            dialog.Change(s => s with { CloseTags = false, TerminalFontSize = 21, SolutionWideAnalysis = !analysed });
             Assert.All(window.EditorArea.Groups, g => Assert.Equal(19, g.Editor.FontSize));
             Assert.False(window.EditorArea.CodeEditor.ShowLineNumbers);
             Assert.True(window.EditorArea.CodeEditor.ClosesTags);
-            Assert.False(window.Settings.SolutionWideAnalysis);
+            Assert.Equal(analysed, window.Settings.SolutionWideAnalysis);
             Assert.Equal(15, window.Settings.EditorFontSize);
             store.Settings.Flush();
             Assert.Equal(saved, File.ReadAllText(file));

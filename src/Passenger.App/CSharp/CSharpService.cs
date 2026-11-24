@@ -35,6 +35,20 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <see cref="SlowLoadVariable"/> gives; a value there that is no whole number of milliseconds above 0 is fatal.</summary>
     public static TimeSpan SlowLoad => EnvironmentValues.Milliseconds(SlowLoadVariable, TimeSpan.FromMinutes(5));
 
+    /// <summary>The variable that turns <see cref="SolutionWideByDefault"/> off.</summary>
+    [IdentifierHome]
+    public const string SolutionWideVariable = "PASSENGER_SOLUTION_ANALYSIS";
+
+    /// <summary>Settings' Solution-wide analysis where no settings.json says otherwise: on, unless <see
+    /// cref="SolutionWideVariable"/> is <c>off</c>, as a test run keeps it for the windows that never look at the
+    /// solution's problems; a value other than <c>off</c> or <c>on</c> is fatal as the IDE starts.</summary>
+    public static bool SolutionWideByDefault => Environment.GetEnvironmentVariable(SolutionWideVariable) switch
+    {
+        null or "" or "on" => true,
+        "off" => false,
+        string other => throw new FormatException($"{SolutionWideVariable} takes off or on, not '{other}'"),
+    };
+
     private readonly Dictionary<OpenDocument, CSharpDocument> documents = [];
     private readonly ServerRestarts restarts = new();
     private readonly WarmServer? warm;

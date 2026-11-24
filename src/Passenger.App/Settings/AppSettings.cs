@@ -232,9 +232,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// whatever started them.</summary>
     public BuildResultsMode ShowBuildResults { get; init; } = BuildResultsMode.ForErrors;
 
-    /// <summary>Solution-wide analysis: every file's errors in Problems as code changes, without a build. Off at first,
-    /// since it analyses the whole solution; the status bar turns it on and off.</summary>
-    public bool SolutionWideAnalysis { get; init; }
+    /// <summary>Solution-wide analysis: every file's errors in Problems as code changes, without a build. On at first
+    /// (<see cref="CSharp.CSharpService.SolutionWideByDefault"/>); Settings and the status bar turn it off and on.</summary>
+    public bool SolutionWideAnalysis { get; init; } = CSharp.CSharpService.SolutionWideByDefault;
 
     /// <summary>Autosave on frame deactivation: every changed file saved when the focus goes to another program or to
     /// the terminal.</summary>
@@ -508,7 +508,8 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>"Reformat on save": a save (File, Save All) first reformats each changed GDScript as Reformat Code does.</summary>
     public bool GDScriptFormatOnSave { get; init; }
 
-    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, DiscordKeptAsItWas, MouseShortcutsKept, ThemesFromTheirRepository, CodeSizeOwnOnlyWhereSet];
+    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } =
+        [StateStore.Unversioned, DiscordKeptAsItWas, MouseShortcutsKept, ThemesFromTheirRepository, CodeSizeOwnOnlyWhereSet, SolutionWideAnalysisOnAtFirst];
 
     /// <summary><see cref="AgentFolders"/> and <see cref="ThemeSources"/> are sets: a folder let in always (a source added)
     /// from one window while another's Settings takes back a different one stays.</summary>
@@ -611,6 +612,17 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     {
         string name = StateFile.Options.PropertyNamingPolicy!.ConvertName(nameof(EditorFontSize));
         if (settings[name] is JsonValue size && size.TryGetValue(out double points) && points == OwnCodeSize)
+        {
+            settings.Remove(name);
+        }
+    }
+
+    /// <summary>Version 5 to 6: solution-wide analysis kept off, which every earlier version wrote whether or not the person
+    /// turned it off, is left unset, so it takes the default, on; kept on, it stays on.</summary>
+    private static void SolutionWideAnalysisOnAtFirst(JsonObject settings)
+    {
+        string name = StateFile.Options.PropertyNamingPolicy!.ConvertName(nameof(SolutionWideAnalysis));
+        if (settings[name] is JsonValue kept && kept.TryGetValue(out bool on) && !on)
         {
             settings.Remove(name);
         }

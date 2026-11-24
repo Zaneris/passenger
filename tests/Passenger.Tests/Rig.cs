@@ -218,6 +218,8 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable(Passenger.App.Web.DockerHubTags.Variable, "http://127.0.0.1:9/");
         // Nor a registry for a Dockerfile's base images: BuildKit's checks are off but in the one test that turns them on.
         Environment.SetEnvironmentVariable(Passenger.App.Containers.BuildKitChecks.Variable, "off");
+        // Solution-wide analysis is off at first, so a window that never looks at the solution's problems analyses nothing.
+        Environment.SetEnvironmentVariable(Passenger.App.CSharp.CSharpService.SolutionWideVariable, "off");
         // Nor the person's motion and caret settings: carets blink at Passenger's own rate but where a test stands in.
         Environment.SetEnvironmentVariable(Passenger.App.SystemMotion.Variable, "full,blink=530");
         // Nor the person's high contrast: a window shows the theme its test chooses but where a test stands in.

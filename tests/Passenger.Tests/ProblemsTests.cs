@@ -74,8 +74,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         ProblemsModel problems = window.BottomPanel.Problems;
         Assert.Null(problems.SolutionProblems);
 
-        window.Perform(AppActions.ToggleSolutionAnalysis);
-        Assert.True(window.Settings.SolutionWideAnalysis);
+        AnalyseSolution(window);
         Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true, "the closed file's error");
         Problem bad = problems.SolutionProblems!.First(p => p.Code == "CS0029");
         Assert.EndsWith("Bad.cs", bad.Path, StringComparison.Ordinal);
@@ -123,6 +122,14 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         window.Close();
     }
 
+    /// <summary>Solution-wide analysis turned on by the status bar's action, from off whatever the settings opened on.</summary>
+    internal static void AnalyseSolution(MainWindow window)
+    {
+        window.ApplySettings(window.Settings with { SolutionWideAnalysis = false });
+        window.Perform(AppActions.ToggleSolutionAnalysis);
+        Assert.True(window.Settings.SolutionWideAnalysis, "The status bar's action left solution-wide analysis off");
+    }
+
     /// <summary>The Solution tab's rows, as the pulls since it was shown left them, are those it lists afresh.</summary>
     private static void ListedAsAfresh(ProblemsModel problems, string when)
     {
@@ -150,7 +157,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         {
             Task holding = server.HoldNextAnswer(Passenger.Roslyn.Extension.ExtensionMethods.WorkspaceDiagnostic,
                 p => p is Passenger.Lsp.WorkspaceDiagnosticParams { Identifier: "WorkspaceDocumentsAndProject" }, answered.Task);
-            window.Perform(AppActions.ToggleSolutionAnalysis);
+            AnalyseSolution(window);
             // Pumped, not settled: a held answer is work in flight.
             bool Ended() => !service.IsAnalysing && problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true;
             Assert.True(Ui.Pumped(Ended, TimeSpan.FromSeconds(90)),
@@ -253,7 +260,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         {
             csharp = window.CSharpService!;
             Server = csharp.Session!.Server;
-            window.Perform(AppActions.ToggleSolutionAnalysis);
+            AnalyseSolution(window);
             Ui.WaitFor(() => Server.DiagnosticSources.Contains(Passenger.Lsp.LspDocument.ProjectWideSource),
                 "the server to give files a project-wide source of diagnostics, as it does analysing the whole solution");
             kept = (Server.SlowRequest, Server.ResponseLimit, Server.Patience);
@@ -346,7 +353,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         MainWindow window = project.Open(null, w =>
         {
             Ui.PumpUntil(() => w.CSharpService is { State: "Starting C#…" }, "the language server to start");
-            w.Perform(AppActions.ToggleSolutionAnalysis);
+            AnalyseSolution(w);
         });
         Assert.True(window.Settings.SolutionWideAnalysis);
         ProblemsModel problems = window.BottomPanel.Problems;
@@ -364,7 +371,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     {
         MainWindow window = project.Open("Helper.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
-        window.Perform(AppActions.ToggleSolutionAnalysis);
+        AnalyseSolution(window);
         Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true, "the closed file's error");
         Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
         (string? source, Passenger.Lsp.WorkspaceDocumentDiagnosticReport analysed) = Reported(server, server.WorkspaceDiagnosticSources, [],
@@ -421,7 +428,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     {
         MainWindow window = project.Open("Helper.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
-        window.Perform(AppActions.ToggleSolutionAnalysis);
+        AnalyseSolution(window);
         Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true, "the closed file's error");
 
         // The pulls held open answer the edit, and the next pull of every source is refused.
@@ -448,7 +455,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     {
         MainWindow window = project.Open("Helper.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
-        window.Perform(AppActions.ToggleSolutionAnalysis);
+        AnalyseSolution(window);
         Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true, "the closed file's error");
         Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
         editor.Selections = SelectionSet.Single(editor.Document.Snapshot.ToString().IndexOf("Twice", StringComparison.Ordinal) + "Twice".Length);
@@ -678,8 +685,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         string typed = Passenger.Core.PathNames.Canonical(Path.Combine(project.Folder, "Typed.cs"));
         MainWindow window = project.Open("Typed.cs", w => w.Perform(AppActions.ShowProblems));
         ProblemsModel problems = window.BottomPanel.Problems;
-        window.Perform(AppActions.ToggleSolutionAnalysis);
-        Assert.True(window.Settings.SolutionWideAnalysis);
+        AnalyseSolution(window);
         // Each file's warnings, Bad.cs's error and the open file's warning.
         int listed = (Files * warnings) + 2;
         Ui.WaitFor(() => problems.SolutionProblems?.Count == listed && problems.SolutionProblems.Any(p => p.Path == typed),
@@ -754,7 +760,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Assert.Equal(new TextPosition(3, 23), editor.CaretPosition);
 
         window.OpenFile("Program.cs");
-        window.Perform(AppActions.ToggleSolutionAnalysis);
+        AnalyseSolution(window);
         Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Path == separated) == true, "Separated.cs's error in the solution's problems");
         Assert.Equal(new TextPosition(3, 23), problems.SolutionProblems!.First(p => p.Path == separated).Position);
         problems.Shown = ProblemsTab.Solution;
@@ -778,7 +784,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         project.Write([.. Enumerable.Range(0, Files).Select(i => ($"Checked{i}.cs", Checked(i, "before")))]);
         MainWindow window = project.Open("Checked0.cs", w => w.Perform(AppActions.ShowProblems));
         ProblemsModel problems = window.BottomPanel.Problems;
-        window.Perform(AppActions.ToggleSolutionAnalysis);
+        AnalyseSolution(window);
         string open = window.EditorArea.Active!.Path;
         int Saying(string variable, bool closed = true) => problems.SolutionProblems?.Count(p => p.Path!.Contains("Checked", StringComparison.Ordinal)
             && (p.Path == open) != closed && p.Message.Contains($"'{variable}'", StringComparison.Ordinal)) ?? 0;
@@ -918,7 +924,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         project.Write([("Typed.cs", Typed), .. Enumerable.Range(0, Files).Select(i => ($"Gone{i}.cs", Gone(i)))]);
         MainWindow window = project.Open("Typed.cs", w => w.Perform(AppActions.ShowProblems));
         ProblemsModel problems = window.BottomPanel.Problems;
-        window.Perform(AppActions.ToggleSolutionAnalysis);
+        AnalyseSolution(window);
         int Warned() => problems.SolutionProblems?.Count(p => Path.GetFileName(p.Path)!.StartsWith("Gone", StringComparison.Ordinal)) ?? 0;
         Ui.WaitFor(() => Warned() == Files, $"the {Files} files' warnings", TimeSpan.FromMinutes(3));
         Passenger.Lsp.WatchedFiles watched = window.CSharpService!.Session!.Server.WatchedFiles;
