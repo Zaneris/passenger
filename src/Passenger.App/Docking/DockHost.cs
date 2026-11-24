@@ -8,8 +8,9 @@ using Passenger.Editor;
 
 namespace Passenger.App.Docking;
 
-/// <summary>The window's frame: the side areas left and right of the editor, the bottom area under them, each side split
-/// in two halves that show one window each (<see cref="ToolPane"/>), and the windows named in one of two looks. By stripe
+/// <summary>The window's frame: the side areas left and right of the editor, the bottom area under them (or, in the wide
+/// layout, <see cref="IsWide"/>, between them, the sides running the whole height), each side split in two halves that
+/// show one window each (<see cref="ToolPane"/>), and the windows named in one of two looks. By stripe
 /// icons, a stripe of tool window buttons down each edge (<see cref="Stripe"/>) names and switches every window; by titled
 /// tabs, no stripe stands: a place's windows are tabs along its foot, and a hidden one is a tab along the frame's edge
 /// (<see cref="EdgeTabs"/>) that opens it over the editors (<see cref="Peek"/>). A window moves by a drag
@@ -109,6 +110,23 @@ public sealed class DockHost : Grid
 
     /// <summary>Whether a tool window is being dragged (<see cref="Dragging"/>).</summary>
     private bool dragged;
+
+    /// <summary>When the side areas run the frame's whole height (<see cref="Wide"/>).</summary>
+    private WideLayout wideLayout;
+
+    /// <summary>Whether the side areas run the frame's whole height as it stands (<see cref="IsWide"/>).</summary>
+    private bool wide;
+
+    /// <summary>The areas' sizes in the layout not standing, kept for when it comes back; while the wide layout does not
+    /// stand, null where it never has, so it takes the other's sizes as it first comes.</summary>
+    private (double Left, double Right, double Bottom)? apart;
+
+    /// <summary>The window's width over its height past which it takes the wide layout by itself, and under which it goes
+    /// back: a 16:9 or 16:10 screen's window stays under 2 whatever bars it is maximised under, and a 21:9 ultrawide
+    /// screen's is 2.3 or more, so neither stands near an edge a resize would flip it at, nor does half an ultrawide.</summary>
+    public const double WideFrom = 2.2;
+
+    public const double WideUntil = 2;
 
     public DockHost()
     {
@@ -578,15 +596,23 @@ public sealed class DockHost : Grid
             LeftWidth = now.LeftWidth == before.LeftWidth ? after.LeftWidth : now.LeftWidth,
             RightWidth = now.RightWidth == before.RightWidth ? after.RightWidth : now.RightWidth,
             BottomHeight = now.BottomHeight == before.BottomHeight ? after.BottomHeight : now.BottomHeight,
+            Wide = now.Wide is { } wideNow ? new AreaSizes(
+                wideNow.LeftWidth == WideOf(before).LeftWidth ? WideOf(after).LeftWidth : wideNow.LeftWidth,
+                wideNow.RightWidth == WideOf(before).RightWidth ? WideOf(after).RightWidth : wideNow.RightWidth,
+                wideNow.BottomHeight == WideOf(before).BottomHeight ? WideOf(after).BottomHeight : wideNow.BottomHeight) : null,
         });
         LayoutChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Whether every window stands docked where a layout puts it, open as it says, the areas at its sizes.</summary>
+    /// <summary>A layout's sizes in the wide layout: its own, else those it keeps for the other.</summary>
+    private static AreaSizes WideOf(DockLayout layout) => layout.Wide ?? new AreaSizes(layout.LeftWidth, layout.RightWidth, layout.BottomHeight);
+
+    /// <summary>Whether every window stands docked where a layout puts it, open as it says, the areas at its sizes in both
+    /// layouts.</summary>
     private bool Stands(DockLayout layout)
     {
         DockLayout now = Capture();
-        return now.LeftWidth == layout.LeftWidth && now.RightWidth == layout.RightWidth && now.BottomHeight == layout.BottomHeight
+        return now.LeftWidth == layout.LeftWidth && now.RightWidth == layout.RightWidth && now.BottomHeight == layout.BottomHeight && WideOf(now) == WideOf(layout)
             && windows.All(w => layout.Windows.TryGetValue(w.Id, out DockedWindow? placed) && now.Windows[w.Id] is { } standing
                 && (standing.Anchor, standing.Order, standing.Shown, standing.Closed, standing.Mode) == (placed.Anchor, placed.Order, placed.Shown, placed.Closed, placed.Mode));
     }
@@ -1188,7 +1214,10 @@ public sealed class DockHost : Grid
     public DockLayout Capture()
     {
         Remember();
-        (double left, double right, double bottom) = maximized is { } was ? (was.Left, was.Right, was.Bottom) : (leftWidth, rightWidth, bottomHeight);
+        (double Left, double Right, double Bottom) standing = maximized is { } was ? (was.Left, was.Right, was.Bottom) : (leftWidth, rightWidth, bottomHeight);
+        // Each layout's sizes: the one standing's as they stand, the other's as kept apart.
+        (double left, double right, double bottom) = wide ? apart!.Value : standing;
+        AreaSizes? wideSizes = (wide ? standing : apart) is { } kept ? new AreaSizes(kept.Left, kept.Right, kept.Bottom) : null;
         // A window over the editors is kept as hidden, its place's state.
         Dictionary<string, DockedWindow> placed = windows.ToDictionary(w => w.Id, w => new DockedWindow(w.Anchor, w.Order, w.IsShown && w != peeked)
         {
@@ -1200,7 +1229,7 @@ public sealed class DockHost : Grid
         {
             placed.TryAdd(id, other);
         }
-        return new DockLayout { Windows = placed, LeftWidth = left, RightWidth = right, BottomHeight = bottom };
+        return new DockLayout { Windows = placed, LeftWidth = left, RightWidth = right, BottomHeight = bottom, Wide = wideSizes };
     }
 
     /// <summary>A kept layout over the windows there are; one it does not name stays where it was added. Applied over
@@ -1238,9 +1267,13 @@ public sealed class DockHost : Grid
             }
         }
         Renumber();
-        leftWidth = Positive(layout.LeftWidth, leftWidth);
-        rightWidth = Positive(layout.RightWidth, rightWidth);
-        bottomHeight = Positive(layout.BottomHeight, bottomHeight);
+        (double Left, double Right, double Bottom) was = wide ? apart!.Value : (leftWidth, rightWidth, bottomHeight);
+        (double Left, double Right, double Bottom) across = (Positive(layout.LeftWidth, was.Left), Positive(layout.RightWidth, was.Right), Positive(layout.BottomHeight, was.Bottom));
+        (double Left, double Right, double Bottom)? wideSizes = layout.Wide is { } kept
+            ? (Positive(kept.LeftWidth, across.Left), Positive(kept.RightWidth, across.Right), Positive(kept.BottomHeight, across.Bottom))
+            : null;
+        (leftWidth, rightWidth, bottomHeight) = wide ? wideSizes ?? across : across;
+        apart = wide ? across : wideSizes;
         Active = Served.FirstOrDefault(w => w.IsShown);
         Layout();
         foreach (ToolWindow tabbed in Served.Where(w => w is { Mode: ToolMode.Editor, IsShown: true }))
@@ -1343,12 +1376,83 @@ public sealed class DockHost : Grid
         base.OnSizeChanged(e);
         // A size the splitter's keys changed, which no drag's end kept, is kept before the sizes are fitted again.
         Remember();
+        FollowShape();
         Fit();
+    }
+
+    /// <summary>When the side areas run the frame's whole height, the bottom area between them: once the window is wide
+    /// for its height (<see cref="WideFrom"/>, back under <see cref="WideUntil"/>), always or never.</summary>
+    public WideLayout Wide
+    {
+        get => wideLayout;
+        set
+        {
+            if (value != wideLayout)
+            {
+                wideLayout = value;
+                FollowShape();
+                Fit();
+            }
+        }
+    }
+
+    /// <summary>Whether the side areas run the frame's whole height as it stands, the bottom area between them.</summary>
+    public bool IsWide => wide;
+
+    /// <summary>Whether a window of a size takes the wide layout, as <paramref name="layout"/> says, given whether it stands
+    /// now: by its shape, past <see cref="WideFrom"/> into it and under <see cref="WideUntil"/> out of it, so a resize at
+    /// either edge never flips it to and fro.</summary>
+    private static bool Widens(WideLayout layout, bool standing, Size window) => layout switch
+    {
+        WideLayout.Always => true,
+        WideLayout.Never => false,
+        _ when window.Width <= 0 || window.Height <= 0 => standing,
+        _ => standing ? window.Width / window.Height >= WideUntil : window.Width / window.Height > WideFrom,
+    };
+
+    /// <summary>Takes the layout the window's shape and <see cref="Wide"/> ask for: a window maximised gives its sizes back
+    /// first, the sizes standing are kept for this layout's return, and the other's come back.</summary>
+    private void FollowShape()
+    {
+        bool next = Widens(wideLayout, wide, host?.ClientSize ?? Bounds.Size);
+        if (next == wide)
+        {
+            return;
+        }
+        Restore();
+        Remember();
+        (double Left, double Right, double Bottom) standing = (leftWidth, rightWidth, bottomHeight);
+        (leftWidth, rightWidth, bottomHeight) = apart ?? standing;
+        apart = standing;
+        wide = next;
+        PlaceAreas();
+    }
+
+    /// <summary>The areas placed for the layout standing: the sides beside the editors, the bottom area and its divider
+    /// under all three; or, wide, the sides and their dividers down the whole height, the bottom area under the editors
+    /// alone. The seam where the bottom area meets a side's ground runs under that side, or, wide, beside the bottom area.</summary>
+    private void PlaceAreas()
+    {
+        foreach (Control side in (Control[])[leftArea, leftDivider, rightDivider, rightArea])
+        {
+            SetRowSpan(side, wide ? 3 : 1);
+        }
+        foreach (Control under in (Control[])[bottomDivider, bottomArea])
+        {
+            SetColumn(under, wide ? 3 : 1);
+            SetColumnSpan(under, wide ? 1 : 5);
+        }
+        (int row, int left, int right) = wide ? (2, 2, 4) : (1, 1, 5);
+        SetRow(leftSeam, row);
+        SetColumn(leftSeam, left);
+        SetRow(rightSeam, row);
+        SetColumn(rightSeam, right);
     }
 
     /// <summary>Gives the open areas their sizes, fitted to the frame as it is: on one smaller than they were kept on (a
     /// laptop's, after a monitor's), the sides shrink alike, and the bottom, until the editor keeps its share, where a
-    /// splitter stops too. Maximised, a window may take all of the frame but its edge.</summary>
+    /// splitter stops too, and, wide, the room the bottom area's headers take at their least. Maximised, a window may take
+    /// all of the frame but its edge.</summary>
     private void Fit()
     {
         bool leftOpen = panes[ToolAnchor.LeftTop].Window is not null || panes[ToolAnchor.LeftBottom].Window is not null;
@@ -1361,9 +1465,10 @@ public sealed class DockHost : Grid
         double left = leftOpen ? leftWidth : 0;
         double right = rightOpen ? rightWidth : 0;
         double bottom = bottomOpen ? bottomHeight : 0;
-        if (across > 0 && left + right > across * (1 - share))
+        double between = Math.Max(across * share, wide && bottomOpen ? Least(ToolAnchor.BottomLeft) + Least(ToolAnchor.BottomRight) + 1 : 0);
+        if (across > 0 && left + right > across - between)
         {
-            double scale = across * (1 - share) / (left + right);
+            double scale = Math.Max(0, across - between) / (left + right);
             (left, right) = (left * scale, right * scale);
         }
         if (down > 0)
@@ -1373,7 +1478,7 @@ public sealed class DockHost : Grid
         ColumnDefinitions[1].Width = new GridLength(left);
         ColumnDefinitions[1].MinWidth = Math.Max(Least(ToolAnchor.LeftTop), Least(ToolAnchor.LeftBottom));
         ColumnDefinitions[2].Width = new GridLength(leftOpen ? 1 : 0);
-        ColumnDefinitions[3].MinWidth = across * share;
+        ColumnDefinitions[3].MinWidth = between;
         ColumnDefinitions[4].Width = new GridLength(rightOpen ? 1 : 0);
         ColumnDefinitions[5].Width = new GridLength(right);
         ColumnDefinitions[5].MinWidth = Math.Max(Least(ToolAnchor.RightTop), Least(ToolAnchor.RightBottom));
@@ -1394,7 +1499,7 @@ public sealed class DockHost : Grid
 
     /// <summary>The window over the editors beside its edge, as wide (or, from the foot, as high) as its area is kept,
     /// though never over more than the editors' share leaves nor narrower than its header at its least, its edge toward the
-    /// editors drawn.</summary>
+    /// editors drawn; from the foot in the wide layout, between the sides.</summary>
     private void PlacePeek(double across, double down)
     {
         peekFrame.IsVisible = peeked is not null;
@@ -1405,6 +1510,9 @@ public sealed class DockHost : Grid
         double most = 1 - EditorShare;
         double least = peekPane.LeastWidth;
         bool side = window.Anchor is not (ToolAnchor.BottomLeft or ToolAnchor.BottomRight);
+        // Wide, the foot's window stands between the sides, as its area does.
+        SetColumn(peekFrame, wide && !side ? 3 : 1);
+        SetColumnSpan(peekFrame, wide && !side ? 1 : 5);
         peekRoom = side ? across * most : down * most;
         (HorizontalAlignment h, VerticalAlignment v, double width, double height, Thickness edge) = window.Anchor switch
         {

@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Docking;
+using Passenger.App.Settings;
 
 namespace Passenger.Tests;
 
@@ -53,6 +54,7 @@ public sealed class DockingTests
     {
         Flow.StepApart<DockingTests>("the persons window opens on the layout they left", t => t.The_persons_window_opens_on_the_layout_they_left());
         Flow.StepApart<DockingTests>("areas kept on a larger screen leave the editor its share of a smaller window and come back on a larger", t => t.Areas_kept_on_a_larger_screen_leave_the_editor_its_share_of_a_smaller_window_and_come_back_on_a_larger());
+        Flow.StepApart<DockingTests>("a wide window runs its sides the whole height by itself until it is narrow again each layout keeping its sizes through a restart", t => t.A_wide_window_runs_its_sides_the_whole_height_by_itself_until_it_is_narrow_again_each_layout_keeping_its_sizes_through_a_restart());
         Flow.StepApart<DockingTests>("a place with every window off the stripe is on its stripes checklist through a restart until Restore Default Layout", t => t.A_place_with_every_window_off_the_stripe_is_on_its_stripes_checklist_through_a_restart_until_Restore_Default_Layout());
         Flow.StepApart<DockingTests>("Restore Default Layout puts every tool window back where it first was docked at its first size", t => t.Restore_Default_Layout_puts_every_tool_window_back_where_it_first_was_docked_at_its_first_size());
         Flow.StepApart<DockingTests>("a hidden tool windows view is built only as it is first shown and a console shows what was written before", t => t.A_hidden_tool_windows_view_is_built_only_as_it_is_first_shown_and_a_console_shows_what_was_written_before());
@@ -402,6 +404,100 @@ public sealed class DockingTests
         Assert.Equal((1400, 900, 1100), (dock.ColumnDefinitions[1].ActualWidth, dock.ColumnDefinitions[5].ActualWidth, dock.RowDefinitions[2].ActualHeight));
         window.Close();
     }
+
+    /// <summary>A window more than 2.2 times as wide as it is high runs its side areas down the whole frame, the bottom
+    /// area between them, and goes back only under twice as wide, so a resize between leaves it as it stands; the windows
+    /// open stay open, each layout keeps the bottom area's height it was given, through a restart too, a drop low over a
+    /// side docks at that side, and the Settings row keeps either layout, shown before OK.</summary>
+    private void A_wide_window_runs_its_sides_the_whole_height_by_itself_until_it_is_narrow_again_each_layout_keeping_its_sizes_through_a_restart()
+    {
+        string settings = TestFolders.Create("settings-");
+        MainWindow window = Open(settings);
+        window.KeepLayout();
+        DockHost dock = window.DockHost;
+        string[] open = [ToolWindowIds.Explorer, ToolWindowIds.Hierarchy, ToolWindowIds.Build];
+        foreach (string id in open)
+        {
+            dock.Show(id);
+        }
+        Ui.Settle();
+        double across = dock.RowDefinitions[2].ActualHeight;
+        Shaped(window, wide: false, "1200 by 800");
+
+        Sized(window, 2560, 1080);
+        Shaped(window, wide: true, "2560 by 1080");
+        Point divider = Ui.Centre(Divider(dock, c => Grid.GetRow(c) == 1), window) + new Point(0, 3);
+        Ui.Drag(window, divider, divider - new Point(0, 120));
+        double wide = dock.RowDefinitions[2].ActualHeight;
+        Assert.True(wide > across + 100, $"The wide layout's bottom area dragged 120 px taller is {wide} tall, from {across}");
+
+        Sized(window, 2100, 1000);
+        Shaped(window, wide: true, "2100 by 1000, narrowed from wide");
+        Sized(window, 1900, 1000);
+        Shaped(window, wide: false, "1900 by 1000");
+        Assert.True(Math.Abs(dock.RowDefinitions[2].ActualHeight - across) < 1, $"Back from wide, the bottom area is {dock.RowDefinitions[2].ActualHeight} tall, not the {across} it had");
+        Assert.True(open.All(dock.IsShown), $"Back from wide, {string.Join(", ", open.Where(id => !dock.IsShown(id)))} no longer shows");
+        Sized(window, 2100, 1000);
+        Shaped(window, wide: false, "2100 by 1000, widened from 1900");
+
+        Sized(window, 2560, 1080);
+        Assert.True(Math.Abs(dock.RowDefinitions[2].ActualHeight - wide) < 1, $"Wide again, the bottom area is {dock.RowDefinitions[2].ActualHeight} tall, not the {wide} it was given wide");
+        // Low beside the editors, the left side, running the whole height, takes the drop, and between the sides the bottom.
+        Rect left = Placed(dock, dock[ToolWindowIds.Explorer].Content);
+        Ui.Drag(window, Ui.Centre(Button(window, ToolWindowIds.Requests), window), new Point(left.Center.X, window.Bounds.Height - 60));
+        Assert.Equal(ToolAnchor.LeftBottom, dock[ToolWindowIds.Requests].Anchor);
+        Rect editors = Placed(window, window.EditorArea);
+        Ui.Drag(window, Ui.Centre(Button(window, ToolWindowIds.Structure), window), new Point(editors.Left + (editors.Width * 0.75), window.Bounds.Height - 60));
+        Assert.Equal(ToolAnchor.BottomRight, dock[ToolWindowIds.Structure].Anchor);
+        window.Close();
+
+        MainWindow next = Open(settings);
+        next.KeepLayout();
+        Ui.Settle();
+        Assert.True(Math.Abs(next.DockHost.RowDefinitions[2].ActualHeight - across) < 1, $"After a restart, the bottom area is {next.DockHost.RowDefinitions[2].ActualHeight} tall, not the {across} it had");
+        Sized(next, 2560, 1080);
+        Assert.True(Math.Abs(next.DockHost.RowDefinitions[2].ActualHeight - wide) < 1, $"After a restart, the wide layout's bottom area is {next.DockHost.RowDefinitions[2].ActualHeight} tall, not the {wide} it was given");
+
+        SettingsDialog dialog = next.ShowSettings();
+        dialog.Page = SettingsDialog.Appearance;
+        Ui.Settle();
+        SettingsTests.Editor<ComboBox>(dialog, "Wide layout").SelectedItem = "Never";
+        Ui.Settle();
+        Assert.False(next.DockHost.IsWide, "Wide layout set to Never in Settings did not show the other layout before OK");
+        dialog.Ok();
+        Sized(next, 1200, 800);
+        dialog = next.ShowSettings();
+        dialog.Page = SettingsDialog.Appearance;
+        Ui.Settle();
+        SettingsTests.Editor<ComboBox>(dialog, "Wide layout").SelectedItem = "Always";
+        dialog.Ok();
+        Ui.Settle();
+        Shaped(next, wide: true, "1200 by 800, Wide layout set to Always");
+        next.Close();
+    }
+
+    private static void Sized(MainWindow window, double width, double height)
+    {
+        (window.Width, window.Height) = (width, height);
+        Ui.Settle();
+    }
+
+    /// <summary>Checks the Explorer at the left, Hierarchy at the right and Build at the bottom stand as the layout lays
+    /// them: the sides down the whole frame with the bottom area between them where wide, else the bottom area under all.</summary>
+    private static void Shaped(MainWindow window, bool wide, string size)
+    {
+        DockHost dock = window.DockHost;
+        Rect left = Placed(dock, dock[ToolWindowIds.Explorer].Content);
+        Rect right = Placed(dock, dock[ToolWindowIds.Hierarchy].Content);
+        Rect bottom = Placed(dock, dock[ToolWindowIds.Build].Content);
+        bool sides = left.Bottom >= bottom.Bottom - 1 && right.Bottom >= bottom.Bottom - 1 && bottom.Left >= left.Right && bottom.Right <= right.Left;
+        bool under = left.Bottom <= bottom.Top && right.Bottom <= bottom.Top && bottom.Left < left.Right && bottom.Right > right.Left;
+        Assert.True(dock.IsWide == wide && (wide ? sides : under),
+            $"At {size} the frame stands {(dock.IsWide ? "wide" : "with the bottom area across")}, the left side at {left}, the right at {right} and the bottom at {bottom}, "
+            + $"where it is to {(wide ? "run the sides down the whole frame, the bottom area between them" : "run the bottom area under the sides")}");
+    }
+
+    private static Rect Placed(Visual within, Visual control) => new(control.TranslatePoint(default, within) ?? default, control.Bounds.Size);
 
     private void Restore_Default_Layout_puts_every_tool_window_back_where_it_first_was_docked_at_its_first_size()
     {

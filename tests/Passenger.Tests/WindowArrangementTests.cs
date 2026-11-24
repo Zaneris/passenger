@@ -310,6 +310,26 @@ public sealed class WindowArrangementTests : IDisposable
                 && window.Settings.FindResultsIn() == FindResults.FindWindow && ToolTabs(window).Length > 0,
                 $"Cubicle arranges the tabs {window.EditorArea.ActiveGroup.TabsPlace}, titled tabs {dock.TitledTabs}, closed windows leaving {dock.ClosesOffStripe}, "
                 + $"Find in Files' results {window.Settings.FindResultsIn()}, {ToolTabs(window).Length} tool tabs shown");
+
+            // Wide, the right side's lower tabs stand on the bottom area's line, else above it, never one tab over another.
+            dock.Show(ToolWindowIds.Structure);
+            foreach ((double width, double height, bool wide) in ((double, double, bool)[])[(2560, 1080, true), (1200, 800, false)])
+            {
+                (window.Width, window.Height) = (width, height);
+                Ui.Settle();
+                Rect build = Placed(window, ToolTab(window, ToolWindowIds.Build));
+                Rect problems = Placed(window, dock[ToolWindowIds.Problems].Content);
+                Rect structure = Placed(window, ToolTab(window, ToolWindowIds.Structure));
+                Rect explorer = Placed(window, ToolTab(window, ToolWindowIds.Explorer));
+                bool lined = explorer.Bottom <= structure.Top
+                    && (wide ? Math.Abs(structure.Bottom - build.Bottom) < 1 && problems.Right <= structure.Left : structure.Bottom <= problems.Top);
+                // A tab with no room in its row stands clipped past its end, as its row's More lists it.
+                Border[] tabs = [.. ToolTabs(window).Where(t => Placed(window, t).Right <= Placed(window, (Visual)t.Parent!).Right + 0.5)];
+                string[] over = [.. tabs.SelectMany((a, i) => tabs.Skip(i + 1).Where(b => Placed(window, a).Deflate(0.5).Intersects(Placed(window, b).Deflate(0.5))).Select(b => $"{a.Tag} and {b.Tag}"))];
+                Assert.True(dock.IsWide == wide && lined && over.Length == 0,
+                    $"At {width} by {height}, {(dock.IsWide ? "wide" : "not wide")}, Cubicle's tabs stand: Build {build}, Problems' view {problems}, Structure {structure}, Explorer {explorer}; "
+                    + $"overlapping: {(over.Length == 0 ? "none" : string.Join("; ", over))}");
+            }
         }
         finally
         {
@@ -513,6 +533,18 @@ public sealed class WindowArrangementTests : IDisposable
             Ui.Click(window.EditorArea.CodeEditor);
             Assert.True(dock.Peeked is null && !dock.IsShown(ToolWindowIds.Run) && EdgeTab(window, ToolWindowIds.Run) is not null,
                 "A click in the editor left Run over it, or took its edge tab away");
+
+            // In the wide layout, it opens over the editors between the sides, as its area stands.
+            window.ApplySettings(window.Settings with { WideLayout = WideLayout.Always });
+            Ui.Settle();
+            Ui.Click(EdgeTab(window, ToolWindowIds.Run)!);
+            Rect between = Placed(window, dock[ToolWindowIds.Run].Content);
+            Rect explorer = Placed(window, dock[ToolWindowIds.Explorer].Content);
+            Assert.True(dock.Peeked == dock[ToolWindowIds.Run] && between.Left >= explorer.Right,
+                $"In the wide layout, Run's edge tab opened it {(dock.Peeked == dock[ToolWindowIds.Run] ? "over the editors" : "elsewhere")} at {between}, not right of the Explorer at {explorer}");
+            Ui.Click(window.EditorArea.CodeEditor);
+            window.ApplySettings(window.Settings with { WideLayout = WideLayout.OnceWide });
+            Ui.Settle();
 
             Ui.Click(EdgeTab(window, ToolWindowIds.Run)!);
             Ui.Click(dock.GetVisualDescendants().OfType<Button>().Single(b => ToolTip.GetTip(b) is "Options" && b.IsEffectivelyVisible && b.GetVisualAncestors().OfType<Border>().Any(a => a.Classes.Contains(StyleClasses.ToolPeek))));

@@ -68,6 +68,14 @@ public static class Declared
             "Whether a tool window closed by its × keeps its icon on the stripe (or its tab, under titled tabs), or leaves until it is "
             + "opened again from View | Tool Windows, Find Action or its keys. Hide always keeps it."));
 
+    public static readonly ChoiceSetting<WideLayout> WideLayout = new(s => s.WideLayout, (s, v) => s with { WideLayout = v },
+        [(Passenger.App.WideLayout.OnceWide, "Once the window is wide"), (Passenger.App.WideLayout.Always, "Always"), (Passenger.App.WideLayout.Never, "Never")],
+        new(D.Appearance, "Wide layout", "wide widescreen ultrawide layout full height tall side tool windows sidebars bottom panel between aspect ratio arrangement",
+            string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"The left and right tool windows run the window's whole height, the bottom ones between them, so the lists at the sides show more. Once the window "
+                + $"is wide, it takes this layout while it is more than {Docking.DockHost.WideFrom} times as wide as it is high, as on an ultrawide screen, and goes back "
+                + $"once it is less than {Docking.DockHost.WideUntil} times as wide, so half an ultrawide screen keeps the other. Each layout keeps its own sizes.")));
+
     public static readonly ThemedChoiceSetting<FindResults> FindResults = new(s => s.FindResults, s => s.FindResultsIn(), (s, v) => s with { FindResults = v },
         [(Passenger.App.FindResults.Popup, "In its popup"), (Passenger.App.FindResults.FindWindow, "Kept in the Find window")],
         new(D.Appearance, "Find in Files results", "find in files search results matches occurrences find window docked keep kept popup tool window layout arrangement",

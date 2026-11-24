@@ -290,6 +290,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.EditorTabs);
         Add(Declared.ToolWindowLook);
         Add(Declared.ClosedToolWindows);
+        Add(Declared.WideLayout);
         Add(Declared.FindResults);
         Add(Declared.PlainFolderIcons);
 

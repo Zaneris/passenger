@@ -78,6 +78,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// its popup alone (<see cref="FindResultsIn"/>).</summary>
     public FindResults? FindResults { get; init; }
 
+    /// <summary>When the side tool windows run the window's whole height, the bottom ones between them.</summary>
+    public WideLayout WideLayout { get; init; }
+
     /// <summary>The code font by its family's name, or null for the one Passenger carries.</summary>
     public string? EditorFontFamily { get; init; }
 
