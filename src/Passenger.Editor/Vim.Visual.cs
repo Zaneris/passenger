@@ -893,6 +893,23 @@ public sealed partial class Vim
             Region white = r with { Cursor = LastOpeningBlank(text, empty.EndIncludingBreak) };
             return n > 1 ? SentencesOn(text, white, inner, n - 1) ?? white : white;
         }
+        if (!inner && n == 2 && VimMotions.LineOf(text, r.Cursor) is { Length: > 0 } beyond && r.Cursor == beyond.End
+            && beyond.EndIncludingBreak < text.Length && text[beyond.EndIncludingBreak] is ' ' or '\t'
+            && VimTextObjects.Of(text, LastOpeningBlank(text, beyond.EndIncludingBreak) + 1, "s", inner: true, 1, breakEnds) is { } closing
+            && VimMotions.LineOf(text, VimMotions.StepBack(text, OwnLine(text, closing).End)).Line is var closes
+            && OwnLine(text, closing).End >= text.GetLine(closes).End && closes < VimMotions.LastLine(text, breakEnds) && VimMotions.Blank(text, closes + 1))
+        {
+            // Past its line's end, 2as takes the sentence the next line's blanks open and the empty lines after it to the last one's start.
+            int runLast = closes + 1;
+            while (runLast < VimMotions.LastLine(text, breakEnds) && VimMotions.Blank(text, runLast + 1))
+            {
+                runLast++;
+            }
+            if (runLast < VimMotions.LastLine(text, breakEnds))
+            {
+                return r with { Cursor = text.GetLineStart(runLast) };
+            }
+        }
         if ((inner || n == 1) && VimMotions.LineOf(text, r.Cursor) is { Length: > 0 } past && r.Cursor == past.End
             && past.EndIncludingBreak < text.Length && text[past.EndIncludingBreak] is ' ' or '\t')
         {
