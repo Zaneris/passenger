@@ -169,8 +169,8 @@ public sealed class CommitFolder(string key, string name, int depth, IReadOnlyLi
 /// <summary>The Commit window: the changed files under Changes and the new ones under Unversioned Files, each with a box
 /// for whether it goes in (changes are in and new files out until chosen), and files in conflict above them under Merge
 /// Conflicts, with its Resolve link and no box; Amend, Sign-off (kept for the folder) and whether this commit is signed
-/// and with which key (git's config, turned on or off for one commit; Commit Signing… sets it up), then the message (a
-/// merge's own message while one is under way); Commit and Commit and Push. Group By › Directory lists each group's files
+/// and with which key (git's config, turned on or off for one commit; Commit Signing… sets it up) and the message history,
+/// then the message (a merge's own message while one is under way); Commit and Commit and Push. Group By › Directory lists each group's files
 /// under their folders, each folder with a box for every file under it. Double-click opens a file's diff, or a
 /// conflicted file's merge; Rollback puts the chosen ones back. In a folder of no repository it shows its empty state
 /// alone.</summary>
@@ -371,7 +371,11 @@ public sealed class CommitView : DockPanel, IOwnKeys
         };
         Button setUp = new() { Classes = { StyleClasses.Link }, Content = SigningFailure.SetUp, VerticalAlignment = VerticalAlignment.Center };
         setUp.Click += (_, _) => ActionRequested?.Invoke(this, AppActions.CommitSigning);
-        WrapPanel options = new() { Margin = new Thickness(ListRow.TextStart, Gaps.Tight, ListRow.TextStart, 0), ItemSpacing = Gaps.Group, Children = { amend, signOff, sign, setUp } };
+        WrapPanel choices = new() { ItemSpacing = Gaps.Group, Children = { amend, signOff, sign, setUp } };
+        Button history = ToolButtons.Of(AppActions.CommitMessageHistory, IconKeys.History, "Commit Message History", action => ActionRequested?.Invoke(this, action));
+        history.VerticalAlignment = VerticalAlignment.Top;
+        DockPanel options = new() { Margin = new Thickness(ListRow.TextStart, Gaps.Tight, ListRow.TextStart, 0), Children = { history, choices } };
+        SetDock(history, Dock.Right);
         unsigned = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(ListRow.TextStart, Gaps.Hair, ListRow.TextStart, 0) };
         unsigned.Classes.Add(StyleClasses.Error);
         movesFirst = new CheckBox { Content = MovesFirstTitle, IsChecked = true };
@@ -897,6 +901,20 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// the tree only at its first layout, and a window just shown has had none.</summary>
     public void FocusMessage() => Avalonia.Threading.Dispatcher.UIThread.Post(() => message.Focus(), Avalonia.Threading.DispatcherPriority.Loaded);
 
+    /// <summary>A message from the history put in the box in place of what it held, the keys in it at its end.</summary>
+    public void TakeMessage(string taken)
+    {
+        message.Text = taken;
+        message.CaretIndex = taken.Length;
+        FocusMessage();
+    }
+
+    /// <summary>Whether what has the keys is the message box, where the history's keys are its.</summary>
+    public bool HasMessageKeys(object? focused) => focused is Visual inside && (inside == message || message.IsVisualAncestorOf(inside));
+
+    /// <summary>A commit was made, with the message it took and the Git it was made in.</summary>
+    public event EventHandler<(VcsController Git, string Message)>? Committed;
+
     /// <summary>Commits the chosen files with the message (pushing after when asked), then empties the message. Whether the
     /// commit was made, whatever came of the push.</summary>
     public async Task<bool> CommitAsync(bool push)
@@ -924,6 +942,11 @@ public sealed class CommitView : DockPanel, IOwnKeys
         foreach (CommitRow row in Files.Where(r => partial.TryGetValue(r.Change.Path, out PartialCommit? submitted) && ReferenceEquals(r.Partial, submitted)))
         {
             row.IsChosen = false;
+        }
+        // A merge's message as git wrote it is git's, not one the person wrote.
+        if (Message != prefilled)
+        {
+            Committed?.Invoke(this, (vcs, Message));
         }
         beforeAmend = null;
         amend.IsChecked = false;

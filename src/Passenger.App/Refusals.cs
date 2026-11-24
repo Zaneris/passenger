@@ -106,6 +106,9 @@ public static class Refusals
     /// <summary>The Commit window's message is empty or blank.</summary>
     public const string EmptyCommitMessage = "The commit message is empty";
 
+    /// <summary>Commit Message History in a repository the Commit window has committed nothing in yet.</summary>
+    public const string NoCommitMessages = "No message has been committed from the Commit window in this repository yet";
+
     /// <summary>The Git log's branches panel has HEAD, a group or no row chosen, where a branch or tag is acted on.</summary>
     public const string NoRefChosen = "No branch or tag is chosen";
 

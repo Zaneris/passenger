@@ -105,8 +105,8 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>The Commit window as one flow, each step one test's check in an instance of its own: git started off
     /// the window's thread, the diff's keys, renames by git mv or the Explorer committed as renames, Amend rewording
-    /// alone and keeping what was typed, a message file another program holds, and a hook's job holding git's output
-    /// done within seconds.</summary>
+    /// alone and keeping what was typed, a message file another program holds, a hook's job holding git's output
+    /// done within seconds, and the messages committed offered again.</summary>
     [AvaloniaFact]
     public void A_commit_takes_what_the_person_chose_and_typed_as_renames_where_files_moved_never_held_by_another_program()
     {
@@ -118,6 +118,7 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("amends last message read late keeps what was typed meanwhile and lands nowhere once amend is off", t => t.Amends_last_message_read_late_keeps_what_was_typed_meanwhile_and_lands_nowhere_once_amend_is_off());
         Flow.StepApart<VcsTests>("a commit whose message file another program holds is made and the file goes once let go", t => t.A_commit_whose_message_file_another_program_holds_is_made_and_the_file_goes_once_let_go());
         Flow.StepApart<VcsTests>("a commit whose hook leaves a job holding gits output is done within seconds", t => t.A_commit_whose_hook_leaves_a_job_holding_gits_output_is_done_within_seconds());
+        Flow.StepApart<VcsTests>("the commit windows message history offers each message committed newest first to change and commit again", t => t.The_commit_windows_message_history_offers_each_message_committed_newest_first_to_change_and_commit_again());
     }
 
     /// <summary>The log and annotations as one flow, each step in an instance of its own: annotations in a SHA-256

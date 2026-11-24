@@ -571,6 +571,7 @@ public partial class MainWindow
             ?? Here(A.DatabaseShowDdl, context.ToolWindow?.Id == ToolWindowIds.Database)
             ?? Here(A.DatabaseRunStop, context is { ToolWindow: null, File: { } sql } && database?.ConsoleOf(sql.Path) is { Running: true })
             ?? Here(A.EditBreakpoint, context is { ToolWindow: null, File: { } file } && session.Debug.Breakpoints.In(file.Path).Any(b => b.Line == context.Caret.Line))
+            ?? Here(A.CommitMessageHistory, commitView?.HasMessageKeys(context.Focused) == true)
             ?? Here(A.NextOverload, assist.StepsOverloads)
             ?? Here(A.PreviousOverload, assist.StepsOverloads);
         if (taken is null)

@@ -36,6 +36,7 @@ internal static class RiderKeymaps
         ["SaveAll"] = ["control X , control S"],
         ["GotoDeclaration"] = ["control alt G", "ESCAPE , PERIOD", "alt PERIOD", "ctrl button1"],
         ["GotoImplementation"] = [],
+        ["Vcs.ShowMessageHistory"] = [],
     };
 
     private static readonly Dictionary<string, (string? Parent, Dictionary<string, string[]> Own)> Files = new()
@@ -64,6 +65,7 @@ internal static class RiderKeymaps
             ["MethodOverloadSwitchDown"] = ["control DOWN"],
             ["ToggleTemporaryLineBreakpoint"] = ["control shift alt F8"],
             ["Console.History.Browse"] = ["control alt E"],
+            ["Vcs.ShowMessageHistory"] = ["control M"],
         }),
         [MacOS] = (Default, new()
         {
@@ -79,6 +81,7 @@ internal static class RiderKeymaps
             ["EditorRight"] = ["RIGHT", "control F"],
             ["ContextHelp"] = ["meta shift F1"],
             ["ExternalJavaDoc"] = ["shift F1"],
+            ["Vcs.ShowMessageHistory"] = ["control M"],
         }),
         ["Visual Studio"] = (Default, new()
         {
@@ -87,6 +90,7 @@ internal static class RiderKeymaps
             ["NewElement"] = ["control N", "alt INSERT"],
             ["ExternalJavaDoc"] = ["shift F1"],
             ["ShowUsages"] = ["shift alt F12"],
+            ["Vcs.ShowMessageHistory"] = ["control H"],
         }),
         ["Visual Studio OSX"] = (MacOS, new()
         {
@@ -96,6 +100,7 @@ internal static class RiderKeymaps
             ["ContextHelp"] = ["F1"],
             ["ExternalJavaDoc"] = ["shift F1", "meta F1"],
             ["ShowUsages"] = ["shift alt F12"],
+            ["Vcs.ShowMessageHistory"] = ["control H"],
         }),
         ["VSCode"] = (Default, new()
         {

@@ -138,6 +138,13 @@ public partial class MainWindow
         view.StageRequested += (_, asked) => IdeErrors.Observe(StageFilesAsync(asked.Changes, asked.Stage));
         view.RepositoryChosen += (_, _) => ShowGitStatus();
         view.CommittedUnsigned += (_, _) => IdeErrors.Observe(AskCommitSigningAsync());
+        view.Committed += (_, made) =>
+        {
+            if (made.Git.Repository is { } repository)
+            {
+                session.CommitMessages.Committed(repository.Root, made.Message);
+            }
+        };
         view.ShowRepositories(session.Repositories);
         view.StashDiffRequested += (_, asked) => IdeErrors.Observe(ShowStashDiffAsync(asked.Stash, asked.File));
         view.DropStash = AskDropStashAsync;
@@ -185,7 +192,7 @@ public partial class MainWindow
         {
             if (session == next)
             {
-                session.State?.Commit.Set(new CommitState { SignOff = vcs.SignOff, GroupsByDirectory = vcs.GroupsByDirectory });
+                session.State?.Commit.Set(session.State.Commit.Value with { SignOff = vcs.SignOff, GroupsByDirectory = vcs.GroupsByDirectory });
             }
         };
         vcs.ChooseRemote = ChooseRemoteAsync;
@@ -953,6 +960,11 @@ public partial class MainWindow
         });
         // The Commit and Git windows' Refresh: the working tree's changes, and the log shown, read again.
         actions.Add(new IdeAction(AppActions.CommitRefresh, "Refresh Changes", "Git", _ => IdeErrors.Observe(session.Vcs.RefreshAsync())) { WhyNot = NeedsRepository });
+        // The Commit window's message history: a message committed from it put back in its box, to change and commit again.
+        actions.Add(new IdeAction(AppActions.CommitMessageHistory, "Commit Message History", "Git", _ => ShowCommitMessageHistory())
+        {
+            WhyNot = context => NeedsFolder(context) ?? WhyNoCommitMessages(),
+        });
         // The Commit window's Group By › Directory: its files under their folders, else listed flat.
         actions.Add(new IdeAction(AppActions.GroupByDirectory, "Group by Directory", "Git", _ => session.Vcs.GroupsByDirectory = !session.Vcs.GroupsByDirectory)
         {
@@ -983,6 +995,38 @@ public partial class MainWindow
     }
 
     private const string NoDiff = "No diff has the keys";
+
+    /// <summary>The Git the Commit window commits in: the repository chosen in it, else the folder's own.</summary>
+    private VcsController CommitGit => commitView?.Vcs ?? session.Vcs;
+
+    /// <summary>Why the Commit window's repository offers no message to commit again: none, or none committed from it yet.</summary>
+    private string? WhyNoCommitMessages() => CommitGit.Repository is not { } repository ? CommitGit.NoRepository
+        : session.CommitMessages.Of(repository.Root).Count == 0 ? Refusals.NoCommitMessages
+        : null;
+
+    /// <summary>Commit Message History: the Commit window shown with its repository's messages in a popup over the window,
+    /// newest first, each by its first line, narrowed as words are typed; the one chosen goes in its message box in place
+    /// of what it held, to change and commit.</summary>
+    public ChoicePopup ShowCommitMessageHistory()
+    {
+        ShowToolWindow(ToolWindowIds.Commit);
+        IReadOnlyList<string> messages = session.CommitMessages.Of(CommitGit.Repository!.Root);
+        ChoicePopup popup = new("Commit Message History", "Search messages", [.. messages.Select(Chosen)], Refusals.NoCommitMessages);
+        popups.Show(popup, chosen =>
+        {
+            if (chosen?.Value is string message)
+            {
+                CommitView.TakeMessage(message);
+            }
+        });
+        return popup;
+
+        static Choice Chosen(string message)
+        {
+            string[] lines = message.Split('\n');
+            return new Choice(lines[0].TrimEnd('\r'), lines.Length > 1 ? $"+{Plural.Of(lines.Length - 1, "line")}" : string.Empty, message);
+        }
+    }
 
     /// <summary>The Commit Signing dialog while it is open; null once it closes.</summary>
     public CommitSigningDialog? CommitSigning { get; private set; }
@@ -1271,10 +1315,21 @@ public partial class MainWindow
             ? AppActions.Unstage : action;
 
     /// <summary>The Commit window's Undo and Redo take back or make again the last command, a stage or unstage among them, as
-    /// the Explorer's do.</summary>
-    private bool CommitTakes(string action, object? focused) =>
-        action is EditorActions.Undo or EditorActions.Redo && commitView is { } commit && focused is Visual inside && commit.IsVisualAncestorOf(inside)
-        && UndoCommand(action == EditorActions.Redo, null);
+    /// the Explorer's do; its message box takes its history's keys.</summary>
+    private bool CommitTakes(string action, object? focused)
+    {
+        if (action is EditorActions.Undo or EditorActions.Redo)
+        {
+            return commitView is { } commit && focused is Visual inside && commit.IsVisualAncestorOf(inside) && UndoCommand(action == EditorActions.Redo, null);
+        }
+        // The message box takes the keys an editor's action has elsewhere for its history (Match Brace's in the Mac's IntelliJ IDEA).
+        if (action == AppActions.KeysIn(AppActions.CommitMessageHistory) && action != AppActions.CommitMessageHistory && commitView?.HasMessageKeys(focused) == true)
+        {
+            Request(AppActions.CommitMessageHistory);
+            return true;
+        }
+        return false;
+    }
 
     /// <summary>Stages or unstages files whole, from the Commit window, one command of global Undo where git's index changed.</summary>
     private async Task StageFilesAsync(IReadOnlyList<FileChange> changes, bool stage)

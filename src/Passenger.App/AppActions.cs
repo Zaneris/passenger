@@ -701,6 +701,11 @@ public static class AppActions
 
     // Rider's ChangesView.GroupBy.Directory, the Commit window's Group By › Directory.
     public const string GroupByDirectory = "app.vcs.groupByDirectory";
+
+    // The Commit window's message history, Rider's Vcs.ShowMessageHistory: Ctrl+M in $default's and Mac OS X 10.5+'s, and
+    // so VS Code's; Ctrl+H in its Visual Studio keymaps, Replace's there, as Ctrl+M is Match Brace's in the Mac's IntelliJ
+    // IDEA, which it takes in the commit message (KeysIn); none in Emacs's.
+    public const string CommitMessageHistory = "app.vcs.commitMessageHistory";
     public const string NuGetRefresh = "app.nuget.refresh";
     public const string NuGetUpdateAll = "app.nuget.updateAll";
     public const string LiveTreeRefresh = "app.liveTree.refresh";
@@ -813,14 +818,16 @@ public static class AppActions
     /// <summary>The action whose keys a place takes for one of its own, where Rider's keymaps give a key two actions by place:
     /// Show Diff and Compare Files Duplicate's (none in VS Code's, nor Emacs's), Add to Watches Complete Statement's (VS Code's
     /// Start New Line Before's), Focus Editor a tool window's Escape; outside Visual Studio's, New Item Generate's and Edit
-    /// Breakpoint View Breakpoints', IntelliJ IDEA's Rerun on the Mac Replace's, a SQL file's Run Statement and Stop Statement
-    /// Start New Line Before's or Start New Line's and Stop's, a table's grid's as their ids say; the action's own once given some.</summary>
+    /// Breakpoint View Breakpoints', IntelliJ IDEA's Rerun on the Mac Replace's; in Visual Studio's, Commit Message History
+    /// Replace's (Match Brace's in the Mac's IntelliJ IDEA); a SQL file's and a table grid's as their ids say; the action's own once given some.</summary>
     public static string KeysIn(string id) => UserShortcuts.ContainsKey(id) ? id : id switch
     {
         ShowDiff or CompareFiles when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => EditorActions.Duplicate,
         AddToWatches => Preset == KeymapPreset.VSCode ? EditorActions.StartNewLineBefore : CompleteStatement,
         FocusEditor => EditorActions.Escape,
         NewItem when Preset != KeymapPreset.VisualStudio => Generate,
+        CommitMessageHistory when Preset == KeymapPreset.VisualStudio => Replace,
+        CommitMessageHistory when Preset == KeymapPreset.IntelliJ && OperatingSystem.IsMacOS() => EditorActions.MatchBrace,
         EditBreakpoint when Preset != KeymapPreset.VisualStudio => ViewBreakpoints,
         DatabaseRun when Preset == KeymapPreset.VisualStudio => EditorActions.StartNewLineBefore,
         DatabaseRun when Preset == KeymapPreset.VSCode => EditorActions.StartNewLine,
@@ -868,6 +875,11 @@ public static class AppActions
         // Rider's Console.History.Browse and Console.Transaction.Commit: $default's, in every keymap, the Mac's with Cmd for Ctrl.
         bool commandKey = OperatingSystem.IsMacOS() && preset != KeymapPreset.Emacs;
         keymap.Bind(DatabaseHistory, commandKey ? "meta alt E" : "control alt E").Bind(DatabaseCommit, commandKey ? "meta alt shift ENTER" : "control alt shift ENTER");
+        // Rider's Vcs.ShowMessageHistory where its own key is free: VS Code's, and IntelliJ IDEA's off the Mac.
+        if (preset == KeymapPreset.VSCode || (preset == KeymapPreset.IntelliJ && !OperatingSystem.IsMacOS()))
+        {
+            keymap.Bind(CommitMessageHistory, "control M");
+        }
         if (preset != KeymapPreset.Emacs)
         {
             // The Switcher's keys are the same in every keymap of Rider's but Emacs's, whose own list gives it Ctrl+X, B.

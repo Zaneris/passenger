@@ -1464,6 +1464,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The profile each project last published with, which Publish Again publishes it with.</summary>
     public PublishMemory Publishing { get; } = new();
 
+    /// <summary>The messages committed from the Commit window in each of the folder's repositories, which its message history offers.</summary>
+    public Passenger.App.Vcs.CommitMessages CommitMessages { get; } = new();
+
     /// <summary>The language server on the folder's projects, or null for a folder with none (or no folder).</summary>
     public CSharpService? CSharp { get; private set; }
 
@@ -1813,6 +1816,7 @@ public sealed class ProjectSession : IAsyncDisposable
         EndpointGrants.Keep(kept.Endpoints);
         OpenApiNames.Keep(kept.Endpoints);
         Publishing.Keep(kept.Publish);
+        CommitMessages.Keep(kept.Commit);
         FindScope = kept.Find.Value;
         WorkspaceState workspace = kept.Workspace.Value;
         foreach (string project in workspace.UnloadedProjects)
