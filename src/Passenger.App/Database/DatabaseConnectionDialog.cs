@@ -34,15 +34,17 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Grid fields = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 12 };
+        StackPanel fields = new() { Spacing = FormRows.Between };
+        FormRows.Scope(fields);
         Row("Name", name);
         Row("Provider", provider);
         TextBlock databaseLabel = Row("Database", database);
-        TextBlock hostLabel = Row("Host", host);
-        TextBlock portLabel = Row("Port", port);
-        TextBlock userLabel = Row("User", user);
-        TextBlock passwordLabel = Row("Password", password);
-        TextBlock integratedLabel = Row(string.Empty, integrated);
+        Row("Host", host);
+        Row("Port", port);
+        Row("User", user);
+        Row("Password", password);
+        Row(null, integrated);
+        Row("Connection string", connection);
         provider.SelectionChanged += (_, _) => ShowProvider();
         integrated.IsCheckedChanged += (_, _) => ShowAuthentication();
         Button connect = DialogFooter.Default(initial is null ? "Connect" : "Save and Connect");
@@ -83,7 +85,6 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             Children =
             {
                 fields,
-                new StackPanel { Spacing = 6, Children = { new TextBlock { Text = "Connection string (advanced)" }, connection } },
                 MutedText.Wrapped("Connections are kept for this open folder. Credentials are not saved to disk."),
                 error,
             },
@@ -117,31 +118,23 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             }
         }
 
-        TextBlock Row(string label, Control control)
+        TextBlock Row(string? label, Control control)
         {
-            int row = fields.RowDefinitions.Count;
-            fields.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-            TextBlock text = new() { Text = label, Margin = new Thickness(0, 0, 0, 8), VerticalAlignment = VerticalAlignment.Center, [Grid.RowProperty] = row };
-            control.Margin = new Thickness(0, 0, 0, 8);
-            control[Grid.RowProperty] = row;
-            control[Grid.ColumnProperty] = 1;
-            fields.Children.Add(text);
-            fields.Children.Add(control);
+            fields.Children.Add(FormRows.Of(label, control, out TextBlock text));
             return text;
         }
 
         void ShowProvider()
         {
             bool remote = provider.SelectedIndex != (int)DatabaseKind.Sqlite;
-            foreach (Control control in new Control[] { hostLabel, host, portLabel, port, userLabel, user, passwordLabel, password })
+            foreach (Control control in new Control[] { host, port, user, password })
             {
-                control.IsVisible = remote;
+                ((Control)control.Parent!).IsVisible = remote;
             }
             databaseLabel.Text = remote ? "Database" : "Database file";
             database.PlaceholderText = remote ? "shop" : "Full path, or a path relative to the open folder";
             port.Value = provider.SelectedIndex switch { (int)DatabaseKind.Postgres => 5432, (int)DatabaseKind.SqlServer => 1433, _ => 3306 };
-            integrated.IsVisible = provider.SelectedIndex == (int)DatabaseKind.SqlServer;
-            integratedLabel.IsVisible = integrated.IsVisible;
+            ((Control)integrated.Parent!).IsVisible = provider.SelectedIndex == (int)DatabaseKind.SqlServer;
             ShowAuthentication();
         }
 

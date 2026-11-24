@@ -252,13 +252,11 @@
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.15" />
     <PackageVersion Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="$(EfCoreVersion)" />
-    <!-- The Database window's four ADO.NET providers; SQLite follows the EF tests' runtime graph. -->
-    <PackageVersion Include="Microsoft.Data.Sqlite" Version="$(EfCoreVersion)" />
-    <PackageVersion Include="Npgsql" Version="10.0.3" />
-    <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.1.1" />
-    <!-- SqlClient's 9.x minimum has Pkcs advisories; carry the patched runtime line. -->
-    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="11.0.0-rc.3.26522.148" />
-    <PackageVersion Include="MySqlConnector" Version="2.6.2" />
+    <!-- The database tools' drivers: SQLite, PostgreSQL, SQL Server, and MySQL and MariaDB. -->
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="11.0.0" />
+    <PackageVersion Include="Npgsql" Version="11.0.0" />
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.1.2" />
+    <PackageVersion Include="MySqlConnector" Version="3.0.0" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="$(EfCoreVersion)" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="$(NpgsqlEfVersion)" />
     <PackageVersion Include="ReactiveUI" Version="$(ReactiveUiVersion)" />

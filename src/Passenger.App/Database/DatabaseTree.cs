@@ -23,8 +23,8 @@ public sealed class DatabaseTreeRow(DatabaseTable table, string title, int depth
 public sealed class DatabaseTree : DockPanel
 {
     private readonly DatabaseController controller;
-    private readonly TextBox search = FilterBox.Of();
-    private readonly ListBox list = new() { Name = "DatabaseTables", Classes = { StyleClasses.Tree } };
+    private readonly TextBox search = SearchBox.Of("DatabaseTableSearch", "Type to find tables");
+    private readonly TreeList list = new() { Name = "DatabaseTables", Classes = { StyleClasses.Tree } };
     private readonly TreeRows<DatabaseTreeRow> rows = [];
     private readonly TextBlock empty = new() { Text = "No matching tables", Classes = { StyleClasses.EmptyText } };
     private IReadOnlyList<DatabaseTable>? known;
@@ -35,7 +35,6 @@ public sealed class DatabaseTree : DockPanel
     {
         this.controller = controller;
         search.Name = "DatabaseTableSearch";
-        search.PlaceholderText = "Type to find tables";
         search.Margin = new Thickness(4);
         SetDock(search, Dock.Top);
         Children.Add(search);

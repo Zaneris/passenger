@@ -30,6 +30,7 @@ public partial class MainWindow
         }, Docking.ToolAnchor.RightBottom)
         {
             Action = AppActions.ShowDatabase,
+            Serves = ToolWindowServes.EveryFolder,
             Menus = [new MenuPlace("Tools", 0, 6)],
         };
         Dock.Add(shown);
