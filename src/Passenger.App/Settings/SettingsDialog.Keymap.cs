@@ -9,7 +9,7 @@ using Passenger.Editor;
 
 namespace Passenger.App.Settings;
 
-/// <summary>Settings' Keymap page: the keymap chosen at its top (Visual Studio's, VS Code's or IntelliJ IDEA's), every
+/// <summary>Settings' Keymap page: the keymap chosen at its top (Visual Studio's, VS Code's, IntelliJ IDEA's or Emacs's), every
 /// action with its shortcuts in it, each in a box of its own (a chord as "⌘K, ⌘C"), an action the person changed in the
 /// modified colour, its mouse shortcuts after its keys ("⌥Click"). An action's Edit Shortcuts menu (a double-click, a
 /// right-click or its button) has Add Keyboard Shortcut, Add Mouse Shortcut, a Remove for each shortcut and Reset
@@ -34,10 +34,10 @@ public sealed partial class SettingsDialog
     private Shortcut? shortcutFilter;
 
     /// <summary>The keymaps Settings offers, in its order.</summary>
-    public static readonly KeymapPreset[] KeymapChoices = [KeymapPreset.VisualStudio, KeymapPreset.VSCode, KeymapPreset.IntelliJ];
+    public static readonly KeymapPreset[] KeymapChoices = [KeymapPreset.VisualStudio, KeymapPreset.VSCode, KeymapPreset.IntelliJ, KeymapPreset.Emacs];
 
     /// <summary>What a search finds the keymap's choice by, beside the keymaps' names.</summary>
-    private const string KeymapWords = "keymap keymaps preset keyboard shortcuts keys bindings visual studio vs code vscode intellij idea";
+    private const string KeymapWords = "keymap keymaps preset keyboard shortcuts keys bindings visual studio vs code vscode intellij idea emacs";
 
     /// <summary>The keymap drop-down at the Keymap page's top: the keymap the person's keys follow, their own shortcuts
     /// kept over each apart.</summary>

@@ -12,6 +12,31 @@ internal static class RiderKeymaps
 {
     private const string Default = "$default";
     private const string MacOS = "Mac OS X 10.5+";
+    private const string Emacs = "Emacs";
+
+    /// <summary>Rider's Emacs keymap (keymaps/Emacs.xml), over $default on every system: its own list of each action the
+    /// keymap tests check, and of those whose keys it takes from them.</summary>
+    private static readonly Dictionary<string, string[]> EmacsOwn = new()
+    {
+        ["EditorDuplicate"] = ["meta D"],
+        ["$Delete"] = ["DELETE", "control D"],
+        ["ParameterInfo"] = ["shift alt P"],
+        ["EditorUp"] = ["UP", "control P"],
+        ["EditorDown"] = ["DOWN", "control N"],
+        ["EditorLeft"] = ["LEFT", "control B"],
+        ["EditorRight"] = ["RIGHT", "control F"],
+        ["EditorTextStart"] = ["control HOME", "shift alt COMMA", "ESCAPE , COMMA"],
+        ["EditorTextEnd"] = ["control END", "shift alt PERIOD"],
+        ["EditorForwardParagraph"] = ["control DOWN"],
+        ["EditorBackwardParagraph"] = ["control UP"],
+        ["EditorScrollUp"] = [],
+        ["EditorScrollDown"] = [],
+        ["Switcher"] = ["control X , B"],
+        ["GotoAction"] = ["ESCAPE , X", "alt X"],
+        ["SaveAll"] = ["control X , control S"],
+        ["GotoDeclaration"] = ["control alt G", "ESCAPE , PERIOD", "alt PERIOD", "ctrl button1"],
+        ["GotoImplementation"] = [],
+    };
 
     private static readonly Dictionary<string, (string? Parent, Dictionary<string, string[]> Own)> Files = new()
     {
@@ -88,6 +113,7 @@ internal static class RiderKeymaps
             ["MethodOverloadSwitchDown"] = [],
             ["MethodOverloadSwitchUp"] = [],
         }),
+        [Emacs] = (Default, EmacsOwn),
         ["VSCode OSX"] = (MacOS, new()
         {
             ["OpenFile"] = ["meta o"],
@@ -141,6 +167,7 @@ internal static class RiderKeymaps
         (KeymapPreset.VSCode, false) => "VSCode",
         (KeymapPreset.IntelliJ, true) => MacOS,
         (KeymapPreset.IntelliJ, false) => Default,
+        (KeymapPreset.Emacs, _) => Emacs,
         (_, true) => "Visual Studio OSX",
         _ => "Visual Studio",
     };
@@ -148,6 +175,19 @@ internal static class RiderKeymaps
     /// <summary>An action's keys in one of Rider's keymaps.</summary>
     public static IReadOnlyList<Shortcut> Resolve(string keymap, string action) =>
         [.. Listed(keymap, action).Where(t => !MouseShortcut.IsMouse(t)).Select(Shortcut.Parse).Distinct()];
+
+    /// <summary>An action's keys in Rider's Emacs keymap as Passenger gives a key one action: one it takes from $default
+    /// is passed over where Emacs's own list gives it another action (Compare Files' Ctrl+D, Delete's there).</summary>
+    public static IReadOnlyList<Shortcut> ResolveOwnFirst(string keymap, string action)
+    {
+        IReadOnlyList<Shortcut> keys = Resolve(keymap, action);
+        if (keymap != Emacs || EmacsOwn.ContainsKey(action))
+        {
+            return keys;
+        }
+        HashSet<Shortcut> taken = [.. EmacsOwn.Where(o => o.Key != action).SelectMany(o => o.Value).Where(t => !MouseShortcut.IsMouse(t)).Select(Shortcut.Parse)];
+        return [.. keys.Where(k => !taken.Contains(k))];
+    }
 
     /// <summary>An action's mouse shortcuts in one of Rider's keymaps.</summary>
     public static IReadOnlyList<MouseShortcut> ResolveMouse(string keymap, string action) =>

@@ -451,7 +451,7 @@ public sealed class AccessibilityTests : IDisposable
             (string Next, string Previous) keys = OperatingSystem.IsMacOS()
                 ? ("control meta BACK_QUOTE", "control meta shift BACK_QUOTE")
                 : ("control alt BACK_QUOTE", "control alt shift BACK_QUOTE");
-            foreach (KeymapPreset preset in (KeymapPreset[])[KeymapPreset.VisualStudio, KeymapPreset.VSCode, KeymapPreset.IntelliJ])
+            foreach (KeymapPreset preset in SettingsDialog.KeymapChoices)
             {
                 window.ApplySettings(window.Settings with { Keymap = preset });
                 window.EditorArea.CodeEditor.Focus();

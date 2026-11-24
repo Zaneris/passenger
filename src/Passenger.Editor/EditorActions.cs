@@ -131,13 +131,16 @@ public enum KeymapPreset
 
     /// <summary>IntelliJ IDEA's keymaps as Rider carries them: $default on Windows and Linux, Mac OS X 10.5+ on macOS.</summary>
     IntelliJ,
+
+    /// <summary>Rider's Emacs keymap, over $default on every system.</summary>
+    Emacs,
 }
 
 /// <summary>The keymaps Passenger has, for the actions it has: Rider's Visual Studio keymap on Windows and its Visual
 /// Studio OSX keymap on macOS, plus the few platform staples those leave out (Cmd+/ to comment, with the keypad's / as
-/// $default has it, Cmd+W to close, Cmd+Up and Down to the text's ends); Rider's VSCode and VSCode OSX keymaps; and
-/// IntelliJ IDEA's $default and Mac OS X 10.5+, the Mac's with Cmd+Up and Down too. A key IntelliJ gives two actions told
-/// apart by where it is pressed is given to one (the editor's own). The keypad's keys (DIVIDE, SUBTRACT) are bound where
+/// $default has it, Cmd+W to close, Cmd+Up and Down to the text's ends); Rider's VSCode and VSCode OSX keymaps; IntelliJ
+/// IDEA's $default and Mac OS X 10.5+, the Mac's with Cmd+Up and Down too; Rider's Emacs. A key IntelliJ gives two
+/// actions told apart by where it is pressed is given to one (the editor's own). The keypad's keys (DIVIDE, SUBTRACT) are bound where
 /// Rider binds them, beside the main keys'. The mouse's gestures are theirs too, the Mac's from $default with its Ctrl as
 /// Cmd; Shift+Alt-click, which they give a column from the caret and a column drag both, is the first, a drag going on with
 /// it, and Linux's middle-click paste is left out. A click a drag shares (Alt-click's Quick Evaluate Expression beside
@@ -151,6 +154,7 @@ public static class DefaultKeymaps
     {
         KeymapPreset.VSCode => OperatingSystem.IsMacOS() ? VSCodeMac() : VSCode(),
         KeymapPreset.IntelliJ => OperatingSystem.IsMacOS() ? IntelliJMac() : IntelliJ(),
+        KeymapPreset.Emacs => Emacs(),
         _ => ForPlatform(),
     };
 
@@ -161,6 +165,7 @@ public static class DefaultKeymaps
         (KeymapPreset.VSCode, false) => "VS Code",
         (KeymapPreset.IntelliJ, true) => "IntelliJ IDEA (macOS)",
         (KeymapPreset.IntelliJ, false) => "IntelliJ IDEA",
+        (KeymapPreset.Emacs, _) => "Emacs",
         (_, true) => "Visual Studio (macOS)",
         _ => "Visual Studio",
     };
@@ -457,7 +462,52 @@ public static class DefaultKeymaps
 
     // IntelliJ IDEA's $default keymap, which gives Clone Caret, Toggle Folding, Collapse to Definitions and the doc
     // comments' folds no keys (on macOS either).
-    public static Keymap IntelliJ() => new Keymap(NameOf(KeymapPreset.IntelliJ))
+    public static Keymap IntelliJ() => IntelliJ(NameOf(KeymapPreset.IntelliJ));
+
+    /// <summary>The editor's part of Rider's Emacs keymap, on every system alike: $default's with Emacs's own lists over it
+    /// (<see cref="Emacs(Keymap)"/>).</summary>
+    public static Keymap Emacs() => Emacs(IntelliJ(NameOf(KeymapPreset.Emacs)));
+
+    /// <summary>Rider's Emacs keymap's own lists of the editor's actions put over a keymap of $default's, each in place of
+    /// what $default gives that action and taken from any other that had a key of it, as the keymap's own list goes before
+    /// its parent's: Undo's Ctrl+/ from Comment with Line Comment, Delete's Ctrl+D from Duplicate (Cmd+D, as Rider's own).
+    /// The kill ring's Kill Region and Kill Ring Save are Cut and Copy, Kill to Word Start and End Delete Word Left and Right,
+    /// leaving the text as they do, Emacs's own keys first; Escape begins Meta's chords and is Esc, Esc and Ctrl+G.</summary>
+    public static Keymap Emacs(Keymap over) => over
+        .Own(EditorActions.Left, "LEFT", "control B")
+        .Own(EditorActions.Right, "RIGHT", "control F")
+        .Own(EditorActions.Up, "UP", "control P")
+        .Own(EditorActions.Down, "DOWN", "control N")
+        .Own(EditorActions.WordLeft, "control LEFT", "alt B", "ESCAPE , control B")
+        .Own(EditorActions.WordRight, "control RIGHT", "alt F", "ESCAPE , control F")
+        .Own(EditorActions.LineStart, "HOME", "control A", "alt M")
+        .Own(EditorActions.LineEnd, "END", "control E")
+        .Own(EditorActions.TextStart, "control HOME", "shift alt COMMA", "ESCAPE , COMMA")
+        .Own(EditorActions.TextEnd, "control END", "shift alt PERIOD")
+        .Own(EditorActions.PageUp, "PAGE_UP", "control Z", "alt V")
+        .Own(EditorActions.PageDown, "PAGE_DOWN", "control V")
+        .Own(EditorActions.ScrollUp)
+        .Own(EditorActions.ScrollDown)
+        .Own(EditorActions.Delete, "DELETE", "control D")
+        .Own(EditorActions.DeleteWordLeft, "control BACK_SPACE", "alt BACK_SPACE", "ESCAPE , BACK_SPACE", "alt DELETE")
+        .Own(EditorActions.DeleteWordRight, "control DELETE", "alt D")
+        .Own(EditorActions.NewLine, "ENTER", "control M")
+        .Own(EditorActions.Duplicate, "meta D")
+        .Own(EditorActions.DeleteLine)
+        .Own(EditorActions.ToggleLineComment, "alt SEMICOLON")
+        .Own(EditorActions.CutToLineEnd, "control K")
+        .Own(EditorActions.Undo, "control SLASH", "shift control MINUS")
+        .Own(EditorActions.Redo, "shift control Z", "shift alt MINUS")
+        .Own(EditorActions.Cut, "control W", "shift DELETE")
+        .Own(EditorActions.Copy, "alt W", "control INSERT", "alt C", "ESCAPE , W")
+        .Own(EditorActions.Paste, "control Y", "shift INSERT")
+        .Own(EditorActions.SelectAll, "control X , H")
+        .Own(EditorActions.CaretPerLine)
+        .Own(EditorActions.FoldAll)
+        .Own(EditorActions.Escape, "ESCAPE , ESCAPE", "control G");
+
+    /// <summary>IntelliJ IDEA's $default keymap under another keymap's name, the parent of Rider's Emacs.</summary>
+    public static Keymap IntelliJ(string name) => new Keymap(name)
         .Bind(EditorActions.Left, "LEFT")
         .Bind(EditorActions.Right, "RIGHT")
         .Bind(EditorActions.Up, "UP")

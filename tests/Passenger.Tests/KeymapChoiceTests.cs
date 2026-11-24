@@ -16,8 +16,8 @@ using Passenger.Terminal;
 
 namespace Passenger.Tests;
 
-/// <summary>Settings' Keymap offers Rider's VS Code keymap and IntelliJ IDEA's beside its Visual Studio one, each the
-/// platform's: the choice runs its keys in the editor, the IDE and the terminal at once, is kept in settings.json and after
+/// <summary>Settings' Keymap offers Rider's VS Code keymap, IntelliJ IDEA's and its Emacs keymap beside its Visual Studio
+/// one, each the platform's: the choice runs its keys in the editor, the IDE and the terminal at once, is kept in settings.json and after
 /// a restart, and a settings.json without one keeps Visual Studio's keys and the person's own over them. Shortcuts set
 /// over one keymap stay with it, Reset Shortcuts gives back the chosen keymap's own, a shortcut another action has is
 /// warned of as ever, no key of any keymap runs two actions, and the keys checked against Rider's keymaps are those they
@@ -33,6 +33,7 @@ public sealed class KeymapChoiceTests : IDisposable
     private static readonly string VisualStudio = DefaultKeymaps.NameOf(KeymapPreset.VisualStudio);
     private static readonly string VSCode = DefaultKeymaps.NameOf(KeymapPreset.VSCode);
     private static readonly string IntelliJ = DefaultKeymaps.NameOf(KeymapPreset.IntelliJ);
+    private static readonly string Emacs = DefaultKeymaps.NameOf(KeymapPreset.Emacs);
 
     private readonly string folder = TestFolders.Create("keymaps-");
     private readonly string settings = TestFolders.Create("keymaps-settings-");
@@ -45,7 +46,7 @@ public sealed class KeymapChoiceTests : IDisposable
         TestFolders.Delete(settings);
     }
 
-    /// <summary>A keymap chosen in Settings (VS Code's, IntelliJ IDEA's) runs its keys in the editor and the IDE and is
+    /// <summary>A keymap chosen in Settings (VS Code's, IntelliJ IDEA's, Emacs's) runs its keys in the editor and the IDE and is
     /// kept after a restart, shortcuts set over it stay with it until Reset, each keymap's keys are those its source
     /// resolves them to, the menus name them, and the mouse's gestures are the keymap's, one added in Settings saying
     /// its conflict and kept, as a double Shift recorded runs its action.</summary>
@@ -55,6 +56,7 @@ public sealed class KeymapChoiceTests : IDisposable
         Flow.StepApart<KeymapChoiceTests>("VS Code chosen in Settings runs its keys in the editor and the IDE and is kept after a restart", t => t.VS_Code_chosen_in_Settings_runs_its_keys_in_the_editor_and_the_IDE_and_is_kept_after_a_restart());
         Flow.StepApart<KeymapChoiceTests>("IntelliJ IDEA chosen in Settings runs its keys keeps its own shortcut and is kept after a restart", t => t.IntelliJ_IDEA_chosen_in_Settings_runs_its_keys_keeps_its_own_shortcut_and_is_kept_after_a_restart());
         Flow.StepApart<IntelliJKeymapTests>("IntelliJ IDEA's keymap gives its actions IntelliJ IDEA's keys on this platform", t => t.IntelliJ_IDEAs_keymap_gives_its_actions_IntelliJ_IDEAs_keys_on_this_platform());
+        Flow.StepApart<KeymapChoiceTests>("Emacs chosen in Settings runs its keys and chords keeps its own shortcut and is kept after a restart", t => t.Emacs_chosen_in_Settings_runs_its_keys_and_chords_keeps_its_own_shortcut_and_is_kept_after_a_restart());
         Flow.StepApart<IntelliJKeymapTests>("IntelliJ IDEA's shortcuts read back from settings as they were kept", t => t.IntelliJ_IDEAs_shortcuts_read_back_from_settings_as_they_were_kept());
         Flow.StepApart<KeymapChoiceTests>("shortcuts set over one keymap stay with it and Reset Shortcuts gives back the chosen keymap's own", t => t.Shortcuts_set_over_one_keymap_stay_with_it_and_Reset_Shortcuts_gives_back_the_chosen_keymaps_own());
         Flow.StepApart<KeymapChoiceTests>("each keymap's keys for Duplicate Parameter Info Toggle Case and Generate are those Rider's keymap resolves them to", t => t.Each_keymaps_keys_for_Duplicate_Parameter_Info_Toggle_Case_and_Generate_are_those_Riders_keymap_resolves_them_to());
@@ -203,6 +205,60 @@ public sealed class KeymapChoiceTests : IDisposable
             again.EditorArea.CodeEditor.Focus();
             Ui.Press(again, ownKey);
             Assert.True(again.EditorArea.Groups.Count == 1, $"{ownKey}, taken from Split Down by Reset Shortcuts, still split the editor");
+        }
+        finally
+        {
+            // The keymap in force is the process's; the next test starts on the platform's own.
+            again.ApplySettings(new AppSettings());
+            again.Close();
+        }
+    }
+
+    /// <summary>Emacs's keymap chosen in Settings runs its keys and chords in the editor and the IDE, Settings names its
+    /// chords, a shortcut set over it is kept with it alone in settings.json, and after a restart it is still chosen with
+    /// that shortcut, which Visual Studio's keymap chosen again leaves out.</summary>
+    private void Emacs_chosen_in_Settings_runs_its_keys_and_chords_keeps_its_own_shortcut_and_is_kept_after_a_restart()
+    {
+        const string OwnKey = "control alt shift Y";
+        MainWindow window = Open(keeps: true);
+        try
+        {
+            SettingsDialog dialog = Settings(window);
+            Choose(dialog, Emacs);
+            Assert.Equal([Shortcut.Parse("control X , control F").Display()], dialog.ShortcutsShown(AppActions.GoToFile));
+            KeyboardShortcutDialog keys = AddKeyboardShortcut(dialog, AppActions.SplitDown);
+            Ui.Press(keys, OwnKey);
+            Assert.Empty(keys.Conflicts);
+            Ui.Click(keys.OkButton);
+            // Beside Emacs's own Ctrl+X, 2.
+            Ui.WaitFor(() => dialog.ShortcutsShown(AppActions.SplitDown).Count == 2, "Split Down to show the shortcut given it");
+            Ui.Click(Button(dialog, "OK"));
+            Assert.Equal(KeymapPreset.Emacs, window.Settings.Keymap);
+            Assert.True(window.Settings.Shortcuts.Count == 0 && window.Settings.VSCodeShortcuts.Count == 0 && window.Settings.IntelliJShortcuts.Count == 0,
+                "A shortcut set over Emacs's keymap was kept over another keymap's too");
+
+            EmacsKeysWork(window, OwnKey);
+            string file = Path.Combine(settings, "settings.json");
+            Ui.WaitFor(() => Read(file) is { } kept && (string?)kept["keymap"] == "Emacs", "the keymap chosen in settings.json", TimeSpan.FromSeconds(10));
+            string[] kept = [.. Read(file)!["emacsShortcuts"]![AppActions.SplitDown]!.AsArray().Select(k => (string?)k ?? string.Empty)];
+            Assert.True(kept.SequenceEqual([Shortcut.Parse("control X , 2").Notation(), Shortcut.Parse(OwnKey).Notation()]),
+                $"settings.json kept Split Down's shortcuts over Emacs's keymap as [{string.Join("; ", kept)}]");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        MainWindow again = Open(keeps: true);
+        try
+        {
+            Assert.Equal(KeymapPreset.Emacs, again.Settings.Keymap);
+            EmacsKeysWork(again, OwnKey);
+            again.ApplySettings(again.Settings with { Keymap = KeymapPreset.VisualStudio });
+            Ui.Settle();
+            again.EditorArea.CodeEditor.Focus();
+            Ui.Press(again, OwnKey);
+            Assert.True(again.EditorArea.Groups.Count == 1, $"{OwnKey}, the person's own key for Split Down over Emacs's keymap alone, split the editor in Visual Studio's");
         }
         finally
         {
@@ -489,6 +545,8 @@ public sealed class KeymapChoiceTests : IDisposable
             string rider = RiderKeymaps.Of(preset);
             bool visualStudio = preset == KeymapPreset.VisualStudio;
             bool vsCode = preset == KeymapPreset.VSCode;
+            // The Mac's Cmd+Up and Down to the text's ends, which Passenger gives the keymaps of the Mac's own.
+            bool macEnds = mac && preset is KeymapPreset.VisualStudio or KeymapPreset.IntelliJ;
             (string Action, string Riders, string[] Besides)[] checks =
             [
                 (EditorActions.Duplicate, vsCode ? "EditorDuplicateLines" : "EditorDuplicate", []), (AppActions.CompareFiles, "CompareTwoFiles", []),
@@ -497,8 +555,8 @@ public sealed class KeymapChoiceTests : IDisposable
                 (EditorActions.Left, "EditorLeft", []), (EditorActions.Right, "EditorRight", []),
                 (EditorActions.CloneCaretAbove, visualStudio ? "CloneCaretAboveWithVirtualSpace" : "EditorCloneCaretAbove", []),
                 (EditorActions.CloneCaretBelow, visualStudio ? "CloneCaretBelowWithVirtualSpace" : "EditorCloneCaretBelow", []),
-                (EditorActions.TextStart, "EditorTextStart", mac && !vsCode ? ["meta UP"] : []),
-                (EditorActions.TextEnd, "EditorTextEnd", mac && !vsCode ? ["meta DOWN"] : []),
+                (EditorActions.TextStart, "EditorTextStart", macEnds ? ["meta UP"] : []),
+                (EditorActions.TextEnd, "EditorTextEnd", macEnds ? ["meta DOWN"] : []),
                 (AppActions.ContextHelp, "ContextHelp", [.. RiderKeymaps.Resolve(rider, "ExternalJavaDoc").Select(s => s.Notation())]),
                 (AppActions.ShowUsages, "ShowUsages", []), (AppActions.QuickEvaluate, "QuickEvaluateExpression", []),
                 (AppActions.OpenSolution, "RiderOpenSolution", []), (AppActions.OpenFile, "OpenFile", []),
@@ -508,7 +566,7 @@ public sealed class KeymapChoiceTests : IDisposable
             foreach ((string action, string riders, string[] besides) in checks)
             {
                 string[] ours = [.. keymap.ShortcutsFor(AppActions.KeysIn(action)).Select(s => s.Notation()).Order(StringComparer.Ordinal)];
-                string[] theirs = [.. RiderKeymaps.Resolve(rider, riders).Concat(besides.Select(Shortcut.Parse)).Select(s => s.Notation()).Distinct().Order(StringComparer.Ordinal)];
+                string[] theirs = [.. RiderKeymaps.ResolveOwnFirst(rider, riders).Concat(besides.Select(Shortcut.Parse)).Select(s => s.Notation()).Distinct().Order(StringComparer.Ordinal)];
                 Assert.True(ours.SequenceEqual(theirs),
                     $"In {DefaultKeymaps.NameOf(preset)}'s keymap {action} runs from [{string.Join("; ", ours)}], where Rider's {rider} gives {riders} [{string.Join("; ", theirs)}]");
             }
@@ -744,6 +802,53 @@ public sealed class KeymapChoiceTests : IDisposable
         window.EditorArea.CodeEditor.Focus();
         Ui.Press(window, ownKey);
         Assert.True(window.EditorArea.Groups.Count == 2, $"{ownKey}, the person's own key for Split Down over IntelliJ IDEA's keymap, split nothing");
+        window.Perform(AppActions.UnsplitAll);
+        Ui.Settle();
+        window.EditorArea.CodeEditor.Focus();
+    }
+
+    /// <summary>Representative keys of Rider's Emacs keymap pressed in the window, Ctrl on the Mac too: the editor's (Ctrl+F,
+    /// Ctrl+E and Ctrl+A to move, Ctrl+K to cut to the line's end and Ctrl+Y to paste it back, Esc then Ctrl+F a word on,
+    /// Ctrl+/ to undo), the IDE's chords (Ctrl+X, 3 to split and Ctrl+X, 1 to unsplit, Ctrl+X, Ctrl+F to Go to File),
+    /// Alt+X to Find Action, and the person's own key, which splits the editor down.</summary>
+    private static void EmacsKeysWork(MainWindow window, string ownKey)
+    {
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        editor.Selections = Passenger.Text.SelectionSet.Single(0);
+        Ui.Press(window, "control F");
+        Assert.True(editor.Selections.Primary.Caret == 1, $"Emacs's Ctrl+F left the caret at {editor.Selections.Primary.Caret}, where it moves a character on");
+        Ui.Press(window, "control E");
+        Assert.True(editor.Selections.Primary.Caret == Source.Length - 1, $"Emacs's Ctrl+E left the caret at {editor.Selections.Primary.Caret}, where it goes to the line's end");
+        Ui.Press(window, "control A");
+        Ui.Press(window, "control K");
+        Assert.True(Text(window) == "\n", $"Emacs's Ctrl+K left \"{Text(window)}\", where it cuts to the line's end");
+        Ui.Press(window, "control Y");
+        Assert.Equal(Source, Text(window));
+        Ui.Press(window, "control SLASH");
+        Assert.True(Text(window) == "\n", $"Emacs's Ctrl+/ left \"{Text(window)}\", where it undoes the paste");
+        Ui.Press(window, "control SLASH");
+        Assert.Equal(Source, Text(window));
+        editor.Selections = Passenger.Text.SelectionSet.Single(0);
+        Ui.Press(window, "ESCAPE , control F");
+        Assert.True(editor.Selections.Primary.Caret is > 1 and <= 6 && Text(window) == Source,
+            $"Emacs's Esc, Ctrl+F left the caret at {editor.Selections.Primary.Caret}, where it moves a word on");
+
+        Ui.Press(window, "control X , 3");
+        Assert.True(window.EditorArea.Groups.Count == 2, "Emacs's Ctrl+X, 3 split nothing");
+        Ui.Press(window, "control X , 1");
+        Assert.True(window.EditorArea.Groups.Count == 1, "Emacs's Ctrl+X, 1 left the editor split");
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Press(window, "control X , control F");
+        Assert.True(window.Popup is GoToFilePopup, "Emacs's Ctrl+X, Ctrl+F opened no Go to File");
+        Ui.Press(window, "ESCAPE");
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Press(window, "alt X");
+        Assert.True(window.Popup is ActionPopup, "Emacs's Alt+X opened no Find Action");
+        Ui.Press(window, "ESCAPE");
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Press(window, ownKey);
+        Assert.True(window.EditorArea.Groups.Count == 2, $"{ownKey}, the person's own key for Split Down over Emacs's keymap, split nothing");
         window.Perform(AppActions.UnsplitAll);
         Ui.Settle();
         window.EditorArea.CodeEditor.Focus();

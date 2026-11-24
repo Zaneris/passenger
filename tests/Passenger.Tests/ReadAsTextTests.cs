@@ -64,7 +64,7 @@ public sealed class ReadAsTextTests : IDisposable
             Ui.Run(window, AppActions.NextError);
             Assert.Equal("No errors or warnings in this file", window.Status);
             Shortcut key = Shortcut.Parse(Key);
-            foreach (KeymapPreset preset in (KeymapPreset[])[KeymapPreset.VisualStudio, KeymapPreset.VSCode, KeymapPreset.IntelliJ])
+            foreach (KeymapPreset preset in SettingsDialog.KeymapChoices)
             {
                 window.ApplySettings(window.Settings with { Keymap = preset });
                 Keymap keymap = AppActions.Keymap();

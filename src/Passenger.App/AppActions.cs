@@ -4,7 +4,7 @@ namespace Passenger.App;
 
 /// <summary>The ids of the IDE's own actions, beside the editor's (<see cref="EditorActions"/>), and the keymaps of each
 /// platform that bind both by id, keys and mouse gestures: Rider's Visual Studio keymaps for these too, its VS Code
-/// keymaps and IntelliJ IDEA's. Each action is declared by its feature (<see cref="IdeAction"/>, in the window's <see
+/// keymaps, IntelliJ IDEA's and its Emacs keymap. Each action is declared by its feature (<see cref="IdeAction"/>, in the window's <see
 /// cref="ActionRegistry"/>).</summary>
 [IdentifierHome]
 public static class AppActions
@@ -724,27 +724,27 @@ public static class AppActions
     /// change, since every tip and menu reads it; a caller reads it and never binds into it.</summary>
     public static Keymap Keymap() => inForce ??= Keymap(Preset, UserShortcuts);
 
-    /// <summary>The action whose keys a place takes for one of its own, where Rider's keymaps give a key two actions by
-    /// place and the keymap gives it to the other: Show Diff and Compare Files take Duplicate's (none in VS Code's), the
-    /// evaluate box's Add to Watches Complete Statement's (Start New Line Before's in VS Code's), a tool window Escape for
-    /// Focus Editor; outside Visual Studio's, New Item Generate's and Edit Breakpoint View Breakpoints', and IntelliJ IDEA's
-    /// Rerun on the Mac Replace's Cmd+R. The action's own once the person gives it some.</summary>
+    /// <summary>The action whose keys a place takes for one of its own, where Rider's keymaps give a key two actions by place
+    /// and the keymap gives it to the other: Show Diff and Compare Files take Duplicate's (none in VS Code's, nor Emacs's,
+    /// whose Delete has their Ctrl+D), Add to Watches Complete Statement's (VS Code's Start New Line Before's), a tool window
+    /// Escape's for Focus Editor (Emacs's Ctrl+G); outside Visual Studio's, New Item Generate's and Edit Breakpoint View
+    /// Breakpoints', IntelliJ IDEA's Rerun on the Mac Replace's Cmd+R. The action's own once the person gives it some.</summary>
     public static string KeysIn(string id) => UserShortcuts.ContainsKey(id) ? id : id switch
     {
-        ShowDiff or CompareFiles when Preset != KeymapPreset.VSCode => EditorActions.Duplicate,
+        ShowDiff or CompareFiles when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => EditorActions.Duplicate,
         AddToWatches => Preset == KeymapPreset.VSCode ? EditorActions.StartNewLineBefore : CompleteStatement,
         FocusEditor => EditorActions.Escape,
         NewItem when Preset != KeymapPreset.VisualStudio => Generate,
         EditBreakpoint when Preset != KeymapPreset.VisualStudio => ViewBreakpoints,
         Rerun when Preset == KeymapPreset.IntelliJ && OperatingSystem.IsMacOS() => Replace,
-        NextOverload when Preset != KeymapPreset.VSCode => OverloadKeys(down: true),
-        PreviousOverload when Preset != KeymapPreset.VSCode => OverloadKeys(down: false),
+        NextOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: true),
+        PreviousOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: false),
         _ => id,
     };
 
     /// <summary>The action whose keys step through Parameter Info's overloads, as Rider's keymaps give them Ctrl+Up and Down,
     /// or Alt's on the Mac: the editor's scroll by a line, its line move on the Mac, or IntelliJ IDEA's selection steps
-    /// there.</summary>
+    /// there. Emacs's own lists give Ctrl+Up and Down to its paragraph moves, so the overloads have none there.</summary>
     private static string OverloadKeys(bool down) => (Preset, OperatingSystem.IsMacOS()) switch
     {
         (KeymapPreset.IntelliJ, true) => down ? ShrinkSelection : ExtendSelection,
@@ -770,15 +770,20 @@ public static class AppActions
         Keymap keymap = Base(preset).Bind(GameKeys, "control F11")
             .Bind(NextRegion, OperatingSystem.IsMacOS() ? "control meta BACK_QUOTE" : "control alt BACK_QUOTE")
             .Bind(PreviousRegion, OperatingSystem.IsMacOS() ? "control meta shift BACK_QUOTE" : "control alt shift BACK_QUOTE")
-            .Bind(ReadAsText, OperatingSystem.IsMacOS() ? "control meta R" : "control alt R")
-            // The Switcher's keys are the same in every keymap of Rider's (Switcher).
-            .Bind(Switcher, "control TAB")
-            .Bind(SwitcherBackward, "control shift TAB")
-            .Bind(CompletionProperties, "alt P")
-            .Bind(CompletionMethods, "alt M")
-            .Bind(CompletionExtensionMethods, "alt X")
-            .Bind(CompletionFields, "alt F")
-            .Bind(CompletionEvents, "alt E");
+            .Bind(ReadAsText, OperatingSystem.IsMacOS() ? "control meta R" : "control alt R");
+        if (preset != KeymapPreset.Emacs)
+        {
+            // The Switcher's keys are the same in every keymap of Rider's but Emacs's, whose own list gives it Ctrl+X, B.
+            keymap.Bind(Switcher, "control TAB").Bind(SwitcherBackward, "control shift TAB");
+        }
+        foreach ((string filter, string key) in CompletionFilterKeys)
+        {
+            // Passenger's own, where the keymap leaves the key free: Emacs moves by Alt+F and Alt+M and finds actions by Alt+X.
+            if (keymap.ActionFor(Shortcut.Parse(key)) is null)
+            {
+                keymap.Bind(filter, key);
+            }
+        }
         foreach ((string action, string[] shortcuts) in overrides)
         {
             List<Shortcut> keys = [];
@@ -805,6 +810,13 @@ public static class AppActions
         return keymap;
     }
 
+    /// <summary>The completion list's filters by the kind of member, each on Alt and its badge's letter.</summary>
+    private static readonly (string Filter, string Key)[] CompletionFilterKeys =
+    [
+        (CompletionProperties, "alt P"), (CompletionMethods, "alt M"), (CompletionExtensionMethods, "alt X"), (CompletionFields, "alt F"),
+        (CompletionEvents, "alt E"),
+    ];
+
     private static Keymap Base(KeymapPreset preset)
     {
         if (preset == KeymapPreset.VSCode)
@@ -813,7 +825,12 @@ public static class AppActions
         }
         if (preset == KeymapPreset.IntelliJ)
         {
-            return IntelliJ(DefaultKeymaps.For(preset));
+            return IntelliJ(DefaultKeymaps.For(preset), OperatingSystem.IsMacOS());
+        }
+        if (preset == KeymapPreset.Emacs)
+        {
+            // $default's whole, the editor's and the IDE's, then Emacs's own lists over both.
+            return Emacs(DefaultKeymaps.Emacs(IntelliJ(DefaultKeymaps.IntelliJ(DefaultKeymaps.NameOf(preset)), mac: false)));
         }
         Keymap keymap = DefaultKeymaps.ForPlatform();
         if (OperatingSystem.IsMacOS())
@@ -1344,9 +1361,9 @@ public static class AppActions
     /// Shift. A key IntelliJ gives two actions by place goes to one: Ctrl+Shift+F10 (macOS's Ctrl+Shift+R and D) to the
     /// tests, not Run and Debug Here; Ctrl+Shift+F8 to View Breakpoints; Alt+Insert (Cmd+N) to Generate, not New Item; the
     /// Mac's Cmd+R to Replace, not Rerun, and Cmd+T to Update Project, not the terminal's New Session.</summary>
-    private static Keymap IntelliJ(Keymap keymap)
+    private static Keymap IntelliJ(Keymap keymap, bool mac)
     {
-        if (OperatingSystem.IsMacOS())
+        if (mac)
         {
             // Cmd+Q, Exit's here, is the application menu's Quit, as in the other keymaps.
             return keymap
@@ -1596,4 +1613,45 @@ public static class AppActions
             .Bind(DiffSettings, "control shift D")
             .Bind(RecentChanges, "alt shift C");
     }
+
+    /// <summary>Rider's Emacs keymap's own lists of the IDE's actions over $default's, each in place of what $default gives
+    /// it and taken from any action that had a key of it, as the keymap's own list goes before its parent's: Find's
+    /// Ctrl+Alt+S from Settings, Ctrl+K (Cut to Line End) from Commit. Its Ctrl+X and Escape chords (Ctrl+X, Ctrl+S to Save
+    /// All, Esc, X to Find Action) are chords as any; Reformat Code, Safe Delete, Introduce Field, Recent Files, Derived
+    /// Symbols, Previous Project Window and the font size in every editor have none.</summary>
+    private static Keymap Emacs(Keymap keymap) => keymap
+        .Own(FindAction, "alt X", "ESCAPE , X")
+        .Own(Find, "control alt S", "alt F3", "control S")
+        .Own(FindNext, "F3", "alt S")
+        .Own(FindPrevious, "shift F3", "alt R", "control R")
+        .Own(Replace, "shift alt 5")
+        .Own(FindUsages, "alt F7", "shift alt S")
+        .Own(GoToDeclaration, "alt PERIOD", "control alt G", "ESCAPE , PERIOD", "control button1")
+        .Own(GoToSymbol, "shift alt G", "control alt shift N")
+        .Own(GoToFile, "control X , control F")
+        .Own(GoToLine, "alt G")
+        .Own(Switcher, "control X , B")
+        .Own(SwitcherBackward)
+        .Own(NextError, "F2", "control X , BACK_QUOTE")
+        .Own(PreviousError, "shift F2", "shift control X , BACK_QUOTE")
+        .Own(Complete, "alt SLASH")
+        .Own(ParameterInfo, "shift alt P")
+        .Own(ExtendSelection, "control alt W")
+        .Own(SaveAll, "control X , control S")
+        .Own(NextTab, "alt RIGHT", "control X , N")
+        .Own(PreviousTab, "alt LEFT", "control X , P")
+        .Own(CloseTab, "control F4", "control X , K", "control X , 0")
+        .Own(CloseAllTabs, "control X , control C")
+        .Own(SplitRight, "control X , 3")
+        .Own(SplitDown, "control X , 2")
+        .Own(UnsplitAll, "control X , 1")
+        .Own(NextProjectWindow, "control X , control O")
+        .Own(PreviousProjectWindow)
+        .Own(Reformat)
+        .Own(SafeDelete)
+        .Own(IntroduceField)
+        .Own(RecentFiles)
+        .Own(DerivedSymbols)
+        .Own(IncreaseFontSize)
+        .Own(DecreaseFontSize);
 }

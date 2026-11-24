@@ -285,11 +285,15 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>The person's shortcuts over the IntelliJ IDEA keymap's, kept apart from the others' as VS Code's are.</summary>
     public Dictionary<string, string[]> IntelliJShortcuts { get; init; } = [];
 
+    /// <summary>The person's shortcuts over the Emacs keymap's, kept apart from the others' as VS Code's are.</summary>
+    public Dictionary<string, string[]> EmacsShortcuts { get; init; } = [];
+
     /// <summary>The person's shortcuts over the keymap they chose (a method, so the settings agents list leave it out).</summary>
     public Dictionary<string, string[]> OwnShortcuts() => Keymap switch
     {
         Passenger.Editor.KeymapPreset.VSCode => VSCodeShortcuts,
         Passenger.Editor.KeymapPreset.IntelliJ => IntelliJShortcuts,
+        Passenger.Editor.KeymapPreset.Emacs => EmacsShortcuts,
         _ => Shortcuts,
     };
 
@@ -298,6 +302,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     {
         Passenger.Editor.KeymapPreset.VSCode => this with { VSCodeShortcuts = shortcuts },
         Passenger.Editor.KeymapPreset.IntelliJ => this with { IntelliJShortcuts = shortcuts },
+        Passenger.Editor.KeymapPreset.Emacs => this with { EmacsShortcuts = shortcuts },
         _ => this with { Shortcuts = shortcuts },
     };
 
@@ -541,7 +546,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
                 settings[browser] = named;
             }
         }
-        foreach (string property in new[] { nameof(Shortcuts), nameof(VSCodeShortcuts), nameof(IntelliJShortcuts) })
+        foreach (string property in new[] { nameof(Shortcuts), nameof(VSCodeShortcuts), nameof(IntelliJShortcuts), nameof(EmacsShortcuts) })
         {
             if (settings[StateFile.Options.PropertyNamingPolicy!.ConvertName(property)] is not JsonObject shortcuts)
             {
@@ -653,6 +658,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
             Shortcuts = Readable(Shortcuts),
             VSCodeShortcuts = Readable(VSCodeShortcuts),
             IntelliJShortcuts = Readable(IntelliJShortcuts),
+            EmacsShortcuts = Readable(EmacsShortcuts),
             LiveTemplates = (LiveTemplates ?? []).Where(t => t.Value is not null).ToDictionary(t => t.Key, t => t.Value.Clamped()),
             PostfixTemplates = PostfixTemplates ?? [],
             NodeInterpreter = string.IsNullOrWhiteSpace(NodeInterpreter) ? null : NodeInterpreter.Trim(),

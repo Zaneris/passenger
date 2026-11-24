@@ -529,6 +529,11 @@ public sealed class Keymap
         return this;
     }
 
+    /// <summary>Gives an action a keymap's own list in place of what its parent gave it, keys and mouse shortcuts alike as
+    /// Rider's keymap files list them (none takes them all away), each taken from any action that had it.</summary>
+    public Keymap Own(string action, params string[] shortcuts) =>
+        Set(action, shortcuts.Where(t => !MouseShortcut.IsMouse(t)).Select(Shortcut.Parse), shortcuts.Where(MouseShortcut.IsMouse).Select(MouseShortcut.Parse));
+
     /// <summary>The clicks an action runs from, or the drags, as it is one or the other.</summary>
     private Dictionary<MouseShortcut, string> PressesOf(string action) => EditorActions.IsDrag(action) ? byDrag : byMouse;
 
