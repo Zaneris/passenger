@@ -276,8 +276,8 @@ public sealed class RefactoringDialogsTests
     }
 
     /// <summary>Pull Members Up is where a refactoring of a member is looked for, Refactor This and the editor's Refactor
-    /// submenu, and Show Context Actions on the member's name pulls it up into the interface its class implements that lacks
-    /// it, with no dialog, leaving the class's own as it is, which Undo takes back whole.</summary>
+    /// submenu, which offers C#'s own refactorings in a C# file, and Show Context Actions on the member's name pulls it up
+    /// into the interface its class implements that lacks it, with no dialog, which Undo takes back whole.</summary>
     private void PullIntoAnInterfaceFromContextActions(MainWindow window, List<(string Title, string Text)> asked)
     {
         asked.Clear();
@@ -296,8 +296,8 @@ public sealed class RefactoringDialogsTests
         MenuItem refactor = window.OpenContextMenu?.Items.OfType<MenuItem>().FirstOrDefault(i => i.Header as string == "Refactor")
             ?? throw new Xunit.Sdk.XunitException("The editor's menu has no Refactor submenu");
         IReadOnlyList<string> refactorings = [.. refactor.Items.OfType<MenuItem>().Where(i => i.IsEnabled).Select(i => i.Header as string ?? string.Empty)];
-        Assert.True(refactorings.Contains("Pull Members Up…") && refactorings.Contains("Change Signature…"),
-            $"The editor's Refactor submenu lacks the main menu's refactorings: {string.Join("; ", refactorings)}");
+        string[] lacking = [.. ((string[])["Change Signature…", "Extract Interface…", "Move…", "Safe Delete…", "Pull Members Up…", "Push Members Down…"]).Where(r => !refactorings.Contains(r))];
+        Assert.True(lacking.Length == 0, $"The editor's Refactor submenu on a C# member lacks, or greys, the main menu's {string.Join(", ", lacking)}: {string.Join("; ", refactorings)}");
         window.OpenContextMenu!.Close();
         Ui.Settle();
 

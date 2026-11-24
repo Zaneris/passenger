@@ -127,6 +127,9 @@ public static class Refusals
     /// <summary>The folder has no C# language server: it has neither a solution nor a project, or its window starts none.</summary>
     public const string NoCSharp = "No C# language server runs for this folder";
 
+    /// <summary>What is asked works only in a C# file, and the file shown is another language's.</summary>
+    public const string NotCSharp = "The file is not C#";
+
     /// <summary>The C# language server ended too often and was left stopped, until a person starts it again.</summary>
     public const string CSharpStopped = "The C# language server ended too often and was left stopped until it is started again";
 
