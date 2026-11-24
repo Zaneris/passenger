@@ -250,9 +250,9 @@ public sealed class XamlProject
     }
 
     /// <summary>The file an include's or asset's <c>Source</c> names from a file: <c>avares://Assembly/path</c> of this
-    /// project or one it references, WPF's <c>pack://application:,,,/</c> and <c>/Assembly;component/path</c> likewise, a
-    /// path from the project's folder (<c>/Theme/Tokens.axaml</c>), or one from the file's own folder. Null for one in no
-    /// project here, or an assembly's own resource.</summary>
+    /// project or one it references, WPF's <c>pack://application:,,,/</c> and <c>/Assembly;component/path</c> likewise,
+    /// WinUI's <c>ms-appx:///path</c> of the app's package, a path from the project's folder (<c>/Theme/Tokens.axaml</c>),
+    /// or one from the file's own folder. Null for one in no project here, or an assembly's own resource.</summary>
     public string? ResolveSource(string source, string fromFile)
     {
         string value = source.Trim();
@@ -260,6 +260,10 @@ public sealed class XamlProject
         if (value.StartsWith(Pack, StringComparison.OrdinalIgnoreCase))
         {
             value = "/" + value[Pack.Length..].TrimStart('/');
+        }
+        else if (value.StartsWith(WinUIDialect.AppScheme, StringComparison.OrdinalIgnoreCase))
+        {
+            value = "/" + Uri.UnescapeDataString(value[WinUIDialect.AppScheme.Length..].TrimStart('/'));
         }
         int component = value.StartsWith('/') ? value.IndexOf(";component/", StringComparison.OrdinalIgnoreCase) : -1;
         if (component > 0)

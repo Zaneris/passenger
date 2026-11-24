@@ -114,7 +114,8 @@ public sealed record ProjectInputs(
             {
                 // The SDK's own name for the framework's pack where the evaluation gives it, a workload's (Microsoft.Android.Ref.37) included.
                 ReferencePack? named = evaluation?.Packs.FirstOrDefault(p => string.Equals(p.Framework, shared, StringComparison.OrdinalIgnoreCase));
-                references.AddRange(FrameworkAssemblies(dotnet, read, named?.Name ?? PackOf(shared), named?.Version));
+                string pack = named?.Name ?? PackOf(shared, read);
+                references.AddRange(FrameworkAssemblies(dotnet, read, pack, named?.Version, ProfileOf(shared, pack)));
             }
         }
         // The project file's own references, should the project not be restored yet.
@@ -413,25 +414,40 @@ public sealed record ProjectInputs(
         return -1;
     }
 
-    /// <summary>The reference pack of a shared framework by its name, where no evaluation names it: a profile shares its
-    /// framework's (<c>Microsoft.WindowsDesktop.App.WPF</c>'s is <c>Microsoft.WindowsDesktop.App.Ref</c>).</summary>
-    private static string PackOf(string framework) => (FrameworkNames.IsWindowsDesktop(framework) ? FrameworkNames.WindowsDesktop : framework) + ".Ref";
+    /// <summary>The reference pack of a shared framework by its name, where no evaluation names it: a pack the restore
+    /// downloaded that the name is a profile of (<c>Microsoft.Windows.SDK.NET.Ref.Windows</c>'s is
+    /// <c>Microsoft.Windows.SDK.NET.Ref</c>); a profile shares its framework's (<c>Microsoft.WindowsDesktop.App.WPF</c>'s is
+    /// <c>Microsoft.WindowsDesktop.App.Ref</c>).</summary>
+    private static string PackOf(string framework, Assets read) =>
+        read.Downloads.Select(d => d.Id).FirstOrDefault(id => ProfileOf(framework, id) is not null)
+        ?? (FrameworkNames.IsWindowsDesktop(framework) ? FrameworkNames.WindowsDesktop : framework) + ".Ref";
 
-    /// <summary>A reference pack's assemblies: the pack the restore downloaded into a package folder, else the SDK's own
-    /// (<c>packs/Microsoft.NETCore.App.Ref/10.0.x/ref/net10.0/</c>, in any of <paramref name="dotnet"/>'s folders, the
-    /// user's own first), at the version the SDK names, else the newest of the target's major version, else the newest of
-    /// any. A target's platform is not part of the pack's folder.</summary>
-    private static IEnumerable<string> FrameworkAssemblies(WorkloadFolders? dotnet, Assets read, string pack, string? version)
+    /// <summary>The profile of its pack a shared framework is, as its name goes on from the pack's (<c>Windows</c> of
+    /// <c>Microsoft.Windows.SDK.NET.Ref.Windows</c>); null for a framework the pack serves whole.</summary>
+    private static string? ProfileOf(string framework, string pack) =>
+        framework.Length > pack.Length + 1 && framework.StartsWith(pack, StringComparison.OrdinalIgnoreCase) && framework[pack.Length] == '.' ? framework[(pack.Length + 1)..] : null;
+
+    /// <summary>A reference pack's assemblies: the pack the restore downloaded (its <c>ref/&lt;target&gt;/</c>, else what its
+    /// <c>data/FrameworkList.xml</c> lists for <paramref name="profile"/>, as the Windows SDK's projection is laid out), else
+    /// the SDK's own (<c>packs/Microsoft.NETCore.App.Ref/10.0.x/ref/net10.0/</c>, in any of <paramref name="dotnet"/>'s
+    /// folders, the user's own first), at the version the SDK names, else the newest of the target's major version, else
+    /// the newest of any. A target's platform is not part of the pack's folder.</summary>
+    private static IEnumerable<string> FrameworkAssemblies(WorkloadFolders? dotnet, Assets read, string pack, string? version, string? profile)
     {
         string target = FrameworkNames.VersionOf(read.Framework) is { Major: >= 5 } net ? $"net{net.Major}.{net.Minor}" : read.Framework;
         foreach ((string id, string downloaded) in read.Downloads.Where(d => string.Equals(d.Id, pack, StringComparison.OrdinalIgnoreCase)))
         {
             foreach (string folder in read.PackageFolders)
             {
-                string reference = Path.Combine(folder, id.ToLowerInvariant(), downloaded.ToLowerInvariant(), "ref", target);
+                string root = Path.Combine(folder, id.ToLowerInvariant(), downloaded.ToLowerInvariant());
+                string reference = Path.Combine(root, "ref", target);
                 if (Directory.Exists(reference))
                 {
                     return Directory.EnumerateFiles(reference, "*.dll");
+                }
+                if (Listed(root, profile) is { Count: > 0 } listed)
+                {
+                    return listed;
                 }
             }
         }
@@ -459,6 +475,17 @@ public sealed record ProjectInputs(
             }
         }
         return [];
+    }
+
+    /// <summary>The managed assemblies a pack's <c>data/FrameworkList.xml</c> lists, of a profile where one is named, that are
+    /// in the pack; none for a pack that lists none.</summary>
+    private static IReadOnlyList<string> Listed(string pack, string? profile)
+    {
+        XDocument? list = Load(Path.Combine(pack, "data", "FrameworkList.xml"));
+        return list is null ? [] : [.. Elements(list, "File")
+            .Where(f => f.Attribute("Type")?.Value == "Managed" && (profile is null || (f.Attribute("Profile")?.Value ?? string.Empty).Split(';').Contains(profile, StringComparer.OrdinalIgnoreCase)))
+            .Select(f => f.Attribute("Path")?.Value).OfType<string>()
+            .Select(p => Path.Combine(pack, p.Replace('/', Path.DirectorySeparatorChar))).Where(File.Exists)];
     }
 
     /// <summary>Whether a C# file is one of the project's own, as <see cref="SourceFiles"/> reads them, there now or not.</summary>

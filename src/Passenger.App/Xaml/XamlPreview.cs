@@ -169,6 +169,10 @@ public sealed class XamlPreview : IDisposable
                 }
                 Adopt(maui);
                 break;
+            case WinUIDialect:
+                // WinUI draws a page only in its own app's process, on its own window: no previewer of Passenger's can host one.
+                Say("WinUI draws XAML only inside its running app, so it has no preview: run the app and see it in the Live Visual Tree", AppActions.RunProgram);
+                break;
             default:
                 Say($"{builder.Dialect.Name} XAML has no preview");
                 break;

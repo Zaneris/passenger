@@ -1116,8 +1116,9 @@ internal sealed partial class XamlAssist : LanguageAssist
     private static XmlAttribute? NameIn(string text, string name) =>
         XmlTree.Parse(text).Elements.Select(XamlFile.NameAttribute).FirstOrDefault(a => a is { IsValueClosed: true } && a.Value == name);
 
-    /// <summary>The XAML file a line of the C# WPF's MarkupCompile wrote (<c>obj/…/MainWindow.g.cs</c>, or the design-time
-    /// <c>.g.i.cs</c>) was made from: the file its nearest <c>#line</c> above names; null for a file that is not one.</summary>
+    /// <summary>The XAML file a line of the C# WPF's MarkupCompile or WinUI's XAML compiler wrote (<c>obj/…/MainWindow.g.cs</c>,
+    /// or the design-time <c>.g.i.cs</c>) was made from: the file its nearest <c>#line</c> above names, else the one its
+    /// <c>#pragma checksum</c> does (WinUI's, which writes no <c>#line</c> before its fields); null for a file that is not one.</summary>
     private static string? MarkupCompiled(string path, int line)
     {
         string name = Path.GetFileName(path);
@@ -1129,7 +1130,12 @@ internal sealed partial class XamlAssist : LanguageAssist
         string[] lines = (EditorArea.ReadText(path) ?? string.Empty).Split('\n');
         for (int at = Math.Min(line, lines.Length - 1); at >= 0; at--)
         {
-            if (LineDirective().Match(lines[at]) is { Success: true } directive)
+            Match directive = LineDirective().Match(lines[at]);
+            if (!directive.Success && at == 0)
+            {
+                directive = ChecksumDirective().Match(lines[at]);
+            }
+            if (directive.Success)
             {
                 string xaml = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, directive.Groups["file"].Value.Replace('\\', Path.DirectorySeparatorChar)));
                 return Passenger.Core.FoundPaths.Askable(xaml) && File.Exists(xaml) ? Passenger.Core.PathNames.Canonical(xaml) : null;
@@ -1140,6 +1146,9 @@ internal sealed partial class XamlAssist : LanguageAssist
 
     [GeneratedRegex(@"^\s*#line\s+\d+\s+""(?<file>[^""]+\.xaml)""")]
     private static partial Regex LineDirective();
+
+    [GeneratedRegex(@"^\uFEFF?\s*#pragma\s+checksum\s+""(?<file>[^""]+\.xaml)""")]
+    private static partial Regex ChecksumDirective();
 
     [GeneratedRegex(@"(?<class>[\w.]+)\.g\.cs")]
     private static partial Regex GeneratedFile();

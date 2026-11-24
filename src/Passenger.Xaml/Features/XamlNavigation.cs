@@ -243,9 +243,15 @@ public static class XamlNavigation
         {
             return null;
         }
+        if (XBind.Is(file, element, extension))
+        {
+            return argument.Key is null or "Path" or "BindBack" && XBind.RootAt(file, element).Root is { } root
+                ? StepSymbol(file, XBind.Read(file, element, root, argument.Value, argument.ValueStart).At(offset))
+                : null;
+        }
         switch (extension.LocalName)
         {
-            case "StaticResource" or "DynamicResource" when argument.Key is null:
+            case "StaticResource" or "DynamicResource" or "ThemeResource" when argument.Key is null:
                 return Resource(file, argument);
             case "Binding" or "CompiledBinding" or "ReflectionBinding" or "TemplateBinding" when argument.Key is null or "Path":
                 return BindingStep(file, attribute, extension, argument, offset);
@@ -331,16 +337,22 @@ public static class XamlNavigation
             type = file.Names.Where(n => n.Name == name).Select(n => file.ObjectOf(n.Attribute.Owner)).FirstOrDefault();
             at = end + 1;
         }
-        if (type is null || file.Walk(scope, type, text[at..], start + at).At(offset) is not { } step)
-        {
-            return null;
-        }
-        if (step.Cast is { } cast)
+        return type is null ? null : StepSymbol(file, file.Walk(scope, type, text[at..], start + at).At(offset));
+    }
+
+    /// <summary>What a path's step leads to: a cast's type, a member, or an element the file names.</summary>
+    private static XamlSymbol? StepSymbol(XamlFile file, PathStep? step)
+    {
+        if (step?.Cast is { } cast)
         {
             int colon = file.Text.IndexOf(':', step.Range.Start, step.Range.Length);
             return new XamlSymbol(colon < 0 ? step.Range : TextRange.FromBounds(colon + 1, step.Range.End), cast.Name, [TypeTarget(cast)]);
         }
-        return step.Member is { } member ? new XamlSymbol(step.Range, step.Name, [MemberTarget(member)]) : null;
+        if (step?.Named is { } named)
+        {
+            return ElementNamed(file, named.Value, step.Range);
+        }
+        return step?.Member is { } member ? new XamlSymbol(step.Range, step.Name, [MemberTarget(member)]) : null;
     }
 
     private static XamlSymbol? ElementNamed(XamlFile file, string name, TextRange range)
@@ -417,7 +429,8 @@ public static class XamlNavigation
     private static bool IsWordPart(string text, int at) => at >= 0 && at < text.Length && Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsIdentifierPartCharacter(text[at]);
 
     /// <summary>Where a file names an element: its <c>x:Name</c> (or <c>Name</c>) value, a binding's
-    /// <c>ElementName</c> and <c>#name</c>, and a selector's <c>#name</c>; what renaming the element changes.</summary>
+    /// <c>ElementName</c> and <c>#name</c>, an <c>{x:Bind}</c>'s step, and a selector's <c>#name</c>; what renaming the
+    /// element changes.</summary>
     public static IReadOnlyList<TextRange> NameUses(XamlFile file, string name)
     {
         List<TextRange> uses = [];
@@ -440,6 +453,7 @@ public static class XamlNavigation
                 if (MarkupExtension.Parse(file.Text, attribute.ValueStart, attribute.ValueEnd) is { } extension)
                 {
                     Uses(extension, name, uses);
+                    BindUses(file, element, extension, name, uses);
                 }
                 else if (element.LocalName == "Style" && attribute.Name == "Selector" && attribute.Value == attribute.RawValue)
                 {
@@ -449,6 +463,30 @@ public static class XamlNavigation
             }
         }
         return [.. uses.OrderBy(u => u.Start)];
+    }
+
+    /// <summary>The steps of an <c>{x:Bind}</c> (one nested in another extension's arguments too) that name the element.</summary>
+    private static void BindUses(XamlFile file, XmlElement element, MarkupExtension extension, string name, List<TextRange> uses)
+    {
+        if (!StackLeft.Enough())
+        {
+            return;
+        }
+        if (XBind.Is(file, element, extension))
+        {
+            if (XBind.PathOf(extension) is { Nested: null } path && XBind.RootAt(file, element).Root is { Own: true } root)
+            {
+                uses.AddRange(XBind.Read(file, element, root, path.Value, path.ValueStart).Steps.Where(s => s.Named?.Value == name).Select(s => s.Range));
+            }
+            return;
+        }
+        foreach (MarkupArgument argument in extension.Arguments)
+        {
+            if (argument.Nested is { } nested)
+            {
+                BindUses(file, element, nested, name, uses);
+            }
+        }
     }
 
     private static void Uses(MarkupExtension extension, string name, List<TextRange> uses)
@@ -515,7 +553,7 @@ public static class XamlNavigation
         {
             return;
         }
-        if (extension.LocalName is "StaticResource" or "DynamicResource" && extension.Argument(null) is { Nested: null } argument && argument.Value == key)
+        if (extension.TakesResource && extension.Argument(null) is { Nested: null } argument && argument.Value == key)
         {
             uses.Add(argument.ValueRange);
         }

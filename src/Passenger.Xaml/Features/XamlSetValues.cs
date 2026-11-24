@@ -34,8 +34,6 @@ public static class XamlSetValues
 {
     private static readonly HashSet<string> Bindings = new(StringComparer.Ordinal) { "Binding", "CompiledBinding", "ReflectionBinding", "TemplateBinding" };
 
-    private static readonly HashSet<string> Resources = new(StringComparer.Ordinal) { "StaticResource", "DynamicResource" };
-
     public static IReadOnlyList<XamlSetValue> Of(XmlTree tree, XmlElement element)
     {
         List<XamlSetValue> set = [];
@@ -51,7 +49,7 @@ public static class XamlSetValues
             {
                 null => (XamlValueKind.Local, null),
                 { Prefix.Length: 0 } when Bindings.Contains(extension.LocalName) => (XamlValueKind.Binding, (extension.Argument("Path") ?? extension.Argument(null))?.Value),
-                { Prefix.Length: 0 } when Resources.Contains(extension.LocalName) => (XamlValueKind.Resource, (extension.Argument("ResourceKey") ?? extension.Argument(null))?.Value),
+                { Prefix.Length: 0, TakesResource: true } => (XamlValueKind.Resource, (extension.Argument("ResourceKey") ?? extension.Argument(null))?.Value),
                 _ => (XamlValueKind.Extension, extension.Name),
             };
             set.Add(new XamlSetValue(attribute.Name, attribute.Value, kind, source));

@@ -1,11 +1,17 @@
 using Passenger.Text;
 using Passenger.Xaml.Metadata;
+using Passenger.Xaml.Syntax;
 
 namespace Passenger.Xaml.Features;
 
 /// <summary>A step of a binding's path where it is written: a member of the type it is read on, or the type a cast
 /// names.</summary>
-public sealed record PathStep(TextRange Range, string Name, ClrType On, ClrMember? Member = null, ClrType? Cast = null);
+public sealed record PathStep(TextRange Range, string Name, ClrType On, ClrMember? Member = null, ClrType? Cast = null)
+{
+    /// <summary>For a step that names an element of the file (an <c>{x:Bind}</c>'s, whose page has a field of each), the
+    /// attribute naming it.</summary>
+    public XmlAttribute? Named { get; init; }
+}
 
 /// <summary>How far a binding's path was read.</summary>
 public enum PathEnd

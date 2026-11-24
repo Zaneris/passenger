@@ -298,6 +298,9 @@ public static class MSBuildNames
     public const string UseMaui = "UseMaui";
     public const string RootNamespace = "RootNamespace";
 
+    /// <summary>"true" in a project whose XAML is WinUI's, the Windows App SDK's.</summary>
+    public const string UseWinUI = "UseWinUI";
+
     // The folders a MAUI project takes each Apple head's files from, which its package sets where the project does not.
     public const string PlatformsProjectFolder = "PlatformsProjectFolder";
     public const string IosProjectFolder = "iOSProjectFolder";

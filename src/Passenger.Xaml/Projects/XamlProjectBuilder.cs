@@ -54,6 +54,9 @@ public sealed class XamlProjectBuilder
 
     public XamlDialect Dialect { get; }
 
+    /// <summary>The Windows App SDK's package of WinUI, which an app references through the SDK's own.</summary>
+    public const string WinUIPackage = "Microsoft.WindowsAppSDK.WinUI";
+
     public string ProjectPath => inputs.ProjectPath;
 
     public string Folder => inputs.Folder;
@@ -71,9 +74,10 @@ public sealed class XamlProjectBuilder
     }
 
     /// <summary>The dialect a project's XAML is in, by the framework it references: MAUI's for a project that says
-    /// <c>UseMaui</c> or references MAUI's controls (whose Avalonia handlers bring Avalonia's package too), Avalonia's for
-    /// one that references its package, WPF's for one whose restore references WPF's shared framework (<c>UseWPF</c>, which
-    /// the project file says before a restore); null for any other (WinUI), whose XAML Passenger does not read.</summary>
+    /// <c>UseMaui</c> or references MAUI's controls (whose Avalonia handlers bring Avalonia's package too, and whose Windows
+    /// head the Windows App SDK's), Avalonia's for one that references its package, WinUI's for one that references the
+    /// Windows App SDK's WinUI (<c>UseWinUI</c>, which the project file says before a restore), WPF's for one whose restore
+    /// references WPF's shared framework (<c>UseWPF</c>, likewise); null for any other.</summary>
     public static XamlDialect? DialectOf(ProjectInputs inputs)
     {
         if (inputs.Uses("Microsoft.Maui.Controls") || string.Equals(inputs.PropertyValue(MSBuildNames.UseMaui), "true", StringComparison.OrdinalIgnoreCase))
@@ -83,6 +87,10 @@ public sealed class XamlProjectBuilder
         if (inputs.Uses("Avalonia"))
         {
             return AvaloniaDialect.Instance;
+        }
+        if (inputs.Uses(WinUIPackage) || string.Equals(inputs.PropertyValue(MSBuildNames.UseWinUI), "true", StringComparison.OrdinalIgnoreCase))
+        {
+            return WinUIDialect.Instance;
         }
         bool wpf = FrameworkNames.UsesWpf(inputs.FrameworkReferences)
             || string.Equals(inputs.PropertyValue("UseWPF"), "true", StringComparison.OrdinalIgnoreCase);
@@ -102,7 +110,7 @@ public sealed class XamlProjectBuilder
         {
             inputs = ProjectInputs.Read(inputs.ProjectPath, dotnet, evaluations?.Invoke(inputs.ProjectPath));
             assemblies = [.. inputs.References.AsParallel().AsOrdered().Select(AssemblyTypes.Get).OfType<AssemblyTypes>()];
-            themeKeys = ThemeKeys(assemblies);
+            themeKeys = ThemeKeys(assemblies, Dialect.ThemeFiles(inputs.References));
             referenced = [];
             CollectReferences(inputs, new HashSet<string>(PathNames.Comparer) { inputs.ProjectPath });
             sources.Clear();
@@ -257,7 +265,7 @@ public sealed class XamlProjectBuilder
 
     private XamlProject Make()
     {
-        IReadOnlyList<XmlnsDefinition> implied = Dialect.ImpliedDefinitions(inputs.AssemblyName);
+        IReadOnlyList<XmlnsDefinition> implied = [.. Dialect.ImpliedDefinitions(inputs.AssemblyName), .. Dialect.FrameworkDefinitions(assemblies.SelectMany(a => a.Types))];
         IReadOnlyList<GeneratedPart> made = [.. generated.Values];
         TypeSystem types = new(assemblies, [.. sources.Values], inputs.AssemblyName, inputs.ImplicitUsings, implied, made);
         if (XamlClasses(types) is { Count: > 0 } declared)
@@ -321,10 +329,15 @@ public sealed class XamlProjectBuilder
         }
     }
 
-    /// <summary>The keys a theme's compiled XAML holds: its string constants that read as resource keys.</summary>
-    private static IReadOnlySet<string> ThemeKeys(IReadOnlyList<AssemblyTypes> assemblies)
+    /// <summary>The keys a theme's compiled XAML holds: its string constants that read as resource keys; and those of the
+    /// framework's theme files (<see cref="XamlDialect.ThemeFiles"/>).</summary>
+    private static IReadOnlySet<string> ThemeKeys(IReadOnlyList<AssemblyTypes> assemblies, IEnumerable<string> files)
     {
         HashSet<string> keys = new(StringComparer.Ordinal);
+        foreach (string file in files)
+        {
+            keys.UnionWith(ThemeFileKeys.Of(file));
+        }
         foreach (AssemblyTypes assembly in assemblies)
         {
             if (!assembly.Name.Contains(".Themes.", StringComparison.Ordinal))

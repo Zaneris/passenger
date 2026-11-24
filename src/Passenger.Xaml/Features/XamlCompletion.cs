@@ -366,6 +366,10 @@ public static class XamlCompletion
         {
             yield return ("Uid", "The element's localization id");
         }
+        foreach ((string name, string about) in file.Dialect.OwnDirectives)
+        {
+            yield return (name, about);
+        }
     }
 
     /// <summary>Whether a property's value has choices worth listing once its quotes are in.</summary>
@@ -707,9 +711,13 @@ public static class XamlCompletion
         // An argument begun after a comma or a space is either a positional value or a key; both are offered.
         bool positional = argument is null ? extension.Arguments.All(a => a.ValueEnd < offset || a.Key is not null) && !extension.Arguments.Any(a => a.Key is not null)
             : argument.Key is null;
-        if (inKey)
+        if (inKey && !XBind.Is(file, element, extension))
         {
             return new XamlCompletionList(argument!.KeyStart, Keys(file, type));
+        }
+        if (XBind.Is(file, element, extension))
+        {
+            return Bind(file, element, extension, argument, inKey, positional, valueStart, offset);
         }
         if (argument is { Key: { } key } named)
         {
@@ -719,8 +727,8 @@ public static class XamlCompletion
         List<XamlItem> items = [];
         switch (local)
         {
-            case "StaticResource" or "DynamicResource" when first:
-                items.AddRange(ResourceKeys(file, dynamic: local == "DynamicResource"));
+            case "StaticResource" or "DynamicResource" or "ThemeResource" when first:
+                items.AddRange(ResourceKeys(file, dynamic: local != "StaticResource" || file.Dialect.StaticThemeKeys));
                 return new XamlCompletionList(valueStart, items, ".");
             case "Binding" or "CompiledBinding" or "ReflectionBinding" or "TemplateBinding" when positional:
                 ClrType? source = local == "TemplateBinding" ? file.StyleTargetAt(element) : file.DataTypeOf(attribute, extension);
@@ -744,6 +752,43 @@ public static class XamlCompletion
                     .. offset == valueStart ? Keys(file, type) : []]);
         }
         return new XamlCompletionList(valueStart, Keys(file, type));
+    }
+
+    /// <summary>WinUI's <c>{x:Bind}</c>: its path's steps from where it starts (<see cref="XBind.Offered"/>), its named
+    /// arguments, and the modes <c>Mode=</c> takes.</summary>
+    private static XamlCompletionList? Bind(XamlFile file, XmlElement element, MarkupExtension bind, MarkupArgument? argument, bool inKey, bool positional, int start, int offset)
+    {
+        IReadOnlyList<XamlItem> keys = [.. WinUIDialect.BindKeys.Select(k => new XamlItem(k + "=", XamlItemKind.Property, k + "=", "x:Bind", Reopen: true))];
+        if (inKey)
+        {
+            return new XamlCompletionList(argument!.KeyStart, keys);
+        }
+        if (argument is { Key: "Mode" })
+        {
+            return new XamlCompletionList(start, [.. XBind.Modes(file).Select(m => new XamlItem(m, XamlItemKind.EnumValue, m, "BindingMode"))]);
+        }
+        if (!(positional || argument is { Key: "Path" or "BindBack" }) || XBind.RootAt(file, element).Root is not { } root)
+        {
+            return new XamlCompletionList(start, keys);
+        }
+        if (XBind.Offered(file, element, root, file.Text[start..offset], start) is not { } offered)
+        {
+            return null;
+        }
+        List<XamlItem> items = [.. offered.Members.Select(m => m.Name).Distinct(StringComparer.Ordinal).Select(n =>
+        {
+            ClrMember member = offered.Members.First(m => m.Name == n);
+            return new XamlItem(n, XamlItemKind.Member, n, member.Kind == MemberKind.Method
+                ? $"{member.Type.Display} {n}({string.Join(", ", member.Parameters.Select(p => p.Display))}) in {member.DeclaringType.Name}"
+                : $"{member.Type.Display} in {member.DeclaringType.Name}");
+        })];
+        if (offered.Named)
+        {
+            items.AddRange(file.Names.Select(n => n.Name).Distinct(StringComparer.Ordinal).Where(n => items.All(i => i.Label != n))
+                .Select(n => new XamlItem(n, XamlItemKind.ElementName, n)));
+        }
+        // Where nothing of the path is typed yet, an argument's key may be as well.
+        return new XamlCompletionList(start + offered.Start, offset == start && argument is null ? [.. items, .. keys] : items);
     }
 
     /// <summary>WPF's <c>{d:DesignInstance Type=vm:MainViewModel, IsDesignTimeCreatable=True}</c>: its type, positional or
@@ -832,6 +877,17 @@ public static class XamlCompletion
             {
                 items.AddRange(file.Dialect.DesignerExtensions.Select(d => new XamlItem($"{prefix}:{d}", XamlItemKind.Extension, $"{prefix}:{d}", "Designer")));
                 continue;
+            }
+            if (uri == file.Dialect.PresentationUri)
+            {
+                foreach (string intrinsic in file.Dialect.IntrinsicExtensions)
+                {
+                    string label = prefix.Length > 0 ? $"{prefix}:{intrinsic}" : intrinsic;
+                    if (seen.Add(label))
+                    {
+                        items.Add(new XamlItem(label, XamlItemKind.Extension, label, file.Dialect.Name));
+                    }
+                }
             }
             foreach (ClrType type in TypesOf(file, uri, t => file.Dialect.IsMarkupExtension(file.Types, t)))
             {
