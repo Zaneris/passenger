@@ -81,6 +81,31 @@ public static class DatabaseKinds
         }
     }
 
+    /// <summary>The kind of database a .NET connection's type is of, by its provider; null for another.</summary>
+    public static DatabaseKind? OfConnection(string type) =>
+        type.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.Sqlite
+        : type.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.Postgres
+        : type.Contains("SqlClient", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.SqlServer
+        : type.Contains("MySql", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.MySql
+        : null;
+
+    /// <summary>The host and port a connection's data source names, as its driver gives it (PostgreSQL's tcp://host:port,
+    /// SQL Server's host,port); MySQL's, its host alone, with no port.</summary>
+    public static (string Host, int? Port) EndpointOfSource(DatabaseKind kind, string source) => kind switch
+    {
+        DatabaseKind.Postgres when Uri.TryCreate(source, UriKind.Absolute, out Uri? address) && address.Scheme == "tcp" =>
+            (address.Host, address.Port > 0 ? address.Port : Port(kind)),
+        DatabaseKind.Postgres => (source, Port(kind)),
+        DatabaseKind.SqlServer => Endpoint(kind, new SqlConnectionStringBuilder { DataSource = source }.ConnectionString),
+        _ => (source.Split(',')[0].Trim(), null),
+    };
+
+    /// <summary>Whether two hosts name one server: the same name, or both this machine's loopback.</summary>
+    public static bool SameHost(string one, string other) =>
+        one.Equals(other, StringComparison.OrdinalIgnoreCase) || Loopback(one) && Loopback(other);
+
+    private static bool Loopback(string host) => host.Trim('[', ']') is "localhost" or "127.0.0.1" or "::1" or "." or "(local)";
+
     public static int Port(DatabaseKind kind) => kind switch
     {
         DatabaseKind.Postgres => 5432,

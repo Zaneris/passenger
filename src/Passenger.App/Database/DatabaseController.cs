@@ -763,6 +763,25 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         return added;
     }
 
+    /// <summary>The connection reaching the database a running program's command ran on, as its connection told it: one at
+    /// its host and port (SQLite's at its file), else the one found for the program's project <paramref name="folder"/> that
+    /// opens a database of that name (a container's program names its server as only the containers reach it); null with none.</summary>
+    public DatabaseSource? Reaching(DatabaseKind kind, string source, string database, string? folder)
+    {
+        UiThread.Check();
+        DatabaseSource[] kin = [.. Sources.Where(s => s.Kind == kind)];
+        if (kind == DatabaseKind.Sqlite)
+        {
+            return kin.FirstOrDefault(s => PathNames.Same(new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(s.ConnectionString).DataSource, source));
+        }
+        (string host, int? port) = DatabaseKinds.EndpointOfSource(kind, source);
+        return kin.FirstOrDefault(s => DatabaseKinds.Endpoint(kind, s.ConnectionString) is var at && DatabaseKinds.SameHost(at.Host, host) && (port is null || at.Port == port)
+                && (s.Database.Length == 0 || s.Database.Equals(database, StringComparison.OrdinalIgnoreCase)))
+            ?? kin.FirstOrDefault(s => DatabaseKinds.Endpoint(kind, s.ConnectionString) is var at && DatabaseKinds.SameHost(at.Host, host) && (port is null || at.Port == port))
+            ?? (folder is null ? null : kin.Where(s => s.Found is not null && PathNames.Same(s.Folder, folder) && s.Database.Equals(database, StringComparison.OrdinalIgnoreCase))
+                .ToArray() is [var only] ? only : null);
+    }
+
     /// <summary>Ends once the operation under way has, at once with none.</summary>
     public Task Idle => under is { IsCompleted: false } pending ? pending : Task.CompletedTask;
 

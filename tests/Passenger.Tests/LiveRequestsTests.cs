@@ -248,6 +248,16 @@ public sealed class LiveRequestsTests
             string opened = window.EditorArea.CodeEditor.Document.Snapshot.ToString();
             Assert.Equal($"-- {insert.Parameters}\n{insert.Text}", opened);
             Assert.DoesNotContain("ada-first", opened, StringComparison.Ordinal);
+
+            // A command opens in a console of the database its connection told it ran on, the shop's file, listed in Database.
+            Assert.Equal("shop.db", Path.GetFileName(read.Database?.Source));
+            window.Requests.Choose(window.Requests.Rows.OfType<RequestsView.CommandRow>().First(r => r.Request == one));
+            Assert.True(window.Perform(AppActions.RequestsCommandConsole), $"Open Command in SQL Console did not run: {window.Status}");
+            Ui.WaitFor(() => window.EditorArea.Active is { } console && window.Database.ConsoleOf(console.Path) is { Connection: { } id }
+                && window.Database.Find(id) is { Kind: Passenger.App.Database.DatabaseKind.Sqlite, Database: "shop.db" }
+                && console.Text.Snapshot.ToString().Contains(read.Text.TrimEnd(), StringComparison.Ordinal), () => $"the command in a console of shop.db ({window.Status}; {window.Database.Said})");
+            Assert.Contains(window.Database.Sources, s => s.Found is { } found && found.StartsWith("used by ", StringComparison.Ordinal) && found.EndsWith("'s requests", StringComparison.Ordinal));
+            Assert.Contains($"-- {read.Parameters}\n{read.Text.TrimEnd()}", window.EditorArea.Active!.Text.Snapshot.ToString(), StringComparison.Ordinal);
         }
         finally
         {

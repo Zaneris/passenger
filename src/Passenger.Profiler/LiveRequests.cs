@@ -28,7 +28,15 @@ public sealed record CommandRan(string Trace, DateTime At, string Id, string Tex
 {
     /// <summary>The ids of the activity it ran under and of that activity's parents, the nearest first: its request's among them.</summary>
     public IReadOnlyList<string> Under { get; init; } = [];
+
+    /// <summary>The database it ran on, as its connection told it (no secret): the connection's type, its data source and
+    /// its database; null where the app told none.</summary>
+    public CommandDatabase? Database { get; init; }
 }
+
+/// <summary>The database a command ran on, as its connection tells it: the connection's type (its provider's), its data
+/// source (a server's address, a SQLite file's path) and the database it opened.</summary>
+public sealed record CommandDatabase(string Connection, string Source, string Name);
 
 /// <summary>A command's reader closed after so many reads (EF Core's ReadCount: each Read asked, the last that found no row too).</summary>
 public sealed record CommandRead(string Trace, DateTime At, string Id, int Reads) : WebEvent(Trace, At)
@@ -63,6 +71,10 @@ public sealed class LiveRequests : IAsyncDisposable
 
     private static readonly string[] UnderNames = ["Under0", "Under1", "Under2", "Under3"];
 
+    /// <summary>The database a command ran on, as its connection tells it: its type's name (what a connection's text is), its
+    /// data source and its database, never its connection string.</summary>
+    private const string Connection = "Connection=Command.Connection;Source=Command.Connection.DataSource;Database=Command.Connection.Database";
+
     /// <summary>The events asked for and the values each takes from its payload (<c>*Activity</c> is the activity it ran under).</summary>
     internal static readonly string Specs = string.Join("\n",
     [
@@ -72,8 +84,8 @@ public sealed class LiveRequests : IAsyncDisposable
         "Microsoft.AspNetCore/Microsoft.AspNetCore.Hosting.HttpRequestIn.Stop:-Status=Response.StatusCode;Request=TraceIdentifier;Trace=*Activity.RootId",
         "Microsoft.AspNetCore/Microsoft.AspNetCore.Hosting.UnhandledException:-Error=exception;Request=httpContext.TraceIdentifier;Trace=*Activity.RootId",
         "Microsoft.AspNetCore/Microsoft.AspNetCore.Diagnostics.UnhandledException:-Error=exception;Request=httpContext.TraceIdentifier;Trace=*Activity.RootId",
-        $"Microsoft.EntityFrameworkCore/Microsoft.EntityFrameworkCore.Database.Command.CommandExecuted:-Id=CommandId;Text=Command.CommandText;Ms=Duration.TotalMilliseconds;Result=Result;Trace=*Activity.RootId;{Under}",
-        $"Microsoft.EntityFrameworkCore/Microsoft.EntityFrameworkCore.Database.Command.CommandError:-Id=CommandId;Text=Command.CommandText;Ms=Duration.TotalMilliseconds;Error=Exception.Message;Trace=*Activity.RootId;{Under}",
+        $"Microsoft.EntityFrameworkCore/Microsoft.EntityFrameworkCore.Database.Command.CommandExecuted:-Id=CommandId;Text=Command.CommandText;Ms=Duration.TotalMilliseconds;Result=Result;Trace=*Activity.RootId;{Under};{Connection}",
+        $"Microsoft.EntityFrameworkCore/Microsoft.EntityFrameworkCore.Database.Command.CommandError:-Id=CommandId;Text=Command.CommandText;Ms=Duration.TotalMilliseconds;Error=Exception.Message;Trace=*Activity.RootId;{Under};{Connection}",
         $"Microsoft.EntityFrameworkCore/Microsoft.EntityFrameworkCore.Database.Command.DataReaderDisposing:-Id=CommandId;Reads=ReadCount;Trace=*Activity.RootId;{Under}",
     ]);
 
@@ -163,7 +175,12 @@ public sealed class LiveRequests : IAsyncDisposable
             "Microsoft.EntityFrameworkCore.Database.Command.CommandExecuted" or "Microsoft.EntityFrameworkCore.Database.Command.CommandError" =>
                 new CommandRan(trace, at, values.GetValueOrDefault("Id") ?? string.Empty, values.GetValueOrDefault("Text") ?? string.Empty,
                     double.TryParse(values.GetValueOrDefault("Ms"), NumberStyles.Float, CultureInfo.InvariantCulture, out double ms) ? ms : 0,
-                    Number(values.GetValueOrDefault("Result")), values.GetValueOrDefault("Error")) { Under = under },
+                    Number(values.GetValueOrDefault("Result")), values.GetValueOrDefault("Error"))
+                {
+                    Under = under,
+                    Database = values.GetValueOrDefault("Connection") is { Length: > 0 } connection
+                        ? new CommandDatabase(connection, values.GetValueOrDefault("Source") ?? string.Empty, values.GetValueOrDefault("Database") ?? string.Empty) : null,
+                },
             "Microsoft.EntityFrameworkCore.Database.Command.DataReaderDisposing" =>
                 new CommandRead(trace, at, values.GetValueOrDefault("Id") ?? string.Empty, Number(values.GetValueOrDefault("Reads")) ?? 0) { Under = under },
             _ => null,

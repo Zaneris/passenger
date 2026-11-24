@@ -790,6 +790,16 @@ public static class Refusals
     /// <summary>A connection string asked to open in the Database window that names no database of a kind it opens.</summary>
     public static string NoDatabaseOf(string connection) => $"{connection} names no SQLite, PostgreSQL, SQL Server or MySQL database the Database window opens";
 
+    /// <summary>A Requests action on a command with none chosen.</summary>
+    public const string NoRequestCommand = "Choose a database command in the Requests window first";
+
+    /// <summary>A command whose app told no database Passenger opens (its connection of another provider, or none told).</summary>
+    public const string NoCommandDatabase = "Its app told no SQLite, PostgreSQL, SQL Server or MySQL database it ran on";
+
+    /// <summary>A command's database that no connection of the Database window reaches.</summary>
+    public static string NoConnectionReaching(string database, string at) =>
+        $"No connection in the Database window reaches {database} at {at}: add one with New Database Connection…";
+
     /// <summary>A context's database asked for where nothing tells the connection it uses.</summary>
     public static string NoEfConnection(string context, string environment) =>
         $"Nothing tells {context}'s connection string in the {environment} environment: name it in the startup project's settings or its run's ConnectionStrings__ variables";

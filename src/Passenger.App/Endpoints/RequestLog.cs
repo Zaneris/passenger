@@ -34,6 +34,9 @@ public sealed class LiveCommand(string id, string text, double milliseconds, int
     /// names or their columns' (<see cref="CommandParameters"/>), '?' where the app logs none; null until heard.</summary>
     public string? Parameters { get; internal set; }
 
+    /// <summary>The database it ran on, as its connection told it; null where the app told none.</summary>
+    public CommandDatabase? Database { get; init; }
+
     public bool Repeated => Runs >= RepeatedAt;
     public bool Slow => Milliseconds >= SlowMilliseconds;
 }
@@ -311,7 +314,7 @@ public sealed class RequestLog
                 changed.Add(broke);
                 return;
             case CommandRan ran when Issuer(from, ran.Under, ran.Trace) is { } issuer:
-                LiveCommand command = new(ran.Id, ran.Text, ran.Milliseconds, ran.Rows, ran.Error);
+                LiveCommand command = new(ran.Id, ran.Text, ran.Milliseconds, ran.Rows, ran.Error) { Database = ran.Database };
                 if (!issuer.ByText.TryGetValue(ran.Text, out List<LiveCommand>? same))
                 {
                     issuer.ByText[ran.Text] = same = [];

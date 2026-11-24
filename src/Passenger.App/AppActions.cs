@@ -175,6 +175,7 @@ public static class AppActions
 
     // The Requests window over the running web app's live requests and their database commands: no key of Rider's.
     public const string ShowRequests = "app.showRequests";
+    public const string RequestsCommandConsole = "app.requests.commandConsole";
 
     // The Migrations window over the folder's EF Core contexts, its commands, and the fix of what keeps dotnet ef from
     // working that it shows first: no key of Rider's.

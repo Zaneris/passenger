@@ -47,6 +47,11 @@ public sealed class RequestsView : DockPanel
         };
         ReusedRows.Use(list, View);
         ListKeys.Act(list, new ListActs { Open = Open, Source = Open });
+        ListMenus.Attach(list, () => Chosen is not CommandRow ? [] :
+        [
+            ListMenus.Open("Open Command", Open),
+            ListMenus.Item("Open in SQL Console", () => ActionRequested?.Invoke(this, AppActions.RequestsCommandConsole), icon: IconKeys.SqlConsole),
+        ]);
         placeholder = new EmptyState { Text = "No requests yet: run or debug a web app and send it one" };
         following = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Tight, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         following.Classes.Add(StyleClasses.Muted);
@@ -68,6 +73,15 @@ public sealed class RequestsView : DockPanel
 
     /// <summary>A command to open its text in an editor tab.</summary>
     public event EventHandler<LiveCommand>? CommandOpened;
+
+    /// <summary>One of the window's actions asked by its menu.</summary>
+    public event EventHandler<string>? ActionRequested;
+
+    /// <summary>The row chosen: a request or a <see cref="CommandRow"/>.</summary>
+    public object? Chosen => (list.SelectedItem as Row)?.Data;
+
+    /// <summary>Chooses a row, as a click would.</summary>
+    public void Choose(object row) => list.SelectedItem = rows.FirstOrDefault(r => Equals(r.Data, row));
 
     /// <summary>Whether the window shows now.</summary>
     public bool IsShown { get; private set; }
