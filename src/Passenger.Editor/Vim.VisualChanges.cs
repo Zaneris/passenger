@@ -347,7 +347,8 @@ public sealed partial class Vim
                 int column = CaretColumn(text, cursor, tab);
                 int aim = aimed >= 0 ? aimed : column;
                 LineSpan cursorLine = VimMotions.LineOf(text, cursor);
-                bool onIt = cursorLine.Line == anchorLine.Line ? column == 0
+                // On one line the cursor's own column counts, past a one-character line's end too.
+                bool onIt = cursorLine.Line == anchorLine.Line ? CaretColumn(text, r.Cursor, tab) == 0
                     : kept.Left <= TextNavigation.VisualColumn(text, cursorLine.End, tab) && (aim == kept.Left || (aim > kept.Left && column < kept.Left));
                 // Back over lines A passes the first character where the kept columns start past it, or after $ differ.
                 bool afterFirst = above && (aim == int.MaxValue ? kept.Left != kept.Right : kept.Left != 0) && anchorLine.Length > 0;

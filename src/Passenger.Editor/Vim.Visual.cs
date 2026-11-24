@@ -569,6 +569,13 @@ public sealed partial class Vim
                 case "l" or " ":
                     moved = VimMotions.Right(text, cursor, n, crossing: command.Name == " ", operating: true, breakEnds)?.Offset;
                     break;
+                case "|":
+                    // A column past the line's end stands at its end, after its last character; j and k aim at it all the same.
+                    aim = n - 1;
+                    int columnLine = text.GetLineFromOffset(cursor);
+                    moved = TextNavigation.VisualColumn(text, text.GetLine(columnLine).End, tab) <= aim ? LineEndOf(text, columnLine)
+                        : VimMotions.OffsetAtColumn(text, columnLine, aim, tab);
+                    break;
                 case "e" or "E":
                     moved = WordEndOrTextEnd(text, cursor, n, command.Name == "E");
                     break;
