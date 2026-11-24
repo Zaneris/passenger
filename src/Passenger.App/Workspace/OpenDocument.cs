@@ -27,10 +27,13 @@ public sealed class OpenDocument : Observable
     private IReadOnlyList<LineMark> lineMarks = [];
     private IReadOnlyList<LineAnnotation> lineAnnotations = [];
     private IReadOnlyList<LineAnnotation> liveValues = [];
+    private IReadOnlyList<LineAnnotation> pinnedValues = [];
 
-    /// <summary>The line of each of <see cref="lineAnnotations"/> and of <see cref="liveValues"/>, carried by the text.</summary>
+    /// <summary>The line of each of <see cref="lineAnnotations"/>, <see cref="liveValues"/> and <see cref="pinnedValues"/>,
+    /// carried by the text.</summary>
     private AnchoredLine[] annotationLines = [];
     private AnchoredLine[] liveLines = [];
+    private AnchoredLine[] pinnedLines = [];
     private IReadOnlyList<SceneMark> sceneMarks = [];
 
     /// <summary>The line of each of <see cref="sceneMarks"/>, carried by the text.</summary>
@@ -291,6 +294,10 @@ public sealed class OpenDocument : Observable
                 Decorations.SetLineAnnotations(ShownAnnotations);
             }
             if (liveValues.Count > 0 && Set(ref liveValues, Carried(liveValues, liveLines), nameof(LiveValues)))
+            {
+                Decorations.SetLineAnnotations(ShownAnnotations);
+            }
+            if (pinnedValues.Count > 0 && Set(ref pinnedValues, Carried(pinnedValues, pinnedLines), nameof(PinnedValues)))
             {
                 Decorations.SetLineAnnotations(ShownAnnotations);
             }
@@ -759,6 +766,21 @@ public sealed class OpenDocument : Observable
         }
     }
 
+    /// <summary>The values pinned to its lines (<see cref="Debugging.PinnedValues"/>), each its expression and, at a stop, its
+    /// value: shown after <see cref="LineAnnotations"/>, whether or not anything is debugged.</summary>
+    public IReadOnlyList<LineAnnotation> PinnedValues
+    {
+        get => pinnedValues;
+        set
+        {
+            pinnedLines = Anchored(value, pinnedLines);
+            if (Set(ref pinnedValues, value))
+            {
+                Decorations.SetLineAnnotations(ShownAnnotations);
+            }
+        }
+    }
+
     /// <summary>The lines of annotations, anchored in the text, those of the ones they replace let go.</summary>
     private AnchoredLine[] Anchored(IReadOnlyList<LineAnnotation> annotations, AnchoredLine[] replaced)
     {
@@ -790,10 +812,10 @@ public sealed class OpenDocument : Observable
         return moved ?? annotations;
     }
 
-    /// <summary>What its editors show after its lines: the debugger's annotations, then the app's live values, a run's errors
-    /// and its failed steps' words.</summary>
-    public IReadOnlyList<LineAnnotation> ShownAnnotations => liveValues.Count == 0 && errorPins.Count == 0 && stepMarks.Count == 0 ? lineAnnotations
-        : [.. lineAnnotations, .. liveValues, .. errorPins.Select(p => new LineAnnotation(p.Line, p.Last, p.Warnings ? LineAnnotationLook.Muted : LineAnnotationLook.Error)),
+    /// <summary>What its editors show after its lines: the debugger's annotations and the values pinned, then the app's live
+    /// values, a run's errors and its failed steps' words.</summary>
+    public IReadOnlyList<LineAnnotation> ShownAnnotations => pinnedValues.Count == 0 && liveValues.Count == 0 && errorPins.Count == 0 && stepMarks.Count == 0 ? lineAnnotations
+        : [.. lineAnnotations, .. pinnedValues, .. liveValues, .. errorPins.Select(p => new LineAnnotation(p.Line, p.Last, p.Warnings ? LineAnnotationLook.Muted : LineAnnotationLook.Error)),
             .. stepMarks.Where(m => m.Failure is not null).Select(m => new LineAnnotation(m.Line, m.Failure!, LineAnnotationLook.Error))];
 
     private IReadOnlyList<Editors.ErrorPin> errorPins = [];

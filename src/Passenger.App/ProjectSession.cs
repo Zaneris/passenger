@@ -208,6 +208,8 @@ public sealed class ProjectSession : IAsyncDisposable
         Debug.Breakpoints.ExceptionsChanged += (_, _) => State?.Breakpoints.Set(Debug.Breakpoints.Capture());
         Debug.Breakpoints.BindingErrorsChanged += (_, _) => State?.Breakpoints.Set(Debug.Breakpoints.Capture());
         Debug.Breakpoints.MethodsChanged += (_, _) => State?.Breakpoints.Set(Debug.Breakpoints.Capture());
+        Debug.Breakpoints.Pins.Changed += (_, _) => State?.Breakpoints.Set(Debug.Breakpoints.Capture());
+        Debug.Breakpoints.Pins.Moved += (_, _) => State?.Breakpoints.Set(Debug.Breakpoints.Capture());
         Debug.TabsChanged += (_, _) => OnDebugTabsChanged();
         Bookmarks.Changed += (_, _) => State?.Bookmarks.Set(Bookmarks.Capture());
         // What a Git operation changes in the files is one change set of the folder's Local History, under its name.

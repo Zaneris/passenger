@@ -462,6 +462,67 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             OpenWindows.CloseAll();
             return Task.CompletedTask;
         });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a value pinned to a line reads again at each stop goes with its line and the folder keeps it", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_value_pinned_to_a_line_reads_again_at_each_stop_goes_with_its_line_and_the_folder_keeps_it();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>Pin to Line keeps the expression at the caret after its line, alone while nothing is debugged; at each stop
+    /// it is read again, its card saying it whole, and once the program has gone it shows the expression alone, never the
+    /// value read before; it goes with its line as one is added above, the folder keeps it, and the action, then titled
+    /// Unpin from Line, takes it away.</summary>
+    private void A_value_pinned_to_a_line_reads_again_at_each_stop_goes_with_its_line_and_the_folder_keeps_it()
+    {
+        string settings = TestFolders.Create("settings-");
+        try
+        {
+            MainWindow first = Keeping(settings);
+            CodeEditor editor = first.EditorArea.CodeEditor;
+            editor.GoTo(new TextPosition(3, 6));
+            Assert.Equal(DebugController.PinToLineTitle, first.Actions[AppActions.PinToLine]!.TitleWhere(first.Actions.Context()));
+            Assert.True(first.Perform(AppActions.PinToLine), $"Pin to Line did not run: {Ui.Said(first)}");
+            Assert.Equal([(3, "total")], Pinned(first));
+            Ui.Run(first, AppActions.ToggleBreakpoint);
+
+            StartDebugging(first);
+            WaitDebugging(first, () => Pinned(first) is [(3, "total = 0")], "the pin read at the first stop");
+            Rect chip = editor.AnnotationBox(3, "total = 0") ?? throw new Xunit.Sdk.XunitException("The pin's chip was not drawn after line 4");
+            Ui.Hover(editor, chip.Center);
+            Ui.WaitFor(() => first.Assist.HoverText?.Contains("Pinned to this line", StringComparison.Ordinal) == true, () => $"the pin's card, not \"{first.Assist.HoverText}\"");
+            Assert.StartsWith("total = 0", first.Assist.HoverText, StringComparison.Ordinal);
+            Ui.Run(first, AppActions.Resume);
+            WaitDebugging(first, () => Pinned(first) is [(3, "total = 1")], "the pin read again at the second stop");
+            Ui.Run(first, AppActions.Stop);
+            Ui.WaitFor(() => !first.Debugger.IsDebugging, "the session to end");
+            Ui.WaitFor(() => Pinned(first) is [(3, "total")], () => $"the pin without the value read before, not {string.Join(" | ", Pinned(first))}");
+
+            editor.GoTo(new TextPosition(0, 0));
+            editor.Focus();
+            Ui.Press(first, "Enter");
+            Assert.Equal([(4, "total")], Pinned(first));
+            Assert.Equal(4, Assert.Single(first.Debugger.Breakpoints.Pins.All).Line);
+            Ui.Run(first, EditorActions.Undo);
+            Assert.Equal([(3, "total")], Pinned(first));
+            first.Close();
+
+            MainWindow second = Keeping(settings);
+            Ui.WaitFor(() => Pinned(second) is [(3, "total")], () => $"the pin the folder kept, not {string.Join(" | ", Pinned(second))}");
+            second.EditorArea.CodeEditor.GoTo(new TextPosition(3, 6));
+            Assert.Equal(DebugController.UnpinFromLineTitle, second.Actions[AppActions.PinToLine]!.TitleWhere(second.Actions.Context()));
+            Assert.True(second.Perform(AppActions.PinToLine), $"Unpin from Line did not run: {Ui.Said(second)}");
+            Assert.Empty(second.Debugger.Breakpoints.Pins.All);
+            Assert.Empty(Pinned(second));
+            second.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(settings);
+        }
+
+        static List<(int Line, string Text)> Pinned(MainWindow window) => [.. window.EditorArea.Active!.PinnedValues.Select(p => (p.Line, p.Text))];
     }
 
     /// <summary>A watch waiting on a lock another thread holds runs again with every thread let go; an evaluation that

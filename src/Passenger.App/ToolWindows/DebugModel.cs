@@ -181,6 +181,9 @@ public sealed class DebugModel
     /// <summary>A row to run again with every thread let go (<see cref="VariablesList.RunWithThreadsRequested"/>).</summary>
     public event EventHandler<VariableNode>? RunWithThreadsRequested;
 
+    /// <summary>A row's expression to pin to the line the chosen frame stands at (<see cref="VariablesList.PinRequested"/>).</summary>
+    public event EventHandler<VariableNode>? PinRequested;
+
     /// <summary>Read Again, over Variables once every thread ran in an evaluation: the frame's values to be read anew.</summary>
     public event EventHandler? ReadAgainRequested;
 
@@ -455,6 +458,8 @@ public sealed class DebugModel
     internal void SetValue(VariableNode node, string value) => SetValueRequested?.Invoke(this, (node, value));
 
     internal void RunWithThreads(VariableNode node) => RunWithThreadsRequested?.Invoke(this, node);
+
+    internal void Pin(VariableNode node) => PinRequested?.Invoke(this, node);
 
     internal void ToggleDataBreakpoint(VariableNode node) => DataBreakpointRequested?.Invoke(this, node);
 

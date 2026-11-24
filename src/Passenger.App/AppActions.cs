@@ -516,6 +516,9 @@ public static class AppActions
     // Rider's QuickEvaluateExpression: $default's Ctrl+Alt+F8 (Cmd+Alt+F8 on the Mac) and Alt-click, which its Visual Studio
     // keymaps take from it; VS Code's give the keys alone, their Alt-click adding a caret.
     public const string QuickEvaluate = "app.debug.quickEvaluate";
+
+    // The expression at the caret pinned after its line, its value read again at each stop, which Rider's keymaps give no keys.
+    public const string PinToLine = "app.debug.pinToLine";
     public const string ShowContextMenu = "app.contextMenu";
 
     // Unit tests, run where the caret or the Unit Tests window's selection is.

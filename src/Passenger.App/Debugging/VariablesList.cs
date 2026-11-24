@@ -122,6 +122,9 @@ public sealed class VariablesList : TreeList
     /// link, or its menu's item, chosen.</summary>
     public event EventHandler<VariableNode>? RunWithThreadsRequested;
 
+    /// <summary>A row's expression to pin to the line its value was read at (Pin to Line), offered only where it is heard.</summary>
+    public event EventHandler<VariableNode>? PinRequested;
+
     /// <summary>What a row that needs another thread to run offers, as its link and its menu's item.</summary>
     public const string RunWithThreads = "Run with every thread";
 
@@ -166,7 +169,7 @@ public sealed class VariablesList : TreeList
     private bool Editing => Tree.Rows.Any(r => r.IsEditing);
 
     /// <summary>The Variables and Watches menu: Set Value, Copy Value and Copy Name, Add to Watches, Inspect (the value
-    /// evaluated on its own, to open), Remove Watch for a watch, and last Set Data Breakpoint (Remove Data Breakpoint on a
+    /// evaluated on its own, to open), Pin to Line where it is heard, Remove Watch for a watch, and last Set Data Breakpoint (Remove Data Breakpoint on a
     /// member watched), greyed with why where it cannot be set. A query's SQL opens first.</summary>
     private IReadOnlyList<Control> Menu()
     {
@@ -184,6 +187,10 @@ public sealed class VariablesList : TreeList
             ListMenus.Item("Add to Watches", () => EvaluateRequested?.Invoke(this, (node.Expression!, true)), node.Role == VariableRole.Watch ? Refusals.WatchedAlready : node.NoExpression),
             ListMenus.Item("Inspect", () => EvaluateRequested?.Invoke(this, (node.Expression!, false)), node.NoExpression),
         ]);
+        if (PinRequested is not null)
+        {
+            items.Add(ListMenus.Item(DebugController.PinToLineTitle, () => PinRequested?.Invoke(this, node), node.NoExpression));
+        }
         if (node.NeedsThreads)
         {
             items.Add(new Separator());

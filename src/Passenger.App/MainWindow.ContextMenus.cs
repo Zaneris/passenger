@@ -73,7 +73,12 @@ public partial class MainWindow
         Add(separator);
         if (session.Debug.Session is { State: DebugState.Paused })
         {
-            Add(Item(A.RunToCursor), Item(A.SetNextStatement), Item(A.Evaluate), Item(A.AddToWatches), separator);
+            Add(Item(A.RunToCursor), Item(A.SetNextStatement), Item(A.Evaluate), Item(A.AddToWatches), Item(A.PinToLine), separator);
+        }
+        else if (session.Debug.Breakpoints.Pins.In(active.Path).Any(p => p.Line == editor.CaretPosition.Line))
+        {
+            // A pin is taken away from its line whether or not anything is debugged.
+            Add(Item(A.PinToLine), separator);
         }
         Add(Item(A.ToggleBreakpoint));
         Add(separator, Sub("Local History", Item(A.ShowLocalHistory), separator, Item(A.ShowProjectHistory), Item(A.RecentChanges), Item(A.PutLabel)));

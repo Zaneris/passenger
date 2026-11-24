@@ -256,7 +256,7 @@ public sealed record WaitEnded(string Gone, IReadOnlyList<CodeBreakpoint> Freed)
         + $"{Plural.Agreeing(Freed.Count, "it", "they")} waited for, was removed";
 }
 
-/// <summary>A folder's breakpoints as the store keeps them.</summary>
+/// <summary>A folder's breakpoints, and the values pinned to its lines, as the store keeps them.</summary>
 public sealed record BreakpointsState : IStateDocument<BreakpointsState>
 {
     public List<KeptBreakpoint> Breakpoints { get; init; } = [];
@@ -274,6 +274,9 @@ public sealed record BreakpointsState : IStateDocument<BreakpointsState>
     /// <summary>The method breakpoints, in the order they were set.</summary>
     public List<KeptMethodBreakpoint>? Methods { get; init; }
 
+    /// <summary>The expressions pinned to lines, in the order they were pinned.</summary>
+    public List<KeptPin>? Pins { get; init; }
+
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
 
     /// <summary>One without a file is left out, and a line before the first is the first; an exception type kept twice is
@@ -283,6 +286,7 @@ public sealed record BreakpointsState : IStateDocument<BreakpointsState>
         Breakpoints = [.. (Breakpoints ?? []).Where(b => b is { Path.Length: > 0 }).Select(b => b with { Line = Math.Max(0, b.Line), Column = b.Column is >= 0 ? b.Column : null })],
         Exceptions = Exceptions is null ? null : [.. Exceptions.Where(e => e is not null && e.Type is null or { Length: > 0 }).DistinctBy(e => e.Type ?? string.Empty)],
         Methods = Methods is null ? null : [.. Methods.Where(m => m is { Name.Length: > 0 }).Select(m => m with { Line = Math.Max(0, m.Line) }).DistinctBy(m => m.Name.Trim())],
+        Pins = Pins is null ? null : [.. Pins.Where(p => p is { Path.Length: > 0 } && !string.IsNullOrWhiteSpace(p.Expression)).Select(p => p with { Line = Math.Max(0, p.Line) })],
     };
 }
 
@@ -383,6 +387,9 @@ public sealed class BreakpointStore
 
     /// <summary>A file's breakpoints changed: added, removed, moved, muted, or the debugger said something.</summary>
     public event EventHandler<string>? Changed;
+
+    /// <summary>The values pinned to the folder's lines, which go with its files as its breakpoints do and are kept with them.</summary>
+    public PinnedValues Pins { get; } = new();
 
     /// <summary>The property breakpoints changed: added, removed, muted, what one does, or what the debugger said.</summary>
     public event EventHandler? PropertiesChanged;
@@ -490,6 +497,7 @@ public sealed class BreakpointStore
             HitCondition = ScriptErrors.HitCondition,
             LogMessage = ScriptErrors.LogMessage,
         },
+        Pins = Pins.Capture(),
     };
 
     /// <summary>The breakpoint one waits for as it is kept.</summary>
@@ -513,6 +521,7 @@ public sealed class BreakpointStore
     /// the folder's own.</summary>
     public void Restore(BreakpointsState kept)
     {
+        Pins.Restore(kept.Pins ?? []);
         List<(CodeBreakpoint Breakpoint, KeptWaitFor WaitsFor)> waiting = [];
         foreach (IGrouping<string, KeptBreakpoint> file in kept.Breakpoints.GroupBy(b => b.Path))
         {
@@ -669,6 +678,7 @@ public sealed class BreakpointStore
     public void Clear()
     {
         Muted = false;
+        Pins.Clear();
         foreach (string path in Files.ToList())
         {
             Unanchor(byPath[path]);
@@ -1293,12 +1303,14 @@ public sealed class BreakpointStore
             open.Remove(path, out TextDocument? text);
             open[PathNames.Moved(path, from, to)] = text!;
         }
+        Pins.Move(from, to);
     }
 
     /// <summary>A file opened: its breakpoints move with its text until it closes.</summary>
     public void Attach(string path, TextDocument text)
     {
         open[path] = text;
+        Pins.Attach(path, text);
         foreach (LineBreakpoint breakpoint in In(path))
         {
             breakpoint.At.Attach(text);
@@ -1313,6 +1325,7 @@ public sealed class BreakpointStore
     public void Detach(string path)
     {
         open.Remove(path);
+        Pins.Detach(path);
         Unanchor(In(path));
         foreach (MethodBreakpoint method in MethodsIn(path))
         {
@@ -1333,6 +1346,7 @@ public sealed class BreakpointStore
     /// <summary>Reads the lines of a file's breakpoints after an edit to it, their anchors having carried them.</summary>
     public void Follow(string path)
     {
+        Pins.Follow(path);
         bool methodsMoved = false;
         foreach (MethodBreakpoint method in MethodsIn(path))
         {

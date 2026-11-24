@@ -127,6 +127,7 @@ public sealed class DebugController : IDisposable
             return Task.CompletedTask;
         });
         Breakpoints.Changed += (_, path) => UpdateMarks(path);
+        Breakpoints.Pins.Changed += (_, _) => IdeErrors.Observe(ShowPinsAsync());
         Breakpoints.ExceptionsChanged += (_, _) => view.ShowMuted(Breakpoints.Muted);
         EventHandler<string> asked = (_, action) => ActionRequested?.Invoke(this, action);
         EventHandler<DapStackFrame> framed = (_, chosen) => IdeErrors.Observe(ChooseFrame(chosen, navigate: true));
@@ -135,6 +136,7 @@ public sealed class DebugController : IDisposable
         EventHandler<(VariableNode Node, string Value)> set = (_, request) => IdeErrors.Observe(SetValue(request.Node, request.Value));
         EventHandler<VariableNode> watchData = (_, node) => IdeErrors.Observe(ToggleDataBreakpointAsync(node));
         EventHandler<VariableNode> ranAgain = (_, node) => IdeErrors.Observe(RunWithThreadsAsync(node, view.Tree));
+        EventHandler<VariableNode> pinned = (_, node) => PinRow(node);
         EventHandler readAgain = (_, _) => IdeErrors.Observe(ShowVariables());
         EventHandler<VariableNode> textOpened = (_, node) => TextOpened?.Invoke(this, node.Value);
         EventHandler<DebugTab> tabChosen = (_, tab) => IdeErrors.Observe(ChooseAsync(tab));
@@ -153,6 +155,7 @@ public sealed class DebugController : IDisposable
         view.PlaceOf = PlaceOf;
         view.DataBreakpointRequested += watchData;
         view.RunWithThreadsRequested += ranAgain;
+        view.PinRequested += pinned;
         view.ReadAgainRequested += readAgain;
         view.TextOpened += textOpened;
         Breakpoints.DataChanged += (_, _) => TellRefusedData();
@@ -170,6 +173,7 @@ public sealed class DebugController : IDisposable
             view.SetValueRequested -= set;
             view.DataBreakpointRequested -= watchData;
             view.RunWithThreadsRequested -= ranAgain;
+            view.PinRequested -= pinned;
             view.ReadAgainRequested -= readAgain;
             view.TextOpened -= textOpened;
             view.WatchRemoved -= unwatched;
@@ -1918,6 +1922,14 @@ public sealed class DebugController : IDisposable
             (d, c) => d.NotPaused() ?? (c.File is null ? Refusals.NoFile : c.Symbol is { Length: > 0 } ? null : Refusals.NoExpression), new("Run", 1, 10));
         Add(AppActions.Detach, "Detach", (d, c) => IdeErrors.Observe(d.RunDetach is { } run && run.Takes(c, d.Session) ? run.Detach(c, d.Session) : d.DetachAsync()),
             (d, c) => d.RunDetach is { } run && run.Takes(c, d.Session) ? run.WhyNot(c, d.Session) : d.WhyNotDetach(), new("Run", 0, 8));
+        // On an expression pinned to the caret's line already, Unpin from Line: the pin goes.
+        actions.Add(new IdeAction(AppActions.PinToLine, PinToLineTitle, "Debug", c => current().Breakpoints.Pins.Toggle(c.File!.Path, c.Caret.Line, c.Symbol!))
+        {
+            WhyNot = c => Refusals.NeedsLines(c) ?? (c.Symbol is { Length: > 0 } ? null : Refusals.NoExpression),
+            TitleIn = c => c.File is { } file && c.Symbol is { Length: > 0 } expression && current().Breakpoints.Pins.At(file.Path, c.Caret.Line, expression) is not null
+                ? UnpinFromLineTitle : PinToLineTitle,
+            Menus = [new("Run", 1, 11)],
+        });
         // Every breakpoint stays as it is, and none stops the program until it is chosen again.
         actions.Add(new IdeAction(AppActions.MuteBreakpoints, "Mute Breakpoints", "Debug", _ => current().Breakpoints.SetMuted(!current().Breakpoints.Muted))
         {
@@ -2184,6 +2196,11 @@ public sealed class DebugController : IDisposable
         document.Saved += OnSaved;
         FollowLambdas(document);
         UpdateMarks(document);
+        if (Breakpoints.Pins.In(document.Path).Count > 0)
+        {
+            // Not yet among the editors' documents as it opens.
+            IdeErrors.Observe(ShowPinsAsync([document]));
+        }
     }
 
     /// <summary>The line breakpoints the programs debugged will not stop at, as Problems lists them: each at its line, with
@@ -2375,7 +2392,9 @@ public sealed class DebugController : IDisposable
             return new CSharp.DebuggerHover(code)
             {
                 // One that did not end with the other threads held is a row too, to be run again from its link.
-                Values = value.VariablesReference > 0 || VariableNode.SaysNeedsThreads(value.PresentationHint) ? HoverValues(session, at, stop, expression, value) : null,
+                Values = value.VariablesReference > 0 || VariableNode.SaysNeedsThreads(value.PresentationHint)
+                    ? HoverValues(session, at, stop, expression, value, pinTo: (file.Path, editors.CodeEditor.Document.Snapshot.GetLineFromOffset(offset)))
+                    : null,
                 Gone = gone,
             };
         }
@@ -2468,7 +2487,7 @@ public sealed class DebugController : IDisposable
         {
             return;
         }
-        VariablesList rows = HoverValues(session, at, stop, expression, value, QuickContext, error);
+        VariablesList rows = HoverValues(session, at, stop, expression, value, QuickContext, error, context.File is { } file ? (file.Path, context.Caret.Line) : null);
         QuickValueRead?.Invoke(this, (start, new CSharp.DebuggerHover(expression) { Values = rows, Gone = gone }));
     }
 
@@ -2495,7 +2514,7 @@ public sealed class DebugController : IDisposable
     /// Value, a data breakpoint), and a value set there shows the value read again, as <paramref name="context"/> reads it,
     /// with what was open still open. One that did not evaluate is its <paramref name="error"/>'s row.</summary>
     private VariablesList HoverValues(DebugSession session, DapStackFrame at, int stop, string expression, EvaluateResponse? value, [IdentifierOf(typeof(EvaluateContexts))] string context = EvaluateContexts.Hover,
-        string? error = null)
+        string? error = null, (string Path, int Line)? pinTo = null)
     {
         VariablesTree tree = new()
         {
@@ -2510,6 +2529,10 @@ public sealed class DebugController : IDisposable
         list.SetValueRequested += (_, request) => IdeErrors.Observe(SetHoveredAsync(request.Node, request.Value));
         list.RunWithThreadsRequested += (_, node) => IdeErrors.Observe(RunWithThreadsAsync(node, tree, at));
         list.TextOpened += (_, node) => TextOpened?.Invoke(this, node.Value);
+        if (pinTo is { } line)
+        {
+            list.PinRequested += (_, node) => Breakpoints.Pins.Pin(line.Path, line.Line, node.Expression!);
+        }
         return list;
 
         VariableNode Hovered(EvaluateResponse read) => new(expression, read.Result, read.Type, read.VariablesReference, 0, VariableRole.Value)
@@ -2675,6 +2698,7 @@ public sealed class DebugController : IDisposable
                 bindingFrame = null;
                 UpdateAllMarks();
                 ClearInlineValues();
+                IdeErrors.Observe(ShowPinsAsync());
                 clearing.Restart();
                 if (say)
                 {
@@ -2685,6 +2709,7 @@ public sealed class DebugController : IDisposable
                 executionPoint = null;
                 UpdateAllMarks();
                 ClearInlineValues();
+                IdeErrors.Observe(ShowPinsAsync());
                 view.ShowFrames([], null, [], null);
                 view.Tree.Show([]);
                 view.SetState(DebugState.Ended);
@@ -3034,6 +3059,7 @@ public sealed class DebugController : IDisposable
             view.SayMoved(null);
             ShowInlineValues(current, values);
             LocalsShown();
+            await ShowPinsAsync();
         }
     }
 
@@ -3106,6 +3132,101 @@ public sealed class DebugController : IDisposable
     /// <summary>How long a program ran to its stop, as the stop's line and an agent's answer say it.</summary>
     public static string Elapsed((TimeSpan Time, bool SinceStart) ran) =>
         $"{Durations.Said(ran.Time)} since {(ran.SinceStart ? "debugging began" : "the last stop")}";
+
+    /// <summary>Each pin's value as last read, whole, or what went wrong reading it, at the stop shown; none while it runs.</summary>
+    private readonly Dictionary<PinnedValue, (string Value, bool Failed)> pinsRead = [];
+
+    /// <summary>How many times the pins were shown, so an earlier showing still reading lets a later one be.</summary>
+    private int pinsShown;
+
+    /// <summary>The values pinned to the open files' lines (or <paramref name="only"/>'s), as their editors show them: at a
+    /// stop, each read again in the stop's frame in its file (the one chosen, else the first of the chosen thread's frames
+    /// there); without one, or while the program runs, its expression alone, never a value read before.</summary>
+    private async Task ShowPinsAsync(IReadOnlyList<OpenDocument>? only = null)
+    {
+        UiThread.Check();
+        if (disposed)
+        {
+            return;
+        }
+        int showing = only is null ? ++pinsShown : pinsShown;
+        int stop = shown;
+        DebugSession? paused = Session is { State: DebugState.Paused } stopped && frame is not null ? stopped : null;
+        if (only is null)
+        {
+            pinsRead.Clear();
+        }
+        foreach (OpenDocument document in only ?? [.. editors.Documents])
+        {
+            IReadOnlyList<PinnedValue> pins = Breakpoints.Pins.In(document.Path);
+            DapStackFrame? at = paused is null || pins.Count == 0 ? null : FrameIn(document.Path);
+            List<LineAnnotation> chips = [];
+            foreach (PinnedValue pin in pins)
+            {
+                if (at is not null)
+                {
+                    try
+                    {
+                        pinsRead[pin] = ((await paused!.EvaluateAsync(pin.Expression, at.Id, EvaluateContexts.Watch)).Result, false);
+                    }
+                    catch (DapException error)
+                    {
+                        pinsRead[pin] = (error.Reason, true);
+                    }
+                    if (showing != pinsShown || stop != shown || disposed)
+                    {
+                        return;
+                    }
+                }
+                chips.Add(new LineAnnotation(pin.Line, PinText(pin), LineAnnotationLook.Chip));
+            }
+            if (chips.Count > 0 || document.PinnedValues.Count > 0)
+            {
+                document.PinnedValues = chips;
+            }
+        }
+    }
+
+    /// <summary>A pin's chip: its expression, and its value or what went wrong where it was read at the stop shown.</summary>
+    private string PinText(PinnedValue pin) => pinsRead.TryGetValue(pin, out (string Value, bool Failed) read)
+        ? $"{pin.Expression}{(read.Failed ? ": " : " = ")}{InlineValues.Cut(read.Value)}"
+        : pin.Expression;
+
+    /// <summary>The frame of the stop shown whose code is in a file: the one chosen, else the first of the chosen thread's.</summary>
+    private DapStackFrame? FrameIn(string path) =>
+        frame is { Source.Path: { } chosenIn } && PathNames.Same(chosenIn, path) ? frame
+            : view.Frames.FirstOrDefault(f => f.Source?.Path is { } file && PathNames.Same(file, path));
+
+    /// <summary>The hover card of a pin's chip: its expression and its whole value, or what went wrong, then how it is read
+    /// and taken away; false for a chip no pin of the file shows.</summary>
+    internal bool PinCard(OpenDocument document, LineAnnotation chip, CSharp.IHoverCard card)
+    {
+        if (chip.Look != LineAnnotationLook.Chip
+            || Breakpoints.Pins.In(document.Path).FirstOrDefault(p => p.Line == chip.Line && PinText(p) == chip.Text) is not { } pin)
+        {
+            return false;
+        }
+        card.AddCode(pinsRead.TryGetValue(pin, out (string Value, bool Failed) read) ? $"{pin.Expression}{(read.Failed ? ": " : " = ")}{read.Value}" : pin.Expression);
+        card.AddText($"Pinned to this line: read again at each stop with a frame in {Path.GetFileName(document.Path)}. "
+            + $"{PinToLineTitle} with the caret on the expression here again unpins it.");
+        return true;
+    }
+
+    /// <summary>Pin to Line on a row of Variables: its expression pinned to the line the chosen frame stands at, in its file.</summary>
+    private void PinRow(VariableNode node)
+    {
+        if (frame?.Source?.Path is not { } source || node.Expression is not { } expression)
+        {
+            Message?.Invoke(this, Refusals.FrameUnplaced);
+            return;
+        }
+        string path = PathNames.Canonical(source);
+        Breakpoints.Pins.Pin(path, Current(path, frame).Line, expression);
+    }
+
+    /// <summary>Pin to Line's title, and its title where the expression at the caret is pinned to its line already.</summary>
+    public const string PinToLineTitle = "Pin to Line";
+    public const string UnpinFromLineTitle = "Unpin from Line";
 
     /// <summary>An exception as a stop names it: its type without the namespace, and its message.</summary>
     public static string Describe(ExceptionInfoResponse info)
