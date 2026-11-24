@@ -153,8 +153,10 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         string pipe = $"biome-service-{Project.VersionOf("@biomejs/biome")}";
         Assert.SkipWhen(OperatingSystem.IsWindows() && Directory.EnumerateFiles(@"\\.\pipe\").Any(p => Path.GetFileName(p) == pipe),
             $"A Biome daemon of the tests' version already runs here, and on Windows its pipe ({pipe}) is the machine's, so the test's Biome would join it");
-        string socket = Path.Combine(Environment.GetEnvironmentVariable(WebTool.BiomeHomeVariable) ?? string.Empty, "Library", "Caches", "dev.biomejs.biome", "biome-daemon", pipe.Replace("service", "socket", StringComparison.Ordinal));
-        Assert.SkipWhen(OperatingSystem.IsMacOS() && socket.Length > 103, $"Biome's daemon socket in the run's folder, {socket}, is longer than the 103 bytes a socket's path holds");
+        if (TestRun.BiomeSocketUnfit(Project.VersionOf("@biomejs/biome")) is { } unfit)
+        {
+            Assert.Skip(unfit);
+        }
         string folder = TestFolders.Create("biome-");
         Project.Write(folder,
             ("package.json", "{\n  \"name\": \"biome-client\",\n  \"private\": true,\n  \"devDependencies\": {\n"
@@ -824,7 +826,8 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
 
         /// <summary>A Yarn Plug'n'Play project written in a folder and laid out by the tests' own Yarn, offline: its every
         /// package one of the tests' own, linked where it stands (Yarn's fallback giving each the others), its eslint
-        /// configuration, a script and one to format.</summary>
+        /// configuration, a script and one to format. Its empty lockfile is Yarn's to write, which Yarn refuses by default
+        /// where CI is set.</summary>
         public static void LaidOutByYarn(string folder)
         {
             string packages = PathNames.Canonical(Path.Combine(AppContext.BaseDirectory, "node-packages", "node_modules"));
@@ -841,7 +844,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
             File.WriteAllText(Path.Combine(folder, "src", "app.js"), App);
             File.WriteAllText(Path.Combine(folder, "src", "format.js"), Format);
             string yarn = Path.Combine(packages, "@yarnpkg", "cli-dist", "bin", "yarn.js");
-            System.Diagnostics.ProcessStartInfo install = ChildProcesses.Command(Programs.Node()!, [yarn, "install"], folder,
+            System.Diagnostics.ProcessStartInfo install = ChildProcesses.Command(Programs.Node()!, [yarn, "install", "--no-immutable"], folder,
                 [new("YARN_GLOBAL_FOLDER", Path.Combine(folder, ".yarn", "global")), new("YARN_ENABLE_NETWORK", "0")]);
             ChildResult laid = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(install, limit: TimeSpan.FromMinutes(2).Scaled())), "Yarn to lay the project out");
             Assert.True(laid.Succeeded, $"Yarn could not lay {folder} out ({ExitCodes.Said(laid.ExitCode)}): {laid.Output}{laid.Error}");

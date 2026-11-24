@@ -50,7 +50,7 @@
       "passenger.text": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.4.2, )"
+          "Passenger.Core": "[0.4.3, )"
         }
       },
       "passenger.workspace": {
@@ -58,8 +58,8 @@
         "dependencies": {
           "Cucumber.CucumberExpressions": "[17.1.0, )",
           "Gherkin": "[35.0.0, )",
-          "Passenger.Core": "[0.4.2, )",
-          "Passenger.Text": "[0.4.2, )"
+          "Passenger.Core": "[0.4.3, )",
+          "Passenger.Text": "[0.4.3, )"
         }
       },
       "Cucumber.CucumberExpressions": {

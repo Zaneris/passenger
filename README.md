@@ -9,7 +9,7 @@ Windows, macOS and Linux ([installing](#installing)).
 <p align="center">
   <a href="https://passenger-ide.net">Website</a> •
   <a href="https://passenger-ide.net/#download">Download</a> •
-  <a href="docs/release-notes/0.4.2.md">What's new in 0.4.2</a> •
+  <a href="docs/release-notes/0.4.3.md">What's new in 0.4.3</a> •
   <a href="#what-it-does">What it does</a> •
   <a href="#installing">Installing</a> •
   <a href="#your-coding-agent-using-the-ide-as-you-do">Your coding agent</a> •
@@ -271,6 +271,10 @@ its own, each dark and light, and every file with an icon in each look's colours
   everyone, which links `passenger-ide` in `~/.local/bin` (`/usr/local/bin` for everyone). Its
   [Linux page](https://passenger-ide.net/linux) names the libraries it needs; `install.sh` names your distribution's
   font package where it finds no font, and refreshes fontconfig's cache where it lists none of those installed.
+- **Portable:** a zip for Windows (x64 or Arm64) or macOS (Apple Silicon or Intel), or Linux's archive. Unpack it
+  anywhere, a USB stick included, and make a folder named `data` in the Passenger folder it gives: that copy keeps its
+  settings, layout, trusted folders and history there, never in your own folders, and says when a release is out
+  without replacing itself.
 
 In a terminal, `passenger-ide [folder, solution or file]` opens it in Passenger, handing it to the Passenger already
 running if one is, and `passenger-ide . --file Program.cs --caret 12:5` opens a file of the folder at a line. The

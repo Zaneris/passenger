@@ -435,6 +435,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 
 A security report is handled by `SECURITY.md`'s steps in its private advisory, never a public issue. Releases and the site: `ci.yml` and `release.yml` (from a `vX.Y.Z` tag, its body `docs/release-notes/X.Y.Z.md`, refused
 while it is the stand-in) call `test.yml`: the gate on every system in two shards, and for CI the report lane too.
+A published release is told to Homebrew, WinGet and the AUR by `release.yml`'s last job, their files written only by
+`tools/package-managers.sh` from the release's sums (#1457).
 `site/` is passenger-ide.net, plain HTML and CSS loading only its own files (CSP 'self'), deployed by the owner by hand:
 each page has its own title, description, canonical, Open Graph tags and `sitemap.xml` entry, a changed share card takes
 a new name, and `just site-shots` retakes its images.

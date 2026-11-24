@@ -39,9 +39,9 @@
     "url": "https://passenger-ide.net/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Windows, macOS, Linux",
-    "softwareVersion": "0.4.2",
+    "softwareVersion": "0.4.3",
     "downloadUrl": "https://github.com/Zaneris/passenger/releases",
-    "releaseNotes": "https://github.com/Zaneris/passenger/releases/tag/v0.4.2",
+    "releaseNotes": "https://github.com/Zaneris/passenger/releases/tag/v0.4.3",
     "offers": {
         "@type": "Offer",
         "price": "0",
@@ -107,8 +107,8 @@
 <main id="main">
     <div class="hero">
         <div class="wrap">
-            <a class="news" href="#mobile"><span class="tag">New in 0.4.0</span>
-                <span class="what">.NET MAUI and mobile apps, run and debugged on a device, emulator or simulator</span><span class="short">What's
+            <a class="news" href="#portable"><span class="tag">New in 0.4.3</span>
+                <span class="what">Portable builds: unpack Passenger anywhere, a USB stick included, its settings kept beside it</span><span class="short">What's
                 new</span><span class="arrow" aria-hidden="true">&rarr;</span></a>
             <h1><span class="lead">Debugger, profiler and Hot&nbsp;Reload, built&nbsp;in.</span> The free IDE for C# and .NET.</h1>
             <p class="lede">Stop at a breakpoint and read every line's values, change the code while it runs, on your
@@ -896,7 +896,7 @@
                 </details>
                 <details>
                     <summary>Is it ready for daily work?</summary>
-                    <p>Passenger is young (0.4.2), and its own development runs through it every day: the coding agents
+                    <p>Passenger is young (0.4.3), and its own development runs through it every day: the coding agents
                         that write much of it work through its MCP server. Its tests drive the whole IDE, a window with real
                         keys and clicks, on macOS, Windows and Linux, and a release ships only once its core tests pass
                         on all three. Each release's notes say what it does and its known limits, so you can judge for
@@ -975,6 +975,19 @@
                         links the <code>passenger-ide</code> command. Installed so, it updates itself as on macOS and
                         Windows.</p>
                     <a class="more" href="/linux">How to install on Linux</a>
+                </div>
+                <div class="platform portable" id="portable">
+                    <h3>Portable</h3>
+                    <ul>
+                        <li><a data-asset="Passenger-windows-x64-portable.zip" href="https://github.com/Zaneris/passenger/releases/latest/download/Passenger-windows-x64-portable.zip">Windows x64 <span class="kind">.zip</span></a></li>
+                        <li><a data-asset="Passenger-windows-arm64-portable.zip" href="https://github.com/Zaneris/passenger/releases/latest/download/Passenger-windows-arm64-portable.zip">Windows Arm64 <span class="kind">.zip</span></a></li>
+                        <li><a data-asset="Passenger-macos-arm64.zip" href="https://github.com/Zaneris/passenger/releases/latest/download/Passenger-macos-arm64.zip">macOS, Apple Silicon <span class="kind">.zip</span></a></li>
+                        <li><a data-asset="Passenger-macos-x64.zip" href="https://github.com/Zaneris/passenger/releases/latest/download/Passenger-macos-x64.zip">macOS, Intel <span class="kind">.zip</span></a></li>
+                    </ul>
+                    <p class="note">Unpack it anywhere, a USB stick included, and make a folder named <code>data</code>
+                        in the Passenger folder it gives. That copy keeps its settings, layout, trusted folders and
+                        history there, never in your own folders, and says when a release is out without replacing
+                        itself. Linux's archive is portable the same way.</p>
                 </div>
             </div>
             <div class="needs">
