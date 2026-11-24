@@ -1,7 +1,9 @@
 using System.Collections.Immutable;
+using System.Reflection.Emit;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
+using Passenger.Debugger.ExpressionEvaluator.Cil;
 using Passenger.Debugger.Interop;
 using ZLinq;
 
@@ -57,13 +59,7 @@ public partial class ModuleMetadataReader : IDisposable
         {
             int token = MetadataTokens.GetToken(method);
             MethodDefinition definition = _peMetadataReader.GetMethodDefinition(method);
-            string name = _peMetadataReader.GetString(definition.Name);
-            // A local function and a top-level program's Main are the user's, though the compiler names (and marks) them.
-            bool local = Microsoft.CodeAnalysis.CSharp.Symbols.GeneratedNameParser.GetKind(name) is Microsoft.CodeAnalysis.CSharp.Symbols.GeneratedNameKind.LocalFunction;
-            bool written = local || name == "<Main>$"
-                || (!name.Contains('<', StringComparison.Ordinal) && !_peMetadataReader.GetString(_peMetadataReader.GetTypeDefinition(definition.GetDeclaringType()).Name).Contains('<', StringComparison.Ordinal)
-                    && !HasAttribute(_peMetadataReader, definition.GetCustomAttributes(), CompilerGenerated));
-            if (definition.RelativeVirtualAddress == 0 || !written
+            if (definition.RelativeVirtualAddress == 0 || !WrittenByUser(definition)
                 || MetadataTokens.GetRowNumber(method) > pdb.GetTableRowCount(TableIndex.MethodDebugInformation)
                 || pdb.GetMethodDebugInformation(method.ToDebugInformationHandle()).SequencePointsBlob.IsNil
                 || IsNonUserCode(token) || IsHidden(token))
@@ -71,6 +67,75 @@ public partial class ModuleMetadataReader : IDisposable
                 continue;
             }
             yield return token;
+        }
+    }
+
+    /// <summary>Whether a method is one the user wrote: no compiler's own, but a local function and a top-level program's
+    /// Main, which the compiler names (and marks) as its own.</summary>
+    private bool WrittenByUser(MethodDefinition definition)
+    {
+        string name = _peMetadataReader.GetString(definition.Name);
+        return Microsoft.CodeAnalysis.CSharp.Symbols.GeneratedNameParser.GetKind(name) is Microsoft.CodeAnalysis.CSharp.Symbols.GeneratedNameKind.LocalFunction
+            || name == "<Main>$"
+            || (!name.Contains('<', StringComparison.Ordinal) && !_peMetadataReader.GetString(_peMetadataReader.GetTypeDefinition(definition.GetDeclaringType()).Name).Contains('<', StringComparison.Ordinal)
+                && !HasAttribute(_peMetadataReader, definition.GetCustomAttributes(), CompilerGenerated));
+    }
+
+    /// <summary>An async method a recording takes: the method the user wrote, which runs none of its code itself; the
+    /// MoveNext its state machine runs that code in; the IL offsets there of its opening brace, which a call passes once as
+    /// it begins, and its closing brace, which a call that completes passes; the local its result is in there, none for a
+    /// method returning no value; and its parameters' names, which the state machine keeps as its fields.</summary>
+    internal sealed record AsyncMethod(int Kickoff, int MoveNext, int Begins, int Ends, int? Result, IReadOnlyList<string> Parameters);
+
+    private static readonly string[] AsyncStateMachine = ["System.Runtime.CompilerServices.AsyncStateMachineAttribute"];
+
+    /// <summary>The async methods of the user's code a recording takes, as <see cref="RecordedMethodTokens"/> takes methods.</summary>
+    internal IEnumerable<AsyncMethod> RecordedAsyncMethods()
+    {
+        if (_pdbMetadataReader is null)
+        {
+            yield break;
+        }
+        foreach (MethodDefinitionHandle method in _peMetadataReader.MethodDefinitions)
+        {
+            int token = MetadataTokens.GetToken(method);
+            MethodDefinition definition = _peMetadataReader.GetMethodDefinition(method);
+            // The compiler marks the method it starts the state machine from [DebuggerStepThrough]: its MoveNext says whose it is.
+            if (!HasAttribute(_peMetadataReader, definition.GetCustomAttributes(), AsyncStateMachine) || !WrittenByUser(definition) || IsHidden(token)
+                || GetStateMachineMoveNextToken(token) is not int moveNext || IsNonUserCode(moveNext) || VisibleSequencePoints(moveNext) is not { Count: >= 2 } points
+                || MethodIL(moveNext) is not { } il)
+            {
+                continue;
+            }
+            int ends = points[^1].Offset;
+            IReadOnlyList<CilInstruction> instructions = CilInstructionDecoder.Decode(il);
+            int? result = null;
+            for (int i = 1; i < instructions.Count; i++)
+            {
+                // The builder's SetResult after the closing brace, given the local the method's value is in.
+                if (instructions[i].Offset >= ends && instructions[i].Code is ILOpCode.Call or ILOpCode.Callvirt && DescribeCall(instructions[i].Token) is { Name: "SetResult", Parameters.Count: 1 })
+                {
+                    result = instructions[i - 1].Code switch
+                    {
+                        ILOpCode.Ldloc_0 => 0,
+                        ILOpCode.Ldloc_1 => 1,
+                        ILOpCode.Ldloc_2 => 2,
+                        ILOpCode.Ldloc_3 => 3,
+                        ILOpCode.Ldloc_s or ILOpCode.Ldloc => instructions[i - 1].Index,
+                        _ => null,
+                    };
+                    break;
+                }
+            }
+            List<string> parameters = [];
+            foreach (ParameterHandle parameter in definition.GetParameters())
+            {
+                if (_peMetadataReader.GetParameter(parameter) is { SequenceNumber: > 0 } named)
+                {
+                    parameters.Add(_peMetadataReader.GetString(named.Name));
+                }
+            }
+            yield return new AsyncMethod(token, moveNext, points[0].Offset, ends, result, parameters);
         }
     }
 

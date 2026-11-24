@@ -75,13 +75,14 @@ Run › Record Calls (or its toggle before Step Back on the Debug window's toolb
 debugged by Passenger's own .NET debugger record the calls of their own code, from their start when it is on before Debug,
 else from then on. It is off until asked for, as each call recorded holds the program while the debugger reads it (a
 few milliseconds a call, where a breakpoint that does not stop holds it one or two). Each call of a method the program's
-symbols place (none the compiler wrote: a lambda's, a state machine's, an auto-property's) is kept as it begins, its
+symbols place (none the compiler wrote: a lambda's, an auto-property's; an async method's at the code its state machine
+runs) is kept as it begins, its
 arguments and their members one level down read as a snapshot reads them, running none of the program's code, and a call
 returning a value again as it returns to the user's code, that value read where the runtime keeps it. A recording keeps
 its newest 10,000 moments and 32 MB of their values, letting the oldest go past them, which its timeline says.
 
-At a stop, Run › Step Back and Step Forward (or `debug_step`'s `back` and `forward`) go through the moments the stopped
-thread recorded, each shown in Frames and Variables as a past stop, a snapshot's way: the method's frame where it stood
+At a stop, Run › Step Back and Step Forward (or `debug_step`'s `back` and `forward`) go through the moments of the run the
+stop is in (its thread's, and an async call's on whichever thread it went on on after an await), each shown in Frames and Variables as a past stop, a snapshot's way: the method's frame where it stood
 (its first line at a call, its last at a return) above the recorded calls it ran in, its values as they were then. Step
 Forward past the newest moment comes back to the live stop. The Debug window's Timeline tab lists the moments, each call
 under the one it ran in; Enter shows one. An agent lists them with `debug_state` of `timeline`.

@@ -2969,7 +2969,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "Code's verdict (userCode), as the Modules window lists them. of processes: the .NET programs here and in running containers the " +
         "debugger can attach to, program being the .dll the dotnet host runs (a container's id 0 until debug_attach puts " +
         "Passenger's tools in). of snapshots: the snapshot points' captures, newest first, each with its frames, its top frame's " +
-        "locals and their members, and how long the program was held for it. of timeline: the calls the stopped thread recorded " +
+        "locals and their members, and how long the program was held for it. of timeline: the calls the stopped run recorded " +
         "(debug_start with record true), each call with its arguments and each return with its value, newest first.")]
     public async Task<object> GetDebugState(string? session = null, string? of = null, int? reference = null, CancellationToken cancel = default) => (of, reference) switch
     {

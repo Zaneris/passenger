@@ -66,16 +66,17 @@ public partial class ManagedDebugger
     private sealed record RecordedMethod(string Label, bool ReturnsValue, StackFrameInfo? Place);
 
     /// <summary>A recorded call not yet returned: its moment, where its frame and its caller's lie on the stack, the return
-    /// address it goes back to, its method's frame where it began and its label, the frame it was called from, and the
-    /// recorded call that frame is.</summary>
+    /// address it goes back to, its method's frame where it began and its label, the frame it was called from, the
+    /// recorded call that frame is, and the run it is part of (<see cref="KeptMoment.Flow"/>).</summary>
     private sealed record OpenCall(int Moment, StackRange Frame, StackRange? CallerFrame, (ulong Code, uint Offset)? Return, StackFrameInfo Place, ModuleInfo Module,
-        int Token, string Label, StackFrameInfo? Caller, int? Parent);
+        int Token, string Label, StackFrameInfo? Caller, int? Parent, int Flow);
 
     /// <summary>A moment kept: what the timeline lists, the frame it was called from and the recorded call that is, the call it
     /// returns from, its values by references of its own, its top frame's rows, how long reading it held the program, the
-    /// size of its own values and what it left out.</summary>
+    /// size of its own values, what it left out, and its run: the thread a run of calls began on, which an async call's
+    /// moments keep whichever thread its code goes on on after an await.</summary>
     private sealed record KeptMoment(RecordedMoment Moment, string? ThreadName, StackFrameInfo? Caller, int? Parent, IReadOnlyDictionary<int, IReadOnlyList<VariableInfo>> Values,
-        int Top, IReadOnlyList<VariableInfo> TopRows, TimeSpan Held, long Bytes, string? Cut);
+        int Top, IReadOnlyList<VariableInfo> TopRows, TimeSpan Held, long Bytes, string? Cut, int Flow);
 
     /// <summary>Starts or stops recording: the user's modules loaded so far take their breakpoints, and each loading after
     /// takes its own; stopped, every breakpoint of it goes, its moments kept.</summary>
@@ -98,10 +99,21 @@ public partial class ManagedDebugger
         {
             breakpoint.TryActivate(false);
         }
+        foreach (ICorDebugFunctionBreakpoint breakpoint in _asyncBreakpoints.Keys)
+        {
+            breakpoint.TryActivate(false);
+        }
+        foreach (PendingAsync call in _openAsync)
+        {
+            call.Machine?.TryDispose();
+        }
         _callBreakpoints.Clear();
         _returnBreakpoints.Clear();
         _returnSites.Clear();
         _recordedMethods.Clear();
+        _asyncBreakpoints.Clear();
+        _asyncByMoveNext.Clear();
+        _openAsync.Clear();
         _recordedModules.Clear();
         _openCalls.Clear();
         _logger?.Invoke($"Recording stopped, {Core.Numbers.Said(_moments.Count)} moments kept");
@@ -129,6 +141,7 @@ public partial class ManagedDebugger
                 _logger?.Invoke($"Not recorded: method 0x{token:X} of {module.ModuleName}: {error.Message}");
             }
         }
+        bound += BindAsyncRecording(module);
         _logger?.Invoke($"Recording the calls of {Core.Numbers.Said(bound)} methods of {module.ModuleName}");
     }
 
@@ -143,6 +156,11 @@ public partial class ManagedDebugger
         if (_returnBreakpoints.TryGetValue(breakpoint, out ReturnSite? site))
         {
             await RecordReturnAsync(thread, site, came);
+            return true;
+        }
+        if (_asyncBreakpoints.TryGetValue(breakpoint, out AsyncPoint? point))
+        {
+            await (point.Begins ? RecordAsyncCallAsync(thread, point, came) : RecordAsyncReturnAsync(thread, point, came));
             return true;
         }
         return false;
@@ -170,7 +188,7 @@ public partial class ManagedDebugger
         open.RemoveAll(call => call.Frame.Start.Value <= range.Start.Value);
         ICorDebugILFrame? caller = frame.TryGetCaller(out ICorDebugFrame? up) is Cor.S_OK ? up as ICorDebugILFrame : null;
         StackRange? callerRange = caller is null ? null : RangeOf(caller);
-        int? parent = open.Count > 0 && callerRange is { } from && open[^1].Frame == from ? open[^1].Moment : null;
+        (int? parent, int flow) = ParentOf(thread.Id, open, callerRange, caller);
         int token = frame.Function.Token;
         RecordedMethod method = MethodRecorded(module, frame);
         ReturnSite? site = caller is null ? null : ReturnSiteOf(caller, method.ReturnsValue);
@@ -185,8 +203,8 @@ public partial class ManagedDebugger
         string args = string.Join(", ", top.Where(row => row.Name != "this").Select(row => Cut(row.Value)));
         string said = method.Label.EndsWith("()", StringComparison.Ordinal) ? $"{method.Label[..^2]}({args})" : method.Label;
         Keep(new KeptMoment(new RecordedMoment(index, MomentKind.Call, thread.Id, DateTimeOffset.Now, place, open.Count, said), ThreadNameOf(thread), callerPlace, parent,
-            capture.Values, topReference, top, Stopwatch.GetElapsedTime(came), BytesOf(capture.Values, 0), capture.Said));
-        open.Add(new OpenCall(index, range, callerRange, site?.Breakpoint is null ? null : site.Key, place, module, token, method.Label, callerPlace, parent));
+            capture.Values, topReference, top, Stopwatch.GetElapsedTime(came), BytesOf(capture.Values, 0), capture.Said, flow));
+        open.Add(new OpenCall(index, range, callerRange, site?.Breakpoint is null ? null : site.Key, place, module, token, method.Label, callerPlace, parent, flow));
     }
 
     /// <summary>What a recording says of a method, read at its first call.</summary>
@@ -197,6 +215,11 @@ public partial class ManagedDebugger
         {
             ModuleMetadataReader.CalledMethod? described = module.MetadataReader.DescribeCall(token);
             StackFrameInfo place = DescribeFrame(0, frame);
+            if (place.Source is null && module.MetadataReader.VisibleSequencePoints(token) is [{ Document: { } document } first, ..])
+            {
+                // Begun in code of no line (a record's constructor setting its fields): placed at its first line.
+                (place.Source, place.Line, place.Column, place.EndLine, place.EndColumn) = (document, first.StartLine, first.StartColumn, first.EndLine, first.EndColumn);
+            }
             method = new RecordedMethod(LabelOf(described), described is { ReturnType: not "void", Name: not (".ctor" or ".cctor") },
                 place.Name.Contains('<', StringComparison.Ordinal) ? null : place);
             _recordedMethods[(module, token)] = method;
@@ -234,7 +257,7 @@ public partial class ManagedDebugger
         int topReference = capture.Add(top);
         string said = returned.Count > 0 ? $"{name} {Cut(returned[0].Value)}" : name;
         Keep(new KeptMoment(new RecordedMoment(_momentsRecorded + 1, MomentKind.Return, thread.Id, DateTimeOffset.Now, EndOf(call), at, said), ThreadNameOf(thread), call.Caller,
-            call.Parent, capture.Values, topReference, top, Stopwatch.GetElapsedTime(came), BytesOf(capture.Values, called?.Values.Count ?? 0), capture.Said));
+            call.Parent, capture.Values, topReference, top, Stopwatch.GetElapsedTime(came), BytesOf(capture.Values, called?.Values.Count ?? 0), capture.Said, call.Flow));
     }
 
     /// <summary>A recording's capture, its words its own, after <paramref name="seed"/>'s rows where it has some.</summary>
@@ -401,10 +424,14 @@ public partial class ManagedDebugger
         DecompiledSourceInfo = frame.DecompiledSourceInfo,
     };
 
-    /// <summary>The recording's timeline on a thread (every thread's where none is named), oldest first.</summary>
-    public RecordedTimeline Timeline(int? threadId) =>
-        new(_records, [.. _moments.Where(kept => threadId is not int only || kept.Moment.ThreadId == only).Select(kept => kept.Moment)], _momentsDropped, _momentsRecorded,
+    /// <summary>The recording's timeline of the run a stopped thread is in (<see cref="FlowOf"/>; every run's where none is
+    /// named), oldest first.</summary>
+    public RecordedTimeline Timeline(int? threadId)
+    {
+        int? flow = threadId is int stopped ? FlowOf(stopped) : null;
+        return new(_records, [.. _moments.Where(kept => flow is not int only || kept.Flow == only).Select(kept => kept.Moment)], _momentsDropped, _momentsRecorded,
             _recordingHeld, MostMoments, MostRecordedBytes);
+    }
 
     /// <summary>A moment as a past stop: its method's frame where it stood, its values as they were, then the frames of the
     /// recorded calls it ran in, each where it made the next call; null for one let go.</summary>

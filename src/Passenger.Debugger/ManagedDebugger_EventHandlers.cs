@@ -417,7 +417,7 @@ public partial class ManagedDebugger
             return;
         }
 
-        if (breakpoint is ICorDebugFunctionBreakpoint recorded && (_callBreakpoints.Count > 0 || _returnBreakpoints.Count > 0)
+        if (breakpoint is ICorDebugFunctionBreakpoint recorded && _records
             && await TakeRecordedAsync(breakpointCorDebugManagedCallbackEventArgs.Thread, recorded,
                 _hitCame.TryGetValue(breakpointCorDebugManagedCallbackEventArgs, out StrongBox<long>? stamped) ? stamped.Value : System.Diagnostics.Stopwatch.GetTimestamp()))
         {

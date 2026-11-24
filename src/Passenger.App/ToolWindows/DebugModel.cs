@@ -428,7 +428,7 @@ public sealed class DebugModel
     /// <summary>What a timeline keeps, let go and cost the program, plainly.</summary>
     internal static string Said(TimelineResponse read)
     {
-        string kept = $"{Core.Plural.Of(read.Moments.Count, "moment")} on this thread, of {Core.Numbers.Said(read.Recorded)} recorded";
+        string kept = $"{Core.Plural.Of(read.Moments.Count, "moment")} of the run this stop is in, of {Core.Numbers.Said(read.Recorded)} recorded";
         string dropped = read.Dropped > 0 ? $"; the oldest {Core.Numbers.Said(read.Dropped)} were let go, as a recording keeps {Core.Numbers.Said(read.MostMoments)} moments and "
             + $"{Core.Sizes.Said(read.MostBytes)} of values" : "";
         string cost = read.Recorded > 0 ? $". Each held the program {Core.Durations.Said(TimeSpan.FromMilliseconds(read.HeldMilliseconds / read.Recorded))} on average" : "";
