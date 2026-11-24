@@ -2228,7 +2228,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "Value Changes on control's property (as app_details names it) in the app debugged, for the " +
         "session, condition reading newValue, oldValue and control. condition is a C# bool (GDScript in .gd); hitCondition \"==3\", \">=2\" or " +
         "\"%2\"; logMessage (\"count is {count}\", \\{ for a brace) is written each hit; suspend false makes a tracepoint. Or on a method " +
-        "(method: Name, Type.Name or Namespace.Type.Name(int, string) for one overload), stopping as it begins. A line or method " +
+        "(method: Name, Type.Name or Namespace.Type.Name(int, ref string?) for one overload, Type..ctor a constructor), stopping as it begins. A line or method " +
         "breakpoint takes temporary (removed once hit) and waitFor, another's place (\"Program.cs:12\") or method, whose hit it waits " +
         "for. Bound at once while debugging.")]
     public Task<IReadOnlyList<BreakpointInfo>> SetBreakpoint(

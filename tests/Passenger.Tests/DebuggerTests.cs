@@ -320,38 +320,58 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     }
 
     /// <summary>Toggle Method Breakpoint at a method's declaration marks the line with a diamond and stops as each call of the
-    /// method begins, with its arguments; the Breakpoints window lists it by its name, and the action again takes it away.</summary>
+    /// method begins, with its arguments; at a constructor's and at an overload's taking ref string?, it stops in that
+    /// constructor and that overload alone, never the overload beside it; the Breakpoints window lists each by its name, and
+    /// the action again takes it away.</summary>
     private void A_method_breakpoint_set_at_its_declaration_stops_as_each_call_begins()
     {
-        Write("Program.cs", "int total = Sum.Add(1, 2) + Sum.Add(3, 4);\nConsole.WriteLine($\"total {total}\");\n\nstatic class Sum\n{\n"
-            + "    public static int Add(int a, int b)\n    {\n        return a + b;\n    }\n}\n");
+        Write("Program.cs", "int total = Sum.Add(1, 2) + Sum.Add(3, 4);\nConsole.WriteLine($\"total {total}\");\nTally tally = new(total);\nstring? note = \"kept\";\n"
+            + "tally.Note(note);\ntally.Note(ref note);\nConsole.WriteLine($\"{tally.Count} {note}\");\n\nstatic class Sum\n{\n"
+            + "    public static int Add(int a, int b)\n    {\n        return a + b;\n    }\n}\n\nsealed class Tally\n{\n"
+            + "    public Tally(int start)\n    {\n        Count = start;\n    }\n\n    public int Count { get; private set; }\n\n"
+            + "    public void Note(string text)\n    {\n        Count += text.Length;\n    }\n\n"
+            + "    public void Note(ref string? text)\n    {\n        text += \"!\";\n        Count++;\n    }\n}\n");
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
-        editor.GoTo(new TextPosition(5, 24));
+        editor.GoTo(new TextPosition(10, 24));
         Assert.True(window.Perform(AppActions.ToggleMethodBreakpoint), $"Toggle Method Breakpoint did not run: {Ui.Said(window)}");
         MethodBreakpoint add = Assert.Single(window.Debugger.Breakpoints.Methods);
-        Assert.Equal(("Sum.Add(int, int)", 5), (add.Name, add.Line));
-        Assert.Contains(new LineMark(5, LineMarkKind.Breakpoint, Method: true), editor.LineMarks);
+        Assert.Equal(("Sum.Add(int, int)", 10), (add.Name, add.Line));
+        Assert.Contains(new LineMark(10, LineMarkKind.Breakpoint, Method: true), editor.LineMarks);
         editor.GoTo(new TextPosition(1, 0));
         Assert.Equal(Refusals.NoMethodAtCaret, window.Actions.WhyNot(AppActions.ToggleMethodBreakpoint, window.Actions.Context()));
+        editor.GoTo(new TextPosition(18, 12));
+        Assert.True(window.Perform(AppActions.ToggleMethodBreakpoint), $"Toggle Method Breakpoint did not run at the constructor: {Ui.Said(window)}");
+        editor.GoTo(new TextPosition(32, 10));
+        Assert.True(window.Perform(AppActions.ToggleMethodBreakpoint), $"Toggle Method Breakpoint did not run in Note's body: {Ui.Said(window)}");
+        Assert.Equal([("Sum.Add(int, int)", 10), ("Tally..ctor(int)", 18), ("Tally.Note(ref string?)", 30)], window.Debugger.Breakpoints.Methods.Select(m => (m.Name, m.Line)));
 
         StartDebugging(window);
         foreach (string a in new[] { "1", "3" })
         {
             WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Paused && Value(window, "a") is not null, $"the method breakpoint's stop with a {a}");
-            Assert.True(Value(window, "a") == a && window.BottomPanel.Debug.Frames[0].Line == 7,
+            Assert.True(Value(window, "a") == a && window.BottomPanel.Debug.Frames[0].Line == 12,
                 $"The program stopped at line {window.BottomPanel.Debug.Frames[0].Line} with a {Value(window, "a")}, where Add's breakpoint stops as its call with a {a} begins");
-            Assert.Contains(new LineMark(5, LineMarkKind.BreakpointBound, Method: true), editor.LineMarks);
+            Assert.Contains(new LineMark(10, LineMarkKind.BreakpointBound, Method: true), editor.LineMarks);
             Ui.Run(window, AppActions.Resume);
         }
-        WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Ended, "the program to run to its end");
+        WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Paused && Value(window, "start") is not null, "the constructor's method breakpoint's stop");
+        Assert.True(Value(window, "start") == "10" && window.BottomPanel.Debug.Frames[0].Name.Contains("Tally..ctor", StringComparison.Ordinal),
+            $"The program stopped in {window.BottomPanel.Debug.Frames[0].Name} with start {Value(window, "start")}, where Tally's constructor stops as it begins with start 10");
+        Ui.Run(window, AppActions.Resume);
+        WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Ended || (window.Debugger.Session?.State == DebugState.Paused && Value(window, "text") is not null),
+            "the method breakpoint's stop in Note");
+        Assert.True(window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames[0].Line == 32 && Value(window, "text")?.Contains("kept", StringComparison.Ordinal) == true,
+            $"The program {window.Debugger.Session?.State} at line {window.BottomPanel.Debug.Frames.FirstOrDefault()?.Line} with text {Value(window, "text")}, where Note's overload taking ref string? stops as it begins, never the one taking string");
+        Ui.Run(window, AppActions.Resume);
+        WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Ended, "the program to run to its end, Note's other overload passed");
 
         BreakpointsWindow breakpoints = OpenBreakpoints(window);
         Assert.Contains("Sum.Add(int, int)", breakpoints.Listed.Select(b => b.Location));
         breakpoints.Close();
-        editor.GoTo(new TextPosition(7, 8));
+        editor.GoTo(new TextPosition(12, 8));
         Assert.True(window.Perform(AppActions.ToggleMethodBreakpoint), $"Toggle Method Breakpoint did not run: {Ui.Said(window)}");
-        Assert.Empty(window.Debugger.Breakpoints.Methods);
+        Assert.Equal(["Tally..ctor(int)", "Tally.Note(ref string?)"], window.Debugger.Breakpoints.Methods.Select(m => m.Name));
         window.Close();
     }
 

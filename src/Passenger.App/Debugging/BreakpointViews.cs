@@ -407,7 +407,7 @@ public sealed class BreakpointsWindow : UserControl
         StackPanel methodAnswers = DialogFooter.Popup(addMethod, ShowChosen);
         methodAnswers.HorizontalAlignment = HorizontalAlignment.Right;
         TextBlock methodNote = FormRows.Note();
-        methodNote.Text = "Stops as each method of that name begins, in every module loaded; its parameters' types name one overload.";
+        methodNote.Text = "Stops as each method of that name begins (a constructor's is Type..ctor), in every module loaded; its parameters as C# writes them name one overload.";
         methodPane = new StackPanel
         {
             Spacing = Gaps.Normal,

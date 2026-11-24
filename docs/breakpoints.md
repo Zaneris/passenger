@@ -35,8 +35,10 @@ Data and property breakpoints belong to one debugging session and are never writ
 - A line breakpoint's `column` is where a C# lambda's body begins on its line, for a breakpoint inside the lambda, or,
   with `attribute`, where a XAML attribute's name begins.
 - A method breakpoint's `name` is the method as C# writes it: `Name`, `Type.Name` or `Namespace.Type.Name`, a generic
-  one's arity as `Name<T>`, with its parameters' types for one overload. `file` and `line` are where it was set, for the
-  gutter's mark; one without them stands by its name alone.
+  one's arity as `Name<T>`, a constructor as `Type..ctor`, a static constructor as `Type..cctor` and a finalizer as
+  `Type.Finalize` (or `Type.~Type`), with its parameters as C# writes them for one overload (`ref string?`, `out int`, a
+  type parameter, a tuple), matched to the types the compiled method takes. `file` and `line` are where it was set, for
+  the gutter's mark; one without them stands by its name alone.
 - Each breakpoint may give `enabled` and `suspend` (both `true` when left out), `condition`, `hitCount` (`==3`, `>=2`,
   `%2`) and `logMessage`; a line or method breakpoint also `temporary` (removed once hit) and `waitFor`, the breakpoint
   whose hit it waits for: a line breakpoint by its `file` and `line` (with its `column` or `attribute`), or a method

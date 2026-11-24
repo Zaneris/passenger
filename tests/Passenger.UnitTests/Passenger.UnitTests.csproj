@@ -86,6 +86,11 @@
     <Compile Include="../../src/Passenger.App/ToolWindows/ToolLayout.cs" Link="App/ToolLayout.cs" />
   </ItemGroup>
 
+  <!-- What a method breakpoint set in the editor names, from a C# file's parse alone, compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Debugging/MethodBreakpoints.cs" Link="App/MethodBreakpoints.cs" />
+  </ItemGroup>
+
   <!-- Which rows a tree a list draws shows, from its rows alone, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/TreeRows.cs" Link="App/TreeRows.cs" />

@@ -55,7 +55,7 @@ internal static class MetadataTypeNames
 
 /// <summary>A method signature's types as text that a member reference and the definition it names write alike, whichever
 /// modules they are in (<see cref="MetadataTypeNames"/>): the key the debugger matches methods by, and with nested types
-/// joined by '.' (<see cref="Dotted"/>) the names a person's function breakpoint is matched against.</summary>
+/// joined by '.' (<see cref="Dotted"/>) the names it gives a value's type by.</summary>
 internal sealed class SignatureKeyProvider(char nested) : ISignatureTypeProvider<string, object?>
 {
     public static SignatureKeyProvider Instance { get; } = new('+');
