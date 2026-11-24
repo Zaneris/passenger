@@ -3099,6 +3099,29 @@ public sealed class DebugController : IDisposable
             + $"showed its frames {Durations.Said(framed)} and its locals {Durations.Said(listed)} after it came");
     }
 
+    /// <summary>Whether a stop's line says how long the program ran to it (Settings' Show how long the program ran at each
+    /// stop, as shown, a preview too): changed at a stop, the stop's lines show it or not at once.</summary>
+    public bool ShowsElapsed
+    {
+        get => showsElapsed;
+        set
+        {
+            if (showsElapsed != value)
+            {
+                showsElapsed = value;
+                if (inlineShown is { } shown && Session is { State: DebugState.Paused })
+                {
+                    ShowInlineValues(shown.Frame, shown.Values);
+                }
+            }
+        }
+    }
+
+    private bool showsElapsed = true;
+
+    /// <summary>The frame whose values the lines show and the values, until the program goes on.</summary>
+    private (DapStackFrame Frame, IReadOnlyDictionary<string, string> Values)? inlineShown;
+
     /// <summary>The chosen frame's values after the lines of its method, in its file and no other.</summary>
     private void ShowInlineValues(DapStackFrame current, IReadOnlyDictionary<string, string> values)
     {
@@ -3106,9 +3129,10 @@ public sealed class DebugController : IDisposable
         {
             return;
         }
+        inlineShown = (current, values);
         string? path = current.Source?.Path is { } source ? PathNames.Canonical(source) : null;
         // How long the program ran to its stop, where the stop came to, whichever frame is chosen.
-        (string Path, LineAnnotation Tip)? ran = Stop is { Top: { Source.Path: { } stoppedIn } top } && Session?.Ran is { } time
+        (string Path, LineAnnotation Tip)? ran = showsElapsed && Stop is { Top: { Source.Path: { } stoppedIn } top } && Session?.Ran is { } time
             ? (PathNames.Canonical(stoppedIn), new LineAnnotation(Current(PathNames.Canonical(stoppedIn), top.Line - 1), Elapsed(time), LineAnnotationLook.Chip))
             : null;
         foreach (OpenDocument document in editors.Documents)
@@ -3239,6 +3263,7 @@ public sealed class DebugController : IDisposable
 
     private void ClearInlineValues()
     {
+        inlineShown = null;
         foreach (OpenDocument document in editors.Documents)
         {
             document.LineAnnotations = [];

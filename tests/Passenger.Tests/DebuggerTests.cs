@@ -722,8 +722,9 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     }
 
     /// <summary>F9 and Debug stop the program at the line with its locals, in a Debug window that shares a side pane, its
-    /// next hit on Resume and the step after it, each stop's line saying how long the program ran to it; the menus of
-    /// Variables and Frames copy a value, watch it and copy the stack.</summary>
+    /// next hit on Resume and the step after it, each stop's line saying how long the program ran to it, which Settings
+    /// turns off as it shows the change, before Apply; the menus of Variables and Frames copy a value, watch it and copy
+    /// the stack.</summary>
     private void A_breakpoint_set_with_F9_stops_the_program_there_with_its_locals_and_the_variables_and_frames_menus_copy_them()
     {
         MainWindow window = Open();
@@ -783,6 +784,19 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.True(editor.LineAnnotations.Count(a => a.Look == LineAnnotationLook.Chip) == 1
             && editor.LineAnnotations.Any(a => a.Look == LineAnnotationLook.Chip && a.Line == stepLine && a.Text.EndsWith(" since the last stop", StringComparison.Ordinal)),
             $"After the step the lines said {string.Join(" | ", editor.LineAnnotations.Select(a => $"{a.Line + 1}: {a.Text}"))}, where the step's line {stepLine + 1} alone says the time since the last stop");
+        Assert.True(window.Settings.ShowElapsedAtStops, "A stop's line does not say how long the program ran by default");
+        Passenger.App.Settings.SettingsDialog settingsDialog = window.ShowSettings();
+        Ui.Settle();
+        settingsDialog.Query = "how long the program ran";
+        Ui.Settle();
+        Assert.Contains("Show how long the program ran at each stop", settingsDialog.Shown);
+        settingsDialog.Change(s => s with { ShowElapsedAtStops = false });
+        Ui.Settle();
+        Assert.True(!editor.LineAnnotations.Any(a => a.Look == LineAnnotationLook.Chip) && window.Settings.ShowElapsedAtStops,
+            $"Turned off in Settings, not yet applied, the stop's line still said {string.Join(" | ", editor.LineAnnotations.Select(a => a.Text))}");
+        settingsDialog.Close();
+        Ui.Settle();
+        Assert.Contains(editor.LineAnnotations, a => a.Look == LineAnnotationLook.Chip && a.Line == stepLine);
         Assert.True(window.Debugger.LastStopTimes is { Asked: "step over", ToStop: { } stepped, Frames: var framed, Locals: var listed }
             && stepped + listed < TimeSpan.FromSeconds(1).Scaled() && framed <= listed,
             $"The step's stop took too long to show, or was not timed: {window.Debugger.LastStopTimes}");

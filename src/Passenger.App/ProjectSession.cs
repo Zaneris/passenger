@@ -193,6 +193,7 @@ public sealed class ProjectSession : IAsyncDisposable
             HotReloadOn = () => setup.Settings().HotReloadWhileDebugging,
             HotReloadOnSave = () => setup.Settings().HotReloadOnSave,
             XamlOnSave = () => setup.Settings().XamlHotReloadOnSave,
+            ShowsElapsed = setup.Settings().ShowElapsedAtStops,
             // A game's own session, or the GDScript tab beside its C#'s.
             ReloadsScripts = scripts => games.Any(g => g.ReloadsScripts
                 && (g.Debugged == scripts || (g.Debugged is not null && Debug?.TabOf(scripts)?.Name == DebugController.ScriptsTab(g.Name)))),

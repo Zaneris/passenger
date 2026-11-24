@@ -78,6 +78,7 @@ public sealed class SettingsPreview : IDisposable
         RainbowBraces = Shown(from.RainbowBraces, to.RainbowBraces, saved.RainbowBraces),
         ParameterHints = Shown(from.ParameterHints, to.ParameterHints, saved.ParameterHints),
         TypeHints = Shown(from.TypeHints, to.TypeHints, saved.TypeHints),
+        ShowElapsedAtStops = Shown(from.ShowElapsedAtStops, to.ShowElapsedAtStops, saved.ShowElapsedAtStops),
         SoftWrap = Shown(from.SoftWrap, to.SoftWrap, saved.SoftWrap),
         SoftWrapFiles = Shown(from.SoftWrapFiles, to.SoftWrapFiles, saved.SoftWrapFiles),
         SoftWrapIndent = Shown(from.SoftWrapIndent, to.SoftWrapIndent, saved.SoftWrapIndent),

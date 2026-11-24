@@ -495,6 +495,12 @@ public static class Declared
             + $"comes to the front, or, where the system keeps that program in front, asks for your attention ({(OperatingSystem.IsMacOS() ? "its Dock icon bounces" : "its taskbar button flashes")}), "
             + "as Ask for attention always does. An agent's debugging never brings the window forward."));
 
+    public static readonly ToggleSetting ShowElapsedAtStops = new(s => s.ShowElapsedAtStops, (s, v) => s with { ShowElapsedAtStops = v },
+        new(D.RunPage, "Show how long the program ran at each stop",
+            "perftips perf tips elapsed time timing duration milliseconds ms since last stop step breakpoint debugger performance",
+            "A chip after the line the program stopped at says how long it ran since its last continue, step or start, as Passenger "
+            + "timed it, the debugger's own few milliseconds in it. On at first."));
+
     public static readonly ToggleSetting AskBeforeRerun = new(s => s.AskBeforeRerun, (s, v) => s with { AskBeforeRerun = v },
         new(D.RunPage, "Ask before stopping a running configuration to start it again",
             "run debug profile again rerun restart running already stop confirm ask prompt question one copy instance accidental",

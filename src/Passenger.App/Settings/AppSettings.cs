@@ -214,6 +214,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// the other in front; only asks for them; or nothing. An agent's debugging never brings it forward.</summary>
     public DebuggerStop WhenDebuggerStops { get; init; } = DebuggerStop.ComeForward;
 
+    /// <summary>Whether each stop's line says how long the program ran to it, since its last continue, step or start. On at
+    /// first; a look, previewed before Apply.</summary>
+    public bool ShowElapsedAtStops { get; init; } = true;
+
     /// <summary>Whether Run, Debug or Profile of a configuration that runs asks first, rather than stopping what runs of it
     /// and starting it again at once: Stop and Rerun, Stop alone, or Cancel. On at first; an agent's start, and one in a
     /// window nobody sees, never asks.</summary>
