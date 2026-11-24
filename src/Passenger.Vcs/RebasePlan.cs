@@ -39,6 +39,12 @@ public sealed record RebasedCommit(IReadOnlyList<PlannedCommit> From, string Mes
     public bool Reworded => !RebasePlan.SameMessage(Message, From[0].Message);
 }
 
+/// <summary>A planned commit that stops the rebase for conflicts, as foreseen before it runs
+/// (<see cref="Git.ConflictsAheadAsync"/>): the commit, its files in conflict as git names them from the working tree's
+/// top, and whether it surely stops there, as the first stop does, or is foreseen as if the conflicts before it were
+/// resolved to each commit's own files.</summary>
+public sealed record ForeseenConflict(string Commit, IReadOnlyList<string> Files, bool Sure);
+
 /// <summary>An interactive rebase as the person plans it (Interactively Rebase from Here): the commit its commits go onto
 /// (null where the branch's first commit is among them), and those commits oldest first, as git's list of steps has
 /// them. What it makes (<see cref="Outcome"/>) is what the rebase leaves once it has run: every message is the plan's, a
@@ -75,6 +81,26 @@ public sealed record RebasePlan(string? Base, IReadOnlyList<PlannedCommit> Commi
 
     /// <summary>The commits it leaves out.</summary>
     public IReadOnlyList<PlannedCommit> Dropped => [.. Commits.Where(c => c.Command is RebaseCommand.Drop)];
+
+    /// <summary>Where git begins making each step's change anew: the first step that stands elsewhere than its commit stood,
+    /// or is left out. Each step before it leaves its commit's own tree, so none of them can stop for conflicts; the count
+    /// of steps where there is none.</summary>
+    public int FirstReplayed
+    {
+        get
+        {
+            int at = 0;
+            while (at < Commits.Count && Commits[at].Place == at && Commits[at].Command is not RebaseCommand.Drop)
+            {
+                at++;
+            }
+            return at;
+        }
+    }
+
+    /// <summary>What the trees the rebase makes depend on: the commits it keeps, in order. Two plans alike in it stop for
+    /// the same conflicts, whatever they do with the messages, the folds and the edits.</summary>
+    public string ReplayKey => string.Join(' ', Commits.Where(c => c.Command is not RebaseCommand.Drop).Select(c => c.Commit.Hash));
 
     /// <summary>Where the commit that the step at <paramref name="at"/> is part of is headed: itself where it heads one, the
     /// nearest kept step before it that does where it folds; -1 where it is left out, or folds into none.</summary>

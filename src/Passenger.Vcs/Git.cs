@@ -894,7 +894,8 @@ public sealed partial class Git
             string? applying = Read("REBASE_HEAD") ?? Read(System.IO.Path.Combine(folder, "stopped-sha"));
             // A pick stopped for conflicts leaves its message in MERGE_MSG, which an edit, a break or an exec never writes.
             RebaseStop? stop = message is null && folder == "rebase-merge" ? RebaseStop.Of(Read(System.IO.Path.Combine(folder, "done"))) : null;
-            return new MergeState(MergeOperation.Rebase, onto is null ? ours : await NameAsync(onto), theirs, GitHashes.Short(applying), null, stop);
+            (string? stopped, string? subject) = applying is null ? (null, null) : await PersonsCommitAsync(applying);
+            return new MergeState(MergeOperation.Rebase, onto is null ? ours : await NameAsync(onto), theirs, GitHashes.Short(stopped), null, stop, subject);
         }
         if (Read("CHERRY_PICK_HEAD") is { } picked)
         {
@@ -1559,8 +1560,7 @@ public sealed partial class Git
                 continue;
             }
             string[] words = line.Split(' ', 2);
-            // A SHA-1 repository's hashes are 40 hex digits, a SHA-256 one's 64.
-            if (words[0].Length is 40 or 64 && words[0].All(char.IsAsciiHexDigit))
+            if (GitHashes.IsWhole(words[0]))
             {
                 hash = words[0];
                 reading = (string.Empty, 0, string.Empty);

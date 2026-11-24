@@ -28,9 +28,9 @@ public static class MergeOperations
 /// <summary>What the working tree is in the middle of and the names git's two sides go by: <see cref="Ours"/> is HEAD's
 /// side (the branch checked out; during a rebase the branch rebased onto), <see cref="Theirs"/> the side brought in
 /// (the merged branch; the rebased one), <see cref="Commit"/> the commit a rebase, a cherry-pick or a revert stopped at,
-/// <see cref="Message"/> the commit message git wrote for finishing it, and <see cref="Stop"/> the step of a rebase's
-/// list it stopped at, where it stopped for no conflicts.</summary>
-public sealed record MergeState(MergeOperation Operation, string Ours, string? Theirs, string? Commit, string? Message, RebaseStop? Stop = null)
+/// <see cref="Message"/> the commit message git wrote for finishing it, <see cref="Stop"/> the step of a rebase's list it
+/// stopped at, where it stopped for no conflicts, and <see cref="Subject"/> the subject of the commit a rebase stopped at.</summary>
+public sealed record MergeState(MergeOperation Operation, string Ours, string? Theirs, string? Commit, string? Message, RebaseStop? Stop = null, string? Subject = null)
 {
     public static MergeState Idle { get; } = new(MergeOperation.None, "HEAD", null, null, null);
 
@@ -53,13 +53,16 @@ public sealed record MergeState(MergeOperation Operation, string Ours, string? T
         _ => null,
     };
 
+    /// <summary>The commit a rebase stopped at, by its hash and its subject where git said it.</summary>
+    private string StoppedAt => Subject is null ? $"{Commit}" : $"{Commit} {Subject}";
+
     /// <summary>The words the Conflicts dialog and the merge window use for the sides.
     /// <paramref name="stash"/> names the stash an unstash with conflicts applied, which git keeps no record of.</summary>
     public ConflictSides Sides(string? stash) => Operation switch
     {
         MergeOperation.Merge => new($"Merging branch {Theirs} into branch {Ours}", Ours, Theirs, $"Your version, branch {Ours}", $"Changes from branch {Theirs}", Swapped: false),
         // Rebasing, "yours" is the branch being rebased, which git calls theirs.
-        MergeOperation.Rebase => new($"Rebasing branch {Theirs} onto branch {Ours}", Theirs, Ours,
+        MergeOperation.Rebase => new(Commit is null ? $"Rebasing branch {Theirs} onto branch {Ours}" : $"Rebasing branch {Theirs} onto branch {Ours}, stopped at {StoppedAt}", Theirs, Ours,
             Commit is null ? $"Rebasing {Theirs}" : $"Rebasing {Commit} from {Theirs}", $"Already rebased commits and commits from {Ours}", Swapped: true),
         MergeOperation.CherryPick => new($"Conflicts during cherry-picking commit {Commit}", Ours, null, "Local Changes", $"Changes from cherry-pick {Commit}", Swapped: false),
         MergeOperation.Revert => new($"Conflicts during revert of commit {Commit}", Ours, null, "Local Changes", $"Changes from {Commit}", Swapped: false),

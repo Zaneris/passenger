@@ -1064,7 +1064,7 @@ public partial class MainWindow
                 onto = $"{GitHashes.Short(upon)} {(await repository.MessageAsync(upon)).Split('\n')[0]}";
             }
         }
-        InteractiveRebaseDialog dialog = new(plan, session.Vcs.Branch ?? "Detached HEAD", onto);
+        InteractiveRebaseDialog dialog = new(plan, session.Vcs.Branch ?? "Detached HEAD", onto, session.Vcs.ConflictsAheadAsync);
         interactiveRebaseDialog = dialog;
         dialog.Closed += (_, _) => interactiveRebaseDialog = interactiveRebaseDialog == dialog ? null : interactiveRebaseDialog;
         if (await dialog.ShowDialog<RebasePlan?>(this) is { } planned)

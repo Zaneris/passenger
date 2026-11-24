@@ -13,7 +13,8 @@ public class RebasePlanTests
         ("commits before the first change are kept and a moved one is out of the order the rest keep", Commits_before_the_first_change_are_kept_and_a_moved_one_is_out_of_the_order_the_rest_keep),
         ("squashed and fixed up commits fold into the commit under them joining only a squashs message", Squashed_and_fixed_up_commits_fold_into_the_commit_under_them_joining_only_a_squashs_message),
         ("a commit under another message is picked as its twin after a drop and folds come by fixup", A_commit_under_another_message_is_picked_as_its_twin_after_a_drop_and_folds_come_by_fixup),
-        ("a fold with nothing under it an empty message and a plan changing nothing are refused", A_fold_with_nothing_under_it_an_empty_message_and_a_plan_changing_nothing_are_refused));
+        ("a fold with nothing under it an empty message and a plan changing nothing are refused", A_fold_with_nothing_under_it_an_empty_message_and_a_plan_changing_nothing_are_refused),
+        ("git makes each step anew from the first moved or left out and plans keeping one order replay alike", Git_makes_each_step_anew_from_the_first_moved_or_left_out_and_plans_keeping_one_order_replay_alike));
 
     private void Commits_before_the_first_change_are_kept_and_a_moved_one_is_out_of_the_order_the_rest_keep()
     {
@@ -57,6 +58,24 @@ public class RebasePlanTests
         Assert.StartsWith("Nothing changes yet", (Four with { Commits = [With(Four.Commits[0], RebaseCommand.Reword), .. Four.Commits.Skip(1)] }).WhyNot);
         Assert.Contains("cannot be squashed", (Four with { Commits = [With(Four.Commits[0], RebaseCommand.Drop), With(Four.Commits[1], RebaseCommand.Squash), .. Four.Commits.Skip(2)] }).WhyNot);
         Assert.Contains("needs a message", (Four with { Commits = [Four.Commits[0] with { Written = " \n" }, .. Four.Commits.Skip(1)] }).WhyNot);
+    }
+
+    private void Git_makes_each_step_anew_from_the_first_moved_or_left_out_and_plans_keeping_one_order_replay_alike()
+    {
+        Assert.Equal(4, Four.FirstReplayed);
+        RebasePlan swapped = Four with { Commits = [Four.Commits[0], Four.Commits[1], Four.Commits[3], Four.Commits[2]] };
+        Assert.Equal(2, swapped.FirstReplayed);
+        RebasePlan dropped = Four with { Commits = [Four.Commits[0], With(Four.Commits[1], RebaseCommand.Drop), .. Four.Commits.Skip(2)] };
+        Assert.Equal(1, dropped.FirstReplayed);
+        Assert.Equal("a c d", dropped.ReplayKey);
+        // Messages, folds and edits leave the trees each step makes as they were.
+        RebasePlan folded = swapped with
+        {
+            Commits = [With(swapped.Commits[0], RebaseCommand.Reword) with { Written = "A anew" }, With(swapped.Commits[1], RebaseCommand.Squash), With(swapped.Commits[2], RebaseCommand.Edit), With(swapped.Commits[3], RebaseCommand.Fixup)],
+        };
+        Assert.Equal(swapped.ReplayKey, folded.ReplayKey);
+        Assert.Equal(2, folded.FirstReplayed);
+        Assert.NotEqual(Four.ReplayKey, swapped.ReplayKey);
     }
 
     private static (CommitInfo, string) Commit(string name) =>

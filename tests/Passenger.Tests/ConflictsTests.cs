@@ -367,6 +367,7 @@ public sealed class ConflictsTests : IDisposable
         TestGit.Run(clone, "config", "pull.rebase", "true");
         File.WriteAllText(Path.Combine(clone, "Shop.cs"), Shop.Replace("int count", "short count", StringComparison.Ordinal));
         TestGit.Run(clone, "commit", "-q", "-am", "Short");
+        string rebased = TestGit.Run(clone, "rev-parse", "HEAD").Trim()[..8];
         Write("Shop.cs", Shop.Replace("int count", "long count", StringComparison.Ordinal));
         Git("commit", "-q", "-am", "Long");
 
@@ -384,7 +385,7 @@ public sealed class ConflictsTests : IDisposable
         Ui.Landed(() => window.ConflictsWindow is not null, "the Conflicts dialog");
         Assert.StartsWith("Rebase stopped due to conflicts", window.Status, StringComparison.Ordinal);
         ConflictsDialog dialog = window.ConflictsWindow!;
-        Assert.Equal("Rebasing branch main onto branch origin/main", dialog.Description);
+        Assert.Equal($"Rebasing branch main onto branch origin/main, stopped at {rebased} Short", dialog.Description);
         Assert.Equal(["Name", "Yours (main)", "Theirs (origin/main)"], dialog.Columns);
         Assert.Contains("<<<<<<<", window.EditorArea.Active!.Text.Snapshot.ToString(), StringComparison.Ordinal);
 
@@ -393,7 +394,7 @@ public sealed class ConflictsTests : IDisposable
         Press(dialog, "Merge…");
         Ui.Landed(() => window.Frontmost is MergeWindow, "the merge window");
         MergeWindow merge = (MergeWindow)window.Frontmost;
-        Assert.Matches("^Rebasing [0-9a-f]{8} from main$", merge.View.Texts.Sides.LeftTitle);
+        Assert.Equal($"Rebasing {rebased} from main", merge.View.Texts.Sides.LeftTitle);
         Assert.Equal("Already rebased commits and commits from origin/main", merge.View.Texts.Sides.RightTitle);
         Assert.Contains("short count", merge.View.Left.Document.Snapshot.ToString(), StringComparison.Ordinal);
         Assert.Contains("long count", merge.View.Right.Document.Snapshot.ToString(), StringComparison.Ordinal);

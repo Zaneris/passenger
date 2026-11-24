@@ -22,6 +22,11 @@ public static class GitVariables
 
     public const string AuthorDate = "GIT_AUTHOR_DATE";
 
+    /// <summary>The name and email a commit git makes is committed by, over the configuration's.</summary>
+    public const string CommitterName = "GIT_COMMITTER_NAME";
+
+    public const string CommitterEmail = "GIT_COMMITTER_EMAIL";
+
     /// <summary>"0" keeps git from asking for a login on a terminal.</summary>
     public const string TerminalPrompt = "GIT_TERMINAL_PROMPT";
 

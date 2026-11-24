@@ -20,15 +20,18 @@ namespace Passenger.App.Vcs;
 public sealed record RebaseRow(PlannedCommit Step, string? Into);
 
 /// <summary>A commit of the history the rebase makes as the dialog's preview lists it (or the commit it goes onto, at its
-/// foot, <see cref="Made"/> null): its subject, where it comes from, and what the rebase does to it.</summary>
-public sealed record MadeRow(RebasedCommit? Made, string Subject, string From, IReadOnlyList<string> Tags);
+/// foot, <see cref="Made"/> null): its subject, where it comes from, what the rebase does to it, and, where git is foreseen
+/// to stop for conflicts in making it, <see cref="Stops"/>'s words for its tag ("stops for conflicts", or "may stop for
+/// conflicts" after an earlier stop) and <see cref="StopsWhy"/> naming the commit and its files.</summary>
+public sealed record MadeRow(RebasedCommit? Made, string Subject, string From, IReadOnlyList<string> Tags, string? Stops = null, string? StopsWhy = null);
 
 /// <summary>Interactively Rebase from Here: the branch's commits from the one chosen, newest first, each dragged (or moved
 /// by Alt+Up and Alt+Down) into its place and given what happens to it, by its box, its menu or git's letter for it (P, R,
 /// E, S, F, D; Delete drops it); the message of the commit a row makes under the list, written there for a reword or a
 /// squash; and beside them the history the rebase makes, newest first over the commit it goes onto, each commit saying
 /// where it comes from and whether it moved, took a new message, folded others in or stops to be edited, kept where git
-/// leaves it as it is. Start Rebasing closes it with the plan as it stands, greyed with why while git could not run it.</summary>
+/// leaves it as it is, and whether git will stop for conflicts in making it, foreseen once the preview shows. Start
+/// Rebasing closes it with the plan as it stands, greyed with why while git could not run it.</summary>
 public sealed class InteractiveRebaseDialog : IdeWindow
 {
     private static readonly RebaseCommand[] Commands = Enum.GetValues<RebaseCommand>();
@@ -46,6 +49,18 @@ public sealed class InteractiveRebaseDialog : IdeWindow
     private readonly Panel surface = new();
     private readonly DropOverlay drop = new();
     private readonly DragGesture<RebaseRow> drag;
+    private readonly Func<RebasePlan, CancellationToken, Task<IReadOnlyList<ForeseenConflict>?>>? foresee;
+
+    /// <summary>The stops for conflicts foreseen of each plan asked, by its <see cref="RebasePlan.ReplayKey"/>; null where
+    /// git could not say.</summary>
+    private readonly Dictionary<string, IReadOnlyList<ForeseenConflict>?> foreseen = new(StringComparer.Ordinal);
+
+    /// <summary>The foresight under way and the plan it is of, cancelled as the plan changes or the dialog closes.</summary>
+    private CancellationTokenSource? foreseeing;
+    private string? foreseeingKey;
+
+    /// <summary>Whether the dialog has shown, from which the preview's stops are foreseen.</summary>
+    private bool shown;
     private bool touched;
 
     /// <summary>What the message box was last given to show, which is no one's typing: the box tells of a change a moment
@@ -56,8 +71,11 @@ public sealed class InteractiveRebaseDialog : IdeWindow
     /// <param name="branch">The branch rebased, as the window names it.</param>
     /// <param name="ontoWords">The commit they go onto as the preview's foot shows it (its hash and subject); null where the
     /// branch's first commit is among them.</param>
-    public InteractiveRebaseDialog(RebasePlan plan, string branch, string? ontoWords)
+    /// <param name="foresee">Where a plan will stop for conflicts, or null where git cannot say; none foresees nothing.</param>
+    public InteractiveRebaseDialog(RebasePlan plan, string branch, string? ontoWords,
+        Func<RebasePlan, CancellationToken, Task<IReadOnlyList<ForeseenConflict>?>>? foresee = null)
     {
+        this.foresee = foresee;
         onto = plan.Base;
         steps = [.. plan.Commits];
         Title = "Interactive Rebase";
@@ -123,7 +141,13 @@ public sealed class InteractiveRebaseDialog : IdeWindow
             },
             page, DialogFooter.OkCancel(StartButton, () => Close(null), problem));
         Lay();
-        Opened += (_, _) => Dispatcher.UIThread.Post(() => ListKeys.Hold(list, chooseFirst: true), DispatcherPriority.Loaded);
+        Opened += (_, _) =>
+        {
+            shown = true;
+            Foresee(Plan);
+            Dispatcher.UIThread.Post(() => ListKeys.Hold(list, chooseFirst: true), DispatcherPriority.Loaded);
+        };
+        Closed += (_, _) => foreseeing?.Cancel();
     }
 
     public Button StartButton { get; }
@@ -236,7 +260,9 @@ public sealed class InteractiveRebaseDialog : IdeWindow
         {
             list.SelectedItem = rows.FirstOrDefault(r => r.Step.Commit.Hash == chosen);
         }
-        List<MadeRow> history = [.. plan.Outcome().Reverse().Select(c => new MadeRow(c, c.Subject, FromWords(c), TagsOf(c))), ground];
+        Foresee(plan);
+        IReadOnlyList<ForeseenConflict> stops = foreseen.GetValueOrDefault(plan.ReplayKey) ?? [];
+        List<MadeRow> history = [.. plan.Outcome().Reverse().Select(c => StopsIn(new MadeRow(c, c.Subject, FromWords(c), TagsOf(c)), stops)), ground];
         for (int at = 0; at < history.Count; at++)
         {
             if (at == made.Count)
@@ -266,7 +292,81 @@ public sealed class InteractiveRebaseDialog : IdeWindow
     /// <summary>Whether two rows of the history show the same, so a key typed in the message box draws only the row it changed.</summary>
     private static bool Alike(MadeRow shown, MadeRow next) => ReferenceEquals(shown, next)
         || (shown.Made is not null && next.Made is not null && shown.Subject == next.Subject && shown.From == next.From
-            && shown.Made.Kept == next.Made.Kept && shown.Tags.SequenceEqual(next.Tags));
+            && shown.Made.Kept == next.Made.Kept && shown.Tags.SequenceEqual(next.Tags) && shown.StopsWhy == next.StopsWhy);
+
+    /// <summary>The stops for conflicts of a plan foreseen off the window's thread, once the dialog has shown and where it
+    /// was not foreseen already (none where git makes each commit as it stands): the foresight of another plan under way
+    /// cancelled, and the preview laid again once it lands, where the plan still stands.</summary>
+    private void Foresee(RebasePlan plan)
+    {
+        string key = plan.ReplayKey;
+        if (!shown || foresee is null || key == foreseeingKey || foreseen.ContainsKey(key))
+        {
+            return;
+        }
+        foreseeing?.Cancel();
+        foreseeing = null;
+        foreseeingKey = null;
+        if (plan.FirstReplayed == plan.Commits.Count)
+        {
+            foreseen[key] = [];
+            return;
+        }
+        CancellationTokenSource cancel = new();
+        foreseeing = cancel;
+        foreseeingKey = key;
+        IdeErrors.Observe(ForeseeAsync(plan, key, cancel));
+    }
+
+    private async Task ForeseeAsync(RebasePlan plan, string key, CancellationTokenSource cancel)
+    {
+        IReadOnlyList<ForeseenConflict>? stops;
+        try
+        {
+            stops = await foresee!(plan, cancel.Token);
+        }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+        {
+            return;
+        }
+        finally
+        {
+            if (foreseeing == cancel)
+            {
+                foreseeing = null;
+                foreseeingKey = null;
+            }
+            cancel.Dispose();
+        }
+        foreseen[key] = stops;
+        if (IsVisible && Plan.ReplayKey == key)
+        {
+            Lay();
+        }
+    }
+
+    /// <summary>A row of the history with the stops for conflicts foreseen in making it, where there are any: its tag says
+    /// whether git surely stops there, and its tip names each commit that stops and its files.</summary>
+    private static MadeRow StopsIn(MadeRow row, IReadOnlyList<ForeseenConflict> stops)
+    {
+        List<ForeseenConflict> its = [.. row.Made!.From.SelectMany(c => stops.Where(s => s.Commit == c.Commit.Hash))];
+        if (its.Count == 0)
+        {
+            return row;
+        }
+        bool sure = its.Any(s => s.Sure);
+        IEnumerable<string> said = its.Select(s =>
+        {
+            PlannedCommit commit = row.Made.From.First(c => c.Commit.Hash == s.Commit);
+            return $"{(s.Sure ? "Stops" : "May stop")} at {commit.Commit.Short} {commit.Commit.Subject} for conflicts in {FilesWords(s.Files)}";
+        });
+        string why = string.Join("; ", said) + (sure ? string.Empty : ", foreseen as if the conflicts before it were resolved to each commit's own files");
+        return row with { Stops = sure ? "stops for conflicts" : "may stop for conflicts", StopsWhy = why };
+    }
+
+    /// <summary>The files in conflict as a sentence lists them, the first few named.</summary>
+    private static string FilesWords(IReadOnlyList<string> files) =>
+        files.Count <= 4 ? Plural.Listed(files) : Plural.Listed([.. files.Take(3), Plural.Of(files.Count - 3, "more file")]);
 
     /// <summary>Where a commit the rebase makes comes from, in words: kept as it is, or made new of its commits.</summary>
     private static string FromWords(RebasedCommit commit)
@@ -462,7 +562,9 @@ public sealed class InteractiveRebaseDialog : IdeWindow
     {
         Lane lane = new() { Width = 20 };
         TextBlock subject = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        StackPanel tags = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
+        // The tag of a stop for conflicts, in the conflicted files' colour, after the others.
+        Border stops = Tags.Of(null, TokenKeys.Vcs_File_Conflicted);
+        StackPanel tags = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, 0, 0), Children = { stops } };
         DockPanel top = new();
         DockPanel.SetDock(tags, Dock.Right);
         top.Children.Add(tags);
@@ -483,7 +585,7 @@ public sealed class InteractiveRebaseDialog : IdeWindow
             while (shownTags.Count < row.Tags.Count)
             {
                 Border tag = Tags.Of(null);
-                tags.Children.Add(tag);
+                tags.Children.Insert(tags.Children.Count - 1, tag);
                 shownTags.Add(tag);
             }
             for (int i = 0; i < shownTags.Count; i++)
@@ -491,7 +593,10 @@ public sealed class InteractiveRebaseDialog : IdeWindow
                 shownTags[i].IsVisible = i < row.Tags.Count;
                 Tags.WordsOf(shownTags[i]).Text = i < row.Tags.Count ? row.Tags[i] : null;
             }
-            Avalonia.Automation.AutomationProperties.SetName(line, string.Join(", ", [row.Subject, row.From, .. row.Tags]));
+            stops.IsVisible = row.Stops is not null;
+            Tags.WordsOf(stops).Text = row.Stops;
+            ToolTip.SetTip(stops, row.StopsWhy);
+            Avalonia.Automation.AutomationProperties.SetName(line, string.Join(", ", ((string?[])[row.Subject, row.From, .. row.Tags, row.StopsWhy]).OfType<string>()));
         });
     }
 

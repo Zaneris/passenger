@@ -2276,8 +2276,10 @@ public sealed partial class VcsTests : IDisposable
     }
 
     /// <summary>An interactive rebase follows git through its stops as a rebase does: a commit moved under the one it builds
-    /// on stops it for conflicts, where Skip Commit leaves that commit out and goes on to the edit planned after it, where
-    /// it stops saying so with Skip Commit refused, and Continue Rebase finishes it.</summary>
+    /// on and reworded, its preview foreseeing it stops for conflicts and the one it built on may, stops it for conflicts,
+    /// the Conflicts dialog naming the person's commit, never the twin made for its new message; Skip Commit leaves that
+    /// commit out and goes on to the edit planned after it, where it stops saying so with Skip Commit refused, and
+    /// Continue Rebase finishes it.</summary>
     private void An_interactive_rebase_stops_for_conflicts_and_at_an_edit_and_goes_on_by_skip_commit_and_continue_rebase()
     {
         File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 2", StringComparison.Ordinal));
@@ -2294,11 +2296,21 @@ public sealed partial class VcsTests : IDisposable
         Ui.Press(dialog, "alt DOWN");
         Ui.Click(RowView(commits, 0), new Point(300, ListRow.Height / 2));
         Ui.Press(dialog, "E");
+        dialog.Chosen = dialog.RowOf("Thrice");
+        Ui.Click(dialog.MessageBox);
+        dialog.MessageBox.SelectAll();
+        dialog.KeyTextInput("Thrice, reworded");
         Assert.Equal(["Notes", "Twice", "Thrice"], dialog.Rows.Select(r => r.Step.Commit.Subject));
         Assert.Equal([true, false, false], dialog.History.Where(r => r.Made is not null).Select(r => r.Made!.Stops));
+        string thrice = dialog.RowOf("Thrice").Step.Commit.Short;
+        Ui.WaitFor(() => dialog.History.Any(r => r.Stops is not null),
+            () => $"the preview's stops for conflicts, where its rows say {string.Join(" | ", dialog.History.Select(r => $"{r.Subject}: {r.Stops ?? "no stop"}"))}");
+        Assert.Equal([null, "may stop for conflicts", "stops for conflicts"], dialog.History.Where(r => r.Made is not null).Select(r => r.Stops));
+        Assert.Equal($"Stops at {thrice} Thrice for conflicts in Shop.cs", dialog.History[2].StopsWhy);
 
         Ui.Click(dialog.StartButton);
         Ui.WaitFor(() => window.ConflictsWindow is not null, "the Conflicts dialog for the moved commit");
+        Assert.EndsWith($", stopped at {thrice} Thrice", window.ConflictsWindow!.Description, StringComparison.Ordinal);
         window.ConflictsWindow!.Close();
         Ui.Settle();
         Assert.Equal((MergeOperation.Rebase, (RebaseStop?)null), (window.Vcs.Merge.Operation, window.Vcs.Merge.Stop));

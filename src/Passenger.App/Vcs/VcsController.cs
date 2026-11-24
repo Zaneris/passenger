@@ -1644,6 +1644,14 @@ public sealed class VcsController : IDisposable
         return await git!.RebasePlanAsync(from.Hash);
     }
 
+    /// <summary>Where a planned rebase will stop for conflicts, foreseen off the window's thread by replaying it
+    /// (<see cref="Git.ConflictsAheadAsync"/>); null where git cannot say, or there is no repository.</summary>
+    public Task<IReadOnlyList<ForeseenConflict>?> ConflictsAheadAsync(RebasePlan plan, CancellationToken cancel)
+    {
+        UiThread.Check();
+        return git is { } repository ? BackgroundWork.Run(() => repository.ConflictsAheadAsync(plan, cancel), cancel) : Task.FromResult<IReadOnlyList<ForeseenConflict>?>(null);
+    }
+
     /// <summary>An interactive rebase as planned, held as its action's work: one change in Local History, stopping where git
     /// does, at an edit (said as the Commit window says it) or for conflicts (the Conflicts dialog).</summary>
     public async Task<VcsOutcome> InteractiveRebaseAsync(RebasePlan plan)
