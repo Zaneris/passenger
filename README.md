@@ -264,7 +264,7 @@ its own, each dark and light, and every file with an icon in each look's colours
   command, choose Tools | Add the passenger-ide Command…: it links `~/.local/bin/passenger-ide`, with no administrator,
   and where your shell's PATH lacks `~/.local/bin`, adds it in your shell's startup file (`~/.zshrc` for zsh), saying
   which before it asks. Tools | Remove the passenger-ide Command… takes the link away. Or install it with Homebrew,
-  `brew install --cask passenger-ide`, which puts the `passenger-ide` command on your PATH too.
+  `brew install passenger-ide`, which puts the `passenger-ide` command on your PATH too.
 - **Windows:** an installer for x64 or Arm64, which installs for you alone, with no administrator, and puts the
   `passenger-ide` command on your Path; uninstalling takes it off. A terminal opened after the install finds it; one
   already open keeps the Path it started with, so open a new one.
