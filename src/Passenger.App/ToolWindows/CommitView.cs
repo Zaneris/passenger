@@ -929,9 +929,16 @@ public sealed class CommitView : DockPanel, IOwnKeys
         amend.IsChecked = false;
         message.Text = string.Empty;
         signTurned = false;
+        if (!signing.IsSetUp)
+        {
+            CommittedUnsigned?.Invoke(this, EventArgs.Empty);
+        }
         ShowSigning();
         return true;
     }
+
+    /// <summary>A commit was made that git's config signs nothing of.</summary>
+    public event EventHandler? CommittedUnsigned;
 
     private Dictionary<string, PartialCommit> Partial() => Files.Where(r => r.IsChosen && r.Partial is not null)
         .ToDictionary(r => r.Change.Path, r => r.Partial!, PathNames.Comparer);

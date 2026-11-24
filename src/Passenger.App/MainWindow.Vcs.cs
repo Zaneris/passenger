@@ -137,6 +137,7 @@ public partial class MainWindow
         view.MergeRequested += (_, path) => IdeErrors.Observe(MergeAsync(path));
         view.StageRequested += (_, asked) => IdeErrors.Observe(StageFilesAsync(asked.Changes, asked.Stage));
         view.RepositoryChosen += (_, _) => ShowGitStatus();
+        view.CommittedUnsigned += (_, _) => IdeErrors.Observe(AskCommitSigningAsync());
         view.ShowRepositories(session.Repositories);
         view.StashDiffRequested += (_, asked) => IdeErrors.Observe(ShowStashDiffAsync(asked.Stash, asked.File));
         view.DropStash = AskDropStashAsync;
@@ -985,9 +986,9 @@ public partial class MainWindow
     /// <summary>The Commit Signing dialog while it is open; null once it closes.</summary>
     public CommitSigningDialog? CommitSigning { get; private set; }
 
-    /// <summary>Commit Signing…: how commits are signed, set up in the dialog as git's config has it now, then written to git's
-    /// config as chosen.</summary>
-    private async Task ShowCommitSigningAsync()
+    /// <summary>Commit Signing…: how commits are signed, set up in the dialog as git's config has it now, or on a key offered
+    /// (<paramref name="offered"/>, for every repository where it can be), then written to git's config as chosen.</summary>
+    private async Task ShowCommitSigningAsync((SigningFormat Format, string? Key)? offered = null)
     {
         VcsController vcs = session.Vcs;
         using Working? reading = BeginWork(AppActions.CommitSigning, "Reading how commits are signed…");
@@ -997,6 +998,12 @@ public partial class MainWindow
         }
         SigningSetup setup = await vcs.SigningAsync();
         CommitSigningDialog dialog = new(setup, vcs.Repository, VcsController.GlobalAllowedSigners);
+        if (offered is { } key)
+        {
+            dialog.Choose(key.Format);
+            dialog.Key = key.Key ?? string.Empty;
+            dialog.Global = VcsController.GlobalAllowedSigners is not null;
+        }
         CommitSigning = dialog;
         try
         {

@@ -516,8 +516,23 @@ public static class Declared
         Settings = [HotReload],
     };
 
+    /// <summary>Whether to sign commits, asked once at the person's first commit that git's config signs nothing of, its words
+    /// naming the key found and the git configs Commit Signing… may set, which its Set Up… opens on that key.</summary>
+    public static readonly FirstTimeQuestion CommitSigning = new("commitSigning", QuestionScope.State,
+        "Sign Your Commits?",
+        "Git signs none of your commits, and a signature shows a commit is yours.",
+        "Set Up…", "Not Now");
+
+    /// <summary>Whether Passenger is Godot's script editor, asked once as the first Godot project opens, its words naming the
+    /// Godot found and the settings file it writes, which Write Settings writes (as Make Passenger Godot's Script Editor…
+    /// does later).</summary>
+    public static readonly FirstTimeQuestion GodotScriptEditor = new("godotScriptEditor", QuestionScope.State,
+        "Make Passenger Godot's Script Editor?",
+        "Godot's editor can open its C# scripts and its other scripts in Passenger, at their line, in the window on their project.",
+        "Write Settings", "Not Now");
+
     /// <summary>Every first-time question.</summary>
-    public static IReadOnlyList<FirstTimeQuestion> Questions { get; } = [ContinuousTesting, SaveFormatting, RunWithHotReload];
+    public static IReadOnlyList<FirstTimeQuestion> Questions { get; } = [ContinuousTesting, SaveFormatting, RunWithHotReload, CommitSigning, GodotScriptEditor];
 
     public static readonly ChoiceSetting<DebuggerStop> WhenDebuggerStops = new(s => s.WhenDebuggerStops, (s, v) => s with { WhenDebuggerStops = v },
         [(DebuggerStop.ComeForward, "Bring Passenger to the front"), (DebuggerStop.AskForAttention, "Ask for attention"), (DebuggerStop.Nothing, "Nothing")],

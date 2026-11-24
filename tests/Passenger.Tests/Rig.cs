@@ -176,7 +176,7 @@ public sealed class TestRun : IAsyncDisposable
         string gitConfig = Path.Combine(Root, "gitconfig");
         File.WriteAllText(gitConfig, string.Empty);
         Environment.SetEnvironmentVariable(StateStore.Variable, Settings);
-        Environment.SetEnvironmentVariable("GIT_CONFIG_GLOBAL", gitConfig);
+        Environment.SetEnvironmentVariable(GitVariables.ConfigGlobal, gitConfig);
         Environment.SetEnvironmentVariable("GIT_CONFIG_NOSYSTEM", "1");
         // Configuration git takes from the environment, over the files' or (git config's) in place of them.
         OwnEnvironment.Set(GitVariables.ConfigParameters, null);

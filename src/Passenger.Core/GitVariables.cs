@@ -28,6 +28,9 @@ public static class GitVariables
     /// <summary>"0" keeps a git that only reads (a status, a diff) from taking the index's lock to refresh it.</summary>
     public const string OptionalLocks = "GIT_OPTIONAL_LOCKS";
 
+    /// <summary>The global config git reads and git config --global writes, in place of the person's own.</summary>
+    public const string ConfigGlobal = "GIT_CONFIG_GLOBAL";
+
     /// <summary>The program git asks for a login or a passphrase.</summary>
     public const string AskPass = "GIT_ASKPASS";
 

@@ -1064,7 +1064,6 @@ public partial class MainWindow : IdeWindow
         RunTargets = session.Targets.Kept,
         Build = session.BuildChoices.Kept,
         Folds = session.Folds.Capture(Editors.Documents),
-        GodotEditorOffered = godotEditorOffered,
         GodotTemplatesStyle = godotTemplatesStyle,
         ExplorerView = explorerView,
         AttachScope = attachScope.Where == Debugging.AttachWhere.Anywhere ? null : attachScope,
@@ -1117,7 +1116,6 @@ public partial class MainWindow : IdeWindow
         {
             session.Opened(shown.Path);
         }
-        godotEditorOffered = kept.GodotEditorOffered;
         godotTemplatesStyle = kept.GodotTemplatesStyle;
         OfferGodotEditor();
         ListenForGodotEditors();

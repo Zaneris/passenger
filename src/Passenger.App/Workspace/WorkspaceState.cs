@@ -44,9 +44,6 @@ public sealed record WorkspaceState : IStateDocument<WorkspaceState>
     /// <summary>The folds of the files opened lately, each as it closed, the latest first.</summary>
     public List<KeptFolds> Folds { get; init; } = [];
 
-    /// <summary>Whether the banner's offer of Passenger as Godot's script editor was taken or dismissed, never to come again.</summary>
-    public bool GodotEditorOffered { get; init; }
-
     /// <summary>The project style whose C# script templates for Godot were last written or offered, which a style changed
     /// since offers to write again, once.</summary>
     public string? GodotTemplatesStyle { get; init; }

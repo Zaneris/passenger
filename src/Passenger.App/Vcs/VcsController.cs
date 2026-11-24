@@ -1408,6 +1408,22 @@ public sealed class VcsController : IDisposable
         return null;
     }
 
+    /// <summary>The global git config git config --global writes: GIT_CONFIG_GLOBAL's, else ~/.gitconfig, but where only
+    /// XDG's git/config is there.</summary>
+    public static string GlobalConfigFile
+    {
+        get
+        {
+            if (Environment.GetEnvironmentVariable(GitVariables.ConfigGlobal) is { Length: > 0 } named)
+            {
+                return named;
+            }
+            string home = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gitconfig");
+            return !File.Exists(home) && XdgFolders.Config(XdgFolders.Own) is { } config && File.Exists(Path.Combine(config, "git", "config"))
+                ? Path.Combine(config, "git", "config") : home;
+        }
+    }
+
     /// <summary>The allowed signers file Commit Signing… lists the person's key in where it sets signing up for all their
     /// repositories: git's own folder in the person's config folder (XDG_CONFIG_HOME, else ~/.config); null where the person
     /// has no home to find it in.</summary>

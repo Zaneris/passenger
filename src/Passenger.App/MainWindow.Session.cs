@@ -460,9 +460,6 @@ public partial class MainWindow
                 ListenForGodotEditors();
             }
         };
-        // Another folder's offer is not this one's.
-        GodotBanner.Say(null);
-        godotEditorOffered = false;
         ShowDotnet();
         ShowSdk();
         // The installation the new folder's projects take may be another (Dotnet.Find(folder)).

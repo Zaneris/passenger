@@ -2605,7 +2605,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         File.WriteAllText(global, string.Empty);
 
         await using McpClient client = await Start(["--mcp", repository], languageServer: false,
-            environment: new() { ["GIT_TEST_ASSUME_DIFFERENT_OWNER"] = "1", ["GIT_CONFIG_GLOBAL"] = global });
+            environment: new() { ["GIT_TEST_ASSUME_DIFFERENT_OWNER"] = "1", [GitVariables.ConfigGlobal] = global });
         foreach (Dictionary<string, object?>? arguments in new Dictionary<string, object?>?[] { null, new() { ["path"] = "Notes.txt" } })
         {
             CallToolResult refused = await Result(client, McpTools.VcsStatus, arguments);
