@@ -37,6 +37,7 @@ public static class FileIcons
             }, null, node.Name),
             NodeKind.SolutionFolder => node.IsExpanded ? IconKeys.SolutionFolderOpen : IconKeys.SolutionFolder,
             NodeKind.Framework => IconKeys.Reference,
+            NodeKind.Generators or NodeKind.Generator => IconKeys.Wand,
             _ => Look(node) is { } look ? Shaped(look) : IconKeys.Explorer,
         };
 
@@ -77,7 +78,7 @@ public static class FileIcons
         : node.Kind switch
         {
             NodeKind.SolutionFolder => TokenKeys.File_SolutionFolder,
-            NodeKind.Framework => TokenKeys.File_Plain,
+            NodeKind.Framework or NodeKind.Generators or NodeKind.Generator => TokenKeys.File_Plain,
             _ => TokenKeys.File_Folder,
         };
 
@@ -212,7 +213,7 @@ public static class FileIcons
     private static FileIconLook? Look(ExplorerNode node) => node.Kind switch
     {
         NodeKind.Folder => FileIconSet.ForFolder(node.Name),
-        NodeKind.SolutionFolder or NodeKind.Framework => null,
+        NodeKind.SolutionFolder or NodeKind.Framework or NodeKind.Generators or NodeKind.Generator => null,
         NodeKind.Dependencies or NodeKind.Package => FileIconSet.Packages,
         NodeKind.ProjectReference or NodeKind.SharedProject => FileIconSet.ForFile(Path.GetFileName(node.Referenced ?? node.Name)),
         _ => FileIconSet.ForFile(Path.GetFileName(node.Path ?? node.Name)),

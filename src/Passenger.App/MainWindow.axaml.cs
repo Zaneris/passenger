@@ -158,6 +158,12 @@ public partial class MainWindow : IdeWindow
         AddMarkdownPreview();
         FollowThemeLayout();
         Explorer.FileOpened += (_, path) => OpenFile(path);
+        Explorer.GeneratedOpened += (_, made) => IdeErrors.Observe(OpenGeneratedAsync(made));
+        Explorer.Tree.GeneratedAsked += project =>
+        {
+            generatedListed.Add(project);
+            session.CSharp?.Generated.List(project);
+        };
         Explorer.IndexedFiles = IndexedFiles;
         Explorer.FileClicked += (_, path) =>
         {

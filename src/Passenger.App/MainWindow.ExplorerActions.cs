@@ -125,6 +125,29 @@ public partial class MainWindow
             : row.Kind == NodeKind.Dependencies && row.Owner is { } owner && !Passenger.Host.ProgramFiles.IsProgram(owner) ? owner : null;
     }
 
+    /// <summary>The projects whose Dependencies listed what their source generators make, which a language server started
+    /// later lists too.</summary>
+    private readonly HashSet<string> generatedListed = new(PathNames.Comparer);
+
+    /// <summary>A source generator's document chosen in the Explorer's Dependencies: copied from the C# language server and
+    /// opened read-only, as Go to Declaration opens one, else said why not.</summary>
+    private async Task OpenGeneratedAsync(string made)
+    {
+        if (session.CSharp is not { } csharp)
+        {
+            status.Text = Refusals.NoCSharp;
+            return;
+        }
+        if (await csharp.Generated.CopyOfAsync(made) is { } copy)
+        {
+            OpenFile(copy);
+        }
+        else
+        {
+            status.Text = Refusals.GeneratedNoLonger(Lsp.DocumentUris.GeneratedName(made) ?? made);
+        }
+    }
+
     /// <summary>Select Opened File: the Explorer shown with the file shown chosen in it, the keys on its row unless asked
     /// from its header while they were elsewhere; an agent's shows it behind, the keys left where they are. A file neither
     /// of its views shows is said.</summary>

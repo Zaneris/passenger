@@ -492,6 +492,13 @@ public sealed partial class RoslynSession : IAsyncDisposable, IDocumentHost
             ? (await ExtensionAsync<Roslyn.Extension.GeneratedFound>(Roslyn.Extension.Handlers.GeneratedNamed, new Roslyn.Extension.GeneratedNameAsked(project, file), cancel).ConfigureAwait(false)).Texts
             : null;
 
+    /// <summary>The documents the source generators of the projects named by their files make now, every target framework's
+    /// (Passenger's extension's <see cref="Roslyn.Extension.GeneratedListAsked"/>); null when the server has no extension to ask.</summary>
+    public async Task<IReadOnlyList<Roslyn.Extension.GeneratedFile>?> GeneratedListAsync(IReadOnlyList<string> projects, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? (await ExtensionAsync<Roslyn.Extension.GeneratedListFound>(Roslyn.Extension.Handlers.GeneratedListed, new Roslyn.Extension.GeneratedListAsked(projects), cancel).ConfigureAwait(false)).Files
+            : null;
+
     /// <summary>The members source generators add to the types of the projects named by their files and to those the C# files
     /// named declare (Passenger's extension's <see cref="Roslyn.Extension.GeneratedMembersAsked"/>), as the compilation has them
     /// now; null when the server has no extension to ask.</summary>

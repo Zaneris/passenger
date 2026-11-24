@@ -12,7 +12,8 @@ namespace Passenger.App.CSharp;
 /// name, shown read-only and never given to the server as a file of its own: what is asked at a place in it names the
 /// server's document (<see cref="AskableAsync"/>). While a copy's tab is open its text is taken from the server again as
 /// what it is made from changes, and its banner says when no generator makes it now, or when it was copied in an earlier
-/// run and is no longer followed. A UI-thread object.</summary>
+/// run and is no longer followed. What a project's generators make is listed for the Explorer, and again as it changes
+/// (<see cref="List"/>). A UI-thread object.</summary>
 public sealed class GeneratedCode
 {
     /// <summary>How long after a change the open copies are asked for again.</summary>
@@ -28,6 +29,10 @@ public sealed class GeneratedCode
 
     /// <summary>The copies open in tabs.</summary>
     private readonly List<OpenDocument> open = [];
+
+    /// <summary>The projects whose generators' documents are listed, by their files, with what was listed last (null before
+    /// the server answered for one).</summary>
+    private readonly Dictionary<string, IReadOnlyList<Extension.GeneratedFile>?> listed = new(PathNames.Comparer);
     private readonly Debounce again;
 
     public GeneratedCode(Func<RoslynSession?> server)
@@ -184,6 +189,65 @@ public sealed class GeneratedCode
         return named.FirstOrDefault(made => made is not null && PathNames.Same(PlaceOf(made), copy));
     }
 
+    /// <summary>What a project's source generators make, every target framework's, as the server listed it anew: raised for
+    /// a project <see cref="List"/> named once the server first answers, and each time what it makes comes or goes.</summary>
+    public event EventHandler<(string Project, IReadOnlyList<Extension.GeneratedFile> Made)>? Listed;
+
+    /// <summary>A project, by its file, whose generators' documents are listed now and again as what they are made from
+    /// changes (<see cref="Listed"/>).</summary>
+    public void List(string project)
+    {
+        UiThread.Check();
+        if (listed.TryAdd(project, null))
+        {
+            IdeErrors.Observe(ListAsync([project]));
+        }
+    }
+
+    /// <summary>The generators' documents of the projects listed, each raised where it differs from what was listed last;
+    /// none while the server can't be asked, which a change asks again.</summary>
+    private async Task ListAsync(IReadOnlyList<string> projects)
+    {
+        if (projects.Count == 0 || server() is not { } session)
+        {
+            return;
+        }
+        IReadOnlyList<Extension.GeneratedFile>? made;
+        try
+        {
+            made = await session.GeneratedListAsync(projects);
+        }
+        catch (LanguageServerFailed)
+        {
+            // A server that ended is started again, and a server started is a change that asks again.
+            return;
+        }
+        if (made is null)
+        {
+            return;
+        }
+        foreach (string project in projects)
+        {
+            Extension.GeneratedFile[] now = [.. made.Where(f => PathNames.Same(f.ProjectPath, project))
+                .OrderBy(f => f.Framework, StringComparer.Ordinal).ThenBy(f => f.Generator, StringComparer.Ordinal).ThenBy(f => f.Hint, StringComparer.Ordinal)];
+            if (listed.TryGetValue(project, out IReadOnlyList<Extension.GeneratedFile>? before) && (before is null || !before.SequenceEqual(now)))
+            {
+                listed[project] = now;
+                Listed?.Invoke(this, (project, now));
+            }
+        }
+    }
+
+    /// <summary>A generator's document by the URI the server names it, copied as Go to Declaration copies one (<see
+    /// cref="CopiedAsync"/>): the copy's path, or null where the server could not give its text.</summary>
+    public async Task<string?> CopyOfAsync(string uri)
+    {
+        UiThread.Check();
+        LspRange top = new(new LspPosition(0, 0), new LspPosition(0, 0));
+        IReadOnlyList<LspLocation> copied = await CopiedAsync([new LspLocation(uri, top)]);
+        return copied[0].Uri == uri ? null : DocumentUris.ToPath(copied[0].Uri);
+    }
+
     /// <summary>A copy opened in a tab, followed while it is open.</summary>
     public void Opened(OpenDocument document)
     {
@@ -206,7 +270,7 @@ public sealed class GeneratedCode
     public void Changed()
     {
         UiThread.Check();
-        if (open.Count > 0)
+        if (open.Count > 0 || listed.Count > 0)
         {
             again.Restart();
         }
@@ -216,9 +280,10 @@ public sealed class GeneratedCode
     public void Stop() => again.Stop();
 
     /// <summary>The open copies of this run's asked for again, each taken where its text changed or said to be made no
-    /// longer; one of an earlier run's said to be followed no longer.</summary>
+    /// longer; one of an earlier run's said to be followed no longer; and the projects listed listed again.</summary>
     private async Task FollowAsync()
     {
+        await ListAsync([.. listed.Keys]);
         foreach (OpenDocument unknown in open.Where(d => !sources.ContainsKey(d.Path)))
         {
             unknown.Notice = NoticeOf(unknown);
@@ -317,5 +382,5 @@ public sealed class GeneratedCode
         : "Copied in an earlier run and followed no longer: shown as its generator made it then";
 
     /// <summary>A copy's generator by its type's own name, and its project.</summary>
-    private static string Maker(Source source) => $"{source.Generator[(source.Generator.LastIndexOf('.') + 1)..]} for {source.Asked.ProjectName}";
+    private static string Maker(Source source) => $"{TypeNames.Short(source.Generator)} for {source.Asked.ProjectName}";
 }

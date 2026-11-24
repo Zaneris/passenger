@@ -634,6 +634,17 @@ public partial class MainWindow
         if (service is not null)
         {
             service.ReadLayersAgain = ReadLayers;
+            service.Generated.Listed += (_, listed) =>
+            {
+                if (service == session.CSharp)
+                {
+                    Explorer.Tree.ShowGenerated(listed.Project, listed.Made);
+                }
+            };
+            foreach (string project in generatedListed)
+            {
+                service.Generated.List(project);
+            }
             service.ProjectsLoaded += (_, _) => dependencyMap?.CodeMoved();
             service.StateChanged += (_, _) => status.ShowLanguage(LanguageLabel());
             service.StateChanged += (_, _) => usages.Refresh();

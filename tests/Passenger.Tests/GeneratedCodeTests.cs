@@ -2,6 +2,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.CSharp;
+using Passenger.App.Explorer;
 using Passenger.App.Navigation;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
@@ -13,7 +14,8 @@ namespace Passenger.Tests;
 /// <summary>A source generator's code, where Go to Declaration and Find Usages lead into it: Avalonia's InitializeComponent,
 /// a System.Text.Json context's member and a GeneratedRegex method each open a read-only tab named by the generator's hint
 /// name, at the member, its text the server's, and the tab takes the generator's code again as the code it is made from
-/// changes; and Find Usages sets usages in generated code apart from the person's.</summary>
+/// changes; Find Usages sets usages in generated code apart from the person's; and the Explorer's Dependencies list what
+/// each generator makes.</summary>
 public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.GeneratorsApp>
 {
     private const string Window = "<Window xmlns=\"https://github.com/avaloniaui\"\n        xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\"\n"
@@ -51,6 +53,49 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
         Flow.StepApart("Go to Symbol lists a class a generator declares after the person's symbols and opens its code read-only", () => new GeneratedCodeTests(app), t => t.Go_to_symbol_lists_a_class_a_generator_declares_after_the_persons_symbols_and_opens_its_code_read_only());
         Flow.StepApart("Find Usages sets generated code apart with each side's count, shows a side alone for later searches, and goes into it", () => new GeneratedCodeTests(app), t => t.Find_usages_sets_generated_code_apart_with_each_sides_count_shows_a_side_alone_for_later_searches_and_goes_into_it());
         Flow.StepApart("the call hierarchy in a generator's code lists the method's callers and callees", () => new GeneratedCodeTests(app), t => t.Call_hierarchy_in_a_generators_code_lists_the_methods_callers_and_callees_and_leaves_the_code_following_its_pattern());
+        Flow.StepApart("the Explorer's Dependencies list each source generator's documents, which open read-only and follow the code", () => new GeneratedCodeTests(app), t => t.The_Explorers_Dependencies_list_each_source_generators_documents_which_open_read_only_and_follow_the_code());
+    }
+
+    /// <summary>The project's Dependencies list Source Generators, each generator by its type's name and the documents it makes
+    /// by their hint names; Enter on one opens it read-only as Go to Declaration's do; and a type the code gives the JSON
+    /// context, typed and not saved or built, brings its document under the JSON generator once the server makes it.</summary>
+    private void The_Explorers_Dependencies_list_each_source_generators_documents_which_open_read_only_and_follow_the_code()
+    {
+        MainWindow window = app.Open(app.PathOf("Patterns.cs"));
+        try
+        {
+            ExplorerTree tree = window.ExplorerView.Tree;
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Kind == NodeKind.Dependencies), () => $"Gallery's Dependencies in the Explorer: [{Rows(tree)}]");
+            tree.Expand(tree.Rows.First(r => r.Kind == NodeKind.Dependencies));
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Kind == NodeKind.Generators), () => $"Source Generators under Gallery's Dependencies: [{Rows(tree)}]");
+            tree.Expand(tree.Rows.First(r => r.Kind == NodeKind.Generators));
+            ExplorerNode regex = tree.Rows.First(r => r is { Kind: NodeKind.Generator, Name: "RegexGenerator" });
+            ExplorerNode json = tree.Rows.First(r => r is { Kind: NodeKind.Generator, Name: "JsonSourceGenerator" });
+            tree.Expand(regex);
+            tree.Expand(json);
+            Assert.True(regex.Children is [{ Kind: NodeKind.GeneratedFile, Name: "RegexGenerator.g.cs" }] && json.Children!.Any(c => c.Name == "ShapeContext.Square.g.cs"),
+                $"The generators' documents are not listed by their hint names: [{Rows(tree)}]");
+            Assert.DoesNotContain(tree.Rows, r => r.Name == "ShapeContext.Circle.g.cs");
+
+            Ui.ClickRow(window, regex.Children![0]);
+            Ui.Press(window, "ENTER");
+            OpenDocument shown = Shown(window, "RegexGenerator.g.cs", "Enter on the regex generator's document in the Explorer");
+            Assert.Contains("partial class Patterns", shown.Text.Snapshot.ToString(), StringComparison.Ordinal);
+
+            window.OpenFile(app.PathOf("Patterns.cs"));
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "public sealed record Square(int Side);");
+            window.KeyTextInput(" public sealed record Circle(int Radius);");
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "[JsonSerializable(typeof(Square))]");
+            window.KeyTextInput(" [JsonSerializable(typeof(Circle))]");
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Kind == NodeKind.GeneratedFile && r.Name == "ShapeContext.Circle.g.cs"),
+                () => $"the JSON generator's document of Circle, typed in the code, under its generator in the Explorer: [{Rows(tree)}]");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static string Rows(ExplorerTree tree) => string.Join("; ", tree.Rows.Select(r => $"{new string(' ', r.Depth * 2)}{r.Name}"));
     }
 
     /// <summary>Go to Declaration on InitializeComponent in an Avalonia window's code-behind opens the code Avalonia's
@@ -315,13 +360,14 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
     }
 
     /// <summary>An Avalonia app whose window's code-behind calls InitializeComponent, with a GeneratedRegex method and a
-    /// System.Text.Json context beside it, restored once for the class's tests.</summary>
+    /// System.Text.Json context beside it, in a solution, restored once for the class's tests.</summary>
     public sealed class GeneratorsApp : SharedProject
     {
         public GeneratorsApp()
             : base("generated-code-")
         {
             TestFolders.Write(Folder, "Gallery.csproj", AvaloniaApp.HeadlessProject());
+            TestFolders.Write(Folder, "Gallery.slnx", "<Solution>\n  <Project Path=\"Gallery.csproj\" />\n</Solution>\n");
             TestFolders.Write(Folder, "Program.cs", "namespace Gallery;\n\npublic static class Program\n{\n    public static void Main()\n    {\n    }\n}\n");
             TestFolders.Write(Folder, "MainWindow.axaml", Window);
             TestFolders.Write(Folder, "MainWindow.axaml.cs", WindowCode);

@@ -87,15 +87,7 @@ public partial class ExplorerView : UserControl
         Rows.ItemsSource = Tree.Rows;
         ReusedRows.Use(Rows, Row);
         // Every key the keymap gives an action (Rename, Delete, the clipboard's) is the window's, run on the chosen row.
-        TreeKeys.Attach<ExplorerNode>(Rows, Tree.Toggle, node =>
-        {
-            if (!node.IsFile || node.Path is not { } path)
-            {
-                return false;
-            }
-            FileOpened?.Invoke(this, path);
-            return true;
-        });
+        TreeKeys.Attach<ExplorerNode>(Rows, Tree.Toggle, Open);
         Surface.Children.Add(drop);
         drag = new DragGesture<IReadOnlyList<ExplorerNode>>(Surface, drop, DropZoneAt, (items, at) =>
         {
@@ -135,6 +127,26 @@ public partial class ExplorerView : UserControl
 
     /// <summary>A file chosen with a double-click or Enter.</summary>
     public event EventHandler<string>? FileOpened;
+
+    /// <summary>A source generator's document chosen with a double-click or Enter, or clicked once while <see
+    /// cref="OpensOnClick"/>, by the URI the C# language server names it by.</summary>
+    public event EventHandler<string>? GeneratedOpened;
+
+    /// <summary>Opens a row that opens: a file on disk, or a document a source generator makes; false for any other.</summary>
+    private bool Open(ExplorerNode node)
+    {
+        if (node is { Kind: NodeKind.GeneratedFile, Referenced: { } made })
+        {
+            GeneratedOpened?.Invoke(this, made);
+            return true;
+        }
+        if (!node.IsFile || node.Path is not { } path)
+        {
+            return false;
+        }
+        FileOpened?.Invoke(this, path);
+        return true;
+    }
 
     /// <summary>A file clicked once while <see cref="OpensOnClick"/>: to be shown, the keys left on its row.</summary>
     public event EventHandler<string>? FileClicked;
@@ -675,7 +687,7 @@ public partial class ExplorerView : UserControl
         ExplorerNode? pressed = (e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext as ExplorerNode;
         PointerPoint point = e.GetCurrentPoint(Rows);
         // Shift and Cmd (Ctrl) choose rows, and a second press is a double-click's.
-        clicked = OpensOnClick && pressed is { IsFile: true, Path: not null } && point.Properties.IsLeftButtonPressed
+        clicked = OpensOnClick && pressed is { IsFile: true, Path: not null } or { Kind: NodeKind.GeneratedFile } && point.Properties.IsLeftButtonPressed
             && e.KeyModifiers == KeyModifiers.None && e.ClickCount == 1 ? (pressed, point.Position) : null;
         if (pressed is { IsMovable: true } row)
         {
@@ -720,9 +732,16 @@ public partial class ExplorerView : UserControl
         if (clicked is { } press)
         {
             clicked = null;
-            if (!dragged && e.InitialPressMouseButton == MouseButton.Left && RowAt(e.GetPosition(Rows)) == press.Row && press.Row.Path is { } path)
+            if (!dragged && e.InitialPressMouseButton == MouseButton.Left && RowAt(e.GetPosition(Rows)) == press.Row)
             {
-                FileClicked?.Invoke(this, path);
+                if (press.Row.Path is { } path)
+                {
+                    FileClicked?.Invoke(this, path);
+                }
+                else if (press.Row.Referenced is { } made)
+                {
+                    GeneratedOpened?.Invoke(this, made);
+                }
             }
         }
     }

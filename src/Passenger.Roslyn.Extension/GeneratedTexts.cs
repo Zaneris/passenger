@@ -132,6 +132,27 @@ public sealed class GeneratedNamed : IExtensionWorkspaceMessageHandler<Generated
     }
 }
 
+/// <summary>The documents the source generators of the projects named make now, each project's build of every target
+/// framework, their generators run where the server has not run them yet.</summary>
+public sealed class GeneratedListed : IExtensionWorkspaceMessageHandler<GeneratedListAsked, GeneratedListFound>
+{
+    public async Task<GeneratedListFound> ExecuteAsync(GeneratedListAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
+    {
+        HashSet<string> asked = new(message.Projects, Passenger.Core.PathNames.Comparer);
+        List<GeneratedFile> files = [];
+        foreach (Project project in context.Solution.Projects.Where(p => p.FilePath is { } path && asked.Contains(path)))
+        {
+            string? framework = project.State.NameAndFlavor.flavor;
+            foreach (SourceGeneratedDocument document in await project.GetSourceGeneratedDocumentsAsync(cancellationToken).ConfigureAwait(false))
+            {
+                files.Add(new GeneratedFile(project.FilePath!, framework, document.Identity.Generator.TypeName, document.Identity.Generator.AssemblyName,
+                    document.HintName, SourceGeneratedDocumentUri.Create(document.Identity).UriString));
+            }
+        }
+        return new GeneratedListFound(files);
+    }
+}
+
 /// <summary>Which of the documents named are generated code, as Roslyn's own check tells it for its analyzers and code
 /// fixes: a source generator's document, and a C# file an .editorconfig's <c>generated_code</c> marks, else one whose name
 /// (<c>.g.cs</c>, <c>.designer.cs</c>, <c>.generated.cs</c>) or opening comment (<c>&lt;auto-generated&gt;</c>) says a tool

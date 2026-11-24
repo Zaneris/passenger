@@ -22,6 +22,12 @@ public enum NodeKind
 
     /// <summary>A shared project a project imports the items of, under its Dependencies.</summary>
     SharedProject,
+
+    /// <summary>Under a project's Dependencies (a framework's, where it has several), what its source generators make now:
+    /// each generator, and under it each document it makes by its hint name.</summary>
+    Generators,
+    Generator,
+    GeneratedFile,
 }
 
 /// <summary>A folder at a project's top that the .NET SDK reads by its name, in the order the Explorer lists them before
@@ -148,11 +154,40 @@ public sealed class ExplorerTree
     /// the projects importing that file, which their Dependencies name it by.</summary>
     private readonly Dictionary<string, string> shared = new(PathNames.Comparer);
 
+    /// <summary>What each project's source generators make, as last heard (<see cref="ShowGenerated"/>), by its path.</summary>
+    private readonly Dictionary<string, IReadOnlyList<Roslyn.Extension.GeneratedFile>> generated = new(PathNames.Comparer);
+
+    /// <summary>A project's Dependencies were opened while what its source generators make is not known: the window lists
+    /// it, then says it through <see cref="ShowGenerated"/>, and again as it changes.</summary>
+    public event Action<string>? GeneratedAsked;
+
+    /// <summary>What a project's source generators make now: its Dependencies' Source Generators, opened or not, show it,
+    /// their documents' rows made anew where it changed, every other row kept as it was.</summary>
+    public void ShowGenerated(string project, IReadOnlyList<Roslyn.Extension.GeneratedFile> made)
+    {
+        generated[project] = made;
+        if (Root is null)
+        {
+            return;
+        }
+        List<ExplorerNode> reloaded = [];
+        foreach (ExplorerNode node in Loaded(Root, n => n.Kind is NodeKind.Dependencies or NodeKind.Framework or NodeKind.Generators or NodeKind.Generator
+            && n.Owner is { } owner && PathNames.Same(owner, project)))
+        {
+            if (node.Reload(n => n.Kind == NodeKind.GeneratedFile))
+            {
+                reloaded.Add(node);
+            }
+        }
+        ShowAgain(reloaded);
+    }
+
     private void Take(IEnumerable<ProjectModel> shown)
     {
         projects.Clear();
         files.Clear();
         shared.Clear();
+        generated.Clear();
         foreach (ProjectModel project in shown)
         {
             projects[project.Path] = project;
@@ -797,7 +832,8 @@ public sealed class ExplorerTree
                     // Read when opened, so one evaluated again shows its packages as they are now.
                     ProjectModel now = Current(given);
                     FrameworkDependencies? its = now.Evaluated?.Dependencies.FirstOrDefault(d => d.Framework == framework.Name);
-                    return [.. Referenced(now, (its?.Projects ?? []).Select(PathNames.Canonical), its?.Packages ?? [], framework.Depth + 1)];
+                    return [.. Referenced(now, (its?.Projects ?? []).Select(PathNames.Canonical), its?.Packages ?? [], framework.Depth + 1),
+                        .. Generators(now.Path, framework.Name, framework.Depth + 1)];
                 })
                 {
                     Owner = given.Path,
@@ -808,10 +844,47 @@ public sealed class ExplorerTree
                 children.AddRange(project.TargetFrameworks.Select(f => Leaf(NodeKind.Framework, f, null, below, project)));
                 children.AddRange(Referenced(project, project.ProjectReferences, frameworks is [{ } one] ? one.Packages : [], below));
             }
+            if (frameworks is not [{ Framework: not null }, ..])
+            {
+                children.AddRange(Generators(project.Path, null, below));
+            }
             children.AddRange(SharedImports(project).OrderBy(s => Path.GetFileName(s.Items), StringComparer.OrdinalIgnoreCase)
                 .Select(s => SharedLeaf(project, s.Items, s.Project, below)));
+            if (!generated.ContainsKey(project.Path))
+            {
+                GeneratedAsked?.Invoke(project.Path);
+            }
             return children;
         }) { Owner = given.Path };
+
+    /// <summary>A project's Source Generators, of one target framework's build where it has several: each generator by its
+    /// type's name, its assembly beside it, the documents it makes under it by their hint names; none where its generators
+    /// make nothing, or what they make is not known yet. Each row reads what is known as it is made, so one read again
+    /// shows it as it is now.</summary>
+    private IEnumerable<ExplorerNode> Generators(string project, string? framework, int depth)
+    {
+        if (!Made(project, framework).Any())
+        {
+            yield break;
+        }
+        yield return new ExplorerNode(NodeKind.Generators, "Source Generators", null, depth, false, node =>
+            [.. Made(project, framework).GroupBy(f => (f.Generator, f.Assembly)).OrderBy(g => TypeNames.Short(g.Key.Generator), StringComparer.OrdinalIgnoreCase)
+                .Select(g => new ExplorerNode(NodeKind.Generator, TypeNames.Short(g.Key.Generator), null, node.Depth + 1, false, generator =>
+                    [.. Made(project, framework).Where(f => (f.Generator, f.Assembly) == g.Key).OrderBy(f => f.Hint, StringComparer.OrdinalIgnoreCase)
+                        .Select(f => new ExplorerNode(NodeKind.GeneratedFile, f.Hint, null, generator.Depth + 1, false, null) { Owner = project, Referenced = f.Uri })],
+                    g.Key.Assembly)
+                {
+                    Owner = project,
+                    Tip = $"The source generator {g.Key.Generator}, in {g.Key.Assembly}",
+                })])
+        {
+            Owner = project,
+        };
+    }
+
+    /// <summary>What a project's source generators make, of one framework's build where one is named.</summary>
+    private IEnumerable<Roslyn.Extension.GeneratedFile> Made(string project, string? framework) =>
+        (generated.GetValueOrDefault(project) ?? []).Where(f => framework is null || string.Equals(f.Framework, framework, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The projects and packages a project (or one framework of it) references, each project by its kind; packages
     /// the SDK adds of itself are left out.</summary>

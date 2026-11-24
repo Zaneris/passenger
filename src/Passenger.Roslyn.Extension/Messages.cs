@@ -40,6 +40,7 @@ public static class Handlers
     public const string ComponentClass = "Passenger.Roslyn.Extension.ComponentClass";
     public const string GeneratedTexts = "Passenger.Roslyn.Extension.GeneratedTexts";
     public const string GeneratedNamed = "Passenger.Roslyn.Extension.GeneratedNamed";
+    public const string GeneratedListed = "Passenger.Roslyn.Extension.GeneratedListed";
     public const string PartialHalf = "Passenger.Roslyn.Extension.PartialHalf";
     public const string GeneratedParts = "Passenger.Roslyn.Extension.GeneratedParts";
     public const string GeneratedDocuments = "Passenger.Roslyn.Extension.GeneratedDocuments";
@@ -76,7 +77,7 @@ public static class Handlers
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, InterfacesLacking, DocumentTexts, DocumentsWritten, ReferencesRead, ReferencedFiles, GeneratorsRun, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, SymbolContainers, WrittenPlaces,
-        ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames, GeneratedMembers,
+        ComponentClass, GeneratedTexts, GeneratedNamed, GeneratedListed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames, GeneratedMembers,
         MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover,
         CompletionCall, StepBindings, EditorConfigKeys, EditorConfigValues, Signposts, CodeClones, ExtractClones, Dependencies, DependencyAt, LayerChecks,
         TestDoublesOffered, CreateFake, FillArguments,
@@ -302,6 +303,22 @@ public sealed record GeneratedSource(
 /// <summary>Documents source generators make under a file name, for the projects of a name (a project's file without its
 /// extension, or its name where it has no file).</summary>
 public sealed record GeneratedNameAsked([property: JsonPropertyName("project")] string Project, [property: JsonPropertyName("file")] string File);
+
+/// <summary>Projects by their files, whose source generators' documents are listed.</summary>
+public sealed record GeneratedListAsked([property: JsonPropertyName("projects")] IReadOnlyList<string> Projects);
+
+/// <summary>The documents the projects' source generators make now, every target framework's, in no order.</summary>
+public sealed record GeneratedListFound([property: JsonPropertyName("files")] IReadOnlyList<GeneratedFile> Files);
+
+/// <summary>A document a source generator makes: its project's file, the target framework of the project's build that
+/// makes it (null for a project of one), its generator's type and assembly, its hint name and the URI the server names it by.</summary>
+public sealed record GeneratedFile(
+    [property: JsonPropertyName("projectPath")] string ProjectPath,
+    [property: JsonPropertyName("framework")] string? Framework,
+    [property: JsonPropertyName("generator")] string Generator,
+    [property: JsonPropertyName("assembly")] string Assembly,
+    [property: JsonPropertyName("hint")] string Hint,
+    [property: JsonPropertyName("uri")] string Uri);
 
 /// <summary>Each document asked for, in order, or null for one no generator makes now.</summary>
 public sealed record GeneratedFound([property: JsonPropertyName("texts")] IReadOnlyList<GeneratedText?> Texts);
