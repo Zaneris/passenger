@@ -105,10 +105,11 @@ public sealed class BranchesTests : IDisposable
                 "    main [favourite]",
                 "    feature",
                 "Tags",
+                "Worktrees",
             ], Listed(panel));
 
         panel.Toggle(panel.Rows.Single(r => r.Title == "Tags"));
-        Assert.Equal(["v1.0", "v2.0"], panel.Rows.SkipWhile(r => r.Title != "Tags").Skip(1).Select(r => r.Title));
+        Assert.Equal(["v1.0", "v2.0"], panel.Rows.SkipWhile(r => r.Title != "Tags").Skip(1).TakeWhile(r => r.Title != "Worktrees").Select(r => r.Title));
         Assert.True(panel.Select("feature"));
         panel.ToggleFavorite(panel.Selected!.Branch!);
         Assert.Equal(["main", "feature", "team", "login"], panel.Rows.SkipWhile(r => r.Title != "Local").Skip(1).TakeWhile(r => r.Title != "Remote").Select(r => r.Title));
@@ -545,7 +546,7 @@ public sealed class BranchesTests : IDisposable
         Assert.True(feature.IsSubMenuOpen, "Choosing feature in the branch menu opened no menu of feature's");
         Assert.Equal(
             [
-                "Checkout", "New Branch from 'feature'…", "New Tag at 'feature'…", "Checkout and Rebase onto 'main'", "Compare with 'main'", "Show Diff with Working Tree",
+                "Checkout", "New Branch from 'feature'…", "New Tag at 'feature'…", "New Worktree from 'feature'…", "Checkout and Rebase onto 'main'", "Compare with 'main'", "Show Diff with Working Tree",
                 "Rebase 'main' onto 'feature'", "Merge 'feature' into 'main'", "Update", "Push…", "Rename…", "Delete",
             ], feature.Items.OfType<MenuItem>().Select(i => i.Header as string));
 

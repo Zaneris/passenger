@@ -135,6 +135,10 @@ public sealed class VcsController : IDisposable
         {
             return null;
         }
+        if (branch.CheckedOutElsewhere is { } worktree)
+        {
+            return Refusals.InWorktree(branch.Name, worktree);
+        }
         string? local = branch.Kind == RefKind.Local ? branch.Name
             : branch.Kind == RefKind.Remote && all.Any(b => b.Kind == RefKind.Local && b.Name == LocalNameOf(branch)) ? LocalNameOf(branch)
             : null;
@@ -1740,6 +1744,68 @@ public sealed class VcsController : IDisposable
         return deleted is null ? Report(false, "Delete stopped")
             : deleted.Succeeded ? Report(true, $"Deleted tag {tag} on {remote}: a repository that fetched it keeps its own, this one's too, until it is deleted there")
             : Report(false, $"Tag {tag} was not deleted on {remote}: {deleted.Message}");
+    }
+
+    /// <summary>The repository's working trees, the main one first; none outside a working tree.</summary>
+    public async Task<IReadOnlyList<WorktreeInfo>> WorktreesAsync() => git is { } repository ? await repository.WorktreesAsync() : [];
+
+    /// <summary>Why New Worktree… cannot add one: no working tree, or a folder not trusted, where checking a branch out
+    /// would run the repository's filters and hooks.</summary>
+    public string? WhyNotNewWorktree => git is null ? NoRepository : WhyNotRemote;
+
+    /// <summary>New Worktree…'s plan carried out, held as its action's work: a branch checked out in a folder of its own,
+    /// made first where it is new; told in words that say what a worktree is.</summary>
+    public async Task<VcsOutcome> AddWorktreeAsync(WorktreePlan plan)
+    {
+        UiThread.Check();
+        if (WhyNotNewWorktree is { } refused)
+        {
+            return Report(false, refused);
+        }
+        if (!Begin(AppActions.NewWorktree, $"Checking {plan.Branch} out in {Path.GetFileName(plan.Folder)}…", out Working? work))
+        {
+            return Report(false, UnderWay(AppActions.NewWorktree));
+        }
+        using Working? held = work;
+        GitResult added = await git!.AddWorktreeAsync(plan);
+        await RefreshAsync();
+        return added.Succeeded
+            ? Report(true, $"Checked {plan.Branch} out in the worktree {PathNames.Shown(plan.Folder, null)}: its own files, sharing this repository's commits and branches")
+            : Report(false, $"No worktree was made for {plan.Branch}: {added.Message}");
+    }
+
+    /// <summary>How many files a working tree has changed or new; null where git could not say (its folder gone).</summary>
+    public async Task<int?> WorktreeChangesAsync(WorktreeInfo worktree) =>
+        git is { } repository && worktree.Gone is null ? await repository.WorktreeChangesAsync(worktree.Folder) : null;
+
+    /// <summary>A working tree removed: its folder moved to the Trash, its changes no commit holds with it (none where the
+    /// folder is gone already), then forgotten by git; told where the folder went. Its branch and commits stay.</summary>
+    public async Task<VcsOutcome> RemoveWorktreeAsync(WorktreeInfo worktree)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return Report(false, NoRepository);
+        }
+        Trashed? went = null;
+        if (worktree.Gone is null)
+        {
+            try
+            {
+                went = Trash.Move(worktree.Folder);
+            }
+            catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
+            {
+                return Report(false, $"The worktree {worktree.Name} was not removed: its folder could not be moved to the Trash: {refused.Message}");
+            }
+        }
+        GitResult forgot = await repository.ForgetWorktreeAsync(worktree.Folder);
+        await RefreshAsync();
+        string kept = worktree.BranchName is { } branch ? $"; {branch} and its commits stay" : string.Empty;
+        string trashed = worktree.Gone is not null ? "Forgot the worktree" : went is null ? "Moved to the Trash the folder of the worktree"
+            : $"Moved to the Trash, as {PathNames.Shown(went.At, null)}, the folder of the worktree";
+        return forgot.Succeeded ? Report(true, $"{trashed} {worktree.Name}{kept}")
+            : Report(false, $"{trashed} {worktree.Name}, but git did not forget it: {forgot.Message}");
     }
 
     /// <summary>Update of a local branch: the one checked out updated as Update Project does, another brought

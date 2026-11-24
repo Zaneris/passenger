@@ -6,13 +6,14 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.State;
 using Passenger.App.Vcs;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Vcs;
 
 namespace Passenger.App.ToolWindows;
 
-/// <summary>What a row of the branches panel is: HEAD (Current Branch), a top group (Local, Remote, Tags), a remote, a
-/// folder of branches named alike ("feature/" of "feature/login"), or a branch or tag.</summary>
+/// <summary>What a row of the branches panel is: HEAD (Current Branch), a top group (Local, Remote, Tags, Worktrees), a
+/// remote, a folder of branches named alike ("feature/" of "feature/login"), a branch or tag, or a working tree.</summary>
 public enum BranchNodeKind
 {
     Head,
@@ -20,10 +21,12 @@ public enum BranchNodeKind
     Remote,
     Folder,
     Ref,
+    Worktree,
 }
 
-/// <summary>A row of the branches panel: what it is, its name, how deep it sits, and the branch or tag it is.</summary>
-public sealed class BranchNode(BranchNodeKind kind, string title, string key, int depth, BranchInfo? branch = null) : Observable, ITreeRow
+/// <summary>A row of the branches panel: what it is, its name, how deep it sits, and the branch or tag or working tree it
+/// is.</summary>
+public sealed class BranchNode(BranchNodeKind kind, string title, string key, int depth, BranchInfo? branch = null, WorktreeInfo? worktree = null) : Observable, ITreeRow
 {
     private bool isExpanded;
 
@@ -37,6 +40,8 @@ public sealed class BranchNode(BranchNodeKind kind, string title, string key, in
     public int Depth { get; } = depth;
 
     public BranchInfo? Branch { get; } = branch;
+
+    public WorktreeInfo? Worktree { get; } = worktree;
 
     public List<BranchNode> Children { get; } = [];
 
@@ -130,7 +135,12 @@ public sealed class BranchesPanel : DockPanel
                 UpdateTools();
             }
         };
-        ListMenus.Attach(list, () => Selected is { Branch: { } branch } ? Menu(branch) : []);
+        ListMenus.Attach(list, () => Selected switch
+        {
+            { Branch: { } branch } => Menu(branch),
+            { Worktree: { } worktree } => WorktreeMenu(worktree),
+            _ => [],
+        });
         search = SearchBox.Of("Filter branches and tags");
         search.Margin = new Thickness(Gaps.Small, 0, Gaps.Tight, 0);
         search.TextChanged += (_, _) => Show();
@@ -168,6 +178,13 @@ public sealed class BranchesPanel : DockPanel
     /// <summary>The remotes, which a remote branch's name begins with.</summary>
     public IReadOnlyList<string> Remotes { get; private set; } = [];
 
+    /// <summary>The repository's working trees, the main one first, as last read.</summary>
+    public IReadOnlyList<WorktreeInfo> Worktrees { get; private set; } = [];
+
+    /// <summary>Why a working tree cannot be removed from here beyond what git refuses (a window of this Passenger shows
+    /// it), or null; the window's.</summary>
+    public Func<WorktreeInfo, string?>? WhyNotRemoveWorktree { get; set; }
+
     public BranchNode? Selected => list.SelectedItem as BranchNode;
 
     public string SearchText
@@ -204,6 +221,14 @@ public sealed class BranchesPanel : DockPanel
 
     public event EventHandler<BranchInfo>? DeleteRemoteTagRequested;
 
+    /// <summary>A working tree to add, its branch the one given where it is free, else a new one made from it.</summary>
+    public event EventHandler<BranchInfo>? NewWorktreeRequested;
+
+    /// <summary>A working tree to open, in a window of its own or in this one.</summary>
+    public event EventHandler<(WorktreeInfo Worktree, bool NewWindow)>? OpenWorktreeRequested;
+
+    public event EventHandler<WorktreeInfo>? RemoveWorktreeRequested;
+
     /// <summary>A branch was marked or unmarked as a favourite, for the folder to keep.</summary>
     public event EventHandler<GitBranchesState>? FavoritesChanged;
 
@@ -234,6 +259,7 @@ public sealed class BranchesPanel : DockPanel
         {
             Add($"New Tag at {it}…", () => NewTagRequested?.Invoke(this, branch));
         }
+        Add($"New Worktree from {it}…", () => NewWorktreeRequested?.Invoke(this, branch), vcs.WhyNotNewWorktree);
         if (branch.Kind == RefKind.Local && !isCurrent)
         {
             Add(current is null ? "Checkout and Rebase onto Current" : $"Checkout and Rebase onto {here}", () => IdeErrors.Observe(vcs.CheckoutAndRebaseAsync(branch)), detached);
@@ -283,6 +309,33 @@ public sealed class BranchesPanel : DockPanel
         return items;
     }
 
+    /// <summary>The menu of a working tree here: open it in a window of its own or this one, or remove it, greyed saying
+    /// why where it cannot be.</summary>
+    public IReadOnlyList<Control> WorktreeMenu(WorktreeInfo worktree)
+    {
+        string? here = IsThisWindows(worktree) ? $"This window shows {worktree.Name}" : null;
+        string? gone = worktree.Gone is { } why ? $"{worktree.Name} cannot be opened: {why}" : null;
+        return
+        [
+            ListMenus.Item("Open in New Window", () => OpenWorktreeRequested?.Invoke(this, (worktree, true)), here ?? gone),
+            ListMenus.Item("Open in This Window", () => OpenWorktreeRequested?.Invoke(this, (worktree, false)), here ?? gone),
+            new Separator(),
+            ListMenus.Item("Remove Worktree…", () => RemoveWorktreeRequested?.Invoke(this, worktree), WhyNotRemove(worktree)),
+        ];
+    }
+
+    /// <summary>Why a working tree cannot be removed: the main one holds the repository itself, git keeps a locked one, and
+    /// one a window shows is closed there first.</summary>
+    private string? WhyNotRemove(WorktreeInfo worktree) => worktree switch
+    {
+        { IsMain: true } => $"{worktree.Name} is the repository's main worktree, which holds the repository itself",
+        { Locked: { } reason } => $"{worktree.Name} is locked{(reason.Length > 0 ? $": {reason}" : string.Empty)}",
+        _ when IsThisWindows(worktree) => $"This window shows {worktree.Name}: open another to remove it",
+        _ => WhyNotRemoveWorktree?.Invoke(worktree),
+    };
+
+    private bool IsThisWindows(WorktreeInfo worktree) => vcs.Repository is { } shown && PathNames.Same(PathNames.Canonical(worktree.Folder), shown.Root);
+
     /// <summary>A menu's item greyed once what it does is found refused (a checkout writing out a file git cannot here), its
     /// tip saying why.</summary>
     private static async Task GreyWhenRefusedAsync(MenuItem item, Task<string?> refused)
@@ -304,12 +357,14 @@ public sealed class BranchesPanel : DockPanel
     {
         int load = ++loads;
         (IReadOnlyList<BranchInfo> branches, IReadOnlyList<string> remotes) = await vcs.BranchTreeAsync();
+        IReadOnlyList<WorktreeInfo> worktrees = await vcs.WorktreesAsync();
         if (load != loads)
         {
             return;
         }
         Branches = branches;
         Remotes = remotes;
+        Worktrees = worktrees;
         Show();
     }
 
@@ -381,6 +436,10 @@ public sealed class BranchesPanel : DockPanel
         {
             FilterRequested?.Invoke(this, branch);
         }
+        else if (node.Worktree?.Branch is { } checkedOut && Branches.FirstOrDefault(b => b.Ref.FullName == checkedOut) is { } its)
+        {
+            FilterRequested?.Invoke(this, its);
+        }
     }
 
     /// <summary>Mark/Unmark As Favorite.</summary>
@@ -428,9 +487,13 @@ public sealed class BranchesPanel : DockPanel
         Sort(remote.Children);
         BranchNode tags = Group(BranchNodeKind.Group, "Tags", "tags", 0, false);
         Fill(tags, [.. Branches.Where(b => b.Kind == RefKind.Tag && Keep(b)).Select(b => (b, b.Name))], 1);
-        foreach (BranchNode group in (BranchNode[])[local, remote, tags])
+        BranchNode worktrees = Group(BranchNodeKind.Group, "Worktrees", "worktrees", 0, Worktrees.Count > 1);
+        worktrees.Children.AddRange(Worktrees
+            .Where(w => text.Length == 0 || w.Name.Contains(text, StringComparison.OrdinalIgnoreCase) || w.BranchName?.Contains(text, StringComparison.OrdinalIgnoreCase) == true)
+            .Select(w => new BranchNode(BranchNodeKind.Worktree, w.Name, $"worktree/{w.Folder}", 1, worktree: w)));
+        foreach (BranchNode group in (BranchNode[])[local, remote, tags, worktrees])
         {
-            if (group.Children.Count > 0 || (text.Length == 0 && group == local))
+            if (group.Children.Count > 0 || (text.Length == 0 && (group == local || group == worktrees)))
             {
                 made.Add(group);
             }
@@ -578,6 +641,7 @@ public sealed class BranchesPanel : DockPanel
     {
         null => Refusals.NoRefChosen,
         { IsCurrent: true } => Refusals.CheckedOut(branch.Name),
+        { CheckedOutElsewhere: { } worktree } => Refusals.InWorktree(branch.Name, worktree),
         { Kind: RefKind.Remote } => vcs.WhyNotRemote,
         _ => null,
     };
@@ -616,6 +680,25 @@ public sealed class BranchesPanel : DockPanel
         return true;
     }
 
+    /// <summary>What a row says muted after its name: where a local branch pushes and the worktree that has it checked out;
+    /// what a worktree has checked out and whether this window shows it, it is locked or its folder is gone.</summary>
+    private string? Detail(BranchNode node)
+    {
+        if (node.Worktree is { } worktree)
+        {
+            string checkedOut = worktree.BranchName ?? (worktree.Head is { } head ? $"detached at {GitHashes.Short(head)}" : "no commit yet");
+            return string.Join(", ", ((string?[])[checkedOut, IsThisWindows(worktree) ? "this window" : null, worktree.Locked is not null ? "locked" : null,
+                worktree.Gone is not null ? "folder gone" : null]).OfType<string>());
+        }
+        if (node.Branch is { Kind: RefKind.Local } branch)
+        {
+            string? elsewhere = branch.CheckedOutElsewhere is { } at ? $"in worktree {System.IO.Path.GetFileName(System.IO.Path.TrimEndingDirectorySeparator(at))}" : null;
+            string?[] said = [branch.Upstream, elsewhere];
+            return said.Any(s => s is not null) ? string.Join(", ", said.OfType<string>()) : null;
+        }
+        return null;
+    }
+
     /// <summary>A row for whichever group, branch or tag the list hands its container: a group's chevron, a branch's or
     /// tag's mark (a favourite's star, the current branch's in the accent), its name, and where a local branch pushes.</summary>
     private Control Row()
@@ -632,13 +715,14 @@ public sealed class BranchesPanel : DockPanel
             row.Margin = new Thickness(node.Depth * Gaps.Indent, 0, 0, 0);
             chevron.Expands = node.IsGroup;
             chevron.IsOpen = node.IsExpanded;
-            mark.IsVisible = node.Kind is BranchNodeKind.Ref or BranchNodeKind.Head;
-            mark.DataKey = node.Branch?.Kind == RefKind.Tag ? IconKeys.Label : node.IsFavorite ? IconKeys.StarFilled : IconKeys.Branch;
-            mark.ForegroundKey = node.IsFavorite ? TokenKeys.Vcs_Favorite : node.Branch?.IsCurrent == true || node.Kind == BranchNodeKind.Head ? TokenKeys.Accent : null;
+            mark.IsVisible = node.Kind is BranchNodeKind.Ref or BranchNodeKind.Head or BranchNodeKind.Worktree;
+            mark.DataKey = node.Kind is BranchNodeKind.Worktree ? IconKeys.Explorer : node.Branch?.Kind == RefKind.Tag ? IconKeys.Label : node.IsFavorite ? IconKeys.StarFilled : IconKeys.Branch;
+            mark.ForegroundKey = node.IsFavorite ? TokenKeys.Vcs_Favorite
+                : node.Branch?.IsCurrent == true || node.Kind == BranchNodeKind.Head || node.Worktree is { } shown && IsThisWindows(shown) ? TokenKeys.Accent : null;
             name.Text = node.Title;
             name.Classes.Set(StyleClasses.Strong, node.Kind is BranchNodeKind.Group);
-            tracked.IsVisible = node.Branch is { Kind: RefKind.Local, Upstream: not null };
-            tracked.Text = node.Branch?.Upstream;
+            tracked.Text = Detail(node);
+            tracked.IsVisible = tracked.Text is not null;
         });
     }
 }

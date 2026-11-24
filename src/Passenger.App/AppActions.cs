@@ -654,8 +654,9 @@ public static class AppActions
     // Rider's Git.Interactive.Rebase, the log's Interactively Rebase from Here: no keys in any of its keymaps.
     public const string InteractiveRebase = "app.vcs.interactiveRebase";
 
-    // Rider's Git.CreateNewTag, New Tag…: no keys in any of its keymaps.
+    // Rider's Git.CreateNewTag, New Tag…, and Git.CreateNewWorkingTree, New Worktree…: no keys in any of its keymaps.
     public const string NewTag = "app.vcs.newTag";
+    public const string NewWorktree = "app.vcs.newWorktree";
 
     // Rider's Vcs.ShowTabbedFileHistory, Vcs.ShowHistoryForBlock, Git.CompareWithBranch and Compare.Selected: no keys in
     // its Visual Studio keymaps or their parents.

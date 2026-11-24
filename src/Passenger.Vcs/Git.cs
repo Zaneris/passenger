@@ -139,9 +139,13 @@ public enum RefKind
 public sealed record GitRef(string FullName, string Name, RefKind Kind, string? GitName = null);
 
 /// <summary>A branch or tag as the Git log's branches panel lists it: the commit it names, whether it is checked out, and
-/// for a local branch the remote and the remote's branch it tracks (its upstream), if any.</summary>
-public sealed record BranchInfo(GitRef Ref, string Hash, bool IsCurrent, string? UpstreamRemote = null, string? UpstreamBranch = null)
+/// for a local branch the remote and the remote's branch it tracks (its upstream), if any, and the folder of the working
+/// tree it is checked out in, if any (this one's for the current branch).</summary>
+public sealed record BranchInfo(GitRef Ref, string Hash, bool IsCurrent, string? UpstreamRemote = null, string? UpstreamBranch = null, string? Worktree = null)
 {
+    /// <summary>The working tree another than this one has it checked out in, where git checks it out nowhere else.</summary>
+    public string? CheckedOutElsewhere => IsCurrent ? null : Worktree;
+
     public string Name => Ref.Name;
 
     public RefKind Kind => Ref.Kind;
@@ -1142,7 +1146,7 @@ public sealed partial class Git
 
     /// <summary>What a branch or tag is read as, in the fields <see cref="BranchesOf"/> takes.</summary>
     private const string BranchFormat =
-        "--format=%(HEAD)%1f%(refname)%1f%(objectname)%1f%(*objectname)%1f%(upstream:remotename)%1f%(upstream:remoteref)%1f%(refname:short)";
+        "--format=%(HEAD)%1f%(refname)%1f%(objectname)%1f%(*objectname)%1f%(upstream:remotename)%1f%(upstream:remoteref)%1f%(refname:short)%1f%(worktreepath)";
 
     /// <summary>The branches and tags for-each-ref wrote in <see cref="BranchFormat"/>, a line each, in its order.</summary>
     private static List<BranchInfo> BranchesOf(string output)
@@ -1167,7 +1171,7 @@ public sealed partial class Git
             if (named is not null)
             {
                 found.Add(new BranchInfo(named, field[3].Length > 0 ? field[3] : field[2], field[0] == "*",
-                    field[4].Length > 0 ? field[4] : null, field[5].Length > 0 ? field[5] : null));
+                    field[4].Length > 0 ? field[4] : null, field[5].Length > 0 ? field[5] : null, field.Length > 7 && field[7].Length > 0 ? field[7] : null));
             }
         }
         return found;

@@ -20,7 +20,7 @@ public sealed partial class Git
     /// <summary>The tag of this name as it stands, or null where there is none.</summary>
     public async Task<TagInfo?> TagOfAsync(string name)
     {
-        if (TagNames.WhyNot(name) is not null)
+        if (RefNames.WhyNot(name, "tag") is not null)
         {
             return null;
         }
@@ -66,58 +66,69 @@ public sealed partial class Git
         RunAsync(Root, ["push", "--end-of-options", remote, $":refs/tags/{name}"], cancel: cancel, asker: asker);
 }
 
-/// <summary>A tag's name as git takes one, and what git answers of tags, read apart from any git.</summary>
-public static class TagNames
+/// <summary>A branch's or tag's name as git takes one, apart from any git.</summary>
+public static class RefNames
 {
-    /// <summary>Why git takes no tag of this name (git check-ref-format's rules for refs/tags/name, and git tag's own
-    /// refusal of a leading dash), in words a person reads; null where it takes it.</summary>
-    public static string? WhyNot(string name)
+    /// <summary>Why git makes no <paramref name="kind"/> ("tag", "branch") of this name (git check-ref-format's rules for
+    /// refs/tags/name and refs/heads/name, and git tag's and git branch's own refusals of a leading dash and of HEAD), in
+    /// words a person reads; null where it does.</summary>
+    public static string? WhyNot(string name, string kind)
     {
+        string its = $"A {kind}'s name";
         if (name.Length == 0)
         {
-            return "Name the tag";
+            return $"Name the {kind}";
         }
         if (name[0] == '-')
         {
-            return "A tag's name cannot begin with a dash";
+            return $"{its} cannot begin with a dash";
+        }
+        if (kind == "branch" && name == "HEAD")
+        {
+            return "A branch cannot be named HEAD";
         }
         foreach (char c in name)
         {
             if (c < ' ' || c == '\x7f')
             {
-                return "A tag's name cannot hold a control character";
+                return $"{its} cannot hold a control character";
             }
             if (c is ' ' or '~' or '^' or ':' or '?' or '*' or '[' or '\\')
             {
-                return c == ' ' ? "A tag's name cannot hold a space" : $"A tag's name cannot hold {c}";
+                return c == ' ' ? $"{its} cannot hold a space" : $"{its} cannot hold {c}";
             }
         }
         if (name.Contains("..", StringComparison.Ordinal))
         {
-            return "A tag's name cannot hold two dots together";
+            return $"{its} cannot hold two dots together";
         }
         if (name.Contains("@{", StringComparison.Ordinal))
         {
-            return "A tag's name cannot hold @{";
+            return $"{its} cannot hold @{{";
         }
         if (name[0] == '/' || name[^1] == '/' || name.Contains("//", StringComparison.Ordinal))
         {
-            return "A tag's name cannot begin or end with a slash, nor hold two together";
+            return $"{its} cannot begin or end with a slash, nor hold two together";
         }
         if (name[^1] == '.')
         {
-            return "A tag's name cannot end with a dot";
+            return $"{its} cannot end with a dot";
         }
         foreach (string part in name.Split('/'))
         {
             if (part.StartsWith('.') || part.EndsWith(".lock", StringComparison.Ordinal))
             {
-                return part.StartsWith('.') ? "No part of a tag's name between slashes can begin with a dot" : "No part of a tag's name between slashes can end with .lock";
+                return part.StartsWith('.') ? $"No part of a {kind}'s name between slashes can begin with a dot"
+                    : $"No part of a {kind}'s name between slashes can end with .lock";
             }
         }
         return null;
     }
+}
 
+/// <summary>What git answers of tags, read apart from any git.</summary>
+public static class TagNames
+{
     /// <summary>The tag <paramref name="full"/> of what for-each-ref wrote (its name, its object's type and name, the
     /// commit an annotated tag names, the tagger, the signature and the message, which ends with the signature, each record
     /// ended by 0x1e); null where it is not there.</summary>

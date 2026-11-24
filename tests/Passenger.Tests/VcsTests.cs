@@ -123,8 +123,8 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>The log and annotations as one flow, each step in an instance of its own: annotations in a SHA-256
     /// repository, the Commit and Log menus ignoring a file, reverting a commit and branching from one, a commit's file in
     /// the log jumping to its source, a commit made elsewhere reaching the log of the tree's top and of a folder in it, an
-    /// interactive rebase making the history its preview showed, and a tag made from the log, annotated and signed,
-    /// pushed, moved and deleted here and on the remote as its preview said.</summary>
+    /// interactive rebase making the history its preview showed, a tag made from the log, annotated and signed, pushed,
+    /// moved and deleted here and on the remote, and a worktree made, opened, committed from and removed.</summary>
     [AvaloniaFact]
     public void The_log_follows_commits_made_anywhere_and_its_menus_act_on_the_commit_or_file_chosen()
     {
@@ -135,6 +135,7 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("an interactive rebase from the log moves squashes rewords and drops commits making the history its preview showed", t => t.An_interactive_rebase_from_the_log_moves_squashes_rewords_and_drops_commits_making_the_history_its_preview_showed());
         Flow.StepApart<VcsTests>("an interactive rebase stops for conflicts and at an edit and goes on by skip commit and continue rebase", t => t.An_interactive_rebase_stops_for_conflicts_and_at_an_edit_and_goes_on_by_skip_commit_and_continue_rebase());
         Flow.StepApart<VcsTests>("a tag made from the log annotated and signed is pushed moved and deleted here and on the remote as its preview said", t => t.A_tag_made_from_the_log_annotated_and_signed_is_pushed_moved_and_deleted_here_and_on_the_remote_as_its_preview_said());
+        Flow.StepApart<VcsTests>("a worktree made from a branchs menu opens in its own window is committed from and removed once asked", t => t.A_worktree_made_from_a_branchs_menu_opens_in_its_own_window_is_committed_from_and_removed_once_asked());
     }
 
     /// <summary>Stash and Unstash as one flow, each step the check one test made in an instance of its own: nothing to
@@ -2140,6 +2141,84 @@ public sealed partial class VcsTests : IDisposable
         {
             TestFolders.Delete(origin);
             TestFolders.Delete(keys);
+        }
+    }
+
+    /// <summary>New Worktree from a branch's menu checks it out in a folder beside the repository, saying so first, and opens
+    /// it in a window of its own, whose Commit window commits on that branch, which this window's log then shows and its
+    /// branches say is checked out there, Checkout greyed saying so; Remove Worktree…, refused while a window shows it, asks
+    /// first once it is closed, naming the change going to the Trash with its folder, and git forgets it, the branch kept.</summary>
+    private void A_worktree_made_from_a_branchs_menu_opens_in_its_own_window_is_committed_from_and_removed_once_asked()
+    {
+        Git("branch", "feature");
+        string beside = Worktrees.Beside(PathNames.Canonical(folder), "feature");
+        try
+        {
+            MainWindow window = Open();
+            window.Perform(AppActions.ShowGit);
+            BranchesPanel panel = window.GitBranches;
+            ListBox rows = Find(panel, panel.Rows);
+            Ui.Landed(() => panel.Select("feature"), "feature in the branches panel");
+            Ui.ChooseFromMenu(rows, "New Worktree from 'feature'…");
+            Ui.WaitFor(() => window.WorktreeWindow is { IsVisible: true }, "the New Worktree dialog");
+            WorktreeDialog dialog = DialogButtonsTests.Check(window.WorktreeWindow!);
+            Ui.Settle();
+            Assert.False(dialog.KindBox.Choice, "feature, checked out nowhere, was not offered as the branch to check out");
+            Assert.Equal(beside, dialog.FolderBox.Text);
+            Assert.Equal(
+                [
+                    $"Checks feature out in {Path.GetFileName(beside)}, a folder beside this repository's: a second working tree of this repository, with files and staged changes of its own, sharing every commit, branch, tag and stash with this one.",
+                    "While feature is checked out there, no other worktree can check it out: git keeps a branch in one worktree at a time.",
+                    "Opens it in a new window, trusted as this repository is.",
+                ], dialog.WhatItDoes);
+            Assert.Equal($"git worktree add ../{Path.GetFileName(beside)} feature", dialog.GitWords);
+            Ui.Click(dialog.CreateButton);
+            Ui.Landed(() => window.WorktreeWindow is null && PassengerApp.Windows.Any(w => w.Folder is { } shown && PathNames.Same(shown, beside)), "the worktree's own window");
+            MainWindow other = PassengerApp.Windows.Single(w => w.Folder is { } shown && PathNames.Same(shown, beside));
+            Ui.Landed(() => other.Vcs.Branch == "feature", "the worktree's window on feature");
+
+            File.WriteAllText(Path.Combine(beside, "Shop.cs"), Original.Replace("count++", "count += 3", StringComparison.Ordinal));
+            other.Perform(AppActions.Commit);
+            Ui.Landed(() => other.CommitView.Chosen.Any(c => c.Name == "Shop.cs"), "the worktree's change offered to commit");
+            Ui.Landed(() => other.FocusManager?.GetFocusedElement() is TextBox, "the commit message to have the keys");
+            other.KeyTextInput("Feature");
+            Ui.Press(other, OperatingSystem.IsMacOS() ? "meta Enter" : "control Enter");
+            Ui.Landed(() => Git("log", "-1", "--format=%s", "feature").Trim() == "Feature", "the commit on feature, made from the worktree's window");
+            Assert.Equal("main", window.Vcs.Branch);
+            Ui.Landed(() => window.GitLog.Rows.Any(r => r.Commit.Subject == "Feature"), "the worktree's commit in this window's log");
+
+            Ui.Landed(() => panel.Branches.Any(b => b.Name == "feature" && b.Worktree is not null), "feature read as checked out in the worktree");
+            MenuItem checkout = panel.Menu(panel.Branches.Single(b => b.Name == "feature")).OfType<MenuItem>().Single(i => i.Header as string == "Checkout");
+            Ui.Landed(() => !checkout.IsEnabled, "Checkout of feature greyed");
+            Assert.Contains("is checked out in the worktree", ToolTip.GetTip(checkout) as string, StringComparison.Ordinal);
+            WorktreeInfo made = panel.Worktrees.Single(w => PathNames.Same(PathNames.Canonical(w.Folder), beside));
+            MenuItem refused = panel.WorktreeMenu(made).OfType<MenuItem>().Single(i => i.Header as string == "Remove Worktree…");
+            Assert.False(refused.IsEnabled, "Remove Worktree… was offered while a window showed the worktree");
+
+            File.WriteAllText(Path.Combine(beside, "Notes.txt"), "notes\n");
+            other.Close();
+            Ui.Settle();
+            List<string> asked = [];
+            window.Confirm = (_, text, _) =>
+            {
+                asked.Add(text);
+                return Task.FromResult(true);
+            };
+            Ui.Click(Ui.Row(rows, panel.Rows.Single(r => r.Worktree is { } w && PathNames.Same(PathNames.Canonical(w.Folder), beside))));
+            Ui.ChooseFromMenu(rows, "Remove Worktree…");
+            Ui.Landed(() => !Directory.Exists(beside) && !window.Vcs.IsBusy, "the worktree's folder moved to the Trash");
+            Assert.Contains("1 file changed there that no commit holds goes to the Trash with it", Assert.Single(asked), StringComparison.Ordinal);
+            string trashed = Path.Combine(trash, Path.GetFileName(beside));
+            Assert.Equal("notes\n", File.ReadAllText(Path.Combine(trashed, "Notes.txt")));
+            Assert.StartsWith($"Moved to the Trash, as {PathNames.Shown(trashed, null)}, the folder of the worktree {Path.GetFileName(beside)}; feature and its commits stay",
+                window.Status, StringComparison.Ordinal);
+            Assert.DoesNotContain(Path.GetFileName(beside), Git("worktree", "list"), StringComparison.Ordinal);
+            Assert.Contains("feature", Git("branch", "--list", "feature"), StringComparison.Ordinal);
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(beside);
         }
     }
 

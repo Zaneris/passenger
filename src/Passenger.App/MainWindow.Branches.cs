@@ -28,6 +28,10 @@ public partial class MainWindow
         panel.MoveTagRequested += (_, tag) => IdeErrors.Observe(ShowNewTagAsync("HEAD", tag.Name));
         panel.PushTagRequested += (_, tag) => IdeErrors.Observe(PushTagAsync(tag));
         panel.DeleteRemoteTagRequested += (_, tag) => IdeErrors.Observe(DeleteRemoteTagAsync(tag));
+        panel.NewWorktreeRequested += (_, branch) => IdeErrors.Observe(ShowNewWorktreeAsync(branch));
+        panel.OpenWorktreeRequested += (_, asked) => OpenWorktree(asked.Worktree, asked.NewWindow);
+        panel.RemoveWorktreeRequested += (_, worktree) => IdeErrors.Observe(RemoveWorktreeAsync(worktree));
+        panel.WhyNotRemoveWorktree = WhyNotRemoveWorktree;
         panel.FavoritesChanged += (_, favorites) => session.State?.GitBranches.Set(favorites);
     }
 

@@ -204,7 +204,7 @@ public sealed class TagDialog : IdeWindow
     {
         string asked = TagName;
         string atAsked = At;
-        TagInfo? tag = TagNames.WhyNot(asked) is null ? await tagOf(asked) : null;
+        TagInfo? tag = RefNames.WhyNot(asked, "tag") is null ? await tagOf(asked) : null;
         CommitInfo? commit = atAsked.Length > 0 ? await commitOf(atAsked) : null;
         CommitInfo? tagCommit = tag is null ? null : commit?.Hash == tag.Commit ? commit : await commitOf(tag.Commit);
         if (asked != TagName || atAsked != At)
@@ -236,7 +236,7 @@ public sealed class TagDialog : IdeWindow
 
     private string? WhyNot()
     {
-        if (TagNames.WhyNot(TagName) is { } badName)
+        if (RefNames.WhyNot(TagName, "tag") is { } badName)
         {
             return badName;
         }

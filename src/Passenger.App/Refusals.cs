@@ -124,6 +124,10 @@ public static class Refusals
     /// <summary>The branch checked out, which git deletes only once another is.</summary>
     public static string CheckedOut(string branch) => $"{branch} is checked out";
 
+    /// <summary>A branch checked out in another working tree of the repository, which git checks out in one at a time and
+    /// deletes only once none has it.</summary>
+    public static string InWorktree(string branch, string folder) => $"{branch} is checked out in the worktree {PathNames.Shown(folder, null)}: work on it there";
+
     /// <summary>The folder has no C# language server: it has neither a solution nor a project, or its window starts none.</summary>
     public const string NoCSharp = "No C# language server runs for this folder";
 
