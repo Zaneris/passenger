@@ -170,3 +170,15 @@ public sealed class DocumentsWritten : IExtensionWorkspaceMessageHandler<Written
         return DateTime.MinValue;
     }
 }
+
+public sealed class TestDoublesOffered : IExtensionDocumentMessageHandler<DoublesAsked, DoublesOffered>
+{
+    public Task<DoublesOffered> ExecuteAsync(DoublesAsked message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        TestDoubles.OfferedAsync(context.Document(), message, cancellationToken);
+}
+
+public sealed class CreateFake : IExtensionDocumentMessageHandler<FakeAsked, Refactored>
+{
+    public Task<Refactored> ExecuteAsync(FakeAsked message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken) =>
+        TestDoubles.CreateAsync(context.Document(), message, cancellationToken);
+}

@@ -290,6 +290,52 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
             t.Test_actions_are_offered_only_where_tests_are_and_the_solution_row_runs_its_tests();
             OpenWindows.CloseAll();
         });
+        Flow.StepApart<UnitTestsTests>("a fake made of a dependency from show context actions stands in for it in a test that runs green", () => new UnitTestsTests(restored), t =>
+        {
+            t.A_fake_made_of_a_dependency_from_show_context_actions_stands_in_for_it_in_a_test_that_runs_green();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    /// <summary>Show Context Actions at an interface's name offers Create Fake into the test project that sees it, first, and at
+    /// a sealed class the seam it needs beside it; the fake is made as one command of global Undo, and tests that stand it in
+    /// for the greeter's clock run green (#2087).</summary>
+    private void A_fake_made_of_a_dependency_from_show_context_actions_stands_in_for_it_in_a_test_that_runs_green()
+    {
+        string solution = NewFolder();
+        Write(solution, "Shop/Shop.csproj", TestProjects.Library("<Nullable>enable</Nullable>", "<ImplicitUsings>enable</ImplicitUsings>"));
+        Write(solution, "Shop/Greeter.cs", McpTests.ClockedGreeter);
+        Write(solution, "Shop.Tests/Shop.Tests.csproj", TestProject(TestProjects.Framework).With("  <ItemGroup>\n    <ProjectReference Include=\"../Shop/Shop.csproj\" />\n  </ItemGroup>\n"));
+        Write(solution, "Shop.slnx", "<Solution>\n  <Project Path=\"Shop/Shop.csproj\" />\n  <Project Path=\"Shop.Tests/Shop.Tests.csproj\" />\n</Solution>\n");
+        Restore.Run(Path.Combine(solution, "Shop.slnx"));
+        MainWindow window = Ui.OpenFolder(solution);
+        Ui.WaitFor(() => window.CSharpService is { IsReady: true }, () => $"the language server to load the projects ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+        window.OpenFile(Path.Combine(solution, "Shop", "Greeter.cs"));
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+
+        Ui.PlaceAfter(editor, "class Calen");
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Contains("Create Fake of Calendar"), () => $"the sealed class's fake among [{string.Join(", ", window.Assist.Offered)}]");
+        Assert.Equal("is sealed: Extract Interface, then Introduce Parameter", window.Assist.OfferedDetails[window.Assist.Offered.ToList().IndexOf("Create Fake of Calendar")]);
+        Ui.Press(window, "ESCAPE");
+
+        Ui.PlaceAfter(editor, "interface ICl");
+        Ui.Run(window, AppActions.QuickFix);
+        const string Fix = "Create Fake of IClock in Shop.Tests";
+        Ui.WaitFor(() => window.Assist.Offered.Contains(Fix), () => $"the clock's fake among [{string.Join(", ", window.Assist.Offered)}]");
+        Assert.Equal(Fix, window.Assist.Offered[0]);
+        Ui.Press(window, "ENTER");
+        string fake = Path.Combine(solution, "Shop.Tests", "Fakes", "FakeClock.cs");
+        Ui.WaitFor(() => File.Exists(fake) && window.EditorArea.Commands.ToUndo(null)?.Name == "Create Fake", () => $"the fake made as one command, the last {window.EditorArea.Commands.ToUndo(null)?.Name}");
+        Assert.StartsWith("#nullable enable\n\nnamespace Shop.Tests.Fakes;", File.ReadAllText(fake).ReplaceLineEndings("\n"), StringComparison.Ordinal);
+
+        Write(solution, "Shop.Tests/GreeterTests.cs", McpTests.GreeterTests);
+        Assert.True(window.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy, "the run of the tests standing the fake in for the clock", TimeSpan.FromSeconds(180));
+        Assert.True(Method(window, "Greets_in_the_morning")?.State == TestState.Passed && Method(window, "Says_the_zone_later_on")?.State == TestState.Passed,
+            $"the tests using the fake ran as {string.Join(", ", Shown(window))}");
+        window.Close();
     }
 
     /// <summary>Stop ends a run whose test never ends with its test host, and the next run runs; a test host's crash

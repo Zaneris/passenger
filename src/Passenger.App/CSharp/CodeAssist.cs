@@ -566,6 +566,14 @@ public sealed class CodeAssist
         set => actions.EditorFixes = value;
     }
 
+    /// <summary>The fixes Passenger offers itself at an offset of a file that a language server is asked for first, listed
+    /// after <see cref="EditorFixes"/>; none by default.</summary>
+    public Func<OpenDocument, int, Task<IReadOnlyList<EditorFix>>>? EditorFixesAsked
+    {
+        get => actions.EditorFixesAsked;
+        set => actions.EditorFixesAsked = value;
+    }
+
     /// <summary>Asks the person for a value a fix sets (a title, what is asked, whether it is a secret, masked as typed);
     /// null when they gave none.</summary>
     public Func<string, string, bool, Task<string?>>? AskValue

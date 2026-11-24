@@ -421,6 +421,14 @@
     <Compile Include="../../src/Passenger.App/Theme/Gaps.cs" Link="App/Gaps.cs" />
   </ItemGroup>
 
+  <!-- Test doubles: a fake written into a test project and what is offered at a type's name, over Roslyn's own workspaces,
+       compiled in since their project is built against Roslyn's server. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.Roslyn.Extension/TestDoubleMessages.cs" Link="Roslyn/TestDoubleMessages.cs" />
+    <Compile Include="../../src/Passenger.Roslyn.Extension/TestDoubles.cs" Link="Roslyn/TestDoubles.cs" />
+    <Compile Include="../../src/Passenger.Roslyn.Extension/Changes.cs" Link="Roslyn/Changes.cs" />
+  </ItemGroup>
+
   <!-- What C#'s refactorings refuse in the words they are asked, compiled in as Passenger.Languages compiles it, reading
        through the debugger's CodeBrackets. -->
   <ItemGroup>

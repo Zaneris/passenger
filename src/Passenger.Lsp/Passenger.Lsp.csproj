@@ -37,6 +37,7 @@
     <Compile Include="../Passenger.Roslyn.Extension/ProjectMessages.cs" Link="ProjectMessages.cs" />
     <Compile Include="../Passenger.Roslyn.Extension/HotReloadMessages.cs" Link="HotReloadMessages.cs" />
     <Compile Include="../Passenger.Roslyn.Extension/DependencyMessages.cs" Link="DependencyMessages.cs" />
+    <Compile Include="../Passenger.Roslyn.Extension/TestDoubleMessages.cs" Link="TestDoubleMessages.cs" />
     <Compile Include="../Passenger.Roslyn.Extension/LayerRules.cs" Link="LayerRules.cs" />
     <Compile Include="../Passenger.Roslyn.Extension/CompletionPriorities.cs" Link="CompletionPriorities.cs" />
     <Compile Include="../Passenger.Roslyn.Extension/CompletionKinds.cs" Link="CompletionKinds.cs" />

@@ -1177,6 +1177,31 @@ public static class Refusals
     /// <summary>Find Clones of Selection in a file that is not C#.</summary>
     public const string NotCSharpStatements = "Find Clones of Selection compares C# statements, and the file is not C#";
 
+    /// <summary>Create Fake in a file that is not C#.</summary>
+    public const string DoublesAreCSharp = "Test doubles stand in for C# types, and the file is not C#";
+
+    /// <summary>Create Fake in a folder with no C# test project for a fake to go into.</summary>
+    public const string NoTestProject = "The folder has no C# test project for a fake to go into";
+
+    /// <summary>Create Fake where the caret is on no interface or class a test project sees and a fake can stand in for.</summary>
+    public const string NoFakeHere = "Create Fake makes a fake of the interface or class whose name the caret is on, where a test project sees it";
+
+    /// <summary>Create Fake where the test project has the fake's file already.</summary>
+    public static string FakeThere(string file, string project) => $"Fakes/{file} is already in {project}";
+
+    /// <summary>Why a class of the solution's own has no fake (sealed, static, or no constructor a class deriving from it
+    /// outside can call), and the two refactorings, by their titles, that give the code using it a seam a fake fills.</summary>
+    public static string FakeNeedsSeam(string type, string seam, string extract, string introduce) =>
+        $"{type} {SeamOf(seam)}, so no fake can stand in for it: {extract} on it, then {introduce} where it is used, give the code a seam a fake of the interface fills";
+
+    /// <summary>Why no fake can stand in for a class, by the extension's word for it.</summary>
+    public static string SeamOf(string seam) => seam switch
+    {
+        Roslyn.Extension.FakeSeams.Sealed => "is sealed",
+        Roslyn.Extension.FakeSeams.Static => "is static",
+        _ => "has no constructor a class deriving from it can call",
+    };
+
     /// <summary>Go to Source on a node of the dependency map the compiler declares with no file of the solution's.</summary>
     public const string MapNodeUnplaced = "This node of the map is written in no file of the solution's";
 

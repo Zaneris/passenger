@@ -132,6 +132,7 @@ public partial class MainWindow : IdeWindow
         AddHierarchy();
         AddClones();
         AddDependencyMap();
+        AddTestDoubles();
         AddFileOperations();
         AcceptDrops(this);
         AddFileProperties();
@@ -360,6 +361,7 @@ public partial class MainWindow : IdeWindow
         assist.AnnotationCard = (annotation, card) => Editors.Active is { } annotated
             && (session.Debug.PinCard(annotated, annotation, card) || godotValues is { } live && live.Card(annotated, annotation, card));
         // Passenger's own fixes: bindings, compose names, Aspire, configuration and localized keys, layer rules, Godot's checks; each language's own come from its assist.
+        assist.EditorFixesAsked = TestDoubleFixesAsync;
         assist.EditorFixes = (file, offset) => [.. Passenger.App.LiveTree.BindingErrors.Fixes(file, offset, session.FailedBindings.Select(b => b.Failure)),
             .. session.Web?.Checks.Fixes(file, offset) ?? [], .. assist.AspireFixes(file, offset), .. assist.ComposeReadFixes(file, offset), .. MigrationFixes(file, offset),
             .. assist.ConfigurationFixes(file, offset), .. assist.LocalizationFixes(file, offset), .. assist.LayerFixes(file, offset), .. ProjectLayerFixes(file, offset), .. assist.GodotFixes(file, offset, session.GodotMarks),

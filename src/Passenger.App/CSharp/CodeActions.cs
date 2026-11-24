@@ -39,6 +39,10 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// <summary>Asks the person to agree to a fix (a title, what is asked, the button that agrees); whether they did.</summary>
     public Func<string, string, string, Task<bool>>? ConfirmFix { get; set; }
 
+    /// <summary>The fixes Passenger offers itself at an offset of a file that a language server is asked for first (a fake of
+    /// the type there), listed after <see cref="EditorFixes"/>; none by default.</summary>
+    public Func<OpenDocument, int, Task<IReadOnlyList<EditorFix>>>? EditorFixesAsked { get; set; }
+
     internal IReadOnlyList<EditorFix> OwnFixes(OpenDocument? file, int offset) =>
         file is null ? [] : [.. EditorFixes?.Invoke(file, offset) ?? [], .. context.Languages.Fixes(file, offset)];
 
@@ -51,8 +55,14 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             return [];
         }
         await context.Languages.ReadyAsync(file);
-        return OwnFixes(file, offset);
+        IReadOnlyList<EditorFix> own = OwnFixes(file, offset);
+        return EditorFixesAsked is { } asked ? [.. own, .. await asked(file, offset)] : own;
     }
+
+    /// <summary>Some of Passenger's own fixes listed as Show Context Actions lists them, under a title, the one chosen made.</summary>
+    internal void ShowOwnFixes(string title, OpenDocument document, IReadOnlyList<EditorFix> fixes) =>
+        popups.ShowModal(new ChoicePopup(title, [.. fixes.Select(f => new Choice(f.Title, f.Detail, f))]), Editor.Selections.Primary.Caret, title,
+            choice => choice?.Value is EditorFix fix ? ApplyOwnFix(document, fix) : Task.CompletedTask);
 
     /// <summary>One of Passenger's own fixes made in the file shown, as one undoable edit: worked out again on its text as it
     /// stands (<see cref="EditorFix.On"/>), and refused, said in the status bar, when the text no longer has what it fixes;

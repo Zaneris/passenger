@@ -13,6 +13,7 @@ using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Roslyn.Extension;
 using Passenger.Editor;
 
 namespace Passenger.Tests;
@@ -75,6 +76,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     {
         await Flow.StepApartAsync("an agents run of a passing test after a failure answers no failure of a test it did not run", () => new McpTests(restored), t => t.An_agents_run_of_a_passing_test_after_a_failure_answers_no_failure_of_a_test_it_did_not_run());
         await Flow.StepApartAsync("an agents run with coverage answers what its tests ran of the code and each files lines never run", () => new McpTests(restored), t => t.An_agents_run_with_coverage_answers_what_its_tests_ran_of_the_code_and_each_files_lines_never_run());
+        await Flow.StepApartAsync("an agent makes a fake of a dependency through a code action and a test using it runs green", () => new McpTests(restored), t => t.An_agent_makes_a_fake_of_a_dependency_through_a_code_action_and_a_test_using_it_runs_green());
         await Flow.StepApartAsync("an agents unit test actions answer what the run came to", () => new McpTests(restored), t => t.An_agents_unit_test_actions_answer_what_the_run_came_to());
         await Flow.StepApartAsync("an agents test written and run at once by its classs name runs and its failure is told", () => new McpTests(restored), t => t.An_agents_test_written_and_run_at_once_by_its_classs_name_runs_and_its_failure_is_told());
         await Flow.StepApartAsync("an agents run of a failing test that wrote 200000 lines answers its last lines and says the rest was left out", () => new McpTests(restored), t => t.An_agents_run_of_a_failing_test_that_wrote_200000_lines_answers_its_last_lines_and_says_the_rest_was_left_out());
@@ -595,6 +597,92 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         CallToolResult both = await Result(client, McpTools.TestsRun, new() { ["coverage"] = true, ["debug"] = true });
         Assert.True(both.IsError == true && Text(both).Contains(Refusals.CoverageDebugged, StringComparison.Ordinal), $"tests_run with coverage and debug answered: {Text(both)}");
     }
+
+    /// <summary>An agent's code_actions at an interface's name offers Create Fake into the test project that sees it, and at a
+    /// sealed class the same action, refused saying the seam it needs; apply_code_action writes the fake into the test
+    /// project's Fakes folder, and tests_run runs green the tests that stand it in for the clock (#2087).</summary>
+    private async Task An_agent_makes_a_fake_of_a_dependency_through_a_code_action_and_a_test_using_it_runs_green()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-fake-"));
+        DeleteAtEnd(folder);
+        await TestFolders.PrepareAsync(async () =>
+        {
+            TestFolders.Write(folder, "Shop/Shop.csproj", TestProjects.Library("<Nullable>enable</Nullable>", "<ImplicitUsings>enable</ImplicitUsings>"));
+            TestFolders.Write(folder, "Shop/Greeter.cs", ClockedGreeter);
+            TestFolders.Write(folder, "Shop.Tests/Shop.Tests.csproj",
+                $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <Nullable>enable</Nullable>\n" +
+                "    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n" +
+                $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
+                $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n" +
+                "  <ItemGroup>\n    <ProjectReference Include=\"../Shop/Shop.csproj\" />\n  </ItemGroup>\n</Project>\n");
+            TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Shop/Shop.csproj\" />\n  <Project Path=\"Shop.Tests/Shop.Tests.csproj\" />\n</Solution>\n");
+            await Restore.RunAsync(Path.Combine(folder, "Shop.slnx"));
+        }, folder);
+        await using McpClient client = await Start(["--mcp", folder]);
+        Dictionary<string, object?> clock = new() { ["path"] = "Shop/Greeter.cs", ["line"] = 3, ["column"] = 19 };
+        string[] offered = [.. (await Call(client, McpTools.CodeActions, clock)).EnumerateArray().Select(a => a.GetString()!)];
+        Assert.True(offered.FirstOrDefault() == "Create Fake of IClock in Shop.Tests [quickfix]", $"code_actions at IClock offered {string.Join("; ", offered)}");
+        CallToolResult calendar = await Result(client, McpTools.ApplyCodeAction, new() { ["path"] = "Shop/Greeter.cs", ["line"] = 10, ["column"] = 22, ["title"] = "Create Fake of Calendar" });
+        Assert.True(calendar.IsError == true && Text(calendar).Contains(Refusals.FakeNeedsSeam("Calendar", FakeSeams.Sealed, "Extract Interface", "Introduce Parameter"), StringComparison.Ordinal),
+            $"Create Fake of the sealed Calendar answered {Text(calendar)}");
+
+        await Call(client, McpTools.ApplyCodeAction, new(clock) { ["title"] = "Create Fake of IClock in Shop.Tests" });
+        string fake = File.ReadAllText(Path.Combine(folder, "Shop.Tests", "Fakes", "FakeClock.cs"));
+        Assert.True(fake.StartsWith("namespace Shop.Tests.Fakes;", StringComparison.Ordinal) && fake.Contains("public Func<int, string>? OnZone { get; set; }", StringComparison.Ordinal),
+            $"the fake written was\n{fake}");
+        TestFolders.Write(folder, "Shop.Tests/GreeterTests.cs", GreeterTests);
+        JsonElement run = await Call(client, McpTools.TestsRun);
+        Assert.StartsWith("Tests passed: 2, failed: 0 of 2", run.GetProperty("summary").GetString(), StringComparison.Ordinal);
+    }
+
+    /// <summary>A greeter that reads the time of day through a clock, and a calendar no fake can stand in for.</summary>
+    internal const string ClockedGreeter = """
+        namespace Shop;
+
+        public interface IClock
+        {
+            DateTime Now { get; }
+
+            string Zone(int offset);
+        }
+
+        public sealed class Calendar
+        {
+        }
+
+        public class Greeter(IClock clock)
+        {
+            public string Greet(string name) => clock.Now.Hour < 12 ? $"Good morning, {name}" : $"Good day, {name} ({clock.Zone(0)})";
+        }
+
+        """;
+
+    /// <summary>Tests that stand the generated FakeClock in for the greeter's clock, its hook and its calls read.</summary>
+    internal const string GreeterTests = """
+        using Shop.Tests.Fakes;
+        using Xunit;
+
+        namespace Shop.Tests;
+
+        public class GreeterTests
+        {
+            [Fact]
+            public void Greets_in_the_morning()
+            {
+                FakeClock clock = new() { Now = new DateTime(2026, 11, 24, 9, 0, 0) };
+                Assert.Equal("Good morning, Ada", new Greeter(clock).Greet("Ada"));
+            }
+
+            [Fact]
+            public void Says_the_zone_later_on()
+            {
+                FakeClock clock = new() { Now = new DateTime(2026, 11, 24, 15, 0, 0), OnZone = offset => $"UTC+{offset}" };
+                Assert.Equal("Good day, Ada (UTC+0)", new Greeter(clock).Greet("Ada"));
+                Assert.Equal([0], clock.ZoneCalls);
+            }
+        }
+
+        """;
 
     /// <summary>The Unit Tests actions an agent runs through ide_action answer what the run came to, as tests_run's tally says
     /// it: Run All Tests with one test failing, Rerun Failed Tests of that one, and again once it is mended; Rerun Failed Tests
