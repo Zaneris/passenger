@@ -132,6 +132,13 @@ public sealed class CodeAssist
                     context.Languages.CSharp.FormatOpened();
                 }
             };
+            editor.LineBroken += (_, _) =>
+            {
+                if (editor == Editor)
+                {
+                    context.Languages.CSharp.FormatLineBreak();
+                }
+            };
             editor.Typed += (_, text) =>
             {
                 if (editor == Editor)
