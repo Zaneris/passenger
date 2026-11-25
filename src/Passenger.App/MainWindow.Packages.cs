@@ -156,6 +156,35 @@ public partial class MainWindow
         })];
     }
 
+    /// <summary>A project's restore read off the window's thread for the Explorer, whose packages then open to the packages
+    /// each brings (<see cref="Explorer.ExplorerTree.ShowRestored"/>); never a restore of its own.</summary>
+    private async Task ShowRestoredAsync(string project)
+    {
+        ProjectSession at = session;
+        if (at.Projects.FirstOrDefault(p => PathNames.Same(p.Path, project)) is not { } model)
+        {
+            return;
+        }
+        RestoredVersions read = await BackgroundWork.Run(() => at.Packages.RestoredSince(model));
+        if (session == at)
+        {
+            Explorer.Tree.ShowRestored(project, read);
+        }
+    }
+
+    /// <summary>A restore written, by whatever ran it, or changes lost: each restore the Explorer shows read again, which a
+    /// file not written since costs only a look at its time and length.</summary>
+    private void RestoresWritten(FolderChanges changes)
+    {
+        if (changes.Restored.Count > 0 || changes.Lost)
+        {
+            foreach (string project in Explorer.Tree.RestoresShown.ToList())
+            {
+                IdeErrors.Observe(ShowRestoredAsync(project));
+            }
+        }
+    }
+
     /// <summary>A nuget.config written, made or deleted on disk: the folder's sources read again, once they have been, and
     /// listed again in the NuGet window when it is built.</summary>
     private void PackageSourcesChanged(FolderChanges changes)

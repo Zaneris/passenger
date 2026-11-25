@@ -211,6 +211,7 @@ public partial class MainWindow
             session.Xaml.LocalizationChanged();
         }
         PackageSourcesChanged(changes);
+        RestoresWritten(changes);
         session.Tests.Finder.FolderChanged(changes);
         session.Xaml.CameOrWent(changes.ComeOrGone, every: changes.Lost);
         session.Xaml.FilesChanged(changes.Paths.Concat(changes.Restored));

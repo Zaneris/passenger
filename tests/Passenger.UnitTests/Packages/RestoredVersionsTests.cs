@@ -89,6 +89,32 @@ public class RestoredVersionsTests
                 """);
             IReadOnlyList<TransitiveUse> uses = restored.Transitive()["Json.Tiny"];
             Assert.Equal([("net10.0", "3.0.0"), ("net11.0", "3.2.0")], uses.Select(u => (u.Framework, u.Version)).Order());
+        }),
+        ("a package's dependencies are each framework's, with the range asked and the version resolved, a project among them left out", () =>
+        {
+            RestoredVersions restored = Read("""
+                {
+                  "targets": {
+                    "net10.0": {
+                      "Vendor.Charts/2.0.0": { "type": "package", "dependencies": { "Json.Tiny": "3.0.0", "Vendor.Drawing": "[1.0.0]", "Lib": "1.0.0" } },
+                      "Vendor.Drawing/1.0.0": { "type": "package" },
+                      "Json.Tiny/3.1.0": { "type": "package" },
+                      "Lib/1.0.0": { "type": "project" }
+                    },
+                    "net11.0": { "Vendor.Charts/2.0.0": { "type": "package", "dependencies": { "Json.Tiny": "[3.0.0, )" } }, "Json.Tiny/3.0.0": { "type": "package" } }
+                  }
+                }
+                """);
+            Assert.Equal([new RestoredDependency("Json.Tiny", "3.0.0", "3.1.0"), new RestoredDependency("Vendor.Drawing", "[1.0.0]", "1.0.0")],
+                restored.DependenciesOf("net10.0", "vendor.charts"));
+            RestoredDependency newer = restored.DependenciesOf("net10.0", "Vendor.Charts")[0];
+            Assert.True(newer is { Differs: true, AskedSaid: "3.0.0 or later", AskedBriefly: "≥ 3.0.0" }, $"Json.Tiny 3.1.0 for 3.0.0 asked is said {newer.Differs}, {newer.AskedSaid}, {newer.AskedBriefly}");
+            RestoredDependency pinned = restored.DependenciesOf("net10.0", "Vendor.Charts")[1];
+            Assert.True(pinned is { Differs: false, AskedSaid: "exactly 1.0.0", AskedBriefly: "= 1.0.0" }, $"Vendor.Drawing pinned and resolved at 1.0.0 is said {pinned.Differs}, {pinned.AskedSaid}, {pinned.AskedBriefly}");
+            RestoredDependency own = Assert.Single(restored.DependenciesOf("net11.0", "Vendor.Charts"));
+            Assert.True(own is { Version: "3.0.0", Differs: false, AskedSaid: "3.0.0 or later" }, $"net11.0's Json.Tiny is {own}");
+            Assert.Empty(restored.DependenciesOf("net10.0", "Json.Tiny"));
+            Assert.Empty(restored.DependenciesOf("net10.0", "Missing"));
         }));
 
 }

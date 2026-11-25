@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Media;
 using Passenger.Core;
 using Passenger.Host;
+using Passenger.Packages;
 using Passenger.Vcs;
 using Passenger.Workspace;
 
@@ -161,6 +162,43 @@ public sealed class ExplorerTree
     /// it, then says it through <see cref="ShowGenerated"/>, and again as it changes.</summary>
     public event Action<string>? GeneratedAsked;
 
+    /// <summary>What each project's restore resolved, as last read (<see cref="ShowRestored"/>), by its path.</summary>
+    private readonly Dictionary<string, RestoredVersions> restored = new(PathNames.Comparer);
+
+    /// <summary>A project's Dependencies were opened while its restore is not read: the window reads it off its thread,
+    /// then says it through <see cref="ShowRestored"/>, and again as a restore writes it.</summary>
+    public event Action<string>? RestoreAsked;
+
+    /// <summary>The projects whose restores the tree shows, which the window reads again as a restore writes one.</summary>
+    public IReadOnlyCollection<string> RestoresShown => restored.Keys;
+
+    /// <summary>What a project's restore resolved now: its packages under its Dependencies, opened or not, open to the
+    /// packages each brings, rows made anew only where what one brings changed, every other row kept as it was. A restore
+    /// that does not read (<see cref="RestoredVersions.None"/>) leaves the last one read shown, as one being written
+    /// reads so for a moment, until the watcher hears it written.</summary>
+    public void ShowRestored(string project, RestoredVersions read)
+    {
+        if (restored.TryGetValue(project, out RestoredVersions? shown) && (ReferenceEquals(shown, read) || ReferenceEquals(read, RestoredVersions.None)))
+        {
+            return;
+        }
+        restored[project] = read;
+        if (Root is null)
+        {
+            return;
+        }
+        List<ExplorerNode> reloaded = [];
+        foreach (ExplorerNode node in Loaded(Root, n => n.Kind is NodeKind.Dependencies or NodeKind.Framework or NodeKind.Package
+            && n.Owner is { } owner && PathNames.Same(owner, project)))
+        {
+            if (node.Reload())
+            {
+                reloaded.Add(node);
+            }
+        }
+        ShowAgain(reloaded);
+    }
+
     /// <summary>What a project's source generators make now: its Dependencies' Source Generators, opened or not, show it,
     /// their documents' rows made anew where it changed, every other row kept as it was.</summary>
     public void ShowGenerated(string project, IReadOnlyList<Roslyn.Extension.GeneratedFile> made)
@@ -188,13 +226,20 @@ public sealed class ExplorerTree
         files.Clear();
         shared.Clear();
         generated.Clear();
+        HashSet<string> kept = new(PathNames.Comparer);
         foreach (ProjectModel project in shown)
         {
+            kept.Add(project.Path);
             projects[project.Path] = project;
             if (SharedProjects.Is(project.Path))
             {
                 shared.TryAdd(SharedProjects.ItemsFileOf(project.Path), project.Path);
             }
+        }
+        // A restore read stays with its project shown again, so the rows a refresh opens again open its packages too.
+        foreach (string gone in restored.Keys.Where(p => !kept.Contains(p)).ToList())
+        {
+            restored.Remove(gone);
         }
     }
 
@@ -832,7 +877,7 @@ public sealed class ExplorerTree
                     // Read when opened, so one evaluated again shows its packages as they are now.
                     ProjectModel now = Current(given);
                     FrameworkDependencies? its = now.Evaluated?.Dependencies.FirstOrDefault(d => d.Framework == framework.Name);
-                    return [.. Referenced(now, (its?.Projects ?? []).Select(PathNames.Canonical), its?.Packages ?? [], framework.Depth + 1),
+                    return [.. Referenced(now, (its?.Projects ?? []).Select(PathNames.Canonical), its?.Packages ?? [], framework.Depth + 1, framework.Name),
                         .. Generators(now.Path, framework.Name, framework.Depth + 1)];
                 })
                 {
@@ -842,7 +887,7 @@ public sealed class ExplorerTree
             else
             {
                 children.AddRange(project.TargetFrameworks.Select(f => Leaf(NodeKind.Framework, f, null, below, project)));
-                children.AddRange(Referenced(project, project.ProjectReferences, frameworks is [{ } one] ? one.Packages : [], below));
+                children.AddRange(Referenced(project, project.ProjectReferences, frameworks is [{ } one] ? one.Packages : [], below, null));
             }
             if (frameworks is not [{ Framework: not null }, ..])
             {
@@ -853,6 +898,10 @@ public sealed class ExplorerTree
             if (!generated.ContainsKey(project.Path))
             {
                 GeneratedAsked?.Invoke(project.Path);
+            }
+            if (!restored.ContainsKey(project.Path))
+            {
+                RestoreAsked?.Invoke(project.Path);
             }
             return children;
         }) { Owner = given.Path };
@@ -886,12 +935,33 @@ public sealed class ExplorerTree
     private IEnumerable<Roslyn.Extension.GeneratedFile> Made(string project, string? framework) =>
         (generated.GetValueOrDefault(project) ?? []).Where(f => framework is null || string.Equals(f.Framework, framework, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>The projects and packages a project (or one framework of it) references, each project by its kind; packages
-    /// the SDK adds of itself are left out.</summary>
-    private IEnumerable<ExplorerNode> Referenced(ProjectModel project, IEnumerable<string> referenced, IReadOnlyList<PackageDependency> packages, int depth) =>
+    /// <summary>The projects and packages a project (or one framework of it, <paramref name="framework"/>) references, each
+    /// project by its kind; packages the SDK adds of itself are left out.</summary>
+    private IEnumerable<ExplorerNode> Referenced(ProjectModel project, IEnumerable<string> referenced, IReadOnlyList<PackageDependency> packages, int depth, string? framework) =>
         referenced.Select(r => Leaf(NodeKind.ProjectReference, Path.GetFileNameWithoutExtension(r), null, depth, project, r, KindOf(r)))
             .Concat((packages.Count > 0 ? packages.Where(p => !p.Implicit).Select(p => (p.Name, p.Version)) : project.Packages)
-                .Select(p => Leaf(NodeKind.Package, p.Name, p.Version, depth, project)));
+                .Select(p => PackageNode(project.Path, framework, p.Name, p.Version, depth, [])));
+
+    /// <summary>A package a project gets: one it references by the version it gives, or one a package brings, by the version
+    /// its restore resolved, a newer one than asked said so. Once the restore is read, the packages it brings are under it
+    /// as their own rows, opened in turn, a package reached twice shown each time; one it is brought through again
+    /// (<paramref name="through"/>, the packages above it) stands alone.</summary>
+    private ExplorerNode PackageNode(string project, string? framework, string id, string? detail, int depth, IReadOnlyList<string> through, string? tip = null)
+    {
+        IReadOnlyList<RestoredDependency> brings = Brings(project, framework, id, through);
+        return new ExplorerNode(NodeKind.Package, id, null, depth, false, brings.Count == 0 ? null : node =>
+            [.. Brings(project, framework, id, through).Select(d => PackageNode(project, framework, d.Id, d.Differs ? $"{d.Version} · asked {d.AskedBriefly}" : d.Version,
+                node.Depth + 1, [.. through, id], $"{id} asks for {d.AskedSaid}" + (d.Differs ? $"; the restore resolved {d.Version}" : string.Empty)))], detail)
+        {
+            Owner = project,
+            Nested = brings.Count == 0 ? null : string.Join('/', brings.Select(d => d.Id)),
+            Tip = tip,
+        };
+    }
+
+    /// <summary>What a package brings in a project's restore as last read, none where it is reached through itself.</summary>
+    private IReadOnlyList<RestoredDependency> Brings(string project, string? framework, string id, IReadOnlyList<string> through) =>
+        restored.TryGetValue(project, out RestoredVersions? read) && !through.Contains(id, StringComparer.OrdinalIgnoreCase) ? read.DependenciesOf(framework, id) : [];
 
     private static ExplorerNode Leaf(NodeKind kind, string name, string? detail, int depth, ProjectModel owner, string? referenced = null, ProjectKind built = ProjectKind.Other) =>
         new(kind, name, null, depth, false, null, detail) { Owner = owner.Path, Referenced = referenced, ProjectKind = built };
@@ -1155,7 +1225,8 @@ public sealed class ExplorerNode : Observable, ITreeRow
     /// <summary>A file in a shared project's folder that its items file leaves out, shown dimmed for Include in Project.</summary>
     public bool Unlisted { get; init; }
 
-    /// <summary>The names of the files nested under a file, which make it another row when they change.</summary>
+    /// <summary>The names of the files nested under a file, or of the packages a package brings, which make it another row
+    /// when they change.</summary>
     internal string? Nested { get; init; }
 
     /// <summary>What the SDK reads a folder at a project's top as, which lists it first and keeps it where it is; null for
@@ -1250,8 +1321,9 @@ public sealed class ExplorerNode : Observable, ITreeRow
     }
 
     /// <summary>What makes a row the same row when its parent is read again: its name is part of it, so a linked file
-    /// whose Link changes shows its new name, a package's version, so one updated shows its new version, what the SDK
-    /// reads a folder as, so a web root found shows as one, and whether a shared project leaves a file out.</summary>
+    /// whose Link changes shows its new name, a package's version, so one updated shows its new version, and what it
+    /// brings, so one restored again opens to them, what the SDK reads a folder as, so a web root found shows as one, and
+    /// whether a shared project leaves a file out.</summary>
     private static string Identity(ExplorerNode node) => $"{node.Kind}/{node.Name}/{node.Path}/{node.Nested}/{(node.Path is null ? node.Detail : null)}/{node.SdkFolder}/{node.Unlisted}";
 
     public bool IsExpanded

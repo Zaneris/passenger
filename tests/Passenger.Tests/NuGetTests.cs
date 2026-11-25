@@ -86,6 +86,11 @@ public sealed class NuGetTests : IDisposable
             t.The_package_list_sorts_and_filters_and_lists_transitive_packages_with_what_brings_them_in();
             OpenWindows.CloseAll();
         });
+        Flow.StepApart<NuGetTests>("a package under the explorer's dependencies opens to the packages it brings as its restore resolved them", t =>
+        {
+            t.A_package_under_the_explorers_dependencies_opens_to_the_packages_it_brings_as_its_restore_resolved_them();
+            OpenWindows.CloseAll();
+        });
         Flow.StepApart<NuGetTests>("another folder opened with the NuGet window shown lists that folder's packages", t =>
         {
             t.Another_folder_opened_with_the_nuget_window_shown_lists_that_folders_packages();
@@ -385,6 +390,54 @@ public sealed class NuGetTests : IDisposable
         Assert.Equal([Charts, Other], nuget.Rows.Select(r => r.Id));
         Assert.False(nuget.Filters.Button.IsChecked == true, "Clear Filters left the Sort and Filter button pressed");
         window.Close();
+    }
+
+    /// <summary>The Explorer's Dependencies of a project, read from its restore with no restore of their own: a package opens
+    /// to the packages it brings, by the versions resolved, those in turn, one reached twice shown each time, one resolved
+    /// newer than its package asks saying what was asked; and a restore written later, by whatever ran it, shows anew in
+    /// the rows open, which stay open.</summary>
+    private void A_package_under_the_explorers_dependencies_opens_to_the_packages_it_brings_as_its_restore_resolved_them()
+    {
+        const string Charts = "Passenger.Charts";
+        const string Drawing = "Passenger.Drawing";
+        feed.Add(Drawing, "1.0.0", (Id, "1.0.0"));
+        feed.Add(Charts, "1.0.0", (Drawing, "1.0.0"), (Id, "1.0.0"));
+        string references = $"<ItemGroup><PackageReference Include=\"{Charts}\" Version=\"1.0.0\" /><PackageReference Include=\"{Id}\" Version=\"1.1.0\" /></ItemGroup>";
+        string project = Project("Lib", Restorable, references);
+        Restore.Run(Passenger.Core.PathNames.Canonical(project));
+        File.WriteAllText(Path.Combine(folder, "Shop.slnx"), "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Lib/Lib.csproj\" />\n</Solution>\n");
+        int restoring = feed.Requests.Count;
+        MainWindow window = Ui.OpenFolder(Path.Combine(folder, "Shop.slnx"), languageServer: false);
+        string owner = Named(window, "Lib").Path;
+        ExplorerNode dependencies = window.ExplorerView.Tree.Rows.FirstOrDefault(r => r.Kind == NodeKind.Dependencies && r.Owner == owner)
+            ?? OpenedRow(window, window.ExplorerView.Tree.Rows.Single(r => r.Kind == NodeKind.Project && r.Name == "Lib")).Single(r => r.Kind == NodeKind.Dependencies);
+        List<ExplorerNode> referenced = OpenedRow(window, dependencies);
+        ExplorerNode charts = referenced.Single(r => r.Name == Charts);
+        Assert.True(referenced.Single(r => r.Name == Id) is { Detail: "1.1.0", HasChildren: false } && charts.HasChildren,
+            $"Lib's packages are [{string.Join(", ", referenced.Select(r => $"{r.Name} {r.Detail}{(r.HasChildren ? " >" : "")}"))}], where {Charts} opens to what it brings");
+        List<ExplorerNode> brought = OpenedRow(window, charts);
+        Assert.Equal([(Drawing, "1.0.0", true), (Id, "1.1.0 · asked ≥ 1.0.0", false)], brought.Select(r => (r.Name, r.Detail, r.HasChildren)));
+        Assert.Equal($"{Charts} asks for 1.0.0 or later; the restore resolved 1.1.0", brought[1].Tip);
+        ExplorerNode again = Assert.Single(OpenedRow(window, brought[0]));
+        Assert.True(again is { Name: Id, Detail: "1.1.0 · asked ≥ 1.0.0" }, $"{Drawing} brings {again.Name} {again.Detail}, where it brings {Id} as {Charts} does");
+        Assert.Equal(restoring, feed.Requests.Count);
+
+        File.WriteAllText(project, File.ReadAllText(project).Replace("1.1.0", "1.0.1", StringComparison.Ordinal));
+        Restore.Run(Passenger.Core.PathNames.Canonical(project));
+        Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Count(r => r.Name == Id && r.Detail == "1.0.1 · asked ≥ 1.0.0") == 2,
+            () => $"the open rows to show the restore written since: [{string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => $"{r.Name} {r.Detail}"))}]");
+        Assert.True(window.ExplorerView.Tree.Rows.Where(r => r.Name is Charts or Drawing).All(r => r.IsExpanded),
+            $"Reading the restore again closed {Charts} or {Drawing}");
+        window.Close();
+    }
+
+    /// <summary>An Explorer row opened as a person opens it, chosen then Right, and the rows under it.</summary>
+    private static List<ExplorerNode> OpenedRow(MainWindow window, ExplorerNode row)
+    {
+        Ui.ClickRow(window, row);
+        Ui.Press(window, "RIGHT");
+        Assert.True(row.IsExpanded, $"Right on {row.Name} left it closed");
+        return row.Children ?? [];
     }
 
     /// <summary>A package of the list chosen as a person clicks its row, its versions and projects shown.</summary>

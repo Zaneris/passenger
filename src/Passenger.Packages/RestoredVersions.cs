@@ -8,6 +8,31 @@ namespace Passenger.Packages;
 /// project names and each project it references whose dependencies reach it.</summary>
 public sealed record TransitiveUse(string? Framework, string Version, IReadOnlyList<string> BroughtBy);
 
+/// <summary>A package another depends on, as a framework's restore resolved it: the range the one depending on it asks
+/// for, as the assets file writes it, and the version resolved.</summary>
+public sealed record RestoredDependency(string Id, string Asked, string Version)
+{
+    /// <summary>Whether the version resolved is other than the least the range asks for, as when another package or the
+    /// project asks for a newer one.</summary>
+    public bool Differs => VersionRange.Parse(Asked) is { Min: { } least } && VersionOrder.Instance.Compare(least, Version) != 0;
+
+    /// <summary>The range asked for in brief, beside a version: "≥ 1.0.0", "= 1.0.0", else as the assets file writes it.</summary>
+    public string AskedBriefly => VersionRange.Parse(Asked) switch
+    {
+        { IsExact: true, Min: { } only } => $"= {only}",
+        { Min: { } least, MinIncluded: true, Max: null, Floating: false } => $"≥ {least}",
+        _ => Asked,
+    };
+
+    /// <summary>The range asked for in words: "1.0.0 or later", "exactly 1.0.0", else as the assets file writes it.</summary>
+    public string AskedSaid => VersionRange.Parse(Asked) switch
+    {
+        { IsExact: true, Min: { } only } => $"exactly {only}",
+        { Min: { } least, MinIncluded: true, Max: null, Floating: false } => $"{least} or later",
+        _ => Asked,
+    };
+}
+
 /// <summary>The package versions a project's restore resolved, as its project.assets.json says them: for each target
 /// framework, by the name the project gives it (its alias in TargetFrameworks), each package's version, and what each
 /// package and project there depends on, so what the project gets only through another is known.</summary>
@@ -28,6 +53,14 @@ public sealed class RestoredVersions
 
     /// <summary>The packages a framework's restore resolved, with their versions (a project of one framework names none).</summary>
     public IReadOnlyDictionary<string, string> All(string? framework) => Named(framework)?.Packages ?? new Dictionary<string, string>();
+
+    /// <summary>The packages a package depends on in a framework's restore (a project of one framework names none), each
+    /// with the range it asks for and the version resolved, in the order the assets file lists them: none for a package it
+    /// did not resolve, and none for a dependency it resolved as a project.</summary>
+    public IReadOnlyList<RestoredDependency> DependenciesOf(string? framework, string id) =>
+        Named(framework) is { } restored && restored.Asked.TryGetValue(id, out (string Id, string Asked)[]? asked)
+            ? [.. asked.Where(a => restored.Packages.ContainsKey(a.Id)).Select(a => new RestoredDependency(a.Id, a.Asked, restored.Packages[a.Id]))]
+            : [];
 
     /// <summary>The packages each framework's restore resolved that the project names in none of its references, by
     /// package, each framework's use (its name null where the project has one), what brings each in sorted.</summary>
@@ -81,6 +114,8 @@ public sealed class RestoredVersions
                         {
                             framework.Packages[id] = version;
                             framework.Dependencies[id] = dependencies;
+                            framework.Asked[id] = [.. JsonMembers.Properties(library.Value, "dependencies")
+                                .Select(d => (d.Name, d.Value.ValueKind == JsonValueKind.String ? d.Value.GetString() ?? string.Empty : string.Empty))];
                         }
                         else if (type.ValueEquals("project"))
                         {
@@ -99,13 +134,15 @@ public sealed class RestoredVersions
         }
     }
 
-    /// <summary>One framework's restore: its packages' versions, what each package and each referenced project depends on,
-    /// and the packages the project names.</summary>
+    /// <summary>One framework's restore: its packages' versions, what each package and each referenced project depends on
+    /// (a package's with the range it asks for), and the packages the project names.</summary>
     private sealed class Framework(HashSet<string> named)
     {
         public Dictionary<string, string> Packages { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public Dictionary<string, string[]> Dependencies { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public Dictionary<string, (string Id, string Asked)[]> Asked { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public Dictionary<string, string[]> Projects { get; } = new(StringComparer.OrdinalIgnoreCase);
 

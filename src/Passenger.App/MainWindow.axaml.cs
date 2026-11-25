@@ -164,6 +164,7 @@ public partial class MainWindow : IdeWindow
             generatedListed.Add(project);
             session.CSharp?.Generated.List(project);
         };
+        Explorer.Tree.RestoreAsked += project => IdeErrors.Observe(ShowRestoredAsync(project));
         Explorer.IndexedFiles = IndexedFiles;
         Explorer.FileClicked += (_, path) =>
         {
