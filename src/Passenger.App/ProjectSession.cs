@@ -769,21 +769,27 @@ public sealed class ProjectSession : IAsyncDisposable
         BuildChosen?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>The last read of what the folder offers to build as, which a run waits for (<see cref="WorkspaceOfAsync"/>).</summary>
+    private Task buildChoicesRead = Task.CompletedTask;
+
     /// <summary>What the folder offers to build as, read again: its solution's configurations, else its projects'.</summary>
     public void ReadBuildChoices()
     {
         if (!IsEnded && Trusted && Folder is { } folder && Workspace is { } now)
         {
-            IdeErrors.Observe(BuildChoices.ReadAsync(folder, now));
+            buildChoicesRead = BuildChoices.ReadAsync(folder, now);
+            IdeErrors.Observe(buildChoicesRead);
         }
     }
 
     /// <summary>The workspace a run of a configuration reads, the one answer for what every path of its run builds, evaluates
     /// and starts as: the folder's, with the build configuration the configuration names (<see cref="RunConfiguration.BuildConfiguration"/>)
-    /// in place of the folder's choice; why not where the one it names cannot be given.</summary>
+    /// in place of the folder's choice; why not where the one it names cannot be given. A run begun as the folder's choices
+    /// are read builds as they come to, never as nothing chosen, which a WinUI app's solution of processors alone refuses.</summary>
     public async Task<(WorkspaceModel? Workspace, string? Problem)> WorkspaceOfAsync(RunConfiguration configuration)
     {
         UiThread.Check();
+        await buildChoicesRead.Ended();
         if (Workspace is not { } now || Folder is not { } folder || configuration.BuildConfiguration.Length == 0)
         {
             return (Workspace, null);

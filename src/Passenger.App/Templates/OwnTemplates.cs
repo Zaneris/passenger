@@ -1,3 +1,5 @@
+using Passenger.Workspace;
+
 namespace Passenger.App.Templates;
 
 /// <summary>An item template of Passenger's own: a file of the name given with this extension, its text made from that
@@ -11,7 +13,8 @@ public sealed record OwnTemplate(string Extension, Func<string, string, string> 
 
 /// <summary>Passenger's own templates, a source beside dotnet new's: its item templates, which New Item lists and searches
 /// as it does dotnet new's and Add's New offers where they fit, one more being one more entry in <see cref="All"/>;
-/// and its Godot 4 game, which New Project lists beside dotnet new's project templates (<see cref="GodotGame"/>).</summary>
+/// and its Godot 4 game and WinUI app, which New Project lists beside dotnet new's project templates
+/// (<see cref="GodotGame"/>, <see cref="WinUIApp"/>).</summary>
 public static class OwnTemplates
 {
     /// <summary>The C# types Class/Interface makes, in the order its popup lists them.</summary>
@@ -48,6 +51,28 @@ public static class OwnTemplates
         TemplateVariant gdscript = new("Godot.Game.GDScript", GDScript, 0,
             "A Godot 4 game in GDScript: project.godot, a main scene and the script on its root", null, [], null, []);
         return new ProjectTemplate("Godot 4 Game", ["godot"], "Passenger", ["Game", "Godot"], "Game", scripts ? [csharp, gdscript] : [csharp]) { GodotGame = true };
+    }
+
+    /// <summary>The option of Passenger's WinUI app that says how it is packaged (<see cref="WinUIApp"/>).</summary>
+    public const string Packaging = "packaging";
+
+    /// <summary>Its value for an app run as an MSIX package, registered from its build.</summary>
+    public const string Packaged = "MSIX";
+
+    /// <summary>A WinUI app New Project makes itself (<see cref="WinUIApps"/>), as Visual Studio's template lays one out, on
+    /// the frameworks given, the default first chosen; packaged as an MSIX by default, as that template is, or unpackaged.</summary>
+    public static ProjectTemplate WinUIApp(IReadOnlyList<string> frameworks, string? framework)
+    {
+        TemplateOption packaging = new(Packaging, Packaging, "Packaging", "How Windows runs the app", TemplateOptionKind.Choice, Packaged,
+            [new(Packaged, "Packaged (MSIX)", "Registered from its build as a development package and started by Windows, as a Store app is"),
+                new("None", "Unpackaged", "Run as a plain program, the Windows App SDK carried in its output")], Inverted: false, Required: false, EnabledWhen: null)
+        {
+            Picked = true,
+        };
+        TemplateVariant csharp = new("WinUI.App.CSharp", "C#", 0,
+            $"A WinUI 3 app on the Windows App SDK {WinUIApps.WindowsAppSdk}: App.xaml, a window with a button, an app manifest and a launch profile, "
+            + "and, packaged, its package's manifest and logos", null, frameworks, framework, [packaging]) { OutputType = "WinExe" };
+        return new ProjectTemplate("WinUI App", ["winui"], "Passenger", ["Desktop", "WinUI"], "App", [csharp]) { OwnProject = true };
     }
 
     private static ProjectTemplate Type(string kind)

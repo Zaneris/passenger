@@ -74,6 +74,10 @@ public sealed record RunConfiguration
     /// <summary>Additional AppHosts started and stopped with this Aspire configuration.</summary>
     public IReadOnlyList<string> LinkedAppHosts { get; init; } = [];
 
+    /// <summary>Whether it runs its project's program as a Windows app package, registered from the build's layout and
+    /// started by Windows (an MSIX package launch profile's, <see cref="WindowsPackages"/>).</summary>
+    public bool Packaged { get; init; }
+
     /// <summary>For a Godot project's (one Godot.NET.Sdk builds, with its project.godot), whether it starts Godot's editor
     /// on the project rather than its game; either runs on the Godot found (<see cref="GodotLaunch"/>) unless it names a
     /// program of its own.</summary>
@@ -271,6 +275,12 @@ public sealed record RunConfiguration
     /// which for a Godot project's runs its game as one naming no program does, on the Godot Settings names or the one found.</summary>
     [JsonIgnore]
     public bool NamesGodot => Program.Length > 0 && GodotExecutables.NamesGodot(Program, OperatingSystem.IsWindows());
+
+    /// <summary>Whether it runs its project's program as a Windows app package: an MSIX package profile's does, another
+    /// profile's runs the program as it is named, and one of no profile as its build packages it
+    /// (<see cref="ProjectModel.IsPackagedWindowsApp"/>).</summary>
+    public bool RunsPackage(IEnumerable<ProjectModel> projects) => OperatingSystem.IsWindows() && Kind == RunKind.Project && Program.Length == 0
+        && (Packaged || LaunchProfile.Length == 0 && projects.FirstOrDefault(p => PathNames.Same(p.Path, Project)) is { IsPackagedWindowsApp: true });
 
     /// <summary>Whether it runs its project's own program among these projects: it names none, or Godot for a Godot project's game.</summary>
     public bool NamesNoOtherProgram(IEnumerable<ProjectModel> projects) => Program.Length == 0 || RunsGodot(projects);
@@ -506,7 +516,8 @@ public sealed record RunConfiguration
             Project = project.Path,
             Aspire = project.IsAspireHost,
             LaunchProfile = profile.Name,
-            Program = profile.RunsProject ? string.Empty : profile.ExecutablePath ?? string.Empty,
+            Program = profile.RunsProject || profile.RunsPackage ? string.Empty : profile.ExecutablePath ?? string.Empty,
+            Packaged = profile.RunsPackage,
             Arguments = profile.CommandLineArgs ?? string.Empty,
             // A Godot project's profile running Godot on it with --editor opens its editor, as the editor's configuration does.
             GodotEditor = project.GodotFolder is not null && !profile.RunsProject && profile.ExecutablePath is { } program

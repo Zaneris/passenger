@@ -301,6 +301,7 @@ public static class CarriedProperties
         NuGetPackageRoot, NuGetPackageFolders, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
         DirectoryPackagesPropsPath, GodotProjectDir, GodotProjectDirBase64, UsingGodotNETSdk, StaticWebAssetBasePath, PackageId, AspireHostingSDKVersion,
         AndroidApplication, Configurations, Platforms, AzureFunctionsVersion, EnableAvaloniaXamlCompilation, MSBuildNames.UseMaui,
+        MSBuildNames.EnableMsixTooling, MSBuildNames.WindowsPackageType,
     ];
 }
 

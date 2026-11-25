@@ -58,14 +58,19 @@ public sealed record ProjectTemplate(string Name, IReadOnlyList<string> ShortNam
     /// <summary>Whether it is Passenger's own Godot 4 game, whose files the IDE writes itself (<see cref="OwnTemplates.GodotGame"/>).</summary>
     public bool GodotGame { get; init; }
 
+    /// <summary>Whether it is a project template of Passenger's own whose files the IDE writes in dotnet new's place, the rest of
+    /// a creation as dotnet new's (<see cref="OwnTemplates.WinUIApp"/>).</summary>
+    public bool OwnProject { get; init; }
+
     /// <summary>Whether it makes what it makes by the name given: false for one whose name has no default (.gitignore).</summary>
     public bool TakesName { get; init; } = true;
 
-    /// <summary>Off Windows, the Windows desktop UI its app is made with (WPF, Windows Forms), which builds here but runs only
-    /// on Windows; null on Windows and for any other template.</summary>
+    /// <summary>Off Windows, the Windows desktop UI its app is made with (WPF, Windows Forms, WinUI), which restores here but
+    /// runs only on Windows; null on Windows and for any other template.</summary>
     public string? WindowsOnly => OperatingSystem.IsWindows() ? null
         : Classifications.Contains("WPF", StringComparer.OrdinalIgnoreCase) ? "WPF"
         : Classifications.Contains("WinForms", StringComparer.OrdinalIgnoreCase) ? "Windows Forms"
+        : Classifications.Contains("WinUI", StringComparer.OrdinalIgnoreCase) ? "WinUI"
         : null;
 
     /// <summary>Its languages, C# first, as <c>dotnet new list</c> lists them.</summary>

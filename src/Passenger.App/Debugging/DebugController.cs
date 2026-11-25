@@ -904,16 +904,17 @@ public sealed partial class DebugController : IDisposable
             browser: hotReloadOn ? browser : Unheld(browser), attachedWords: startedElsewhere, stopLetsGo: startedElsewhere is not null, builds: builds);
     }
 
-    /// <summary>Debugs a program another starts, which Passenger starts from <paramref name="plan"/> (func, which starts a
-    /// Functions app's worker): the starter's output in the session's console from its first line, the debugger attached to
-    /// the program <paramref name="started"/> finds among the starter's, or failing with <paramref name="unfound"/> where it
-    /// finds none, and the starter ended with the session, or with a start that failed, saying so. Null once the session is
-    /// open, else why not.</summary>
+    /// <summary>Debugs a program another starts from <paramref name="plan"/> (func a Functions app's worker, Passenger's starter
+    /// a Windows app package): the starter's output in the console from its first line, the debugger attached to the program
+    /// <paramref name="started"/> finds, else failing with <paramref name="unfound"/>, and the starter ended with the session
+    /// or a failed start, saying so; <paramref name="hotReload"/>, <paramref name="app"/> and <paramref name="by"/> as an
+    /// attach takes them. Null once the session is open, else why not.</summary>
     public Task<string?> StartThroughAsync(Run.LaunchPlan plan, Func<int, CancellationToken, Task<int?>> started, string unfound, BuiltEdits? edits = null,
-        Working? work = null)
+        Working? work = null, bool hotReload = false, LiveApp? app = null, string? by = null)
     {
         System.Diagnostics.Process? starter = null;
-        string by = Path.GetFileNameWithoutExtension(plan.Program);
+        by ??= Path.GetFileNameWithoutExtension(plan.Program);
+        bool hotReloadOn = hotReload && HotReloadOn();
         return OpenAsync(async (built, log, output, starting) =>
         {
             if (starter is not { } from)
@@ -926,14 +927,15 @@ public sealed partial class DebugController : IDisposable
             {
                 TakeRefusal(plan.Name);
                 string? x86Host = await X86HostOrFailAsync(DotnetProcesses.Runs32Bit(debuggee), work);
-                return await DebugSession.AttachAsync(debuggee, Breakpoints, Own(), built, log, output, ColumnOf, starting, x86Host: x86Host);
+                return await DebugSession.AttachAsync(debuggee, Breakpoints, Own(), built, log, output, ColumnOf, starting, hotReloadOn, x86Host: x86Host);
             }
             catch (Exception failed) when (failed is DapException or IOException or InvalidOperationException or TimeoutException)
             {
                 throw new InvalidOperationException(Ended(failed is DapException dap ? dap.Reason : failed.Message), failed);
             }
-        }, plan.Name, launched: false, plan: plan, edits: edits, starts: (() => plan.Placed(ChildProcesses.Command(plan.Program, plan.Arguments, plan.WorkingDirectory, plan.Environment)),
-            process => starter = process), attachedWords: $"{plan.Name} runs as {by} starts it, whose output is shown here", inputFrom: $"from {by}, which started it");
+        }, plan.Name, launched: false, hotReloadOn: hotReloadOn, app: app, plan: plan, edits: edits,
+            starts: (() => plan.Placed(ChildProcesses.Command(plan.Program, plan.Arguments, plan.WorkingDirectory, plan.Environment)), process => starter = process),
+            attachedWords: $"{plan.Name} runs as {by} starts it, whose output is shown here", inputFrom: $"from {by}, which started it");
 
         // What the starter started would wait for a debugger that never comes, so the starter ends with the start.
         string Ended(string why) => $"{why}; {by} and all it started end, as {plan.Name} would wait for the debugger";

@@ -179,6 +179,10 @@ public sealed partial record LaunchPlan
     /// where it is (<see cref="Devices.MacCatalystApps"/>); null for any other plan.</summary>
     public Devices.MacCatalystLaunch? MacCatalyst { get; init; }
 
+    /// <summary>The packaged Windows app it runs, which its start registers from the build's layout and Windows starts
+    /// (<see cref="WindowsPackages"/>); null for any other plan.</summary>
+    public WindowsPackageLaunch? Package { get; init; }
+
     /// <summary>The folder of the Godot project whose game or editor the plan runs on Godot (<see cref="GodotLaunch"/>);
     /// null for any other plan.</summary>
     public string? Godot { get; init; }
@@ -507,6 +511,8 @@ public sealed partial record LaunchPlan
             Device = device is { Kind: not Devices.TargetKind.ThisMachine } && configuration.Program.Length == 0 ? new Devices.DeviceLaunch(device, framework ?? project.TargetFrameworks[0]) : null,
             MacCatalyst = platform == Devices.TargetPlatform.MacCatalyst && configuration.Program.Length == 0
                 ? new Devices.MacCatalystLaunch(framework ?? project.TargetFrameworks[0]) : null,
+            Package = configuration.RunsPackage(projects)
+                ? new WindowsPackageLaunch(WindowsPackageLayouts.RecipeOf(System.IO.Path.GetDirectoryName(target)!, System.IO.Path.GetFileNameWithoutExtension(target))) : null,
         };
         if (configuration.Program.Length > 0 || !project.IsFunctionsApp)
         {

@@ -709,12 +709,24 @@ public sealed class NewProjectDialog : IdeWindow
                 }
                 return;
             }
-            progress.Text = $"Creating {NameGiven} from {template.Name} (dotnet new {template.ShortName})…";
-            ChildResult made = await writes.During(() => RunAsync(Arguments(plan.ProjectFolder), plan.Root, cancel.Token));
-            if (!made.Succeeded)
+            if (template.OwnProject)
             {
-                await FailedAsync($"{NameGiven} could not be created: {made.Said}", writes);
-                return;
+                progress.Text = $"Writing {NameGiven} from Passenger's {template.Name}…";
+                if (await writes.During(() => WriteOwnAsync(plan.ProjectFolder, cancel.Token)) is { } unmade)
+                {
+                    await FailedAsync($"{NameGiven} could not be created: {unmade}", writes);
+                    return;
+                }
+            }
+            else
+            {
+                progress.Text = $"Creating {NameGiven} from {template.Name} (dotnet new {template.ShortName})…";
+                ChildResult made = await writes.During(() => RunAsync(Arguments(plan.ProjectFolder), plan.Root, cancel.Token));
+                if (!made.Succeeded)
+                {
+                    await FailedAsync($"{NameGiven} could not be created: {made.Said}", writes);
+                    return;
+                }
             }
             if (madeHold is { } hold)
             {
@@ -748,7 +760,7 @@ public sealed class NewProjectDialog : IdeWindow
                 }
             }
             string? unrestored = null;
-            if (central.Count == 0 && Variant().SkipRestoreOption is not null)
+            if (central.Count == 0 && (Variant().SkipRestoreOption is not null || template.OwnProject))
             {
                 // The template's own restore, after the take-out.
                 foreach (string project in projects)
@@ -911,6 +923,56 @@ public sealed class NewProjectDialog : IdeWindow
         IReadOnlyList<string> runs = GodotGames.Runnable(offered, runtimes.IsCompletedSuccessfully ? runtimes.Result : [], oldest);
         ProjectTemplate game = OwnTemplates.GodotGame(runs, GodotGames.Default(runs, GodotTargets?.Newest?.Major), scripts: target is null);
         return new TemplateFamily(game.Name, [game]);
+    }
+
+    /// <summary>Passenger's own WinUI app beside dotnet new's templates (<see cref="OwnTemplates.WinUIApp"/>), on the frameworks
+    /// the console app offers from .NET 8, which the Windows App SDK takes, its default the console app's.</summary>
+    private static TemplateFamily WinUIFamily(TemplateCatalog read)
+    {
+        TemplateVariant? console = read.Templates.FirstOrDefault(t => t.Pack is null && t.ShortNames.Contains("console"))?.Variant("C#", null);
+        IReadOnlyList<string> offered = [.. (console?.Frameworks ?? []).Where(f => FrameworkNames.Major(f) is >= 8)];
+        ProjectTemplate app = OwnTemplates.WinUIApp(offered, console?.DefaultFramework is { } chosen && offered.Contains(chosen) ? chosen : offered.FirstOrDefault());
+        return new TemplateFamily(app.Name, [app]);
+    }
+
+    /// <summary>Whether the WinUI app chosen is made packaged, as its Packaging option says.</summary>
+    private bool Packaged =>
+        Variant().Options.FirstOrDefault(o => o.Name == OwnTemplates.Packaging) is not { } packaging || options.ValueOf(packaging) == OwnTemplates.Packaged;
+
+    /// <summary>The files of Passenger's own project template chosen, written where dotnet new would write its own: a WinUI
+    /// app's, packaged as chosen, its package named for this user. Null once written, else why not.</summary>
+    private Task<string?> WriteOwnAsync(string folder, CancellationToken cancel)
+    {
+        bool packaged = Packaged;
+        string name = NameGiven;
+        string user = new([.. Environment.UserName.Where(c => char.IsAsciiLetterOrDigit(c) || c is ' ' or '.' or '-' or '_')]);
+        IReadOnlyList<(string Path, string Text)> files = WinUIApps.Files(name, Framework ?? "net8.0", packaged, WinUIApps.IdentityOf(name, Guid.NewGuid()),
+            $"CN={(user.Length > 0 ? user : "Developer")}");
+        IReadOnlyList<(string Path, byte[] Png)> logos = packaged ? WinUIApps.Logos() : [];
+        return BackgroundWork.Run(() =>
+        {
+            try
+            {
+                Directory.CreateDirectory(folder);
+                foreach ((string path, string text) in files)
+                {
+                    string into = Path.Combine(folder, path);
+                    Directory.CreateDirectory(Path.GetDirectoryName(into)!);
+                    FileText.SaveNew(into, text);
+                }
+                foreach ((string path, byte[] png) in logos)
+                {
+                    string into = Path.Combine(folder, path);
+                    Directory.CreateDirectory(Path.GetDirectoryName(into)!);
+                    AtomicFile.Write(into, png);
+                }
+                return null;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return error.Message;
+            }
+        }, cancel);
     }
 
     /// <summary>What a C# Godot game can target for the Godot found, once read; null before, or where nothing here says.</summary>
@@ -1405,7 +1467,8 @@ public sealed class NewProjectDialog : IdeWindow
             file.Missing = RepositoryFiles.TemplateOf(file.File) is { } shortName && !read.Items.Any(t => t.Pack is null && t.ShortNames.Contains(shortName, StringComparer.OrdinalIgnoreCase))
                 ? $"dotnet new has no {shortName} template here" : null;
         }
-        families = TemplateFamilies.With([.. read.Families.Select(f => target is null ? f : f.Projects()).OfType<TemplateFamily>()], GodotFamily(read));
+        families = TemplateFamilies.With(TemplateFamilies.With([.. read.Families.Select(f => target is null ? f : f.Projects()).OfType<TemplateFamily>()], GodotFamily(read)),
+            WinUIFamily(read));
         setting = true;
         string? formatWas = format.SelectedItem as string;
         List<string> formats = [.. read.SolutionFormats.Select(f => $".{f}")];
@@ -1711,6 +1774,8 @@ public sealed class NewProjectDialog : IdeWindow
         command.Text = template is null ? string.Empty
             : template.GodotGame ? $"Passenger writes {Plural.Listed([.. GodotGames.Files(NameGiven, !ScriptGame, GodotVersion ?? "4").Select(f => f.Path)])}"
                 + (ScriptGame ? string.Empty : $", the project on Godot.NET.Sdk/{GodotVersion ?? "the Godot found's version"}")
+            : template.OwnProject ? $"Passenger writes {NameGiven}.csproj on the Windows App SDK {WinUIApps.WindowsAppSdk}, App.xaml, MainWindow.xaml and their code, "
+                + $"app.manifest and its launch profile{(Packaged ? ", Package.appxmanifest and its logos" : string.Empty)}"
             : $"dotnet new {string.Join(' ', Arguments(null).Select(ChildProcesses.Quote))}";
 
     /// <summary>The Godot found's version, once found; null before, or where it says none.</summary>

@@ -1,4 +1,5 @@
 using System.Reflection;
+using Passenger.Core;
 
 namespace Passenger.Inspector.WinUI;
 

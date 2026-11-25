@@ -6,6 +6,7 @@ using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.LiveTree;
 using Passenger.App.Mcp;
+using Passenger.App.Templates;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -58,18 +59,28 @@ public sealed class WinUITests : IClassFixture<WinUITests.Gallery>
             () => new WinUITests(app), t => t.Go_to_declaration_from_the_code_behinds_use_of_a_named_element_lands_on_its_name_whose_rename_takes_its_x_bind_along());
     }
 
-    /// <summary>The unpackaged app (WindowsPackageType None, the Windows App SDK carried in its output) runs, saying in the
-    /// Run window that its window is up, and Stop ends it. Debug stops it at a breakpoint in its window's constructor, its
-    /// locals shown; let go, its elements show in the Live Visual Tree as WinUI's diagnostics tell of them, the button's
-    /// value and XAML with them, its misspelt binding is listed in Problems with the member nearest it, and an agent sees
-    /// its tree, clicks its button and takes its picture. Its window opens on a desktop of its own, where nobody sees it.</summary>
+    /// <summary>A WinUI app run and debugged as it is built: the fixture's unpackaged, its window on a desktop of its own, and
+    /// one New Solution makes from Passenger's own template, packaged, registered from its build and started by Windows.</summary>
     [AvaloniaFact]
-    public void An_unpackaged_winui_app_runs_and_debugged_stops_shows_its_live_tree_and_failed_binding_and_takes_an_agents_click()
+    public void A_winui_app_runs_and_debugs_unpackaged_and_as_a_package()
     {
         if (!OperatingSystem.IsWindows())
         {
             Assert.Skip("WinUI builds and runs only on Windows, whose app the test makes");
         }
+        Flow.StepApart("an unpackaged app runs, and debugged stops, shows its live tree and failed binding and takes an agent's click", () => new WinUITests(app),
+            t => t.An_unpackaged_app_runs_and_debugged_stops_shows_its_live_tree_and_failed_binding_and_takes_an_agents_click());
+        Flow.StepApart("a packaged app New Solution makes from Passenger's template is registered from its build, runs as Windows starts it, and debugged stops "
+            + "at a breakpoint and shows its live tree", () => new WinUITests(app), t => t.A_packaged_app_new_solution_makes_is_registered_runs_as_windows_starts_it_and_debugged_stops());
+    }
+
+    /// <summary>The unpackaged app (WindowsPackageType None, the Windows App SDK carried in its output) runs, saying in the
+    /// Run window that its window is up, and Stop ends it. Debug stops it at a breakpoint in its window's constructor, its
+    /// locals shown; let go, its elements show in the Live Visual Tree as WinUI's diagnostics tell of them, the button's
+    /// value and XAML with them, its misspelt binding is listed in Problems with the member nearest it, and an agent sees
+    /// its tree, clicks its button and takes its picture. Its window opens on a desktop of its own, where nobody sees it.</summary>
+    private void An_unpackaged_app_runs_and_debugged_stops_shows_its_live_tree_and_failed_binding_and_takes_an_agents_click()
+    {
         using IDisposable hang = Limits.BeginHang();
         MainWindow window = app.Open(app.PathOf("MainWindow.xaml.cs"));
         try
@@ -136,6 +147,88 @@ public sealed class WinUITests : IClassFixture<WinUITests.Gallery>
             Assert.True(caption.Problem.Path is { } at && PathNames.Same(at, xaml) && caption.Problem.Position.Line == bound,
                 $"The failed binding is placed at {caption.Problem.Path}:{caption.Problem.Position}, not the caption's Greting on MainWindow.xaml's line {bound + 1}");
 
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>New Solution's WinUI App, Passenger's template, made packaged (its default), restoring from nuget.org: Run
+    /// registers its build's package as a development package, saying so, Windows starts it through Passenger's starter,
+    /// and Stop ends it; Debug holds it at its start, stops in its window's constructor, and let go, the Live Visual Tree shows
+    /// it. Its package is named alike in every run, so each registration replaces the last. It needs Windows App Runtime 2.7
+    /// and Developer Mode; its window shows on the desktop, where Windows starts a package's.</summary>
+    private void A_packaged_app_new_solution_makes_is_registered_runs_as_windows_starts_it_and_debugged_stops()
+    {
+        if (OperatingSystem.IsWindows() && Passenger.App.Run.WindowsPackages.WhyNotRegistered() is { } off)
+        {
+            Assert.Skip(off);
+        }
+        using IDisposable hang = Limits.BeginHang();
+        string folder = TestFolders.Create("winui-made-");
+        TestFolders.Write(folder, "nuget.config", TestRun.FromNuGetOrg);
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, Unseen = PassengerApp.ShowsNoWindow };
+        window.Show();
+        window.Start(LaunchOptions.Empty);
+        Ui.Settle();
+        try
+        {
+            Ui.Click(window.Welcome.NewSolutionButton);
+            Ui.Settle();
+            NewProjectDialog dialog = Assert.Single(window.OwnedWindows.OfType<NewProjectDialog>());
+            Ui.WaitFor(() => dialog.TemplatesRead.IsCompleted, "dotnet new's templates to be read", TimeSpan.FromMinutes(3));
+            dialog.Folder = folder;
+            Ui.Click(dialog.FamilyRow("WinUI App") ?? throw new InvalidOperationException($"New Solution lists no WinUI App: [{string.Join(", ", dialog.Families.Select(f => f.Name))}]"));
+            Assert.True(dialog.Chosen is { OwnProject: true }, $"WinUI App chose {dialog.Chosen?.Name}");
+            Assert.Contains("Packaging", dialog.OptionLabels);
+            dialog.SolutionName = "Packed";
+            Ui.Settle();
+            Ui.Click(dialog.CreateButton);
+            Ui.WaitFor(() => !dialog.IsVisible || dialog.Problem is not null, "the WinUI app to be made and restored", Slow);
+            Assert.True(dialog.Problem is null, $"The WinUI app was not made: {dialog.Problem}");
+            string made = Assert.Single(Directory.GetFiles(folder, "Packed.csproj", SearchOption.AllDirectories));
+            string projectFolder = Path.GetDirectoryName(made)!;
+            foreach (string file in (string[])["App.xaml", "MainWindow.xaml", "MainWindow.xaml.cs", "app.manifest", "Package.appxmanifest", Path.Combine("Assets", "StoreLogo.png"),
+                Path.Combine("Properties", "launchSettings.json")])
+            {
+                Assert.True(File.Exists(Path.Combine(projectFolder, file)), $"The template wrote no {file} in {projectFolder}");
+            }
+            string manifest = Path.Combine(projectFolder, "Package.appxmanifest");
+            File.WriteAllText(manifest, System.Text.RegularExpressions.Regex.Replace(File.ReadAllText(manifest), "<Identity Name=\"[^\"]+\"", "<Identity Name=\"Passenger.Tests.Packed\""));
+
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Packaged), () => $"the package's configuration among [{string.Join(", ", window.Configurations.Select(c => c.Name))}]", Slow);
+            Assert.True(window.SelectConfiguration(window.Configurations.First(c => c.Packaged).Name));
+            if (Ui.Await(window.RunAsync(), "the package's build, registration and start", Slow) is { } refused)
+            {
+                // A runner without the Windows App SDK's runtime of the template's version runs no packaged app of it.
+                Assert.SkipWhen(refused.Contains("which is not installed for this user", StringComparison.Ordinal), refused);
+                string solution = Directory.GetFiles(folder, "Packed.sln*", SearchOption.AllDirectories).FirstOrDefault() is { } made2 ? File.ReadAllText(made2) : "(no solution)";
+                Assert.Fail($"Run refused the package: {refused}{Ui.Said(window)}\nThe build chosen: {window.Session.BuildChoices.Chosen?.Key ?? "none"}, "
+                    + $"offered [{string.Join(", ", window.Session.BuildChoices.Offered.Select(o => o.Key))}]; the solution:\n{solution}");
+            }
+            Ui.WaitFor(() => Output(window).Contains(" started as process ", StringComparison.Ordinal),
+                () => $"Windows to start the package, said in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", Slow);
+            Assert.Contains("Registered Passenger.Tests.Packed as a development package", Output(window), StringComparison.Ordinal);
+            Assert.True(window.Runner.IsRunning, $"The package's app ended as it started:\n{Output(window)}");
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the package's app to end once stopped", TimeSpan.FromMinutes(1));
+
+            window.OpenFile(Path.Combine(projectFolder, "MainWindow.xaml.cs"));
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "        InitializeComponent(");
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Launched(window, window.DebugAsync(), "the package's start under the debugger", Slow);
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.Debugger.Stop?.Top?.Name is { } top && top.Contains("MainWindow", StringComparison.Ordinal),
+                () => $"the stop at the breakpoint in MainWindow's constructor; the debugger is {window.Debugger.Session?.State.ToString() ?? "not debugging"}, stopped at "
+                    + $"{window.Debugger.Stop?.Top?.Name}, the breakpoint {string.Join("; ", window.Debugger.Breakpoints.In(PathNames.Canonical(Path.Combine(projectFolder, "MainWindow.xaml.cs"))).Select(b => $"{b.Status} {b.Message}"))}: "
+                    + $"{Ui.Said(window)}", Slow);
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "        InitializeComponent(");
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => window.LiveTree.Rows.Any(r => r.Element.Name == "Count"),
+                () => $"the Live Visual Tree to show the package's window; its inspector is {window.LiveApp?.Kind} {window.LiveApp?.State} {window.LiveApp?.Problem}: {Ui.Said(window)}", Slow);
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
         }

@@ -43,5 +43,6 @@
     <Compile Include="../Passenger.Core/SocketFolders.Limit.cs" Link="SocketFolders.Limit.cs" />
     <Compile Include="../Passenger.Core/Deadline.cs" Link="Deadline.cs" />
     <Compile Include="../Passenger.Inspector/Looking.cs" Link="Looking.cs" />
+    <Compile Include="../Passenger.Core/PngFiles.cs" Link="PngFiles.cs" />
   </ItemGroup>
 </Project>

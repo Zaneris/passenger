@@ -132,6 +132,9 @@ public sealed class TemplateOptions
         }
     }
 
+    /// <summary>An option's value as it stands: what the person chose, else its default.</summary>
+    public string ValueOf(TemplateOption option) => values.GetValueOrDefault(option.Name, option.Default);
+
     /// <summary>Why the options would be refused: one needed left empty, a number that does not read; null when none.</summary>
     public string? WhyNot()
     {

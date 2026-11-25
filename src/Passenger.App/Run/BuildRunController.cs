@@ -1341,13 +1341,15 @@ public sealed partial class BuildRunController
             bool godot = chosen.RunsGodot(session.Projects);
             // An app on a device, or a Mac Catalyst app, takes its edits through Passenger's relay in it, which holds its start until the debugger attaches.
             bool elsewhere = RunsOnDevice(chosen) || RunsOnMacCatalyst(chosen);
+            // A Windows app package, which Windows starts: its edits through the debugger, attached quietly as it starts held.
+            bool packaged = chosen.RunsPackage(session.Projects);
             // A game's errors, which Godot writes every frame they happen, folded in its console.
             parts.Views.Run.Fold = godot && !chosen.GodotEditor ? new Godot.GodotConsoleFold() : null;
             // An Avalonia or WPF app's XAML edits reach it through the inspector, which the app dotnet watch starts never carries.
             bool markup = wanted && !godot && await RunsXamlAppAsync(chosen);
-            bool watched = wanted && !godot && !markup && !elsewhere;
+            bool watched = wanted && !godot && !markup && !elsewhere && !packaged;
             // A Godot game and a XAML app take their edits through the debugger, attached quietly as each starts held; Godot's editor loads its builds itself.
-            bool reloaded = wanted && (godot && !chosen.GodotEditor || markup || elsewhere);
+            bool reloaded = wanted && (godot && !chosen.GodotEditor || markup || elsewhere || packaged);
             watching = watched;
             (LaunchPlan? plan, string? problem, _) = await PrepareAsync(chosen, arguments, work, build: !watched, reading: reloaded ? () =>
             {
@@ -1383,6 +1385,18 @@ public sealed partial class BuildRunController
             if (watched && MakeWorkingFolder(plan) is { } unmade)
             {
                 return Said(unmade);
+            }
+            // A Windows app package is registered from its build first, as a deploy registers it.
+            WindowsPackage? package = null;
+            if (plan.Package is { } launch && OperatingSystem.IsWindows())
+            {
+                List<string> registered = [];
+                (package, string? unregistered) = await WindowsPackages.RegisterAsync(chosen.Name, launch, plan.Unseen, registered.Add, work.Stopping);
+                if (package is null)
+                {
+                    return Said(unregistered!);
+                }
+                plan = plan with { Notes = [.. plan.Notes, .. registered] };
             }
             // Copies of a game each run in a tab of their own, the Run window's or, where its configuration says, the Terminal window's.
             if (GameCopies.Count(chosen, plan) is > 1 and int count)
@@ -1525,9 +1539,12 @@ public sealed partial class BuildRunController
             {
                 FollowWatched(chosen.Name);
             }
+            // A package's app is told its id by its starter, which Windows' start lasts as long as.
+            string? startedFile = package is not null && heldStart && OperatingSystem.IsWindows() ? WindowsPackages.StartedFile() : null;
             // Its fork off the window's thread (#441): the program runs from now as Stop and IsRunning see it, its id known once started.
-            string? notStarted = Started(watched
-                ? await session.Runner.StartDotnetAsync(Watch(plan), plan.WorkingDirectory, variables, plan.Placed)
+            string? notStarted = Started(watched ? await session.Runner.StartDotnetAsync(Watch(plan), plan.WorkingDirectory, variables, plan.Placed)
+                : package is not null && OperatingSystem.IsWindows()
+                    ? await session.Runner.StartAsync(WindowsPackages.Starter(package, plan.Arguments, variables, plan.WorkingDirectory, startedFile), new Dictionary<string, string>())
                 : await session.Runner.StartAsync(plan.Start(), variables));
             if (notStarted is null)
             {
@@ -1550,7 +1567,7 @@ public sealed partial class BuildRunController
                 await AttachOnDeviceForHotReloadAsync(chosen.Name, onDevice, relay, parts.Views.Run.Sink, work, Take(ref edits), running, inspected, ProgramBuild.Of(plan),
                     Take(ref handlers));
             }
-            if (notStarted is null && heldStart && session.Runner.ProcessId is int id)
+            if (notStarted is null && heldStart && (startedFile is null || !OperatingSystem.IsWindows() ? session.Runner.ProcessId : await WindowsPackages.StartedAsync(startedFile, () => session.Runner.Ended.IsCompleted)) is int id)
             {
                 await AttachForHotReloadAsync(chosen.Name, id, parts.Views.Run.Sink, work, Take(ref edits), running, Take(ref handlers), inspected, ProgramBuild.Of(plan));
             }
@@ -2885,6 +2902,10 @@ public sealed partial class BuildRunController
         {
             return await DebugFunctionsAsync(plan, work, edits);
         }
+        if (plan.Package is { } package && OperatingSystem.IsWindows())
+        {
+            return await DebugPackageAsync(plan, package, work, edits);
+        }
         work.Say($"Starting {chosen.Name} under the debugger…");
         parts.Dock.Show(ToolWindowIds.Debug);
         parts.Views.Debug.ShowTab(console: true);
@@ -2968,6 +2989,41 @@ public sealed partial class BuildRunController
             parts.OpenBrowser(plan, DebugEnded(session.Debug.SessionNamed(plan.Name)));
         }
         return refused;
+    }
+
+    /// <summary>A Windows app package debugged: registered from its build, then started by Windows through Passenger's starter,
+    /// held at its runtime's start (and open to Hot Reload) until the debugger attaches to it, its inspector in it as a desktop
+    /// app's is, its starter's words in its console; Stop ends it with its starter. Null once its session is open, else why not.</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private async Task<string?> DebugPackageAsync(LaunchPlan plan, WindowsPackageLaunch launch, Working work, BuiltEdits? edits)
+    {
+        (WindowsPackage? package, string? unregistered) = await WindowsPackages.RegisterAsync(plan.Name, launch, plan.Unseen, work.Say, work.Stopping);
+        if (package is null)
+        {
+            return unregistered;
+        }
+        work.Say($"Starting {plan.Name} under the debugger, held at its start until the debugger has it…");
+        parts.Dock.Show(ToolWindowIds.Debug);
+        parts.Views.Debug.ShowTab(console: true);
+        DebugProject = Path.GetDirectoryName(plan.Project);
+        (LaunchPlan launched, LiveApp? inspected) = session.Inspected(plan);
+        Dictionary<string, string> variables = new(launched.Environment);
+        foreach ((string name, string value) in HeldStart.Variables(changeable: true))
+        {
+            variables[name] = value;
+        }
+        string started = WindowsPackages.StartedFile();
+        LaunchPlan starter = launched with
+        {
+            Program = Product.Program,
+            Arguments = [],
+            Leading = 0,
+            Environment = WindowsPackages.StarterVariables(package, plan.Arguments, variables, started),
+        };
+        Task<string?> starting = session.Debug.StartThroughAsync(starter, (by, stop) => WindowsPackages.StartedAsync(started, () => stop.IsCancellationRequested || !DotnetProcesses.Runs(by)),
+            $"Windows started no app of {package.FamilyName}", edits, work, hotReload: true, app: inspected, by: "Windows");
+        WatchBindings(inspected, session.Debug.Chosen?.Console);
+        return await starting;
     }
 
     /// <summary>A Blazor Web App's WebAssembly half debugged beside its server, in a tab of its own

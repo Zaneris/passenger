@@ -35,6 +35,11 @@ internal static class Program
         {
             return signed;
         }
+        // Run as a packaged Windows app's starter, or by Windows as its debugger: nothing of the IDE starts.
+        if (OperatingSystem.IsWindows() && (Run.WindowsPackages.Start() ?? Run.WindowsPackages.Resume(args)) is int packaged)
+        {
+            return packaged;
+        }
         // What the copy's place says, before anything reads the state folder it may be: fatal where a marker is malformed.
         try
         {

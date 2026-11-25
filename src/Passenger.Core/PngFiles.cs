@@ -1,11 +1,12 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
 
-namespace Passenger.Inspector.WinUI;
+namespace Passenger.Core;
 
-/// <summary>A PNG made from pixels in memory with nothing but .NET's own zlib: what the inspector writes a WinUI app's
-/// picture with, as WinUI's own encoders are reached only through the app's packages.</summary>
-internal static class PngFiles
+/// <summary>A PNG made from pixels in memory with nothing but .NET's own zlib: a WinUI app's picture as the inspector takes
+/// it, whose app's own encoders it reaches only through the app's packages, and the logos a new WinUI app's package shows.
+/// Framework-free, since the WinUI inspector links it in.</summary>
+public static class PngFiles
 {
     private static readonly uint[] Crcs = MakeCrcs();
 

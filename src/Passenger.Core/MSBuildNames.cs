@@ -301,6 +301,16 @@ public static class MSBuildNames
     /// <summary>"true" in a project whose XAML is WinUI's, the Windows App SDK's.</summary>
     public const string UseWinUI = "UseWinUI";
 
+    /// <summary>How a Windows App SDK app is packaged: "MSIX" (registered and started as a package), "None" (run as a plain
+    /// program).</summary>
+    public const string WindowsPackageType = "WindowsPackageType";
+
+    /// <summary>"true" where a Windows App SDK project's build lays out its MSIX package (its .build.appxrecipe).</summary>
+    public const string EnableMsixTooling = "EnableMsixTooling";
+
+    /// <summary>The <see cref="WindowsPackageType"/> of an app that runs unpackaged.</summary>
+    public const string Unpackaged = "None";
+
     // The folders a MAUI project takes each Apple head's files from, which its package sets where the project does not.
     public const string PlatformsProjectFolder = "PlatformsProjectFolder";
     public const string IosProjectFolder = "iOSProjectFolder";
