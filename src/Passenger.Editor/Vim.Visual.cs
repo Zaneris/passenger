@@ -1030,6 +1030,12 @@ public sealed partial class Vim
     {
         int last = VimMotions.LastLine(text, breakEnds);
         LineSpan on = VimMotions.LineOf(text, r.Cursor);
+        if (inner && n % 2 == 0 && on.Line == last && r.Cursor == on.End && (on.Length > 0 ? on : on.Line > 0 ? text.GetLine(on.Line - 1) : on) is { Length: > 0 } blanks
+            && TextNavigation.IndentEnd(text, blanks) == blanks.End)
+        {
+            // Past the end of a last line of blanks alone, or on an empty one after it, an even count stops on its last blank.
+            return r with { Cursor = VimMotions.StepBack(text, blanks.End) };
+        }
         if (last > 1 && VimMotions.Blank(text, last) && VimMotions.Blank(text, last - 1) && text.GetLineStart(last - 1) is var before
             && (r.Cursor == before || on.Line == last || (on.Length > 0 && r.Cursor < on.End)))
         {
