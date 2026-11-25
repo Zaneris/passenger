@@ -962,25 +962,27 @@ public static class VimMotions
             {
                 return AsFromLastEmpty(text, line, here);
             }
-            if (line == 0 || text.GetLine(line - 1) is not { Length: > 0 } before || n > 1 || !inner)
+            if (line == 0 || text.GetLine(line - 1) is not { Length: > 0 } before || !inner)
             {
                 return new VimSpan(here, here, false);
             }
-            int blank = before.End;
-            while (blank > before.Start && text[blank - 1] is ' ' or '\t')
+            int blank = BlanksBefore(text, before, before.End);
+            if (blank == before.End)
             {
-                blank--;
-            }
-            if (blank > before.Start)
-            {
-                return blank == before.End ? new VimSpan(here, here, false) : new VimSpan(blank, before.End, false);
+                return new VimSpan(here, here, false);
             }
             int top = before.Line;
-            while (top > 0 && text.GetLine(top - 1) is { Length: > 0 } above && TextNavigation.IndentEnd(text, above) == above.End)
+            while (blank == before.Start && top > 0 && text.GetLine(top - 1) is { Length: > 0 } above && TextNavigation.IndentEnd(text, above) == above.End)
             {
                 top--;
             }
-            return new VimSpan(text.GetLine(top).Start, before.Start, true);
+            // Below blank lines, the white begins at the blanks ending the line of text above them, where it has some.
+            int white = blank > before.Start ? blank
+                : top > 0 && text.GetLine(top - 1) is { Length: > 0 } textAbove && BlanksBefore(text, textAbove, textAbove.End) is var trailing
+                    && trailing < textAbove.End ? trailing : text.GetLine(top).Start;
+            // A count: even, nothing at the white's start; odd, the white, whole lines where it begins one.
+            return n % 2 == 0 ? new VimSpan(white, white, false)
+                : white == text.GetLine(top).Start && blank == before.Start ? new VimSpan(white, before.Start, true) : new VimSpan(white, before.End, false);
         }
         int first = line;
         while (first > 0 && text.GetLine(first - 1).Length == 0)

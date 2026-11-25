@@ -957,7 +957,9 @@ public sealed partial class Vim
             // A sentence ending its line holds its line break: the next one is taken from the next line.
             after = line.EndIncludingBreak;
         }
+        // The text's last line, empty, holds no sentence ahead.
         if (after >= text.Length || (!inner && LastWrittenBefore(text, text.Length) is var written && (written is null || written < after))
+            || (inner && n > 1 && VimMotions.LineOf(text, after) is { Length: 0 } endLine && endLine.Line == VimMotions.LastLine(text, breakEnds))
             || VimTextObjects.Of(text, after, "s", inner, n, breakEnds) is not { } next)
         {
             return Ended(text, r, inner, n);
@@ -1230,11 +1232,11 @@ public sealed partial class Vim
             {
                 return new Region(r.Cursor, span.Start > 0 ? CharacterBefore(text, span.Start) : 0);
             }
-            if (inner && n > 1 && blanks > above.Start && blanks < above.End)
+            if (inner && n > 1 && blanks > 0 && blanks < above.End)
             {
                 // A count: even, the white's first blank and the character before; odd, a white of blanks whole, a lone blank's on back.
                 more = n % 2 == 1 && above.End - blanks == 1;
-                return n % 2 == 0 ? new Region(blanks, blanks - 1) : more ? new Region(r.Cursor, SentencesBack(text, blanks, inner, n - 1))
+                return n % 2 == 0 ? new Region(blanks, CharacterBefore(text, blanks)) : more ? new Region(r.Cursor, SentencesBack(text, blanks, inner, n - 1))
                     : new Region(blanks, above.End - 1);
             }
             if (inner && blanks < above.End)
