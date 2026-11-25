@@ -1122,7 +1122,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         async Task StartedAsync(LaunchPlan started)
         {
             ProcessRunner runner = resource.Runner = new ProcessRunner(resource.Console, takesInput: true);
-            runner.OutputReceived += (_, output) => app.Execution?.NotifyServiceLog(request.DcpInstanceId, request.SessionId, output.Text, output.IsError);
+            runner.OutputLine += (_, output) => app.Execution?.NotifyServiceLog(request.DcpInstanceId, request.SessionId, output.Text, output.IsError);
             runner.Exited += (_, code) =>
             {
                 if (resource.Runner == runner)

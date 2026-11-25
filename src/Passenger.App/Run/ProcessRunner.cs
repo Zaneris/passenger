@@ -92,8 +92,9 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
     /// <summary>The process ended, with its exit code; UI thread.</summary>
     public event EventHandler<int>? Exited;
 
-    /// <summary>Program output before console formatting, delivered on the UI thread.</summary>
-    public event EventHandler<ProcessOutput>? OutputReceived;
+    /// <summary>A line of the program's output or errors as it wrote it, before the console formats it, without its line
+    /// end; told to those listening as it starts, on the UI thread.</summary>
+    public event EventHandler<ProcessOutput>? OutputLine;
 
     public TextDocument Output => console.Document;
 
@@ -520,17 +521,12 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
 
     /// <summary>Reads a stream into the sink as it comes, a read at a time, and ends the stream's state at its end; once let
     /// go of (its program ended, and what holds the stream is out of the kill's reach), what still comes is nobody's,
-    /// since the console may be another program's by then. A read is copied for <see cref="OutputReceived"/> only while
-    /// someone listens.</summary>
+    /// since the console may be another program's by then. Its lines go to <see cref="OutputLine"/> where someone listens.</summary>
     private Task Pump(TextReader reader, ConsoleSink sink, ConsoleStream stream, CancellationToken letGo)
-        => sink.PumpAsync(reader, stream, letGo, chunks: text =>
+        => sink.PumpAsync(reader, stream, letGo, lines: OutputLine is null ? null : line =>
         {
-            if (OutputReceived is null)
-            {
-                return;
-            }
-            ProcessOutput output = new(new string(text), stream == ConsoleStream.Error);
-            UiThread.Post(() => OutputReceived?.Invoke(this, output));
+            ProcessOutput output = new(line, stream == ConsoleStream.Error);
+            UiThread.Post(() => OutputLine?.Invoke(this, output));
         });
 
     /// <summary>The longest line told whole; a longer one is told in pieces, so what a program writes with no line end

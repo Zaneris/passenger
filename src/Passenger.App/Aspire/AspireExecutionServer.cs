@@ -97,7 +97,8 @@ public sealed class AspireExecutionServer : IAsyncDisposable
     public bool NotifyProcessTerminated(string instanceId, string sessionId, uint? exitCode = null) =>
         Publish(instanceId, sessionId, new("sessionTerminated", sessionId, ExitCode: exitCode));
 
-    /// <summary>Returns false if the session ended or its notification connection cannot keep up.</summary>
+    /// <summary>A line of the session's program's output, without its line end, which DCP writes after each message: false
+    /// if the session ended or its notification connection cannot keep up.</summary>
     public bool NotifyServiceLog(string instanceId, string sessionId, string message, bool isStandardError = false)
     {
         ArgumentNullException.ThrowIfNull(message);

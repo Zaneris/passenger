@@ -46,14 +46,15 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         Flow.StepApart("a service an AppHost adds by path beside the open folder starts lent its trust and one above it is refused saying why", () => new AspireStandInTests(project), t => t.A_service_an_AppHost_adds_by_path_beside_the_open_folder_starts_lent_its_trust_and_one_above_it_is_refused_saying_why());
     }
 
-    /// <summary>The Aspire window as one flow, each step one test's check in an instance of its own: the console
-    /// dropping overlapping lines and following a new generation, a log landing at the cost of what it adds, a restart
-    /// reading only its own console again, a resource's row, details, commands and merged console, an argument marked
-    /// sensitive shown as dots everywhere, a service marked Don't start, the graph's edges, a resource waiting for
+    /// <summary>The Aspire window as one flow, each step a test's check in an instance of its own: a service's output told to
+    /// DCP a line at a time, the console dropping overlapping lines and following a new generation, a log landing at the cost
+    /// of what it adds, a restart reading only its own console, a resource's row, details, commands and merged console, an
+    /// argument marked sensitive shown as dots, a service marked Don't start, the graph's edges, a resource waiting for
     /// another, a JavaScript resource's folder and restart, and a request duration charted while shown.</summary>
     [AvaloniaFact]
     public void The_Aspire_window_shows_each_resources_row_console_telemetry_and_graph_its_secrets_as_dots()
     {
+        Flow.StepApart("a services output reaches DCP a line at a time each without its line end", () => new AspireStandInTests(project), t => t.A_services_output_reaches_DCP_a_line_at_a_time_each_without_its_line_end());
         Flow.StepApart("the console drops overlapping lines follows a new generation links its lines and ends its streams when hidden", () => new AspireStandInTests(project), t => t.The_console_drops_overlapping_lines_follows_a_new_generation_links_its_lines_and_ends_its_streams_when_hidden());
         Flow.StepApart("a log landing costs the UI thread what it adds however many are kept", () => new AspireStandInTests(project), t => t.A_log_landing_costs_the_UI_thread_what_it_adds_however_many_are_kept());
         Flow.StepApart("a resources restart reads only its own console again", () => new AspireStandInTests(project), t => t.A_resources_restart_reads_only_its_own_console_again());
@@ -910,6 +911,32 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
         }
         Ui.WaitFor(() => !WorkspaceTrust.Trusts(service), "the service beside to be no longer trusted once the window that lent it closed");
+    }
+
+    /// <summary>A service the IDE starts as DCP asks has its output told to DCP a line at a time, each without its line end,
+    /// however the service's writes split it, as DCP ends each message it keeps with a line break of its own.</summary>
+    private void A_services_output_reaches_DCP_a_line_at_a_time_each_without_its_line_end()
+    {
+        project.Reset();
+        project.BuildApi();
+        project.ServiceLogs.Clear();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        try
+        {
+            (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = project.AskToStartApi("apiservice");
+            using System.Net.WebSockets.ClientWebSocket subscribed = notified;
+            Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the run session: {answer}");
+            Ui.WaitFor(() => StandInAppHost.ApiSays.All(project.ServiceLogs.Contains),
+                () => $"the API's lines, one written in two writes, told to DCP each whole and without its line end, or the dashboard shows them "
+                    + $"broken or with empty lines between; DCP was told {string.Join(", ", project.ServiceLogs.Select(m => JsonSerializer.Serialize(m)))}");
+            Assert.DoesNotContain(project.ServiceLogs, message => message.Contains('\n', StringComparison.Ordinal) || message.Contains('\r', StringComparison.Ordinal));
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
     }
 
     /// <summary>Profile of an AppHost the window runs asks which of its running .NET services to profile, in a dialog held to
@@ -3608,6 +3635,9 @@ public sealed class StandInAppHost : SharedProject
                 using Process child = Process.Start(start)!;
                 Console.WriteLine($"child said: {child.StandardOutput.ReadToEnd().Trim()}");
             }
+            // A line in two writes, as a logger writes its parts.
+            Console.Write("A line of ");
+            Console.WriteLine("two writes");
             Console.WriteLine("The stand-in API is up");
             if (Environment.GetEnvironmentVariable("STAND_IN_PID_FILE") is { Length: > 0 } told)
             {
@@ -3632,6 +3662,13 @@ public sealed class StandInAppHost : SharedProject
     /// child and said what the child wrote; given STAND_IN_PID_FILE, it writes its process's id there and goes round
     /// <see cref="ApiLoop"/>, its id a local.</summary>
     public const string Api = "StandIn.Api";
+
+    /// <summary>What the service says as it starts, a line in two writes and one in one.</summary>
+    public static readonly string[] ApiSays = ["A line of two writes", "The stand-in API is up"];
+
+    /// <summary>What the IDE told DCP of the services' output (serviceLogs' log_message), in the order told, while a test
+    /// subscribed to the sessions' notifications (<see cref="StartApiAsync"/>).</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<string> ServiceLogs { get; } = new();
 
     public string ApiProject => PathOf($"{Api}/{Api}.csproj");
 
@@ -3787,7 +3824,7 @@ public sealed class StandInAppHost : SharedProject
         {
             await notified.ConnectAsync(new Uri($"ws://{session[0]}/run_session/notify?api-version={version}"), CancellationToken.None);
             // Unread, a service's logs fill the socket, and the IDE ends the AppHost's sessions once a send waits too long on it.
-            UnawaitedWork.Dismiss(Waiting.Apart(() => HearAsync(notified)));
+            UnawaitedWork.Dismiss(Waiting.Apart(() => HearAsync(notified, ServiceLogs)));
         }
         // Past the waits on its answer, which say what the IDE was busy with as they give up; scaled, as they are.
         using HttpClient http = new() { Timeout = TimeSpan.FromMinutes(2).Scaled() };
@@ -3814,14 +3851,31 @@ public sealed class StandInAppHost : SharedProject
         }
     }
 
-    /// <summary>Reads the notifications <paramref name="notified"/> brings, passing over each, until it closes or is let go of.</summary>
-    private static async Task HearAsync(System.Net.WebSockets.ClientWebSocket notified)
+    /// <summary>Reads the notifications <paramref name="notified"/> brings, each JSON line of a message, until it closes or is
+    /// let go of, keeping each service log's message in <paramref name="logs"/>.</summary>
+    private static async Task HearAsync(System.Net.WebSockets.ClientWebSocket notified, System.Collections.Concurrent.ConcurrentQueue<string> logs)
     {
         byte[] buffer = new byte[16384];
+        using MemoryStream message = new();
         try
         {
-            while ((await notified.ReceiveAsync(buffer, CancellationToken.None)).MessageType != System.Net.WebSockets.WebSocketMessageType.Close)
+            System.Net.WebSockets.WebSocketReceiveResult read;
+            while ((read = await notified.ReceiveAsync(buffer, CancellationToken.None)).MessageType != System.Net.WebSockets.WebSocketMessageType.Close)
             {
+                message.Write(buffer, 0, read.Count);
+                if (!read.EndOfMessage)
+                {
+                    continue;
+                }
+                foreach (string line in Encoding.UTF8.GetString(message.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    using JsonDocument notification = JsonDocument.Parse(line);
+                    if (JsonMembers.Text(notification.RootElement, "notification_type") == "serviceLogs" && JsonMembers.Text(notification.RootElement, "log_message") is { } logged)
+                    {
+                        logs.Enqueue(logged);
+                    }
+                }
+                message.SetLength(0);
             }
         }
         catch (Exception closed) when (closed is System.Net.WebSockets.WebSocketException or ObjectDisposedException or OperationCanceledException)
