@@ -1200,6 +1200,9 @@ public static class Refusals
     /// <summary>Update in All Projects where every project referencing the package has the chosen version or a newer one.</summary>
     public static string UpdatedEverywhere(string id, string version) => $"Every project referencing {id} has {version} or a newer version";
 
+    /// <summary>Compare with… on a memory snapshot, the only one its run took.</summary>
+    public const string NoOtherSnapshot = "The run took no other snapshot to compare this one with";
+
     /// <summary>An action on the NuGet window's updates while another of its tabs is shown, or it is not built yet.</summary>
     public const string UpdatesNotShown = "Open the Updates tab first";
 

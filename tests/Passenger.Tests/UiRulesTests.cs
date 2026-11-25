@@ -2231,7 +2231,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Ui.Settle();
             Button delete = dialog.Templates.DeleteButton;
             Assert.False(delete.IsEnabled, "Delete is not greyed for cw, a built-in template");
-            Rest(dialog, delete, "A built-in template is turned off by its check box, so it can be turned on again");
+            Rest(dialog, delete, "Delete Template: A built-in template is turned off by its check box, so it can be turned on again");
         }
         finally
         {
@@ -4456,7 +4456,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>Every icon button is made by ToolButtons (the title bar's and the find bar's declared in XAML and given their
     /// look there, a glyph's small one inside a chip, a field or a tab), so each is one size, one radius and named and greyed
     /// one way: the tool button's, a counted filter's, the small button's and the in-field button's classes named elsewhere
-    /// (a tab's × its tabs' own), and a control greyed with its tip of why written beside it by hand, fail here, naming the
+    /// (a tab's × its tabs' own), and a control of the App greyed by hand with its tip set beside it, fail here, naming the
     /// line.</summary>
     [Fact]
     public void Every_icon_button_is_made_and_greyed_with_why_by_ToolButtons()
@@ -4470,7 +4470,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         ];
         // A menu's item is greyed by its own piece, ListMenus.Grey.
         string[] greyers = ["/ToolButtons.cs", "/ToolWindows/ListMenus.cs"];
-        Regex greyed = new(@"\b([\w.]+)\.IsEnabled\s*=\s*[^;]*\bis\s+null\b");
+        // The App's alone: the libraries under it (the terminal's menu) reach no ToolButtons.
+        Regex greyed = new(@"\b([\w.\[\]]+)\.IsEnabled\s*=(?!=)");
         List<string> found = [];
         foreach ((string path, string text) in UiFiles())
         {
@@ -4484,15 +4485,20 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                         found.Add($"{path}:{i + 1}: {lines[i].Trim()}");
                     }
                 }
-                if (greyed.Match(lines[i]) is { Success: true } grey && !greyers.Any(o => path.EndsWith(o, StringComparison.Ordinal))
+                if (greyed.Match(lines[i]) is { Success: true } grey && path.StartsWith("src/Passenger.App/", StringComparison.Ordinal)
+                    && !greyers.Any(o => path.EndsWith(o, StringComparison.Ordinal))
                     && lines.Skip(Math.Max(0, i - 3)).Take(7).Any(l => l.Contains($"ToolTip.SetTip({grey.Groups[1].Value},", StringComparison.Ordinal)))
                 {
-                    found.Add($"{path}:{i + 1}: greyed with its tip of why by hand: {lines[i].Trim()}");
+                    found.Add($"{path}:{i + 1}: greyed by hand with its tip set beside it: {lines[i].Trim()}");
                 }
             }
         }
         Assert.True(found.Count == 0, $"{found.Count} icon buttons are made or greyed by hand, so their size, radius, keys and tips drift from every other's: "
             + $"make each with ToolButtons (Of, Glyph, Small, Toggle, Counted, or Give for one declared elsewhere) and grey it with ToolButtons.Grey:\n{string.Join("\n", found)}");
+        Assert.Matches(greyed, "        updateAll.IsEnabled = CanUpdateAll;");
+        Assert.Matches(greyed, "            WriteButton.IsEnabled = writable is null;");
+        Assert.DoesNotMatch(greyed, "        targetBox.IsEnabled &= idle;");
+        Assert.DoesNotMatch(greyed, "        if (button.IsEnabled == false)");
         Assert.Matches(owned[0].Named, "            Button = new Button { Classes = { StyleClasses.Tool }, Content = glyph };");
         Assert.Matches(owned[0].Named, "                    <Button Name=\"PreviousButton\" Classes=\"tool\" ToolTip.Tip=\"Previous occurrence\">");
         Assert.DoesNotMatch(owned[0].Named, "                    <Border Classes=\"toolbarRule\" />");

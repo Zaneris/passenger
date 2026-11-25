@@ -525,9 +525,7 @@ public sealed partial class SettingsDialog : IdeWindow
 
     private void Follow(Control editor, SettingWhen when)
     {
-        bool holds = when.Holds(Working);
-        editor.IsEnabled = holds;
-        ToolTip.SetTip(editor, holds ? null : when.Why);
+        ToolButtons.Grey(editor, when.Holds(Working) ? null : when.Why);
     }
 
     /// <summary>Why a row is greyed as the settings stand; null where it takes effect, or is no row another greys.</summary>

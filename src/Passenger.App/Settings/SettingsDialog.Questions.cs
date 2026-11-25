@@ -23,9 +23,8 @@ public sealed partial class SettingsDialog
         box.IsCheckedChanged += (_, _) => answering[question] = box.IsChecked == true;
         if (question.Scope == QuestionScope.Repository && questions?.Repository is null)
         {
-            box.IsEnabled = false;
             ToolTip.SetShowOnDisabled(box, true);
-            ToolTip.SetTip(box, "Open a folder to choose this for its repository");
+            ToolButtons.Grey(box, "Open a folder to choose this for its repository");
         }
         Add(row.Page, row.Label, box, row.Words, row.Note);
     }

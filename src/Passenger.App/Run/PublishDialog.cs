@@ -673,12 +673,13 @@ public sealed class PublishDialog : IdeWindow
         targetBox.IsEnabled &= idle;
         profileBox.IsEnabled = !saving;
         bool runtime = Runtime is not null;
-        singleFileBox.IsEnabled = idle && runtime;
-        readyToRunBox.IsEnabled = idle && runtime;
-        trimBox.IsEnabled = idle && runtime && SelfContained;
-        ToolTip.SetTip(singleFileBox, runtime ? null : "A single file is one system's: choose a target runtime");
-        ToolTip.SetTip(readyToRunBox, runtime ? null : "ReadyToRun code is one system's: choose a target runtime");
-        ToolTip.SetTip(trimBox, runtime && SelfContained ? null : "Only a self-contained app is trimmed");
+        ToolButtons.Grey(singleFileBox, runtime ? null : "A single file is one system's: choose a target runtime");
+        ToolButtons.Grey(readyToRunBox, runtime ? null : "ReadyToRun code is one system's: choose a target runtime");
+        ToolButtons.Grey(trimBox, runtime && SelfContained ? null : "Only a self-contained app is trimmed");
+        foreach (CheckBox box in (CheckBox[])[singleFileBox, readyToRunBox, trimBox])
+        {
+            box.IsEnabled &= idle;
+        }
         publish.IsEnabled = idle && WhyNot() is null;
         saveButton.IsEnabled = publish.IsEnabled;
     }

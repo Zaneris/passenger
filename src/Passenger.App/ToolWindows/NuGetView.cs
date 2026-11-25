@@ -322,8 +322,7 @@ public sealed partial class NuGetView : DockPanel
     /// (<see cref="WhyNot"/>).</summary>
     private void EnableActions()
     {
-        updateAll.IsEnabled = CanUpdateAll;
-        ToolTip.SetTip(updateAll, $"Update all {Numbers.Said(updateRows.Count)} packages across their projects, including results hidden by search");
+        ToolButtons.Grey(updateAll, UpdateAllWhyNot, $"Update all {Numbers.Said(updateRows.Count)} packages across their projects, including results hidden by search");
         ToolButtons.Grey(updateSelected, UpdateSelectedWhyNot, SelectedTip());
         foreach ((Button button, bool putsIn, string? tip) in lineActions)
         {

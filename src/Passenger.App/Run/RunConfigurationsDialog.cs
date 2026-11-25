@@ -1407,14 +1407,11 @@ public sealed class RunConfigurationsDialog : IdeWindow
             string link = $"Its link to its {SourceName(shown)}, which a copy can change";
             foreach (Control identity in (Control[])[NameBox, ProjectBox, ProfileBox])
             {
-                identity.IsEnabled = !shown.Generated;
-                ToolTip.SetTip(identity, shown.Generated ? link : null);
+                ToolButtons.Grey(identity, shown.Generated ? link : null);
             }
             // Whether it opens Godot's editor is that link too; how a generated one's game starts is the person's.
-            GodotBox.IsEnabled = !(shown.Generated && shown.GodotEditor);
-            ToolTip.SetTip(GodotBox, GodotBox.IsEnabled ? null : link);
-            godotStartItems[1].IsEnabled = !shown.Generated;
-            ToolTip.SetTip(godotStartItems[1], shown.Generated ? link : null);
+            ToolButtons.Grey(GodotBox, shown.Generated && shown.GodotEditor ? link : null);
+            ToolButtons.Grey(godotStartItems[1], shown.Generated ? link : null);
         }
         finally
         {
@@ -1486,8 +1483,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             bool writable = Project(row!.Configuration) is { } project
                 && LaunchProfile.Read(project).FirstOrDefault(p => p.Name == row.Configuration.LaunchProfile) is { } profile
                 && LaunchSettingsEdits.For(project, profile, row.Source!, row.Configuration).Count > 0;
-            WriteButton.IsEnabled = writable;
-            ToolTip.SetTip(WriteButton, writable ? WriteTip : $"{LaunchProfile.SettingsName(row.Configuration.Project)} has no place for these changes, which stay kept with the folder");
+            ToolButtons.Grey(WriteButton, writable ? null : $"{LaunchProfile.SettingsName(row.Configuration.Project)} has no place for these changes, which stay kept with the folder", WriteTip);
         }
 
         ShowSaveAs();

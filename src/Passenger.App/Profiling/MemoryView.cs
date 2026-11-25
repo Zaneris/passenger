@@ -405,8 +405,7 @@ public sealed class MemoryView : DockPanel
                 types.ItemsSource = snapshot.Types;
                 types.SelectedIndex = snapshot.Types.Count > 0 ? 0 : -1;
                 Button compare = Action("Compare with…", () => ShowCompareMenu(snapshot));
-                compare.IsEnabled = snapshots.Count > 1;
-                ToolTip.SetTip(compare, "Compare this snapshot with another of the run: its new, dead and survived objects");
+                ToolButtons.Grey(compare, snapshots.Count > 1 ? null : Refusals.NoOtherSnapshot, "Compare this snapshot with another of the run: its new, dead and survived objects");
                 break;
             case ComparisonPage { Comparison: var comparison }:
                 summary.Text = $"{Core.Numbers.Said(comparison.NewObjects)} new, {Core.Numbers.Said(comparison.DeadObjects)} dead and {Core.Numbers.Said(comparison.SurvivedObjects)} survived objects "

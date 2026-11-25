@@ -405,8 +405,7 @@ public sealed class LiveTemplatesPane : ListPane
         variablesSaid.Text = variables.Count == 0 ? "No variables" : string.Join(", ", variables.Select(v => v.Name));
         EditVariablesButton.IsEnabled = variables.Count > 0;
         MnemonicBox.IsEnabled = LiveTemplates.Availability(shown).Use != TemplateUse.Generation;
-        DeleteButton.IsEnabled = !shown.BuiltIn;
-        ToolTip.SetTip(DeleteButton, shown.BuiltIn ? "A built-in template is turned off by its check box, so it can be turned on again" : "Delete Template");
+        ToolButtons.Grey(DeleteButton, shown.BuiltIn ? "A built-in template is turned off by its check box, so it can be turned on again" : null, "Delete Template");
         RestoreButton.IsEnabled = shown.BuiltIn && LiveTemplates.BuiltIn.FirstOrDefault(t => t.Key == shown.Key) is { } shipped && !shipped.SameAs(shown);
     }
 
