@@ -1744,6 +1744,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }
         }
         choice.Began = true;
+        if (builds.CopiesOf(name) is { Count: > 0 } copies)
+        {
+            // Its copies run each in a tab of the Run window of its own, as a run of several parts' programs do.
+            return await ProgramsRunAsync(name, ([], copies, []), waitSeconds, cancel);
+        }
         if (builds.Containers is { } running)
         {
             // Its services are up once Run answers: what an agent wants is how each stands and what they said.
@@ -1840,24 +1845,37 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }
         }
         choice.Began = true;
-        (IReadOnlyList<string> debugged, IReadOnlyList<INamedRun> ran, IReadOnlyList<string> notes) = builds.ProjectsOf(name);
+        return await ProgramsRunAsync(name, builds.ProjectsOf(name), waitSeconds, cancel);
+    }
+
+    /// <summary>The programs a start ran each in a tab (a run of several parts', a game's copies), each waited for until it
+    /// ends, its host starts or its game is up, within the wait; how each stands, and each one's last lines under its name.</summary>
+    private async Task<RunResult> ProgramsRunAsync(string name, (IReadOnlyList<string> Debugged, IReadOnlyList<INamedRun> Ran, IReadOnlyList<string> Notes) started,
+        int waitSeconds, CancellationToken cancel)
+    {
+        (IReadOnlyList<string> debugged, IReadOnlyList<INamedRun> ran, IReadOnlyList<string> notes) = started;
         List<(INamedRun Run, HeardServing Serving)> each = [.. ran.Select(r => (r, new HeardServing(() => r, () => (r as TerminalRun)?.Session,
             r is PartRun part ? part.Runner.Shown : () => TextSnapshot.Empty)))];
-        AgentCall.Say($"Running {name}: waiting up to {Math.Max(0, waitSeconds)} s for each of its programs to end or its host to start");
+        AgentCall.Say($"Running {name}: waiting up to {Math.Max(0, waitSeconds)} s for each of its programs to end, its host to start or its game to be up");
         // A terminal's screen raises nothing an agent's wait can hear: looked at every 50 ms.
-        await Until(() => each.All(e => e.Run.Ended.IsCompleted || e.Serving.Serves()), TimeSpan.FromSeconds(Math.Max(0, waitSeconds)), cancel);
-        IEnumerable<string> stands = each.Select(e => Stands(e.Run, e.Serving));
+        await Until(() => each.All(e => e.Run.Ended.IsCompleted || e.Serving.Serves() || GameUpIn(e.Run)), TimeSpan.FromSeconds(Math.Max(0, waitSeconds)), cancel);
+        IEnumerable<string> stands = each.Select(e => Stands(e.Run, e.Serving, GameUpIn(e.Run)));
         string output = string.Join("\n", each.Select(e => $"{e.Run.Name}:\n{(e.Run is TerminalRun terminal ? Tail(terminal.Session, 40) : Tail(((PartRun)e.Run).Runner.Shown(), 40))}"));
+        string games = each.Any(e => GameUpIn(e.Run)) ? $". {GameUp}, each game by its name as app" : string.Empty;
         return new RunResult(each.Any(e => !e.Run.Ended.IsCompleted), null,
-            $"{BuildRunController.ProjectsStarted(name, debugged, [.. ran.Select(r => r.Name)], [.. ran.Select(r => r is TerminalRun)])}. {string.Join("; ", stands)}{string.Concat(notes.Select(n => $"\nNote: {n}"))}", output);
+            $"{BuildRunController.ProjectsStarted(name, debugged, [.. ran.Select(r => r.Name)], [.. ran.Select(r => r is TerminalRun)])}. {string.Join("; ", stands)}{games}{string.Concat(notes.Select(n => $"\nNote: {n}"))}", output);
 
-        static string Stands(INamedRun run, HeardServing serving)
+        static string Stands(INamedRun run, HeardServing serving, bool game)
         {
             Task<int> ended = run.Ended;
             return ended.IsCompletedSuccessfully ? BuildRunController.RunEnded(run.Name, ended.Result)
-                : serving.Said is { } said ? $"{run.Name}, {said}" : $"{run.Name}, running";
+                : serving.Said is { } said ? $"{run.Name}, {said}" : game ? $"{run.Name}, its game up" : $"{run.Name}, running";
         }
     }
+
+    /// <summary>Whether a program run in a tab is a game Passenger is the remote debugger of, up: its first scene's monitors read.</summary>
+    private bool GameUpIn(INamedRun run) =>
+        run.Ended is { IsCompleted: false } && Session.Games.FirstOrDefault(g => g.Name == run.Name) is { State: LiveTree.LiveAppState.Connected, Monitors: not null };
 
     [McpServerTool(Name = McpTools.Output, Title = "A console's last lines", ReadOnly = true), Description(
         "The last lines of a console. of run (the default): what Run's program wrote (under Hot Reload, dotnet watch's words " +

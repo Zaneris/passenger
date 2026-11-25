@@ -26,11 +26,11 @@ public sealed partial class BuildRunController
     /// start.</summary>
     private readonly Dictionary<string, (IReadOnlyList<string> Debugged, IReadOnlyList<INamedRun> Ran, IReadOnlyList<string> Notes)> profileStarts = new(StringComparer.Ordinal);
 
-    /// <summary>The parts of runs of several parts in tabs of the Run window, in the order they were started, those of a run
-    /// started since gone.</summary>
+    /// <summary>The parts of runs of several parts and the copies of games Run runs (<see cref="PartRun.Copy"/>), in tabs of
+    /// the Run window, in the order they were started, those of a run started since gone.</summary>
     private readonly List<PartRun> partRuns = [];
 
-    /// <summary>The parts of runs of several parts in tabs of the Run window.</summary>
+    /// <summary>The parts of runs of several parts and the copies of games in tabs of the Run window.</summary>
     public IReadOnlyList<PartRun> PartRuns => partRuns;
 
     /// <summary>The programs a multi-project configuration runs in tabs of the Terminal window, while each runs: the
@@ -452,12 +452,16 @@ public sealed partial class BuildRunController
     private PartRun? ShownOverConsole() => parts.Views.RunWindow.ShownPart is { } shown && shown.Console == parts.Views.Run && partRuns.Contains(shown) ? shown : null;
 
     /// <summary>The Run window's part tabs let go of: those of ended parts (<paramref name="ended"/>), or every one, each
-    /// running one stopped first.</summary>
-    private void EndPartRuns(bool ended)
+    /// running one stopped first; those of one run (or a game's copies) where <paramref name="run"/> names it.</summary>
+    private void EndPartRuns(bool ended, string? run = null)
     {
-        foreach (PartRun part in partRuns.Where(p => !ended || !p.IsRunning).ToList())
+        foreach (PartRun part in partRuns.Where(p => (!ended || !p.IsRunning) && (run is null || p.Run == run)).ToList())
         {
-            part.Stop();
+            // One over the Run window's console that ended may be another program's now, which is not its to stop.
+            if (part.IsRunning)
+            {
+                part.Stop();
+            }
             partRuns.Remove(part);
             part.Dispose();
         }
@@ -489,8 +493,9 @@ public sealed partial class BuildRunController
         using (work)
         using (BackgroundWork.Scope())
         {
-            // A Compose part comes up again as it last came, its .NET services debugged where they were.
+            // A Compose part comes up again as it last came, its .NET services debugged where they were; a game's copy as it ran.
             RunStart how = session.ContainerRun is { } last && last.Name == part.Name ? last.How : RunStart.Run;
+            bool hotReloaded = session.Debug.Running.Any(r => r.Name == part.Name);
             if (part.IsRunning)
             {
                 part.Stop();
@@ -501,6 +506,10 @@ public sealed partial class BuildRunController
             if (part.IsContainers)
             {
                 refused = await StartContainersPartAsync(part, work, how);
+            }
+            else if (part is { Copy: not null, Project: { } game })
+            {
+                refused = await RestartCopyAsync(part, game, hotReloaded, work);
             }
             else if (part.Project is { } configuration)
             {
@@ -528,7 +537,7 @@ public sealed partial class BuildRunController
             }
             part.Set(PartState.Running);
             RunningChanged?.Invoke(this, EventArgs.Empty);
-            parts.Say($"Restarted {part.Name}, {part.Run}'s other parts running on", StatusPlace.Window(parts.Dock, ToolWindowIds.Run));
+            parts.Say($"Restarted {part.Name}, {part.Run}'s other {(part.Copy is null ? "parts" : "copies")} running on", StatusPlace.Window(parts.Dock, ToolWindowIds.Run));
             return true;
         }
     }
@@ -593,8 +602,8 @@ public sealed partial class BuildRunController
         return null;
     }
 
-    /// <summary>Runs one project of a multi-project configuration in a tab of the Terminal window of its own, as one copy of a
-    /// game runs (<see cref="RunCopyAsync"/>), the browser opened where its configuration says once it listens; with
+    /// <summary>Runs one project of a multi-project configuration in a tab of the Terminal window of its own, where its own
+    /// configuration runs in the terminal, the browser opened where its configuration says once it listens; with
     /// <paramref name="reloaded"/>, held at its runtime's start and attached to quietly for Hot Reload with
     /// <paramref name="edits"/>, which it takes. Null once it runs, else why not.</summary>
     private async Task<string?> RunProjectAsync(RunConfiguration profile, RunConfiguration configuration, LaunchPlan plan, int place, bool reloaded, Working work,

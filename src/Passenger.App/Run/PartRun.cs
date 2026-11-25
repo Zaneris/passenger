@@ -16,10 +16,12 @@ public enum PartState
     Ended,
 }
 
-/// <summary>A part of a run of several parts in a tab of the Run window: its own console, the program running in it (a
-/// ProcessRunner of its own, which Stop and Restart end and start again), what it runs and where it stands; a Compose part
-/// shows the Run window's own console, where its run's log is followed (<see cref="OfContainers"/>). Its tab's Rerun
-/// restarts it alone and its Stop ends it alone; the run's Stop ends every part. A UI-thread object.</summary>
+/// <summary>A part of a run of several parts, or a copy of a game its configuration runs several of (<see cref="Copy"/>), in
+/// a tab of the Run window: its own console, the program running in it (a ProcessRunner of its own, which Stop and Restart
+/// end and start again), what it runs and where it stands; a Compose part shows the Run window's own console, where its
+/// run's log is followed (<see cref="OfContainers"/>), as a game Run started there does once a copy runs beside it
+/// (<see cref="OfConsole"/>). Its tab's Rerun restarts it alone and its Stop ends it alone; the run's Stop ends every part.
+/// A UI-thread object.</summary>
 public sealed class PartRun : INamedRun, IDisposable
 {
     public PartRun(string name, string run, int place, RunPart part)
@@ -44,6 +46,11 @@ public sealed class PartRun : INamedRun, IDisposable
     public static PartRun OfContainers(string name, string run, int place, RunPart part, OutputView console, ProcessRunner runner, Func<bool> ours, Action stop) =>
         new(name, run, place, part, console, runner) { ours = ours, stopContainers = stop };
 
+    /// <summary>The game the Run window's console runs, through its runner, while <paramref name="ours"/> says the console's
+    /// program is its: shown as the first of its configuration's copies (<paramref name="copy"/>) once another runs beside it.</summary>
+    public static PartRun OfConsole(string name, RunPart part, OutputView console, ProcessRunner runner, Func<bool> ours, RunConfiguration project, GameCopy copy) =>
+        new(name, copy.Configuration, copy.Place, part, console, runner) { ours = ours, Project = project, Copy = copy };
+
     private readonly bool owned;
     private Func<bool> ours = () => true;
     private Action? stopContainers;
@@ -66,8 +73,11 @@ public sealed class PartRun : INamedRun, IDisposable
 
     public RunPart Part { get; }
 
-    /// <summary>For a .NET project, the configuration it starts as, which a restart builds and starts again.</summary>
+    /// <summary>For a .NET project or a game's copy, the configuration it starts as, which a restart builds and starts again.</summary>
     public RunConfiguration? Project { get; init; }
+
+    /// <summary>For a copy of a game its configuration runs several of, which copy it is; null for a part of a run.</summary>
+    public GameCopy? Copy { get; init; }
 
     public OutputView Console { get; }
 
