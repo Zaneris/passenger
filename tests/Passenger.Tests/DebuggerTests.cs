@@ -373,7 +373,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>A debugger dying with an exception leaves the window up with its words; one killed while its program
     /// is paused takes the program with it; closing the window while debugging leaves no program, debugger or language
     /// server; Debug Tests whose host the debugger cannot attach to ends saying why; Stop ends a session whose program
-    /// is still starting.</summary>
+    /// is still starting; Debug again and Stop end what a debugged program started with it.</summary>
     [AvaloniaFact]
     public async Task A_debug_session_ends_whole_however_it_ends_leaving_nothing_running()
     {
@@ -404,6 +404,12 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         await Flow.StepApartLivedAsync<DebuggerTests>("stop ends a debug session whose program is still starting and the program with it", () => new DebuggerTests(sum, sleeper, folders), t =>
         {
             t.Stop_ends_a_debug_session_whose_program_is_still_starting_and_the_program_with_it();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("debug again and stop end what a debugged program started with it", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Debug_again_and_stop_end_what_a_debugged_program_started_with_it();
             OpenWindows.CloseAll();
             return Task.CompletedTask;
         });
@@ -2948,6 +2954,46 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         {
             program.Kill();
             adapter.Kill();
+        }
+    }
+
+    /// <summary>A program debugged in the Debug window's console that started another has it ended with it, by Debug again
+    /// before the next starts, then by Stop, as Run's Stop ends what a program started: the debugger ends the program
+    /// alone, and what it started would run on, holding the port an app's dev server holds.</summary>
+    private void Debug_again_and_stop_end_what_a_debugged_program_started_with_it()
+    {
+        Write("Program.cs", "System.Diagnostics.Process child = System.Diagnostics.Process.Start(OperatingSystem.IsWindows()\n"
+            + "    ? new System.Diagnostics.ProcessStartInfo(\"ping\", [\"-n\", \"600\", \"127.0.0.1\"]) { RedirectStandardOutput = true }\n"
+            + "    : new System.Diagnostics.ProcessStartInfo(\"/bin/sleep\", [\"600\"]))!;\nConsole.WriteLine($\"child {child.Id}\");\nConsole.ReadLine();\n");
+        MainWindow window = Open();
+        window.ApplySettings(window.Settings with { AskBeforeRerun = false });
+        string Said() => window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
+        int? Child(DebugSession? past) => window.Debugger.Session is { } now && now != past
+            && Said().Split('\n').LastOrDefault(l => l.StartsWith("child ", StringComparison.Ordinal)) is { } line ? int.Parse(line["child ".Length..], System.Globalization.CultureInfo.InvariantCulture) : null;
+        OwnProcess first = default;
+        OwnProcess second = default;
+        try
+        {
+            StartDebugging(window);
+            WaitDebugging(window, () => Child(null) is not null, "the debugged program to start its child");
+            DebugSession going = window.Debugger.Session!;
+            first = OwnProcess.Of(Child(null)!.Value);
+            Assert.True(Processes.IsRunning(first.Id), "The debugged program's child is not running");
+
+            StartDebugging(window);
+            WaitDebugging(window, () => Child(going) is { } next && next != first.Id, "the program debugged again to start its child");
+            second = OwnProcess.Of(Child(going)!.Value);
+            Assert.False(Processes.IsRunning(first.Id), $"Debug again started the program while the child its last run started still ran: {Processes.Describe(first.Id)}");
+
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+            Assert.True(Processes.Gone(second.Id), $"Stop left the debugged program's child running: {Processes.Describe(second.Id)}");
+            window.Close();
+        }
+        finally
+        {
+            first.Kill();
+            second.Kill();
         }
     }
 
