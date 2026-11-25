@@ -121,6 +121,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             SecretKept = true,
             Mark = connection.Mark,
             Tunnel = connection.Tunnel,
+            SignIn = connection.SignIn,
         }));
         foreach ((string path, Guid id) in state.Value.Consoles)
         {
@@ -465,22 +466,20 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         return done ? null : said;
     }
 
-    /// <summary>The connections kept for the folder, written as they change.</summary>
+    /// <summary>The connections kept for the folder, written as they change; a window keeping no state keeps them for its
+    /// session alone, so a found connection's settings stand through a refresh there too.</summary>
     private void Keep()
     {
-        if (kept is null)
+        SetState((State with
         {
-            return;
-        }
-        kept.Set((kept.Value with
-        {
-            Connections = [.. made.Select(source => new KeptConnection(source.Id, source.Name, source.Kind, source.ConnectionString, source.Mark, source.Tunnel))],
+            Connections = [.. made.Select(source => new KeptConnection(source.Id, source.Name, source.Kind, source.ConnectionString, source.Mark, source.Tunnel, source.SignIn))],
             Consoles = consoles.Values.Where(c => c.Connection is { } id && made.Any(m => m.Id == id)).ToDictionary(c => c.Path, c => c.Connection!.Value),
             ManualCommit = [.. consoles.Values.Where(c => c.Manual).Select(c => c.Path)],
-            FoundMarks = new Dictionary<string, DatabaseMark>(kept.Value.FoundMarks.Where(m => !found.Any(f => f.FoundKey == m.Key))
+            FoundMarks = new Dictionary<string, DatabaseMark>(State.FoundMarks.Where(m => !found.Any(f => f.FoundKey == m.Key))
                 .Concat(found.Where(f => f.Mark != DatabaseMark.None).Select(f => KeyValuePair.Create(f.FoundKey, f.Mark)))),
-            FoundSettings = new Dictionary<string, FoundSetting>(kept.Value.FoundSettings.Where(m => !found.Any(f => f.FoundKey == m.Key))
-                .Concat(found.Where(f => f.Over.Length > 0 || f.Tunnel is not null).Select(f => KeyValuePair.Create(f.FoundKey, new FoundSetting(f.Over, f.Tunnel))))),
+            FoundSettings = new Dictionary<string, FoundSetting>(State.FoundSettings.Where(m => !found.Any(f => f.FoundKey == m.Key))
+                .Concat(found.Where(f => f.Over.Length > 0 || f.Tunnel is not null || f.SignIn is not null)
+                    .Select(f => KeyValuePair.Create(f.FoundKey, new FoundSetting(f.Over, f.Tunnel, f.SignIn))))),
         }).Clamped());
     }
 
@@ -488,9 +487,10 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
     private DatabaseSource Marked(DatabaseSource source) =>
         source with
         {
-            Mark = kept?.Value.FoundMarks.GetValueOrDefault(source.FoundKey) ?? DatabaseMark.None,
-            Over = kept?.Value.FoundSettings.GetValueOrDefault(source.FoundKey)?.Over ?? string.Empty,
-            Tunnel = kept?.Value.FoundSettings.GetValueOrDefault(source.FoundKey)?.Tunnel,
+            Mark = State.FoundMarks.GetValueOrDefault(source.FoundKey),
+            Over = State.FoundSettings.GetValueOrDefault(source.FoundKey)?.Over ?? string.Empty,
+            Tunnel = State.FoundSettings.GetValueOrDefault(source.FoundKey)?.Tunnel,
+            SignIn = State.FoundSettings.GetValueOrDefault(source.FoundKey)?.SignIn,
         };
 
     /// <summary>Marks a connection read-only, production or neither, kept for the folder, found or made by hand.</summary>
@@ -604,7 +604,10 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         UiThread.Check();
         if (original.Found is not null)
         {
-            DatabaseSource given = KeptOver(original with { Mark = replacement.Mark, Over = replacement.Over, Tunnel = replacement.Tunnel, TunnelSecret = replacement.TunnelSecret });
+            DatabaseSource given = KeptOver(original with
+            {
+                Mark = replacement.Mark, Over = replacement.Over, Tunnel = replacement.Tunnel, TunnelSecret = replacement.TunnelSecret, SignIn = replacement.SignIn,
+            });
             found = [.. found.Select(s => s.Id == original.Id ? given : s)];
             connected.Remove(original.Id);
             SshTunnels.Close([original.Id]);
@@ -623,7 +626,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             found = [.. found.Where(s => s.Id != original.Id)];
             made.Add(changed);
         }
-        if (original.ConnectionString != changed.ConnectionString || original.Kind != changed.Kind || original.Tunnel != changed.Tunnel)
+        if (original.ConnectionString != changed.ConnectionString || original.Kind != changed.Kind || original.Tunnel != changed.Tunnel || original.SignIn != changed.SignIn)
         {
             connected.Remove(original.Id);
             SshTunnels.Close([original.Id]);

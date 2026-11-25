@@ -186,6 +186,13 @@ public sealed class TestRun : IAsyncDisposable
         OwnEnvironment.Set("SSH_AUTH_SOCK", null);
         // Nor the person's ssh configuration, keys and known hosts: a database's tunnel reads the run's empty SSH home.
         Environment.SetEnvironmentVariable(Passenger.App.Database.SshFiles.HomeVariable, Directory.CreateDirectory(Path.Combine(Root, "ssh-home")).FullName);
+        // AWS's files and keys are the run's own: none of the person's profiles, keys or sign-ins is read.
+        Environment.SetEnvironmentVariable(Passenger.App.Database.AwsProfiles.HomeVariable, Directory.CreateDirectory(Path.Combine(Root, "aws-home")).FullName);
+        foreach (string aws in (string[])["AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE", "AWS_PROFILE", "AWS_DEFAULT_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN", "AWS_REGION", "AWS_DEFAULT_REGION"])
+        {
+            OwnEnvironment.Set(aws, null);
+        }
         // Nor the person's GnuPG keyring and agent: gpg keeps a signing test's keys in the run's.
         string gnupg = Path.Combine(Root, "gnupg");
         if (OperatingSystem.IsWindows())

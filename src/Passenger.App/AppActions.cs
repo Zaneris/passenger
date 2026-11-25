@@ -219,6 +219,8 @@ public static class AppActions
     public const string DatabaseDeleteRows = "app.database.deleteRows";
     // A Redis key's time to live set or taken away: no key of Rider's.
     public const string DatabaseExpire = "app.database.expire";
+    // A connection's AWS profile signed in through IAM Identity Center: no key of Rider's.
+    public const string DatabaseSignIn = "app.database.signIn";
     // A connection marked read-only or production: no key of Rider's.
     public const string DatabaseReadOnly = "app.database.readOnly";
     public const string DatabaseProduction = "app.database.production";

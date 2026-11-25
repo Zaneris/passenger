@@ -66,6 +66,7 @@ internal static class Program
             _ = Updates.ReleaseFeed.Default;
             _ = Web.JsonSchemas.Place;
             _ = Web.DockerHubTags.Named;
+            _ = Database.AwsProfiles.StandIn;
             _ = OpenVsx.Registry;
             _ = Mobile.AndroidLicences.Repository;
             _ = DotnetReleases.Feed;

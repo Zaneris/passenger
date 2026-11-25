@@ -98,6 +98,51 @@
           "AWSSDK.Core": "[4.1.1.2, 5.0.0)"
         }
       },
+      "AWSSDK.RDS": {
+        "type": "Direct",
+        "requested": "[4.1.1.1, )",
+        "resolved": "4.1.1.1",
+        "contentHash": "nQtUQBGWbKDIrgGF6P3WIt1rFuTH3AnVhff6F78C/5bg+ZD5gUNbZfx+qC56MQMGu9fqpZqUxtjdTEtglmxaAw==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.1.1.2, 5.0.0)"
+        }
+      },
+      "AWSSDK.SecretsManager": {
+        "type": "Direct",
+        "requested": "[4.1.1.2, )",
+        "resolved": "4.1.1.2",
+        "contentHash": "UJUSKF7V70OAGBnmYQhWndBblpTgk8mCgKuMHKbOMxAsbf1WFbMcuoQFtky7BLQ0D4zhtLkv0AKFciyUQUVHbA==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.1.1.1, 5.0.0)"
+        }
+      },
+      "AWSSDK.SecurityToken": {
+        "type": "Direct",
+        "requested": "[4.1.1.1, )",
+        "resolved": "4.1.1.1",
+        "contentHash": "kPtMCvLbVqG/vwsdXwNlwVTkxNcfIBh9MnXacfv8rrdZaZrbLCxRqdGCdGY2Ccc08ySqkwThMLHKu6jUyA88OA==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.1.1.2, 5.0.0)"
+        }
+      },
+      "AWSSDK.SSO": {
+        "type": "Direct",
+        "requested": "[4.1.0.3, )",
+        "resolved": "4.1.0.3",
+        "contentHash": "W4ZsWiFYZ2zlUkmd0oO4U4vdBvD1AdKGnC7HgvIqdpZ508AWnPoDSRxsvdujOFNh8W0xZezr2hOc8nnia9rlCw==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.1.1.2, 5.0.0)"
+        }
+      },
+      "AWSSDK.SSOOIDC": {
+        "type": "Direct",
+        "requested": "[4.1.0.3, )",
+        "resolved": "4.1.0.3",
+        "contentHash": "fWs/qHL9dJ0iUcQIaxyhBkTSfFzGzn3ZNfU9gIY5wwF/h73qjaOxgWQbJonOyl0q4QipafjCEe/Cs1JQPQPb5Q==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.1.1.2, 5.0.0)"
+        }
+      },
       "CassandraCSharpDriver": {
         "type": "Direct",
         "requested": "[3.23.0, )",

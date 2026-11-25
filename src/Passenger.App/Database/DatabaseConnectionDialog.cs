@@ -43,6 +43,11 @@ public sealed class DatabaseConnectionDialog : IdeWindow
     private readonly TextBox sshKey = new() { Name = "DatabaseSshKey", PlaceholderText = "Optional" };
     private readonly TextBox sshSecret = new() { Name = "DatabaseSshPassword", PasswordChar = '•', RevealPassword = false };
     private readonly FormFold sslFold = new() { Title = "SSL" };
+    private readonly FormDropDown signIn = new() { Name = "DatabaseSignIn", ItemsSource = SignInTitles, SelectedIndex = 0 };
+    private readonly FormDropDown awsProfile = new() { Name = "DatabaseAwsProfile", ItemsSource = new[] { EnvironmentProfile }, SelectedIndex = 0 };
+    private readonly TextBox awsRegion = new() { Name = "DatabaseAwsRegion", PlaceholderText = "The one the host names, else the profile's" };
+    private readonly TextBox awsSecret = new() { Name = "DatabaseAwsSecret", PlaceholderText = "Its name or ARN" };
+    private readonly FormFold signInFold = new() { Title = "Cloud sign-in" };
     private readonly FormFold tunnelFold = new() { Title = "SSH tunnel" };
     private readonly FormFold stringFold = new() { Title = "Connection string" };
     private readonly Button connect;
@@ -82,6 +87,12 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         Grid certificateRow = Row(sslFold.Rows, "Certificate authority", BrowseRow.Of(certificate, () => BrowseAsync(certificate, "Certificate")), out TextBlock certificateLabel);
         Grid[] client = [Row(sslFold.Rows, "Client certificate", BrowseRow.Of(clientCertificate, () => BrowseAsync(clientCertificate, "Client Certificate"))),
             Row(sslFold.Rows, "Client key", BrowseRow.Of(clientKey, () => BrowseAsync(clientKey, "Client Key"))), Row(sslFold.Rows, "Key password", clientKeyPassword)];
+        Row(signInFold.Rows, "Sign in with", signIn);
+        Grid[] awsRows = [Row(signInFold.Rows, "AWS profile", awsProfile), Row(signInFold.Rows, "Region", awsRegion)];
+        Grid secretRow = Row(signInFold.Rows, "Secret", awsSecret);
+        TextBlock signInNote = MutedText.Wrapped("An IAM token is made for each connection from the profile's credentials, and a secret's user and password read "
+            + "for each; Passenger keeps neither. A profile that signs in through IAM Identity Center is signed in to by Sign In… on the connection's menu.");
+        signInFold.Rows.Children.Add(signInNote);
         Row(tunnelFold.Rows, null, tunnel);
         Grid[] sshRows = [Row(tunnelFold.Rows, "SSH host", sshHost), Row(tunnelFold.Rows, "SSH port", sshPort), Row(tunnelFold.Rows, "SSH user", sshUser),
             Row(tunnelFold.Rows, "SSH key file", BrowseRow.Of(sshKey, () => BrowseAsync(sshKey, "SSH Private Key"))), Row(tunnelFold.Rows, "Password or key passphrase", sshSecret)];
@@ -91,8 +102,9 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         Row(stringFold.Rows, "Connection string", connection);
         sslFold.Opener.Name = "DatabaseSslSection";
         tunnelFold.Opener.Name = "DatabaseSshSection";
+        signInFold.Opener.Name = "DatabaseSignInSection";
         stringFold.Opener.Name = "DatabaseConnectionStringSection";
-        foreach (FormFold fold in (FormFold[])[sslFold, tunnelFold, stringFold])
+        foreach (FormFold fold in (FormFold[])[sslFold, signInFold, tunnelFold, stringFold])
         {
             fields.Children.Add(fold.Opener);
             fields.Children.Add(fold.Rows);
@@ -100,6 +112,8 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         provider.SelectionChanged += (_, _) => ShowProvider();
         integrated.IsCheckedChanged += (_, _) => ShowAuthentication();
         tunnel.IsCheckedChanged += (_, _) => ShowTunnel();
+        signIn.SelectionChanged += (_, _) => ShowSignIn();
+        IdeErrors.Observe(ListProfilesAsync());
         ssl.SelectionChanged += (_, _) =>
         {
             sslChosen = true;
@@ -123,9 +137,10 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                 DatabaseMark marked = (DatabaseMark)Math.Max(0, mark.SelectedIndex);
                 SslSettings chosen = new((SslChoice)Math.Max(0, ssl.SelectedIndex), Located(certificate), Located(clientCertificate), Located(clientKey));
                 string? keyPassword = clientKeyPassword.Text is { Length: > 0 } typed ? typed : null;
+                CloudSignIn? cloud = SignInOf(initial?.Found is not null ? initial.Kind : kind);
                 if (initial is { Found: not null })
                 {
-                    return initial with { Mark = marked, Over = sslChosen ? DatabaseSsl.With(initial.Kind, initial.Over, chosen, keyPassword) : initial.Over };
+                    return initial with { Mark = marked, Over = sslChosen ? DatabaseSsl.With(initial.Kind, initial.Over, chosen, keyPassword) : initial.Over, SignIn = cloud };
                 }
                 string written = Build(kind);
                 MarkConnection(written);
@@ -151,8 +166,8 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                 }
                 string title = name.Text?.Trim() is { Length: > 0 } named ? named
                     : TitleOf(kind, written);
-                return initial is null ? new DatabaseSource(title, kind, folder) { ConnectionString = written, Mark = marked }
-                    : initial with { Name = title, Kind = kind, ConnectionString = written, Mark = marked };
+                return initial is null ? new DatabaseSource(title, kind, folder) { ConnectionString = written, Mark = marked, SignIn = cloud }
+                    : initial with { Name = title, Kind = kind, ConnectionString = written, Mark = marked, SignIn = cloud };
             }
             catch (Exception failed) when (failed is ArgumentException or FormatException or OverflowException or IOException or UnauthorizedAccessException)
             {
@@ -234,7 +249,8 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             error.IsVisible = true;
         }
         TextBlock about = MutedText.Wrapped(foundOnly
-            ? $"{char.ToUpperInvariant(initial!.Found![0])}{initial.Found[1..]}: its server and sign-in come from there. Its access, SSL and tunnel are kept for this folder."
+            ? $"{char.ToUpperInvariant(initial!.Found![0])}{initial.Found[1..]}: its server and sign-in come from there. Its access, SSL, cloud sign-in and tunnel are "
+                + "kept for this folder."
             : "A connection is kept for this folder; its passwords are kept in the system's credential store, never in a file.");
         Content = DialogFooter.Page(new StackPanel
         {
@@ -254,6 +270,13 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             clientKey.Text = had.Key;
             clientKeyPassword.PlaceholderText = had.Certificate is not null ? "Unchanged" : clientKeyPassword.PlaceholderText;
             sslFold.IsOpen = had != new SslSettings(SslChoice.Driver);
+            if (initial.SignIn is { } cloud)
+            {
+                signIn.SelectedIndex = (int)cloud.Kind + 1;
+                awsRegion.Text = cloud.Region;
+                awsSecret.Text = cloud.Secret;
+                signInFold.IsOpen = true;
+            }
             if (initial.Tunnel is { } through)
             {
                 tunnel.IsChecked = true;
@@ -348,6 +371,51 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             }
         }
 
+        void ShowSignIn()
+        {
+            DatabaseKind kind = initial?.Found is not null ? initial.Kind : (DatabaseKind)provider.SelectedIndex;
+            bool aws = signIn.SelectedIndex > 0;
+            foreach (Grid row in awsRows)
+            {
+                row.IsVisible = aws;
+            }
+            secretRow.IsVisible = signIn.SelectedIndex == (int)CloudSignInKind.AwsSecret + 1;
+            signInNote.IsVisible = aws;
+            bool remote = !DatabaseKinds.IsFile(kind);
+            userRow.IsVisible = remote && !foundOnly && !secretRow.IsVisible && kind != DatabaseKind.CosmosDb;
+            passwordRow.IsVisible = remote && !foundOnly && !aws;
+        }
+
+        async Task ListProfilesAsync()
+        {
+            IReadOnlyList<string> names = await BackgroundWork.Run(AwsProfiles.Names, closing.Token);
+            string? kept = initial?.SignIn?.Profile;
+            awsProfile.ItemsSource = (string[])[EnvironmentProfile, .. names, .. kept is { Length: > 0 } && !names.Contains(kept, StringComparer.Ordinal) ? [kept] : (string[])[]];
+            awsProfile.SelectedIndex = kept is { Length: > 0 } ? Math.Max(0, ((string[])awsProfile.ItemsSource).ToList().IndexOf(kept)) : 0;
+        }
+
+        // The sign-in chosen, null for the password; one the kind takes none of, or a secret not named, refused.
+        CloudSignIn? SignInOf(DatabaseKind kind)
+        {
+            if (signIn.SelectedIndex <= 0)
+            {
+                return null;
+            }
+            CloudSignInKind chosen = (CloudSignInKind)(signIn.SelectedIndex - 1);
+            if (!CloudSignIns.Signs(chosen, kind))
+            {
+                throw new ArgumentException(Refusals.NoCloudSignIn(DatabaseKinds.Title(kind)));
+            }
+            if (chosen == CloudSignInKind.AwsSecret && string.IsNullOrWhiteSpace(awsSecret.Text))
+            {
+                throw new ArgumentException("Enter the secret's name or ARN");
+            }
+            return new CloudSignIn(chosen, awsProfile.SelectedIndex > 0 ? awsProfile.SelectedItem as string ?? string.Empty : string.Empty, awsRegion.Text?.Trim() ?? string.Empty)
+            {
+                Secret = chosen == CloudSignInKind.AwsSecret ? awsSecret.Text!.Trim() : string.Empty,
+            };
+        }
+
         void ShowTunnel()
         {
             bool through = tunnel.IsChecked == true;
@@ -364,6 +432,10 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             bool remote = !DatabaseKinds.IsFile(kind);
             sslFold.Opener.IsVisible = DatabaseSsl.Offered(kind);
             tunnelFold.Opener.IsVisible = Tunnels(kind);
+            bool clouds = Enum.GetValues<CloudSignInKind>().Any(sign => CloudSignIns.Signs(sign, kind));
+            signInFold.Opener.IsVisible = clouds;
+            signInFold.IsOpen &= clouds;
+            signIn.SelectedIndex = clouds ? signIn.SelectedIndex : 0;
             sslFold.IsOpen &= DatabaseSsl.Offered(kind);
             tunnelFold.IsOpen &= Tunnels(kind);
             certificateLabel.Text = kind == DatabaseKind.SqlServer ? "Server certificate" : "Certificate authority";
@@ -394,6 +466,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             port.Value = DatabaseKinds.Port(kind);
             integratedRow.IsVisible = provider.SelectedIndex == (int)DatabaseKind.SqlServer && !foundOnly;
             ShowAuthentication();
+            ShowSignIn();
         }
 
         void ShowAuthentication()
@@ -403,6 +476,12 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             password.IsEnabled = credentials;
         }
     }
+
+    /// <summary>The cloud sign-ins offered, by <see cref="CloudSignInKind"/> after the password's.</summary>
+    private static readonly string[] SignInTitles = ["The password above", "AWS IAM authentication", "AWS Secrets Manager secret"];
+
+    /// <summary>The profile the environment's keys sign in with, else AWS_PROFILE's or the default.</summary>
+    private const string EnvironmentProfile = "The environment's, else the default";
 
     /// <summary>Adds a labelled row to a form's panel.</summary>
     private static Grid Row(Panel panel, string? label, Control field) => Row(panel, label, field, out _);

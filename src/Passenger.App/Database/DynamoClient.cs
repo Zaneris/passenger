@@ -5,7 +5,6 @@ using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.DocumentModel;
 using Amazon.DynamoDBv2.Model;
 using Amazon.Runtime;
-using Amazon.Runtime.CredentialManagement;
 using MongoDB.Bson;
 
 namespace Passenger.App.Database;
@@ -27,7 +26,7 @@ internal static class DynamoClient
     internal static async Task<IReadOnlyList<string>> DatabasesAsync(DatabaseSource source, CancellationToken cancel) =>
         await Guarded<IReadOnlyList<string>>(source, async () =>
         {
-            using AmazonDynamoDBClient client = Client(source);
+            using AmazonDynamoDBClient client = await ClientAsync(source, cancel);
             await client.ListTablesAsync(new ListTablesRequest { Limit = 1 }, cancel);
             return [source.Database];
         });
@@ -36,7 +35,7 @@ internal static class DynamoClient
     internal static async Task<IReadOnlyList<(string Schema, IReadOnlyList<DatabaseObject> Objects)>> TablesAsync(DatabaseSource source, CancellationToken cancel) =>
         await Guarded<IReadOnlyList<(string, IReadOnlyList<DatabaseObject>)>>(source, async () =>
         {
-            using AmazonDynamoDBClient client = Client(source);
+            using AmazonDynamoDBClient client = await ClientAsync(source, cancel);
             List<string> names = [];
             string? after = null;
             do
@@ -59,7 +58,7 @@ internal static class DynamoClient
     /// items hold, each with the kind of value most hold; its keys and indexes said.</summary>
     internal static async Task<DatabaseSchema> SchemaAsync(DatabaseSource source, DatabaseTable table, CancellationToken cancel) => await Guarded(source, async () =>
     {
-        using AmazonDynamoDBClient client = Client(source);
+        using AmazonDynamoDBClient client = await ClientAsync(source, cancel);
         TableDescription described = (await client.DescribeTableAsync(table.Name, cancel)).Table;
         string[] keys = [.. (described.KeySchema ?? []).OrderBy(k => k.KeyType == KeyType.HASH ? 0 : 1).Select(k => k.AttributeName)];
         ScanResponse sample = await client.ScanAsync(new ScanRequest { TableName = table.Name, Limit = DocumentClient.Sampled }, cancel);
@@ -81,7 +80,7 @@ internal static class DynamoClient
     internal static async Task<DatabaseRows> PageAsync(DatabaseSource source, DatabaseSchema schema, int offset, CancellationToken cancel, DatabaseFilter? filter,
         (string Column, bool Descending)? sort) => await Guarded(source, async () =>
     {
-        using AmazonDynamoDBClient client = Client(source);
+        using AmazonDynamoDBClient client = await ClientAsync(source, cancel);
         ScanRequest request = new() { TableName = schema.Table.Name };
         if (filter is not null)
         {
@@ -214,7 +213,7 @@ internal static class DynamoClient
                     },
                 });
             }
-            using AmazonDynamoDBClient client = Client(source);
+            using AmazonDynamoDBClient client = await ClientAsync(source, cancel);
             try
             {
                 foreach (TransactWriteItem[] batch in writes.Chunk(MostInTransaction))
@@ -233,7 +232,7 @@ internal static class DynamoClient
     /// (at most <paramref name="limit"/>) as rows with each whole beside; a failure ends the run.</summary>
     internal static async Task RunAsync(DatabaseSource source, IReadOnlyList<string> runs, int limit, Action<SqlResult> told, CancellationToken cancel)
     {
-        using AmazonDynamoDBClient client = Client(source);
+        using AmazonDynamoDBClient client = await ClientAsync(source, cancel);
         foreach (string run in runs)
         {
             long began = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -273,8 +272,8 @@ internal static class DynamoClient
     }
 
     /// <summary>The client of a connection: at its local endpoint (DynamoDB Local) or its region's, signed in by its access key
-    /// and secret, else its AWS profile, else the SDK's own chain (the environment's, the default profile, an instance's role).</summary>
-    private static AmazonDynamoDBClient Client(DatabaseSource source)
+    /// and secret, else its AWS profile, else the environment's or the default profile's (<see cref="AwsProfiles"/>).</summary>
+    private static async Task<AmazonDynamoDBClient> ClientAsync(DatabaseSource source, CancellationToken cancel)
     {
         string connection = source.ConnectionString;
         AmazonDynamoDBConfig config = new() { Timeout = TimeSpan.FromSeconds(30), MaxErrorRetry = 1 };
@@ -288,16 +287,10 @@ internal static class DynamoClient
         {
             config.RegionEndpoint = RegionEndpoint.GetBySystemName(region);
         }
-        if (DatabaseKinds.Value(connection, "AccessKey") is { } access)
-        {
-            return new AmazonDynamoDBClient(new BasicAWSCredentials(access, DatabaseKinds.Value(connection, "SecretKey") ?? string.Empty), config);
-        }
-        if (DatabaseKinds.Value(connection, "Profile") is { } profile)
-        {
-            return new CredentialProfileStoreChain().TryGetAWSCredentials(profile, out AWSCredentials? credentials)
-                ? new AmazonDynamoDBClient(credentials, config) : throw new InvalidOperationException(Refusals.NoAwsProfile(profile));
-        }
-        return new AmazonDynamoDBClient(config);
+        AWSCredentials credentials = DatabaseKinds.Value(connection, "AccessKey") is { } access
+            ? new BasicAWSCredentials(access, DatabaseKinds.Value(connection, "SecretKey") ?? string.Empty)
+            : await AwsProfiles.CredentialsAsync(DatabaseKinds.Value(connection, "Profile"), cancel);
+        return new AmazonDynamoDBClient(credentials, config);
     }
 
     /// <summary>An item as JSON, its numbers as numbers and its sets as arrays.</summary>

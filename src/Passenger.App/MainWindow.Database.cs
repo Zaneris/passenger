@@ -164,6 +164,14 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools/Database", 2, 4)],
             Words = ["TTL", "EXPIRE", "PERSIST", "Redis"],
         });
+        actions!.Add(new IdeAction(AppActions.DatabaseSignIn, "Sign In…", "Database", _ => IdeErrors.Observe(SignInToAwsAsync()))
+        {
+            WhyNot = _ => ChosenConnection() is not { } chosen ? Refusals.NoDatabaseConnection
+                : CloudSignIns.ProfileOf(chosen) is not { } profile || !AwsProfiles.SignsInThroughIdentityCenter(profile) ? Refusals.NoIdentityCenterSignIn
+                : actions!.Work.Of(AppActions.DatabaseSignIn) is { } under ? ActionWork.Busy(under) : PersonsOwn(),
+            Menus = [new MenuPlace("Tools/Database", 3, 2)],
+            Words = ["AWS", "IAM Identity Center", "SSO", "aws sso login"],
+        });
         Mark(AppActions.DatabaseReadOnly, "Read-Only Connection", DatabaseMark.ReadOnly);
         Mark(AppActions.DatabaseProduction, "Production Connection", DatabaseMark.Production);
         actions!.Add(new IdeAction(AppActions.DatabaseExport, "Export Data…", "Database", context => IdeErrors.Observe(ExportDataAsync(context)))
@@ -283,6 +291,37 @@ public partial class MainWindow
             DatabaseExplorer.Choose(row);
             await DatabaseExplorer.ToggleAsync(row);
         }
+    }
+
+    /// <summary>Sign In: the chosen connection's AWS profile signed in through IAM Identity Center, its page opened in the
+    /// browser for the person's approval there and the code it shows said meanwhile; then the connection read again.</summary>
+    private async Task SignInToAwsAsync()
+    {
+        if (ChosenConnection() is not { } source || CloudSignIns.ProfileOf(source) is not { } profile || database is not { } controller
+            || actions!.Work.Begin(AppActions.DatabaseSignIn, $"Signing in to AWS profile {profile}…") is not { } work)
+        {
+            return;
+        }
+        using (work)
+        {
+            try
+            {
+                await AwsSso.SignInAsync(profile, Browse, code => UiThread.Post(() => work.Say($"Approve the sign-in in your browser: it shows the code {code}")),
+                    work.Stopping);
+                work.Tell(true, $"Signed in to AWS profile {profile}");
+            }
+            catch (Exception failed) when (failed is InvalidOperationException or IOException or Amazon.Runtime.AmazonServiceException or Amazon.Runtime.AmazonClientException)
+            {
+                work.Tell(false, failed.Message);
+                return;
+            }
+            catch (OperationCanceledException) when (work.IsStopped)
+            {
+                work.Tell(false, $"Stopped signing in to AWS profile {profile}");
+                return;
+            }
+        }
+        await controller.RefreshAsync();
     }
 
     /// <summary>The connection of the explorer's chosen row.</summary>

@@ -51,6 +51,10 @@ internal static partial class DatabaseClient
             MarkSecrets(overSecret);
             whole = DatabaseKinds.LaidOver(source.Kind, whole, KeptConnection.Joined(source.Kind, source.Over, overSecret));
         }
+        if (source.SignIn is { } signIn)
+        {
+            whole = await CloudSignIns.SignedInAsync(source.Kind, whole, signIn, cancel);
+        }
         string? through = null;
         if (source.Tunnel is { } tunnel && !DatabaseKinds.IsFile(source.Kind) && source.Kind != DatabaseKind.Snowflake)
         {

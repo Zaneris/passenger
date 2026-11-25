@@ -457,6 +457,10 @@ public sealed class DatabaseExplorer : DockPanel
             items.Add(MenuChoice.Of("Read-Only", node.Mark == DatabaseMark.ReadOnly, () => Request(AppActions.DatabaseReadOnly)));
             items.Add(MenuChoice.Of("Production", node.Mark == DatabaseMark.Production, () => Request(AppActions.DatabaseProduction)));
             items.Add(new Separator());
+            if (CloudSignIns.ProfileOf(node.Source) is not null)
+            {
+                items.Add(ListMenus.Keyed("Sign In…", AppActions.DatabaseSignIn, () => Request(AppActions.DatabaseSignIn)));
+            }
             items.Add(ListMenus.Edit("Edit Connection…", () => Request(AppActions.DatabaseConnectionEdit)));
             items.Add(ListMenus.Item("Rename Connection…", () => Request(AppActions.DatabaseConnectionRename)));
             items.Add(ListMenus.Remove("Remove Connection", () => Request(AppActions.DatabaseConnectionRemove)));

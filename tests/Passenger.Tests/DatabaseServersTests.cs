@@ -54,6 +54,9 @@ public sealed class DatabaseServersTests
     /// <summary>DynamoDB Local, which runs on Arm as on x86-64, pinned.</summary>
     private const string DynamoImage = "amazon/dynamodb-local:3.3.2";
 
+    /// <summary>The PostgreSQL row's server, signed in to through AWS's sign-ins (<see cref="AwsSignIns"/>).</summary>
+    private const string AwsPostgres = "postgres:17-alpine, signed in through AWS";
+
     /// <summary>Cassandra, which runs on Arm as on x86-64, pinned.</summary>
     private const string CassandraImage = "cassandra:5.0.8";
 
@@ -72,11 +75,18 @@ public sealed class DatabaseServersTests
     [InlineData(DatabaseKind.Redis, ValkeyImage)]
     [InlineData(DatabaseKind.DynamoDb, DynamoImage)]
     [InlineData(DatabaseKind.Cassandra, CassandraImage)]
+    [InlineData(DatabaseKind.Postgres, AwsPostgres)]
     public void A_server_is_found_explored_run_and_completed_through_its_driver(DatabaseKind kind, string image)
     {
         Assert.SkipWhen(kind == DatabaseKind.Snowflake, "Snowflake runs only as Snowflake's own service, which no container stands in for, and this run has no account of it");
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
-        Assert.SkipWhen(Docker.Said("image", "inspect", image) is null, $"The engine lacks {image}, which this test never pulls: pull it to run the test");
+        string pulled = image == AwsPostgres ? "postgres:17-alpine" : image;
+        Assert.SkipWhen(Docker.Said("image", "inspect", pulled) is null, $"The engine lacks {pulled}, which this test never pulls: pull it to run the test");
+        if (image == AwsPostgres)
+        {
+            AwsSignIns(pulled);
+            return;
+        }
         if (kind == DatabaseKind.ClickHouse)
         {
             ClickHouse();
@@ -1512,6 +1522,151 @@ public sealed class DatabaseServersTests
         finally
         {
             Docker.Remove(name);
+        }
+    }
+
+    /// <summary>PostgreSQL signed in to through AWS with no password kept, AWS a stand-in (<see cref="StandInAws"/>): one found
+    /// connection by IAM authentication, its token from a credential_process profile, checked as RDS does by a proxy before the
+    /// server (<see cref="PostgresIamProxy"/>); one by a Secrets Manager secret through an IAM Identity Center profile, refused
+    /// until Sign In opens the device sign-in's page and the person approves it, then read as the secret's user, by an agent
+    /// too.</summary>
+    private static void AwsSignIns(string image)
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The profile's credential_process is a shell script");
+        string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}dbawspg";
+        using StandInAws aws = new();
+        Environment.SetEnvironmentVariable(AwsProfiles.EndpointVariable, aws.Root);
+        try
+        {
+            Docker.Run(["run", "-d", "--name", name, "--label", Docker.RunLabel, "-e", $"POSTGRES_PASSWORD={Password}", "-p", "127.0.0.1::5432", image]);
+            int port = Published(name, 5432);
+            string admin = $"Host=127.0.0.1;Port={port};Username=postgres;Password={Password};Database=postgres;Pooling=false";
+            Assert.True(Ui.Await(Waiting.Apart(() => Waiting.UntilAsync(() => AwsUsersMadeAsync(admin), TimeSpan.FromMinutes(2))),
+                $"{image} to take connections and hold the users AWS signs in as", TimeSpan.FromMinutes(3)), $"{image} never took connections");
+            // RDS's own check stands before the server, which trusts the user an IAM token signs in as.
+            Docker.Run("exec", name, "sh", "-c", "sed -i '1i host all iam_user all trust' \"$PGDATA/pg_hba.conf\"");
+            Ui.Await(Waiting.Apart(() => AwsUsersMadeAsync(admin, reload: true)), "the server to read its access rules again");
+            using PostgresIamProxy rds = new(port, "stand-in-process-secret");
+            string home = Path.Combine(AwsProfiles.Home, ".aws");
+            Directory.CreateDirectory(home);
+            string process = Path.Combine(home, "credentials-of-process");
+            File.WriteAllText(process, "#!/bin/sh\nprintf '%s' '{\"Version\": 1, \"AccessKeyId\": \"AKIDSTANDINPROCESS\", \"SecretAccessKey\": \"stand-in-process-secret\"}'\n");
+            if (!OperatingSystem.IsWindows())
+            {
+                File.SetUnixFileMode(process, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            }
+            File.WriteAllText(Path.Combine(home, "config"), string.Join('\n', "[profile process]", $"credential_process = \"{process}\"", "region = us-east-1", string.Empty,
+                "[profile sso]", "sso_session = shop", "sso_account_id = 111122223333", "sso_role_name = Reader", "region = us-east-1", string.Empty,
+                "[sso-session shop]", "sso_start_url = https://shop.awsapps.com/start", "sso_region = us-east-1", "sso_registration_scopes = sso:account:access", string.Empty));
+            aws.Secrets["shop/reader"] = new System.Text.Json.Nodes.JsonObject { ["username"] = "reader", ["password"] = "from-secrets-manager", ["engine"] = "postgres" }.ToJsonString();
+            string folder = TestFolders.Create("database-aws");
+            TestFolders.Write(folder, "Shop.csproj", TestProjects.Console().With("  <ItemGroup>\n    <PackageReference Include=\"Npgsql\" Version=\"11.0.0\" />\n  </ItemGroup>\n"));
+            TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
+            TestFolders.Write(folder, "appsettings.json", $$$"""
+                {"ConnectionStrings": {"Iam": "Host=127.0.0.1;Port={{{rds.Port}}};Database=postgres;Username=iam_user", "Secret": "Host=127.0.0.1;Port={{{port}}};Database=postgres"}}
+                """);
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            try
+            {
+                window.ShowToolWindow(ToolWindowIds.Database);
+                Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy && window.Database.Sources.Count(s => s.Name is "Iam" or "Secret") == 2, () => window.Database.Said);
+                // Each found connection given its sign-in in its settings, which keep it for the folder.
+                void SignIn(string connection, int way, string profile, string? secret = null)
+                {
+                    window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == connection));
+                    Assert.True(window.Perform(AppActions.DatabaseConnectionEdit), "Edit Database Connection did not run");
+                    Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "the found connection's settings");
+                    DatabaseConnectionDialog dialog = window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible);
+                    T Field<T>(string field) where T : Control => dialog.GetVisualDescendants().OfType<T>().Single(c => c.Name == field);
+                    Field<ComboBox>("DatabaseSignIn").SelectedIndex = way;
+                    ComboBox profiles = Field<ComboBox>("DatabaseAwsProfile");
+                    Ui.WaitFor(() => profiles.Items.Contains(profile), () => $"the profiles listed, where it lists {string.Join(", ", profiles.Items)}");
+                    profiles.SelectedItem = profile;
+                    Field<TextBox>("DatabaseAwsRegion").Text = "us-east-1";
+                    Field<TextBox>("DatabaseAwsSecret").Text = secret;
+                    Ui.ClickButton(dialog, "Save and Connect");
+                    Ui.WaitFor(() => !dialog.IsVisible, () => Field<TextBlock>("DatabaseConnectionError").Text ?? "the settings kept");
+                }
+                SignIn("Iam", 1, "process");
+                Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
+                foreach (string row in (string[])["Iam", "postgres", "public", "Tables"])
+                {
+                    // Save and Connect opened the connection itself where it could.
+                    if (window.DatabaseExplorer.Rows.Any(r => r.Title == row && r.Expands && !r.IsExpanded))
+                    {
+                        DatabaseTests.Open(window, row);
+                    }
+                }
+                Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == DatabaseNodeKind.Table && r.Title == "orders");
+                Assert.True(!rds.Tokens.IsEmpty && rds.Tokens.All(t => t.Wrong is null),
+                    $"The proxy refused an IAM token as RDS would: {string.Join("; ", rds.Tokens.Select(t => t.Wrong))}");
+                Assert.Contains("X-Amz-Credential=AKIDSTANDINPROCESS%2F", rds.Tokens.First().Token, StringComparison.Ordinal);
+
+                SignIn("Secret", 2, "sso", "shop/reader");
+                Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
+                DatabaseNode secretRow = window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Secret");
+                if (!secretRow.IsExpanded)
+                {
+                    window.DatabaseExplorer.Choose(secretRow);
+                    Ui.Await(window.DatabaseExplorer.ToggleAsync(secretRow), "the secret's connection to be refused");
+                }
+                Assert.False(secretRow.IsExpanded, "A profile with no IAM Identity Center sign-in opened its connection");
+                Assert.Equal(Refusals.AwsSignInNeeded("sso"), window.Database.Said);
+                window.DatabaseExplorer.Choose(secretRow);
+                Assert.True(window.Perform(AppActions.DatabaseSignIn), "Sign In did not run");
+                Ui.WaitFor(() => window.Actions.Work.Of(AppActions.DatabaseSignIn) is null && SystemCredentials.Read(AwsSso.CredentialService, "shop") is not null,
+                    () => $"the device sign-in approved ({window.Actions.Work.Of(AppActions.DatabaseSignIn)?.Stage ?? window.Status})", TimeSpan.FromMinutes(1));
+                Assert.Contains(new Uri(aws.Verification), window.Browsed);
+                Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
+                Assert.True(window.Database.Sources.Single(s => s.Name == "Secret").SignIn is { Kind: CloudSignInKind.AwsSecret },
+                    $"The found connection's sign-in was not kept through the refresh after Sign In: {string.Join(", ", window.Database.Sources.Select(s => $"{s.Name} {s.SignIn}"))}");
+                foreach (string row in (string[])["Secret", "postgres", "public", "Tables"])
+                {
+                    // Save and Connect opened the connection itself where it could.
+                    if (window.DatabaseExplorer.Rows.Any(r => r.Title == row && r.Expands && !r.IsExpanded))
+                    {
+                        DatabaseTests.Open(window, row);
+                    }
+                }
+                Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == DatabaseNodeKind.Table && r.Title == "orders" && r.Source.Name == "Secret");
+                Assert.All(aws.Read, read => Assert.Equal(("shop/reader", StandInAws.SsoAccessKey), read));
+                object answered = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).Database(connection: "Secret", sql: "SELECT current_user, count(*) FROM orders"),
+                    "an agent's read as the secret's user", TimeSpan.FromMinutes(1));
+                Passenger.App.Mcp.DatabaseQueryResult answer = Assert.Single(Assert.IsType<Passenger.App.Mcp.DatabaseQueryResult[]>(answered));
+                Assert.True(answer.Error is null, $"An agent's read through the secret failed: {answer.Error}");
+                Assert.Equal("reader", answer.Sets[0].Rows[0][0]);
+                Assert.Equal("2", answer.Sets[0].Rows[0][1]);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(AwsProfiles.EndpointVariable, null);
+            Docker.Remove(name);
+        }
+    }
+
+    /// <summary>Whether PostgreSQL takes connections, the users AWS's sign-ins sign in as made once it does (iam_user with no
+    /// password, reader with the secret's) with the orders they read; or, reloading, its access rules read again.</summary>
+    private static async Task<bool> AwsUsersMadeAsync(string admin, bool reload = false)
+    {
+        try
+        {
+            await using Npgsql.NpgsqlConnection connection = new(admin);
+            await connection.OpenAsync();
+            await using Npgsql.NpgsqlCommand command = connection.CreateCommand();
+            command.CommandText = reload ? "SELECT pg_reload_conf()"
+                : "CREATE USER iam_user; CREATE USER reader PASSWORD 'from-secrets-manager'; CREATE TABLE orders (id int PRIMARY KEY, name text); "
+                    + "INSERT INTO orders VALUES (1, 'tea'), (2, 'coffee'); GRANT SELECT ON orders TO iam_user, reader";
+            await command.ExecuteNonQueryAsync();
+            return true;
+        }
+        catch (Exception unready) when (unready is Npgsql.NpgsqlException or IOException or System.Net.Sockets.SocketException)
+        {
+            return false;
         }
     }
 

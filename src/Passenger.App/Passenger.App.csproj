@@ -66,6 +66,13 @@
     <PackageReference Include="Microsoft.Azure.Cosmos" />
     <PackageReference Include="StackExchange.Redis" />
     <PackageReference Include="AWSSDK.DynamoDBv2" />
+    <!-- AWS's sign-ins to databases: RDS's IAM tokens, Secrets Manager's secrets, and a profile's assumed role and IAM
+         Identity Center sign-in. -->
+    <PackageReference Include="AWSSDK.RDS" />
+    <PackageReference Include="AWSSDK.SecretsManager" />
+    <PackageReference Include="AWSSDK.SecurityToken" />
+    <PackageReference Include="AWSSDK.SSO" />
+    <PackageReference Include="AWSSDK.SSOOIDC" />
     <PackageReference Include="CassandraCSharpDriver" />
     <!-- The Cassandra driver's LZ4, taken at the version Directory.Packages.props gives, which would otherwise stay at the
          older one the driver names. -->

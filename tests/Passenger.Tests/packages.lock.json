@@ -844,6 +844,11 @@
         "type": "Project",
         "dependencies": {
           "AWSSDK.DynamoDBv2": "[4.1.0.3, )",
+          "AWSSDK.RDS": "[4.1.1.1, )",
+          "AWSSDK.SSO": "[4.1.0.3, )",
+          "AWSSDK.SSOOIDC": "[4.1.0.3, )",
+          "AWSSDK.SecretsManager": "[4.1.1.2, )",
+          "AWSSDK.SecurityToken": "[4.1.1.1, )",
           "Avalonia": "[12.2.0, )",
           "Avalonia.Controls.WebView": "[12.1.2, )",
           "Avalonia.Desktop": "[12.2.0, )",
@@ -1082,6 +1087,51 @@
         "requested": "[4.1.0.3, )",
         "resolved": "4.1.0.3",
         "contentHash": "E/HlGsFqZnGVbQ4mNDqc9tBehKZXJXFM76uYLkPpvbA0NTn41BSTJ10zrfYE4VjB4ujTmFqrGIjEvYLmZLf44Q==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.1.1.2, 5.0.0)"
+        }
+      },
+      "AWSSDK.RDS": {
+        "type": "CentralTransitive",
+        "requested": "[4.1.1.1, )",
+        "resolved": "4.1.1.1",
+        "contentHash": "nQtUQBGWbKDIrgGF6P3WIt1rFuTH3AnVhff6F78C/5bg+ZD5gUNbZfx+qC56MQMGu9fqpZqUxtjdTEtglmxaAw==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.1.1.2, 5.0.0)"
+        }
+      },
+      "AWSSDK.SecretsManager": {
+        "type": "CentralTransitive",
+        "requested": "[4.1.1.2, )",
+        "resolved": "4.1.1.2",
+        "contentHash": "UJUSKF7V70OAGBnmYQhWndBblpTgk8mCgKuMHKbOMxAsbf1WFbMcuoQFtky7BLQ0D4zhtLkv0AKFciyUQUVHbA==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.1.1.1, 5.0.0)"
+        }
+      },
+      "AWSSDK.SecurityToken": {
+        "type": "CentralTransitive",
+        "requested": "[4.1.1.1, )",
+        "resolved": "4.1.1.1",
+        "contentHash": "kPtMCvLbVqG/vwsdXwNlwVTkxNcfIBh9MnXacfv8rrdZaZrbLCxRqdGCdGY2Ccc08ySqkwThMLHKu6jUyA88OA==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.1.1.2, 5.0.0)"
+        }
+      },
+      "AWSSDK.SSO": {
+        "type": "CentralTransitive",
+        "requested": "[4.1.0.3, )",
+        "resolved": "4.1.0.3",
+        "contentHash": "W4ZsWiFYZ2zlUkmd0oO4U4vdBvD1AdKGnC7HgvIqdpZ508AWnPoDSRxsvdujOFNh8W0xZezr2hOc8nnia9rlCw==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.1.1.2, 5.0.0)"
+        }
+      },
+      "AWSSDK.SSOOIDC": {
+        "type": "CentralTransitive",
+        "requested": "[4.1.0.3, )",
+        "resolved": "4.1.0.3",
+        "contentHash": "fWs/qHL9dJ0iUcQIaxyhBkTSfFzGzn3ZNfU9gIY5wwF/h73qjaOxgWQbJonOyl0q4QipafjCEe/Cs1JQPQPb5Q==",
         "dependencies": {
           "AWSSDK.Core": "[4.1.1.2, 5.0.0)"
         }

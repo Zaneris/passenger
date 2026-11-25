@@ -46,6 +46,9 @@ public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folde
     /// <summary>The SSH tunnel it reaches its server through, null for none.</summary>
     public SshTunnel? Tunnel { get; init; }
 
+    /// <summary>How it signs in with no password kept (an AWS IAM token, a Secrets Manager secret), null for its own.</summary>
+    public CloudSignIn? SignIn { get; init; }
+
     /// <summary>The tunnel's password or key passphrase as the connection dialog was given it, until the connection is kept
     /// and it is put in the system's credential store (<see cref="TunnelAccount"/>); never kept here.</summary>
     internal string? TunnelSecret { get; init; }

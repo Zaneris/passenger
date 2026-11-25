@@ -702,6 +702,34 @@ public static class Refusals
     /// <summary>A DynamoDB connection naming an AWS profile the person's AWS files hold none of.</summary>
     public static string NoAwsProfile(string profile) => $"No AWS profile {profile} in your AWS credentials or config files";
 
+    /// <summary>A kind of database a cloud sign-in does not sign in to.</summary>
+    public static string NoCloudSignIn(string kind) => $"{kind} on AWS takes no IAM authentication: sign in by a Secrets Manager secret or a password";
+
+    /// <summary>A cloud sign-in that names no region, to a host that names none either.</summary>
+    public static string NoAwsRegion(string host) => $"{host} names no AWS region, nor does the profile: give the region in the connection's settings";
+
+    /// <summary>IAM authentication signs in as the connection's own user, which it names none of.</summary>
+    public const string NoIamUser = "IAM authentication signs in as the database user the connection names: give its user";
+
+    /// <summary>A Secrets Manager secret that could not be read, or held no sign-in.</summary>
+    public static string SecretUnread(string secret, string said) => $"Secrets Manager's secret {secret} gave no sign-in: {said}";
+
+    /// <summary>An AWS profile Passenger signs in with names something it cannot sign in by.</summary>
+    public static string AwsProfileUnusable(string profile, string what) => $"AWS profile {profile} signs in by {what}, which Passenger cannot sign in with";
+
+    /// <summary>An AWS profile's credential_process failed or answered what AWS's credentials are not.</summary>
+    public static string AwsProcessFailed(string profile, string said) => $"AWS profile {profile}'s credential_process gave no credentials: {said}";
+
+    /// <summary>An AWS profile that signs in through IAM Identity Center has no sign-in that holds.</summary>
+    public static string AwsSignInNeeded(string profile) =>
+        $"AWS profile {profile} signs in through IAM Identity Center and has no sign-in that holds: choose Sign In… on its connection's menu";
+
+    /// <summary>Sign In asked of a connection whose AWS profile signs in otherwise.</summary>
+    public const string NoIdentityCenterSignIn = "The chosen connection's AWS profile does not sign in through IAM Identity Center";
+
+    /// <summary>IAM Identity Center's device sign-in was refused, or ran out before the person approved it.</summary>
+    public static string AwsSignInNotApproved(string profile) => $"AWS profile {profile}'s sign-in was not approved in the browser before its code ran out";
+
     /// <summary>A Redis key's changes, refused whole as a value they change no longer stands as it was read.</summary>
     public static string KeyChanged(string key) => $"{key} changed since it was read, so nothing was written: read it again";
 

@@ -46,13 +46,19 @@ public sealed record DatabaseState : IStateDocument<DatabaseState>
     {
         Connections = [.. (Connections ?? []).Where(c => c is { Name.Length: > 0 } && Enum.IsDefined(c.Kind))
             .Select(c => Enum.IsDefined(c.Mark) ? c : c with { Mark = DatabaseMark.None })
-            .Select(c => Usable(c.Tunnel) ? c : c with { Tunnel = null }).DistinctBy(c => c.Id).Take(200)],
+            .Select(c => Usable(c.Tunnel) ? c : c with { Tunnel = null })
+            .Select(c => CloudSignIns.Usable(c.SignIn) ? c : c with { SignIn = null }).DistinctBy(c => c.Id).Take(200)],
         Consoles = (Consoles ?? []).Where(c => c.Key.Length > 0).Take(500).ToDictionary(),
         ManualCommit = [.. (ManualCommit ?? []).Where(p => p is { Length: > 0 }).Distinct().Take(500)],
         FoundMarks = (FoundMarks ?? []).Where(m => m.Key.Length > 0 && m.Value != DatabaseMark.None && Enum.IsDefined(m.Value)).Take(500).ToDictionary(),
         FoundSettings = (FoundSettings ?? []).Where(f => f.Key.Length > 0 && f.Value is not null)
-            .Select(f => KeyValuePair.Create(f.Key, f.Value with { Over = f.Value.Over ?? string.Empty, Tunnel = Usable(f.Value.Tunnel) ? f.Value.Tunnel : null }))
-            .Where(f => f.Value.Over.Length > 0 || f.Value.Tunnel is not null).Take(500).ToDictionary(),
+            .Select(f => KeyValuePair.Create(f.Key, f.Value with
+            {
+                Over = f.Value.Over ?? string.Empty,
+                Tunnel = Usable(f.Value.Tunnel) ? f.Value.Tunnel : null,
+                SignIn = CloudSignIns.Usable(f.Value.SignIn) ? f.Value.SignIn : null,
+            }))
+            .Where(f => f.Value.Over.Length > 0 || f.Value.Tunnel is not null || f.Value.SignIn is not null).Take(500).ToDictionary(),
         Diagrams = (Diagrams ?? []).Where(d => d.Key.Length > 0 && d.Value is not null).Take(200)
             .ToDictionary(d => d.Key, d => d.Value.Where(s => s.Key.Length > 0 && s.Value is { X: var x, Y: var y } && double.IsFinite(x) && double.IsFinite(y)).Take(1000).ToDictionary()),
         Parameters = (Parameters ?? []).Where(p => p.Key.Length > 0 && p.Value is not null).Take(500)
@@ -63,8 +69,8 @@ public sealed record DatabaseState : IStateDocument<DatabaseState>
 }
 
 /// <summary>A connection the folder's files name given SSL settings of its own (connection string keys laid over its own,
-/// without their secrets) and a tunnel.</summary>
-public sealed record FoundSetting(string Over, SshTunnel? Tunnel);
+/// without their secrets), a tunnel and a cloud sign-in.</summary>
+public sealed record FoundSetting(string Over, SshTunnel? Tunnel, CloudSignIn? SignIn = null);
 
 /// <summary>Where the person left a table's box in a diagram, in the diagram's units.</summary>
 public sealed record DiagramSpot(double X, double Y);
@@ -72,8 +78,10 @@ public sealed record DiagramSpot(double X, double Y);
 /// <summary>A statement or batch run on a connection, when, and what it came to.</summary>
 public sealed record SqlRan(string Statement, DateTime At, string Outcome, bool Failed = false);
 
-/// <summary>A connection made by hand, its connection string with every secret part taken out, its mark and its tunnel.</summary>
-public sealed record KeptConnection(Guid Id, string Name, DatabaseKind Kind, string ConnectionString, DatabaseMark Mark = DatabaseMark.None, SshTunnel? Tunnel = null)
+/// <summary>A connection made by hand, its connection string with every secret part taken out, its mark, its tunnel and its
+/// cloud sign-in.</summary>
+public sealed record KeptConnection(Guid Id, string Name, DatabaseKind Kind, string ConnectionString, DatabaseMark Mark = DatabaseMark.None, SshTunnel? Tunnel = null,
+    CloudSignIn? SignIn = null)
 {
     /// <summary>A connection's string split in two: what may be kept in a file, and its secret parts as a connection string.</summary>
     public static (string Kept, string Secret) Split(DatabaseKind kind, string connection)
