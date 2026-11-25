@@ -12,33 +12,52 @@ namespace Passenger.WinFormsDesigner;
 /// form's code is to write it.</summary>
 internal static class Inspecting
 {
-    public static List<DesignProperty> Properties(IComponent component, IDesignerHost host)
+    /// <summary>A component's properties; <paramref name="written"/> says whether the form's code sets one, by its dotted
+    /// name, which shows it set (an extender's is set where its provider's code says).</summary>
+    public static List<DesignProperty> Properties(IComponent component, IDesignerHost host, Func<string, bool> written) =>
+        [.. TypeDescriptor.GetProperties(component, [BrowsableAttribute.Yes]).Cast<PropertyDescriptor>().OrderBy(p => p.Name, StringComparer.Ordinal)
+            .Select(p => Listed(component, component, p, p.Name, host, written, depth: 0))];
+
+    /// <summary>A property as the grid lists it, of <paramref name="owner"/> (the component, or a value whose part it is), its
+    /// parts with it where its type lists them, down to a depth the grid opens.</summary>
+    private static DesignProperty Listed(IComponent component, object owner, PropertyDescriptor property, string path, IDesignerHost host, Func<string, bool> written, int depth)
     {
-        List<DesignProperty> listed = [];
-        foreach (PropertyDescriptor property in TypeDescriptor.GetProperties(component, [BrowsableAttribute.Yes]).Cast<PropertyDescriptor>().OrderBy(p => p.Name, StringComparer.Ordinal))
+        Context context = new(component, property, host, owner);
+        TypeConverter converter = property.Converter;
+        object? value = Read(property, owner);
+        bool content = property.SerializationVisibility == DesignerSerializationVisibility.Content;
+        bool typed = converter.CanConvertFrom(context, typeof(string)) && !content;
+        IReadOnlyList<string>? choices = null;
+        bool exclusive = false;
+        if (typed && converter.GetStandardValuesSupported(context) && converter.GetStandardValues(context) is { } standard)
         {
-            Context context = new(component, property, host);
-            TypeConverter converter = property.Converter;
-            object? value = Read(property, component);
-            bool typed = converter.CanConvertFrom(context, typeof(string)) && property.SerializationVisibility != DesignerSerializationVisibility.Content;
-            IReadOnlyList<string>? choices = null;
-            bool exclusive = false;
-            if (typed && converter.GetStandardValuesSupported(context) && converter.GetStandardValues(context) is { } standard)
-            {
-                choices = [.. standard.Cast<object?>().Select(v => Written(converter, context, v)).Distinct()];
-                exclusive = converter.GetStandardValuesExclusive(context);
-            }
-            listed.Add(new DesignProperty(property.Name, property.Category, property.PropertyType.Name, Written(converter, context, value))
-            {
-                Set = Serialized(property, component),
-                ReadOnly = property.IsReadOnly || !typed,
-                Choices = choices,
-                Exclusive = exclusive,
-                Description = property.Description is { Length: > 0 } said ? said : null,
-                Parenthesized = property.Attributes[typeof(ParenthesizePropertyNameAttribute)] is ParenthesizePropertyNameAttribute { NeedParenthesis: true },
-            });
+            choices = [.. standard.Cast<object?>().Select(v => Written(converter, context, v)).Distinct()];
+            exclusive = converter.GetStandardValuesExclusive(context);
         }
-        return listed;
+        Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        IReadOnlyList<DesignProperty>? parts = null;
+        if (depth < 2 && value is not null && converter.GetPropertiesSupported(context) && converter.GetProperties(context, value) is { Count: > 0 } listed)
+        {
+            parts = [.. listed.Cast<PropertyDescriptor>().Where(p => p.IsBrowsable).OrderBy(p => p.Name, StringComparer.Ordinal)
+                .Select(p => Listed(component, value, p, $"{path}.{p.Name}", host, written, depth + 1))];
+        }
+        bool extended = property.Attributes[typeof(ExtenderProvidedPropertyAttribute)] is ExtenderProvidedPropertyAttribute { Provider: not null };
+        return new DesignProperty(path, property.Category, type.Name, Written(converter, context, value))
+        {
+            Set = extended || depth > 0 ? Serialized(property, owner) && (depth == 0 || written(path[..path.IndexOf('.')])) : written(path),
+            ReadOnly = property.IsReadOnly || !typed,
+            Choices = choices,
+            Exclusive = exclusive,
+            Description = property.Description is { Length: > 0 } said ? said : null,
+            Parenthesized = property.Attributes[typeof(ParenthesizePropertyNameAttribute)] is ParenthesizePropertyNameAttribute { NeedParenthesis: true },
+            Shown = property.DisplayName != property.Name ? property.DisplayName : null,
+            Argb = value is System.Drawing.Color colour ? (uint)colour.ToArgb() : null,
+            Flags = type.IsEnum && type.IsDefined(typeof(FlagsAttribute), inherit: false)
+                ? [.. Enum.GetValues(type).Cast<object>().Where(v => Convert.ToInt64(v, CultureInfo.InvariantCulture) is var bits and > 0 && (bits & (bits - 1)) == 0)
+                    .Select(v => Enum.GetName(type, v)!).Distinct()]
+                : null,
+            Parts = parts,
+        };
     }
 
     public static List<DesignEvent> Events(IComponent component, IEventBindingService events) =>
@@ -49,25 +68,50 @@ internal static class Inspecting
                 Description = e.Description is { Length: > 0 } said ? said : null,
             })];
 
-    /// <summary>A property given the value its text says, as its type converter reads it in the person's culture.</summary>
+    /// <summary>A property given the value its text says, as its type converter reads it in the person's culture; a part of
+    /// a value (its dotted name) by the value made again with it where its type makes values whole (a Point, a Font), else
+    /// set on the value itself (a button's FlatAppearance).</summary>
     public static void Set(IComponent component, string name, string text, IDesignerHost host)
     {
-        PropertyDescriptor property = Property(component, name);
+        string[] path = name.Split('.');
+        PropertyDescriptor property = Property(component, path[0]);
+        if (path.Length == 1)
+        {
+            property.SetValue(component, Converted(component, component, property, text, host));
+            return;
+        }
+        object value = property.GetValue(component) ?? throw new DesignerException($"{path[0]} has no value to set a part of");
+        Context context = new(component, property, host, component);
+        PropertyDescriptorCollection parts = property.Converter.GetProperties(context, value) ?? throw new DesignerException($"{path[0]} has no parts");
+        PropertyDescriptor part = parts[path[1]] ?? throw new DesignerException($"{path[0]} has no part {path[1]}");
+        object? given = Converted(component, value, part, text, host);
+        if (property.Converter.GetCreateInstanceSupported(context))
+        {
+            Dictionary<string, object?> whole = parts.Cast<PropertyDescriptor>().ToDictionary(p => p.Name, p => p.Name == part.Name ? given : p.GetValue(value));
+            property.SetValue(component, property.Converter.CreateInstance(context, whole));
+            return;
+        }
+        IComponentChangeService? changes = host.GetService(typeof(IComponentChangeService)) as IComponentChangeService;
+        changes?.OnComponentChanging(component, property);
+        part.SetValue(value, given);
+        changes?.OnComponentChanged(component, property, null, null);
+    }
+
+    private static object? Converted(IComponent component, object owner, PropertyDescriptor property, string text, IDesignerHost host)
+    {
         if (property.IsReadOnly)
         {
-            throw new DesignerException($"{name} takes no value");
+            throw new DesignerException($"{property.Name} takes no value");
         }
-        object? value;
         try
         {
-            value = property.Converter.ConvertFromString(new Context(component, property, host), CultureInfo.CurrentCulture, text);
+            return property.Converter.ConvertFromString(new Context(component, property, host, owner), CultureInfo.CurrentCulture, text);
         }
         catch (Exception unread) when (unread is FormatException or ArgumentException or NotSupportedException or InvalidCastException or OverflowException
             or InvalidOperationException)
         {
-            throw new DesignerException($"'{text}' is no {property.PropertyType.Name} for {name}: {unread.Message}");
+            throw new DesignerException($"'{text}' is no {property.PropertyType.Name} for {property.Name}: {unread.Message}");
         }
-        property.SetValue(component, value);
     }
 
     public static void Reset(IComponent component, string name)
@@ -150,12 +194,13 @@ internal static class Inspecting
         }
     }
 
-    /// <summary>What a type converter asks of where a value stands: the component, the property, the surface's services.</summary>
-    private sealed class Context(IComponent component, PropertyDescriptor property, IDesignerHost host) : ITypeDescriptorContext
+    /// <summary>What a type converter asks of where a value stands: the component, the property, the object it is of (the
+    /// component, or a value whose part it is), the surface's services.</summary>
+    private sealed class Context(IComponent component, PropertyDescriptor property, IDesignerHost host, object owner) : ITypeDescriptorContext
     {
         public IContainer? Container => host.Container;
 
-        public object? Instance => component;
+        public object? Instance => owner == component ? component : owner;
 
         public PropertyDescriptor? PropertyDescriptor => property;
 

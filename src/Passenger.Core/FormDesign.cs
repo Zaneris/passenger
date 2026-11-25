@@ -184,6 +184,19 @@ public sealed record DesignProperty(string Name, string Category, string Type, s
 
     /// <summary>Its name is shown in parentheses, as the component's own name, (Name), is: first, apart from the rest.</summary>
     public bool Parenthesized { get; init; }
+
+    /// <summary>The name it is shown by where that is not its own: an extender's, "ToolTip on toolTip1".</summary>
+    public string? Shown { get; init; }
+
+    /// <summary>A colour's value, alpha first, for its swatch; none for a value of another type.</summary>
+    public uint? Argb { get; init; }
+
+    /// <summary>A flags enum's flags (Anchor's Top, Bottom, Left, Right), each turned on or off alone; none for any other.</summary>
+    public IReadOnlyList<string>? Flags { get; init; }
+
+    /// <summary>The parts of a value its type lists apart (a Point's X and Y, a Font's Bold, a button's FlatAppearance's
+    /// BorderSize), each set by its dotted name; none for a value of no parts.</summary>
+    public IReadOnlyList<DesignProperty>? Parts { get; init; }
 }
 
 /// <summary>An event of the component inspected: its name and category, the handler hooked to it (none where none is), and

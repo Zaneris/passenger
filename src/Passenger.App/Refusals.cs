@@ -49,6 +49,9 @@ public static class Refusals
     /// <summary>Delete, Bring to Front or Send to Back asked of the form itself.</summary>
     public const string FormItselfStays = "The form itself is neither deleted nor put in front of or behind anything";
 
+    /// <summary>Bring to Front or Send to Back asked of a component in the tray.</summary>
+    public const string TrayHasNoOrder = "A component in the tray is drawn nowhere, so it stands in front of or behind nothing";
+
     /// <summary>An edit of a design asked for while the designer makes the last one.</summary>
     public const string DesignerBusy = "The designer is still making the last change";
 

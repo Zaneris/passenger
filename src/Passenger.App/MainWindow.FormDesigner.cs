@@ -188,12 +188,7 @@ public partial class MainWindow
         pane.ComponentChosen += (_, chosen) =>
         {
             announcer.Tell(Said(chosen), Urgency.Polite, pane);
-            design.Inspect(chosen.Field);
-            if (structure is { } view && Editors.ActiveGroup.Side == pane)
-            {
-                view.ChooseRow(row => DesignOutline.FieldOf(row) == chosen.Field);
-                view.Details = PropertiesOf(shown);
-            }
+            FollowChoice(shown, chosen.Field);
         };
         pane.EditRequested += (_, edit) => IdeErrors.Observe(EditDesignAsync(shown, edit));
         pane.ContextRequested += (_, e) =>
@@ -213,6 +208,18 @@ public partial class MainWindow
         };
         IdeErrors.Observe(design.StartAsync());
         return pane;
+    }
+
+    /// <summary>A component chosen in a design: its properties listed, its row chosen in the Structure window's outline and
+    /// its properties shown under it, where the window outlines that design.</summary>
+    private void FollowChoice(ShownDesign shown, string field)
+    {
+        shown.Design.Inspect(field);
+        if (structure is { } view && Editors.ActiveGroup.Side == shown.Pane)
+        {
+            view.ChooseRow(row => DesignOutline.FieldOf(row) == field);
+            view.Details = PropertiesOf(shown);
+        }
     }
 
     /// <summary>The Structure window's outline of a file while its design is shown in the active group: its components.</summary>
@@ -255,7 +262,7 @@ public partial class MainWindow
     {
         if (formProperties is null)
         {
-            formProperties = new FormProperties();
+            formProperties = new FormProperties((popup, from) => popups.Show(popup, popups.PointIn(from, new Avalonia.Point(0, from.Bounds.Height + 4))), () => popups.Close());
             formProperties.SetRequested += (_, set) => DesignShown(shown => EditDesignAsync(shown, Edit(shown, DesignEditKinds.Set, set.Property, set.Text)));
             formProperties.ResetRequested += (_, property) => DesignShown(shown => EditDesignAsync(shown, Edit(shown, DesignEditKinds.Reset, property, null)));
             formProperties.UnhookRequested += (_, raised) => DesignShown(shown => EditDesignAsync(shown, Edit(shown, DesignEditKinds.Unhook, raised, null)));
@@ -352,12 +359,12 @@ public partial class MainWindow
         });
         actions.Add(new IdeAction(A.FormBringToFront, "Bring to Front", "Design", context => Edit(context, DesignEditKinds.Front))
         {
-            WhyNot = context => DesignWhyNot(context),
+            WhyNot = context => DesignWhyNot(context, orders: true),
             Words = ["Order", "Z-order"],
         });
         actions.Add(new IdeAction(A.FormSendToBack, "Send to Back", "Design", context => Edit(context, DesignEditKinds.Back))
         {
-            WhyNot = context => DesignWhyNot(context),
+            WhyNot = context => DesignWhyNot(context, orders: true),
             Words = ["Order", "Z-order"],
         });
 
@@ -376,9 +383,10 @@ public partial class MainWindow
 
     /// <summary>Why an action on a design's chosen component greys: no design has the keys, none of its components is chosen,
     /// the form itself is, or its designer does not run.</summary>
-    private string? DesignWhyNot(ActionContext context) => DesignWith(context) is not { } shown ? Refusals.NoFormDesign
+    private string? DesignWhyNot(ActionContext context, bool orders = false) => DesignWith(context) is not { } shown ? Refusals.NoFormDesign
         : shown.Pane.Chosen is not { } chosen ? Refusals.NoComponentChosen
-        : chosen.Parent is null ? Refusals.FormItselfStays
+        : chosen.Field.Length == 0 ? Refusals.FormItselfStays
+        : orders && FormDesignPane.InTray(chosen) ? Refusals.TrayHasNoOrder
         : !shown.Design.Running ? shown.Design.Status
         : null;
 
@@ -419,7 +427,7 @@ public partial class MainWindow
         if (done.Chosen is { } chosen)
         {
             shown.Pane.Choose(chosen);
-            shown.Design.Inspect(chosen);
+            FollowChoice(shown, chosen);
         }
         announcer.Tell(shown.Pane.Chosen is { } now && edit.Kind != DesignEditKinds.Delete ? $"{title}: {Said(now)}" : title, Urgency.Polite, shown.Pane);
         return done;

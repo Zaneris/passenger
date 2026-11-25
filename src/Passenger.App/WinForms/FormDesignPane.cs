@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -40,6 +41,9 @@ public sealed class FormDesignPane : DockPanel
     private readonly Border edge;
     private readonly ToolWindows.EmptyState waiting;
     private readonly Border ghost;
+
+    /// <summary>The component tray: what the form holds that draws nothing (a timer, a tooltip), a toggle each.</summary>
+    private readonly WrapPanel tray = new() { IsVisible = false };
     private readonly Border[] handles = new Border[Places.Length];
 
     /// <summary>A press on the frame: what it took (a component, or one of its handles), where, and whether it has become a drag.</summary>
@@ -96,8 +100,13 @@ public sealed class FormDesignPane : DockPanel
         };
         SetDock(header, Dock.Top);
         SetDock(notes, Dock.Top);
+        Border trayed = new() { Child = tray, BorderThickness = Hairlines.Above, Padding = new Thickness(Gaps.Normal, Gaps.Small) };
+        trayed.Bind(Border.BorderBrushProperty, trayed.GetResourceObservable(TokenKeys.Divider));
+        trayed.Bind(IsVisibleProperty, tray.GetObservable(IsVisibleProperty));
+        SetDock(trayed, Dock.Bottom);
         Children.Add(header);
         Children.Add(notes);
+        Children.Add(trayed);
         Children.Add(view);
         this.Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Editor_Background));
         design.Changed += (_, _) => Show();
@@ -157,7 +166,7 @@ public sealed class FormDesignPane : DockPanel
     {
         // Kept by its field, so one the frame does not draw yet (made, renamed) is chosen as the next frame draws it.
         wanted = field;
-        Chosen = field is null ? null : design.Components.FirstOrDefault(c => c.Field == field && c.Width > 0);
+        Chosen = field is null ? null : design.Components.FirstOrDefault(c => c.Field == field && (c.Width > 0 || InTray(c)));
         ShowOutline();
     }
 
@@ -307,7 +316,7 @@ public sealed class FormDesignPane : DockPanel
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        List<DesignedBox> drawn = [.. design.Components.Where(c => c.Width > 0)];
+        List<DesignedBox> drawn = [.. design.Components.Where(c => c.Width > 0 || InTray(c))];
         if (e.Handled || drawn.Count == 0)
         {
             return;
@@ -360,9 +369,16 @@ public sealed class FormDesignPane : DockPanel
         ComponentChosen?.Invoke(this, chosen);
     }
 
+    /// <summary>Whether a component is in the tray, drawn nowhere on the form.</summary>
+    public static bool InTray(DesignedBox box) => box is { Width: 0, Parent: null, Field.Length: > 0 };
+
     private void ShowOutline()
     {
-        if (Chosen is not { } box || design.Frame is null)
+        foreach (ToggleButton toggle in tray.Children.OfType<ToggleButton>())
+        {
+            toggle.IsChecked = Chosen is { } held && toggle.Tag as string == held.Field;
+        }
+        if (Chosen is not { Width: > 0 } box || design.Frame is null)
         {
             outline.IsVisible = false;
             foreach (Border handle in handles)
@@ -387,6 +403,39 @@ public sealed class FormDesignPane : DockPanel
         }
     }
 
+    /// <summary>The tray's toggles, one a component drawn nowhere, by its field and type; pressed, it is chosen.</summary>
+    private void ShowTray()
+    {
+        List<DesignedBox> held = [.. design.Components.Where(InTray)];
+        while (tray.Children.Count < held.Count)
+        {
+            ToggleButton made = Segments.Toggle(string.Empty);
+            made.Margin = new Thickness(0, 0, Gaps.Small, 0);
+            made.Click += (_, _) =>
+            {
+                if (design.Components.FirstOrDefault(c => c.Field == made.Tag as string) is { } box)
+                {
+                    Focus();
+                    Picked(box);
+                }
+            };
+            tray.Children.Add(made);
+        }
+        for (int i = 0; i < tray.Children.Count; i++)
+        {
+            Control toggle = tray.Children[i];
+            toggle.IsVisible = i < held.Count;
+            if (toggle.IsVisible)
+            {
+                toggle.Tag = held[i].Field;
+                ((ToggleButton)toggle).Content = held[i].Field;
+                ToolTip.SetTip(toggle, $"{held[i].Field}: {held[i].Type}");
+                AutomationProperties.SetName(toggle, $"{held[i].Field}, {held[i].Type}, in the component tray");
+            }
+        }
+        tray.IsVisible = held.Count > 0;
+    }
+
     private void Show()
     {
         status.Text = design.Status;
@@ -400,6 +449,7 @@ public sealed class FormDesignPane : DockPanel
         waiting.Text = design.Status;
         waiting.IsVisible = frame is null;
         notes.Say(design.Notes.Count == 0 ? null : string.Join("\n", design.Notes.Take(5)) + (design.Notes.Count > 5 ? $"\n… and {design.Notes.Count - 5} more" : string.Empty));
+        ShowTray();
         Choose(wanted);
     }
 }

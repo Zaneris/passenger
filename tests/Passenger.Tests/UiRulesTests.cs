@@ -5079,6 +5079,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         (_, "Color.FromArgb") when path.EndsWith("Godot/GodotValues.cs", StringComparison.Ordinal) => true,
         // A colour a running Godot game's node holds, shown as its swatch in the Live Visual Tree's properties.
         (_, "Color.FromArgb" or "new SolidColorBrush(Color.") when path.EndsWith("Godot/GodotValueCells.cs", StringComparison.Ordinal) => true,
+        // A colour a Windows Forms form's component is given, shown as its swatch in its design's properties.
+        (_, "Color.FromUInt32" or "new SolidColorBrush(Color.") when path.EndsWith("WinForms/FormProperties.cs", StringComparison.Ordinal) => true,
         // The ground of a web page setting none of its own: a browser's white, in every look.
         (_, "Brushes.White") when path.EndsWith("Editors/HtmlPreview.cs", StringComparison.Ordinal) => true,
         // A colour the program in the terminal names: xterm's 24-bit colours, its 256-colour cube and grey ramp.

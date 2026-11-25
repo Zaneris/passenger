@@ -49,6 +49,95 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         Flow.StepApart("the structure window lists the components and a property typed or reset there is written", () => new WinFormsDesignerTests(app), t => t.The_structure_window_lists_the_components_and_a_property_typed_or_reset_there_is_written());
         Flow.StepApart("a double click goes to the default events handler and an event chosen is hooked and declared in the code", () => new WinFormsDesignerTests(app), t => t.A_double_click_goes_to_the_default_events_handler_and_an_event_chosen_is_hooked_and_declared_in_the_code());
         Flow.StepApart("a name given as (Name) renames the components field its uses its Name and its section", () => new WinFormsDesignerTests(app), t => t.A_name_given_as_Name_renames_the_components_field_its_uses_its_Name_and_its_section());
+        Flow.StepApart("only what the code sets is bold and a values part a flag and a colour are written", () => new WinFormsDesignerTests(app), t => t.Only_what_the_code_sets_is_bold_and_a_values_part_a_flag_and_a_colour_are_written());
+        Flow.StepApart("a timer from the toolbox goes to the tray and is chosen there", () => new WinFormsDesignerTests(app), t => t.A_timer_from_the_toolbox_goes_to_the_tray_and_is_chosen_there());
+    }
+
+    private void Only_what_the_code_sets_is_bold_and_a_values_part_a_flag_and_a_colour_are_written()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string file = app.PathOf("MainForm.Designer.cs");
+        string before = File.ReadAllText(file);
+        MainWindow window = app.Open(app.PathOf("MainForm.cs"), languageServer: false);
+        FormDesignPane pane = Drawn(window);
+        DesignedBox count = Component(pane, "Count");
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        Ui.Click(pane.Frame, new Point(count.X + (count.Width / 2), count.Y + (count.Height / 2)));
+        FormProperties properties = window.FormProperties ?? throw new Xunit.Sdk.XunitException("The Structure window shows no properties under its outline");
+        Ui.WaitFor(() => properties.Rows.Any(r => r.Name == "Location"), () => $"Count's properties to be listed, not \"{properties.Said}\"");
+        Assert.True(properties.Rows.First(r => r.Name == "DataBindings").Property is { Set: false }, "(DataBindings) shows set though the code sets nothing of it");
+        Assert.True(properties.Rows.First(r => r.Name == "Text").Property is { Set: true }, "Count's Text shows unset though the code sets it");
+        properties.Toggle(properties.Rows.First(r => r.Name == "Location"));
+        Assert.Equal(["Location.X", "Location.Y"], properties.Rows.Where(r => r.Name.StartsWith("Location.", StringComparison.Ordinal)).Select(r => r.Name));
+        Type(window, properties, "Location.X", "20");
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("Count.Location = new Point(20, 36);", StringComparison.Ordinal), () => $"Location's X to be written, where the status bar says {window.Status}");
+        Ui.WaitFor(() => properties.Rows.Any(r => r.Property is { Name: "Location", Text: "20, 36" }), "the properties to show Count's new Location");
+        properties.Choose("Anchor");
+        Ui.Settle();
+        Ui.WaitFor(() => properties.EditorOf("Anchor") is WrapPanel, "Anchor's flags to show as toggles");
+        WrapPanel anchor = (WrapPanel)properties.EditorOf("Anchor")!;
+        Assert.Equal(["Top", "Left"], anchor.Children.OfType<ToggleButton>().Where(t => t.IsChecked == true).Select(t => (string)t.Content!));
+        ToggleButton bottom = anchor.Children.OfType<ToggleButton>().First(t => (string?)t.Content == "Bottom");
+        Ui.Click(bottom);
+        string? said = window.Status;
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("Count.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;", StringComparison.Ordinal),
+            () => $"Anchor's Bottom to be written with Top and Left, where the status bar said \"{said}\" as it was pressed and says \"{window.Status}\" now, Bottom "
+                + $"{(bottom.IsChecked == true ? "on" : "off")}, Anchor {properties.Rows.FirstOrDefault(r => r.Name == "Anchor")?.Property?.Text}");
+        Ui.WaitFor(() => properties.Rows.Any(r => r.Property is { Name: "Anchor", Text: "Top, Bottom, Left" }), "the properties to show Count's new Anchor");
+        Assert.IsType<Button>(properties.EditorOf("BackColor"));
+        string? typed = Type(window, properties, "BackColor", "255, 128, 1");
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("Count.BackColor = ", StringComparison.Ordinal),
+            () => $"BackColor to be written, where the status bar said \"{typed}\" as it was typed, its row reading {properties.Rows.FirstOrDefault(r => r.Name == "BackColor")?.Property?.Text}");
+        Assert.Equal("        Count.BackColor = Color.FromArgb(255, 128, 1);", File.ReadAllText(file).ReplaceLineEndings("\n").Split('\n').First(l => l.Contains("Count.BackColor", StringComparison.Ordinal)));
+        // A button given a colour of its own stops drawing the system's, as Windows Forms has it: that line is written again too.
+        Assert.Equal(["        Count.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;", "        Count.BackColor = Color.FromArgb(255, 128, 1);",
+            "        Count.Location = new Point(20, 36);", "        Count.UseVisualStyleBackColor = false;"],
+            File.ReadAllText(file).ReplaceLineEndings("\n").Split('\n').Except(before.ReplaceLineEndings("\n").Split('\n')));
+        window.Close();
+    }
+
+    private void A_timer_from_the_toolbox_goes_to_the_tray_and_is_chosen_there()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string file = app.PathOf("MainForm.Designer.cs");
+        MainWindow window = app.Open(app.PathOf("MainForm.cs"), languageServer: false);
+        FormDesignPane pane = Drawn(window);
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        window.ShowToolWindow(ToolWindowIds.Toolbox);
+        ToolboxView tools = window.ToolboxWindow;
+        Ui.WaitFor(() => tools.Rows.Any(r => r.Entry?.Name == "Button"), () => $"the Toolbox to list Windows Forms' controls, not \"{tools.Said}\"");
+        tools.Choose("Timer");
+        TreeList list = tools.GetVisualDescendants().OfType<TreeList>().Single();
+        Ui.Settle();
+        Assert.True(ListKeys.Hold(list), "The Toolbox's Timer row could not take the keys");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("timer1 = new System.Windows.Forms.Timer(components);", StringComparison.Ordinal),
+            () => $"the Timer to be written by its full name, Timer being System.Threading's too, where the status bar says {window.Status}");
+        string added = File.ReadAllText(file).ReplaceLineEndings("\n");
+        Assert.Contains("        components = new System.ComponentModel.Container();\n", added);
+        Assert.Contains("    private System.Windows.Forms.Timer timer1;\n", added);
+        Ui.WaitFor(() => pane.Chosen?.Field == "timer1", () => $"the Timer to be chosen, not {pane.Chosen?.Field ?? "nothing"}");
+        ToggleButton held = pane.GetVisualDescendants().OfType<ToggleButton>().Single(t => t.Tag as string == "timer1");
+        Assert.True(held.IsChecked == true && held.IsEffectivelyVisible, "The Timer is not shown chosen in the component tray");
+        Ui.WaitFor(() => window.FormProperties?.Rows.Any(r => r.Name == "Interval") == true, () => $"the Timer's properties to be listed, not \"{window.FormProperties?.Said}\"");
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        Ui.WaitFor(() => window.StructureView.Rows.Any(r => r is { Name: "timer1", Depth: 1 }),
+            () => $"the Structure window to outline the Timer under the form, not [{string.Join(", ", window.StructureView.Rows.Select(r => $"{r.Name}@{r.Depth}"))}]");
+        window.Close();
+    }
+
+    /// <summary>A property's row given the keys, its value typed and Enter pressed to write it; what the status bar says then.</summary>
+    private static string? Type(MainWindow window, FormProperties properties, string property, string text)
+    {
+        properties.Choose(property);
+        ListBox rows = properties.GetVisualDescendants().OfType<ListBox>().First();
+        Keyed(rows, properties.Chosen!);
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => properties.Typing is { IsFocused: true }, $"Enter to open {property} to type");
+        window.KeyTextInput(text);
+        Assert.Equal(text, properties.Typing?.Text);
+        Ui.Press(window, "ENTER");
+        return window.Status;
     }
 
     private void The_structure_window_lists_the_components_and_a_property_typed_or_reset_there_is_written()
@@ -74,7 +163,7 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         ListBox rows = properties.GetVisualDescendants().OfType<ListBox>().First();
         Keyed(rows, properties.Chosen!);
         Ui.Press(window, "ENTER");
-        Ui.WaitFor(() => properties.Typing is not null, "Enter to open Text's value to type");
+        Ui.WaitFor(() => properties.Typing is { IsFocused: true }, "Enter to open Text's value to type");
         window.KeyTextInput("Add");
         Ui.Press(window, "ENTER");
         Ui.WaitFor(() => File.ReadAllText(file).Contains("Count.Text = \"Add\";", StringComparison.Ordinal), () => $"the typed Text to be written, where the status bar says {window.Status}");
@@ -138,7 +227,7 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         ListBox rows = properties.GetVisualDescendants().OfType<ListBox>().First();
         Keyed(rows, properties.Chosen!);
         Ui.Press(window, "ENTER");
-        Ui.WaitFor(() => properties.Typing is not null, "Enter to open (Name) to type");
+        Ui.WaitFor(() => properties.Typing is { IsFocused: true }, "Enter to open (Name) to type");
         window.KeyTextInput("Tally");
         Ui.Press(window, "ENTER");
         Ui.WaitFor(() => window.EditorArea.TextOf(code)?.ToString().Contains("Tally.Text = clicks == 1", StringComparison.Ordinal) == true,

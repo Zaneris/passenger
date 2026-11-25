@@ -107,10 +107,16 @@ internal sealed class Designer(Assembly? project) : IDisposable
             Chosen = chosen,
             Handler = handler,
             Toolbox = request.Toolbox ? Toolbox.Listed(project, based) : null,
-            Properties = inspected is null ? null : Inspecting.Properties(inspected, host),
+            Properties = inspected is null ? null : Inspecting.Properties(inspected, host, member => Written(request, request.Inspect!, member)),
             Events = inspected is null ? null : Inspecting.Events(inspected, events),
         };
     }
+
+    /// <summary>Whether the code the request was read from sets a component's member (its dotted name, a part of it set or
+    /// called counting): what shows a property set in the Properties.</summary>
+    private static bool Written(FormDesignRequest request, string field, string member) =>
+        request.Statements.Any(s => s is { Act: DesignerAct.Assign or DesignerAct.Call, Member: { } written } && s.Target == field
+            && (written == member || written.StartsWith(member + ".", StringComparison.Ordinal)));
 
     /// <summary>How tall a form's title bar is drawn over its client area: none for a form without one or another control.</summary>
     private static int Bar(Control root) => root is Form { FormBorderStyle: not FormBorderStyle.None } ? SystemInformation.CaptionHeight : 0;
