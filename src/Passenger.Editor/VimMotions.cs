@@ -843,13 +843,14 @@ public static class VimMotions
         }
         if (!inner && lastWhiteEmpty)
         {
-            if (emptyFirst && n == 1 && LineOf(text, from).Line > 0 && text.GetLine(LineOf(text, from).Line - 1) is { Length: > 0 } prior
+            int blankFrom = emptyFirst ? BlankLinesBefore(text, from) : from;
+            if (emptyFirst && n == 1 && LineOf(text, blankFrom).Line > 0 && text.GetLine(LineOf(text, blankFrom).Line - 1) is { Length: > 0 } prior
                 && text[prior.End - 1] is ' ' or '\t' && TextNavigation.IndentEnd(text, prior) < prior.End)
             {
-                // An empty line after a line ending in blanks: those blanks and the break, the empty line's own cut off.
-                return new VimSpan(WhiteBefore(text, from), LineOf(text, from).EndIncludingBreak, false);
+                // An empty line after a line ending in blanks, lines of blanks alone between too: those blanks and the breaks, the empty line's own cut off.
+                return new VimSpan(WhiteBefore(text, blankFrom), LineOf(text, from).EndIncludingBreak, false);
             }
-            from = emptyFirst ? BlankLinesBefore(text, from) : WhiteBefore(text, from);
+            from = WhiteBefore(text, blankFrom);
         }
         return new VimSpan(from, Math.Max(from, to), false);
     }
@@ -1010,7 +1011,7 @@ public static class VimMotions
     }
 
     /// <summary>as on the text's last line, empty: after a line ending in one character after a blank, that character
-    /// with the blanks before it (alone on its line, those ending the line before); after one empty line, the blanks
+    /// with the blanks before it (alone on its line, the lines of blanks above and the blanks ending the line of text above them); after one empty line, the blanks
     /// ending the last line of text and its break, or that line where it is blank, to here; else nothing, from where white
     /// ending the text begins.</summary>
     private static VimSpan AsFromLastEmpty(TextSnapshot text, int line, int here)
@@ -1060,9 +1061,16 @@ public static class VimMotions
             return new VimSpan(here, here, false);
         }
         int from = BlanksBefore(text, last, word);
-        if (from == word && last.Line > 0 && text.GetLine(last.Line - 1) is { Length: > 0 } previous)
+        if (from == last.Start)
         {
-            from = BlanksBefore(text, previous, previous.End) is var trailing && trailing < previous.End ? trailing : word;
+            // Back over lines of blanks alone to the blanks ending the line of text above them, where it has some.
+            int top = last.Line;
+            while (top > 0 && text.GetLine(top - 1) is { Length: > 0 } blankLine && TextNavigation.IndentEnd(text, blankLine) == blankLine.End)
+            {
+                top--;
+            }
+            from = top > 0 && text.GetLine(top - 1) is { Length: > 0 } previous && BlanksBefore(text, previous, previous.End) is var trailing
+                && trailing < previous.End ? trailing : top < last.Line ? text.GetLine(top).Start : from;
         }
         // From the text's first place it starts a place on, as the search back past the text's start does.
         return from < word ? new VimSpan(from == 0 ? 1 : from, here, false) : new VimSpan(here, here, false);
