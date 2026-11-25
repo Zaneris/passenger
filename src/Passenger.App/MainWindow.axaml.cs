@@ -343,8 +343,8 @@ public partial class MainWindow : IdeWindow
         Bind(session);
         Bottom.Build.RerunClicked += (_, _) => buildRun.Rebuild();
         Bottom.Build.StopClicked += (_, _) => session.Builder.Stop();
-        Bottom.Run.RerunClicked += (_, _) => IdeErrors.Observe(RerunAsync());
-        Bottom.Run.StopClicked += (_, _) => session.Runner.Stop();
+        Bottom.Run.RerunClicked += (_, _) => IdeErrors.Observe(buildRun.RerunConsoleAsync());
+        Bottom.Run.StopClicked += (_, _) => buildRun.StopConsole();
         Bottom.Run.HotReloadClicked += (_, _) => Request(AppActions.ApplyHotReloadChanges);
         Bottom.Run.NameKeys(AppActions.Rerun, AppActions.Stop, AppActions.ApplyHotReloadChanges);
         Bottom.Run.OfferWhenEmpty("A program's output shows here", AppActions.RunProgram, "Run");

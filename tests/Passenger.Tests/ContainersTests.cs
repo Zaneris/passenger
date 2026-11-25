@@ -1368,7 +1368,8 @@ public sealed class ContainersTests
     /// <summary>A run of several parts in the folder's passenger-runs.json whose Compose part names the project's compose file:
     /// Run brings its services up as the folder's container run (its .dcproj's project name kept) before the command after it
     /// starts, the Compose part's tab the Run window's own console with its log followed, and Stop takes its containers down
-    /// with the rest.</summary>
+    /// with the rest. Run again, the console's Rerun on the Compose part's tab brings its services up once more, alone, the
+    /// command's tab kept as it was: the run's earlier start leaves the console's buttons nothing of its own.</summary>
     private void A_runs_Compose_part_comes_up_before_the_part_after_it_starts_in_the_Run_windows_console_and_Stop_takes_it_down()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
@@ -1404,6 +1405,21 @@ public sealed class ContainersTests
             Ui.WaitFor(() => File.ReadAllLines(calls).Any(c => c.StartsWith("ps -aq ", StringComparison.Ordinal) && c.Contains($"label={ComposeLabels.Project}=my-shop", StringComparison.Ordinal))
                     && !window.IsRunning,
                 "Stop to take down the Compose part's containers with the rest");
+
+            int Ups() => File.ReadAllLines(calls).Count(c => c.Contains(" up ", StringComparison.Ordinal) && c.EndsWith("-- web", StringComparison.Ordinal));
+            Ui.Launched(window, window.RunAsync(), "the run's parts to start again");
+            Ui.WaitFor(() => window.RunParts.Count == 2 && window.RunParts[0].IsRunning && window.RunParts[1].State == PartState.Ended,
+                () => $"the run's parts to start again ({string.Join("; ", window.RunParts.Select(p => $"{p.Name} {p.Said}"))}; {window.Status})");
+            PartRun after = window.RunParts[1];
+            int up = Ups();
+            Assert.True(window.BottomPanel.RunWindow.ShownPart == window.RunParts[0], "The Compose part's tab is not the one the Run window shows");
+            Ui.Click(window.BottomPanel.Run.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) is string tip && tip.StartsWith("Rerun", StringComparison.Ordinal) && b.IsEffectivelyVisible));
+            Ui.WaitFor(() => Ups() > up && window.RunParts[0].IsRunning && window.Actions.Work.Of(AppActions.RunProgram) is null,
+                () => $"the Compose part's Rerun to bring web up again ({string.Join("; ", window.RunParts.Select(p => $"{p.Name} {p.Said}"))}; {window.Status})");
+            Assert.True(Ups() == up + 1 && window.RunParts.Count == 2 && window.RunParts[1] == after,
+                $"The Run console's Rerun on the Compose part's tab brought web up {Ups() - up} times and the parts are {string.Join("; ", window.RunParts.Select(p => $"{p.Name} {p.Said}"))}, where it was to bring its part up once, alone");
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => !window.IsRunning, "Stop to take the Compose part down again");
         }
         finally
         {

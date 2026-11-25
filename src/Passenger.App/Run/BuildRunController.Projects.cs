@@ -410,13 +410,46 @@ public sealed partial class BuildRunController
             ]).OfType<string>());
     }
 
-    /// <summary>A part's tab follows its buttons: Rerun restarts its part alone, the others running on, and Stop ends it alone.</summary>
+    /// <summary>A part's tab follows its buttons: Rerun restarts its part alone, the others running on, and Stop ends it alone.
+    /// A part over the Run window's own console (a Compose part's) is followed by that console's buttons, the window's
+    /// (<see cref="RerunConsoleAsync"/>, <see cref="StopConsole"/>), which outlive it.</summary>
     private void Follow(PartRun tab)
     {
+        if (tab.Console == parts.Views.Run)
+        {
+            return;
+        }
         tab.Console.RerunClicked += (_, _) => IdeErrors.Observe(RestartPartAsync(tab));
         tab.Console.StopClicked += (_, _) => tab.Stop();
         tab.Runner.Exited += (_, _) => RunningChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>The Run console's own Rerun: the part of a run of several parts the Run window shows over the console (a
+    /// Compose part's) restarted alone, the others running on, else Rerun.</summary>
+    public async Task RerunConsoleAsync()
+    {
+        if (ShownOverConsole() is { } part)
+        {
+            await RestartPartAsync(part);
+            return;
+        }
+        await RerunAsync();
+    }
+
+    /// <summary>The Run console's own Stop: the part the Run window shows over the console ended alone (a Compose part's
+    /// containers taken down), else what the console runs.</summary>
+    public void StopConsole()
+    {
+        if (ShownOverConsole() is { } part)
+        {
+            part.Stop();
+            return;
+        }
+        session.Runner.Stop();
+    }
+
+    /// <summary>The part of a run of several parts the Run window shows whose console is the window's own, or null.</summary>
+    private PartRun? ShownOverConsole() => parts.Views.RunWindow.ShownPart is { } shown && shown.Console == parts.Views.Run && partRuns.Contains(shown) ? shown : null;
 
     /// <summary>The Run window's part tabs let go of: those of ended parts (<paramref name="ended"/>), or every one, each
     /// running one stopped first.</summary>
