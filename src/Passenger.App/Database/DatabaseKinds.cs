@@ -7,7 +7,7 @@ using Npgsql;
 namespace Passenger.App.Database;
 
 /// <summary>Each database's name as a person knows it, its connection strings' builder and its server's usual port.</summary>
-public static class DatabaseKinds
+public static partial class DatabaseKinds
 {
     public static string Title(DatabaseKind kind) => kind switch
     {
@@ -17,21 +17,23 @@ public static class DatabaseKinds
         DatabaseKind.MySql => "MySQL or MariaDB",
         DatabaseKind.DuckDb => "DuckDB",
         DatabaseKind.ClickHouse => "ClickHouse",
+        DatabaseKind.MongoDb => "MongoDB",
+        DatabaseKind.CosmosDb => "Cosmos DB",
         _ => "Snowflake",
     };
 
     /// <summary>The kinds as the connection dialog offers them, in <see cref="DatabaseKind"/>'s order.</summary>
-    public static IReadOnlyList<string> Offered { get; } = ["SQLite", "PostgreSQL", "SQL Server", "MySQL / MariaDB", "DuckDB", "ClickHouse", "Snowflake"];
+    public static IReadOnlyList<string> Offered { get; } = ["SQLite", "PostgreSQL", "SQL Server", "MySQL / MariaDB", "DuckDB", "ClickHouse", "Snowflake", "MongoDB", "Cosmos DB"];
 
     /// <summary>Whether the kind's database is a file of its own (SQLite's, DuckDB's), opened with no server, port or tunnel.</summary>
     public static bool IsFile(DatabaseKind kind) => kind is DatabaseKind.Sqlite or DatabaseKind.DuckDb;
 
     /// <summary>Whether a database is its one schema (MySQL's, ClickHouse's), which the explorer leaves out.</summary>
-    public static bool SchemaIsDatabase(DatabaseKind kind) => kind is DatabaseKind.MySql or DatabaseKind.ClickHouse;
+    public static bool SchemaIsDatabase(DatabaseKind kind) => kind is DatabaseKind.MySql or DatabaseKind.ClickHouse || HoldsDocuments(kind);
 
     /// <summary>Whether the kind holds a statement's changes in a transaction its console can open and end: ClickHouse's
     /// statements each stand alone.</summary>
-    public static bool HasTransactions(DatabaseKind kind) => kind != DatabaseKind.ClickHouse;
+    public static bool HasTransactions(DatabaseKind kind) => kind != DatabaseKind.ClickHouse && !HoldsDocuments(kind);
 
     /// <summary>Whether the explorer's tables take changes row by row (written by their primary key): ClickHouse changes rows
     /// by mutations, and Snowflake keeps no key it enforces.</summary>
@@ -118,6 +120,14 @@ public static class DatabaseKinds
             case DatabaseKind.MySql:
                 MySqlConnectionStringBuilder my = new(connection);
                 return (my.Server, (int)my.Port);
+            case DatabaseKind.MongoDb when Value(connection, "Uri") is { } uri:
+                MongoDB.Driver.MongoServerAddress first = new MongoDB.Driver.MongoUrl(uri).Servers.FirstOrDefault() ?? new MongoDB.Driver.MongoServerAddress("localhost", Port(kind));
+                return (first.Host, first.Port);
+            case DatabaseKind.MongoDb:
+                return (Value(connection, "Host", "Server") ?? "localhost",
+                    int.TryParse(Value(connection, "Port"), System.Globalization.CultureInfo.InvariantCulture, out int named) ? named : Port(kind));
+            case DatabaseKind.CosmosDb when Uri.TryCreate(Value(connection, "AccountEndpoint"), UriKind.Absolute, out Uri? account):
+                return (account.Host, account.Port);
             default:
                 return (string.Empty, 0);
         }
@@ -147,7 +157,9 @@ public static class DatabaseKinds
 
     /// <summary>The kind of database a .NET connection's type is of, by its provider; null for another.</summary>
     public static DatabaseKind? OfConnection(string type) =>
-        type.Contains("DuckDB", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.DuckDb
+        type.Contains("Mongo", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.MongoDb
+        : type.Contains("Cosmos", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.CosmosDb
+        : type.Contains("DuckDB", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.DuckDb
         : type.Contains("ClickHouse", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.ClickHouse
         : type.Contains("Snowflake", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.Snowflake
         : type.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.Sqlite
@@ -181,6 +193,8 @@ public static class DatabaseKinds
         DatabaseKind.SqlServer => 1433,
         DatabaseKind.ClickHouse => 8123,
         DatabaseKind.Snowflake => 443,
+        DatabaseKind.MongoDb => 27017,
+        DatabaseKind.CosmosDb => 8081,
         _ => 3306,
     };
 }

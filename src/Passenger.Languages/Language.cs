@@ -259,6 +259,11 @@ public sealed class Language
     public static readonly Language Sql = new("sql", "SQL", ["*.sql"], line: "--", block: ("/*", "*/"),
         grammar: new("source.sql", "sql.tmLanguage.json"));
 
+    /// <summary>MongoDB's shell, as a console of a MongoDB connection is written (db.orders.find(…)), coloured by JavaScript's
+    /// grammar, which its calls and values are, and served by no language server.</summary>
+    public static readonly Language MongoDb = new("mongodb", "MongoDB", ["*.mongodb"], line: "//", block: ("/*", "*/"), indent: 2,
+        grammar: new("source.js", "JavaScript.tmLanguage.json"));
+
     /// <summary>Languages with no grammar here, commented as C's are or as scripts are.</summary>
     public static readonly Language Code = new("code", "Code", ["*.rs", "*.go", "*.java", "*.kt", "*.swift", "*.c", "*.h", "*.cpp"],
         line: "//", block: ("/*", "*/"));

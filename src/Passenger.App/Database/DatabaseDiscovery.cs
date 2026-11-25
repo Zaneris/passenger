@@ -167,6 +167,28 @@ internal static class DatabaseDiscovery
     /// <paramref name="folder"/>; null for one that names no database Passenger opens.</summary>
     internal static DatabaseSource? Source(string name, string found, string value, string folder, IEnumerable<string> packages)
     {
+        // MongoDB's connection string is a URI, its password marked as each secret is; Cosmos DB's names its account's endpoint.
+        if (value.Trim() is var uri && (uri.StartsWith("mongodb://", StringComparison.OrdinalIgnoreCase) || uri.StartsWith("mongodb+srv://", StringComparison.OrdinalIgnoreCase)))
+        {
+            ContainerSecrets.Mark(uri);
+            if (Uri.TryCreate(uri, UriKind.Absolute, out Uri? address) && address.UserInfo.Split(':', 2) is [_, var password])
+            {
+                ContainerSecrets.Mark(Uri.UnescapeDataString(password));
+            }
+            return new DatabaseSource(name, DatabaseKind.MongoDb, folder) { ConnectionString = DatabaseKinds.With(string.Empty, "Uri", uri), Found = found };
+        }
+        if (value.Contains("AccountEndpoint=", StringComparison.OrdinalIgnoreCase))
+        {
+            DbConnectionStringBuilder account = new() { ConnectionString = value };
+            foreach (string key in account.Keys)
+            {
+                if (ContainerSecrets.Secret(key))
+                {
+                    ContainerSecrets.Mark(Convert.ToString(account[key], System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
+                }
+            }
+            return new DatabaseSource(name, DatabaseKind.CosmosDb, folder) { ConnectionString = value, Found = found };
+        }
         if (string.IsNullOrWhiteSpace(value) || !value.Contains('=') || value.Contains("://", StringComparison.Ordinal))
         {
             return null;

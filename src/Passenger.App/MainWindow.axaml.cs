@@ -555,7 +555,7 @@ public partial class MainWindow : IdeWindow
             return;
         }
         bool own = editor == Editors.CodeEditor;
-        if (!shifted && own && action == AppActions.KeysIn(AppActions.DatabaseRun) && Editors.Active is { } sql && sql.Language == Languages.Language.Sql)
+        if (!shifted && own && action == AppActions.KeysIn(AppActions.DatabaseRun) && Editors.Active is { } sql && Passenger.App.Database.SqlConsole.Speaks(sql.Language))
         {
             // A SQL file runs its statement on the keys the editor's own action has elsewhere.
             Request(AppActions.DatabaseRun);

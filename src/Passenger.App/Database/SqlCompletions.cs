@@ -34,8 +34,17 @@ public static class SqlCompletions
         "BEGIN", "COMMIT", "ROLLBACK", "COUNT", "SUM", "AVG", "MIN", "MAX", "CAST", "COALESCE",
     ];
 
-    /// <summary>Each database's own words beyond those all of them read.</summary>
-    public static IReadOnlyList<string> Keywords(DatabaseKind kind) => [.. Common, .. kind switch
+    /// <summary>Cosmos DB's query words and functions, which read and never write.</summary>
+    private static readonly string[] Cosmos =
+    [
+        "SELECT", "VALUE", "TOP", "DISTINCT", "FROM", "WHERE", "AND", "OR", "NOT", "IN", "BETWEEN", "LIKE", "JOIN", "AS", "ORDER BY", "GROUP BY", "ASC",
+        "DESC", "OFFSET", "LIMIT", "EXISTS", "ARRAY", "UNDEFINED", "NULL", "true", "false", "COUNT", "SUM", "AVG", "MIN", "MAX", "IS_DEFINED", "IS_NULL",
+        "IS_STRING", "IS_NUMBER", "IS_BOOL", "IS_ARRAY", "IS_OBJECT", "ARRAY_CONTAINS", "ARRAY_LENGTH", "CONTAINS", "STARTSWITH", "ENDSWITH", "LOWER",
+        "UPPER", "LENGTH", "CONCAT", "SUBSTRING", "ToString", "StringToNumber", "GetCurrentDateTime", "DateTimeAdd",
+    ];
+
+    /// <summary>Each database's own words beyond those all of them read; Cosmos DB's its own alone.</summary>
+    public static IReadOnlyList<string> Keywords(DatabaseKind kind) => kind == DatabaseKind.CosmosDb ? Cosmos : [.. Common, .. kind switch
     {
         DatabaseKind.SqlServer => (string[])["TOP", "OFFSET", "FETCH NEXT", "ROWS ONLY", "DECLARE", "EXEC", "OUTPUT", "MERGE", "IDENTITY", "NVARCHAR", "GO"],
         DatabaseKind.Postgres => ["LIMIT", "OFFSET", "RETURNING", "ILIKE", "ON CONFLICT", "DO NOTHING", "SERIAL", "JSONB", "EXPLAIN", "ANALYZE"],
@@ -93,6 +102,11 @@ public static class SqlCompletions
     /// folds the rest, upper case alone for Snowflake, which folds it the other way), else in the database's quotes.</summary>
     public static string Quoted(string name, DatabaseKind kind)
     {
+        // Cosmos DB reads a field after its alias's dot as written.
+        if (kind == DatabaseKind.CosmosDb)
+        {
+            return name;
+        }
         bool plain = name.Length > 0 && (char.IsLetter(name[0]) || name[0] == '_') && name.All(c => char.IsLetterOrDigit(c) || c == '_')
             && (kind != DatabaseKind.Postgres || !name.Any(char.IsUpper))
             && (kind != DatabaseKind.Snowflake || !name.Any(char.IsLower))
@@ -147,7 +161,8 @@ public static class SqlCompletions
                 name = part;
                 at += 2;
             }
-            if (Find(catalog, name) is not { } table)
+            // Cosmos DB's FROM names an alias of the console's container, which a database of one container reads as it.
+            if ((Find(catalog, name) ?? (kind == DatabaseKind.CosmosDb && catalog.Tables is [var only] ? only : null)) is not { } table)
             {
                 continue;
             }

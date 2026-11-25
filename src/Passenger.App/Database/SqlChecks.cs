@@ -30,6 +30,11 @@ public static class SqlChecks
     public static List<SqlProblem> Of(string text, DatabaseKind kind, SqlCatalog catalog)
     {
         List<SqlProblem> found = [];
+        // A document's fields are what each document holds, never a schema's: none is missing from one.
+        if (DatabaseKinds.HoldsDocuments(kind))
+        {
+            return found;
+        }
         HashSet<string> made = Made(text, kind);
         SqlCatalog now = catalog;
         foreach ((int start, int end) in SqlText.Statements(text, kind))

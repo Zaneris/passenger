@@ -37,6 +37,15 @@ public sealed class DatabaseServersTests
     /// <summary>ClickHouse's server, its long-term release pinned.</summary>
     private const string ClickHouseImage = "clickhouse/clickhouse-server:26.3.71.3-alpine";
 
+    /// <summary>MongoDB's server, its 8.0 release pinned.</summary>
+    private const string MongoImage = "mongo:8.0.38";
+
+    /// <summary>Cosmos DB's emulator, its Linux build that runs on Arm as on x86-64, pinned by its date.</summary>
+    private const string CosmosImage = "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-EN20261019";
+
+    /// <summary>The key every Cosmos DB emulator signs in with, as its documentation gives it.</summary>
+    private const string CosmosKey = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
+
     /// <summary>The bastion's image, pinned to the one the test was written against.</summary>
     private const string SshImage = "lscr.io/linuxserver/openssh-server@sha256:c8431b8982e7eb3935ebf9c46607d19c6417e39c12ce884cc66945df2e9334e8";
 
@@ -46,6 +55,8 @@ public sealed class DatabaseServersTests
     [InlineData(DatabaseKind.SqlServer, "mcr.microsoft.com/mssql/server:2022-latest")]
     [InlineData(DatabaseKind.ClickHouse, ClickHouseImage)]
     [InlineData(DatabaseKind.Snowflake, "")]
+    [InlineData(DatabaseKind.MongoDb, MongoImage)]
+    [InlineData(DatabaseKind.CosmosDb, CosmosImage)]
     public void A_server_is_found_explored_run_and_completed_through_its_driver(DatabaseKind kind, string image)
     {
         Assert.SkipWhen(kind == DatabaseKind.Snowflake, "Snowflake runs only as Snowflake's own service, which no container stands in for, and this run has no account of it");
@@ -54,6 +65,16 @@ public sealed class DatabaseServersTests
         if (kind == DatabaseKind.ClickHouse)
         {
             ClickHouse();
+            return;
+        }
+        if (kind == DatabaseKind.MongoDb)
+        {
+            Mongo();
+            return;
+        }
+        if (kind == DatabaseKind.CosmosDb)
+        {
+            Cosmos();
             return;
         }
         Assert.SkipWhen(Docker.Said("image", "inspect", SshImage) is null, $"The engine lacks {SshImage}, which this test never pulls: pull it to run the test");
@@ -733,6 +754,10 @@ public sealed class DatabaseServersTests
         static byte[] Unsigned(byte[] number) => number[0] >= 0x80 ? [0, .. number] : number;
     }
 
+    /// <summary>The window's one control of a name.</summary>
+    private static T Tab<T>(MainWindow window, string name) where T : Control =>
+        window.GetVisualDescendants().OfType<T>().Single(c => c.Name == name);
+
     /// <summary>Writes a cell as the person does: chosen, opened for writing, its text and Enter.</summary>
     private static void Write(MainWindow window, CellGrid grid, (int Row, int Column) cell, string text)
     {
@@ -822,6 +847,259 @@ public sealed class DatabaseServersTests
         finally
         {
             Docker.Said("rm", "-f", name);
+        }
+    }
+
+    /// <summary>MongoDB in a container of the test's own: its connection found by its URI, its explorer down to a collection's
+    /// fields and indexes, its documents as rows with the chosen one's tree beside them, a field written, a document deleted
+    /// and one added and submitted, one changed since it was read refusing them; a console of its shell running a find and a
+    /// pipeline, completion of the collections and a collection's calls, a read-only mark refusing a delete, and an agent's
+    /// count read while its insert is refused.</summary>
+    private static void Mongo()
+    {
+        string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}dbmongo";
+        try
+        {
+            Docker.Run(["run", "-d", "--name", name, "--label", Docker.RunLabel, "-p", "127.0.0.1::27017", "-e", "MONGO_INITDB_ROOT_USERNAME=passenger",
+                "-e", "MONGO_INITDB_ROOT_PASSWORD=" + Password, MongoImage]);
+            string uri = $"mongodb://passenger:{Uri.EscapeDataString(Password)}@127.0.0.1:{Published(name, 27017)}/shop?authSource=admin";
+            Ui.WaitFor(() => MongoMade(uri), $"{MongoImage} to take connections and hold the shop's orders", TimeSpan.FromMinutes(3));
+            using MongoDB.Driver.MongoClient client = new(uri);
+            MongoDB.Driver.IMongoCollection<MongoDB.Bson.BsonDocument> orders = client.GetDatabase("shop").GetCollection<MongoDB.Bson.BsonDocument>("orders");
+            MongoDB.Bson.BsonDocument? Order(string named) =>
+                MongoDB.Driver.IFindFluentExtensions.FirstOrDefault(MongoDB.Driver.IMongoCollectionExtensions.Find(orders, new MongoDB.Bson.BsonDocument("name", named)));
+            string folder = TestFolders.Create("database-mongo");
+            TestFolders.Write(folder, "Shop.csproj", TestProjects.Console());
+            TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
+            TestFolders.Write(folder, "appsettings.json", $$$"""{"ConnectionStrings":{"Shop":"{{{uri}}}"}}""");
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            try
+            {
+                window.ShowToolWindow(ToolWindowIds.Database);
+                Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy && window.Database.Sources.Any(s => s.Name == "Shop"), () => window.Database.Said);
+                Assert.Equal(DatabaseKind.MongoDb, window.Database.Sources.Single(s => s.Name == "Shop").Kind);
+                foreach (string row in (string[])["Shop", "shop", "Collections", "orders", "Fields"])
+                {
+                    DatabaseTests.Open(window, row);
+                }
+                Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == DatabaseNodeKind.Column && r.Title == "_id" && r.Detail.Contains("primary key", StringComparison.Ordinal));
+                Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == DatabaseNodeKind.Column && r.Title == "qty" && r.Detail.StartsWith("int", StringComparison.Ordinal));
+                DatabaseTests.Open(window, "Indexes");
+                Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == DatabaseNodeKind.Index && r.Title.StartsWith("_id_", StringComparison.Ordinal));
+
+                // The documents as rows, the chosen one whole beside them; a field written, one deleted and one added, then submitted.
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "orders"));
+                Assert.True(window.Perform(AppActions.DatabaseOpenTable), "Open Table Data did not run");
+                Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTable is { Reading: false, Rows.RowCount: 3 }, () => $"the orders as rows ({window.Database.Said})");
+                DatabaseTableTab data = window.EditorArea.Active!.DatabaseTable!;
+                CellGrid grid = Tab<CellGrid>(window, "DatabaseTabResults");
+                int named = Array.IndexOf(data.Rows!.Columns, "name");
+                int qty = Array.IndexOf(data.Rows.Columns, "qty");
+                int Row(string order) => Enumerable.Range(0, data.Rows!.RowCount).Single(r => data.Rows.Cell(r, named) == order);
+                grid.Choose((Row("tea"), named), (Row("tea"), named));
+                DocumentTree tree = Tab<DocumentTree>(window, "DatabaseTabDocument");
+                Ui.WaitFor(() => tree.Rows.Any(r => r.Name == "address" && r.Value == "1 field"), () => string.Join(", ", tree.Rows.Select(r => $"{r.Name}={r.Value}")));
+                Assert.Contains(tree.Rows, r => r.Name == "_id" && r.Kind == "objectId" && r.Value.StartsWith("ObjectId(", StringComparison.Ordinal));
+                Write(window, grid, (Row("tea"), qty), "7");
+                grid.Choose((Row("milk"), named), (Row("milk"), named));
+                Assert.True(window.Perform(AppActions.DatabaseDeleteRows), "Delete Rows did not run");
+                Write(window, grid, (data.Shown!.RowCount - 1, named), "water");
+                Assert.Equal("1 row changed, 1 row deleted, 1 row added pending", data.Edits.Said);
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => data.Edits.IsEmpty && !data.Reading, () => data.Said);
+                Assert.Equal(MongoDB.Bson.BsonType.Int32, Order("tea")!["qty"].BsonType);
+                Assert.Equal(7, Order("tea")!["qty"].AsInt32);
+                Assert.Null(Order("milk"));
+                Assert.NotNull(Order("water"));
+                orders.UpdateOne(new MongoDB.Bson.BsonDocument("name", "coffee"), new MongoDB.Bson.BsonDocument("$set", new MongoDB.Bson.BsonDocument("qty", 6)));
+                Write(window, grid, (Row("coffee"), qty), "9");
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => !data.Reading && data.Said.Contains("changed since it was read", StringComparison.Ordinal), () => data.Said);
+                Assert.Equal(6, Order("coffee")!["qty"].AsInt32);
+                Assert.True(window.Perform(AppActions.DatabaseRevert), "Revert did not run");
+
+                // A console of MongoDB's shell: a find and a pipeline, the documents' tree beside the rows.
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console with its results under it");
+                Assert.EndsWith(".mongodb", window.EditorArea.Active!.Path, StringComparison.Ordinal);
+                SqlConsole console = window.EditorArea.ActiveGroup.Console!.Console!;
+                Run(window, "db.orders.find({ qty: { $gt: 1 } }).sort({ qty: -1 })");
+                Assert.True(console.Results is [{ Error: null }], console.Said);
+                DatabaseRows found = console.Results[0].Sets[0];
+                Assert.Equal(["tea", "coffee"], Enumerable.Range(0, found.RowCount).Select(r => found.Cell(r, Array.IndexOf(found.Columns, "name"))));
+                Ui.WaitFor(() => Tab<DocumentTree>(window, "ConsoleDocument").Rows.Any(r => r.Name == "name" && r.Value == "tea"), "the first document's tree beside the console's rows");
+                Run(window, "db.orders.aggregate([{ $group: { _id: null, total: { $sum: \"$qty\" } } }])");
+                Assert.True(console.Results is [{ Error: null, Sets: [{ RowCount: 1 } total] }] && total.Cell(0, Array.IndexOf(total.Columns, "total")) == "13", console.Said);
+
+                CodeEditor editor = window.EditorArea.CodeEditor;
+                Replace(window, "db");
+                window.KeyTextInput(".");
+                Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("orders") && window.Assist.CompletionLabels.Contains("getCollectionNames"),
+                    () => $"the collections after db., where the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+                Ui.Press(window, "ESCAPE");
+                Replace(window, "db.orders");
+                window.KeyTextInput(".");
+                Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("find") && window.Assist.CompletionLabels.Contains("aggregate"),
+                    () => $"a collection's calls after db.orders., where the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+                Ui.Press(window, "ESCAPE");
+
+                // Marked read-only, a delete is refused; an agent reads a count, its insert refused.
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
+                Assert.True(window.Perform(AppActions.DatabaseReadOnly), "Read-Only Connection did not run");
+                Replace(window, "db.orders.deleteMany({})");
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                Ui.WaitFor(() => console.Said == Refusals.ReadOnlyConnection("Shop"), () => console.Said);
+                Assert.Equal(3, orders.CountDocuments(MongoDB.Driver.FilterDefinition<MongoDB.Bson.BsonDocument>.Empty));
+                Passenger.App.Mcp.PassengerTools tools = new(window);
+                object counted = Ui.Await(tools.Database(connection: "Shop", sql: "db.orders.countDocuments({})"), "an agent's count of the orders", TimeSpan.FromMinutes(1));
+                Assert.Equal("3", Assert.Single(Assert.IsType<Passenger.App.Mcp.DatabaseQueryResult[]>(counted)).Sets[0].Rows[0][0]);
+                Task<object> inserting = tools.Database(connection: "Shop", sql: "db.orders.insertOne({ name: 'x' })");
+                Ui.WaitFor(() => inserting.IsCompleted, "an agent's insert to be refused");
+                Assert.True(inserting.Exception?.InnerException?.Message.Contains("changes data", StringComparison.Ordinal) == true, $"An agent's insert answered: {inserting.Status}");
+                Assert.DoesNotContain(Password, console.Said + window.Database.Said, StringComparison.Ordinal);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            Docker.Said("rm", "-f", name);
+        }
+    }
+
+    /// <summary>Whether MongoDB takes connections, the shop's orders put back as the test begins with them once it does.</summary>
+    private static bool MongoMade(string uri)
+    {
+        try
+        {
+            MongoDB.Driver.MongoClientSettings settings = MongoDB.Driver.MongoClientSettings.FromConnectionString(uri);
+            settings.ServerSelectionTimeout = TimeSpan.FromSeconds(2);
+            using MongoDB.Driver.MongoClient client = new(settings);
+            MongoDB.Driver.IMongoCollection<MongoDB.Bson.BsonDocument> orders = client.GetDatabase("shop").GetCollection<MongoDB.Bson.BsonDocument>("orders");
+            orders.DeleteMany(MongoDB.Driver.FilterDefinition<MongoDB.Bson.BsonDocument>.Empty);
+            orders.InsertMany([
+                MongoDB.Bson.BsonDocument.Parse("{ name: 'tea', qty: 2, tags: ['hot'], address: { city: 'Oslo' } }"),
+                MongoDB.Bson.BsonDocument.Parse("{ name: 'coffee', qty: 5, tags: ['hot', 'strong'] }"),
+                MongoDB.Bson.BsonDocument.Parse("{ name: 'milk', qty: 1 }"),
+            ]);
+            return true;
+        }
+        catch (Exception unready) when (unready is MongoDB.Driver.MongoException or TimeoutException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Cosmos DB's emulator in a container of the test's own: its connection found in the folder's settings, its
+    /// explorer down to a container's fields and its partition key, its documents as rows with the chosen one's tree beside
+    /// them, a field written and submitted, a console's query of the container its FROM names, completion of an alias's
+    /// fields, and an agent's count.</summary>
+    private static void Cosmos()
+    {
+        string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}dbcosmos";
+        try
+        {
+            Docker.Run(["run", "-d", "--name", name, "--label", Docker.RunLabel, "-p", "127.0.0.1::8081", CosmosImage]);
+            string endpoint = $"http://127.0.0.1:{Published(name, 8081)}/";
+            Assert.True(Ui.Await(Waiting.Apart(() => Waiting.UntilAsync(() => CosmosMadeAsync(endpoint), TimeSpan.FromMinutes(5))),
+                $"{CosmosImage} to take connections and hold the shop's orders", TimeSpan.FromMinutes(6)), $"{CosmosImage} never took connections");
+            using Microsoft.Azure.Cosmos.CosmosClient cosmos = new(endpoint, CosmosKey, new Microsoft.Azure.Cosmos.CosmosClientOptions
+            {
+                ConnectionMode = Microsoft.Azure.Cosmos.ConnectionMode.Gateway, LimitToEndpoint = true,
+            });
+            Microsoft.Azure.Cosmos.Container orders = cosmos.GetContainer("shop", "orders");
+            string folder = TestFolders.Create("database-cosmos");
+            TestFolders.Write(folder, "Shop.csproj", TestProjects.Console());
+            TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
+            TestFolders.Write(folder, "appsettings.json", $$$"""{"ConnectionStrings":{"Shop":"AccountEndpoint={{{endpoint}}};AccountKey={{{CosmosKey}}};Database=shop"}}""");
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            try
+            {
+                window.ShowToolWindow(ToolWindowIds.Database);
+                Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy && window.Database.Sources.Any(s => s.Name == "Shop"), () => window.Database.Said);
+                Assert.Equal(DatabaseKind.CosmosDb, window.Database.Sources.Single(s => s.Name == "Shop").Kind);
+                foreach (string row in (string[])["Shop", "shop", "Containers", "orders", "Keys"])
+                {
+                    DatabaseTests.Open(window, row);
+                }
+                Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == DatabaseNodeKind.Key && r.Title == "partition key /category");
+
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "orders"));
+                Assert.True(window.Perform(AppActions.DatabaseOpenTable), "Open Table Data did not run");
+                Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTable is { Reading: false, Rows.RowCount: 3 }, () => $"the orders as rows ({window.EditorArea.Active?.DatabaseTable?.Said})");
+                DatabaseTableTab data = window.EditorArea.Active!.DatabaseTable!;
+                CellGrid grid = Tab<CellGrid>(window, "DatabaseTabResults");
+                int named = Array.IndexOf(data.Rows!.Columns, "name");
+                int qty = Array.IndexOf(data.Rows.Columns, "qty");
+                int tea = Enumerable.Range(0, data.Rows.RowCount).Single(r => data.Rows.Cell(r, named) == "tea");
+                grid.Choose((tea, named), (tea, named));
+                DocumentTree tree = Tab<DocumentTree>(window, "DatabaseTabDocument");
+                Ui.WaitFor(() => tree.Rows.Any(r => r.Name == "category" && r.Value == "drink"), () => string.Join(", ", tree.Rows.Select(r => $"{r.Name}={r.Value}")));
+                Write(window, grid, (tea, qty), "7");
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => data.Edits.IsEmpty && !data.Reading, () => data.Said);
+                Microsoft.Azure.Cosmos.ItemResponse<Dictionary<string, object>> written = Ui.Await(orders.ReadItemAsync<Dictionary<string, object>>("1", new Microsoft.Azure.Cosmos.PartitionKey("drink")),
+                    "the tea order as Cosmos DB has it");
+                Assert.Equal(7, Convert.ToInt32(written.Resource["qty"], CultureInfo.InvariantCulture));
+
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console with its results under it");
+                SqlConsole console = window.EditorArea.ActiveGroup.Console!.Console!;
+                Run(window, "SELECT o.name, o.qty FROM orders o WHERE o.qty > 1");
+                Assert.True(console.Results is [{ Error: null }], console.Said);
+                DatabaseRows found = console.Results[0].Sets[0];
+                Assert.Equal(["coffee", "tea"], Enumerable.Range(0, found.RowCount).Select(r => found.Cell(r, Array.IndexOf(found.Columns, "name"))).Order());
+                CodeEditor editor = window.EditorArea.CodeEditor;
+                Replace(window, "SELECT  FROM orders o");
+                editor.Selections = SelectionSet.Single("SELECT ".Length);
+                window.KeyTextInput("o");
+                window.KeyTextInput(".");
+                Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("qty") && window.Assist.CompletionLabels.Contains("category"),
+                    () => $"the orders' fields after o., where the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+                Ui.Press(window, "ESCAPE");
+                object counted = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).Database(connection: "Shop", sql: "SELECT VALUE COUNT(1) FROM orders o"),
+                    "an agent's count of the orders", TimeSpan.FromMinutes(1));
+                Assert.Equal("3", Assert.Single(Assert.IsType<Passenger.App.Mcp.DatabaseQueryResult[]>(counted)).Sets[0].Rows[0][0]);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            Docker.Said("rm", "-f", name);
+        }
+    }
+
+    /// <summary>Whether the emulator takes connections, the shop's orders put back as the test begins with them once it does.</summary>
+    private static async Task<bool> CosmosMadeAsync(string endpoint)
+    {
+        try
+        {
+            using Microsoft.Azure.Cosmos.CosmosClient cosmos = new(endpoint, CosmosKey, new Microsoft.Azure.Cosmos.CosmosClientOptions
+            {
+                ConnectionMode = Microsoft.Azure.Cosmos.ConnectionMode.Gateway, LimitToEndpoint = true, RequestTimeout = TimeSpan.FromSeconds(5),
+            });
+            Microsoft.Azure.Cosmos.Database shop = (await cosmos.CreateDatabaseIfNotExistsAsync("shop")).Database;
+            Microsoft.Azure.Cosmos.Container orders = (await shop.CreateContainerIfNotExistsAsync("orders", "/category")).Container;
+            foreach (Dictionary<string, object> order in (Dictionary<string, object>[])[
+                new() { ["id"] = "1", ["category"] = "drink", ["name"] = "tea", ["qty"] = 2 },
+                new() { ["id"] = "2", ["category"] = "drink", ["name"] = "coffee", ["qty"] = 5 },
+                new() { ["id"] = "3", ["category"] = "food", ["name"] = "bread", ["qty"] = 1 },
+            ])
+            {
+                await orders.UpsertItemAsync(order, new Microsoft.Azure.Cosmos.PartitionKey((string)order["category"]));
+            }
+            return true;
+        }
+        catch (Exception unready) when (unready is Microsoft.Azure.Cosmos.CosmosException or System.Net.Http.HttpRequestException or TaskCanceledException or IOException)
+        {
+            return false;
         }
     }
 

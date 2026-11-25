@@ -31,6 +31,9 @@ public sealed class SqlConsole(string path)
 
     public bool Running => running is not null;
 
+    /// <summary>Whether a file of a language is run against a connection as a console is: SQL's, and MongoDB's shell.</summary>
+    public static bool Speaks(Languages.Language? language) => language == Languages.Language.Sql || language == Languages.Language.MongoDb;
+
     /// <summary>The plan of the statement last explained, and the statement; null until one is.</summary>
     public PlanStep? Plan { get; private set; }
 
@@ -124,6 +127,8 @@ public sealed class SqlConsoleView : DockPanel
     private readonly TextBox filter = SearchBox.Of("Filter rows", "Filter rows");
     private readonly Button export;
     private readonly CellGrid grid = new() { Name = "ConsoleResults" };
+    private readonly DocumentTree document = new() { Name = "ConsoleDocument" };
+    private readonly PaneSplit results;
     private readonly SelectableWords output = new() { Name = "ConsoleOutput", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(Gaps.Normal) };
     private readonly ScrollViewer outputPlace;
     private readonly ListBox history = new() { Name = "ConsoleHistory" };
@@ -219,11 +224,19 @@ public sealed class SqlConsoleView : DockPanel
         Children.Add(bar);
         Children.Add(marked);
         Children.Add(strip);
-        Children.Add(new Border { Classes = { StyleClasses.Framed }, Child = new Panel { Children = { grid, outputPlace, historyPlace, plan } } });
+        // A document database's results: the grid of their fields, and the chosen document whole beside it.
+        results = new PaneSplit(grid, null, "3*,1,2*");
+        grid.CaretMoved += (_, _) => FollowDocument();
+        grid.TableChanged += (_, _) => FollowDocument();
+        Children.Add(new Border { Classes = { StyleClasses.Framed }, Child = new Panel { Children = { results, outputPlace, historyPlace, plan } } });
     }
 
     /// <summary>The plan's rows shown, for a test to read.</summary>
     public IReadOnlyList<PlanRow> PlanShown => planRows;
+
+    /// <summary>The document of the row chosen, whole, where the set shown is a document database's.</summary>
+    private void FollowDocument() => document.Show(grid.Table is { RowCount: > 0 } table && table.Unsorted is DatabaseRows { Documents.Length: > 0 } set
+        && grid.Caret.Row < table.RowCount && table.FileRow(grid.Caret.Row) is var at && at < set.Documents.Length ? set.Documents[at] : null);
 
     private void Toggle(PlanRow row)
     {
@@ -437,7 +450,7 @@ public sealed class SqlConsoleView : DockPanel
     {
         IReadOnlyList<DatabaseRows> sets = [.. (shown?.Results ?? []).SelectMany(r => r.Sets)];
         int chosen = tabs.Choice;
-        grid.IsVisible = chosen > 0;
+        results.IsVisible = chosen > 0;
         outputPlace.IsVisible = chosen == OutputTab;
         historyPlace.IsVisible = chosen == HistoryTab;
         plan.IsVisible = chosen == PlanTab;
@@ -457,6 +470,7 @@ public sealed class SqlConsoleView : DockPanel
             noHistory.IsVisible = listed.Length == 0;
         }
         DatabaseRows? set = chosen > 0 && chosen <= sets.Count ? sets[chosen - 1] : null;
+        results.Second = set is { Documents.Length: > 0 } ? document : null;
         Table? table = set is not null && filter.Text?.Trim() is { Length: > 0 } words ? set.Holding(words) : set;
         if (!ReferenceEquals(grid.Table?.Unsorted, table) && !(table is DatabaseRows a && grid.Table?.Unsorted is DatabaseRows b && a.Same(b)))
         {

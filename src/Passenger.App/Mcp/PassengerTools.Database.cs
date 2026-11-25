@@ -19,7 +19,7 @@ public sealed partial class PassengerTools
     [McpServerTool(Name = McpTools.Database, ReadOnly = true), Description(
         "The Database window's connections, read-only. Alone: each connection with its kind, database and where it was found. " +
         "With connection (its name): its databases and each schema's tables, views and routines; with table too ([schema.]name), " +
-        "its columns, keys, indexes and triggers; with sql, a query's rows (at most rows), a statement that changes data or schema " +
+        "its columns, keys, indexes and triggers; with sql, a query's rows (at most rows; MongoDB's in its shell's words, db.orders.find({…})), a statement that changes data or schema " +
         "or begins or ends a transaction refused. database reads another database of the connection's server.")]
     public Task<object> Database(string? connection = null, string? database = null, string? table = null, string? sql = null, int rows = 100,
         CancellationToken cancel = default) => OnUi<object>(cancel, async () =>
@@ -99,6 +99,11 @@ public sealed partial class PassengerTools
         List<SqlResult> results = [];
         await Reading(async () =>
         {
+            if (DatabaseKinds.HoldsDocuments(source.Kind))
+            {
+                await DatabaseClient.RunAsync(source, runs, most, results.Add, cancel);
+                return true;
+            }
             await using DbConnection held = await DatabaseClient.OpenAsync(source, cancel);
             await using DbTransaction transaction = await held.BeginTransactionAsync(cancel);
             await DatabaseClient.RunOnAsync(source, held, transaction, runs, most, results.Add, cancel);
@@ -137,7 +142,7 @@ public sealed partial class PassengerTools
         {
             return await read();
         }
-        catch (Exception error) when (error is DbException or System.Net.Sockets.SocketException or FormatException or ArgumentException)
+        catch (Exception error) when (error is DbException or System.Net.Sockets.SocketException or FormatException or ArgumentException or IOException or TimeoutException)
         {
             throw new InvalidOperationException(ContainerSecrets.InSaid(error.Message, known: [source.ConnectionString]), error);
         }

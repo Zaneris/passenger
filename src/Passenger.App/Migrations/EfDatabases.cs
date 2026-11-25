@@ -63,8 +63,11 @@ public static class EfDatabases
         return environment.Count == 0 ? null : new EfRunDatabase(environment, string.Join("; ", new[] { where }.Concat(kept).OfType<string>()));
     }
 
+    /// <summary>The key every Cosmos DB emulator signs in with, the same for each, as its documentation gives it.</summary>
+    private const string CosmosEmulatorKey = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
+
     /// <summary>Each database a compose run's services run from their images (PostgreSQL, SQL Server, MySQL and MariaDB,
-    /// ClickHouse), whoever uses it: its connection string as this machine reaches it, at the port Compose published, signed in
+    /// ClickHouse, MongoDB, Cosmos DB's emulator), whoever uses it: its connection string as this machine reaches it, at the port Compose published, signed in
     /// as its image's own variables make its user, with the driver's package that names its kind, and where it is. None
     /// where the run has stopped or its model cannot be read.</summary>
     public static async Task<IReadOnlyList<(string Service, string Value, string[] Packages, string Where)>> OfServicesAsync(ContainerRun run, CancellationToken cancel)
@@ -98,6 +101,14 @@ public static class EfDatabases
                 _ when image.Contains("clickhouse", StringComparison.OrdinalIgnoreCase) => (8123, ["ClickHouse.Driver"], (host, port) =>
                     $"Host={host};Port={port};Database={Told("CLICKHOUSE_DB") ?? "default"};Username={Told("CLICKHOUSE_USER") ?? "default"};"
                     + $"Password={Told("CLICKHOUSE_PASSWORD") ?? string.Empty}"),
+                "mongo" => (27017, ["MongoDB.Driver"], (host, port) => "mongodb://"
+                    + (Told("MONGO_INITDB_ROOT_USERNAME") is { } root ? $"{Uri.EscapeDataString(root)}:{Uri.EscapeDataString(Told("MONGO_INITDB_ROOT_PASSWORD") ?? string.Empty)}@" : string.Empty)
+                    + $"{host}:{port}/{Told("MONGO_INITDB_DATABASE") ?? string.Empty}" + (Told("MONGO_INITDB_ROOT_USERNAME") is null ? string.Empty : "?authSource=admin")),
+                // Every emulator signs in with the one key its documentation gives; the older one serves HTTPS on its own certificate.
+                _ when image.Contains("azure-cosmos-emulator", StringComparison.OrdinalIgnoreCase) => (8081, ["Microsoft.Azure.Cosmos"], (host, port) =>
+                    image.Contains("vnext", StringComparison.OrdinalIgnoreCase) && !string.Equals(Told("PROTOCOL"), "https", StringComparison.OrdinalIgnoreCase)
+                        ? $"AccountEndpoint=http://{host}:{port}/;AccountKey={CosmosEmulatorKey}"
+                        : $"AccountEndpoint=https://{host}:{port}/;AccountKey={CosmosEmulatorKey};DisableServerCertificateValidation=True"),
                 _ when Default(service) == 3306 => (3306, ["MySqlConnector"], (host, port) => $"Server={host};Port={port};"
                     + $"Database={Told("MYSQL_DATABASE", "MARIADB_DATABASE") ?? string.Empty};"
                     + (Told("MYSQL_ROOT_PASSWORD", "MARIADB_ROOT_PASSWORD") is { } root ? $"User ID=root;Password={root}"

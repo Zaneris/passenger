@@ -321,7 +321,7 @@ public sealed class DatabaseExplorer : DockPanel
                 }
                 List<DatabaseNode> parts =
                 [
-                    Group("Columns", depth, node, [.. schema.Columns.Select(c => Part(DatabaseNodeKind.Column, c.Name, c.Name,
+                    Group(DatabaseKinds.HoldsDocuments(source.Kind) ? "Fields" : "Columns", depth, node, [.. schema.Columns.Select(c => Part(DatabaseNodeKind.Column, c.Name, c.Name,
                         c.Type + (c.Nullable ? string.Empty : " not null") + (c.Primary ? ", primary key" : string.Empty) + (c.Generated ? ", generated" : string.Empty), c.Type))]),
                 ];
                 if (node.Kind == DatabaseNodeKind.Table)
@@ -329,7 +329,7 @@ public sealed class DatabaseExplorer : DockPanel
                     parts.Add(Group("Keys", depth, node, [.. schema.Keys.Select(k => Part(DatabaseNodeKind.Key, k, string.Empty))]));
                     parts.Add(Group("Indexes", depth, node, [.. schema.Indexes.DistinctBy(i => i.Said).Select(i => Part(DatabaseNodeKind.Index, i.Said, i.Name))]));
                 }
-                if (node.Kind == DatabaseNodeKind.Table || schema.Triggers.Count > 0)
+                if (node.Kind == DatabaseNodeKind.Table && !DatabaseKinds.HoldsDocuments(source.Kind) || schema.Triggers.Count > 0)
                 {
                     parts.Add(Group("Triggers", depth, node, [.. schema.Triggers.Select(t => Part(DatabaseNodeKind.Trigger, t.Name, t.Name, t.Said))]));
                 }
@@ -361,7 +361,9 @@ public sealed class DatabaseExplorer : DockPanel
         {
             int level = flat ? depth : depth + 1;
             List<DatabaseNode> groups = [];
-            foreach ((DatabaseObjectKind kind, string title) in new[] { (DatabaseObjectKind.Table, "Tables"), (DatabaseObjectKind.View, "Views"), (DatabaseObjectKind.Routine, "Routines"),
+            // A document database's tables are its collections, Cosmos DB's its containers.
+            string tables = source.Kind switch { DatabaseKind.MongoDb => "Collections", DatabaseKind.CosmosDb => "Containers", _ => "Tables" };
+            foreach ((DatabaseObjectKind kind, string title) in new[] { (DatabaseObjectKind.Table, tables), (DatabaseObjectKind.View, "Views"), (DatabaseObjectKind.Routine, "Routines"),
                 (DatabaseObjectKind.File, "Files") })
             {
                 // A folder's file reads as a view does.
@@ -408,7 +410,7 @@ public sealed class DatabaseExplorer : DockPanel
         List<Control> items = [];
         if (node.Table is not null)
         {
-            items.Add(ListMenus.Open("Open Table Data", () => Request(AppActions.DatabaseOpenTable)));
+            items.Add(ListMenus.Open(DatabaseKinds.HoldsDocuments(node.Source.Kind) ? "Open Documents" : "Open Table Data", () => Request(AppActions.DatabaseOpenTable)));
             items.Add(ListMenus.Keyed("Export Data…", AppActions.DatabaseExport, () => Request(AppActions.DatabaseExport)));
         }
         if (node.Kind is DatabaseNodeKind.Connection or DatabaseNodeKind.Database or DatabaseNodeKind.Schema or DatabaseNodeKind.Table

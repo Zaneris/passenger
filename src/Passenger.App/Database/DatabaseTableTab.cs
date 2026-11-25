@@ -456,7 +456,21 @@ public sealed class DatabaseTableTab : IDatabaseTab
         page.Children.Add(top);
         page.Children.Add(marked);
         page.Children.Add(status);
-        page.Children.Add(new Border { Classes = { StyleClasses.Framed }, Child = cells });
+        Border framed = new() { Classes = { StyleClasses.Framed }, Child = cells };
+        if (DatabaseKinds.HoldsDocuments(connection.Kind))
+        {
+            // A collection's documents: the grid of their fields, and the chosen one whole beside it.
+            DocumentTree tree = new() { Name = "DatabaseTabDocument" };
+            void FollowChoice() => tree.Show(shown is { } now && now.IsRead(cells.Caret.Row) && cells.Caret.Row < now.Page.Documents.Length
+                ? now.Page.Documents[cells.Caret.Row] : null);
+            cells.CaretMoved += (_, _) => FollowChoice();
+            cells.TableChanged += (_, _) => FollowChoice();
+            page.Children.Add(new PaneSplit(framed, tree, "3*,1,2*"));
+        }
+        else
+        {
+            page.Children.Add(framed);
+        }
         EventHandler following = (_, _) => Paint();
         page.AttachedToVisualTree += (_, _) =>
         {

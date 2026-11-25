@@ -76,6 +76,10 @@ public static class SqlText
     /// <summary>Where a string, quoted name or comment starting at <paramref name="at"/> ends, or null where none starts there.</summary>
     public static int? Skipped(string sql, int at, DatabaseKind kind)
     {
+        if (kind == DatabaseKind.MongoDb)
+        {
+            return DocumentShell.Skipped(sql, at);
+        }
         char c = sql[at];
         char next = at + 1 < sql.Length ? sql[at + 1] : '\0';
         if (c == '-' && next == '-' || c == '#' && kind is DatabaseKind.MySql or DatabaseKind.ClickHouse || c == '/' && next == '/' && kind == DatabaseKind.Snowflake)
@@ -113,12 +117,12 @@ public static class SqlText
             int end = sql.IndexOf(tag, at + tag.Length, StringComparison.Ordinal);
             return end < 0 ? sql.Length : end + tag.Length;
         }
-        bool escapes = kind is DatabaseKind.MySql or DatabaseKind.ClickHouse or DatabaseKind.Snowflake || kind == DatabaseKind.Postgres && at > 0 && sql[at - 1] is 'E' or 'e'
+        bool escapes = kind is DatabaseKind.MySql or DatabaseKind.ClickHouse or DatabaseKind.Snowflake or DatabaseKind.CosmosDb || kind == DatabaseKind.Postgres && at > 0 && sql[at - 1] is 'E' or 'e'
             && (at < 2 || !char.IsLetterOrDigit(sql[at - 2]));
         return c switch
         {
             '\'' => Quoted(sql, at, '\'', escapes),
-            '"' => Quoted(sql, at, '"', kind is DatabaseKind.MySql or DatabaseKind.ClickHouse),
+            '"' => Quoted(sql, at, '"', kind is DatabaseKind.MySql or DatabaseKind.ClickHouse or DatabaseKind.CosmosDb),
             '`' when kind is DatabaseKind.MySql or DatabaseKind.Sqlite or DatabaseKind.ClickHouse => Quoted(sql, at, '`', kind == DatabaseKind.ClickHouse),
             '[' when kind is DatabaseKind.SqlServer or DatabaseKind.Sqlite => Quoted(sql, at, ']', false),
             _ => null,
@@ -128,7 +132,7 @@ public static class SqlText
     /// <summary>Whether a quote starts a name rather than a string, as the database reads it.</summary>
     private static bool QuotesName(char quote, DatabaseKind kind) => quote switch
     {
-        '"' => kind != DatabaseKind.MySql,
+        '"' => kind is not (DatabaseKind.MySql or DatabaseKind.CosmosDb),
         '`' => kind is DatabaseKind.MySql or DatabaseKind.Sqlite or DatabaseKind.ClickHouse,
         '[' => kind is DatabaseKind.SqlServer or DatabaseKind.Sqlite,
         _ => false,
@@ -177,6 +181,10 @@ public static class SqlText
     /// over what is only white space and comments.</summary>
     public static List<(int Start, int End)> Statements(string sql, DatabaseKind kind)
     {
+        if (kind == DatabaseKind.MongoDb)
+        {
+            return DocumentShell.Statements(sql);
+        }
         List<(int Start, int End)> statements = [];
         List<Token> tokens = Tokens(sql, kind);
         int first = -1;
@@ -343,6 +351,11 @@ public static class SqlText
     /// FROM or an operator. EXPLAIN reads unless it ANALYZEs, which runs what it explains.</summary>
     public static SqlEffect EffectOf(string run, DatabaseKind kind)
     {
+        // Cosmos DB's SQL only reads; MongoDB's shell says what each call does.
+        if (DatabaseKinds.HoldsDocuments(kind))
+        {
+            return kind == DatabaseKind.CosmosDb ? SqlEffect.Reads : DocumentShell.EffectOf(run);
+        }
         List<Token> tokens = Tokens(run, kind);
         SqlEffect effect = SqlEffect.Reads;
         int first = 0;
@@ -379,6 +392,10 @@ public static class SqlText
     /// console in manual commit takes as its own; null for any other run, a partial ROLLBACK TO among them.</summary>
     public static SqlTransaction? TransactionOf(string run, DatabaseKind kind)
     {
+        if (DatabaseKinds.HoldsDocuments(kind))
+        {
+            return null;
+        }
         List<Token> tokens = Tokens(run, kind);
         while (tokens.Count > 0 && tokens[^1].Word == ";")
         {

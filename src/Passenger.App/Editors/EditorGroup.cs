@@ -311,7 +311,7 @@ public sealed class EditorGroup : DockPanel
         MarkdownLayout layout = area.MarkdownLayout;
         bool previewOnly = isMarkdown && layout.View == MarkdownView.Preview;
         bool moveKeys = previewOnly ? Editor.IsKeyboardFocusWithin : Markdown?.IsKeyboardFocusWithin == true && layout.View == MarkdownView.Editor;
-        Database.SqlConsole? console = document?.Language == Languages.Language.Sql ? area.ConsoleOf?.Invoke(document) : null;
+        Database.SqlConsole? console = document is not null && Database.SqlConsole.Speaks(document.Language) ? area.ConsoleOf?.Invoke(document) : null;
         body.SetPresentation(isMarkdown ? layout.Stacked : console is not null ? true : null, previewOnly);
         if (isMarkdown && layout.View != MarkdownView.Editor)
         {

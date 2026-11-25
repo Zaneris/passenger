@@ -40,6 +40,9 @@ public sealed class SqlTextTests
                 "SELECT $$a;b$$ // c;d\n; SELECT 'e\\';f'", ["SELECT $$a;b$$ // c;d", "SELECT 'e\\';f'"]),
             ("DuckDB's nested comments and a path read as a string", DatabaseKind.DuckDb,
                 "SELECT * FROM 'data/a;b.csv' /* x; /* y; */ z; */; SELECT 2", ["SELECT * FROM 'data/a;b.csv' /* x; /* y; */ z; */", "SELECT 2"]),
+            ("MongoDB's shell: a statement ends at its line unless the next goes on with a chained call, a string's or comment's semicolon ending nothing",
+                DatabaseKind.MongoDb, "db.orders.find({ n: 'a;b' }) // c;d\n  .sort({ n: 1 })\ndb.orders.countDocuments({}); db.x.drop()",
+                ["db.orders.find({ n: 'a;b' }) // c;d\n  .sort({ n: 1 })", "db.orders.countDocuments({})", "db.x.drop()"]),
         }, row => Assert.Equal(row.Runs, SqlText.Runs(row.Sql, row.Kind)), row => row.Holds);
         Cases.Each(new (string Holds, string Sql, int Caret, string? At)[]
         {
@@ -65,6 +68,12 @@ public sealed class SqlTextTests
             ("a session's SET and a transaction's statements change nothing", DatabaseKind.Postgres, "SET search_path TO app; BEGIN; COMMIT", SqlEffect.Transaction),
             ("MySQL's SET GLOBAL changes the server", DatabaseKind.MySql, "SET GLOBAL max_connections = 10", SqlEffect.ChangesSchema),
             ("a statement of a kind not known may change data", DatabaseKind.Postgres, "FROBNICATE t", SqlEffect.ChangesData),
+            ("MongoDB's call on a collection named in a string reads as the call it makes, whatever its filter's words", DatabaseKind.MongoDb,
+                "db.getCollection('orders').find({ op: 'deleteMany' })", SqlEffect.Reads),
+            ("MongoDB's pipeline writing out with $out changes data", DatabaseKind.MongoDb, "db.orders.aggregate([{ $match: {} }, { \"$out\": 'copy' }])", SqlEffect.ChangesData),
+            ("MongoDB's index made changes the schema", DatabaseKind.MongoDb, "db.orders.createIndex({ name: 1 })", SqlEffect.ChangesSchema),
+            ("runCommand reads only for a command known to", DatabaseKind.MongoDb, "db.runCommand({ ping: 1 })", SqlEffect.Reads),
+            ("Cosmos DB's SQL only reads", DatabaseKind.CosmosDb, "SELECT * FROM c WHERE c.op = 'DELETE'", SqlEffect.Reads),
         }, row => Assert.Equal(row.Effect, SqlText.EffectOf(row.Sql, row.Kind)), row => row.Holds);
         Cases.Each(new (string Holds, DatabaseKind Kind, string Sql, SqlTransaction? Transaction)[]
         {

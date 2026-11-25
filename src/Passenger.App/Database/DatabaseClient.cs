@@ -24,6 +24,10 @@ internal static partial class DatabaseClient
     /// transactions read-only, SQL Server's asked for a read-only session.</summary>
     internal static async Task<DbConnection> OpenAsync(DatabaseSource source, CancellationToken cancel)
     {
+        if (DatabaseKinds.HoldsDocuments(source.Kind))
+        {
+            throw new InvalidOperationException(Refusals.NoSqlOnDocuments(DatabaseKinds.Title(source.Kind)));
+        }
         if (source.Kind == DatabaseKind.DuckDb)
         {
             try
@@ -214,6 +218,10 @@ internal static partial class DatabaseClient
 
     internal static async Task<DatabaseSchema> SchemaAsync(DatabaseSource source, DatabaseTable table, CancellationToken cancel)
     {
+        if (DatabaseKinds.HoldsDocuments(source.Kind))
+        {
+            return await DocumentClient.SchemaAsync(source, table, cancel);
+        }
         await using DbConnection connection = await OpenAsync(source, cancel);
         if (source.Kind is DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake)
         {
@@ -337,6 +345,10 @@ internal static partial class DatabaseClient
     internal static async Task<DatabaseRows> PageAsync(DatabaseSource source, DatabaseSchema schema, int offset, CancellationToken cancel, DatabaseFilter? filter = null,
         (string Column, bool Descending)? sort = null)
     {
+        if (DatabaseKinds.HoldsDocuments(source.Kind))
+        {
+            return await DocumentClient.PageAsync(source, schema, offset, cancel, filter, sort);
+        }
         await using DbConnection connection = await OpenAsync(source, cancel);
         (string sql, List<(string Name, object? Value)> parameters) = Selecting(source.Kind, schema, filter, sort);
         parameters.Add(("@offset", offset));
@@ -399,6 +411,10 @@ internal static partial class DatabaseClient
         {
             return [source.Database];
         }
+        if (DatabaseKinds.HoldsDocuments(source.Kind))
+        {
+            return await DocumentClient.DatabasesAsync(source, cancel);
+        }
         await using DbConnection connection = await OpenAsync(source, cancel);
         string sql = source.Kind switch
         {
@@ -417,6 +433,10 @@ internal static partial class DatabaseClient
     /// its one schema, and SQLite's has none of a name.</summary>
     internal static async Task<IReadOnlyList<(string Schema, IReadOnlyList<DatabaseObject> Objects)>> ObjectsAsync(DatabaseSource source, CancellationToken cancel)
     {
+        if (DatabaseKinds.HoldsDocuments(source.Kind))
+        {
+            return await DocumentClient.CollectionsAsync(source, cancel);
+        }
         await using DbConnection connection = await OpenAsync(source, cancel);
         List<DatabaseObject> objects = [];
         List<string> schemas = [];
@@ -478,6 +498,10 @@ internal static partial class DatabaseClient
     /// <summary>The tables and views of the connection's database with their columns, for completion.</summary>
     internal static async Task<SqlCatalog> CatalogAsync(DatabaseSource source, CancellationToken cancel)
     {
+        if (DatabaseKinds.HoldsDocuments(source.Kind))
+        {
+            return await DocumentClient.CatalogAsync(source, cancel);
+        }
         await using DbConnection connection = await OpenAsync(source, cancel);
         string sql = source.Kind switch
         {
@@ -503,6 +527,11 @@ internal static partial class DatabaseClient
     internal static async Task RunAsync(DatabaseSource source, IReadOnlyList<string> runs, int limit, Action<SqlResult> told, CancellationToken cancel,
         IReadOnlyDictionary<string, string>? values = null)
     {
+        if (DatabaseKinds.HoldsDocuments(source.Kind))
+        {
+            await DocumentClient.RunAsync(source, runs, limit, told, cancel);
+            return;
+        }
         await using DbConnection connection = await OpenAsync(source, cancel);
         await RunOnAsync(source, connection, null, runs, limit, told, cancel, values);
     }
@@ -656,6 +685,11 @@ internal static partial class DatabaseClient
     /// type, or converted to the type its column was read as.</summary>
     internal static async Task SubmitAsync(DatabaseSource source, DatabaseSchema schema, DatabaseRows page, PendingEdits edits, CancellationToken cancel)
     {
+        if (DatabaseKinds.HoldsDocuments(source.Kind))
+        {
+            await DocumentClient.SubmitAsync(source, schema, page, edits, cancel);
+            return;
+        }
         string[] columns = page.Columns;
         string[] keys = [.. schema.Columns.Where(c => c.Primary).Select(c => c.Name)];
         if (keys.Length == 0 && !(edits.Changed.IsEmpty && edits.Deleted.IsEmpty))

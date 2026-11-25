@@ -196,7 +196,8 @@ public sealed class CellGrid : Control, IOwnKeys
 
     private void Move((int Row, int Column) to)
     {
-        caret = anchor = Clamp(to);
+        anchor = Clamp(to);
+        SetCaret(anchor);
         Reveal(caret);
         InvalidateVisual();
     }
@@ -294,7 +295,7 @@ public sealed class CellGrid : Control, IOwnKeys
             {
                 Fit();
             }
-            caret = Clamp(caret);
+            SetCaret(Clamp(caret));
             anchor = Clamp(anchor);
             scroll = ClampScroll(scroll);
             InvalidateArrange();
@@ -305,6 +306,19 @@ public sealed class CellGrid : Control, IOwnKeys
 
     /// <summary>Raised when the table shown is replaced (read again, another sheet, none).</summary>
     public event EventHandler? TableChanged;
+
+    /// <summary>Raised when the cell chosen moves to another, by the keys, a click or a choice made in code.</summary>
+    public event EventHandler? CaretMoved;
+
+    private void SetCaret((int Row, int Column) to)
+    {
+        if (caret == to)
+        {
+            return;
+        }
+        caret = to;
+        CaretMoved?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <summary>The cells Find matched, the one at <paramref name="current"/> marked stronger.</summary>
     public void SetMatches(IReadOnlyList<(int Row, int Column)> matches, int current)
@@ -332,7 +346,7 @@ public sealed class CellGrid : Control, IOwnKeys
     public void Choose((int Row, int Column) from, (int Row, int Column) to)
     {
         anchor = Clamp(from);
-        caret = Clamp(to);
+        SetCaret(Clamp(to));
         Reveal(caret);
         InvalidateVisual();
     }
@@ -617,12 +631,12 @@ public sealed class CellGrid : Control, IOwnKeys
         if (at.Y < RowHeight && at.X >= gutter)
         {
             anchor = extend ? (0, anchor.Column) : (0, column);
-            caret = (table.RowCount - 1, column);
+            SetCaret((table.RowCount - 1, column));
         }
         else if (at.X < gutter && at.Y >= RowHeight)
         {
             anchor = extend ? (anchor.Row, 0) : (row, 0);
-            caret = (row, table.ColumnCount - 1);
+            SetCaret((row, table.ColumnCount - 1));
         }
         else if (at.Y < RowHeight)
         {
@@ -631,7 +645,7 @@ public sealed class CellGrid : Control, IOwnKeys
         }
         else
         {
-            caret = (row, column);
+            SetCaret((row, column));
             if (!extend)
             {
                 anchor = caret;
@@ -669,7 +683,8 @@ public sealed class CellGrid : Control, IOwnKeys
         (int top, int left, int bottom, int right) = Chosen;
         if (row < top || row > bottom || column < left || column > right)
         {
-            caret = anchor = (row, column);
+            anchor = (row, column);
+            SetCaret(anchor);
             InvalidateVisual();
         }
     }
@@ -685,7 +700,7 @@ public sealed class CellGrid : Control, IOwnKeys
         }
         if (choosing)
         {
-            caret = CellAt(at);
+            SetCaret(CellAt(at));
             Reveal(caret);
             InvalidateVisual();
             return;
@@ -768,7 +783,7 @@ public sealed class CellGrid : Control, IOwnKeys
         {
             return;
         }
-        caret = Clamp(cell);
+        SetCaret(Clamp(cell));
         if (!extend || e.Key == Key.Tab)
         {
             anchor = caret;

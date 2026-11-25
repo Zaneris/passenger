@@ -74,7 +74,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         Grid hostRow = Row(fields, "Host", host, out TextBlock hostLabel);
         Grid portRow = Row(fields, "Port", port);
         Grid userRow = Row(fields, "User", user);
-        Grid passwordRow = Row(fields, "Password", password);
+        Grid passwordRow = Row(fields, "Password", password, out TextBlock passwordLabel);
         Grid integratedRow = Row(fields, null, integrated);
         own.AddRange([hostRow, portRow, userRow, passwordRow, integratedRow]);
         Row(fields, "Access", mark);
@@ -300,6 +300,18 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                     MySqlConnectionStringBuilder mysql = new(initial.ConnectionString);
                     host.Text = mysql.Server; port.Value = mysql.Port; database.Text = mysql.Database; user.Text = mysql.UserID; password.Text = mysql.Password;
                     break;
+                case DatabaseKind.MongoDb when DatabaseKinds.Value(initial.ConnectionString, "Uri") is { } uri:
+                    connection.Text = uri; database.Text = DatabaseKinds.Value(initial.ConnectionString, "Database");
+                    break;
+                case DatabaseKind.MongoDb:
+                    (string mongoHost, int mongoPort) = DatabaseKinds.Endpoint(initial.Kind, initial.ConnectionString);
+                    host.Text = mongoHost; port.Value = mongoPort; database.Text = DatabaseKinds.Value(initial.ConnectionString, "Database");
+                    user.Text = DatabaseKinds.Value(initial.ConnectionString, "Username", "User"); password.Text = DatabaseKinds.Value(initial.ConnectionString, "Password");
+                    break;
+                case DatabaseKind.CosmosDb:
+                    host.Text = DatabaseKinds.Value(initial.ConnectionString, "AccountEndpoint"); database.Text = DatabaseKinds.Value(initial.ConnectionString, "Database");
+                    password.Text = DatabaseKinds.Value(initial.ConnectionString, "AccountKey");
+                    break;
             }
             if (foundOnly)
             {
@@ -339,15 +351,18 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             certificateLabel.Text = kind == DatabaseKind.SqlServer ? "Server certificate" : "Certificate authority";
             ShowSsl();
             ShowTunnel();
+            // Cosmos DB is reached at its account's endpoint by its key alone; Snowflake by its account's name.
+            bool account = kind is DatabaseKind.Snowflake or DatabaseKind.CosmosDb;
             foreach (Grid row in (Grid[])[hostRow, portRow, userRow, passwordRow])
             {
-                row.IsVisible = remote && !foundOnly && (row != portRow || kind != DatabaseKind.Snowflake);
+                row.IsVisible = remote && !foundOnly && (row != portRow || !account) && (row != userRow || kind != DatabaseKind.CosmosDb);
             }
-            hostLabel.Text = kind == DatabaseKind.Snowflake ? "Account" : "Host";
+            hostLabel.Text = kind switch { DatabaseKind.Snowflake => "Account", DatabaseKind.CosmosDb => "Endpoint", _ => "Host" };
+            passwordLabel.Text = kind == DatabaseKind.CosmosDb ? "Key" : "Password";
             // A server's usual host is this machine, an account never.
-            host.Text = kind == DatabaseKind.Snowflake && host.Text == "localhost" ? string.Empty
-                : kind != DatabaseKind.Snowflake && string.IsNullOrEmpty(host.Text) && initial is null ? "localhost" : host.Text;
-            host.PlaceholderText = kind == DatabaseKind.Snowflake ? "xy12345.eu-west-1" : null;
+            host.Text = account && host.Text == "localhost" ? string.Empty
+                : !account && string.IsNullOrEmpty(host.Text) && initial is null ? "localhost" : host.Text;
+            host.PlaceholderText = kind switch { DatabaseKind.Snowflake => "xy12345.eu-west-1", DatabaseKind.CosmosDb => "https://myaccount.documents.azure.com:443/", _ => null };
             databaseLabel.Text = remote ? "Database" : "Database file";
             database.PlaceholderText = remote ? "shop" : kind == DatabaseKind.DuckDb ? "A path from the open folder, or none for its files in memory"
                 : "Full path, or a path relative to the open folder";
@@ -404,24 +419,37 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         DatabaseKind.MySql => $"{new MySqlConnectionStringBuilder(written).Database} at {new MySqlConnectionStringBuilder(written).Server}",
         DatabaseKind.DuckDb => DatabaseKinds.FileOf(kind, written) is { Length: > 0 } file ? Path.GetFileName(file) : "DuckDB in memory",
         DatabaseKind.ClickHouse => $"{DatabaseKinds.Value(written, "Database") ?? "default"} at {DatabaseKinds.Endpoint(kind, written).Host}",
+        DatabaseKind.MongoDb or DatabaseKind.CosmosDb => $"{new DatabaseSource(string.Empty, kind, string.Empty) { ConnectionString = written }.Database} at {DatabaseKinds.Endpoint(kind, written).Host}",
         _ => $"{DatabaseKinds.Value(written, "db")} at {DatabaseKinds.Value(written, "account")}",
     };
 
     /// <summary>Whether the kind's connection may go through an SSH tunnel: a server reached at a host and port, but
     /// Snowflake's, whose service is reached by its account's name alone.</summary>
-    private static bool Tunnels(DatabaseKind kind) => !DatabaseKinds.IsFile(kind) && kind != DatabaseKind.Snowflake;
+    private static bool Tunnels(DatabaseKind kind) => !DatabaseKinds.IsFile(kind) && kind != DatabaseKind.Snowflake && !DatabaseKinds.HoldsDocuments(kind);
 
     private string Build(DatabaseKind kind)
     {
         if (!string.IsNullOrWhiteSpace(connection.Text))
         {
-            return DatabaseKinds.Builder(kind, connection.Text).ConnectionString;
+            // MongoDB's own connection string is a URI, kept whole under a key of its own.
+            return kind == DatabaseKind.MongoDb && connection.Text.TrimStart().StartsWith("mongodb", StringComparison.OrdinalIgnoreCase)
+                ? Written(string.Empty, ("Uri", connection.Text.Trim()), ("Database", database.Text?.Trim() ?? string.Empty))
+                : DatabaseKinds.Builder(kind, connection.Text).ConnectionString;
         }
         if (kind == DatabaseKind.Snowflake && string.IsNullOrWhiteSpace(host.Text))
         {
             throw new ArgumentException("Enter the account");
         }
-        if (!DatabaseKinds.IsFile(kind) && kind != DatabaseKind.Snowflake && (string.IsNullOrWhiteSpace(host.Text) || string.IsNullOrWhiteSpace(database.Text)))
+        if (kind == DatabaseKind.CosmosDb && !Uri.TryCreate(host.Text?.Trim(), UriKind.Absolute, out _))
+        {
+            throw new ArgumentException("Enter the account's endpoint, as https://myaccount.documents.azure.com:443/");
+        }
+        if (DatabaseKinds.HoldsDocuments(kind) && string.IsNullOrWhiteSpace(host.Text))
+        {
+            throw new ArgumentException("Enter the host");
+        }
+        if (!DatabaseKinds.IsFile(kind) && kind != DatabaseKind.Snowflake && !DatabaseKinds.HoldsDocuments(kind)
+            && (string.IsNullOrWhiteSpace(host.Text) || string.IsNullOrWhiteSpace(database.Text)))
         {
             throw new ArgumentException("Enter the host and database name");
         }
@@ -444,6 +472,10 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             DatabaseKind.DuckDb => DatabaseKinds.With(baseline, "Data Source", database.Text?.Trim() ?? string.Empty),
             DatabaseKind.ClickHouse => Written(baseline, ("Host", host.Text!.Trim()), ("Port", number.ToString(System.Globalization.CultureInfo.InvariantCulture)),
                 ("Database", database.Text!.Trim()), ("Username", user.Text ?? string.Empty), ("Password", password.Text ?? string.Empty)),
+            DatabaseKind.MongoDb => Written(baseline, ("Host", host.Text!.Trim()), ("Port", number.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                ("Database", database.Text?.Trim() ?? string.Empty), ("Username", user.Text ?? string.Empty), ("Password", password.Text ?? string.Empty)),
+            DatabaseKind.CosmosDb => Written(baseline, ("AccountEndpoint", host.Text!.Trim()), ("AccountKey", password.Text ?? string.Empty),
+                ("Database", database.Text?.Trim() ?? string.Empty)),
             _ => Written(baseline, ("account", host.Text!.Trim()), ("db", database.Text?.Trim() ?? string.Empty), ("user", user.Text ?? string.Empty), ("password", password.Text ?? string.Empty)),
         };
 

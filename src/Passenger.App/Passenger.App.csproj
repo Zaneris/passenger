@@ -62,6 +62,8 @@
     <PackageReference Include="DuckDB.NET.Data.Full" />
     <PackageReference Include="ClickHouse.Driver" />
     <PackageReference Include="Snowflake.Data" />
+    <PackageReference Include="MongoDB.Driver" />
+    <PackageReference Include="Microsoft.Azure.Cosmos" />
     <PackageReference Include="SSH.NET" />
     <PackageReference Include="Avalonia.Desktop" />
     <!-- Avalonia.Headless names this package, though nothing of it is read: the window draws in Passenger's own Inter
@@ -197,6 +199,18 @@
     <ItemGroup>
       <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
                              Condition="'%(Filename)' == 'msdia140' Or $([System.String]::Copy('%(Filename)').StartsWith('KernelTraceControl'))" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Cosmos DB's client gives a Windows build its x64 query planner (ServiceInterop, CRTCompat) and the Visual C++ runtime
+       it needs, under that runtime's licence rather than an open-source one. The client plans a query through its gateway
+       where the planner is missing, as on macOS and Linux, so no build carries them. -->
+  <Target Name="LeaveOutCosmosNatives" AfterTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)" Condition="'%(NuGetPackageId)' == 'Microsoft.Azure.Cosmos'" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(NuGetPackageId)' == 'Microsoft.Azure.Cosmos' And '%(AssetType)' == 'native'" />
+      <ContentWithTargetPath Remove="@(ContentWithTargetPath)"
+                             Condition="$([System.String]::Copy('%(FullPath)').Replace('\', '/').ToLowerInvariant().Contains('/microsoft.azure.cosmos/'))" />
     </ItemGroup>
   </Target>
 

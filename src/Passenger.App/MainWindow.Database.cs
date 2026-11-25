@@ -41,7 +41,7 @@ public partial class MainWindow
         Editors.Closed += (_, document) => checks.Detach(document);
         controller.Changed += (_, _) => checks.SchemaChanged();
         Editors.MarkOf = document => document.DatabaseTab is { } table ? controller.Find(table.Connection)?.Mark ?? DatabaseMark.None
-            : document.Language == Languages.Language.Sql && controller.ConsoleOf(document.Path) is { Connection: { } id } ? controller.Find(id)?.Mark ?? DatabaseMark.None
+            : SqlConsole.Speaks(document.Language) && controller.ConsoleOf(document.Path) is { Connection: { } id } ? controller.Find(id)?.Mark ?? DatabaseMark.None
             : DatabaseMark.None;
         Editors.AsksBeforeClosing = AsksBeforeClosingDatabase;
         Editors.MakeConsoleView = () =>
@@ -54,6 +54,12 @@ public partial class MainWindow
                 if (chosen.Console.InTransaction && chosen.Console.Connection != chosen.Source.Id)
                 {
                     Refuse(Refusals.TransactionOpen);
+                    view.Refresh();
+                    return;
+                }
+                if (WhyNotConsoleOf(chosen.Console.Path, chosen.Source) is { } other)
+                {
+                    Refuse(other);
                     view.Refresh();
                     return;
                 }
@@ -75,7 +81,7 @@ public partial class MainWindow
             foreach (Editors.EditorGroup group in Editors.Groups)
             {
                 group.Console?.Refresh();
-                if (group.Active is { } sql && sql.Language == Languages.Language.Sql && controller.ConsoleOf(sql.Path) is not null)
+                if (group.Active is { } sql && SqlConsole.Speaks(sql.Language) && controller.ConsoleOf(sql.Path) is not null)
                 {
                     sql.DatabaseTitleChanged();
                 }
@@ -115,7 +121,7 @@ public partial class MainWindow
         Add(AppActions.DatabaseCompare, "Compare Schemas…", CompareSchemasAsync, WhyNotSchema, menu: new MenuPlace("Tools/Database", 6, 1));
         actions!.Add(new IdeAction(AppActions.DatabaseRun, "Run Statement", "Database", _ => IdeErrors.Observe(RunSqlAsync()))
         {
-            WhyNot = _ => Editors.Active is not { Language: var language } || language != Languages.Language.Sql ? Refusals.NoSqlFile
+            WhyNot = _ => Editors.Active is not { Language: var language } || !SqlConsole.Speaks(language) ? Refusals.NoSqlFile
                 : controller.ConsoleOf(Editors.Active.Path) is { Running: true } ? Refusals.SqlRunning : PersonsOwn(),
             Menus = [new MenuPlace("Tools/Database", 1, 0)],
             KeysOf = () => AppActions.KeysIn(AppActions.DatabaseRun) is var keys && keys != AppActions.DatabaseRun ? keys : null,
@@ -127,13 +133,15 @@ public partial class MainWindow
         });
         actions!.Add(new IdeAction(AppActions.DatabaseExplain, "Explain Plan", "Database", _ => IdeErrors.Observe(ExplainSqlAsync()))
         {
-            WhyNot = _ => Editors.Active is not { Language: var language } || language != Languages.Language.Sql ? Refusals.NoSqlFile
-                : controller.ConsoleOf(Editors.Active.Path) is { Running: true } ? Refusals.SqlRunning : PersonsOwn(),
+            WhyNot = _ => Editors.Active is not { Language: var language } || !SqlConsole.Speaks(language) ? Refusals.NoSqlFile
+                : controller.ConsoleOf(Editors.Active.Path) is { Running: true } ? Refusals.SqlRunning
+                : controller.ConsoleOf(Editors.Active.Path) is { Connection: { } id } && controller.Find(id) is { } explained && DatabaseKinds.HoldsDocuments(explained.Kind)
+                    ? Refusals.NoSqlOnDocuments(DatabaseKinds.Title(explained.Kind)) : PersonsOwn(),
             Menus = [new MenuPlace("Tools/Database", 1, 6)],
         });
         actions!.Add(new IdeAction(AppActions.DatabaseHistory, "Query History", "Database", _ => Editors.ActiveGroup.Console?.ShowHistory())
         {
-            WhyNot = _ => Editors.Active is not { Language: var language } file || language != Languages.Language.Sql || controller.ConsoleOf(file.Path) is not { Connection: not null }
+            WhyNot = _ => Editors.Active is not { Language: var language } file || !SqlConsole.Speaks(language) || controller.ConsoleOf(file.Path) is not { Connection: not null }
                 || Editors.ActiveGroup.Console is null ? Refusals.NoSqlConsole : null,
             Menus = [new MenuPlace("Tools/Database", 1, 5)],
         });
@@ -188,7 +196,7 @@ public partial class MainWindow
                 }
             })
             {
-                WhyNot = _ => Editors.Active is not { Language: var language } file || language != Languages.Language.Sql || controller.ConsoleOf(file.Path) is not { } console
+                WhyNot = _ => Editors.Active is not { Language: var language } file || !SqlConsole.Speaks(language) || controller.ConsoleOf(file.Path) is not { } console
                     ? Refusals.NoSqlFile : !console.Manual ? Refusals.AutoCommits : console.Running ? Refusals.SqlRunning : !console.InTransaction ? Refusals.NoTransaction : PersonsOwn(),
                 Menus = [new MenuPlace("Tools/Database", 1, at)],
             });
@@ -233,10 +241,13 @@ public partial class MainWindow
             });
         }
 
-        string? WhyNotObject() => databaseExplorer?.Chosen is not { Target: not null } chosen ? Refusals.NoDatabaseObject : WhyNotOpened(chosen.Source) ?? PersonsOwn();
+        string? WhyNotObject() => databaseExplorer?.Chosen is not { Target: not null } chosen ? Refusals.NoDatabaseObject
+            : DatabaseKinds.HoldsDocuments(chosen.Source.Kind) ? Refusals.NoSqlOnDocuments(DatabaseKinds.Title(chosen.Source.Kind))
+            : WhyNotOpened(chosen.Source) ?? PersonsOwn();
 
         string? WhyNotSchema() => databaseExplorer?.Chosen is not { Kind: not DatabaseNodeKind.Note } chosen ? Refusals.NoDatabaseConnection
-            : chosen.Source.Kind is DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake ? Refusals.NoSchemaReads(DatabaseKinds.Title(chosen.Source.Kind))
+            : chosen.Source.Kind is DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake || DatabaseKinds.HoldsDocuments(chosen.Source.Kind)
+                ? Refusals.NoSchemaReads(DatabaseKinds.Title(chosen.Source.Kind))
             : WhyNotOpened(chosen.Source) ?? PersonsOwn();
 
         string? PersonsOwn() => AgentsOwn || Mcp.AgentCall.Current is not null ? Refusals.AsksThePerson : null;
@@ -488,7 +499,7 @@ public partial class MainWindow
             return;
         }
         string consoles = Path.Combine(State.ProjectState.FolderOf(StateFolder, folder), "consoles");
-        string path = Path.Combine(consoles, FileNames.Safe(source.Name) + ".sql");
+        string path = Path.Combine(consoles, FileNames.Safe(source.Name) + (source.Kind == DatabaseKind.MongoDb ? ".mongodb" : ".sql"));
         if (!File.Exists(path))
         {
             await BackgroundWork.Run(() =>
@@ -550,8 +561,8 @@ public partial class MainWindow
     /// <summary>The SQL file Run SQL File runs where it is asked: the Explorer's row (its menu's, or the row chosen while it
     /// has the keys), else the file shown; null where that is no SQL file.</summary>
     private string? SqlFileOf(ActionContext context) => RowOf(context) is { } row
-        ? row is { Kind: Passenger.App.Explorer.NodeKind.File, Path: { } path } && Languages.Language.ForPath(path) == Languages.Language.Sql ? path : null
-        : Editors.Active is { } shown && shown.Language == Languages.Language.Sql ? shown.Path : null;
+        ? row is { Kind: Passenger.App.Explorer.NodeKind.File, Path: { } path } && SqlConsole.Speaks(Languages.Language.ForPath(path)) ? path : null
+        : Editors.Active is { } shown && SqlConsole.Speaks(shown.Language) ? shown.Path : null;
 
     /// <summary>Run SQL File: the file opened where it is not shown, then every statement of it run in turn.</summary>
     private async Task RunSqlFileAsync(string? path)
@@ -603,18 +614,23 @@ public partial class MainWindow
     private async Task<IReadOnlyDictionary<string, string>?> ValuesAsync(SqlConsole console, IReadOnlyList<string> runs, DatabaseKind kind) =>
         SqlParameters.Asked(SqlParameters.Of(runs, kind)) is { Count: > 0 } asked ? await AskParametersAsync(console, asked, runs.Count) : new Dictionary<string, string>();
 
+    /// <summary>Why a file may not run against a connection: MongoDB's shell runs on MongoDB alone, and SQL on every other.</summary>
+    private static string? WhyNotConsoleOf(string path, DatabaseSource source) =>
+        Languages.Language.ForPath(path) == Languages.Language.MongoDb == (source.Kind == DatabaseKind.MongoDb) ? null
+            : Refusals.ConsoleOfAnother(Languages.Language.ForPath(path).Name, DatabaseKinds.Title(source.Kind));
+
     /// <summary>The SQL file shown as a console and its connection, asking which connection where it has none yet; null
     /// where none is chosen or it may not be opened, said.</summary>
     private async Task<(SqlConsole Console, DatabaseSource Source)?> ConsoleToRunAsync()
     {
-        if (Editors.Active is not { } file || file.Language != Languages.Language.Sql || database is not { } controller)
+        if (Editors.Active is not { } file || !SqlConsole.Speaks(file.Language) || database is not { } controller)
         {
             return null;
         }
         SqlConsole? console = controller.ConsoleOf(file.Path);
         if (console?.Connection is not { } id || controller.Find(id) is null)
         {
-            IReadOnlyList<DatabaseSource> sources = controller.Sources;
+            IReadOnlyList<DatabaseSource> sources = [.. controller.Sources.Where(s => WhyNotConsoleOf(file.Path, s) is null)];
             if (sources.Count == 0)
             {
                 Refuse(Refusals.NoDatabaseConnection);
@@ -691,7 +707,7 @@ public partial class MainWindow
         {
             return new ExportFrom(null, table, null);
         }
-        if (context.File?.Language == Languages.Language.Sql && Editors.ActiveGroup.Console is { ChosenResult: not null, Console.Connection: not null } console)
+        if (SqlConsole.Speaks(context.File?.Language) && Editors.ActiveGroup.Console is { ChosenResult: not null, Console.Connection: not null } console)
         {
             return new ExportFrom(null, null, console);
         }
@@ -701,8 +717,10 @@ public partial class MainWindow
     private string? WhyNotExport(ActionContext context) => ExportOf(context) switch
     {
         null => Refusals.NothingToExport,
-        { Table: { } table } => table.Exported() is null ? Refusals.DatabaseBusy : null,
-        { Node: { } node } => WhyNotOpened(node.Source) ?? (database?.Busy == true ? Refusals.DatabaseBusy : null),
+        { Table: { } table } => DatabaseKinds.HoldsDocuments(table.Source.Kind) ? Refusals.NoSqlOnDocuments(DatabaseKinds.Title(table.Source.Kind))
+            : table.Exported() is null ? Refusals.DatabaseBusy : null,
+        { Node: { } node } => DatabaseKinds.HoldsDocuments(node.Source.Kind) ? Refusals.NoSqlOnDocuments(DatabaseKinds.Title(node.Source.Kind))
+            : WhyNotOpened(node.Source) ?? (database?.Busy == true ? Refusals.DatabaseBusy : null),
         { Console.Console.Connection: { } id } => database?.Find(id) is { } source ? WhyNotOpened(source) : Refusals.NoDatabaseConnection,
         _ => null,
     };
@@ -797,6 +815,7 @@ public partial class MainWindow
     }
 
     private string? WhyNotImport(ActionContext context) => ImportOf(context) is not { } to ? Refusals.NothingToImportInto
+        : DatabaseKinds.HoldsDocuments(to.Source.Kind) ? Refusals.NoSqlOnDocuments(DatabaseKinds.Title(to.Source.Kind))
         : to.Source.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(to.Source.Name)
         : WhyNotOpened(to.Source) ?? (database?.Busy == true ? Refusals.DatabaseBusy : null);
 
@@ -1003,7 +1022,7 @@ public partial class MainWindow
             IdeErrors.Observe(CloseTableAsync(group, document, table));
             return true;
         }
-        if (document.Language == Languages.Language.Sql && controller.ConsoleOf(document.Path) is { } console)
+        if (SqlConsole.Speaks(document.Language) && controller.ConsoleOf(document.Path) is { } console)
         {
             if (asks && console.InTransaction)
             {

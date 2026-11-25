@@ -66,6 +66,9 @@ public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folde
         DatabaseKind.MySql => new MySqlConnectionStringBuilder(ConnectionString).Database,
         DatabaseKind.DuckDb => DatabaseKinds.FileOf(Kind, ConnectionString) is { Length: > 0 } file ? Path.GetFileName(file) : "memory",
         DatabaseKind.ClickHouse => DatabaseKinds.Value(ConnectionString, "Database") ?? "default",
+        DatabaseKind.MongoDb => DatabaseKinds.Value(ConnectionString, "Database")
+            ?? (DatabaseKinds.Value(ConnectionString, "Uri") is { } uri ? new MongoDB.Driver.MongoUrl(uri).DatabaseName : null) ?? "test",
+        DatabaseKind.CosmosDb => DatabaseKinds.Value(ConnectionString, "Database") ?? string.Empty,
         _ => DatabaseKinds.Value(ConnectionString, "db") ?? string.Empty,
     };
 
@@ -77,7 +80,7 @@ public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folde
             DatabaseKind.Postgres => new NpgsqlConnectionStringBuilder(ConnectionString) { Database = database }.ConnectionString,
             DatabaseKind.SqlServer => new SqlConnectionStringBuilder(ConnectionString) { InitialCatalog = database }.ConnectionString,
             DatabaseKind.MySql => new MySqlConnectionStringBuilder(ConnectionString) { Database = database }.ConnectionString,
-            DatabaseKind.ClickHouse => DatabaseKinds.With(ConnectionString, "Database", database),
+            DatabaseKind.ClickHouse or DatabaseKind.MongoDb or DatabaseKind.CosmosDb => DatabaseKinds.With(ConnectionString, "Database", database),
             _ => DatabaseKinds.With(ConnectionString, "db", database),
         },
     };
@@ -144,6 +147,10 @@ public sealed class DatabaseRows(string[] columns, object?[][] rows, bool more =
     /// <summary>The table its rows are written into as SQL inserts: the table read, or the one table its statement reads.</summary>
     public InsertTarget? Into { get; init; }
 
+    /// <summary>Each row's whole document as JSON, for a document database's rows, whose cells are its top-level fields;
+    /// empty for a table's.</summary>
+    public string[] Documents { get; init; } = [];
+
     /// <summary>The column the server ordered the rows by, and which way, as its header's arrow shows.</summary>
     public (int Column, bool Descending)? OrderedBy { get; init; }
 
@@ -158,6 +165,8 @@ public sealed class DatabaseRows(string[] columns, object?[][] rows, bool more =
         .Any(c => Cell(r, c).Contains(words, StringComparison.OrdinalIgnoreCase))).Select(r => Rows[r])], More, Affected)
     {
         Schema = Schema, Types = Types, Into = Into, from = this, holding = words,
+        Documents = Documents.Length == RowCount ? [.. Enumerable.Range(0, RowCount).Where(r => Enumerable.Range(0, ColumnCount)
+            .Any(c => Cell(r, c).Contains(words, StringComparison.OrdinalIgnoreCase))).Select(r => Documents[r])] : [],
     };
 
     /// <summary>Whether two filters are of one set by the same words, so a grid keeps its sort and place.</summary>

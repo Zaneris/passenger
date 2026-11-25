@@ -42,6 +42,13 @@ dbgshim's musl Linux natives are the container tools' (below), which the app nev
 | `Google.Api.Gax`, `Google.Api.Gax.Rest` | Google Cloud Storage's client support | BSD-3-Clause | Copyright 2020 Google LLC |
 | `TimeZoneConverter` | the Snowflake provider's time zones | MIT | Matt Johnson-Pint |
 | `Tomlyn.Signed` | the Snowflake provider's connections.toml | BSD-2-Clause | Alexandre Mutel |
+| `MongoDB.Driver`, `MongoDB.Bson` | The Database window's MongoDB provider | Apache-2.0 | Copyright © 2010-present MongoDB Inc. |
+| `DnsClient` | the MongoDB provider's mongodb+srv:// lookups | Apache-2.0 | Copyright (c) 2021 Michael Conrad |
+| `SharpCompress` | the MongoDB provider's compression | MIT | Copyright (c) 2025 Adam Hathcock |
+| `Snappier` | the MongoDB provider's Snappy compression | BSD-3-Clause | Copyright 2011-2020, Google, Inc. and Snappier Authors |
+| `ZstdSharp.Port` | the MongoDB provider's Zstandard compression | MIT | Copyright Oleg Stepanischev 2023 |
+| `Microsoft.Azure.Cosmos` | The Database window's Cosmos DB provider | MIT | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.Bcl.HashCode` | the Cosmos DB provider's hashing | MIT | © Microsoft Corporation. All rights reserved. |
 | `Mono.Unix`, `System.Management`, `System.CodeDom`, `System.IO.Hashing` | the Snowflake and Google Cloud providers' file modes, machine details and hashes | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Data.SqlClient`, `Microsoft.Data.SqlClient.Extensions.Abstractions`, `Microsoft.Data.SqlClient.Internal.Logging`, `Microsoft.Data.SqlClient.SNI.runtime` | The Database window's SQL Server provider and its native transport | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Bcl.Cryptography`, `Microsoft.IdentityModel.JsonWebTokens`, `Microsoft.IdentityModel.Logging`, `Microsoft.IdentityModel.Protocols`, `Microsoft.IdentityModel.Protocols.OpenIdConnect`, `Microsoft.IdentityModel.Tokens`, `Microsoft.SqlServer.Server`, `System.IdentityModel.Tokens.Jwt`, `System.Threading.RateLimiting`, `System.Security.Cryptography.Pkcs` | SQL Server's authentication, cryptography and protocol dependencies | MIT | © Microsoft Corporation. All rights reserved. |

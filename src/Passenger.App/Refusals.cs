@@ -680,6 +680,17 @@ public static class Refusals
     /// <summary>Manual commit on a database whose statements each stand alone.</summary>
     public static string NoTransactions(string kind) => $"{kind} runs each statement alone, with no transaction to commit or roll back";
 
+    /// <summary>SQL's own reading of a document database (its DDL, a plan, an import of rows, a SQL file run against it): its
+    /// documents are read through its own client, in its own queries.</summary>
+    public static string NoSqlOnDocuments(string kind) => $"{kind} keeps documents, read in its own queries in a console of it, not in SQL's tables";
+
+    /// <summary>A Cosmos DB console of a connection that names no database, whose containers it would query.</summary>
+    public static string NoCosmosDatabase(string connection) => $"{connection} names no database: add Database=… to its connection string to query its containers";
+
+    /// <summary>A console's file run against a connection whose queries are in another language: MongoDB's shell on SQL's
+    /// databases, or SQL on MongoDB.</summary>
+    public static string ConsoleOfAnother(string language, string kind) => $"A {language} file does not run against {kind}: open a console of the connection";
+
     /// <summary>A schema diagram or comparison of a database whose keys and constraints these read in no way of its own.</summary>
     public static string NoSchemaReads(string kind) => $"Schema diagrams and comparisons read SQLite, PostgreSQL, SQL Server and MySQL, not {kind}";
 

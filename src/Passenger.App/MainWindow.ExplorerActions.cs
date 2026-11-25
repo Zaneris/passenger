@@ -410,7 +410,7 @@ public partial class MainWindow
         {
             entries.AddRange([Item(A.RunTests), Item(A.DebugTests), separator]);
         }
-        if (node is { Kind: NodeKind.File, Path: { } sql } && Languages.Language.ForPath(sql) == Languages.Language.Sql)
+        if (node is { Kind: NodeKind.File, Path: { } sql } && Passenger.App.Database.SqlConsole.Speaks(Languages.Language.ForPath(sql)))
         {
             entries.AddRange([Item(A.DatabaseRunFile), separator]);
         }
