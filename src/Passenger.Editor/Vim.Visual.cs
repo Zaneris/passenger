@@ -900,6 +900,15 @@ public sealed partial class Vim
             Region white = r with { Cursor = LastOpeningBlank(text, empty.EndIncludingBreak) };
             return n > 1 ? SentencesOn(text, white, inner, n - 1) ?? white : white;
         }
+        if (!inner && VimMotions.LineOf(text, r.Cursor) is { Length: 0 } emptyBefore && emptyBefore.EndIncludingBreak < text.Length
+            && text.GetLine(emptyBefore.Line + 1) is var indented && TextNavigation.IndentEnd(text, indented) is var opened && opened > indented.Start && opened < indented.End
+            && VimTextObjects.Of(text, indented.Start, "s", inner: true, 2 * n, breakEnds) is { } leading && LastWrittenBefore(text, leading.End) is { } unitsEnd && unitsEnd > r.Cursor
+            && !Enumerable.Range(indented.Line + 1, VimMotions.LastLine(text, breakEnds) - indented.Line)
+                .Any(line => text.GetLineStart(line) <= leading.End && VimMotions.Blank(text, line)))
+        {
+            // From an empty line before a line opening with blanks, as takes each sentence with the white before it, ending at its last character, within its paragraph.
+            return r with { Cursor = unitsEnd };
+        }
         if (!inner && n == 2 && VimMotions.LineOf(text, r.Cursor) is { Length: > 0 } beyond && r.Cursor == beyond.End
             && beyond.EndIncludingBreak < text.Length && text[beyond.EndIncludingBreak] is ' ' or '\t'
             && VimTextObjects.Of(text, LastOpeningBlank(text, beyond.EndIncludingBreak) + 1, "s", inner: true, 1, breakEnds) is { } closing
