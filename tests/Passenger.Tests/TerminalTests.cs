@@ -558,6 +558,21 @@ public sealed class TerminalTests
                 Ui.Press(window, keys.Notation());
                 Assert.True(window.DockHost.IsShown(shown), $"{keys.Display()}, pressed in the terminal, went to the shell rather than opening the {shown} window");
             }
+
+            // Next Tab and Previous Tab step the shells' tabs round, the keys staying with the shell shown.
+            window.ShowToolWindow(ToolWindowIds.Terminal);
+            window.Perform(AppActions.NewTerminalSession);
+            Ui.WaitFor(() => window.TerminalPanel.Tabs.Count == 2 && window.TerminalPanel.View.IsFocused, "a second shell's tab with the keys");
+            foreach ((string action, int step) in new[] { (AppActions.NextTab, 1), (AppActions.PreviousTab, -1) })
+            {
+                Passenger.Editor.Keystroke keys = window.Actions.Keymap.ShortcutsFor(action).First(s => s.Second is null).First;
+                int from = window.TerminalPanel.Tabs.ToList().IndexOf(window.TerminalPanel.ActiveTab!);
+                Ui.Press(window, keys.Notation());
+                TerminalTab? shown = window.TerminalPanel.ActiveTab;
+                Ui.WaitFor(() => window.TerminalPanel.View.IsFocused, () => $"the keys to stay with the terminal after {keys.Display()}");
+                Assert.True(shown == window.TerminalPanel.Tabs[(from + step + 2) % 2],
+                    $"{keys.Display()}, pressed in the terminal, left the shell of tab {from + 1} of 2 shown rather than stepping to the {(step > 0 ? "next" : "previous")} one");
+            }
             window.Close();
         }
         finally

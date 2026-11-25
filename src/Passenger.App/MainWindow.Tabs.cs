@@ -1,7 +1,10 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.VisualTree;
 using Passenger.App.Editors;
 using Passenger.App.Settings;
+using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using A = Passenger.App.AppActions;
 
@@ -59,8 +62,9 @@ public partial class MainWindow
         Editors.TabMenuOpening += (_, opening) => FillTabMenu(opening);
         Editors.MaximizeRequested += (_, _) => Request(A.HideAllToolWindows);
         Editors.HiddenTabsRequested += (_, group) => ShowHiddenTabs(group);
-        Tab(A.NextTab, "Next Tab", _ => Editors.Cycle(1), Refusals.NeedsFile, (0, 0));
-        Tab(A.PreviousTab, "Previous Tab", _ => Editors.Cycle(-1), Refusals.NeedsFile, (0, 1));
+        // Run from the terminal too, as its shells are tabs of their own.
+        actions!.Add(new IdeAction(A.NextTab, "Next Tab", Tabs, c => StepTab(c, 1)) { WhyNot = WhyNotStepTab, Menus = [new MenuPlace(TabsMenu, 0, 0)], FromTerminal = true });
+        actions.Add(new IdeAction(A.PreviousTab, "Previous Tab", Tabs, c => StepTab(c, -1)) { WhyNot = WhyNotStepTab, Menus = [new MenuPlace(TabsMenu, 0, 1)], FromTerminal = true });
         actions!.Add(new IdeAction(A.PinTab, "Pin Tab", Tabs, c => TabOf(c)!.Value.Group.Pin(TabOf(c)!.Value.File, !Pinned(c)))
         {
             WhyNot = Refusals.NeedsFile,
@@ -154,6 +158,41 @@ public partial class MainWindow
     /// <summary>A tab action listed in Window > Editor Tabs at a place.</summary>
     private void Tab(string id, string title, Action<ActionContext> run, Func<ActionContext, string?> whyNot, (int Group, int Order) at, IReadOnlyList<string>? words = null) =>
         Add(id, title, Tabs, run, whyNot, (TabsMenu, at.Group, at.Order), words);
+
+    /// <summary>Next Tab (1) or Previous Tab (-1): the tabs of what has the keys stepped (<see cref="TabsWithKeys"/>), the
+    /// keys kept in its window, else the active group's.</summary>
+    private void StepTab(ActionContext context, int step)
+    {
+        if (TabsWithKeys(context) is not { } tabs)
+        {
+            Editors.Cycle(step);
+            return;
+        }
+        // What had the keys may have gone with the tab it was on: the window's view takes them again.
+        if (tabs.StepTab(step) && context.ToolWindow is { } tool && TopLevel.GetTopLevel(tool.Content)?.FocusManager?.GetFocusedElement() is not Visual { IsEffectivelyVisible: true })
+        {
+            tool.TakeKeys();
+        }
+    }
+
+    private string? WhyNotStepTab(ActionContext context) => TabsWithKeys(context) is null ? Refusals.NeedsFile(context) : null;
+
+    /// <summary>The tabs of what has the keys: those of the nearest part holding them (the Terminal's shells), else the
+    /// first of the tool window with them, its header's before its view's; null where the editors have them.</summary>
+    private static ToolTabs.ITabbed? TabsWithKeys(ActionContext context)
+    {
+        for (Visual? at = context.Focused as Visual; at is not null; at = at.GetVisualParent())
+        {
+            if (at is ToolTabs.ITabbed tabbed)
+            {
+                return tabbed;
+            }
+        }
+        return context.ToolWindow is { IsBuilt: true } tool
+            ? new[] { tool.HeaderTools, tool.Content }.OfType<Control>().SelectMany(part => part.GetVisualDescendants().Prepend(part)).OfType<ToolTabs.ITabbed>()
+                .FirstOrDefault(tabs => tabs is Visual { IsEffectivelyVisible: true })
+            : null;
+    }
 
     /// <summary>The tab menu, its items run on the tab it opened on.</summary>
     private void FillTabMenu(TabMenu opening)
