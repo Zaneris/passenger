@@ -51,6 +51,9 @@ public sealed class DatabaseServersTests
 
     private const string ValkeyImage = "valkey/valkey:9.0.8-alpine";
 
+    /// <summary>DynamoDB Local, which runs on Arm as on x86-64, pinned.</summary>
+    private const string DynamoImage = "amazon/dynamodb-local:3.3.2";
+
     /// <summary>The bastion's image, pinned to the one the test was written against.</summary>
     private const string SshImage = "lscr.io/linuxserver/openssh-server@sha256:c8431b8982e7eb3935ebf9c46607d19c6417e39c12ce884cc66945df2e9334e8";
 
@@ -64,6 +67,7 @@ public sealed class DatabaseServersTests
     [InlineData(DatabaseKind.CosmosDb, CosmosImage)]
     [InlineData(DatabaseKind.Redis, RedisImage)]
     [InlineData(DatabaseKind.Redis, ValkeyImage)]
+    [InlineData(DatabaseKind.DynamoDb, DynamoImage)]
     public void A_server_is_found_explored_run_and_completed_through_its_driver(DatabaseKind kind, string image)
     {
         Assert.SkipWhen(kind == DatabaseKind.Snowflake, "Snowflake runs only as Snowflake's own service, which no container stands in for, and this run has no account of it");
@@ -87,6 +91,11 @@ public sealed class DatabaseServersTests
         if (kind == DatabaseKind.Redis)
         {
             Redis(image);
+            return;
+        }
+        if (kind == DatabaseKind.DynamoDb)
+        {
+            Dynamo();
             return;
         }
         Assert.SkipWhen(Docker.Said("image", "inspect", SshImage) is null, $"The engine lacks {SshImage}, which this test never pulls: pull it to run the test");
@@ -1298,6 +1307,147 @@ public sealed class DatabaseServersTests
             return true;
         }
         catch (Exception unready) when (unready is StackExchange.Redis.RedisException or TimeoutException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>DynamoDB Local in a container of the test's own: its connection found in the folder's settings by its project's
+    /// SDK, its explorer down to a table's attributes and keys, its items as rows with the chosen one's tree beside them,
+    /// attributes written (one added to an item that lacked it), an item deleted and one added, submitted in one
+    /// transaction, one changed since it was read refusing them; a console's PartiQL, completion of a table's attributes,
+    /// a read-only mark refusing an UPDATE, and an agent's read.</summary>
+    private static void Dynamo()
+    {
+        string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}dbdynamo";
+        try
+        {
+            Docker.Run(["run", "-d", "--name", name, "--label", Docker.RunLabel, "-p", "127.0.0.1::8000", DynamoImage]);
+            string endpoint = $"http://127.0.0.1:{Published(name, 8000)}";
+            using Amazon.DynamoDBv2.AmazonDynamoDBClient dynamo = new(new Amazon.Runtime.BasicAWSCredentials("local", "local"),
+                new Amazon.DynamoDBv2.AmazonDynamoDBConfig { ServiceURL = endpoint, AuthenticationRegion = "us-east-1", MaxErrorRetry = 0 });
+            Assert.True(Ui.Await(Waiting.Apart(() => Waiting.UntilAsync(() => DynamoMadeAsync(dynamo), TimeSpan.FromMinutes(2))),
+                $"{DynamoImage} to take connections and hold the shop's orders", TimeSpan.FromMinutes(3)), $"{DynamoImage} never took connections");
+            Dictionary<string, Amazon.DynamoDBv2.Model.AttributeValue>? Order(string id) =>
+                Ui.Await(dynamo.GetItemAsync("orders", new() { ["id"] = new Amazon.DynamoDBv2.Model.AttributeValue { S = id } }), $"order {id}").Item is { Count: > 0 } item ? item : null;
+            string folder = TestFolders.Create("database-dynamo");
+            TestFolders.Write(folder, "Shop.csproj", TestProjects.Console().With("  <ItemGroup>\n    <PackageReference Include=\"AWSSDK.DynamoDBv2\" Version=\"4.1.0.3\" />\n  </ItemGroup>\n"));
+            TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
+            TestFolders.Write(folder, "appsettings.json", $$$"""{"ConnectionStrings":{"Orders":"ServiceURL={{{endpoint}}};Region=us-east-1;AccessKey=local;SecretKey=local"}}""");
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            try
+            {
+                window.ShowToolWindow(ToolWindowIds.Database);
+                Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy && window.Database.Sources.Any(s => s.Name == "Orders"), () => window.Database.Said);
+                Assert.Equal(DatabaseKind.DynamoDb, window.Database.Sources.Single(s => s.Name == "Orders").Kind);
+                foreach (string row in (string[])["Orders", "us-east-1", "Tables", "orders", "Keys"])
+                {
+                    DatabaseTests.Open(window, row);
+                }
+                Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == DatabaseNodeKind.Key && r.Title == "partition key id (S)");
+
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "orders"));
+                Assert.True(window.Perform(AppActions.DatabaseOpenTable), "Open Items did not run");
+                Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTable is { Reading: false, Rows.RowCount: 3 }, () => $"the orders as rows ({window.EditorArea.Active?.DatabaseTable?.Said})");
+                DatabaseTableTab data = window.EditorArea.Active!.DatabaseTable!;
+                CellGrid grid = Tab<CellGrid>(window, "DatabaseTabResults");
+                int named = Array.IndexOf(data.Rows!.Columns, "name");
+                int qty = Array.IndexOf(data.Rows.Columns, "qty");
+                int note = Array.IndexOf(data.Rows.Columns, "note");
+                int Row(string order) => Enumerable.Range(0, data.Rows!.RowCount).Single(r => data.Rows.Cell(r, named) == order);
+                Assert.True(data.Shown!.IsAbsent(Row("coffee"), note) && !data.Shown.IsAbsent(Row("milk"), note), "A missing attribute reads as a null one does");
+                Assert.Equal(["Add Item", "Delete Items"], new[] { AppActions.DatabaseAddRow, AppActions.DatabaseDeleteRows }
+                    .Select(id => window.Actions[id]!.TitleWhere(window.Actions.Context())));
+                grid.Choose((Row("tea"), named), (Row("tea"), named));
+                DocumentTree tree = Tab<DocumentTree>(window, "DatabaseTabDocument");
+                Ui.WaitFor(() => tree.Rows.Any(r => r.Name == "address" && r.Value == "1 field"), () => string.Join(", ", tree.Rows.Select(r => $"{r.Name}={r.Value}")));
+                Write(window, grid, (Row("tea"), qty), "7");
+                Write(window, grid, (Row("coffee"), note), "decaf");
+                grid.Choose((Row("milk"), named), (Row("milk"), named));
+                Assert.True(window.Perform(AppActions.DatabaseDeleteRows), "Delete Items did not run");
+                Write(window, grid, (data.Shown.RowCount - 1, Array.IndexOf(data.Rows.Columns, "id")), "4");
+                Write(window, grid, (data.Shown.RowCount - 2, named), "water");
+                Assert.Equal("2 items changed, 1 item deleted, 1 item added pending", data.EditsSaid);
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => data.Edits.IsEmpty && !data.Reading, () => data.Said);
+                Assert.Equal("7", Order("1")!["qty"].N);
+                Assert.Equal("decaf", Order("2")!["note"].S);
+                Assert.Null(Order("3"));
+                Assert.Equal("water", Order("4")!["name"].S);
+                Ui.Await(dynamo.UpdateItemAsync(new Amazon.DynamoDBv2.Model.UpdateItemRequest
+                {
+                    TableName = "orders", Key = new() { ["id"] = new Amazon.DynamoDBv2.Model.AttributeValue { S = "2" } }, UpdateExpression = "SET qty = :q",
+                    ExpressionAttributeValues = new() { [":q"] = new Amazon.DynamoDBv2.Model.AttributeValue { N = "6" } },
+                }), "coffee changed elsewhere");
+                Write(window, grid, (Row("coffee"), qty), "9");
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => !data.Reading && data.Said.Contains("changed since it was read", StringComparison.Ordinal), () => data.Said);
+                Assert.Equal("6", Order("2")!["qty"].N);
+                Assert.True(window.Perform(AppActions.DatabaseRevert), "Revert did not run");
+
+                // A console of PartiQL, completion of a table's attributes, a read-only mark and an agent's read.
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Orders"));
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console with its results under it");
+                SqlConsole console = window.EditorArea.ActiveGroup.Console!.Console!;
+                Run(window, "SELECT * FROM \"orders\" WHERE qty > 1");
+                Assert.True(console.Results is [{ Error: null }], console.Said);
+                DatabaseRows found = console.Results[0].Sets[0];
+                Assert.Equal(["coffee", "tea"], Enumerable.Range(0, found.RowCount).Select(r => found.Cell(r, Array.IndexOf(found.Columns, "name"))).Order());
+                CodeEditor editor = window.EditorArea.CodeEditor;
+                Replace(window, "SELECT  FROM \"orders\"");
+                editor.Selections = SelectionSet.Single("SELECT ".Length);
+                window.KeyTextInput("q");
+                Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("qty"), () => $"the orders' attributes, where the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+                Ui.Press(window, "ESCAPE");
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Orders"));
+                Assert.True(window.Perform(AppActions.DatabaseReadOnly), "Read-Only Connection did not run");
+                Replace(window, "UPDATE \"orders\" SET qty = 0 WHERE id = '1'");
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                Ui.WaitFor(() => console.Said == Refusals.ReadOnlyConnection("Orders"), () => console.Said);
+                Assert.Equal("7", Order("1")!["qty"].N);
+                object read = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).Database(connection: "Orders", sql: "SELECT name FROM \"orders\" WHERE id = '1'"),
+                    "an agent's read of an item", TimeSpan.FromMinutes(1));
+                Assert.Equal("tea", Assert.Single(Assert.IsType<Passenger.App.Mcp.DatabaseQueryResult[]>(read)).Sets[0].Rows[0][0]);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            Docker.Said("rm", "-f", name);
+        }
+    }
+
+    /// <summary>Whether DynamoDB Local takes connections, the shop's orders made once it does.</summary>
+    private static async Task<bool> DynamoMadeAsync(Amazon.DynamoDBv2.AmazonDynamoDBClient dynamo)
+    {
+        try
+        {
+            if ((await dynamo.ListTablesAsync()).TableNames?.Contains("orders") != true)
+            {
+                await dynamo.CreateTableAsync(new Amazon.DynamoDBv2.Model.CreateTableRequest
+                {
+                    TableName = "orders", BillingMode = Amazon.DynamoDBv2.BillingMode.PAY_PER_REQUEST,
+                    KeySchema = [new("id", Amazon.DynamoDBv2.KeyType.HASH)],
+                    AttributeDefinitions = [new("id", Amazon.DynamoDBv2.ScalarAttributeType.S)],
+                });
+            }
+            foreach (string item in (string[])[
+                "{\"id\": \"1\", \"name\": \"tea\", \"qty\": 2, \"tags\": [\"hot\"], \"address\": {\"city\": \"Oslo\"}}",
+                "{\"id\": \"2\", \"name\": \"coffee\", \"qty\": 5}",
+                "{\"id\": \"3\", \"name\": \"milk\", \"qty\": 1, \"note\": null}",
+            ])
+            {
+                await dynamo.PutItemAsync("orders", Amazon.DynamoDBv2.DocumentModel.Document.FromJson(item).ToAttributeMap());
+            }
+            return true;
+        }
+        // Docker's port takes connections before the server listens, so a request may end with no answer meanwhile.
+        catch (Exception unready) when (unready is Amazon.Runtime.AmazonServiceException or Amazon.Runtime.AmazonClientException or System.Net.Http.HttpRequestException
+            or IOException or TaskCanceledException)
         {
             return false;
         }

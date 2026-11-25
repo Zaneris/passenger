@@ -155,8 +155,8 @@ public partial class MainWindow
         Transaction(AppActions.DatabaseRollback, "Roll Back", commit: false, 3);
         Table(AppActions.DatabaseSubmit, "Submit Changes", table => IdeErrors.Observe(table.SubmitAsync()), table => table.WhyNotSubmit, 0);
         Table(AppActions.DatabaseRevert, "Revert Changes", table => table.Revert(), table => table.WhyNotRevert, 1);
-        Table(AppActions.DatabaseAddRow, "Add Row", table => table.AddRow(), table => table.WhyNotAddRow, 2, "Add Document");
-        Table(AppActions.DatabaseDeleteRows, "Delete Rows", table => table.DeleteRows(), table => table.WhyNotDeleteRows, 3, "Delete Documents");
+        Table(AppActions.DatabaseAddRow, "Add Row", table => table.AddRow(), table => table.WhyNotAddRow, 2, noun => $"Add {noun}");
+        Table(AppActions.DatabaseDeleteRows, "Delete Rows", table => table.DeleteRows(), table => table.WhyNotDeleteRows, 3, noun => $"Delete {noun}s");
         actions!.Add(new IdeAction(AppActions.DatabaseExpire, "Set Time to Live…", "Database", _ => IdeErrors.Observe(ExpireKeyAsync()))
         {
             WhyNot = _ => controller.Busy ? Refusals.DatabaseBusy : ChosenKey() is not { } chosen ? Refusals.NoRedisKey
@@ -209,8 +209,8 @@ public partial class MainWindow
             });
         }
 
-        // A collection's tab names its rows as the documents they are.
-        void Table(string id, string title, Action<DatabaseTableTab> run, Func<DatabaseTableTab, string?> why, int at, string? documents = null)
+        // A collection's tab names its rows as the documents (DynamoDB's items) they are.
+        void Table(string id, string title, Action<DatabaseTableTab> run, Func<DatabaseTableTab, string?> why, int at, Func<string, string>? named = null)
         {
             actions!.Add(new IdeAction(id, title, "Database", _ =>
             {
@@ -222,7 +222,7 @@ public partial class MainWindow
             {
                 WhyNot = _ => Editors.Active?.DatabaseTable is not { } table ? Refusals.NoDatabaseTable : why(table) ?? PersonsOwn(),
                 Menus = [new MenuPlace("Tools/Database", 2, at)],
-                TitleIn = documents is null ? null : context => context.File?.DatabaseTable is { HoldsDocuments: true } ? documents : title,
+                TitleIn = named is null ? null : context => context.File?.DatabaseTable is { HoldsDocuments: true } tab ? named(tab.Noun) : title,
             });
         }
 

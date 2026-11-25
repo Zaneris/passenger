@@ -372,7 +372,7 @@ internal static class DocumentClient
     private static bool IsSystemField(DatabaseKind kind, string name) => kind == DatabaseKind.CosmosDb && name is "_rid" or "_self" or "_etag" or "_attachments" or "_ts";
 
     /// <summary>The kind of value a field holds, as a person reads it.</summary>
-    private static string TypeName(object? value) => value switch
+    internal static string TypeName(object? value) => value switch
     {
         string => "string",
         int or long => "int",
@@ -405,6 +405,9 @@ internal static class DocumentClient
     };
 
     private static Dictionary<string, object?> Fields(JsonObject document) => document.ToDictionary(p => p.Key, p => Cell(p.Value), StringComparer.Ordinal);
+
+    /// <summary>A JSON document's top-level fields as a row's cells hold them, as Cosmos DB's and DynamoDB's are read.</summary>
+    internal static Dictionary<string, object?> FieldsOf(JsonObject document) => Fields(document);
 
     private static object? Cell(JsonNode? value) => value switch
     {

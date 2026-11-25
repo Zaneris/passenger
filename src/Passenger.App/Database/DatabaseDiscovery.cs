@@ -168,6 +168,19 @@ internal static class DatabaseDiscovery
         }
     }
 
+    /// <summary>Marks each secret a connection string of keys and values holds, by its key's name.</summary>
+    private static void MarkSecrets(string value)
+    {
+        DbConnectionStringBuilder read = new() { ConnectionString = value };
+        foreach (string key in read.Keys)
+        {
+            if (ContainerSecrets.Secret(key))
+            {
+                ContainerSecrets.Mark(Convert.ToString(read[key], System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
+            }
+        }
+    }
+
     /// <summary>A Redis connection string as Passenger keeps one: a redis:// or rediss:// URI's parts, or StackExchange.Redis's
     /// configuration (host:port,password=…) whole where the project reads Redis; its password marked. Null for another.</summary>
     private static string? Redis(string value, IEnumerable<string> packages)
@@ -234,16 +247,15 @@ internal static class DatabaseDiscovery
         {
             return new DatabaseSource(name, DatabaseKind.Redis, folder) { ConnectionString = redis, Found = found };
         }
+        // DynamoDB's own endpoint (DynamoDB Local's) where the project reads DynamoDB.
+        if (value.Contains("ServiceURL=", StringComparison.OrdinalIgnoreCase) && packages.Any(p => p.Contains("DynamoDB", StringComparison.OrdinalIgnoreCase)))
+        {
+            MarkSecrets(value);
+            return new DatabaseSource(name, DatabaseKind.DynamoDb, folder) { ConnectionString = value, Found = found };
+        }
         if (value.Contains("AccountEndpoint=", StringComparison.OrdinalIgnoreCase))
         {
-            DbConnectionStringBuilder account = new() { ConnectionString = value };
-            foreach (string key in account.Keys)
-            {
-                if (ContainerSecrets.Secret(key))
-                {
-                    ContainerSecrets.Mark(Convert.ToString(account[key], System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
-                }
-            }
+            MarkSecrets(value);
             return new DatabaseSource(name, DatabaseKind.CosmosDb, folder) { ConnectionString = value, Found = found };
         }
         if (string.IsNullOrWhiteSpace(value) || !value.Contains('=') || value.Contains("://", StringComparison.Ordinal))

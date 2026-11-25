@@ -43,8 +43,16 @@ public static class SqlCompletions
         "UPPER", "LENGTH", "CONCAT", "SUBSTRING", "ToString", "StringToNumber", "GetCurrentDateTime", "DateTimeAdd",
     ];
 
-    /// <summary>Each database's own words beyond those all of them read; Cosmos DB's its own alone.</summary>
-    public static IReadOnlyList<string> Keywords(DatabaseKind kind) => kind == DatabaseKind.CosmosDb ? Cosmos : [.. Common, .. kind switch
+    /// <summary>DynamoDB's PartiQL words and functions.</summary>
+    private static readonly string[] PartiQl =
+    [
+        "SELECT", "FROM", "WHERE", "AND", "OR", "NOT", "IN", "BETWEEN", "IS MISSING", "IS NOT MISSING", "IS NULL", "ORDER BY", "ASC", "DESC",
+        "INSERT INTO", "VALUE", "UPDATE", "SET", "REMOVE", "DELETE FROM", "RETURNING", "EXISTS", "BEGINS_WITH", "CONTAINS", "SIZE", "ATTRIBUTE_TYPE",
+        "MISSING", "NULL", "true", "false",
+    ];
+
+    /// <summary>Each database's own words beyond those all of them read; Cosmos DB's and DynamoDB's their own alone.</summary>
+    public static IReadOnlyList<string> Keywords(DatabaseKind kind) => kind == DatabaseKind.CosmosDb ? Cosmos : kind == DatabaseKind.DynamoDb ? PartiQl : [.. Common, .. kind switch
     {
         DatabaseKind.SqlServer => (string[])["TOP", "OFFSET", "FETCH NEXT", "ROWS ONLY", "DECLARE", "EXEC", "OUTPUT", "MERGE", "IDENTITY", "NVARCHAR", "GO"],
         DatabaseKind.Postgres => ["LIMIT", "OFFSET", "RETURNING", "ILIKE", "ON CONFLICT", "DO NOTHING", "SERIAL", "JSONB", "EXPLAIN", "ANALYZE"],

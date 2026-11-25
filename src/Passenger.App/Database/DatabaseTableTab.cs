@@ -77,7 +77,7 @@ public sealed class DatabaseTableTab : IDatabaseTab
     public bool HoldsDocuments => DatabaseKinds.HoldsDocuments(connection.Kind);
 
     /// <summary>What a row is, as its bar and menus name it.</summary>
-    private string Noun => HoldsDocuments ? "Document" : "Row";
+    public string Noun => connection.Kind == DatabaseKind.DynamoDb ? "Item" : HoldsDocuments ? "Document" : "Row";
 
     /// <summary>How many rows (a collection's documents) its changes change, delete and add, said in a line.</summary>
     public string EditsSaid => edits.SaidOf(Noun.ToLowerInvariant());

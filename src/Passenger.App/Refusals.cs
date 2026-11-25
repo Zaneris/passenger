@@ -693,6 +693,15 @@ public static class Refusals
     /// <summary>A Redis key's time to live set where the key is gone (it expired, or another deleted it).</summary>
     public static string KeyGone(string key) => $"{key} is gone: read its database again";
 
+    /// <summary>A DynamoDB item added without its table's key, which every item holds.</summary>
+    public static string ItemLacksKey(string key) => $"An item added needs its key, {key}";
+
+    /// <summary>A DynamoDB table's changes, refused whole as an item they change no longer stands as it was read.</summary>
+    public static string ItemChanged(string table) => $"An item of {table} changed since it was read, so nothing was written: read the table again";
+
+    /// <summary>A DynamoDB connection naming an AWS profile the person's AWS files hold none of.</summary>
+    public static string NoAwsProfile(string profile) => $"No AWS profile {profile} in your AWS credentials or config files";
+
     /// <summary>A Redis key's changes, refused whole as a value they change no longer stands as it was read.</summary>
     public static string KeyChanged(string key) => $"{key} changed since it was read, so nothing was written: read it again";
 

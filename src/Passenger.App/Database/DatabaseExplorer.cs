@@ -322,7 +322,7 @@ public sealed class DatabaseExplorer : DockPanel
                 }
                 List<DatabaseNode> parts =
                 [
-                    Group(DatabaseKinds.HoldsDocuments(source.Kind) ? "Fields" : "Columns", depth, node, [.. schema.Columns.Select(c => Part(DatabaseNodeKind.Column, c.Name, c.Name,
+                    Group(source.Kind == DatabaseKind.DynamoDb ? "Attributes" : DatabaseKinds.HoldsDocuments(source.Kind) ? "Fields" : "Columns", depth, node, [.. schema.Columns.Select(c => Part(DatabaseNodeKind.Column, c.Name, c.Name,
                         c.Type + (c.Nullable ? string.Empty : " not null") + (c.Primary ? ", primary key" : string.Empty) + (c.Generated ? ", generated" : string.Empty), c.Type))]),
                 ];
                 if (node.Kind == DatabaseNodeKind.Table)
@@ -417,7 +417,13 @@ public sealed class DatabaseExplorer : DockPanel
         List<Control> items = [];
         if (node.Table is not null)
         {
-            items.Add(ListMenus.Open(node.Source.Kind == DatabaseKind.Redis ? "Open Value" : DatabaseKinds.HoldsDocuments(node.Source.Kind) ? "Open Documents" : "Open Table Data",
+            items.Add(ListMenus.Open(node.Source.Kind switch
+                {
+                    DatabaseKind.Redis => "Open Value",
+                    DatabaseKind.DynamoDb => "Open Items",
+                    var kind when DatabaseKinds.HoldsDocuments(kind) => "Open Documents",
+                    _ => "Open Table Data",
+                },
                 () => Request(AppActions.DatabaseOpenTable)));
             if (node.Source.Kind == DatabaseKind.Redis)
             {

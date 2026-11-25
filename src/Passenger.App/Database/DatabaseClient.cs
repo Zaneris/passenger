@@ -218,6 +218,10 @@ internal static partial class DatabaseClient
 
     internal static async Task<DatabaseSchema> SchemaAsync(DatabaseSource source, DatabaseTable table, CancellationToken cancel)
     {
+        if (source.Kind == DatabaseKind.DynamoDb)
+        {
+            return await DynamoClient.SchemaAsync(source, table, cancel);
+        }
         if (source.Kind == DatabaseKind.Redis)
         {
             return await RedisClient.SchemaAsync(source, table, cancel);
@@ -349,6 +353,10 @@ internal static partial class DatabaseClient
     internal static async Task<DatabaseRows> PageAsync(DatabaseSource source, DatabaseSchema schema, int offset, CancellationToken cancel, DatabaseFilter? filter = null,
         (string Column, bool Descending)? sort = null)
     {
+        if (source.Kind == DatabaseKind.DynamoDb)
+        {
+            return await DynamoClient.PageAsync(source, schema, offset, cancel, filter, sort);
+        }
         if (source.Kind == DatabaseKind.Redis)
         {
             return await RedisClient.PageAsync(source, schema, offset, cancel, filter, sort);
@@ -419,6 +427,10 @@ internal static partial class DatabaseClient
         {
             return [source.Database];
         }
+        if (source.Kind == DatabaseKind.DynamoDb)
+        {
+            return await DynamoClient.DatabasesAsync(source, cancel);
+        }
         if (source.Kind == DatabaseKind.Redis)
         {
             return await RedisClient.DatabasesAsync(source, cancel);
@@ -445,6 +457,10 @@ internal static partial class DatabaseClient
     /// its one schema, and SQLite's has none of a name.</summary>
     internal static async Task<IReadOnlyList<(string Schema, IReadOnlyList<DatabaseObject> Objects)>> ObjectsAsync(DatabaseSource source, CancellationToken cancel)
     {
+        if (source.Kind == DatabaseKind.DynamoDb)
+        {
+            return await DynamoClient.TablesAsync(source, cancel);
+        }
         if (source.Kind == DatabaseKind.Redis)
         {
             return await RedisClient.KeysAsync(source, cancel);
@@ -514,6 +530,10 @@ internal static partial class DatabaseClient
     /// <summary>The tables and views of the connection's database with their columns, for completion.</summary>
     internal static async Task<SqlCatalog> CatalogAsync(DatabaseSource source, CancellationToken cancel)
     {
+        if (source.Kind == DatabaseKind.DynamoDb)
+        {
+            return await DynamoClient.CatalogAsync(source, cancel);
+        }
         if (source.Kind == DatabaseKind.Redis)
         {
             return await RedisClient.CatalogAsync(source, cancel);
@@ -547,6 +567,11 @@ internal static partial class DatabaseClient
     internal static async Task RunAsync(DatabaseSource source, IReadOnlyList<string> runs, int limit, Action<SqlResult> told, CancellationToken cancel,
         IReadOnlyDictionary<string, string>? values = null)
     {
+        if (source.Kind == DatabaseKind.DynamoDb)
+        {
+            await DynamoClient.RunAsync(source, runs, limit, told, cancel);
+            return;
+        }
         if (source.Kind == DatabaseKind.Redis)
         {
             await RedisClient.RunAsync(source, runs, limit, told, cancel);
@@ -710,6 +735,11 @@ internal static partial class DatabaseClient
     /// type, or converted to the type its column was read as.</summary>
     internal static async Task SubmitAsync(DatabaseSource source, DatabaseSchema schema, DatabaseRows page, PendingEdits edits, CancellationToken cancel)
     {
+        if (source.Kind == DatabaseKind.DynamoDb)
+        {
+            await DynamoClient.SubmitAsync(source, schema, page, edits, cancel);
+            return;
+        }
         if (source.Kind == DatabaseKind.Redis)
         {
             await RedisClient.SubmitAsync(source, schema, page, edits, cancel);

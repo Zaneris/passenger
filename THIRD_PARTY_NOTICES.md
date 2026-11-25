@@ -36,7 +36,7 @@ dbgshim's musl Linux natives are the container tools' (below), which the app nev
 | `NodaTime` | the ClickHouse provider's dates and times | Apache-2.0 | Jon Skeet |
 | `Microsoft.IO.RecyclableMemoryStream` | the ClickHouse provider's buffers | MIT | © Microsoft Corporation. All rights reserved. |
 | `Snowflake.Data` | The Database window's Snowflake provider | Apache-2.0 | Snowflake |
-| `AWSSDK.Core`, `AWSSDK.S3` | the Snowflake provider's stages on Amazon S3, which a query's large results and PUT and GET reach | Apache-2.0 | Amazon Web Services |
+| `AWSSDK.Core`, `AWSSDK.S3` | the Snowflake provider's stages on Amazon S3, which a query's large results and PUT and GET reach, and the DynamoDB provider's requests | Apache-2.0 | Amazon Web Services |
 | `Azure.Storage.Blobs`, `Azure.Storage.Common` | the Snowflake provider's stages on Azure | MIT | © Microsoft Corporation. All rights reserved. |
 | `Google.Cloud.Storage.V1`, `Google.Apis`, `Google.Apis.Auth`, `Google.Apis.Core`, `Google.Apis.Storage.v1` | the Snowflake provider's stages on Google Cloud | Apache-2.0 | Copyright 2021-2026 Google LLC |
 | `Google.Api.Gax`, `Google.Api.Gax.Rest` | Google Cloud Storage's client support | BSD-3-Clause | Copyright 2020 Google LLC |
@@ -51,6 +51,8 @@ dbgshim's musl Linux natives are the container tools' (below), which the app nev
 | `Microsoft.Bcl.HashCode` | the Cosmos DB provider's hashing | MIT | © Microsoft Corporation. All rights reserved. |
 | `StackExchange.Redis` | The Database window's Redis provider | MIT | 2014 - 2026 Stack Exchange, Inc. |
 | `RESPite` | the Redis provider's protocol reader | MIT | 2025 - 2026 Marc Gravell |
+| `AWSSDK.DynamoDBv2` | The Database window's DynamoDB provider | Apache-2.0 | Amazon Web Services |
+| `AWSSDK.Extensions.Numerics` | the AWS SDK's numbers carried whole | Apache-2.0 | Amazon Web Services |
 | `Mono.Unix`, `System.Management`, `System.CodeDom`, `System.IO.Hashing` | the Snowflake and Google Cloud providers' file modes, machine details and hashes | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Data.SqlClient`, `Microsoft.Data.SqlClient.Extensions.Abstractions`, `Microsoft.Data.SqlClient.Internal.Logging`, `Microsoft.Data.SqlClient.SNI.runtime` | The Database window's SQL Server provider and its native transport | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Bcl.Cryptography`, `Microsoft.IdentityModel.JsonWebTokens`, `Microsoft.IdentityModel.Logging`, `Microsoft.IdentityModel.Protocols`, `Microsoft.IdentityModel.Protocols.OpenIdConnect`, `Microsoft.IdentityModel.Tokens`, `Microsoft.SqlServer.Server`, `System.IdentityModel.Tokens.Jwt`, `System.Threading.RateLimiting`, `System.Security.Cryptography.Pkcs` | SQL Server's authentication, cryptography and protocol dependencies | MIT | © Microsoft Corporation. All rights reserved. |

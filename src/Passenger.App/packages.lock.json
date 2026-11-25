@@ -89,6 +89,15 @@
           "Avalonia": "12.2.0"
         }
       },
+      "AWSSDK.DynamoDBv2": {
+        "type": "Direct",
+        "requested": "[4.1.0.3, )",
+        "resolved": "4.1.0.3",
+        "contentHash": "E/HlGsFqZnGVbQ4mNDqc9tBehKZXJXFM76uYLkPpvbA0NTn41BSTJ10zrfYE4VjB4ujTmFqrGIjEvYLmZLf44Q==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.1.1.2, 5.0.0)"
+        }
+      },
       "ClickHouse.Driver": {
         "type": "Direct",
         "requested": "[1.5.0, )",
@@ -421,8 +430,17 @@
       },
       "AWSSDK.Core": {
         "type": "Transitive",
-        "resolved": "4.0.100.8",
-        "contentHash": "xnuBVLQBmYQXsDZJ9mq2UDSFZm3xgO5oUb4/UR8p0UO7tG6heDhsLLI1NzZhIVAKyfW0tXg9hn9a/ek018TOVw=="
+        "resolved": "4.1.1.2",
+        "contentHash": "RETCWprYHiCwwL6mgLnhCF/w7gwpHaGVIKU+Th+xDs0yzs2b7rgz09nicLT5+k0qm7OJxze6fqiU4ZdmC3tu5A==",
+        "dependencies": {
+          "AWSSDK.Extensions.Numerics": "[4.1.0, 5.0.0)",
+          "System.IO.Hashing": "11.0.0"
+        }
+      },
+      "AWSSDK.Extensions.Numerics": {
+        "type": "Transitive",
+        "resolved": "4.1.0",
+        "contentHash": "hhoiXT1aUyVgIiQbQoqG3L1EEneqXDh2GKyH5izUlO6Rzi9GAAi8S6mlLiVwow23+EGg77zHjdmUi+ia3RSUTg=="
       },
       "AWSSDK.S3": {
         "type": "Transitive",
@@ -1021,8 +1039,8 @@
       },
       "System.IO.Hashing": {
         "type": "Transitive",
-        "resolved": "10.0.13",
-        "contentHash": "ZlcywyQ7FJmgOV2nctdfOEPGS0kRK8T2CdOoPr6F4HPYpmjSo6GQfj3yTyOzNO6B+2U84/JKSPkJJMWqLmVsMw=="
+        "resolved": "11.0.0",
+        "contentHash": "U+Bv2qCYt6eONi+arSP0QIp4uTO6os6uceBsqiAwruZ+Wo2HrRhO/0tj38M9URJtS+4DhAtT3ka2TGNFYsnhyQ=="
       },
       "System.Management": {
         "type": "Transitive",

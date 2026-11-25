@@ -76,6 +76,7 @@ public sealed class SqlTextTests
             ("MongoDB's index made changes the schema", DatabaseKind.MongoDb, "db.orders.createIndex({ name: 1 })", SqlEffect.ChangesSchema),
             ("runCommand reads only for a command known to", DatabaseKind.MongoDb, "db.runCommand({ ping: 1 })", SqlEffect.Reads),
             ("Cosmos DB's SQL only reads", DatabaseKind.CosmosDb, "SELECT * FROM c WHERE c.op = 'DELETE'", SqlEffect.Reads),
+            ("DynamoDB's PartiQL reads as SQL does: its UPDATE changes data", DatabaseKind.DynamoDb, "UPDATE \"orders\" SET qty = 0 WHERE id = '1'", SqlEffect.ChangesData),
             ("Redis's read of a key named as a command reads", DatabaseKind.Redis, "HGET DEL field", SqlEffect.Reads),
             ("Redis's write, and one it does not know, change data", DatabaseKind.Redis, "frobnicate x", SqlEffect.ChangesData),
             ("CONFIG GET reads and CONFIG SET or FLUSHDB change the server", DatabaseKind.Redis, "CONFIG SET maxmemory 1mb", SqlEffect.ChangesSchema),

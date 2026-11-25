@@ -359,8 +359,8 @@ public static class SqlText
     /// FROM or an operator. EXPLAIN reads unless it ANALYZEs, which runs what it explains.</summary>
     public static SqlEffect EffectOf(string run, DatabaseKind kind)
     {
-        // Cosmos DB's SQL only reads; MongoDB's shell and Redis's commands say what each does.
-        if (!DatabaseKinds.SpeaksSql(kind))
+        // Cosmos DB's SQL only reads; MongoDB's shell and Redis's commands say what each does; DynamoDB's PartiQL reads as SQL.
+        if (!DatabaseKinds.SpeaksSql(kind) && kind != DatabaseKind.DynamoDb)
         {
             return kind switch { DatabaseKind.CosmosDb => SqlEffect.Reads, DatabaseKind.Redis => RedisCommands.EffectOf(run), _ => DocumentShell.EffectOf(run) };
         }

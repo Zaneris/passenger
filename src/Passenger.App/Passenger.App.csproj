@@ -65,6 +65,7 @@
     <PackageReference Include="MongoDB.Driver" />
     <PackageReference Include="Microsoft.Azure.Cosmos" />
     <PackageReference Include="StackExchange.Redis" />
+    <PackageReference Include="AWSSDK.DynamoDBv2" />
     <PackageReference Include="SSH.NET" />
     <PackageReference Include="Avalonia.Desktop" />
     <!-- Avalonia.Headless names this package, though nothing of it is read: the window draws in Passenger's own Inter

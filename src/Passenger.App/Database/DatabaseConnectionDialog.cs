@@ -73,7 +73,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         own.Add(databaseRow);
         Grid hostRow = Row(fields, "Host", host, out TextBlock hostLabel);
         Grid portRow = Row(fields, "Port", port);
-        Grid userRow = Row(fields, "User", user);
+        Grid userRow = Row(fields, "User", user, out TextBlock userLabel);
         Grid passwordRow = Row(fields, "Password", password, out TextBlock passwordLabel);
         Grid integratedRow = Row(fields, null, integrated);
         own.AddRange([hostRow, portRow, userRow, passwordRow, integratedRow]);
@@ -312,6 +312,10 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                     host.Text = DatabaseKinds.Value(initial.ConnectionString, "AccountEndpoint"); database.Text = DatabaseKinds.Value(initial.ConnectionString, "Database");
                     password.Text = DatabaseKinds.Value(initial.ConnectionString, "AccountKey");
                     break;
+                case DatabaseKind.DynamoDb:
+                    host.Text = DatabaseKinds.Value(initial.ConnectionString, "ServiceURL", "Endpoint"); database.Text = DatabaseKinds.Value(initial.ConnectionString, "Region");
+                    user.Text = DatabaseKinds.Value(initial.ConnectionString, "AccessKey", "Profile"); password.Text = DatabaseKinds.Value(initial.ConnectionString, "SecretKey");
+                    break;
                 case DatabaseKind.Redis when DatabaseKinds.Value(initial.ConnectionString, "Configuration") is { } configuration:
                     connection.Text = configuration; database.Text = DatabaseKinds.Value(initial.ConnectionString, "Database");
                     break;
@@ -359,20 +363,27 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             certificateLabel.Text = kind == DatabaseKind.SqlServer ? "Server certificate" : "Certificate authority";
             ShowSsl();
             ShowTunnel();
-            // Cosmos DB is reached at its account's endpoint by its key alone; Snowflake by its account's name.
-            bool account = kind is DatabaseKind.Snowflake or DatabaseKind.CosmosDb;
+            // Reached by an account, not a host: Cosmos DB's endpoint and key, Snowflake's name, DynamoDB's region and profile.
+            bool account = kind is DatabaseKind.Snowflake or DatabaseKind.CosmosDb or DatabaseKind.DynamoDb;
             foreach (Grid row in (Grid[])[hostRow, portRow, userRow, passwordRow])
             {
                 row.IsVisible = remote && !foundOnly && (row != portRow || !account) && (row != userRow || kind != DatabaseKind.CosmosDb);
             }
-            hostLabel.Text = kind switch { DatabaseKind.Snowflake => "Account", DatabaseKind.CosmosDb => "Endpoint", _ => "Host" };
-            passwordLabel.Text = kind == DatabaseKind.CosmosDb ? "Key" : "Password";
+            hostLabel.Text = kind switch { DatabaseKind.Snowflake => "Account", DatabaseKind.CosmosDb or DatabaseKind.DynamoDb => "Endpoint", _ => "Host" };
+            passwordLabel.Text = kind switch { DatabaseKind.CosmosDb => "Key", DatabaseKind.DynamoDb => "Secret key", _ => "Password" };
+            userLabel.Text = kind == DatabaseKind.DynamoDb ? "Profile or access key" : "User";
             // A server's usual host is this machine, an account never.
             host.Text = account && host.Text == "localhost" ? string.Empty
                 : !account && string.IsNullOrEmpty(host.Text) && initial is null ? "localhost" : host.Text;
-            host.PlaceholderText = kind switch { DatabaseKind.Snowflake => "xy12345.eu-west-1", DatabaseKind.CosmosDb => "https://myaccount.documents.azure.com:443/", _ => null };
-            databaseLabel.Text = remote ? "Database" : "Database file";
-            database.PlaceholderText = kind == DatabaseKind.Redis ? "0" : remote ? "shop" : kind == DatabaseKind.DuckDb ? "A path from the open folder, or none for its files in memory"
+            host.PlaceholderText = kind switch
+            {
+                DatabaseKind.Snowflake => "xy12345.eu-west-1",
+                DatabaseKind.CosmosDb => "https://myaccount.documents.azure.com:443/",
+                DatabaseKind.DynamoDb => "AWS's own, or http://localhost:8000",
+                _ => null,
+            };
+            databaseLabel.Text = kind == DatabaseKind.DynamoDb ? "Region" : remote ? "Database" : "Database file";
+            database.PlaceholderText = kind == DatabaseKind.Redis ? "0" : kind == DatabaseKind.DynamoDb ? "us-east-1" : remote ? "shop" : kind == DatabaseKind.DuckDb ? "A path from the open folder, or none for its files in memory"
                 : "Full path, or a path relative to the open folder";
             port.Value = DatabaseKinds.Port(kind);
             integratedRow.IsVisible = provider.SelectedIndex == (int)DatabaseKind.SqlServer && !foundOnly;
@@ -427,6 +438,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         DatabaseKind.MySql => $"{new MySqlConnectionStringBuilder(written).Database} at {new MySqlConnectionStringBuilder(written).Server}",
         DatabaseKind.DuckDb => DatabaseKinds.FileOf(kind, written) is { Length: > 0 } file ? Path.GetFileName(file) : "DuckDB in memory",
         DatabaseKind.ClickHouse => $"{DatabaseKinds.Value(written, "Database") ?? "default"} at {DatabaseKinds.Endpoint(kind, written).Host}",
+        DatabaseKind.DynamoDb => $"DynamoDB at {(DatabaseKinds.Value(written, "ServiceURL") is not null ? DatabaseKinds.Endpoint(kind, written).Host : DatabaseKinds.Value(written, "Region") ?? "us-east-1")}",
         DatabaseKind.MongoDb or DatabaseKind.CosmosDb or DatabaseKind.Redis =>
             $"{new DatabaseSource(string.Empty, kind, string.Empty) { ConnectionString = written }.Database} at {DatabaseKinds.Endpoint(kind, written).Host}",
         _ => $"{DatabaseKinds.Value(written, "db")} at {DatabaseKinds.Value(written, "account")}",
@@ -455,7 +467,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         {
             throw new ArgumentException("Enter the account's endpoint, as https://myaccount.documents.azure.com:443/");
         }
-        if (!DatabaseKinds.SpeaksSql(kind) && string.IsNullOrWhiteSpace(host.Text))
+        if (!DatabaseKinds.SpeaksSql(kind) && kind != DatabaseKind.DynamoDb && string.IsNullOrWhiteSpace(host.Text))
         {
             throw new ArgumentException("Enter the host");
         }
@@ -487,6 +499,11 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                 ("Database", database.Text?.Trim() ?? string.Empty), ("Username", user.Text ?? string.Empty), ("Password", password.Text ?? string.Empty)),
             DatabaseKind.CosmosDb => Written(baseline, ("AccountEndpoint", host.Text!.Trim()), ("AccountKey", password.Text ?? string.Empty),
                 ("Database", database.Text?.Trim() ?? string.Empty)),
+            // A user with no secret is an AWS profile's name, with one an access key's.
+            DatabaseKind.DynamoDb => Written(baseline, ("ServiceURL", host.Text?.Trim() ?? string.Empty),
+                ("Region", database.Text?.Trim() is { Length: > 0 } region ? region : "us-east-1"),
+                (string.IsNullOrEmpty(password.Text) ? "Profile" : "AccessKey", user.Text?.Trim() ?? string.Empty),
+                (string.IsNullOrEmpty(password.Text) ? "AccessKey" : "Profile", string.Empty), ("SecretKey", password.Text ?? string.Empty)),
             DatabaseKind.Redis => Written(baseline, ("Host", host.Text!.Trim()), ("Port", number.ToString(System.Globalization.CultureInfo.InvariantCulture)),
                 ("Database", RedisNames.Database(RedisNames.Number(database.Text?.Trim() ?? string.Empty))), ("Username", user.Text ?? string.Empty),
                 ("Password", password.Text ?? string.Empty)),

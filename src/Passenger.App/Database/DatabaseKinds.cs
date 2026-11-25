@@ -20,11 +20,12 @@ public static partial class DatabaseKinds
         DatabaseKind.MongoDb => "MongoDB",
         DatabaseKind.CosmosDb => "Cosmos DB",
         DatabaseKind.Redis => "Redis",
+        DatabaseKind.DynamoDb => "DynamoDB",
         _ => "Snowflake",
     };
 
     /// <summary>The kinds as the connection dialog offers them, in <see cref="DatabaseKind"/>'s order.</summary>
-    public static IReadOnlyList<string> Offered { get; } = ["SQLite", "PostgreSQL", "SQL Server", "MySQL / MariaDB", "DuckDB", "ClickHouse", "Snowflake", "MongoDB", "Cosmos DB", "Redis"];
+    public static IReadOnlyList<string> Offered { get; } = ["SQLite", "PostgreSQL", "SQL Server", "MySQL / MariaDB", "DuckDB", "ClickHouse", "Snowflake", "MongoDB", "Cosmos DB", "Redis", "DynamoDB"];
 
     /// <summary>Whether the kind's database is a file of its own (SQLite's, DuckDB's), opened with no server, port or tunnel.</summary>
     public static bool IsFile(DatabaseKind kind) => kind is DatabaseKind.Sqlite or DatabaseKind.DuckDb;
@@ -138,6 +139,10 @@ public static partial class DatabaseKinds
             case DatabaseKind.Redis:
                 return (Value(connection, "Host", "Server") ?? "localhost",
                     int.TryParse(Value(connection, "Port"), System.Globalization.CultureInfo.InvariantCulture, out int redisPort) ? redisPort : Port(kind));
+            case DatabaseKind.DynamoDb when Uri.TryCreate(Value(connection, "ServiceURL", "Endpoint"), UriKind.Absolute, out Uri? service):
+                return (service.Host, service.Port);
+            case DatabaseKind.DynamoDb:
+                return ($"dynamodb.{Value(connection, "Region") ?? "us-east-1"}.amazonaws.com", 443);
             case DatabaseKind.CosmosDb when Uri.TryCreate(Value(connection, "AccountEndpoint"), UriKind.Absolute, out Uri? account):
                 return (account.Host, account.Port);
             default:
@@ -171,6 +176,7 @@ public static partial class DatabaseKinds
     public static DatabaseKind? OfConnection(string type) =>
         type.Contains("Mongo", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.MongoDb
         : type.Contains("Redis", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.Redis
+        : type.Contains("DynamoDB", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.DynamoDb
         : type.Contains("Cosmos", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.CosmosDb
         : type.Contains("DuckDB", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.DuckDb
         : type.Contains("ClickHouse", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.ClickHouse
@@ -209,6 +215,7 @@ public static partial class DatabaseKinds
         DatabaseKind.MongoDb => 27017,
         DatabaseKind.CosmosDb => 8081,
         DatabaseKind.Redis => 6379,
+        DatabaseKind.DynamoDb => 8000,
         _ => 3306,
     };
 }
