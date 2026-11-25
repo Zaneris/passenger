@@ -16,11 +16,11 @@ public sealed class DiffPanes(Func<DiffHighlighting> chosen, Action<DiffHighligh
 {
     /// <summary>A file's diff: <paramref name="diff"/>'s other text on the left in <paramref name="leftPath"/>'s colours,
     /// <paramref name="mine"/> on the right in <paramref name="rightPath"/>'s, editable while it is <paramref name="open"/>'s
-    /// own text.</summary>
+    /// own text; <paramref name="noFile"/> the side whose version has no such file, shown saying so.</summary>
     public DiffView ForFile(string name, FileDiff diff, TextDocument mine, OpenDocument? open, (string Left, string Right) titles,
-        string leftPath, string rightPath)
+        string leftPath, string rightPath, MergeSide? noFile = null)
     {
-        DiffView view = new(name, diff, mine, editable: open is not null, titles, chosen()) { Source = rightPath };
+        DiffView view = new(name, diff, mine, editable: open is not null, titles, chosen(), noFile) { Source = rightPath };
         view.HighlightingChanged += (_, way) => keep(way);
         Colour(view, [(view.Left, leftPath, null), (view.Right, rightPath, open)]);
         return view;

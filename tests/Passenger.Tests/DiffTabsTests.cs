@@ -114,7 +114,8 @@ public sealed class DiffTabsTests : IDisposable
     /// <summary>The diff tab the Commit window opens follows the file chosen there: Show Diff on another file's row shows
     /// that file's diff in the same tab, named for it and drawn aslant, and a row chosen by a click or the keys does too, the
     /// keys staying in the list. Pinned, or its file edited in it, the tab is kept, showing its own file, and the next file's
-    /// diff the Commit window opens comes in a tab of its own, which follows from then on; one a kept tab shows brings it forward.</summary>
+    /// diff the Commit window opens comes in a tab of its own (a new file's saying so), which follows from then on; one a kept
+    /// tab shows brings it forward.</summary>
     private void The_Commit_windows_diff_tab_follows_the_file_chosen_there_until_it_is_kept()
     {
         File.WriteAllText(Path.Combine(folder, "Notes.txt"), "notes, edited\n");
@@ -164,6 +165,8 @@ public sealed class DiffTabsTests : IDisposable
         Ui.DoubleClick(CommitRowOf(window, "Draft.txt"));
         Ui.Landed(() => window.EditorArea.Diffs.Count == 3, "Draft.txt's diff in a third tab once the second was edited in");
         Assert.Equal(shop, second.Shown.Path);
+        // Draft.txt is new: its tab shows no line of the last commit's, saying so, and all of the file as added.
+        OpenDiffs.ShowsNoFile(Assert.IsType<DiffView>(window.EditorArea.ActiveGroup.Diff), MergeSide.Left);
 
         // Show Diff on a file a kept tab shows brings that tab forward, opening none.
         DiffTab third = window.EditorArea.Diffs.Select(d => d.Diff!).Single(d => d != first && d != second);

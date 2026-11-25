@@ -322,7 +322,8 @@ public sealed class HistoryTab : DockPanel
             return;
         }
         string right = document is not null ? "Current" : "File does not exist";
-        DiffView view = host.Diffs.ForFile(System.IO.Path.GetFileName(path), diff, mine, document, (version is null ? "File does not exist" : title, right), path, path);
+        DiffView view = host.Diffs.ForFile(System.IO.Path.GetFileName(path), diff, mine, document, (version is null ? "File does not exist" : title, right), path, path,
+            version is null ? MergeSide.Left : document is null ? MergeSide.Right : null);
         diffHost.Content = view;
         shownDiff = (set, path, version);
         if (diff.Hunks.Count > 0)

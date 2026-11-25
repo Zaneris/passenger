@@ -25,7 +25,7 @@ public sealed class DiffWindow : IdeWindow, IDiffHost
                 e.Handled = true;
             }
         };
-        Opened += (_, _) => view.Right.Focus();
+        Opened += (_, _) => view.Keyed.Focus();
     }
 
     public DiffContent Shown { get; }
