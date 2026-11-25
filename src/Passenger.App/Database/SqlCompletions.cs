@@ -66,6 +66,8 @@ public static class SqlCompletions
     {
         DatabaseKind.SqlServer => (string[])["TOP", "OFFSET", "FETCH NEXT", "ROWS ONLY", "DECLARE", "EXEC", "OUTPUT", "MERGE", "IDENTITY", "NVARCHAR", "GO"],
         DatabaseKind.Postgres => ["LIMIT", "OFFSET", "RETURNING", "ILIKE", "ON CONFLICT", "DO NOTHING", "SERIAL", "JSONB", "EXPLAIN", "ANALYZE"],
+        DatabaseKind.Redshift => ["LIMIT", "OFFSET", "ILIKE", "QUALIFY", "DISTKEY", "SORTKEY", "DISTSTYLE", "INTERLEAVED", "ENCODE", "COPY", "UNLOAD",
+            "VACUUM", "ANALYZE COMPRESSION", "SUPER", "VARBYTE", "LISTAGG", "APPROXIMATE COUNT", "EXPLAIN", "SHOW TABLE"],
         DatabaseKind.MySql => ["LIMIT", "OFFSET", "AUTO_INCREMENT", "SHOW TABLES", "DESCRIBE", "REPLACE INTO", "ENGINE", "EXPLAIN"],
         DatabaseKind.DuckDb => ["LIMIT", "OFFSET", "QUALIFY", "PIVOT", "UNPIVOT", "EXCLUDE", "REPLACE", "SUMMARIZE", "DESCRIBE", "ATTACH", "COPY", "EXPLAIN",
             "read_parquet", "read_csv", "read_json", "GROUP BY ALL", "ORDER BY ALL", "ASOF JOIN"],
@@ -126,7 +128,7 @@ public static class SqlCompletions
             return name;
         }
         bool plain = name.Length > 0 && (char.IsLetter(name[0]) || name[0] == '_') && name.All(c => char.IsLetterOrDigit(c) || c == '_')
-            && (kind is not (DatabaseKind.Postgres or DatabaseKind.Cassandra) || !name.Any(char.IsUpper))
+            && (!DatabaseKinds.SpeaksPostgres(kind) && kind != DatabaseKind.Cassandra || !name.Any(char.IsUpper))
             && (kind != DatabaseKind.Snowflake || !name.Any(char.IsLower))
             && !Common.Contains(name, StringComparer.OrdinalIgnoreCase);
         return plain ? name : SqlText.QuotedName(kind, name);

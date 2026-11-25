@@ -107,6 +107,24 @@
           "AWSSDK.Core": "[4.1.1.2, 5.0.0)"
         }
       },
+      "AWSSDK.Redshift": {
+        "type": "Direct",
+        "requested": "[4.1.0.2, )",
+        "resolved": "4.1.0.2",
+        "contentHash": "bTQCvCp2BuhZ3lj0zlJqhC6NK44LYGXSpN8XSyQ0stLZxTMEfPCETP5A6Z+YMZGqKxAjRYO8mb6wP3Lrs+251g==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.1.1.1, 5.0.0)"
+        }
+      },
+      "AWSSDK.RedshiftServerless": {
+        "type": "Direct",
+        "requested": "[4.1.0.2, )",
+        "resolved": "4.1.0.2",
+        "contentHash": "uiCr9K7Mj1LNb8FQz5rnVIVmx2DJpKNF6NkxwK7ru4VbAgqT/wgloZE1RVwqLxIkoIQ3We6qHPmhm73OfZJzFw==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.1.1.1, 5.0.0)"
+        }
+      },
       "AWSSDK.SecretsManager": {
         "type": "Direct",
         "requested": "[4.1.1.2, )",

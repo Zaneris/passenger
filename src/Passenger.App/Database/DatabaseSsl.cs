@@ -36,14 +36,14 @@ public static class DatabaseSsl
 
     /// <summary>Whether the connection dialog offers the kind's SSL: PostgreSQL's, SQL Server's and MySQL's, whose drivers
     /// take it from these settings (ClickHouse's https and Snowflake's own are their connection strings').</summary>
-    public static bool Offered(DatabaseKind kind) => kind is DatabaseKind.Postgres or DatabaseKind.SqlServer or DatabaseKind.MySql;
+    public static bool Offered(DatabaseKind kind) => DatabaseKinds.SpeaksPostgres(kind) || kind is DatabaseKind.SqlServer or DatabaseKind.MySql;
 
     /// <summary>What a connection string says of its SSL.</summary>
     public static SslSettings Of(DatabaseKind kind, string connection)
     {
         switch (kind)
         {
-            case DatabaseKind.Postgres:
+            case DatabaseKind.Postgres or DatabaseKind.Redshift:
                 NpgsqlConnectionStringBuilder pg = new(connection);
                 SslChoice pgChoice = !Has(connection, "sslmode") ? SslChoice.Driver : pg.SslMode switch
                 {
@@ -86,7 +86,7 @@ public static class DatabaseSsl
         string? key = certificate is null ? null : Named(ssl.Key);
         switch (kind)
         {
-            case DatabaseKind.Postgres:
+            case DatabaseKind.Postgres or DatabaseKind.Redshift:
                 NpgsqlConnectionStringBuilder pg = new(connection);
                 pg.Remove("SSL Mode");
                 pg.Remove("Root Certificate");

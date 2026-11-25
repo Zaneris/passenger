@@ -711,6 +711,12 @@ public static class Refusals
     /// <summary>IAM authentication signs in as the connection's own user, which it names none of.</summary>
     public const string NoIamUser = "IAM authentication signs in as the database user the connection names: give its user";
 
+    /// <summary>Redshift's IAM sign-in to a host that names no cluster or workgroup, with none given.</summary>
+    public static string NoRedshiftCluster(string host) => $"{host} names no Redshift cluster or workgroup: give its name in the connection's cloud sign-in";
+
+    /// <summary>Redshift refused the credentials an IAM sign-in asked of it.</summary>
+    public static string RedshiftRefusedIam(string cluster, string said) => $"Redshift gave no credentials for {cluster}: {said}";
+
     /// <summary>A Secrets Manager secret that could not be read, or held no sign-in.</summary>
     public static string SecretUnread(string secret, string said) => $"Secrets Manager's secret {secret} gave no sign-in: {said}";
 

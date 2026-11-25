@@ -68,7 +68,7 @@ public static class ImportTypes
         {
             return kind switch
             {
-                DatabaseKind.Postgres => zoned ? "timestamptz" : "timestamp",
+                DatabaseKind.Postgres or DatabaseKind.Redshift => zoned ? "timestamptz" : "timestamp",
                 DatabaseKind.SqlServer => zoned ? "datetimeoffset" : "datetime2",
                 DatabaseKind.MySql => "DATETIME(6)",
                 _ => "DATETIME",
@@ -80,6 +80,8 @@ public static class ImportTypes
     private static string Text(DatabaseKind kind) => kind switch
     {
         DatabaseKind.Postgres => "text",
+        // Redshift takes TEXT as VARCHAR(256).
+        DatabaseKind.Redshift => "varchar(65535)",
         DatabaseKind.SqlServer => "nvarchar(max)",
         _ => "TEXT",
     };

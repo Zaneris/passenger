@@ -168,7 +168,7 @@ public static class SqlChecks
     }
 
     private static bool Same(string one, string other, DatabaseKind kind) =>
-        string.Equals(one, other, kind is DatabaseKind.Postgres or DatabaseKind.ClickHouse ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
+        string.Equals(one, other, DatabaseKinds.SpeaksPostgres(kind) || kind == DatabaseKind.ClickHouse ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The tables and views the SQL makes (CREATE TABLE, VIEW), by their names folded as the database folds them.</summary>
     private static HashSet<string> Made(string text, DatabaseKind kind)
@@ -445,11 +445,11 @@ public static class SqlChecks
     /// by ClickHouse, whose names are as written), or with <paramref name="keep"/> as written where the database keeps a
     /// name's case as written (all but PostgreSQL).</summary>
     private static string Folded(string sql, SqlText.Token token, DatabaseKind kind, bool keep = false) =>
-        token.Quoted ? token.Word : kind == DatabaseKind.Postgres ? sql[token.Start..token.End].ToLowerInvariant()
+        token.Quoted ? token.Word : DatabaseKinds.SpeaksPostgres(kind) ? sql[token.Start..token.End].ToLowerInvariant()
             : keep || kind == DatabaseKind.ClickHouse ? sql[token.Start..token.End] : sql[token.Start..token.End].ToUpperInvariant();
 
     /// <summary>Whether a name written is the one the schema holds, as the database compares them.</summary>
-    private static bool Same(string sql, SqlText.Token token, string actual, DatabaseKind kind) => kind is DatabaseKind.Postgres or DatabaseKind.ClickHouse
+    private static bool Same(string sql, SqlText.Token token, string actual, DatabaseKind kind) => DatabaseKinds.SpeaksPostgres(kind) || kind == DatabaseKind.ClickHouse
         ? Folded(sql, token, kind) == actual
         : string.Equals(token.Quoted ? token.Word : sql[token.Start..token.End], actual, StringComparison.OrdinalIgnoreCase);
 

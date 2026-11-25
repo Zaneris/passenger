@@ -2,6 +2,9 @@ using System.Data.Common;
 using System.Text.Json;
 using Amazon;
 using Amazon.RDS.Util;
+using Amazon.Redshift;
+using Amazon.Redshift.Model;
+using Amazon.RedshiftServerless;
 using Amazon.Runtime;
 using Amazon.SecretsManager;
 using Amazon.SecretsManager.Model;
@@ -21,23 +24,26 @@ public enum CloudSignInKind
 }
 
 /// <summary>A connection's cloud sign-in: its kind, the AWS profile it signs in with (empty for the environment's or the
-/// default one) and the region it asks (empty for the one the server's host names, else the profile's), and for Secrets
-/// Manager the secret's name or ARN.</summary>
+/// default one) and the region it asks (empty for the one the server's host names, else the profile's); for Secrets
+/// Manager the secret's name or ARN, and for Redshift's IAM the cluster or serverless workgroup (workgroup/NAME), empty for
+/// the one its host names.</summary>
 public sealed record CloudSignIn(CloudSignInKind Kind, string Profile, string Region)
 {
     public string Secret { get; init; } = string.Empty;
+
+    public string Cluster { get; init; } = string.Empty;
 }
 
 /// <summary>What a cloud sign-in lays over a connection's string as it opens: the password an IAM token is, or the user and
 /// password a secret holds, each made or read at each connection and never kept, masked wherever said.</summary>
 internal static class CloudSignIns
 {
-    /// <summary>The kinds each sign-in signs in to: IAM authentication only PostgreSQL's and MySQL's (RDS for SQL Server
-    /// takes none), a secret every kind RDS runs.</summary>
+    /// <summary>The kinds each sign-in signs in to: IAM authentication PostgreSQL's, MySQL's and Redshift's (RDS for SQL
+    /// Server takes none), a secret every kind RDS runs and Redshift.</summary>
     public static bool Signs(CloudSignInKind sign, DatabaseKind kind) => sign switch
     {
-        CloudSignInKind.AwsIam => kind is DatabaseKind.Postgres or DatabaseKind.MySql,
-        _ => kind is DatabaseKind.Postgres or DatabaseKind.MySql or DatabaseKind.SqlServer,
+        CloudSignInKind.AwsIam => kind is DatabaseKind.Postgres or DatabaseKind.MySql or DatabaseKind.Redshift,
+        _ => kind is DatabaseKind.Postgres or DatabaseKind.MySql or DatabaseKind.SqlServer or DatabaseKind.Redshift,
     };
 
     /// <summary>The connection's string with what its sign-in gives laid over it.</summary>
@@ -51,6 +57,14 @@ internal static class CloudSignIns
         string region = RegionOf(signIn, host) ?? throw new InvalidOperationException(Refusals.NoAwsRegion(host));
         AWSCredentials credentials = await AwsProfiles.CredentialsAsync(signIn.Profile, cancel);
         DbConnectionStringBuilder laid = DatabaseKinds.Builder(kind, connection);
+        if (signIn.Kind == CloudSignInKind.AwsIam && kind == DatabaseKind.Redshift)
+        {
+            (string user, string password) = await RedshiftAsync(credentials, region, host, DatabaseKinds.Value(connection, "Database") ?? "dev", signIn, cancel);
+            ContainerSecrets.Mark(password);
+            laid["User ID"] = user;
+            laid["Password"] = password;
+            return laid.ConnectionString;
+        }
         if (signIn.Kind == CloudSignInKind.AwsIam)
         {
             string user = DatabaseKinds.Value(connection, "Username", "User ID", "UserID", "User", "Uid") ?? throw new InvalidOperationException(Refusals.NoIamUser);
@@ -85,6 +99,40 @@ internal static class CloudSignIns
         }
     }
 
+    /// <summary>A Redshift user's credentials for a while, as Redshift gives them for the profile's IAM identity: a cluster's
+    /// (GetClusterCredentialsWithIAM), or a serverless workgroup's (GetCredentials), the one the sign-in names, else the one
+    /// its host names.</summary>
+    private static async Task<(string User, string Password)> RedshiftAsync(AWSCredentials credentials, string region, string host, string database, CloudSignIn signIn,
+        CancellationToken cancel)
+    {
+        const string Workgroup = "workgroup/";
+        string named = signIn.Cluster is { Length: > 0 } own ? own
+            : DatabaseKinds.IsRedshiftHost(host) ? (host.Contains(".redshift-serverless.", StringComparison.OrdinalIgnoreCase) ? Workgroup : string.Empty) + host.Split('.')[0]
+            : throw new InvalidOperationException(Refusals.NoRedshiftCluster(host));
+        try
+        {
+            if (named.StartsWith(Workgroup, StringComparison.Ordinal))
+            {
+                using AmazonRedshiftServerlessClient serverless = new(credentials, AwsProfiles.Config<AmazonRedshiftServerlessConfig>(region));
+                Amazon.RedshiftServerless.Model.GetCredentialsResponse given = await serverless.GetCredentialsAsync(new Amazon.RedshiftServerless.Model.GetCredentialsRequest
+                {
+                    WorkgroupName = named[Workgroup.Length..], DbName = database,
+                }, cancel);
+                return (given.DbUser, given.DbPassword);
+            }
+            using AmazonRedshiftClient cluster = new(credentials, AwsProfiles.Config<AmazonRedshiftConfig>(region));
+            GetClusterCredentialsWithIAMResponse issued = await cluster.GetClusterCredentialsWithIAMAsync(new GetClusterCredentialsWithIAMRequest
+            {
+                ClusterIdentifier = named, DbName = database,
+            }, cancel);
+            return (issued.DbUser, issued.DbPassword);
+        }
+        catch (AmazonServiceException refused)
+        {
+            throw new IOException(Refusals.RedshiftRefusedIam(named, refused.Message), refused);
+        }
+    }
+
     /// <summary>The region a sign-in asks: its own, else the one an RDS or Redshift host names (….us-east-1.rds.amazonaws.com),
     /// else its profile's; null where none says one.</summary>
     public static string? RegionOf(CloudSignIn signIn, string host)
@@ -108,5 +156,5 @@ internal static class CloudSignIns
 
     /// <summary>Whether a kept sign-in reads as one: a kind there is, and a secret named where it reads one.</summary>
     public static bool Usable(CloudSignIn? signIn) =>
-        signIn is { Profile: not null, Region: not null, Secret: not null } && Enum.IsDefined(signIn.Kind) && (signIn.Kind != CloudSignInKind.AwsSecret || signIn.Secret.Length > 0);
+        signIn is { Profile: not null, Region: not null, Secret: not null, Cluster: not null } && Enum.IsDefined(signIn.Kind) && (signIn.Kind != CloudSignInKind.AwsSecret || signIn.Secret.Length > 0);
 }

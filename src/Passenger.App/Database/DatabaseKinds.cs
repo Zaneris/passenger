@@ -22,11 +22,12 @@ public static partial class DatabaseKinds
         DatabaseKind.Redis => "Redis",
         DatabaseKind.DynamoDb => "DynamoDB",
         DatabaseKind.Cassandra => "Cassandra",
+        DatabaseKind.Redshift => "Redshift",
         _ => "Snowflake",
     };
 
     /// <summary>The kinds as the connection dialog offers them, in <see cref="DatabaseKind"/>'s order.</summary>
-    public static IReadOnlyList<string> Offered { get; } = ["SQLite", "PostgreSQL", "SQL Server", "MySQL / MariaDB", "DuckDB", "ClickHouse", "Snowflake", "MongoDB", "Cosmos DB", "Redis", "DynamoDB", "Cassandra"];
+    public static IReadOnlyList<string> Offered { get; } = ["SQLite", "PostgreSQL", "SQL Server", "MySQL / MariaDB", "DuckDB", "ClickHouse", "Snowflake", "MongoDB", "Cosmos DB", "Redis", "DynamoDB", "Cassandra", "Amazon Redshift"];
 
     /// <summary>Whether the kind's database is a file of its own (SQLite's, DuckDB's), opened with no server, port or tunnel.</summary>
     public static bool IsFile(DatabaseKind kind) => kind is DatabaseKind.Sqlite or DatabaseKind.DuckDb;
@@ -39,15 +40,15 @@ public static partial class DatabaseKinds
     public static bool HasTransactions(DatabaseKind kind) => kind != DatabaseKind.ClickHouse && SpeaksSql(kind);
 
     /// <summary>Whether the explorer's tables take changes row by row (written by their primary key): ClickHouse changes rows
-    /// by mutations, Snowflake keeps no key it enforces, and Cassandra writes by its statements alone.</summary>
-    public static bool EditsRows(DatabaseKind kind) => kind is not (DatabaseKind.ClickHouse or DatabaseKind.Snowflake or DatabaseKind.Cassandra);
+    /// by mutations, Snowflake and Redshift keep no key they enforce, and Cassandra writes by its statements alone.</summary>
+    public static bool EditsRows(DatabaseKind kind) => kind is not (DatabaseKind.ClickHouse or DatabaseKind.Snowflake or DatabaseKind.Cassandra or DatabaseKind.Redshift);
 
     /// <summary>The kind's own builder of a connection string, which reads and writes its keys as its driver does; DuckDB's,
     /// ClickHouse's and Snowflake's a plain one, their drivers reading the keys it keeps.</summary>
     public static DbConnectionStringBuilder Builder(DatabaseKind kind, string connection) => kind switch
     {
         DatabaseKind.Sqlite => new SqliteConnectionStringBuilder(connection),
-        DatabaseKind.Postgres => new NpgsqlConnectionStringBuilder(connection),
+        DatabaseKind.Postgres or DatabaseKind.Redshift => new NpgsqlConnectionStringBuilder(connection),
         DatabaseKind.SqlServer => new SqlConnectionStringBuilder(connection),
         DatabaseKind.MySql => new MySqlConnectionStringBuilder(connection),
         _ => new DbConnectionStringBuilder { ConnectionString = connection },
@@ -107,7 +108,7 @@ public static partial class DatabaseKinds
     {
         switch (kind)
         {
-            case DatabaseKind.Postgres:
+            case DatabaseKind.Postgres or DatabaseKind.Redshift:
                 NpgsqlConnectionStringBuilder pg = new(connection);
                 return (pg.Host ?? "localhost", pg.Port);
             case DatabaseKind.SqlServer:
@@ -160,7 +161,7 @@ public static partial class DatabaseKinds
     {
         switch (kind)
         {
-            case DatabaseKind.Postgres:
+            case DatabaseKind.Postgres or DatabaseKind.Redshift:
                 return new NpgsqlConnectionStringBuilder(connection) { Host = "127.0.0.1", Port = port }.ConnectionString;
             case DatabaseKind.SqlServer:
                 SqlConnectionStringBuilder sql = new(connection) { DataSource = $"127.0.0.1,{port}" };
@@ -196,9 +197,9 @@ public static partial class DatabaseKinds
     /// SQL Server's host,port); MySQL's, its host alone, with no port.</summary>
     public static (string Host, int? Port) EndpointOfSource(DatabaseKind kind, string source) => kind switch
     {
-        DatabaseKind.Postgres when Uri.TryCreate(source, UriKind.Absolute, out Uri? address) && address.Scheme == "tcp" =>
+        DatabaseKind.Postgres or DatabaseKind.Redshift when Uri.TryCreate(source, UriKind.Absolute, out Uri? address) && address.Scheme == "tcp" =>
             (address.Host, address.Port > 0 ? address.Port : Port(kind)),
-        DatabaseKind.Postgres => (source, Port(kind)),
+        DatabaseKind.Postgres or DatabaseKind.Redshift => (source, Port(kind)),
         DatabaseKind.SqlServer => Endpoint(kind, new SqlConnectionStringBuilder { DataSource = source }.ConnectionString),
         DatabaseKind.ClickHouse or DatabaseKind.Snowflake when Uri.TryCreate(source.Contains("://", StringComparison.Ordinal) ? source : $"http://{source}", UriKind.Absolute, out Uri? server) =>
             (server.Host, server.IsDefaultPort && !source.Contains(':', StringComparison.Ordinal) ? null : server.Port),
@@ -222,6 +223,7 @@ public static partial class DatabaseKinds
         DatabaseKind.Redis => 6379,
         DatabaseKind.DynamoDb => 8000,
         DatabaseKind.Cassandra => 9042,
+        DatabaseKind.Redshift => 5439,
         _ => 3306,
     };
 }

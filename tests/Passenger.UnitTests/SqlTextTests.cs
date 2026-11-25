@@ -170,6 +170,11 @@ public sealed class SqlTextTests
                 {"GlobalStats": {"partitionsTotal": 1}, "Operations": [[{"id": 0, "operation": "Result", "expressions": ["T.A"]},
                   {"id": 1, "parentOperators": [0], "operation": "TableScan", "objects": ["DB.PUBLIC.T"]}]]}
                 """), ["query plan", "Result", "TableScan"], null),
+            ("Redshift's text, each step under the one it is indented below, its details apart, its cost the total", () => SqlPlans.FromText([
+                "XN Merge  (cost=1000000000000.04..1000000000000.04 rows=3 width=36)", "  Merge Key: placed", "  ->  XN Network  (cost=1000000000000.04..1000000000000.04 rows=3 width=36)",
+                "        Send to leader", "        ->  XN Sort  (cost=1000000000000.04..1000000000000.04 rows=3 width=36)", "              Sort Key: placed",
+                "              ->  XN Seq Scan on orders  (cost=0.00..0.03 rows=3 width=36)"]),
+                ["XN Merge", "XN Network", "XN Sort", "XN Seq Scan on orders"], "XN Sort Sort Key: placed"),
         }, row =>
         {
             PlanStep plan = row.Read();

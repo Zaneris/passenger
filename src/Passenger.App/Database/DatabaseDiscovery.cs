@@ -168,6 +168,11 @@ internal static class DatabaseDiscovery
         }
     }
 
+    /// <summary>Whether a PostgreSQL connection string reaches Redshift: Npgsql told so, or a Redshift endpoint its host.</summary>
+    private static bool Redshift(string value) =>
+        DatabaseKinds.Value(value, "Server Compatibility Mode", "ServerCompatibilityMode") is { } mode && mode.Equals("Redshift", StringComparison.OrdinalIgnoreCase)
+        || DatabaseKinds.Value(value, "Host", "Server") is { } host && DatabaseKinds.IsRedshiftHost(host);
+
     /// <summary>Marks each secret a connection string of keys and values holds, by its key's name.</summary>
     private static void MarkSecrets(string value)
     {
@@ -279,7 +284,7 @@ internal static class DatabaseDiscovery
         bool duck = references.Any(p => p.Contains("DuckDB", StringComparison.OrdinalIgnoreCase)) || file is not null && PathNames.HasExtension(file, [".duckdb", ".ddb"]);
         DatabaseKind? kind = parsed.ContainsKey("Contact Points") || parsed.ContainsKey("ContactPoints") ? DatabaseKind.Cassandra
             : parsed.ContainsKey("account") ? DatabaseKind.Snowflake
-            : parsed.ContainsKey("Host") ? clickHouse ? DatabaseKind.ClickHouse : DatabaseKind.Postgres
+            : parsed.ContainsKey("Host") ? clickHouse ? DatabaseKind.ClickHouse : Redshift(value) ? DatabaseKind.Redshift : DatabaseKind.Postgres
             : parsed.ContainsKey("Server") ? parsed.ContainsKey("Port") || references.Any(p => p.Contains("MySql", StringComparison.OrdinalIgnoreCase)) ? DatabaseKind.MySql : DatabaseKind.SqlServer
             : parsed.ContainsKey("Data Source") || parsed.ContainsKey("DataSource") || parsed.ContainsKey("Filename")
                 ? sqlServer ? DatabaseKind.SqlServer : duck ? DatabaseKind.DuckDb : DatabaseKind.Sqlite

@@ -263,7 +263,7 @@ public partial class MainWindow
             : WhyNotOpened(chosen.Source) ?? PersonsOwn();
 
         string? WhyNotSchema() => databaseExplorer?.Chosen is not { Kind: not DatabaseNodeKind.Note } chosen ? Refusals.NoDatabaseConnection
-            : chosen.Source.Kind is DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake || !DatabaseKinds.SpeaksSql(chosen.Source.Kind)
+            : chosen.Source.Kind is DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake or DatabaseKind.Redshift || !DatabaseKinds.SpeaksSql(chosen.Source.Kind)
                 ? Refusals.NoSchemaReads(DatabaseKinds.Title(chosen.Source.Kind))
             : WhyNotOpened(chosen.Source) ?? PersonsOwn();
 

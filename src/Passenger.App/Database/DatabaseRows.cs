@@ -64,7 +64,7 @@ public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folde
     public string Database => Kind switch
     {
         DatabaseKind.Sqlite => Path.GetFileName(new SqliteConnectionStringBuilder(ConnectionString).DataSource),
-        DatabaseKind.Postgres => new NpgsqlConnectionStringBuilder(ConnectionString).Database ?? string.Empty,
+        DatabaseKind.Postgres or DatabaseKind.Redshift => new NpgsqlConnectionStringBuilder(ConnectionString).Database ?? string.Empty,
         DatabaseKind.SqlServer => new SqlConnectionStringBuilder(ConnectionString).InitialCatalog,
         DatabaseKind.MySql => new MySqlConnectionStringBuilder(ConnectionString).Database,
         DatabaseKind.DuckDb => DatabaseKinds.FileOf(Kind, ConnectionString) is { Length: > 0 } file ? Path.GetFileName(file) : "memory",
@@ -83,7 +83,7 @@ public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folde
     {
         ConnectionString = Kind switch
         {
-            DatabaseKind.Postgres => new NpgsqlConnectionStringBuilder(ConnectionString) { Database = database }.ConnectionString,
+            DatabaseKind.Postgres or DatabaseKind.Redshift => new NpgsqlConnectionStringBuilder(ConnectionString) { Database = database }.ConnectionString,
             DatabaseKind.SqlServer => new SqlConnectionStringBuilder(ConnectionString) { InitialCatalog = database }.ConnectionString,
             DatabaseKind.MySql => new MySqlConnectionStringBuilder(ConnectionString) { Database = database }.ConnectionString,
             DatabaseKind.ClickHouse or DatabaseKind.MongoDb or DatabaseKind.CosmosDb or DatabaseKind.Redis => DatabaseKinds.With(ConnectionString, "Database", database),

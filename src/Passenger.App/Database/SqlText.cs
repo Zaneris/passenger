@@ -94,7 +94,7 @@ public static class SqlText
         if (c == '/' && next == '*')
         {
             // PostgreSQL, SQL Server and DuckDB nest block comments; the others end one at its first close.
-            bool nests = kind is DatabaseKind.Postgres or DatabaseKind.SqlServer or DatabaseKind.DuckDb;
+            bool nests = DatabaseKinds.SpeaksPostgres(kind) || kind is DatabaseKind.SqlServer or DatabaseKind.DuckDb;
             int open = 1;
             int i = at + 2;
             while (i < sql.Length && open > 0)
@@ -116,12 +116,12 @@ public static class SqlText
             }
             return i;
         }
-        if (c == '$' && kind is DatabaseKind.Postgres or DatabaseKind.DuckDb or DatabaseKind.Snowflake && DollarTag(sql, at) is { } tag)
+        if (c == '$' && (DatabaseKinds.SpeaksPostgres(kind) || kind is DatabaseKind.DuckDb or DatabaseKind.Snowflake) && DollarTag(sql, at) is { } tag)
         {
             int end = sql.IndexOf(tag, at + tag.Length, StringComparison.Ordinal);
             return end < 0 ? sql.Length : end + tag.Length;
         }
-        bool escapes = kind is DatabaseKind.MySql or DatabaseKind.ClickHouse or DatabaseKind.Snowflake or DatabaseKind.CosmosDb || kind == DatabaseKind.Postgres && at > 0 && sql[at - 1] is 'E' or 'e'
+        bool escapes = kind is DatabaseKind.MySql or DatabaseKind.ClickHouse or DatabaseKind.Snowflake or DatabaseKind.CosmosDb || DatabaseKinds.SpeaksPostgres(kind) && at > 0 && sql[at - 1] is 'E' or 'e'
             && (at < 2 || !char.IsLetterOrDigit(sql[at - 2]));
         return c switch
         {
@@ -418,9 +418,9 @@ public static class SqlText
         return tokens[0].Word switch
         {
             "COMMIT" when Rest("WORK", "TRAN", "TRANSACTION") => SqlTransaction.Commit,
-            "END" when kind is DatabaseKind.Postgres or DatabaseKind.Sqlite && Rest("WORK", "TRANSACTION") => SqlTransaction.Commit,
+            "END" when (DatabaseKinds.SpeaksPostgres(kind) || kind == DatabaseKind.Sqlite) && Rest("WORK", "TRANSACTION") => SqlTransaction.Commit,
             "ROLLBACK" when Rest("WORK", "TRAN", "TRANSACTION") => SqlTransaction.Rollback,
-            "ABORT" when kind == DatabaseKind.Postgres && Rest("WORK", "TRANSACTION") => SqlTransaction.Rollback,
+            "ABORT" when DatabaseKinds.SpeaksPostgres(kind) && Rest("WORK", "TRANSACTION") => SqlTransaction.Rollback,
             "START" when next == "TRANSACTION" => SqlTransaction.Begin,
             "BEGIN" when kind != DatabaseKind.SqlServer || next is "TRAN" or "TRANSACTION" => SqlTransaction.Begin,
             _ => null,

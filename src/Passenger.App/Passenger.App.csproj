@@ -66,9 +66,11 @@
     <PackageReference Include="Microsoft.Azure.Cosmos" />
     <PackageReference Include="StackExchange.Redis" />
     <PackageReference Include="AWSSDK.DynamoDBv2" />
-    <!-- AWS's sign-ins to databases: RDS's IAM tokens, Secrets Manager's secrets, and a profile's assumed role and IAM
-         Identity Center sign-in. -->
+    <!-- AWS's sign-ins to databases: RDS's IAM tokens, Redshift's credentials, Secrets Manager's secrets, and a profile's
+         assumed role and IAM Identity Center sign-in. -->
     <PackageReference Include="AWSSDK.RDS" />
+    <PackageReference Include="AWSSDK.Redshift" />
+    <PackageReference Include="AWSSDK.RedshiftServerless" />
     <PackageReference Include="AWSSDK.SecretsManager" />
     <PackageReference Include="AWSSDK.SecurityToken" />
     <PackageReference Include="AWSSDK.SSO" />

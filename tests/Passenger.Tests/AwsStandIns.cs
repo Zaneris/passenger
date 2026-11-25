@@ -11,8 +11,9 @@ using System.Text.Json.Nodes;
 namespace Passenger.Tests;
 
 /// <summary>AWS's services as Passenger's sign-ins ask them, on a loopback port (Passenger's PASSENGER_AWS_ENDPOINT): Secrets
-/// Manager's GetSecretValue of the secrets a test gives, and IAM Identity Center's OIDC device sign-in (its token pending
-/// once, as a person approving it takes a moment) and portal's role credentials. Each request's access key is heard.</summary>
+/// Manager's GetSecretValue of the secrets a test gives, Redshift's GetClusterCredentialsWithIAM of the clusters it gives,
+/// and IAM Identity Center's OIDC device sign-in (its token pending once, as a person approving it takes a moment) and
+/// portal's role credentials. Each request's access key is heard.</summary>
 public sealed class StandInAws : IDisposable
 {
     /// <summary>The role credentials the portal gives a signed-in profile.</summary>
@@ -36,6 +37,12 @@ public sealed class StandInAws : IDisposable
     /// <summary>Each secret read, with the access key its request was signed with.</summary>
     public ConcurrentQueue<(string Secret, string AccessKey)> Read { get; } = new();
 
+    /// <summary>The user and password each Redshift cluster gives an IAM identity, by the cluster's name.</summary>
+    public ConcurrentDictionary<string, (string User, string Password)> Clusters { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Each cluster asked for credentials, with the database and the access key its request was signed with.</summary>
+    public ConcurrentQueue<(string Cluster, string Database, string AccessKey)> Asked { get; } = new();
+
     /// <summary>The page the person approves the device sign-in on.</summary>
     public string Verification => $"{Root}/verify?user_code={UserCode}";
 
@@ -52,6 +59,20 @@ public sealed class StandInAws : IDisposable
                 ? asked.ReplyAsync(200, "application/x-amz-json-1.1", new JsonObject { ["ARN"] = $"arn:aws:secretsmanager:us-east-1:111122223333:secret:{id}", ["Name"] = id,
                     ["SecretString"] = secret, ["VersionId"] = "1" }.ToJsonString())
                 : asked.ReplyAsync(400, "application/x-amz-json-1.1", new JsonObject { ["__type"] = "ResourceNotFoundException", ["message"] = $"No secret {id}" }.ToJsonString()));
+            return;
+        }
+        if (asked.Method == "POST" && body.Contains("Action=GetClusterCredentialsWithIAM", StringComparison.Ordinal))
+        {
+            Dictionary<string, string> form = body.Split('&').Select(p => p.Split('=', 2)).Where(p => p.Length == 2)
+                .ToDictionary(p => Uri.UnescapeDataString(p[0]), p => Uri.UnescapeDataString(p[1].Replace('+', ' ')), StringComparer.Ordinal);
+            string cluster = form.GetValueOrDefault("ClusterIdentifier") ?? string.Empty;
+            Asked.Enqueue((cluster, form.GetValueOrDefault("DbName") ?? string.Empty, AccessKeyOf(asked.Header("Authorization"))));
+            await (Clusters.TryGetValue(cluster, out (string User, string Password) given)
+                ? asked.ReplyAsync(200, "text/xml", "<GetClusterCredentialsWithIAMResponse xmlns=\"http://redshift.amazonaws.com/doc/2012-12-01/\"><GetClusterCredentialsWithIAMResult>"
+                    + $"<DbUser>{given.User}</DbUser><DbPassword>{given.Password}</DbPassword><Expiration>{DateTimeOffset.UtcNow.AddMinutes(15):yyyy-MM-ddTHH:mm:ssZ}</Expiration>"
+                    + "</GetClusterCredentialsWithIAMResult><ResponseMetadata><RequestId>stand-in</RequestId></ResponseMetadata></GetClusterCredentialsWithIAMResponse>")
+                : asked.ReplyAsync(400, "text/xml", "<ErrorResponse xmlns=\"http://redshift.amazonaws.com/doc/2012-12-01/\"><Error><Type>Sender</Type><Code>ClusterNotFound</Code>"
+                    + $"<Message>Cluster {cluster} not found.</Message></Error><RequestId>stand-in</RequestId></ErrorResponse>"));
             return;
         }
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();

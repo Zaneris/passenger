@@ -335,7 +335,7 @@ public static class RowImport
                 return new Cell(DBNull.Value, false);
             }
             Type wanted = Wanted(type);
-            if (kind == DatabaseKind.Postgres && wanted == typeof(string))
+            if (DatabaseKinds.SpeaksPostgres(kind) && wanted == typeof(string))
             {
                 return new Cell(text, true);
             }
@@ -345,7 +345,7 @@ public static class RowImport
         // Text SQLite takes by its column's affinity; bytes as bytes; the others' a value of the type their driver reads the column as.
         Type Wanted((Type Type, string Name) type) => ImportTypes.IsBinary(type.Type, type.Name) ? typeof(byte[])
             : kind == DatabaseKind.Sqlite && type.Name.Contains("bool", StringComparison.OrdinalIgnoreCase) ? typeof(bool)
-            : kind is DatabaseKind.Postgres or DatabaseKind.Sqlite ? typeof(string) : type.Type;
+            : DatabaseKinds.SpeaksPostgres(kind) || kind == DatabaseKind.Sqlite ? typeof(string) : type.Type;
 
         static void Give(DbParameter parameter, Cell cell)
         {

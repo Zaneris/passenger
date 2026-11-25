@@ -47,6 +47,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
     private readonly FormDropDown awsProfile = new() { Name = "DatabaseAwsProfile", ItemsSource = new[] { EnvironmentProfile }, SelectedIndex = 0 };
     private readonly TextBox awsRegion = new() { Name = "DatabaseAwsRegion", PlaceholderText = "The one the host names, else the profile's" };
     private readonly TextBox awsSecret = new() { Name = "DatabaseAwsSecret", PlaceholderText = "Its name or ARN" };
+    private readonly TextBox awsCluster = new() { Name = "DatabaseAwsCluster", PlaceholderText = "The host's; a serverless workgroup as workgroup/NAME" };
     private readonly FormFold signInFold = new() { Title = "Cloud sign-in" };
     private readonly FormFold tunnelFold = new() { Title = "SSH tunnel" };
     private readonly FormFold stringFold = new() { Title = "Connection string" };
@@ -90,6 +91,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         Row(signInFold.Rows, "Sign in with", signIn);
         Grid[] awsRows = [Row(signInFold.Rows, "AWS profile", awsProfile), Row(signInFold.Rows, "Region", awsRegion)];
         Grid secretRow = Row(signInFold.Rows, "Secret", awsSecret);
+        Grid clusterRow = Row(signInFold.Rows, "Cluster or workgroup", awsCluster);
         TextBlock signInNote = MutedText.Wrapped("An IAM token is made for each connection from the profile's credentials, and a secret's user and password read "
             + "for each; Passenger keeps neither. A profile that signs in through IAM Identity Center is signed in to by Sign In… on the connection's menu.");
         signInFold.Rows.Children.Add(signInNote);
@@ -275,6 +277,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                 signIn.SelectedIndex = (int)cloud.Kind + 1;
                 awsRegion.Text = cloud.Region;
                 awsSecret.Text = cloud.Secret;
+                awsCluster.Text = cloud.Cluster;
                 signInFold.IsOpen = true;
             }
             if (initial.Tunnel is { } through)
@@ -308,7 +311,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                     host.Text = DatabaseKinds.Value(initial.ConnectionString, "account"); database.Text = DatabaseKinds.Value(initial.ConnectionString, "db");
                     user.Text = DatabaseKinds.Value(initial.ConnectionString, "user"); password.Text = DatabaseKinds.Value(initial.ConnectionString, "password");
                     break;
-                case DatabaseKind.Postgres:
+                case DatabaseKind.Postgres or DatabaseKind.Redshift:
                     NpgsqlConnectionStringBuilder pg = new(initial.ConnectionString);
                     host.Text = pg.Host; port.Value = pg.Port; database.Text = pg.Database; user.Text = pg.Username; password.Text = pg.Password;
                     break;
@@ -380,9 +383,11 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                 row.IsVisible = aws;
             }
             secretRow.IsVisible = signIn.SelectedIndex == (int)CloudSignInKind.AwsSecret + 1;
+            clusterRow.IsVisible = signIn.SelectedIndex == (int)CloudSignInKind.AwsIam + 1 && kind == DatabaseKind.Redshift;
             signInNote.IsVisible = aws;
             bool remote = !DatabaseKinds.IsFile(kind);
-            userRow.IsVisible = remote && !foundOnly && !secretRow.IsVisible && kind != DatabaseKind.CosmosDb;
+            // Redshift's IAM sign-in, as a secret, gives the user it signs in as.
+            userRow.IsVisible = remote && !foundOnly && !secretRow.IsVisible && !clusterRow.IsVisible && kind != DatabaseKind.CosmosDb;
             passwordRow.IsVisible = remote && !foundOnly && !aws;
         }
 
@@ -413,6 +418,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             return new CloudSignIn(chosen, awsProfile.SelectedIndex > 0 ? awsProfile.SelectedItem as string ?? string.Empty : string.Empty, awsRegion.Text?.Trim() ?? string.Empty)
             {
                 Secret = chosen == CloudSignInKind.AwsSecret ? awsSecret.Text!.Trim() : string.Empty,
+                Cluster = chosen == CloudSignInKind.AwsIam && kind == DatabaseKind.Redshift ? awsCluster.Text?.Trim() ?? string.Empty : string.Empty,
             };
         }
 
@@ -518,7 +524,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
     private static string TitleOf(DatabaseKind kind, string written) => kind switch
     {
         DatabaseKind.Sqlite => Path.GetFileName(new SqliteConnectionStringBuilder(written).DataSource),
-        DatabaseKind.Postgres => $"{new NpgsqlConnectionStringBuilder(written).Database} at {new NpgsqlConnectionStringBuilder(written).Host}",
+        DatabaseKind.Postgres or DatabaseKind.Redshift => $"{new NpgsqlConnectionStringBuilder(written).Database} at {new NpgsqlConnectionStringBuilder(written).Host}",
         DatabaseKind.SqlServer => $"{new SqlConnectionStringBuilder(written).InitialCatalog} at {new SqlConnectionStringBuilder(written).DataSource}",
         DatabaseKind.MySql => $"{new MySqlConnectionStringBuilder(written).Database} at {new MySqlConnectionStringBuilder(written).Server}",
         DatabaseKind.DuckDb => DatabaseKinds.FileOf(kind, written) is { Length: > 0 } file ? Path.GetFileName(file) : "DuckDB in memory",
@@ -570,7 +576,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         return kind switch
         {
             DatabaseKind.Sqlite => new SqliteConnectionStringBuilder(baseline) { DataSource = database.Text ?? string.Empty }.ConnectionString,
-            DatabaseKind.Postgres => new NpgsqlConnectionStringBuilder(baseline) { Host = host.Text!.Trim(), Port = number, Database = database.Text!.Trim(), Username = user.Text ?? string.Empty, Password = password.Text ?? string.Empty }.ConnectionString,
+            DatabaseKind.Postgres or DatabaseKind.Redshift => new NpgsqlConnectionStringBuilder(baseline) { Host = host.Text!.Trim(), Port = number, Database = database.Text!.Trim(), Username = user.Text ?? string.Empty, Password = password.Text ?? string.Empty }.ConnectionString,
             DatabaseKind.SqlServer => new SqlConnectionStringBuilder(baseline)
             {
                 DataSource = SqlAddress(host.Text!.Trim(), number), InitialCatalog = database.Text!.Trim(), IntegratedSecurity = integrated.IsChecked == true,

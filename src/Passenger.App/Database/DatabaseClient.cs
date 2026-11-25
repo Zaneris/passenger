@@ -63,8 +63,8 @@ internal static partial class DatabaseClient
             through = host;
         }
         bool readOnly = source.Mark == DatabaseMark.ReadOnly;
-        NpgsqlConnectionStringBuilder? postgres = source.Kind == DatabaseKind.Postgres ? new NpgsqlConnectionStringBuilder(whole) { Pooling = false } : null;
-        if (postgres is not null && readOnly)
+        NpgsqlConnectionStringBuilder? postgres = DatabaseKinds.SpeaksPostgres(source.Kind) ? new NpgsqlConnectionStringBuilder(whole) { Pooling = false } : null;
+        if (postgres is not null && readOnly && source.Kind == DatabaseKind.Postgres)
         {
             postgres.Options = $"{postgres.Options} -c default_transaction_read_only=on".Trim();
         }
@@ -72,6 +72,7 @@ internal static partial class DatabaseClient
         {
             DatabaseKind.Sqlite => new SqliteConnection(new SqliteConnectionStringBuilder(whole) { Mode = readOnly ? SqliteOpenMode.ReadOnly : SqliteOpenMode.ReadWrite, Pooling = false }.ConnectionString),
             DatabaseKind.Postgres => new NpgsqlConnection(postgres!.ConnectionString),
+            DatabaseKind.Redshift => RedshiftConnection(postgres!.ConnectionString),
             DatabaseKind.SqlServer => new SqlConnection(SqlServer(whole, readOnly)),
             DatabaseKind.MySql => MySql(whole, through),
             DatabaseKind.DuckDb => DuckDb(whole, readOnly),
@@ -111,6 +112,22 @@ internal static partial class DatabaseClient
             await connection.DisposeAsync();
             throw;
         }
+    }
+
+    /// <summary>A Redshift connection as Npgsql reaches Redshift: none of PostgreSQL's types read from its catalog, which holds
+    /// none of them; its data source, which pools nothing, let go as it closes.</summary>
+    private static NpgsqlConnection RedshiftConnection(string connection)
+    {
+        NpgsqlDataSource data = new NpgsqlDataSourceBuilder(connection).ConfigureTypeLoading(loading => loading.EnableTypeLoading(false)).Build();
+        NpgsqlConnection made = data.CreateConnection();
+        made.StateChange += (_, change) =>
+        {
+            if (change.CurrentState == System.Data.ConnectionState.Closed && change.OriginalState != System.Data.ConnectionState.Closed)
+            {
+                data.Dispose();
+            }
+        };
+        return made;
     }
 
     /// <summary>A MySQL connection, its console's SET @a and SELECT @a the session's own variables, its parameters bound by
@@ -197,6 +214,10 @@ internal static partial class DatabaseClient
         }
     }
 
+    /// <summary>A condition keeping a Redshift schema's name to the database's own, none of its catalog's or the system's.</summary>
+    private static string RedshiftOwn(string schema) =>
+        $"{schema} NOT IN ('pg_catalog','information_schema','pg_internal','pg_automv','catalog_history') AND {schema} NOT LIKE 'pg\\_%'";
+
     internal static string Quote(DatabaseKind kind, string name) => SqlText.QuotedName(kind, name);
 
     internal static string Full(DatabaseKind kind, DatabaseTable table) =>
@@ -209,6 +230,7 @@ internal static partial class DatabaseClient
         string sql = source.Kind switch
         {
             DatabaseKind.Sqlite => "SELECT '', name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+            DatabaseKind.Redshift => $"SELECT table_schema, table_name FROM svv_tables WHERE table_type='BASE TABLE' AND {RedshiftOwn("table_schema")} ORDER BY 1,2",
             DatabaseKind.Postgres => "SELECT table_schema, table_name FROM information_schema.tables WHERE table_type='BASE TABLE' AND table_schema NOT IN ('pg_catalog','information_schema') ORDER BY 1,2",
             DatabaseKind.SqlServer => "SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' ORDER BY 1,2",
             DatabaseKind.MySql => "SELECT table_schema, table_name FROM information_schema.tables WHERE table_type='BASE TABLE' AND table_schema=DATABASE() ORDER BY 1,2",
@@ -275,10 +297,13 @@ internal static partial class DatabaseClient
             string generated = source.Kind switch
             {
                 DatabaseKind.Postgres => "CASE WHEN is_identity='YES' OR is_generated='ALWAYS' THEN 1 ELSE 0 END",
+                DatabaseKind.Redshift => "0",
                 DatabaseKind.MySql => "CASE WHEN extra LIKE '%GENERATED%' OR extra LIKE '%auto_increment%' THEN 1 ELSE 0 END",
                 _ => "CASE WHEN COLUMNPROPERTY(OBJECT_ID(QUOTENAME(TABLE_SCHEMA)+'.'+QUOTENAME(TABLE_NAME)), COLUMN_NAME, 'IsComputed')=1 OR COLUMNPROPERTY(OBJECT_ID(QUOTENAME(TABLE_SCHEMA)+'.'+QUOTENAME(TABLE_NAME)), COLUMN_NAME, 'IsIdentity')=1 THEN 1 ELSE 0 END",
             };
-            DatabaseRows info = await ReadAsync(connection, $"SELECT column_name, data_type, is_nullable, {generated} FROM information_schema.columns WHERE table_schema=@schema AND table_name=@table ORDER BY ordinal_position", parameters, cancel);
+            // Redshift's own view of its columns holds external tables' and late-binding views' too.
+            string columnsOf = source.Kind == DatabaseKind.Redshift ? "svv_columns" : "information_schema.columns";
+            DatabaseRows info = await ReadAsync(connection, $"SELECT column_name, data_type, is_nullable, {generated} FROM {columnsOf} WHERE table_schema=@schema AND table_name=@table ORDER BY ordinal_position", parameters, cancel);
             DatabaseRows constraints = await ReadAsync(connection,
                 "SELECT tc.constraint_type, kcu.column_name, tc.constraint_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema AND tc.table_name=kcu.table_name WHERE tc.table_schema=@schema AND tc.table_name=@table ORDER BY tc.constraint_name,kcu.ordinal_position", parameters, cancel);
             keys.AddRange(constraints.Rows.Select(r => $"{r[2]} · {r[0]} · {r[1]}"));
@@ -286,6 +311,13 @@ internal static partial class DatabaseClient
             {
                 columns.Add(new DatabaseColumn((string)row[0]!, (string)row[1]!, (string)row[2]! == "YES",
                     constraints.Rows.Any(k => (string)k[0]! == "PRIMARY KEY" && Equals(k[1], row[0])), Convert.ToInt32(row[3], CultureInfo.InvariantCulture) != 0));
+            }
+            if (source.Kind == DatabaseKind.Redshift)
+            {
+                // Redshift holds no index or trigger: its rows lie by its distribution and sort keys instead.
+                DatabaseRows laid = await ReadAsync(connection, "SELECT diststyle, sortkey1 FROM svv_table_info WHERE \"schema\"=@schema AND \"table\"=@table", parameters, cancel);
+                keys.AddRange(laid.Rows.SelectMany(r => (string[])[$"DISTRIBUTION · {Convert.ToString(r[0], CultureInfo.InvariantCulture)}", .. r[1] is string sorted && sorted.Length > 0 ? [$"SORT KEY · {sorted}"] : (string[])[]]));
+                return new DatabaseSchema(table, columns, keys, indexes) { Triggers = triggers };
             }
             string indexSql = source.Kind switch
             {
@@ -416,6 +448,8 @@ internal static partial class DatabaseClient
                 DatabaseKind.MySql => $"CAST({column} AS CHAR)",
                 DatabaseKind.ClickHouse => $"toString({column})",
                 DatabaseKind.Snowflake => $"TO_VARCHAR({column})",
+                // Redshift's TEXT is VARCHAR(256).
+                DatabaseKind.Redshift => $"CAST({column} AS VARCHAR(65535))",
                 _ => $"CAST({column} AS TEXT)",
             };
             where = filter.Operator switch
@@ -458,7 +492,7 @@ internal static partial class DatabaseClient
         await using DbConnection connection = await OpenAsync(source, cancel);
         string sql = source.Kind switch
         {
-            DatabaseKind.Postgres => "SELECT datname FROM pg_database WHERE NOT datistemplate AND datallowconn ORDER BY 1",
+            DatabaseKind.Postgres or DatabaseKind.Redshift => "SELECT datname FROM pg_database WHERE NOT datistemplate AND datallowconn ORDER BY 1",
             DatabaseKind.SqlServer => "SELECT name FROM sys.databases WHERE HAS_DBACCESS(name)=1 ORDER BY name",
             DatabaseKind.ClickHouse => "SELECT name FROM system.databases WHERE name NOT IN ('system','information_schema','INFORMATION_SCHEMA') ORDER BY name",
             DatabaseKind.Snowflake => "SHOW TERSE DATABASES",
@@ -502,6 +536,10 @@ internal static partial class DatabaseClient
         {
             (string Schemas, string Tables, string Routines) sql = source.Kind switch
             {
+                DatabaseKind.Redshift => (
+                    $"SELECT nspname FROM pg_namespace WHERE {RedshiftOwn("nspname")} ORDER BY 1",
+                    $"SELECT table_schema, table_name, table_type FROM svv_tables WHERE {RedshiftOwn("table_schema")} ORDER BY 1,2",
+                    $"SELECT n.nspname, p.proname, 'FUNCTION' FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE {RedshiftOwn("n.nspname")} ORDER BY 1,2"),
                 DatabaseKind.Postgres => (
                     "SELECT nspname FROM pg_namespace WHERE nspname NOT IN ('pg_catalog','information_schema') AND nspname NOT LIKE 'pg\\_%' ORDER BY 1",
                     "SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema') ORDER BY 1,2",
@@ -571,6 +609,7 @@ internal static partial class DatabaseClient
         {
             DatabaseKind.Sqlite => "SELECT '', m.name, p.name, p.type FROM sqlite_schema m JOIN pragma_table_info(m.name) p WHERE m.type IN ('table','view') AND m.name NOT LIKE 'sqlite_%' ORDER BY m.name, p.cid",
             DatabaseKind.Postgres => "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns WHERE table_schema NOT IN ('pg_catalog','information_schema') ORDER BY 1, 2, ordinal_position",
+            DatabaseKind.Redshift => $"SELECT table_schema, table_name, column_name, data_type FROM svv_columns WHERE {RedshiftOwn("table_schema")} ORDER BY 1, 2, ordinal_position",
             DatabaseKind.SqlServer => "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS ORDER BY 1, 2, ORDINAL_POSITION",
             DatabaseKind.MySql => "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = DATABASE() ORDER BY 1, 2, ordinal_position",
             DatabaseKind.DuckDb => "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns WHERE table_catalog = current_database() "
@@ -648,7 +687,7 @@ internal static partial class DatabaseClient
                             {
                                 // The rest of a long result is cancelled unread, but passed over in PostgreSQL's transaction, which a cancel ends.
                                 cut = true;
-                                if (transaction is null || source.Kind != DatabaseKind.Postgres)
+                                if (transaction is null || !DatabaseKinds.SpeaksPostgres(source.Kind))
                                 {
                                     command.Cancel();
                                 }
@@ -682,10 +721,10 @@ internal static partial class DatabaseClient
         {
             return run;
         }
-        bool positional = kind == DatabaseKind.Postgres && found.Any(p => p.Name[0] == '$') || kind == DatabaseKind.MySql && found.Any(p => p.Name[0] == '?');
+        bool positional = DatabaseKinds.SpeaksPostgres(kind) && found.Any(p => p.Name[0] == '$') || kind == DatabaseKind.MySql && found.Any(p => p.Name[0] == '?');
         if (positional)
         {
-            IEnumerable<string> places = kind == DatabaseKind.Postgres
+            IEnumerable<string> places = DatabaseKinds.SpeaksPostgres(kind)
                 ? Enumerable.Range(1, found.Where(p => p.Name[0] == '$').Max(p => int.Parse(p.Name[1..], CultureInfo.InvariantCulture))).Select(n => $"${n.ToString(CultureInfo.InvariantCulture)}")
                 : found.Select(p => p.Name);
             foreach (string place in places)
@@ -751,6 +790,7 @@ internal static partial class DatabaseClient
             DatabaseKind.ClickHouse => SqlPlans.FromPostgres(string.Join('\n', Enumerable.Range(0, rows.RowCount).Select(r => Said(r, 0)))),
             DatabaseKind.Snowflake => SqlPlans.FromSnowflake(Said(0, 0)),
             DatabaseKind.Postgres => SqlPlans.FromPostgres(Said(0, 0)),
+            DatabaseKind.Redshift => SqlPlans.FromText([.. Enumerable.Range(0, rows.RowCount).Select(r => Said(r, 0))]),
             DatabaseKind.MySql => SqlPlans.FromMySql(Said(0, 0)),
             DatabaseKind.SqlServer => SqlPlans.FromSqlServer(Said(0, 0)),
             _ => SqlPlans.FromSqlite([.. Enumerable.Range(0, rows.RowCount).Select(r => (Convert.ToInt64(rows.Rows[r][0], CultureInfo.InvariantCulture),
@@ -896,7 +936,7 @@ internal static partial class DatabaseClient
             command.Parameters.Add(parameter);
         }
 
-        object Typed(object? like, string text) => source.Kind == DatabaseKind.Postgres ? text : like switch
+        object Typed(object? like, string text) => DatabaseKinds.SpeaksPostgres(source.Kind) ? text : like switch
         {
             bool => text.Trim() switch
             {

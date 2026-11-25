@@ -15,8 +15,8 @@ public sealed record PlanStep(string Operation, string Detail, double? Cost, dou
 
 /// <summary>A statement's plan as each database explains it without running it: PostgreSQL's EXPLAIN (FORMAT JSON), MySQL's
 /// and MariaDB's EXPLAIN FORMAT=JSON, SQL Server's SHOWPLAN_XML, SQLite's EXPLAIN QUERY PLAN (which says no cost or rows),
-/// DuckDB's EXPLAIN (FORMAT json), ClickHouse's EXPLAIN json = 1 (PostgreSQL's shape) and Snowflake's EXPLAIN USING JSON,
-/// read into one tree of steps.</summary>
+/// DuckDB's EXPLAIN (FORMAT json), ClickHouse's EXPLAIN json = 1 (PostgreSQL's shape), Snowflake's EXPLAIN USING JSON and
+/// Redshift's EXPLAIN, whose plan is text alone, read into one tree of steps.</summary>
 public static class SqlPlans
 {
     /// <summary>What a database is asked to explain a statement: the statement read and planned, never run.</summary>
@@ -28,6 +28,7 @@ public static class SqlPlans
         DatabaseKind.DuckDb => $"EXPLAIN (FORMAT json) {statement}",
         DatabaseKind.ClickHouse => $"EXPLAIN json = 1, description = 1 {statement}",
         DatabaseKind.Snowflake => $"EXPLAIN USING JSON {statement}",
+        DatabaseKind.Redshift => $"EXPLAIN {statement}",
         _ => statement,
     };
 
@@ -148,6 +149,43 @@ public static class SqlPlans
                 }
             }
         }
+    }
+
+    /// <summary>A plan as PostgreSQL's text says it, as Redshift gives its own: a step a line ("XN Seq Scan on orders
+    /// (cost=0.00..0.03 rows=3 width=36)"), each after the first written "->" under the step it is indented below, its
+    /// cost the total after "..", the lines between steps ("Sort Key: id") its detail.</summary>
+    public static PlanStep FromText(IReadOnlyList<string> lines)
+    {
+        List<(int Indent, string Operation, List<string> Detail, double? Cost, double? Rows, List<int> Steps)> made = [];
+        List<int> open = [];
+        foreach (string line in lines.SelectMany(l => l.Split('\n')).Where(l => l.Trim().Length > 0))
+        {
+            string trimmed = line.TrimStart();
+            int indent = line.Length - trimmed.Length;
+            if (made.Count > 0 && !trimmed.StartsWith("->", StringComparison.Ordinal))
+            {
+                made[open[^1]].Detail.Add(trimmed);
+                continue;
+            }
+            string step = trimmed.TrimStart('-', '>', ' ');
+            int costs = step.IndexOf("  (cost=", StringComparison.Ordinal);
+            string said = costs >= 0 ? step[(costs + 8)..].TrimEnd(')') : string.Empty;
+            double? Of(string name) => said.Split(' ').FirstOrDefault(w => w.StartsWith(name, StringComparison.Ordinal)) is { } word
+                && double.TryParse(word[name.Length..].Split("..")[^1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double value) ? value : null;
+            while (open.Count > 0 && made[open[^1]].Indent >= indent)
+            {
+                open.RemoveAt(open.Count - 1);
+            }
+            made.Add((indent, costs >= 0 ? step[..costs] : step, [], costs >= 0 ? Of(string.Empty) : null, Of("rows="), []));
+            if (open.Count > 0)
+            {
+                made[open[^1]].Steps.Add(made.Count - 1);
+            }
+            open.Add(made.Count - 1);
+        }
+        return made.Count == 0 ? new PlanStep("query plan", string.Empty, null, null, []) : Step(0);
+
+        PlanStep Step(int at) => new(made[at].Operation, string.Join("; ", made[at].Detail), made[at].Cost, made[at].Rows, [.. made[at].Steps.Select(Step)]);
     }
 
     /// <summary>SQLite's plan: its rows' details, each under the row its parent names.</summary>

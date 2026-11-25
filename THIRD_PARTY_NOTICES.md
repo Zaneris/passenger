@@ -52,7 +52,7 @@ dbgshim's musl Linux natives are the container tools' (below), which the app nev
 | `StackExchange.Redis` | The Database window's Redis provider | MIT | 2014 - 2026 Stack Exchange, Inc. |
 | `RESPite` | the Redis provider's protocol reader | MIT | 2025 - 2026 Marc Gravell |
 | `AWSSDK.DynamoDBv2` | The Database window's DynamoDB provider | Apache-2.0 | Amazon Web Services |
-| `AWSSDK.RDS`, `AWSSDK.SecretsManager` | The Database window's AWS sign-ins: RDS's IAM tokens and Secrets Manager's secrets | Apache-2.0 | Amazon Web Services |
+| `AWSSDK.RDS`, `AWSSDK.Redshift`, `AWSSDK.RedshiftServerless`, `AWSSDK.SecretsManager` | The Database window's AWS sign-ins: RDS's IAM tokens, Redshift's credentials and Secrets Manager's secrets | Apache-2.0 | Amazon Web Services |
 | `AWSSDK.SecurityToken`, `AWSSDK.SSO`, `AWSSDK.SSOOIDC` | an AWS profile's assumed role and IAM Identity Center sign-in | Apache-2.0 | Amazon Web Services |
 | `AWSSDK.Extensions.Numerics` | the AWS SDK's numbers carried whole | Apache-2.0 | Amazon Web Services |
 | `CassandraCSharpDriver` | The Database window's Cassandra provider | Apache-2.0 (the package's LICENSE.md) | Copyright © by DataStax |

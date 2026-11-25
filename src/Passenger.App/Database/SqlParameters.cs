@@ -54,7 +54,7 @@ public static class SqlParameters
                 i = end;
                 continue;
             }
-            if (c == '$' && kind == DatabaseKind.Postgres && end < run.Length && char.IsAsciiDigit(run[end]) && !NamePart(before))
+            if (c == '$' && DatabaseKinds.SpeaksPostgres(kind) && end < run.Length && char.IsAsciiDigit(run[end]) && !NamePart(before))
             {
                 while (end < run.Length && char.IsAsciiDigit(run[end]))
                 {
@@ -158,7 +158,7 @@ public static class SqlParameters
         {
             return text[1..^1].Replace("''", "'", StringComparison.Ordinal);
         }
-        if (kind == DatabaseKind.Postgres)
+        if (DatabaseKinds.SpeaksPostgres(kind))
         {
             return written;
         }

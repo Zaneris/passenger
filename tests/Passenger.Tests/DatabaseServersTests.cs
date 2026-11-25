@@ -1563,15 +1563,18 @@ public sealed class DatabaseServersTests
             TestFolders.Write(folder, "Shop.csproj", TestProjects.Console().With("  <ItemGroup>\n    <PackageReference Include=\"Npgsql\" Version=\"11.0.0\" />\n  </ItemGroup>\n"));
             TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
             TestFolders.Write(folder, "appsettings.json", $$$"""
-                {"ConnectionStrings": {"Iam": "Host=127.0.0.1;Port={{{rds.Port}}};Database=postgres;Username=iam_user", "Secret": "Host=127.0.0.1;Port={{{port}}};Database=postgres"}}
+                {"ConnectionStrings": {"Iam": "Host=127.0.0.1;Port={{{rds.Port}}};Database=postgres;Username=iam_user", "Secret": "Host=127.0.0.1;Port={{{port}}};Database=postgres",
+                    "Warehouse": "Host=127.0.0.1;Port={{{port}}};Database=postgres;Server Compatibility Mode=Redshift"}}
                 """);
             MainWindow window = Ui.OpenFolder(folder, languageServer: false);
             try
             {
                 window.ShowToolWindow(ToolWindowIds.Database);
-                Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy && window.Database.Sources.Count(s => s.Name is "Iam" or "Secret") == 2, () => window.Database.Said);
+                Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy && window.Database.Sources.Count(s => s.Name is "Iam" or "Secret" or "Warehouse") == 3,
+                    () => window.Database.Said);
+                Assert.Equal(DatabaseKind.Redshift, window.Database.Sources.Single(s => s.Name == "Warehouse").Kind);
                 // Each found connection given its sign-in in its settings, which keep it for the folder.
-                void SignIn(string connection, int way, string profile, string? secret = null)
+                void SignIn(string connection, int way, string profile, string? secret = null, string? cluster = null)
                 {
                     window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == connection));
                     Assert.True(window.Perform(AppActions.DatabaseConnectionEdit), "Edit Database Connection did not run");
@@ -1584,6 +1587,7 @@ public sealed class DatabaseServersTests
                     profiles.SelectedItem = profile;
                     Field<TextBox>("DatabaseAwsRegion").Text = "us-east-1";
                     Field<TextBox>("DatabaseAwsSecret").Text = secret;
+                    Field<TextBox>("DatabaseAwsCluster").Text = cluster;
                     Ui.ClickButton(dialog, "Save and Connect");
                     Ui.WaitFor(() => !dialog.IsVisible, () => Field<TextBlock>("DatabaseConnectionError").Text ?? "the settings kept");
                 }
@@ -1636,6 +1640,36 @@ public sealed class DatabaseServersTests
                 Assert.True(answer.Error is null, $"An agent's read through the secret failed: {answer.Error}");
                 Assert.Equal("reader", answer.Sets[0].Rows[0][0]);
                 Assert.Equal("2", answer.Sets[0].Rows[0][1]);
+
+                // Redshift on PostgreSQL's wire, its system views in catalog_history: signed in by IAM as its cluster's user.
+                aws.Clusters["shop-warehouse"] = ("IAM:reader", "from-redshift");
+                SignIn("Warehouse", 1, "process", cluster: "shop-warehouse");
+                Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
+                foreach (string row in (string[])["Warehouse", "postgres", "public", "Tables", "orders", "Keys"])
+                {
+                    if (window.DatabaseExplorer.Rows.Any(r => r.Title == row && r.Expands && !r.IsExpanded && r.Source.Name == "Warehouse"))
+                    {
+                        DatabaseNode next = window.DatabaseExplorer.Rows.First(r => r.Title == row && r.Expands && !r.IsExpanded && r.Source.Name == "Warehouse");
+                        window.DatabaseExplorer.Choose(next);
+                        Ui.Await(window.DatabaseExplorer.ToggleAsync(next), $"{row} to open");
+                        Assert.True(next.IsExpanded, $"{row} did not open: {window.Database.Said}");
+                    }
+                }
+                string[] laid = [.. window.DatabaseExplorer.Rows.Where(r => r.Kind == DatabaseNodeKind.Key && r.Source.Name == "Warehouse").Select(r => r.Title)];
+                Assert.True(laid is ["DISTRIBUTION · KEY(customer)", "SORT KEY · placed"], $"Redshift's table read its keys as {string.Join(", ", laid)}");
+                Assert.Equal([("shop-warehouse", "postgres", "AKIDSTANDINPROCESS")], aws.Asked.Distinct());
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Warehouse"));
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is { } opened && opened.Connection == window.Database.Sources.Single(s => s.Name == "Warehouse").Id,
+                    "a console of the Redshift connection");
+                SqlConsole warehouse = window.EditorArea.ActiveGroup.Console!.Console!;
+                Run(window, "SELECT current_user, name FROM orders ORDER BY placed");
+                Assert.True(warehouse.Results is [{ Error: null }], warehouse.Said);
+                Assert.Equal("IAM:reader", warehouse.Results[0].Sets[0].Cell(0, 0));
+                Assert.Equal(["coffee", "tea"], Enumerable.Range(0, warehouse.Results[0].Sets[0].RowCount).Select(r => warehouse.Results[0].Sets[0].Cell(r, 1)));
+                Assert.True(window.Perform(AppActions.DatabaseExplain), "Explain Plan did not run");
+                Ui.WaitFor(() => warehouse.Plan is not null || warehouse.Said.StartsWith("Explain", StringComparison.Ordinal) && !warehouse.Running, () => warehouse.Said);
+                Assert.True(warehouse.Plan is { Operation: "Sort", Steps: [{ Operation: "Seq Scan on orders" }] }, $"Redshift's plan read as {warehouse.Plan}: {warehouse.Said}");
             }
             finally
             {
@@ -1659,8 +1693,19 @@ public sealed class DatabaseServersTests
             await connection.OpenAsync();
             await using Npgsql.NpgsqlCommand command = connection.CreateCommand();
             command.CommandText = reload ? "SELECT pg_reload_conf()"
-                : "CREATE USER iam_user; CREATE USER reader PASSWORD 'from-secrets-manager'; CREATE TABLE orders (id int PRIMARY KEY, name text); "
-                    + "INSERT INTO orders VALUES (1, 'tea'), (2, 'coffee'); GRANT SELECT ON orders TO iam_user, reader";
+                : "CREATE USER iam_user; CREATE USER reader PASSWORD 'from-secrets-manager'; CREATE USER \"IAM:reader\" PASSWORD 'from-redshift'; "
+                    + "CREATE TABLE orders (id int PRIMARY KEY, name text, customer text, placed date); "
+                    + "INSERT INTO orders VALUES (1, 'tea', 'ann', '2026-11-02'), (2, 'coffee', 'bob', '2026-11-01'); "
+                    + "GRANT SELECT ON orders TO iam_user, reader, \"IAM:reader\"; "
+                    // Redshift's own views of its catalog, as Redshift's search path finds them.
+                    + "CREATE SCHEMA catalog_history; "
+                    + "CREATE VIEW catalog_history.svv_tables AS SELECT table_catalog, table_schema, table_name, table_type FROM information_schema.tables; "
+                    + "CREATE VIEW catalog_history.svv_columns AS SELECT table_catalog, table_schema, table_name, column_name, ordinal_position, column_default, is_nullable, "
+                    + "data_type FROM information_schema.columns; "
+                    + "CREATE VIEW catalog_history.svv_table_info AS SELECT 'public'::text AS \"schema\", 'orders'::text AS \"table\", 'KEY(customer)'::text AS diststyle, "
+                    + "'placed'::text AS sortkey1; "
+                    + "GRANT USAGE ON SCHEMA catalog_history TO \"IAM:reader\"; GRANT SELECT ON ALL TABLES IN SCHEMA catalog_history TO \"IAM:reader\"; "
+                    + "ALTER ROLE \"IAM:reader\" SET search_path = catalog_history, public";
             await command.ExecuteNonQueryAsync();
             return true;
         }

@@ -46,6 +46,7 @@ public sealed class SqlInserts(TextWriter into, InsertTarget target, string line
             DatabaseKind.SqlServer => "0x" + Convert.ToHexString(bytes),
             DatabaseKind.DuckDb or DatabaseKind.ClickHouse => $"unhex('{Convert.ToHexString(bytes)}')",
             DatabaseKind.Snowflake => $"TO_BINARY('{Convert.ToHexString(bytes)}', 'HEX')",
+            DatabaseKind.Redshift => $"FROM_HEX('{Convert.ToHexString(bytes)}')",
             _ => $"X'{Convert.ToHexString(bytes)}'",
         },
         _ when RowValues.IsNumber(value) => RowValues.Text(value)!,

@@ -108,7 +108,7 @@ internal static class DatabaseDdl
                 string quoted = DatabaseClient.Quote(kind, target.Name);
                 return kind switch
                 {
-                    DatabaseKind.Postgres or DatabaseKind.DuckDb => $"ALTER TABLE {table} ALTER COLUMN {quoted} TYPE {target.Detail}{end}",
+                    DatabaseKind.Postgres or DatabaseKind.Redshift or DatabaseKind.DuckDb => $"ALTER TABLE {table} ALTER COLUMN {quoted} TYPE {target.Detail}{end}",
                     DatabaseKind.MySql or DatabaseKind.ClickHouse => $"ALTER TABLE {table} MODIFY COLUMN {quoted} {target.Detail}{end}",
                     DatabaseKind.Snowflake => $"ALTER TABLE {table} ALTER COLUMN {quoted} SET DATA TYPE {target.Detail}{end}",
                     DatabaseKind.SqlServer => $"ALTER TABLE {table} ALTER COLUMN {quoted} {target.Detail}{end}",
@@ -156,7 +156,7 @@ internal static class DatabaseDdl
         (DatabaseKind.SqlServer, DatabaseObjectKind.View or DatabaseObjectKind.Routine or DatabaseObjectKind.Trigger) => "OR ALTER",
         (DatabaseKind.Postgres, DatabaseObjectKind.View or DatabaseObjectKind.Trigger) => "OR REPLACE",
         (DatabaseKind.Postgres, DatabaseObjectKind.Routine) => string.Empty,
-        (DatabaseKind.MySql or DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake, DatabaseObjectKind.View) => "OR REPLACE",
+        (DatabaseKind.MySql or DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake or DatabaseKind.Redshift, DatabaseObjectKind.View) => "OR REPLACE",
         (DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake, DatabaseObjectKind.Routine) => "OR REPLACE",
         _ => null,
     };
@@ -192,6 +192,7 @@ internal static class DatabaseDdl
             DatabaseKind.SqlServer => await SqlServerAsync(connection, target, cancel),
             DatabaseKind.DuckDb => await DuckDbAsync(connection, target, cancel),
             DatabaseKind.ClickHouse => await ClickHouseAsync(connection, target, cancel),
+            DatabaseKind.Redshift => await RedshiftAsync(connection, target, cancel),
             _ => await SnowflakeAsync(connection, target, cancel),
         };
         if (parts.Count == 0)
@@ -264,6 +265,15 @@ internal static class DatabaseDdl
     {
         DatabaseObjectKind.Table or DatabaseObjectKind.View => Texts(await Read(connection, "SELECT GET_DDL(@type, @full)",
             [("@type", target.Kind == DatabaseObjectKind.View ? "VIEW" : "TABLE"), ("@full", Named(DatabaseKind.Snowflake, target))], cancel)),
+        _ => [],
+    };
+
+    /// <summary>A Redshift table's or view's definition as Redshift writes it (SHOW TABLE, SHOW VIEW), its distribution and
+    /// sort keys with it; nothing else of Redshift's.</summary>
+    private static async Task<List<string>> RedshiftAsync(DbConnection connection, DatabaseObjectRef target, CancellationToken cancel) => target.Kind switch
+    {
+        DatabaseObjectKind.Table or DatabaseObjectKind.View => Texts(await Read(connection,
+            $"SHOW {(target.Kind == DatabaseObjectKind.View ? "VIEW" : "TABLE")} {Named(DatabaseKind.Redshift, target)}", [], cancel)),
         _ => [],
     };
 
