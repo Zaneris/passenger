@@ -776,23 +776,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.KeyTextInput("int[] numbers = [3, 1, 2];");
         Ui.Press(window, "ENTER");
         window.KeyTextInput("int largest = numbers");
-        // Roslyn lists the methods of namespaces not imported once it has indexed them, so the dot is typed again until it has.
-        Ui.WaitFor(() =>
-        {
-            if (window.Assist.CompletionLabels.Contains("Max"))
-            {
-                return true;
-            }
-            Ui.Press(window, "ESCAPE");
-            if (editor.Document.Snapshot.ToString().Contains("numbers.", StringComparison.Ordinal))
-            {
-                Ui.Press(window, "BACK_SPACE");
-            }
-            Ui.Hold(TimeSpan.FromMilliseconds(250), "a pause before the dot is typed again, as a person retries");
-            window.KeyTextInput(".");
-            Ui.Settle();
-            return false;
-        }, "LINQ's Max, of a namespace Program.cs does not import, among the array's members");
+        // One dot: the list's later part waits for Roslyn's index of the namespaces not imported, never answering without it.
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Max"), "LINQ's Max, of a namespace Program.cs does not import, among the array's members after one dot");
         for (int down = window.Assist.CompletionLabels.ToList().IndexOf("Max"); down > 0; down--)
         {
             Ui.Press(window, "DOWN");

@@ -59,8 +59,10 @@ internal sealed class PrioritizedCompletionHandler(IGlobalOptionService options,
             return null;
         }
         int most = options.GetOption(LspOptionsStorage.MaxCompletionListSize);
+        // The later part waits for the index of namespaces not imported: a list without their methods is narrowed, not asked again.
         Task<(RoslynCompletionList CompletionList, bool IsIncomplete, bool isHardSelection, long ResultId)?> Listed(ExpandedCompletionMode part, CancellationToken cancel) =>
-            CompletionHandler.GetFilteredCompletionListAsync(request.Context, document, text, position, trigger, completion with { ExpandedCompletionBehavior = part },
+            CompletionHandler.GetFilteredCompletionListAsync(request.Context, document, text, position, trigger,
+                completion with { ExpandedCompletionBehavior = part, ForceExpandedCompletionIndexCreation = part == ExpandedCompletionMode.ExpandedItemsOnly },
                 capabilities, service, kept, most, cancel);
         using LaterCompletions.Pending rest = later.Begin(cancellationToken);
         Task<(RoslynCompletionList CompletionList, bool IsIncomplete, bool isHardSelection, long ResultId)?> first =
