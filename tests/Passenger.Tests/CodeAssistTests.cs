@@ -186,9 +186,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>What the window says of the code around the caret, in one window on Program.cs: the status bar's path names
-    /// the file and the member the caret is in; resting the pointer on a method shows a card with its signature; File
-    /// Structure lists the file's members, opens on the caret's and filters keeping their type; and Go to Symbol finds a
-    /// member in another file by name and goes to it.</summary>
+    /// the file and the member the caret is in; resting the pointer on a method shows a card with its signature, which the
+    /// pointer reaches and copies from; File Structure lists the file's members, opens on the caret's and filters keeping
+    /// their type; and Go to Symbol finds a member in another file by name and goes to it.</summary>
     private void The_path_a_hover_card_file_structure_and_go_to_symbol_name_the_code_and_go_to_it()
     {
         MainWindow window = WithoutNavigationBar(project.Open("Program.cs"));
@@ -205,6 +205,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
         Ui.WaitFor(() => window.Assist.HoverText is not null, "the hover card");
         Assert.Contains("int Helper.Twice(int value)", window.Assist.HoverText, StringComparison.Ordinal);
+        TheCardIsReachedSelectedAndCopied(window, editor, point);
         window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
         Ui.Settle();
 
@@ -233,6 +234,42 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Equal(PathNames.Canonical(project.PathOf("Helper.cs")), window.EditorArea.Active?.Path);
         Assert.Equal(2, window.EditorArea.CodeEditor.CaretPosition.Line);
         window.Close();
+    }
+
+    /// <summary>The hover card under the word at <paramref name="word"/> takes the pointer: crossed to from its word, it
+    /// stays past the pause it waits before going; its code dragged over is selected and Copy's keys copy that, its menu
+    /// offers Copy while the card stays, and Escape takes the card away, the editor having its keys back (#2259).</summary>
+    private static void TheCardIsReachedSelectedAndCopied(MainWindow window, CodeEditor editor, Point word)
+    {
+        Border card = window.Assist.HoverCard!;
+        SelectableTextBlock code = card.GetVisualDescendants().OfType<ColouredCode>().Single(c => c.Code.Contains("Twice", StringComparison.Ordinal))
+            .GetVisualDescendants().OfType<SelectableTextBlock>().Single();
+        Point from = code.TranslatePoint(new Point(1, code.Bounds.Height / 2), window)!.Value;
+        Point to = code.TranslatePoint(new Point(code.Bounds.Width - 1, code.Bounds.Height / 2), window)!.Value;
+        // Across the gap between the word's line and the card, onto it.
+        window.MouseMove(new Point(word.X, card.TranslatePoint(default, window)!.Value.Y - 1), Avalonia.Input.RawInputModifiers.None);
+        window.MouseMove(from, Avalonia.Input.RawInputModifiers.None);
+        Ui.Hold(TimeSpan.FromMilliseconds(600), "past the pause a card waits once the pointer left its word");
+        Assert.True(window.Assist.HoverCard == card, "The hover card went as the pointer crossed from its word onto it, so nothing on it can be selected");
+
+        Ui.Drag(window, from, to);
+        string selected = code.SelectedText;
+        Assert.True(selected.Length > 0 && "int Helper.Twice(int value)".Contains(selected, StringComparison.Ordinal) && window.Assist.HoverCard == card,
+            $"A drag over the card's code selected [{selected}], the card {(window.Assist.HoverCard == card ? "still" : "no longer")} shown");
+        Ui.Press(window, Ui.Command("C"));
+        Assert.True(Ui.Clipboard(window) == selected, $"Copy's keys on the card's selected [{selected}] left [{Ui.Clipboard(window)}] on the clipboard");
+
+        Ui.RightClick(code, new Point(code.Bounds.Width / 2, code.Bounds.Height / 2));
+        MenuFlyout menu = Assert.IsType<MenuFlyout>(code.ContextFlyout);
+        Assert.True(menu.IsOpen && menu.Items.OfType<MenuItem>().Any(item => item.Header as string == "Copy" && item.IsEffectivelyEnabled),
+            $"A right click on the card's selected code opened [{string.Join(", ", menu.Items.OfType<MenuItem>().Select(i => $"{i.Header}{(i.IsEffectivelyEnabled ? string.Empty : " (greyed)")}"))}], open: {menu.IsOpen}");
+        Ui.Hold(TimeSpan.FromMilliseconds(600), "past the pause a card waits once the pointer and the keys left it");
+        Assert.True(window.Assist.HoverCard == card, "The hover card went while its menu was open");
+        menu.Hide();
+        Ui.Settle();
+        Ui.Press(window, "ESCAPE");
+        Ui.WaitFor(() => window.Assist.HoverCard is null, "the card gone at Escape");
+        Assert.True(editor.IsKeyboardFocusWithin, $"Escape on the hover card left the editor without its keys, which {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"} has");
     }
 
     /// <summary>Where the status bar's path is drawn.</summary>

@@ -98,7 +98,7 @@ public sealed class CodeAssist
             editor.Hovered += (_, e) =>
             {
                 // A value's card in use (its keys, its menu, a value being typed) stays over what else the pointer rests on.
-                if (editor == Editor && !quickInfo.ValuesInUse)
+                if (editor == Editor && !quickInfo.InUse)
                 {
                     if (e.Annotation is { } annotation)
                     {
@@ -110,7 +110,7 @@ public sealed class CodeAssist
             };
             editor.GutterHovered += (_, e) =>
             {
-                if (editor == Editor && !quickInfo.ValuesInUse)
+                if (editor == Editor && !quickInfo.InUse)
                 {
                     quickInfo.ShowGutter(e.Line, e.Position);
                 }
@@ -181,7 +181,7 @@ public sealed class CodeAssist
             ? DeclaredFromAsync(file, side, offset, cancel) : NoReach;
         side.Hovered += (_, e) =>
         {
-            if (worked() && !quickInfo.ValuesInUse && e.Annotation is null && e.Hint is null)
+            if (worked() && !quickInfo.InUse && e.Annotation is null && e.Hint is null)
             {
                 IdeErrors.Observe(quickInfo.ShowIn(side, file, layer, e.Offset, e.Point));
             }

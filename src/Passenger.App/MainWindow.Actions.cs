@@ -344,6 +344,7 @@ public partial class MainWindow
             {
                 InEditor = true,
                 WhyNot = context => ExplorerEdits(id, context) ? WhyNotOnRow(id, context)
+                    : context.Focused is SelectableWords words && WordsEdits.ContainsKey(id) ? WhyNotInWords(words, id)
                     : context.File is null && context.Focused is not (TextBox or CodeEditor) ? Refusals.NoFile
                     : E.IsChange(id) ? ChangeRefused(id, context) : null,
                 TitleIn = id == E.Delete ? context => DeleteTitle(context) ?? title : null,
@@ -372,6 +373,9 @@ public partial class MainWindow
         switch (context.Focused)
         {
             case TextBox box when Edit(box, action):
+                return;
+            case SelectableWords words when WordsEdits.TryGetValue(action, out Action<SelectableWords>? edit):
+                edit(words);
                 return;
             case Tables.CellGrid table when table.Execute(action):
                 return;

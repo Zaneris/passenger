@@ -58,13 +58,40 @@ internal sealed class PopupPlacement
     /// <summary>What the open list of choices is titled ("Select expression to parenthesize"); null with none open.</summary>
     public string? OfferedTitle => layer.Children.OfType<ChoicePopup>().LastOrDefault()?.Title;
 
-    /// <summary>A card or list that stays on the layer, hidden until it is shown, and goes with it to another window's.</summary>
-    public void Add(Control popup)
+    /// <summary>A card or list that stays on the layer, hidden until it is shown, and goes with it to another window's; a
+    /// card the person moved into goes at Escape there (<paramref name="escaped"/>, as Escape in the editor takes it), and
+    /// hidden while it has the keys, it gives them back to the editor.</summary>
+    public void Add(Control popup, Action? escaped = null)
     {
         popup.IsVisible = false;
         Heard(popup);
         cards.Add(popup);
         layer.Children.Add(popup);
+        // Keys lost while it is hidden were lost by its going, once the focus has settled nowhere.
+        popup.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == InputElement.IsKeyboardFocusWithinProperty && e.NewValue is false && !popup.IsVisible)
+            {
+                UiThread.Post(() =>
+                {
+                    if (!popup.IsVisible && TopLevel.GetTopLevel(popup)?.FocusManager?.GetFocusedElement() is null)
+                    {
+                        Editor.Focus();
+                    }
+                });
+            }
+        };
+        if (escaped is not null)
+        {
+            popup.KeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None)
+                {
+                    escaped();
+                    e.Handled = true;
+                }
+            };
+        }
     }
 
     /// <summary>A popup as a screen reader meets it: the role and name it gives (<see cref="IHeardPopup"/>), set only where

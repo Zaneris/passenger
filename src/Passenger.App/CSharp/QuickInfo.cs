@@ -8,9 +8,9 @@ using Passenger.Text;
 namespace Passenger.App.CSharp;
 
 /// <summary>The card when the pointer rests, or Quick Documentation at the caret: the problems there, then a paused
-/// program's value (its rows to open, the card taking the pointer and the keys) or what the file's language says of the
-/// symbol; an inlay hint's own words over a hint. A card a key shows is read to a screen reader, one the pointer brings
-/// never.</summary>
+/// program's value (its rows to open) or what the file's language says of the symbol; an inlay hint's own words over a
+/// hint. The pointer may go to the card, which stays while it or the keys are on it, so its words can be selected and
+/// copied. A card a key shows is read to a screen reader, one the pointer brings never.</summary>
 internal sealed class QuickInfo
 {
     private readonly AssistContext context;
@@ -19,8 +19,8 @@ internal sealed class QuickInfo
     private readonly InfoCard hoverCard = new("Quick Documentation");
     private CancellationTokenSource? hovering;
 
-    /// <summary>The pause after the pointer leaves a card of a paused program's value (its word, or the card itself) before
-    /// the card goes: time to reach the card from the word, on which it stays while the pointer or the keys are on it.</summary>
+    /// <summary>The pause after the pointer leaves a card (its word, or the card itself) before the card goes: time to reach
+    /// the card from the word, on which it stays while the pointer or the keys are on it.</summary>
     private readonly Debounce leaving;
 
     /// <summary>Takes the card away once the stop its value was read at is gone.</summary>
@@ -39,7 +39,7 @@ internal sealed class QuickInfo
         this.context = context;
         this.popups = popups;
         this.completing = completing;
-        popups.Add(hoverCard);
+        popups.Add(hoverCard, Hide);
         hoverCard.Play = context.Play;
         leaving = new Debounce(TimeSpan.FromMilliseconds(300), () =>
         {
@@ -50,23 +50,15 @@ internal sealed class QuickInfo
             return Task.CompletedTask;
         });
         hoverCard.PointerEntered += (_, _) => leaving.Stop();
-        hoverCard.PointerExited += (_, _) => LeaveValues();
+        hoverCard.PointerExited += (_, _) => Leave();
         hoverCard.PropertyChanged += (_, e) =>
         {
             if (e.Property == InputElement.IsKeyboardFocusWithinProperty && e.NewValue is false)
             {
-                LeaveValues();
+                Leave();
             }
         };
         hoverCard.SizeChanged += (_, _) => KeepValuesPlaced();
-        hoverCard.KeyDown += (_, e) =>
-        {
-            if (e.Key == Key.Escape && hoverCard.Values is not null)
-            {
-                Hide();
-                e.Handled = true;
-            }
-        };
     }
 
     private CodeEditor Editor => context.Editor;
@@ -90,27 +82,14 @@ internal sealed class QuickInfo
     /// state); null where it says nothing.</summary>
     public Func<int, IReadOnlyList<string>?>? GutterWords { get; set; }
 
-    /// <summary>Whether a card of a value is in use: it has the keys, its menu is open, or a value is being typed in it.</summary>
-    public bool ValuesInUse => hoverCard.IsVisible && hoverCard.Values is { } values && (hoverCard.IsKeyboardFocusWithin || values.IsInUse);
+    /// <summary>Whether the card shown is in use (<see cref="InfoCard.InUse"/>): its keys, a menu of its, a value typed in it.</summary>
+    public bool InUse => hoverCard.IsVisible && hoverCard.InUse;
 
-    /// <summary>Whether a card of a value, or one holding something to use, stays: in use, or the pointer is on it.</summary>
-    private bool HoverHeld => ValuesInUse || (hoverCard.IsVisible && Reachable && hoverCard.IsPointerOver);
+    /// <summary>Whether the card shown stays: in use, or the pointer is on it.</summary>
+    private bool HoverHeld => InUse || (hoverCard.IsVisible && hoverCard.IsPointerOver);
 
-    /// <summary>Whether the card shown is one the pointer may go to: a value's rows, or something to use (a sound's Play).</summary>
-    private bool Reachable => hoverCard.Values is not null || hoverCard.Usable;
-
-    /// <summary>The pointer left the word the card is of: a card the pointer may go to goes after a pause, any other at once.</summary>
-    public void PointerLeft()
-    {
-        if (hoverCard.IsVisible && Reachable)
-        {
-            LeaveValues();
-        }
-        else
-        {
-            Hide();
-        }
-    }
+    /// <summary>The pointer left the word the card is of: the card goes after a pause, unless the pointer reaches it.</summary>
+    public void PointerLeft() => Leave();
 
     /// <summary>Quick Documentation: the card for what is at the caret (its problems, a paused program's value, the symbol's
     /// description); pressed again while a value's card shows, the card takes the keys, its rows to open with the arrows.</summary>
@@ -295,7 +274,7 @@ internal sealed class QuickInfo
             {
                 if (hoverCard.Values == rows)
                 {
-                    LeaveValues();
+                    Leave();
                 }
             };
         }
@@ -382,11 +361,11 @@ internal sealed class QuickInfo
         ? Math.Max(popups.Held.Top, line.Y - height - 2)
         : Math.Max(popups.Held.Top, Math.Min(line.Y + Editor.LineHeight + 2, popups.Held.Bottom - height));
 
-    /// <summary>The pointer left a card of a value, or its word, or the keys left the card: it goes after a pause unless
-    /// the pointer comes back to it or it is in use.</summary>
-    private void LeaveValues()
+    /// <summary>The pointer left a card, or its word, or the keys left the card: it goes after a pause unless the pointer
+    /// comes back to it or it is in use.</summary>
+    private void Leave()
     {
-        if (hoverCard.IsVisible && Reachable)
+        if (hoverCard.IsVisible)
         {
             leaving.Restart();
         }
@@ -485,19 +464,15 @@ internal sealed class QuickInfo
         popups.Place(hoverCard, new Point(point.X, Editor.PointOf(text.GetLineStart(line)).Y), above: false);
     }
 
+    /// <summary>The card gone, the keys it had given back to the editor (<see cref="PopupPlacement.Add"/>).</summary>
     public void Hide()
     {
         hovering?.Cancel();
-        bool focused = hoverCard.IsKeyboardFocusWithin;
         ForgetValues();
         hoverCard.IsVisible = false;
         if (hoverCard.Values is not null)
         {
             hoverCard.Clear();
-        }
-        if (focused)
-        {
-            Editor.Focus();
         }
     }
 

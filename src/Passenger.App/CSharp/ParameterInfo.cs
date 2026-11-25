@@ -43,7 +43,7 @@ internal sealed class ParameterInfo
     {
         this.context = context;
         this.popups = popups;
-        popups.Add(card);
+        popups.Add(card, () => Hide(cancel: false));
         following = new Debounce(TimeSpan.FromMilliseconds(100), () => card.IsVisible ? Show() : Task.CompletedTask);
     }
 

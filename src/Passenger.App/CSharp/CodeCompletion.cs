@@ -41,7 +41,7 @@ internal sealed partial class CodeCompletion
         this.context = context;
         this.popups = popups;
         popups.Add(completion);
-        popups.Add(itemCard);
+        popups.Add(itemCard, Close);
         ListKeys.Act(completion.List, new ListActs { Open = () => IdeErrors.Observe(Commit()) });
         completion.SelectedChanged += (_, _) =>
         {

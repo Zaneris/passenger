@@ -9,6 +9,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Passenger.Editor;
 
 namespace Passenger.App.CSharp;
@@ -16,8 +17,9 @@ namespace Passenger.App.CSharp;
 /// <summary>A card over the editor, every one alike: hover information, a diagnostic's message, a signature, the
 /// completion list's item. Code is drawn as the editor draws it (<see cref="ColouredCode"/>), a signature too long for the
 /// card a parameter a line, prose in the interface's font, a problem in its severity's colour; as wide as what it holds,
-/// up to the popups' Medium, a width words read well at. A paused program's value with members is its row of the stop's
-/// values (<see cref="AddValues"/>), which the card then takes the pointer and the keys for, up to the popups' Wide. A
+/// up to the popups' Medium, a width words read well at. It takes the pointer, its words and code selectable and copied as
+/// any words to read are (<see cref="SelectableWords"/>), taking the keys only once the person moves into it. A paused
+/// program's value with members is its row of the stop's values (<see cref="AddValues"/>), up to the popups' Wide. A
 /// screen reader meets it as a tooltip called by what it is for (Parameter Info).</summary>
 internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
 {
@@ -37,7 +39,6 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         Padding = PopupFrame.CardInset;
         MaxWidth = PopupFrame.Medium;
         Child = parts;
-        IsHitTestVisible = false;
     }
 
     /// <summary>The most the card is wide: a value's rows the widest of the popups, words and code a width they read at.</summary>
@@ -48,9 +49,6 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     public string Called { get; }
 
     public bool IsEmpty => parts.Children.Count == 0;
-
-    /// <summary>Whether it holds something to use (a sound's Play), so it takes the pointer and stays while the pointer is on it.</summary>
-    public bool Usable { get; private set; }
 
     /// <summary>Plays a sound a preview offers; nothing without it.</summary>
     public Action<string>? Play { get; set; }
@@ -84,11 +82,14 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         }
         pictures.Clear();
         Values = null;
-        Usable = false;
         fitted = 0;
-        IsHitTestVisible = false;
         MaxWidth = PopupFrame.Medium;
     }
+
+    /// <summary>Whether the person is using it: it has the keys, the menu of its words or of a value's rows is open, or a
+    /// value is being typed in it.</summary>
+    public bool InUse => IsKeyboardFocusWithin || Values?.IsInUse == true
+        || parts.GetVisualDescendants().OfType<SelectableWords>().Any(words => words.ContextFlyout is { IsOpen: true } menu && menu.Target == words);
 
     /// <summary>Held to a room narrower than it would be, its words wrapping to it; as wide as it takes of itself, up to
     /// <see cref="Widest"/>, in a wider one.</summary>
@@ -104,7 +105,6 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         double holds = whole - Padding.Top - Padding.Bottom - BorderThickness.Top - BorderThickness.Bottom - values.Padding.Top - values.Padding.Bottom;
         values.MaxHeight = Math.Max(ListRow.Height, Math.Min(rows, holds)) + values.Padding.Top + values.Padding.Bottom;
         parts.Children.Add(values);
-        IsHitTestVisible = true;
         values.Tree.Rows.CollectionChanged += (_, _) =>
         {
             if (Values == values)
@@ -198,7 +198,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         return code;
     }
 
-    public void AddText(string text, IBrush? colour = null) => parts.Children.Add(new TextBlock
+    public void AddText(string text, IBrush? colour = null) => parts.Children.Add(new SelectableWords
     {
         Text = text,
         TextWrapping = TextWrapping.Wrap,
@@ -230,8 +230,6 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
                     Spacing = Gaps.Small,
                     Children = { play, new TextBlock { Classes = { StyleClasses.Caption }, Text = preview.Named, VerticalAlignment = VerticalAlignment.Center, Foreground = Brush(TokenKeys.TextMuted) } },
                 });
-                Usable = true;
-                IsHitTestVisible = true;
                 break;
             default:
                 AddText(preview.Named);
