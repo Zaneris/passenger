@@ -353,8 +353,9 @@ public sealed class OutputView : DockPanel, IOwnKeys
     /// <summary>The console's menu while it is open.</summary>
     public ContextMenu? Menu { get; private set; }
 
-    /// <summary>Adds the IDE's own words (a command line, how a run ended, why it could not start) after everything
-    /// written before them, at once; in the error colour when they say what went wrong.</summary>
+    /// <summary>Adds the IDE's own words (a command line, how a run ended, why it could not start, what Hot Reload did) after
+    /// everything written before them, at once, beginning a line of their own where a program's line is unfinished; in the
+    /// error colour when they say what went wrong.</summary>
     public void Append(string text, bool error = false)
     {
         UiThread.Check();
@@ -362,6 +363,10 @@ public sealed class OutputView : DockPanel, IOwnKeys
         if (fold?.LetGo() is { } unfinished)
         {
             Insert(unfinished, [new ConsoleRun(0, unfinished.Length, ConsoleStream.Error)]);
+        }
+        if (text.Length > 0 && typedFrom > 0 && Document.Snapshot[typedFrom - 1] != '\n' && !text.StartsWith('\n'))
+        {
+            text = "\n" + text;
         }
         Insert(text, [new ConsoleRun(0, text.Length, error ? ConsoleStream.Error : ConsoleStream.System)]);
     }

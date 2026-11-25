@@ -1543,12 +1543,12 @@ public sealed partial class BuildRunController
             }
             if (notStarted is null && relay is not null && onDevice is not null)
             {
-                await AttachOnDeviceForHotReloadAsync(chosen.Name, onDevice, relay, parts.Views.Run.Sink, work, Take(ref edits), running, inspected, ProgramBuild.Of(plan),
+                await AttachOnDeviceForHotReloadAsync(chosen.Name, onDevice, relay, parts.Views.Run, work, Take(ref edits), running, inspected, ProgramBuild.Of(plan),
                     Take(ref handlers));
             }
             if (notStarted is null && heldStart && session.Runner.ProcessId is int id)
             {
-                await AttachForHotReloadAsync(chosen.Name, id, parts.Views.Run.Sink, work, Take(ref edits), running, Take(ref handlers), inspected, ProgramBuild.Of(plan));
+                await AttachForHotReloadAsync(chosen.Name, id, parts.Views.Run, work, Take(ref edits), running, Take(ref handlers), inspected, ProgramBuild.Of(plan));
             }
             return notStarted;
         }
@@ -1844,13 +1844,13 @@ public sealed partial class BuildRunController
     /// lets it go: what its applies come to is said in <paramref name="console"/> (null for the terminal's tab, whose text is
     /// the program's own) and the status bar, which says <paramref name="running"/> once attached. One the debugger cannot
     /// reach is let go and runs without Hot Reload, saying why.</summary>
-    private async Task AttachForHotReloadAsync(string name, int processId, ConsoleSink? console, Working work, BuiltEdits? edits, string running,
+    private async Task AttachForHotReloadAsync(string name, int processId, OutputView? console, Working work, BuiltEdits? edits, string running,
         UpdateHandlerHook? handlers = null, LiveApp? app = null, ProgramBuild? builds = null)
     {
         work.Say($"Attaching to {name} for Hot Reload…");
         string? refused = await session.Debug.AttachForHotReloadAsync(processId, name, (line, error) =>
         {
-            console?.Write($"{line}\n", error ? ConsoleStream.Error : ConsoleStream.Output);
+            console?.Append($"{line}\n", error);
             parts.Say(line);
         }, cancellation: work.Stopping, edits: edits, handlers: handlers, app: app, builds: builds);
         if (refused is null)
