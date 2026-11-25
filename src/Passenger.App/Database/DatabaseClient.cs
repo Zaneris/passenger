@@ -24,9 +24,9 @@ internal static partial class DatabaseClient
     /// transactions read-only, SQL Server's asked for a read-only session.</summary>
     internal static async Task<DbConnection> OpenAsync(DatabaseSource source, CancellationToken cancel)
     {
-        if (DatabaseKinds.HoldsDocuments(source.Kind))
+        if (!DatabaseKinds.SpeaksSql(source.Kind))
         {
-            throw new InvalidOperationException(Refusals.NoSqlOnDocuments(DatabaseKinds.Title(source.Kind)));
+            throw new InvalidOperationException(Refusals.NotSql(DatabaseKinds.Title(source.Kind)));
         }
         if (source.Kind == DatabaseKind.DuckDb)
         {
@@ -218,6 +218,10 @@ internal static partial class DatabaseClient
 
     internal static async Task<DatabaseSchema> SchemaAsync(DatabaseSource source, DatabaseTable table, CancellationToken cancel)
     {
+        if (source.Kind == DatabaseKind.Redis)
+        {
+            return await RedisClient.SchemaAsync(source, table, cancel);
+        }
         if (DatabaseKinds.HoldsDocuments(source.Kind))
         {
             return await DocumentClient.SchemaAsync(source, table, cancel);
@@ -345,6 +349,10 @@ internal static partial class DatabaseClient
     internal static async Task<DatabaseRows> PageAsync(DatabaseSource source, DatabaseSchema schema, int offset, CancellationToken cancel, DatabaseFilter? filter = null,
         (string Column, bool Descending)? sort = null)
     {
+        if (source.Kind == DatabaseKind.Redis)
+        {
+            return await RedisClient.PageAsync(source, schema, offset, cancel, filter, sort);
+        }
         if (DatabaseKinds.HoldsDocuments(source.Kind))
         {
             return await DocumentClient.PageAsync(source, schema, offset, cancel, filter, sort);
@@ -411,6 +419,10 @@ internal static partial class DatabaseClient
         {
             return [source.Database];
         }
+        if (source.Kind == DatabaseKind.Redis)
+        {
+            return await RedisClient.DatabasesAsync(source, cancel);
+        }
         if (DatabaseKinds.HoldsDocuments(source.Kind))
         {
             return await DocumentClient.DatabasesAsync(source, cancel);
@@ -433,6 +445,10 @@ internal static partial class DatabaseClient
     /// its one schema, and SQLite's has none of a name.</summary>
     internal static async Task<IReadOnlyList<(string Schema, IReadOnlyList<DatabaseObject> Objects)>> ObjectsAsync(DatabaseSource source, CancellationToken cancel)
     {
+        if (source.Kind == DatabaseKind.Redis)
+        {
+            return await RedisClient.KeysAsync(source, cancel);
+        }
         if (DatabaseKinds.HoldsDocuments(source.Kind))
         {
             return await DocumentClient.CollectionsAsync(source, cancel);
@@ -498,6 +514,10 @@ internal static partial class DatabaseClient
     /// <summary>The tables and views of the connection's database with their columns, for completion.</summary>
     internal static async Task<SqlCatalog> CatalogAsync(DatabaseSource source, CancellationToken cancel)
     {
+        if (source.Kind == DatabaseKind.Redis)
+        {
+            return await RedisClient.CatalogAsync(source, cancel);
+        }
         if (DatabaseKinds.HoldsDocuments(source.Kind))
         {
             return await DocumentClient.CatalogAsync(source, cancel);
@@ -527,6 +547,11 @@ internal static partial class DatabaseClient
     internal static async Task RunAsync(DatabaseSource source, IReadOnlyList<string> runs, int limit, Action<SqlResult> told, CancellationToken cancel,
         IReadOnlyDictionary<string, string>? values = null)
     {
+        if (source.Kind == DatabaseKind.Redis)
+        {
+            await RedisClient.RunAsync(source, runs, limit, told, cancel);
+            return;
+        }
         if (DatabaseKinds.HoldsDocuments(source.Kind))
         {
             await DocumentClient.RunAsync(source, runs, limit, told, cancel);
@@ -685,6 +710,11 @@ internal static partial class DatabaseClient
     /// type, or converted to the type its column was read as.</summary>
     internal static async Task SubmitAsync(DatabaseSource source, DatabaseSchema schema, DatabaseRows page, PendingEdits edits, CancellationToken cancel)
     {
+        if (source.Kind == DatabaseKind.Redis)
+        {
+            await RedisClient.SubmitAsync(source, schema, page, edits, cancel);
+            return;
+        }
         if (DatabaseKinds.HoldsDocuments(source.Kind))
         {
             await DocumentClient.SubmitAsync(source, schema, page, edits, cancel);

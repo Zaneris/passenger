@@ -46,6 +46,11 @@ public sealed class DatabaseServersTests
     /// <summary>The key every Cosmos DB emulator signs in with, as its documentation gives it.</summary>
     private const string CosmosKey = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
 
+    /// <summary>Redis's server, and Valkey's, which takes its commands, each pinned.</summary>
+    private const string RedisImage = "redis:8.2.11-alpine";
+
+    private const string ValkeyImage = "valkey/valkey:9.0.8-alpine";
+
     /// <summary>The bastion's image, pinned to the one the test was written against.</summary>
     private const string SshImage = "lscr.io/linuxserver/openssh-server@sha256:c8431b8982e7eb3935ebf9c46607d19c6417e39c12ce884cc66945df2e9334e8";
 
@@ -57,6 +62,8 @@ public sealed class DatabaseServersTests
     [InlineData(DatabaseKind.Snowflake, "")]
     [InlineData(DatabaseKind.MongoDb, MongoImage)]
     [InlineData(DatabaseKind.CosmosDb, CosmosImage)]
+    [InlineData(DatabaseKind.Redis, RedisImage)]
+    [InlineData(DatabaseKind.Redis, ValkeyImage)]
     public void A_server_is_found_explored_run_and_completed_through_its_driver(DatabaseKind kind, string image)
     {
         Assert.SkipWhen(kind == DatabaseKind.Snowflake, "Snowflake runs only as Snowflake's own service, which no container stands in for, and this run has no account of it");
@@ -75,6 +82,11 @@ public sealed class DatabaseServersTests
         if (kind == DatabaseKind.CosmosDb)
         {
             Cosmos();
+            return;
+        }
+        if (kind == DatabaseKind.Redis)
+        {
+            Redis(image);
             return;
         }
         Assert.SkipWhen(Docker.Said("image", "inspect", SshImage) is null, $"The engine lacks {SshImage}, which this test never pulls: pull it to run the test");
@@ -1107,6 +1119,182 @@ public sealed class DatabaseServersTests
             return true;
         }
         catch (Exception unready) when (unready is Microsoft.Azure.Cosmos.CosmosException or System.Net.Http.HttpRequestException or TaskCanceledException or IOException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Redis (or Valkey) in a container of the test's own: its connection found in the folder's settings by its project's
+    /// client, its keys grouped by type with their times to live, each type's value opened, written, added to and deleted
+    /// from and submitted, a value changed since it was read refusing them; a key's time to live set; a console of its
+    /// commands, completion of its commands and keys, a read-only mark refusing a delete, and an agent's read.</summary>
+    private static void Redis(string image)
+    {
+        string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}db{(image == ValkeyImage ? "valkey" : "redis")}";
+        try
+        {
+            Docker.Run(["run", "-d", "--name", name, "--label", Docker.RunLabel, "-p", "127.0.0.1::6379", image, "--requirepass", Password]);
+            string configuration = $"127.0.0.1:{Published(name, 6379)},password={Password}";
+            Assert.True(Ui.Await(Waiting.Apart(() => Waiting.UntilAsync(() => RedisMadeAsync(configuration), TimeSpan.FromMinutes(2))),
+                $"{image} to take connections and hold the shop's keys", TimeSpan.FromMinutes(3)), $"{image} never took connections");
+            using StackExchange.Redis.ConnectionMultiplexer redis = Ui.Await(StackExchange.Redis.ConnectionMultiplexer.ConnectAsync(configuration), "the test's own client");
+            StackExchange.Redis.IDatabase keys = redis.GetDatabase();
+            string folder = TestFolders.Create("database-redis");
+            TestFolders.Write(folder, "Shop.csproj", TestProjects.Console().With("  <ItemGroup>\n    <PackageReference Include=\"StackExchange.Redis\" Version=\"3.4.35\" />\n  </ItemGroup>\n"));
+            TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
+            TestFolders.Write(folder, "appsettings.json", $$$"""{"ConnectionStrings":{"Cache":"{{{configuration}}}"}}""");
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            try
+            {
+                window.ShowToolWindow(ToolWindowIds.Database);
+                Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy && window.Database.Sources.Any(s => s.Name == "Cache"), () => window.Database.Said);
+                Assert.Equal(DatabaseKind.Redis, window.Database.Sources.Single(s => s.Name == "Cache").Kind);
+                DatabaseTests.Open(window, "Cache");
+                DatabaseTests.Open(window, "db0");
+                Assert.Equal(["Strings", "Hashes", "Lists", "Sets", "Sorted sets", "Streams"],
+                    window.DatabaseExplorer.Rows.Where(r => r.Kind == DatabaseNodeKind.Group).Select(r => r.Title));
+                foreach (string group in (string[])["Strings", "Hashes", "Lists", "Sets", "Sorted sets", "Streams"])
+                {
+                    DatabaseTests.Open(window, group);
+                }
+                DatabaseNode Key(string key) => window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == key);
+                Assert.StartsWith("expires in", Key("greeting").Detail, StringComparison.Ordinal);
+                Assert.Equal("no expiry", Key("user:1").Detail);
+
+                // Each type's value opened, its changes submitted in one transaction.
+                DatabaseTableTab Open(string key, int rows)
+                {
+                    window.DatabaseExplorer.Choose(Key(key));
+                    Assert.True(window.Perform(AppActions.DatabaseOpenTable), $"Open Value of {key} did not run");
+                    Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTable is { Reading: false, Rows: { } read } tab && tab.Table.Name == key && read.RowCount == rows,
+                        () => $"{key}'s value as rows ({window.EditorArea.Active?.DatabaseTable?.Said})");
+                    return window.EditorArea.Active!.DatabaseTable!;
+                }
+                void Submit(DatabaseTableTab data)
+                {
+                    Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                    Ui.WaitFor(() => data.Edits.IsEmpty && !data.Reading, () => data.Said);
+                }
+                int RowOf(DatabaseTableTab data, string first) => Enumerable.Range(0, data.Rows!.RowCount).Single(r => data.Rows.Cell(r, 0) == first);
+                CellGrid Grid() => Tab<CellGrid>(window, "DatabaseTabResults");
+
+                DatabaseTableTab hash = Open("user:1", 2);
+                Write(window, Grid(), (RowOf(hash, "city"), 1), "Bergen");
+                Grid().Choose((RowOf(hash, "name"), 0), (RowOf(hash, "name"), 0));
+                Assert.True(window.Perform(AppActions.DatabaseDeleteRows), "Delete Rows did not run");
+                Write(window, Grid(), (hash.Shown!.RowCount - 1, 0), "role");
+                Write(window, Grid(), (hash.Shown!.RowCount - 2, 1), "admin");
+                Submit(hash);
+                Assert.Equal(("Bergen", "admin", false), ((string?)keys.HashGet("user:1", "city"), (string?)keys.HashGet("user:1", "role"), keys.HashExists("user:1", "name")));
+                keys.HashSet("user:1", "city", "Paris");
+                Write(window, Grid(), (RowOf(hash, "city"), 1), "Rome");
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => !hash.Reading && hash.Said.Contains("changed since it was read", StringComparison.Ordinal), () => hash.Said);
+                Assert.Equal("Paris", (string?)keys.HashGet("user:1", "city"));
+                Assert.True(window.Perform(AppActions.DatabaseRevert), "Revert did not run");
+
+                DatabaseTableTab list = Open("queue", 3);
+                Write(window, Grid(), (1, 1), "B");
+                Grid().Choose((2, 0), (2, 0));
+                Assert.True(window.Perform(AppActions.DatabaseDeleteRows), "Delete Rows did not run");
+                Write(window, Grid(), (list.Shown!.RowCount - 1, 1), "d");
+                Submit(list);
+                Assert.Equal(["a", "B", "d"], keys.ListRange("queue").Select(v => (string?)v));
+
+                DatabaseTableTab set = Open("tags", 2);
+                Grid().Choose((RowOf(set, "blue"), 0), (RowOf(set, "blue"), 0));
+                Assert.True(window.Perform(AppActions.DatabaseDeleteRows), "Delete Rows did not run");
+                Write(window, Grid(), (set.Shown!.RowCount - 1, 0), "green");
+                Submit(set);
+                Assert.Equal(["green", "red"], keys.SetMembers("tags").Select(v => (string?)v).Order());
+
+                DatabaseTableTab sorted = Open("scores", 2);
+                Write(window, Grid(), (RowOf(sorted, "bob"), 1), "7");
+                Submit(sorted);
+                Assert.Equal(7, keys.SortedSetScore("scores", "bob"));
+
+                DatabaseTableTab stream = Open("events", 1);
+                int who = Array.IndexOf(stream.Rows!.Columns, "who");
+                Write(window, Grid(), (stream.Shown!.RowCount - 1, who), "bob");
+                Submit(stream);
+                Assert.Equal(2, keys.StreamLength("events"));
+
+                DatabaseTableTab text = Open("greeting", 1);
+                Write(window, Grid(), (0, 1), "hi");
+                Submit(text);
+                Assert.True((string?)keys.StringGet("greeting") == "hi" && keys.KeyTimeToLive("greeting") is { } kept && kept > TimeSpan.Zero,
+                    "Writing a string's value took its time to live away");
+
+                // A key's time to live set, then taken away.
+                window.DatabaseExplorer.Choose(Key("tags"));
+                Assert.True(window.Perform(AppActions.DatabaseExpire), "Set Time to Live did not run");
+                Ui.WaitFor(() => window.Popup is Passenger.App.Vcs.NamePopup, "the time to live's question");
+                Passenger.App.Vcs.NamePopup life = (Passenger.App.Vcs.NamePopup)window.Popup!;
+                life.Text = "600";
+                Task given = life.SubmitAsync();
+                Ui.Landed(() => given.IsCompleted, "the time to live given");
+                Ui.WaitFor(() => keys.KeyTimeToLive("tags") is { TotalSeconds: > 500 }, () => window.Database.Said);
+
+                // A console of Redis's commands, its replies as rows and completion of its commands and keys.
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Cache"));
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console with its results under it");
+                Assert.EndsWith(".redis", window.EditorArea.Active!.Path, StringComparison.Ordinal);
+                SqlConsole console = window.EditorArea.ActiveGroup.Console!.Console!;
+                Run(window, "HGETALL user:1");
+                Assert.True(console.Results is [{ Error: null, Sets: [{ RowCount: 2 } pairs] }] && pairs.Columns is ["name", "value"], console.Said);
+                Run(window, "ZRANGE scores 0 -1 WITHSCORES");
+                Assert.True(console.Results is [{ Error: null, Sets: [{ RowCount: 2 } scored] }] && scored.Cell(0, 0) == "ada" && scored.Cell(1, 1) == "7", console.Said);
+                CodeEditor editor = window.EditorArea.CodeEditor;
+                editor.Select(new TextRange(0, editor.Document.Snapshot.Length));
+                window.KeyTextInput("H");
+                Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("HGETALL"), () => $"the commands, where the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+                Ui.Press(window, "ESCAPE");
+                Replace(window, "HGETALL ");
+                window.KeyTextInput("u");
+                Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("user:1"), () => $"the keys, where the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+                Ui.Press(window, "ESCAPE");
+
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Cache"));
+                Assert.True(window.Perform(AppActions.DatabaseReadOnly), "Read-Only Connection did not run");
+                Replace(window, "DEL tags");
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                Ui.WaitFor(() => console.Said == Refusals.ReadOnlyConnection("Cache"), () => console.Said);
+                Assert.True(keys.KeyExists("tags"), "A read-only connection's DEL deleted the key");
+                object read = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).Database(connection: "Cache", sql: "GET greeting"), "an agent's read of a string", TimeSpan.FromMinutes(1));
+                Assert.Equal("hi", Assert.Single(Assert.IsType<Passenger.App.Mcp.DatabaseQueryResult[]>(read)).Sets[0].Rows[0][0]);
+                Assert.DoesNotContain(Password, console.Said + window.Database.Said, StringComparison.Ordinal);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            Docker.Said("rm", "-f", name);
+        }
+    }
+
+    /// <summary>Whether Redis takes connections, the shop's keys put back as the test begins with them once it does.</summary>
+    private static async Task<bool> RedisMadeAsync(string configuration)
+    {
+        try
+        {
+            StackExchange.Redis.ConfigurationOptions options = StackExchange.Redis.ConfigurationOptions.Parse(configuration);
+            options.ConnectTimeout = 2000;
+            await using StackExchange.Redis.ConnectionMultiplexer redis = await StackExchange.Redis.ConnectionMultiplexer.ConnectAsync(options);
+            StackExchange.Redis.IDatabase keys = redis.GetDatabase();
+            await keys.KeyDeleteAsync(["greeting", "user:1", "queue", "tags", "scores", "events"]);
+            await keys.StringSetAsync("greeting", "hello", TimeSpan.FromHours(1));
+            await keys.HashSetAsync("user:1", [new("name", "Ada"), new("city", "Oslo")]);
+            await keys.ListRightPushAsync("queue", ["a", "b", "c"]);
+            await keys.SetAddAsync("tags", ["red", "blue"]);
+            await keys.SortedSetAddAsync("scores", [new("ada", 3), new("bob", 5)]);
+            await keys.StreamAddAsync("events", [new("kind", "signup"), new("who", "ada")]);
+            return true;
+        }
+        catch (Exception unready) when (unready is StackExchange.Redis.RedisException or TimeoutException)
         {
             return false;
         }

@@ -19,21 +19,22 @@ public static partial class DatabaseKinds
         DatabaseKind.ClickHouse => "ClickHouse",
         DatabaseKind.MongoDb => "MongoDB",
         DatabaseKind.CosmosDb => "Cosmos DB",
+        DatabaseKind.Redis => "Redis",
         _ => "Snowflake",
     };
 
     /// <summary>The kinds as the connection dialog offers them, in <see cref="DatabaseKind"/>'s order.</summary>
-    public static IReadOnlyList<string> Offered { get; } = ["SQLite", "PostgreSQL", "SQL Server", "MySQL / MariaDB", "DuckDB", "ClickHouse", "Snowflake", "MongoDB", "Cosmos DB"];
+    public static IReadOnlyList<string> Offered { get; } = ["SQLite", "PostgreSQL", "SQL Server", "MySQL / MariaDB", "DuckDB", "ClickHouse", "Snowflake", "MongoDB", "Cosmos DB", "Redis"];
 
     /// <summary>Whether the kind's database is a file of its own (SQLite's, DuckDB's), opened with no server, port or tunnel.</summary>
     public static bool IsFile(DatabaseKind kind) => kind is DatabaseKind.Sqlite or DatabaseKind.DuckDb;
 
     /// <summary>Whether a database is its one schema (MySQL's, ClickHouse's), which the explorer leaves out.</summary>
-    public static bool SchemaIsDatabase(DatabaseKind kind) => kind is DatabaseKind.MySql or DatabaseKind.ClickHouse || HoldsDocuments(kind);
+    public static bool SchemaIsDatabase(DatabaseKind kind) => kind is DatabaseKind.MySql or DatabaseKind.ClickHouse || !SpeaksSql(kind);
 
     /// <summary>Whether the kind holds a statement's changes in a transaction its console can open and end: ClickHouse's
     /// statements each stand alone.</summary>
-    public static bool HasTransactions(DatabaseKind kind) => kind != DatabaseKind.ClickHouse && !HoldsDocuments(kind);
+    public static bool HasTransactions(DatabaseKind kind) => kind != DatabaseKind.ClickHouse && SpeaksSql(kind);
 
     /// <summary>Whether the explorer's tables take changes row by row (written by their primary key): ClickHouse changes rows
     /// by mutations, and Snowflake keeps no key it enforces.</summary>
@@ -126,6 +127,17 @@ public static partial class DatabaseKinds
             case DatabaseKind.MongoDb:
                 return (Value(connection, "Host", "Server") ?? "localhost",
                     int.TryParse(Value(connection, "Port"), System.Globalization.CultureInfo.InvariantCulture, out int named) ? named : Port(kind));
+            case DatabaseKind.Redis when Value(connection, "Configuration") is { } configuration:
+                StackExchange.Redis.ConfigurationOptions options = StackExchange.Redis.ConfigurationOptions.Parse(configuration);
+                return options.EndPoints.FirstOrDefault() switch
+                {
+                    System.Net.DnsEndPoint dns => (dns.Host, dns.Port == 0 ? Port(kind) : dns.Port),
+                    System.Net.IPEndPoint ip => (ip.Address.ToString(), ip.Port == 0 ? Port(kind) : ip.Port),
+                    _ => ("localhost", Port(kind)),
+                };
+            case DatabaseKind.Redis:
+                return (Value(connection, "Host", "Server") ?? "localhost",
+                    int.TryParse(Value(connection, "Port"), System.Globalization.CultureInfo.InvariantCulture, out int redisPort) ? redisPort : Port(kind));
             case DatabaseKind.CosmosDb when Uri.TryCreate(Value(connection, "AccountEndpoint"), UriKind.Absolute, out Uri? account):
                 return (account.Host, account.Port);
             default:
@@ -158,6 +170,7 @@ public static partial class DatabaseKinds
     /// <summary>The kind of database a .NET connection's type is of, by its provider; null for another.</summary>
     public static DatabaseKind? OfConnection(string type) =>
         type.Contains("Mongo", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.MongoDb
+        : type.Contains("Redis", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.Redis
         : type.Contains("Cosmos", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.CosmosDb
         : type.Contains("DuckDB", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.DuckDb
         : type.Contains("ClickHouse", StringComparison.OrdinalIgnoreCase) ? DatabaseKind.ClickHouse
@@ -195,6 +208,7 @@ public static partial class DatabaseKinds
         DatabaseKind.Snowflake => 443,
         DatabaseKind.MongoDb => 27017,
         DatabaseKind.CosmosDb => 8081,
+        DatabaseKind.Redis => 6379,
         _ => 3306,
     };
 }

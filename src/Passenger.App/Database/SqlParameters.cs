@@ -29,8 +29,8 @@ public static class SqlParameters
     private static List<SqlParameter> Of(string run, DatabaseKind kind, HashSet<string> own, ref int unnamed)
     {
         List<SqlParameter> found = [];
-        // DuckDB's, ClickHouse's, Snowflake's and the document databases' statements run as written, their own placeholders theirs to read.
-        if (DefinesRoutine(run, kind) || kind is DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake || DatabaseKinds.HoldsDocuments(kind))
+        // DuckDB's, ClickHouse's, Snowflake's Redis's and the document databases' statements run as written, their own placeholders theirs to read.
+        if (DefinesRoutine(run, kind) || kind is DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake || !DatabaseKinds.SpeaksSql(kind))
         {
             return found;
         }

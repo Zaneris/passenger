@@ -135,8 +135,8 @@ public partial class MainWindow
         {
             WhyNot = _ => Editors.Active is not { Language: var language } || !SqlConsole.Speaks(language) ? Refusals.NoSqlFile
                 : controller.ConsoleOf(Editors.Active.Path) is { Running: true } ? Refusals.SqlRunning
-                : controller.ConsoleOf(Editors.Active.Path) is { Connection: { } id } && controller.Find(id) is { } explained && DatabaseKinds.HoldsDocuments(explained.Kind)
-                    ? Refusals.NoSqlOnDocuments(DatabaseKinds.Title(explained.Kind)) : PersonsOwn(),
+                : controller.ConsoleOf(Editors.Active.Path) is { Connection: { } id } && controller.Find(id) is { } explained && !DatabaseKinds.SpeaksSql(explained.Kind)
+                    ? Refusals.NotSql(DatabaseKinds.Title(explained.Kind)) : PersonsOwn(),
             Menus = [new MenuPlace("Tools/Database", 1, 6)],
         });
         actions!.Add(new IdeAction(AppActions.DatabaseHistory, "Query History", "Database", _ => Editors.ActiveGroup.Console?.ShowHistory())
@@ -157,6 +157,13 @@ public partial class MainWindow
         Table(AppActions.DatabaseRevert, "Revert Changes", table => table.Revert(), table => table.WhyNotRevert, 1);
         Table(AppActions.DatabaseAddRow, "Add Row", table => table.AddRow(), table => table.WhyNotAddRow, 2, "Add Document");
         Table(AppActions.DatabaseDeleteRows, "Delete Rows", table => table.DeleteRows(), table => table.WhyNotDeleteRows, 3, "Delete Documents");
+        actions!.Add(new IdeAction(AppActions.DatabaseExpire, "Set Time to Live…", "Database", _ => IdeErrors.Observe(ExpireKeyAsync()))
+        {
+            WhyNot = _ => controller.Busy ? Refusals.DatabaseBusy : ChosenKey() is not { } chosen ? Refusals.NoRedisKey
+                : chosen.Source.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(chosen.Source.Name) : WhyNotOpened(chosen.Source) ?? PersonsOwn(),
+            Menus = [new MenuPlace("Tools/Database", 2, 4)],
+            Words = ["TTL", "EXPIRE", "PERSIST", "Redis"],
+        });
         Mark(AppActions.DatabaseReadOnly, "Read-Only Connection", DatabaseMark.ReadOnly);
         Mark(AppActions.DatabaseProduction, "Production Connection", DatabaseMark.Production);
         actions!.Add(new IdeAction(AppActions.DatabaseExport, "Export Data…", "Database", context => IdeErrors.Observe(ExportDataAsync(context)))
@@ -244,11 +251,11 @@ public partial class MainWindow
         }
 
         string? WhyNotObject() => databaseExplorer?.Chosen is not { Target: not null } chosen ? Refusals.NoDatabaseObject
-            : DatabaseKinds.HoldsDocuments(chosen.Source.Kind) ? Refusals.NoSqlOnDocuments(DatabaseKinds.Title(chosen.Source.Kind))
+            : !DatabaseKinds.SpeaksSql(chosen.Source.Kind) ? Refusals.NotSql(DatabaseKinds.Title(chosen.Source.Kind))
             : WhyNotOpened(chosen.Source) ?? PersonsOwn();
 
         string? WhyNotSchema() => databaseExplorer?.Chosen is not { Kind: not DatabaseNodeKind.Note } chosen ? Refusals.NoDatabaseConnection
-            : chosen.Source.Kind is DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake || DatabaseKinds.HoldsDocuments(chosen.Source.Kind)
+            : chosen.Source.Kind is DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake || !DatabaseKinds.SpeaksSql(chosen.Source.Kind)
                 ? Refusals.NoSchemaReads(DatabaseKinds.Title(chosen.Source.Kind))
             : WhyNotOpened(chosen.Source) ?? PersonsOwn();
 
@@ -280,6 +287,58 @@ public partial class MainWindow
 
     /// <summary>The connection of the explorer's chosen row.</summary>
     private DatabaseSource? ChosenConnection() => databaseExplorer?.Chosen?.Source is { } source ? database?.Find(source.Id) : null;
+
+    /// <summary>The Redis key Set Time to Live acts on: the explorer's key chosen, else the value shown among the editors; its
+    /// connection as it stands, opening the key's database.</summary>
+    private (DatabaseSource Source, string Key)? ChosenKey() =>
+        databaseExplorer?.Chosen is { Table: { } table, Source.Kind: DatabaseKind.Redis } node && database?.Find(node.Source.Id) is { } source
+            ? (source.In(node.Database), table.Name)
+        : Editors.Active?.DatabaseTable is { } tab && tab.Source.Kind == DatabaseKind.Redis ? (tab.Source, tab.Table.Name) : null;
+
+    /// <summary>Set Time to Live: a Redis key's seconds to live asked of the person, its own given first, none taking its
+    /// time away; asked first on a production connection; the explorer then reads the key's database again.</summary>
+    private async Task ExpireKeyAsync()
+    {
+        if (ChosenKey() is not { } chosen || database is not { } controller)
+        {
+            return;
+        }
+        (DatabaseSource source, string key) = chosen;
+        if (await controller.ReadAsync(source, $"Reading {key}'s time to live…", async cancel => (object)(await RedisClient.LifeAsync(source, key, cancel) ?? TimeSpan.Zero))
+            is not TimeSpan now)
+        {
+            return;
+        }
+        string? asked = await AskNameAsync($"Time to Live of {key} (seconds; none keeps it)",
+            now > TimeSpan.Zero ? ((long)Math.Ceiling(now.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty,
+            text => text.Trim().Length == 0 || long.TryParse(text.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out long seconds)
+                && seconds > 0 ? null : Refusals.NoTimeToLive);
+        if (asked is null)
+        {
+            return;
+        }
+        TimeSpan? life = asked.Trim().Length == 0 ? null : TimeSpan.FromSeconds(long.Parse(asked.Trim(), System.Globalization.CultureInfo.InvariantCulture));
+        if (source.Mark == DatabaseMark.Production && !await AskProductionAsync("Set Time to Live on Production",
+            $"{source.Name} is marked production. {(life is null ? $"{key} is kept for good" : $"{key} expires in {Durations.Said(life.Value)}")}.", "Set"))
+        {
+            return;
+        }
+        if (await controller.ReadAsync(source, $"Setting {key}'s time to live…", async cancel => (object)await RedisClient.ExpireAsync(source, key, life, cancel)) is bool done)
+        {
+            if (done)
+            {
+                controller.Tell($"{key}: {RedisClient.LifeSaid(life)}.");
+            }
+            else
+            {
+                controller.Refuse(Refusals.KeyGone(key));
+            }
+            if (databaseExplorer is { } explorer)
+            {
+                await explorer.ReadAgainAsync(source, source.Database);
+            }
+        }
+    }
 
     private async Task EditDatabaseConnectionAsync(DatabaseSource? original)
     {
@@ -501,7 +560,7 @@ public partial class MainWindow
             return;
         }
         string consoles = Path.Combine(State.ProjectState.FolderOf(StateFolder, folder), "consoles");
-        string path = Path.Combine(consoles, FileNames.Safe(source.Name) + (source.Kind == DatabaseKind.MongoDb ? ".mongodb" : ".sql"));
+        string path = Path.Combine(consoles, FileNames.Safe(source.Name) + SqlConsole.ExtensionOf(source.Kind));
         if (!File.Exists(path))
         {
             await BackgroundWork.Run(() =>
@@ -616,9 +675,10 @@ public partial class MainWindow
     private async Task<IReadOnlyDictionary<string, string>?> ValuesAsync(SqlConsole console, IReadOnlyList<string> runs, DatabaseKind kind) =>
         SqlParameters.Asked(SqlParameters.Of(runs, kind)) is { Count: > 0 } asked ? await AskParametersAsync(console, asked, runs.Count) : new Dictionary<string, string>();
 
-    /// <summary>Why a file may not run against a connection: MongoDB's shell runs on MongoDB alone, and SQL on every other.</summary>
+    /// <summary>Why a file may not run against a connection: MongoDB's shell runs on MongoDB alone, Redis's commands on Redis
+    /// alone, and SQL on every other.</summary>
     private static string? WhyNotConsoleOf(string path, DatabaseSource source) =>
-        Languages.Language.ForPath(path) == Languages.Language.MongoDb == (source.Kind == DatabaseKind.MongoDb) ? null
+        Languages.Language.ForPath(path) == SqlConsole.LanguageOf(source.Kind) ? null
             : Refusals.ConsoleOfAnother(Languages.Language.ForPath(path).Name, DatabaseKinds.Title(source.Kind));
 
     /// <summary>The SQL file shown as a console and its connection, asking which connection where it has none yet; null
@@ -719,9 +779,9 @@ public partial class MainWindow
     private string? WhyNotExport(ActionContext context) => ExportOf(context) switch
     {
         null => Refusals.NothingToExport,
-        { Table: { } table } => DatabaseKinds.HoldsDocuments(table.Source.Kind) ? Refusals.NoSqlOnDocuments(DatabaseKinds.Title(table.Source.Kind))
+        { Table: { } table } => !DatabaseKinds.SpeaksSql(table.Source.Kind) ? Refusals.NotSql(DatabaseKinds.Title(table.Source.Kind))
             : table.Exported() is null ? Refusals.DatabaseBusy : null,
-        { Node: { } node } => DatabaseKinds.HoldsDocuments(node.Source.Kind) ? Refusals.NoSqlOnDocuments(DatabaseKinds.Title(node.Source.Kind))
+        { Node: { } node } => !DatabaseKinds.SpeaksSql(node.Source.Kind) ? Refusals.NotSql(DatabaseKinds.Title(node.Source.Kind))
             : WhyNotOpened(node.Source) ?? (database?.Busy == true ? Refusals.DatabaseBusy : null),
         { Console.Console.Connection: { } id } => database?.Find(id) is { } source ? WhyNotOpened(source) : Refusals.NoDatabaseConnection,
         _ => null,
@@ -817,7 +877,7 @@ public partial class MainWindow
     }
 
     private string? WhyNotImport(ActionContext context) => ImportOf(context) is not { } to ? Refusals.NothingToImportInto
-        : DatabaseKinds.HoldsDocuments(to.Source.Kind) ? Refusals.NoSqlOnDocuments(DatabaseKinds.Title(to.Source.Kind))
+        : !DatabaseKinds.SpeaksSql(to.Source.Kind) ? Refusals.NotSql(DatabaseKinds.Title(to.Source.Kind))
         : to.Source.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(to.Source.Name)
         : WhyNotOpened(to.Source) ?? (database?.Busy == true ? Refusals.DatabaseBusy : null);
 

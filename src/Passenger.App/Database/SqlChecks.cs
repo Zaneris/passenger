@@ -30,8 +30,8 @@ public static class SqlChecks
     public static List<SqlProblem> Of(string text, DatabaseKind kind, SqlCatalog catalog)
     {
         List<SqlProblem> found = [];
-        // A document's fields are what each document holds, never a schema's: none is missing from one.
-        if (DatabaseKinds.HoldsDocuments(kind))
+        // A document's fields are what each document holds, never a schema's, and Redis's keys have none.
+        if (!DatabaseKinds.SpeaksSql(kind))
         {
             return found;
         }

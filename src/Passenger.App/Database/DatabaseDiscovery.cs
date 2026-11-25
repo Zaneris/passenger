@@ -70,11 +70,12 @@ internal static class DatabaseDiscovery
         }
         foreach (Aspire.AspireAppRun app in session.Aspire.Apps.Where(a => !a.Stopping))
         {
-            foreach ((string resource, string shown) in app.Connections)
+            foreach ((string resource, string shown, string image) in app.Connections)
             {
+                // A resource's connection string says its kind, but for Redis's own, which its image says.
                 if (app.Interactions?.ConnectionStrings.GetValueOrDefault(resource) is { } value)
                 {
-                    Running(shown, $"found in {app.Name} · running resource {shown}", value, []);
+                    Running(shown, $"found in {app.Name} · running resource {shown}", value, RedisImage(image) ? ["StackExchange.Redis"] : []);
                 }
             }
         }
@@ -112,6 +113,10 @@ internal static class DatabaseDiscovery
         cancel.ThrowIfCancellationRequested();
         return found;
     }
+
+    /// <summary>Whether an image is Redis's, or Valkey's or Garnet's, which take its commands.</summary>
+    internal static bool RedisImage(string? image) => image is not null
+        && (image.Contains("redis", StringComparison.OrdinalIgnoreCase) || image.Contains("valkey", StringComparison.OrdinalIgnoreCase) || image.Contains("garnet", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Whether two connections open one database of one server: of one kind, at one host and port, the same database.</summary>
     private static bool Reaches(DatabaseSource one, DatabaseSource other) =>
@@ -163,6 +168,54 @@ internal static class DatabaseDiscovery
         }
     }
 
+    /// <summary>A Redis connection string as Passenger keeps one: a redis:// or rediss:// URI's parts, or StackExchange.Redis's
+    /// configuration (host:port,password=…) whole where the project reads Redis; its password marked. Null for another.</summary>
+    private static string? Redis(string value, IEnumerable<string> packages)
+    {
+        string written = value.Trim();
+        if ((written.StartsWith("redis://", StringComparison.OrdinalIgnoreCase) || written.StartsWith("rediss://", StringComparison.OrdinalIgnoreCase))
+            && Uri.TryCreate(written, UriKind.Absolute, out Uri? address))
+        {
+            string[] user = address.UserInfo.Split(':', 2);
+            // A URI's user part alone is its password, as redis://secret@host writes it.
+            string? password = user.Length == 2 ? Uri.UnescapeDataString(user[1]) : user[0].Length > 0 ? Uri.UnescapeDataString(user[0]) : null;
+            ContainerSecrets.Mark(written);
+            if (password is not null)
+            {
+                ContainerSecrets.Mark(password);
+            }
+            string kept = DatabaseKinds.With(DatabaseKinds.With(string.Empty, "Host", address.Host), "Port",
+                (address.Port > 0 ? address.Port : DatabaseKinds.Port(DatabaseKind.Redis)).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            kept = user.Length == 2 && user[0].Length > 0 ? DatabaseKinds.With(kept, "Username", Uri.UnescapeDataString(user[0])) : kept;
+            kept = password is not null ? DatabaseKinds.With(kept, "Password", password) : kept;
+            kept = address.Scheme.Equals("rediss", StringComparison.OrdinalIgnoreCase) ? DatabaseKinds.With(kept, "Ssl", "true") : kept;
+            return address.AbsolutePath.Trim('/') is { Length: > 0 } number ? DatabaseKinds.With(kept, "Database", RedisNames.Database(RedisNames.Number(number))) : kept;
+        }
+        if (value.Contains(';') || value.Contains("://", StringComparison.Ordinal) || !packages.Any(p => p.Contains("Redis", StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+        try
+        {
+            StackExchange.Redis.ConfigurationOptions options = StackExchange.Redis.ConfigurationOptions.Parse(written);
+            if (options.EndPoints.Count == 0)
+            {
+                return null;
+            }
+            ContainerSecrets.Mark(written);
+            if (options.Password is { Length: > 0 } secret)
+            {
+                ContainerSecrets.Mark(secret);
+            }
+            string kept = DatabaseKinds.With(string.Empty, "Configuration", written);
+            return options.DefaultDatabase is { } database ? DatabaseKinds.With(kept, "Database", RedisNames.Database(database)) : kept;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>A connection string as a connection of its kind, its secrets marked, a SQLite file's path made whole from
     /// <paramref name="folder"/>; null for one that names no database Passenger opens.</summary>
     internal static DatabaseSource? Source(string name, string found, string value, string folder, IEnumerable<string> packages)
@@ -176,6 +229,10 @@ internal static class DatabaseDiscovery
                 ContainerSecrets.Mark(Uri.UnescapeDataString(password));
             }
             return new DatabaseSource(name, DatabaseKind.MongoDb, folder) { ConnectionString = DatabaseKinds.With(string.Empty, "Uri", uri), Found = found };
+        }
+        if (Redis(value, packages) is { } redis)
+        {
+            return new DatabaseSource(name, DatabaseKind.Redis, folder) { ConnectionString = redis, Found = found };
         }
         if (value.Contains("AccountEndpoint=", StringComparison.OrdinalIgnoreCase))
         {

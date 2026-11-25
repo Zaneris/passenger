@@ -47,6 +47,7 @@
     <Compile Include="../../src/Passenger.App/Database/DatabaseKind.cs" Link="App/DatabaseKind.cs" />
     <Compile Include="../../src/Passenger.App/Database/SqlText.cs" Link="App/SqlText.cs" />
     <Compile Include="../../src/Passenger.App/Database/DocumentShell.Text.cs" Link="App/DocumentShell.Text.cs" />
+    <Compile Include="../../src/Passenger.App/Database/RedisCommands.Text.cs" Link="App/RedisCommands.Text.cs" />
     <Compile Include="../../src/Passenger.App/Database/SqlParameters.cs" Link="App/SqlParameters.cs" />
     <Compile Include="../../src/Passenger.App/Database/SqlFormatter.cs" Link="App/SqlFormatter.cs" />
     <Compile Include="../../src/Passenger.App/Database/SqlCompletions.cs" Link="App/SqlCompletions.cs" />

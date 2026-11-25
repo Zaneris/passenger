@@ -52,8 +52,9 @@ public sealed class DatabaseNode(DatabaseNodeKind kind, string title, int depth,
 
     public List<DatabaseNode>? Children { get; set; }
 
+    /// <summary>Whether it opens to rows under it: a Redis key opens its value among the editors instead.</summary>
     public bool Expands => Kind is not (DatabaseNodeKind.Column or DatabaseNodeKind.Key or DatabaseNodeKind.Index or DatabaseNodeKind.Routine or DatabaseNodeKind.Trigger
-        or DatabaseNodeKind.Note);
+        or DatabaseNodeKind.Note) && !(Kind == DatabaseNodeKind.Table && Source.Kind == DatabaseKind.Redis);
     public bool IsExpanded { get => expanded; set => Set(ref expanded, value); }
 
     /// <summary>A connection's mark as it stands, which its row shows.</summary>
@@ -355,6 +356,12 @@ public sealed class DatabaseExplorer : DockPanel
         {
             return null;
         }
+        if (source.Kind == DatabaseKind.Redis)
+        {
+            // A Redis database's keys stand under their types, each with its time to live.
+            return Notes(depth, [.. read.Where(t => t.Objects.Count > 0).Select(t => Group(t.Schema, depth, node, [.. t.Objects.Select(k =>
+                new DatabaseNode(DatabaseNodeKind.Table, k.Name, depth + 1, source) { Database = database, Object = k.Name, Detail = k.Detail })]))], "No keys", source);
+        }
         bool flat = source.Kind == DatabaseKind.Sqlite || DatabaseKinds.SchemaIsDatabase(source.Kind);
         List<DatabaseNode> shown = [];
         foreach ((string schema, IReadOnlyList<DatabaseObject> objects) in read)
@@ -410,7 +417,12 @@ public sealed class DatabaseExplorer : DockPanel
         List<Control> items = [];
         if (node.Table is not null)
         {
-            items.Add(ListMenus.Open(DatabaseKinds.HoldsDocuments(node.Source.Kind) ? "Open Documents" : "Open Table Data", () => Request(AppActions.DatabaseOpenTable)));
+            items.Add(ListMenus.Open(node.Source.Kind == DatabaseKind.Redis ? "Open Value" : DatabaseKinds.HoldsDocuments(node.Source.Kind) ? "Open Documents" : "Open Table Data",
+                () => Request(AppActions.DatabaseOpenTable)));
+            if (node.Source.Kind == DatabaseKind.Redis)
+            {
+                items.Add(ListMenus.Keyed("Set Time to Live…", AppActions.DatabaseExpire, () => Request(AppActions.DatabaseExpire)));
+            }
             items.Add(ListMenus.Keyed("Export Data…", AppActions.DatabaseExport, () => Request(AppActions.DatabaseExport)));
         }
         if (node.Kind is DatabaseNodeKind.Connection or DatabaseNodeKind.Database or DatabaseNodeKind.Schema or DatabaseNodeKind.Table

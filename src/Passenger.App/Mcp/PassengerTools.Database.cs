@@ -99,7 +99,7 @@ public sealed partial class PassengerTools
         List<SqlResult> results = [];
         await Reading(async () =>
         {
-            if (DatabaseKinds.HoldsDocuments(source.Kind))
+            if (!DatabaseKinds.SpeaksSql(source.Kind))
             {
                 await DatabaseClient.RunAsync(source, runs, most, results.Add, cancel);
                 return true;

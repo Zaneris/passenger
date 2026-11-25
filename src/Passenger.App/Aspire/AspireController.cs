@@ -563,8 +563,10 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             // Each health check's run is an update: the Containers window is regrouped only when the containers named change.
             bool moved = !ids.ToHashSet(StringComparer.Ordinal).SetEquals(app.KnownContainerIds);
             app.KnownContainerIds = ids;
-            (string, string)[] connections = [.. snapshot.Where(r => r.State == AspireStates.Running && connection.ConnectionStrings.ContainsKey(r.Name))
-                .Select(r => (r.Name, r.DisplayName)).OrderBy(r => r.Name, StringComparer.Ordinal)];
+            (string, string, string)[] connections = [.. snapshot.Where(r => r.State == AspireStates.Running && connection.ConnectionStrings.ContainsKey(r.Name))
+                .Select(r => (r.Name, r.DisplayName, AspireJson.Properties(r.Data, "properties").FirstOrDefault(p => p.Name == "container.image").Value is
+                    { ValueKind: JsonValueKind.String } image ? image.GetString() ?? string.Empty : string.Empty))
+                .OrderBy(r => r.Name, StringComparer.Ordinal)];
             if (!connections.SequenceEqual(app.Connections))
             {
                 app.Connections = connections;
@@ -1617,7 +1619,7 @@ public sealed class AspireAppRun : ServiceRun
 
     /// <summary>The resources running now that told a connection string (<see cref="AspireInteractions.ConnectionStrings"/>),
     /// by name and the name shown, in order of name.</summary>
-    public IReadOnlyList<(string Name, string Shown)> Connections { get; internal set; } = [];
+    public IReadOnlyList<(string Name, string Shown, string Image)> Connections { get; internal set; } = [];
 
     /// <summary>The container runtime its orchestrator was told (ASPIRE_CONTAINER_RUNTIME in its environment), else null.</summary>
     internal string? ContainerRuntime { get; set; }

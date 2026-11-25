@@ -80,6 +80,10 @@ public static class SqlText
         {
             return DocumentShell.Skipped(sql, at);
         }
+        if (kind == DatabaseKind.Redis)
+        {
+            return RedisCommands.Skipped(sql, at);
+        }
         char c = sql[at];
         char next = at + 1 < sql.Length ? sql[at + 1] : '\0';
         if (c == '-' && next == '-' || c == '#' && kind is DatabaseKind.MySql or DatabaseKind.ClickHouse || c == '/' && next == '/' && kind == DatabaseKind.Snowflake)
@@ -184,6 +188,10 @@ public static class SqlText
         if (kind == DatabaseKind.MongoDb)
         {
             return DocumentShell.Statements(sql);
+        }
+        if (kind == DatabaseKind.Redis)
+        {
+            return RedisCommands.Statements(sql);
         }
         List<(int Start, int End)> statements = [];
         List<Token> tokens = Tokens(sql, kind);
@@ -351,10 +359,10 @@ public static class SqlText
     /// FROM or an operator. EXPLAIN reads unless it ANALYZEs, which runs what it explains.</summary>
     public static SqlEffect EffectOf(string run, DatabaseKind kind)
     {
-        // Cosmos DB's SQL only reads; MongoDB's shell says what each call does.
-        if (DatabaseKinds.HoldsDocuments(kind))
+        // Cosmos DB's SQL only reads; MongoDB's shell and Redis's commands say what each does.
+        if (!DatabaseKinds.SpeaksSql(kind))
         {
-            return kind == DatabaseKind.CosmosDb ? SqlEffect.Reads : DocumentShell.EffectOf(run);
+            return kind switch { DatabaseKind.CosmosDb => SqlEffect.Reads, DatabaseKind.Redis => RedisCommands.EffectOf(run), _ => DocumentShell.EffectOf(run) };
         }
         List<Token> tokens = Tokens(run, kind);
         SqlEffect effect = SqlEffect.Reads;
@@ -392,7 +400,7 @@ public static class SqlText
     /// console in manual commit takes as its own; null for any other run, a partial ROLLBACK TO among them.</summary>
     public static SqlTransaction? TransactionOf(string run, DatabaseKind kind)
     {
-        if (DatabaseKinds.HoldsDocuments(kind))
+        if (!DatabaseKinds.SpeaksSql(kind))
         {
             return null;
         }

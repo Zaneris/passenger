@@ -69,6 +69,7 @@ public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folde
         DatabaseKind.MongoDb => DatabaseKinds.Value(ConnectionString, "Database")
             ?? (DatabaseKinds.Value(ConnectionString, "Uri") is { } uri ? new MongoDB.Driver.MongoUrl(uri).DatabaseName : null) ?? "test",
         DatabaseKind.CosmosDb => DatabaseKinds.Value(ConnectionString, "Database") ?? string.Empty,
+        DatabaseKind.Redis => DatabaseKinds.Value(ConnectionString, "Database") is { } numbered ? RedisNames.Database(RedisNames.Number(numbered)) : RedisNames.Database(0),
         _ => DatabaseKinds.Value(ConnectionString, "db") ?? string.Empty,
     };
 
@@ -80,7 +81,7 @@ public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folde
             DatabaseKind.Postgres => new NpgsqlConnectionStringBuilder(ConnectionString) { Database = database }.ConnectionString,
             DatabaseKind.SqlServer => new SqlConnectionStringBuilder(ConnectionString) { InitialCatalog = database }.ConnectionString,
             DatabaseKind.MySql => new MySqlConnectionStringBuilder(ConnectionString) { Database = database }.ConnectionString,
-            DatabaseKind.ClickHouse or DatabaseKind.MongoDb or DatabaseKind.CosmosDb => DatabaseKinds.With(ConnectionString, "Database", database),
+            DatabaseKind.ClickHouse or DatabaseKind.MongoDb or DatabaseKind.CosmosDb or DatabaseKind.Redis => DatabaseKinds.With(ConnectionString, "Database", database),
             _ => DatabaseKinds.With(ConnectionString, "db", database),
         },
     };

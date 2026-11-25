@@ -312,6 +312,14 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                     host.Text = DatabaseKinds.Value(initial.ConnectionString, "AccountEndpoint"); database.Text = DatabaseKinds.Value(initial.ConnectionString, "Database");
                     password.Text = DatabaseKinds.Value(initial.ConnectionString, "AccountKey");
                     break;
+                case DatabaseKind.Redis when DatabaseKinds.Value(initial.ConnectionString, "Configuration") is { } configuration:
+                    connection.Text = configuration; database.Text = DatabaseKinds.Value(initial.ConnectionString, "Database");
+                    break;
+                case DatabaseKind.Redis:
+                    (string redisHost, int redisPort) = DatabaseKinds.Endpoint(initial.Kind, initial.ConnectionString);
+                    host.Text = redisHost; port.Value = redisPort; database.Text = DatabaseKinds.Value(initial.ConnectionString, "Database");
+                    user.Text = DatabaseKinds.Value(initial.ConnectionString, "Username", "User"); password.Text = DatabaseKinds.Value(initial.ConnectionString, "Password");
+                    break;
             }
             if (foundOnly)
             {
@@ -364,7 +372,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                 : !account && string.IsNullOrEmpty(host.Text) && initial is null ? "localhost" : host.Text;
             host.PlaceholderText = kind switch { DatabaseKind.Snowflake => "xy12345.eu-west-1", DatabaseKind.CosmosDb => "https://myaccount.documents.azure.com:443/", _ => null };
             databaseLabel.Text = remote ? "Database" : "Database file";
-            database.PlaceholderText = remote ? "shop" : kind == DatabaseKind.DuckDb ? "A path from the open folder, or none for its files in memory"
+            database.PlaceholderText = kind == DatabaseKind.Redis ? "0" : remote ? "shop" : kind == DatabaseKind.DuckDb ? "A path from the open folder, or none for its files in memory"
                 : "Full path, or a path relative to the open folder";
             port.Value = DatabaseKinds.Port(kind);
             integratedRow.IsVisible = provider.SelectedIndex == (int)DatabaseKind.SqlServer && !foundOnly;
@@ -419,21 +427,24 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         DatabaseKind.MySql => $"{new MySqlConnectionStringBuilder(written).Database} at {new MySqlConnectionStringBuilder(written).Server}",
         DatabaseKind.DuckDb => DatabaseKinds.FileOf(kind, written) is { Length: > 0 } file ? Path.GetFileName(file) : "DuckDB in memory",
         DatabaseKind.ClickHouse => $"{DatabaseKinds.Value(written, "Database") ?? "default"} at {DatabaseKinds.Endpoint(kind, written).Host}",
-        DatabaseKind.MongoDb or DatabaseKind.CosmosDb => $"{new DatabaseSource(string.Empty, kind, string.Empty) { ConnectionString = written }.Database} at {DatabaseKinds.Endpoint(kind, written).Host}",
+        DatabaseKind.MongoDb or DatabaseKind.CosmosDb or DatabaseKind.Redis =>
+            $"{new DatabaseSource(string.Empty, kind, string.Empty) { ConnectionString = written }.Database} at {DatabaseKinds.Endpoint(kind, written).Host}",
         _ => $"{DatabaseKinds.Value(written, "db")} at {DatabaseKinds.Value(written, "account")}",
     };
 
     /// <summary>Whether the kind's connection may go through an SSH tunnel: a server reached at a host and port, but
     /// Snowflake's, whose service is reached by its account's name alone.</summary>
-    private static bool Tunnels(DatabaseKind kind) => !DatabaseKinds.IsFile(kind) && kind != DatabaseKind.Snowflake && !DatabaseKinds.HoldsDocuments(kind);
+    private static bool Tunnels(DatabaseKind kind) => !DatabaseKinds.IsFile(kind) && kind != DatabaseKind.Snowflake && DatabaseKinds.SpeaksSql(kind);
 
     private string Build(DatabaseKind kind)
     {
         if (!string.IsNullOrWhiteSpace(connection.Text))
         {
-            // MongoDB's own connection string is a URI, kept whole under a key of its own.
+            // MongoDB's URI and StackExchange.Redis's configuration (host:port,password=…) are kept whole under keys of their own.
             return kind == DatabaseKind.MongoDb && connection.Text.TrimStart().StartsWith("mongodb", StringComparison.OrdinalIgnoreCase)
                 ? Written(string.Empty, ("Uri", connection.Text.Trim()), ("Database", database.Text?.Trim() ?? string.Empty))
+                : kind == DatabaseKind.Redis && !connection.Text.Contains("Configuration=", StringComparison.OrdinalIgnoreCase)
+                    ? Written(string.Empty, ("Configuration", connection.Text.Trim()), ("Database", RedisNames.Database(RedisNames.Number(database.Text?.Trim() ?? string.Empty))))
                 : DatabaseKinds.Builder(kind, connection.Text).ConnectionString;
         }
         if (kind == DatabaseKind.Snowflake && string.IsNullOrWhiteSpace(host.Text))
@@ -444,11 +455,11 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         {
             throw new ArgumentException("Enter the account's endpoint, as https://myaccount.documents.azure.com:443/");
         }
-        if (DatabaseKinds.HoldsDocuments(kind) && string.IsNullOrWhiteSpace(host.Text))
+        if (!DatabaseKinds.SpeaksSql(kind) && string.IsNullOrWhiteSpace(host.Text))
         {
             throw new ArgumentException("Enter the host");
         }
-        if (!DatabaseKinds.IsFile(kind) && kind != DatabaseKind.Snowflake && !DatabaseKinds.HoldsDocuments(kind)
+        if (!DatabaseKinds.IsFile(kind) && kind != DatabaseKind.Snowflake && DatabaseKinds.SpeaksSql(kind)
             && (string.IsNullOrWhiteSpace(host.Text) || string.IsNullOrWhiteSpace(database.Text)))
         {
             throw new ArgumentException("Enter the host and database name");
@@ -476,6 +487,9 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                 ("Database", database.Text?.Trim() ?? string.Empty), ("Username", user.Text ?? string.Empty), ("Password", password.Text ?? string.Empty)),
             DatabaseKind.CosmosDb => Written(baseline, ("AccountEndpoint", host.Text!.Trim()), ("AccountKey", password.Text ?? string.Empty),
                 ("Database", database.Text?.Trim() ?? string.Empty)),
+            DatabaseKind.Redis => Written(baseline, ("Host", host.Text!.Trim()), ("Port", number.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                ("Database", RedisNames.Database(RedisNames.Number(database.Text?.Trim() ?? string.Empty))), ("Username", user.Text ?? string.Empty),
+                ("Password", password.Text ?? string.Empty)),
             _ => Written(baseline, ("account", host.Text!.Trim()), ("db", database.Text?.Trim() ?? string.Empty), ("user", user.Text ?? string.Empty), ("password", password.Text ?? string.Empty)),
         };
 

@@ -712,6 +712,15 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>Says what an action the person asked came to.</summary>
+    public void Tell(string said)
+    {
+        UiThread.Check();
+        Said = said;
+        say(said);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>Says why what the person asked was refused.</summary>
     public void Refuse(string why)
     {

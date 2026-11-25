@@ -31,8 +31,24 @@ public sealed class SqlConsole(string path)
 
     public bool Running => running is not null;
 
-    /// <summary>Whether a file of a language is run against a connection as a console is: SQL's, and MongoDB's shell.</summary>
-    public static bool Speaks(Languages.Language? language) => language == Languages.Language.Sql || language == Languages.Language.MongoDb;
+    /// <summary>Whether a file of a language is run against a connection as a console is: SQL's, MongoDB's shell and Redis's commands.</summary>
+    public static bool Speaks(Languages.Language? language) => language is not null && (language == Languages.Language.Sql || language == LanguageOf(DatabaseKind.MongoDb)
+        || language == LanguageOf(DatabaseKind.Redis));
+
+    /// <summary>The language a console of a kind of database is written in, and the extension of its file.</summary>
+    public static Languages.Language LanguageOf(DatabaseKind kind) => kind switch
+    {
+        DatabaseKind.MongoDb => Languages.Language.MongoDb,
+        DatabaseKind.Redis => Languages.Language.Redis,
+        _ => Languages.Language.Sql,
+    };
+
+    public static string ExtensionOf(DatabaseKind kind) => kind switch
+    {
+        DatabaseKind.MongoDb => ".mongodb",
+        DatabaseKind.Redis => ".redis",
+        _ => ".sql",
+    };
 
     /// <summary>The plan of the statement last explained, and the statement; null until one is.</summary>
     public PlanStep? Plan { get; private set; }

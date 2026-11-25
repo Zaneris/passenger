@@ -49,6 +49,8 @@ dbgshim's musl Linux natives are the container tools' (below), which the app nev
 | `ZstdSharp.Port` | the MongoDB provider's Zstandard compression | MIT | Copyright Oleg Stepanischev 2023 |
 | `Microsoft.Azure.Cosmos` | The Database window's Cosmos DB provider | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Bcl.HashCode` | the Cosmos DB provider's hashing | MIT | © Microsoft Corporation. All rights reserved. |
+| `StackExchange.Redis` | The Database window's Redis provider | MIT | 2014 - 2026 Stack Exchange, Inc. |
+| `RESPite` | the Redis provider's protocol reader | MIT | 2025 - 2026 Marc Gravell |
 | `Mono.Unix`, `System.Management`, `System.CodeDom`, `System.IO.Hashing` | the Snowflake and Google Cloud providers' file modes, machine details and hashes | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Data.SqlClient`, `Microsoft.Data.SqlClient.Extensions.Abstractions`, `Microsoft.Data.SqlClient.Internal.Logging`, `Microsoft.Data.SqlClient.SNI.runtime` | The Database window's SQL Server provider and its native transport | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Bcl.Cryptography`, `Microsoft.IdentityModel.JsonWebTokens`, `Microsoft.IdentityModel.Logging`, `Microsoft.IdentityModel.Protocols`, `Microsoft.IdentityModel.Protocols.OpenIdConnect`, `Microsoft.IdentityModel.Tokens`, `Microsoft.SqlServer.Server`, `System.IdentityModel.Tokens.Jwt`, `System.Threading.RateLimiting`, `System.Security.Cryptography.Pkcs` | SQL Server's authentication, cryptography and protocol dependencies | MIT | © Microsoft Corporation. All rights reserved. |

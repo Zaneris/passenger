@@ -27,6 +27,8 @@ internal sealed class SqlAssist(AssistContext context, CodeCompletion completion
 
     private static bool IsShell(OpenDocument document) => document.Language == Language.MongoDb;
 
+    private static bool IsRedis(OpenDocument document) => document.Language == Language.Redis;
+
     public override bool Typed(string text)
     {
         if (context.Editors.Active is not { } typed || !Owns(typed))
@@ -36,9 +38,11 @@ internal sealed class SqlAssist(AssistContext context, CodeCompletion completion
         string written = context.Editor.Document.Snapshot.ToString();
         int caret = context.Caret;
         bool shell = IsShell(typed);
-        bool startsName = text.Length == 1 && (char.IsLetter(text[0]) || text[0] == '_' || shell && text[0] == '$') && (caret < 2 || !NamePart(written[caret - 2]));
+        bool redis = IsRedis(typed);
+        bool startsName = text.Length == 1 && (char.IsLetter(text[0]) || text[0] == '_' || shell && text[0] == '$')
+            && (caret < 2 || (redis ? char.IsWhiteSpace(written[caret - 2]) : !NamePart(written[caret - 2])));
         bool afterDot = text == "." && caret >= 2 && (NamePart(written[caret - 2]) || written[caret - 2] is '"' or ']' or '`' || shell && written[caret - 2] == ')');
-        if ((startsName || afterDot) && !InLiteral(written, caret, shell))
+        if ((startsName || afterDot && !redis) && !InLiteral(written, caret, typed))
         {
             IdeErrors.Observe(completion.Start(null));
         }
@@ -60,12 +64,13 @@ internal sealed class SqlAssist(AssistContext context, CodeCompletion completion
             return true;
         }
         string text = asked.ToString();
-        if (InLiteral(text, context.Caret, IsShell(shown)))
+        if (InLiteral(text, context.Caret, shown))
         {
             completion.Close();
             return true;
         }
         (int start, IReadOnlyList<SqlCompletions.Candidate> candidates) = IsShell(shown) ? ShellCompletions.At(text, context.Caret, catalog)
+            : IsRedis(shown) ? RedisCompletions.At(text, context.Caret, catalog)
             : SqlCompletions.At(text, context.Caret, live?.Kind ?? DatabaseKind.Sqlite, catalog);
         if (candidates.Count == 0)
         {
@@ -92,7 +97,8 @@ internal sealed class SqlAssist(AssistContext context, CodeCompletion completion
             offered[item] = candidate;
             items.Add(item);
         }
-        completion.Open(new CodeCompletion.Completion(items, start, [], false) { Own = this, WordCharacters = "_$" });
+        // A Redis key holds the punctuation its naming takes (user:42, cart.items).
+        completion.Open(new CodeCompletion.Completion(items, start, [], false) { Own = this, WordCharacters = IsRedis(shown) ? "_$:.-{}*@#/" : "_$" });
         return true;
     }
 
@@ -110,7 +116,7 @@ internal sealed class SqlAssist(AssistContext context, CodeCompletion completion
 
     public override async Task<CodeActions.Reformatted?> FormatAsync(OpenDocument document, TextRange? within)
     {
-        if (!Owns(document) || IsShell(document))
+        if (!Owns(document) || IsShell(document) || IsRedis(document))
         {
             return null;
         }
@@ -147,16 +153,19 @@ internal sealed class SqlAssist(AssistContext context, CodeCompletion completion
     private static bool NamePart(char c) => char.IsLetterOrDigit(c) || c is '_' or '$';
 
     /// <summary>Whether the caret stands in a string or a comment, where nothing is offered.</summary>
-    private static bool InLiteral(string text, int caret, bool shell)
+    private static bool InLiteral(string text, int caret, OpenDocument document)
     {
+        bool shell = IsShell(document);
+        bool redis = IsRedis(document);
         int i = 0;
         while (i < caret)
         {
-            int? skipped = shell ? DocumentShell.Skipped(text, i) : text[i] is '\'' or '-' or '/' ? SqlText.Skipped(text, i, DatabaseKind.Postgres) : null;
+            int? skipped = shell ? DocumentShell.Skipped(text, i) : redis ? RedisCommands.Skipped(text, i)
+                : text[i] is '\'' or '-' or '/' ? SqlText.Skipped(text, i, DatabaseKind.Postgres) : null;
             if (skipped is { } past)
             {
                 // A line comment that runs to the caret holds it.
-                bool line = text[i] == '-' || shell && text[i] == '/' && i + 1 < text.Length && text[i + 1] == '/';
+                bool line = text[i] == '-' || redis && text[i] == '#' || shell && text[i] == '/' && i + 1 < text.Length && text[i + 1] == '/';
                 if (past > caret || past == caret && line)
                 {
                     return true;

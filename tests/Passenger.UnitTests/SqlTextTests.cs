@@ -43,6 +43,8 @@ public sealed class SqlTextTests
             ("MongoDB's shell: a statement ends at its line unless the next goes on with a chained call, a string's or comment's semicolon ending nothing",
                 DatabaseKind.MongoDb, "db.orders.find({ n: 'a;b' }) // c;d\n  .sort({ n: 1 })\ndb.orders.countDocuments({}); db.x.drop()",
                 ["db.orders.find({ n: 'a;b' }) // c;d\n  .sort({ n: 1 })", "db.orders.countDocuments({})", "db.x.drop()"]),
+            ("Redis's commands a line each, a # line a comment and a blank one passed over, a # in a word its own", DatabaseKind.Redis,
+                "# seed\n  SET a \"x;y\"\n\nHSET h #f 1\n", ["SET a \"x;y\"", "HSET h #f 1"]),
         }, row => Assert.Equal(row.Runs, SqlText.Runs(row.Sql, row.Kind)), row => row.Holds);
         Cases.Each(new (string Holds, string Sql, int Caret, string? At)[]
         {
@@ -74,7 +76,14 @@ public sealed class SqlTextTests
             ("MongoDB's index made changes the schema", DatabaseKind.MongoDb, "db.orders.createIndex({ name: 1 })", SqlEffect.ChangesSchema),
             ("runCommand reads only for a command known to", DatabaseKind.MongoDb, "db.runCommand({ ping: 1 })", SqlEffect.Reads),
             ("Cosmos DB's SQL only reads", DatabaseKind.CosmosDb, "SELECT * FROM c WHERE c.op = 'DELETE'", SqlEffect.Reads),
+            ("Redis's read of a key named as a command reads", DatabaseKind.Redis, "HGET DEL field", SqlEffect.Reads),
+            ("Redis's write, and one it does not know, change data", DatabaseKind.Redis, "frobnicate x", SqlEffect.ChangesData),
+            ("CONFIG GET reads and CONFIG SET or FLUSHDB change the server", DatabaseKind.Redis, "CONFIG SET maxmemory 1mb", SqlEffect.ChangesSchema),
         }, row => Assert.Equal(row.Effect, SqlText.EffectOf(row.Sql, row.Kind)), row => row.Holds);
+        Cases.Each(new (string Holds, string Run, string[] Words)[]
+        {
+            ("redis-cli's words: a double quote's escapes read, a single quote's taken as written", "SET k \"a b\\n\\x41\" 'c\\d'", ["SET", "k", "a b\nA", "c\\d"]),
+        }, row => Assert.Equal(row.Words, RedisCommands.Words(row.Run)), row => row.Holds);
         Cases.Each(new (string Holds, DatabaseKind Kind, string Sql, SqlTransaction? Transaction)[]
         {
             ("COMMIT and its words", DatabaseKind.Postgres, "commit work;", SqlTransaction.Commit),

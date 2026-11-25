@@ -264,6 +264,11 @@ public sealed class Language
     public static readonly Language MongoDb = new("mongodb", "MongoDB", ["*.mongodb"], line: "//", block: ("/*", "*/"), indent: 2,
         grammar: new("source.js", "JavaScript.tmLanguage.json"));
 
+    /// <summary>Redis's commands, as a console of a Redis connection is written (a command a line, a line of # a comment),
+    /// coloured by the shell's grammar, whose words, quotes and comments they are, and served by no language server.</summary>
+    public static readonly Language Redis = new("redis", "Redis", ["*.redis"], line: "#", indent: 2,
+        grammar: new("source.shell", "shell-unix-bash.tmLanguage.json"));
+
     /// <summary>Languages with no grammar here, commented as C's are or as scripts are.</summary>
     public static readonly Language Code = new("code", "Code", ["*.rs", "*.go", "*.java", "*.kt", "*.swift", "*.c", "*.h", "*.cpp"],
         line: "//", block: ("/*", "*/"));

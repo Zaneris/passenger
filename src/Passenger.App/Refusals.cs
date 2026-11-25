@@ -680,15 +680,30 @@ public static class Refusals
     /// <summary>Manual commit on a database whose statements each stand alone.</summary>
     public static string NoTransactions(string kind) => $"{kind} runs each statement alone, with no transaction to commit or roll back";
 
-    /// <summary>SQL's own reading of a document database (its DDL, a plan, an import of rows, a SQL file run against it): its
-    /// documents are read through its own client, in its own queries.</summary>
-    public static string NoSqlOnDocuments(string kind) => $"{kind} keeps documents, read in its own queries in a console of it, not in SQL's tables";
+    /// <summary>SQL's own reading of a database that speaks no SQL (its DDL, a plan, an import of rows, a whole table's
+    /// export): a document database's documents and Redis's keys are read through their own clients, in their own queries.</summary>
+    public static string NotSql(string kind) => $"{kind} is read in its own queries, in a console of it, not as SQL's tables";
+
+    /// <summary>Set Time to Live with no Redis key chosen in the explorer or shown among the editors.</summary>
+    public const string NoRedisKey = "Choose a Redis key first";
+
+    /// <summary>A time to live that is no whole number of seconds above 0 (none keeps the key for good).</summary>
+    public const string NoTimeToLive = "Seconds, a whole number above 0, or none to keep the key for good";
+
+    /// <summary>A Redis key's time to live set where the key is gone (it expired, or another deleted it).</summary>
+    public static string KeyGone(string key) => $"{key} is gone: read its database again";
+
+    /// <summary>A Redis key's changes, refused whole as a value they change no longer stands as it was read.</summary>
+    public static string KeyChanged(string key) => $"{key} changed since it was read, so nothing was written: read it again";
+
+    /// <summary>A stream's entry changed, which Redis never does: its entries are added and deleted alone.</summary>
+    public const string StreamEntriesFixed = "A stream's entries are only added and deleted, never changed";
 
     /// <summary>A Cosmos DB console of a connection that names no database, whose containers it would query.</summary>
     public static string NoCosmosDatabase(string connection) => $"{connection} names no database: add Database=… to its connection string to query its containers";
 
-    /// <summary>A console's file run against a connection whose queries are in another language: MongoDB's shell on SQL's
-    /// databases, or SQL on MongoDB.</summary>
+    /// <summary>A console's file run against a connection whose queries are in another language: MongoDB's shell or Redis's
+    /// commands on SQL's databases, or SQL on MongoDB or Redis.</summary>
     public static string ConsoleOfAnother(string language, string kind) => $"A {language} file does not run against {kind}: open a console of the connection";
 
     /// <summary>A schema diagram or comparison of a database whose keys and constraints these read in no way of its own.</summary>
