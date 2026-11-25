@@ -51,9 +51,10 @@ internal static partial class DatabaseClient
             MarkSecrets(overSecret);
             whole = DatabaseKinds.LaidOver(source.Kind, whole, KeptConnection.Joined(source.Kind, source.Over, overSecret));
         }
+        string? accessToken = null;
         if (source.SignIn is { } signIn)
         {
-            whole = await CloudSignIns.SignedInAsync(source.Kind, whole, signIn, cancel);
+            (whole, accessToken) = await CloudSignIns.SignedInAsync(source.Kind, whole, signIn, cancel);
         }
         string? through = null;
         if (source.Tunnel is { } tunnel && !DatabaseKinds.IsFile(source.Kind) && source.Kind != DatabaseKind.Snowflake)
@@ -80,6 +81,10 @@ internal static partial class DatabaseClient
             DatabaseKind.Snowflake => new Snowflake.Data.Client.SnowflakeDbConnection { ConnectionString = whole },
             _ => throw new InvalidOperationException("Unknown database provider"),
         };
+        if (accessToken is not null && connection is SqlConnection sql)
+        {
+            sql.AccessToken = accessToken;
+        }
         if (readOnly && connection is ClickHouse.Driver.ADO.ClickHouseConnection clickHouse)
         {
             // 2 refuses every change of data or schema and still takes the settings a query sends.

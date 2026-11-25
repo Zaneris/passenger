@@ -761,6 +761,10 @@ public static class Refusals
     /// <summary>A kind of database a cloud sign-in does not sign in to.</summary>
     public static string NoCloudSignIn(string kind) => $"{kind} on AWS takes no IAM authentication: sign in by a Secrets Manager secret or a password";
 
+    /// <summary>A kind of database no Azure server signs in to by Microsoft Entra ID.</summary>
+    public static string NoEntraSignIn(string kind) =>
+        $"{kind} takes no Microsoft Entra ID sign-in: Azure's SQL databases, PostgreSQL and MySQL servers do";
+
     /// <summary>A cloud sign-in that names no region, to a host that names none either.</summary>
     public static string NoAwsRegion(string host) => $"{host} names no AWS region, nor does the profile: give the region in the connection's settings";
 
@@ -786,8 +790,19 @@ public static class Refusals
     public static string AwsSignInNeeded(string profile) =>
         $"AWS profile {profile} signs in through IAM Identity Center and has no sign-in that holds: choose Sign In… on its connection's menu";
 
-    /// <summary>Sign In asked of a connection whose AWS profile signs in otherwise.</summary>
-    public const string NoIdentityCenterSignIn = "The chosen connection's AWS profile does not sign in through IAM Identity Center";
+    /// <summary>Sign In asked of a connection that signs in by none of the sign-ins the person makes in their browser.</summary>
+    public const string NoBrowserSignIn = "The chosen connection signs in through neither Microsoft Entra ID nor an AWS profile's IAM Identity Center";
+
+    /// <summary>A Microsoft Entra ID account a connection signs in as, with no sign-in that holds; or none signed in.</summary>
+    public static string AzureSignInNeeded(string? account) => account is null
+        ? "No Microsoft Entra ID account is signed in: choose Sign In… on the connection's menu"
+        : $"Microsoft Entra ID account {account} has no sign-in that holds: choose Sign In… on its connection's menu";
+
+    /// <summary>A connection that names no Microsoft Entra ID account, with several signed in.</summary>
+    public const string AzureAccountUnchosen = "Several Microsoft Entra ID accounts are signed in: choose the connection's account in its settings";
+
+    /// <summary>Microsoft Entra ID's sign-in failed, or Azure refused what was asked of it.</summary>
+    public static string AzureRefused(string what, string said) => $"Azure refused {what}: {said}";
 
     /// <summary>IAM Identity Center's device sign-in was refused, or ran out before the person approved it.</summary>
     public static string AwsSignInNotApproved(string profile) => $"AWS profile {profile}'s sign-in was not approved in the browser before its code ran out";

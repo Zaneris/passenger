@@ -457,7 +457,7 @@ public sealed class DatabaseExplorer : DockPanel
             items.Add(MenuChoice.Of("Read-Only", node.Mark == DatabaseMark.ReadOnly, () => Request(AppActions.DatabaseReadOnly)));
             items.Add(MenuChoice.Of("Production", node.Mark == DatabaseMark.Production, () => Request(AppActions.DatabaseProduction)));
             items.Add(new Separator());
-            if (CloudSignIns.ProfileOf(node.Source) is not null)
+            if (CloudSignIns.ProfileOf(node.Source) is not null || CloudSignIns.SignsInToEntra(node.Source))
             {
                 items.Add(ListMenus.Keyed("Sign In…", AppActions.DatabaseSignIn, () => Request(AppActions.DatabaseSignIn)));
             }

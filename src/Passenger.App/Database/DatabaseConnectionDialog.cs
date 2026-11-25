@@ -9,6 +9,7 @@ using Microsoft.Data.Sqlite;
 using MySqlConnector;
 using Npgsql;
 using Passenger.App.Containers;
+using Passenger.App.Settings;
 using Passenger.Core;
 
 namespace Passenger.App.Database;
@@ -48,6 +49,11 @@ public sealed class DatabaseConnectionDialog : IdeWindow
     private readonly TextBox awsRegion = new() { Name = "DatabaseAwsRegion", PlaceholderText = "The one the host names, else the profile's" };
     private readonly TextBox awsSecret = new() { Name = "DatabaseAwsSecret", PlaceholderText = "Its name or ARN" };
     private readonly TextBox awsCluster = new() { Name = "DatabaseAwsCluster", PlaceholderText = "The host's; a serverless workgroup as workgroup/NAME" };
+    private readonly FormDropDown entraAccount = new() { Name = "DatabaseEntraAccount", ItemsSource = new[] { OnlyAccount }, SelectedIndex = 0 };
+    private readonly Button entraSignIn = new() { Name = "DatabaseEntraSignIn", Content = "Sign In…" };
+    private readonly FormDropDown entraServer = new() { Name = "DatabaseEntraServer", ItemsSource = new object[] { ServerAbove }, SelectedIndex = 0 };
+    private readonly TextBox entraTenant = new() { Name = "DatabaseEntraTenant", PlaceholderText = "The account's own" };
+    private readonly TextBlock entraSaid = MutedText.Wrapped(string.Empty);
     private readonly FormFold signInFold = new() { Title = "Cloud sign-in" };
     private readonly FormFold tunnelFold = new() { Title = "SSH tunnel" };
     private readonly FormFold stringFold = new() { Title = "Connection string" };
@@ -59,7 +65,17 @@ public sealed class DatabaseConnectionDialog : IdeWindow
     /// <summary>Whether the person chose the SSL here, which is then written over what the connection string says.</summary>
     private bool sslChosen;
 
-    public DatabaseConnectionDialog(string folder, DatabaseSource? initial = null)
+    /// <summary>The Azure servers the chosen account reaches, each kind's listed for it as the provider changes.</summary>
+    private IReadOnlyList<AzureServer> servers = [];
+
+    /// <summary>Whether the accounts signed in to Entra ID have been listed yet, which they are once its sign-in is chosen.</summary>
+    private bool accountsListed;
+
+    /// <summary>Set while the accounts are listed again, whose choice then lists no servers of its own.</summary>
+    private bool relisting;
+
+    /// <summary>A connection made or edited here, Entra's sign-in page opened through <paramref name="browse"/>, the window's.</summary>
+    public DatabaseConnectionDialog(string folder, DatabaseSource? initial = null, Action<Uri>? browse = null)
     {
         this.initial = initial;
         this.folder = folder;
@@ -95,6 +111,31 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         TextBlock signInNote = MutedText.Wrapped("An IAM token is made for each connection from the profile's credentials, and a secret's user and password read "
             + "for each; Passenger keeps neither. A profile that signs in through IAM Identity Center is signed in to by Sign In… on the connection's menu.");
         signInFold.Rows.Children.Add(signInNote);
+        Grid[] entraRows = [Row(signInFold.Rows, "Account", new NarrowingField(entraAccount, entraSignIn)), Row(signInFold.Rows, "Server", entraServer),
+            Row(signInFold.Rows, "Tenant", entraTenant)];
+        TextBlock entraNote = MutedText.Wrapped("A token of the account is asked of Microsoft Entra ID for each connection, its user the account's name where none "
+            + "is given above. Sign In signs an account in on Entra's page in your browser; its sign-in is kept in the system's credential store, never in a "
+            + "file. The servers listed are those your subscriptions hold.");
+        signInFold.Rows.Children.Add(entraNote);
+        signInFold.Rows.Children.Add(entraSaid);
+        entraSignIn.IsEnabled = browse is not null;
+        entraSignIn.Click += (_, _) => IdeErrors.Observe(SignInToEntraAsync());
+        entraAccount.SelectionChanged += (_, _) =>
+        {
+            if (accountsListed && !relisting)
+            {
+                IdeErrors.Observe(ListServersAsync());
+            }
+        };
+        entraServer.SelectionChanged += (_, _) =>
+        {
+            if (entraServer.SelectedItem is AzureServer chosen)
+            {
+                host.Text = chosen.Host;
+                port.Value = DatabaseKinds.Port(chosen.Kind);
+                entraTenant.Text = chosen.Tenant;
+            }
+        };
         Row(tunnelFold.Rows, null, tunnel);
         Grid[] sshRows = [Row(tunnelFold.Rows, "SSH host", sshHost), Row(tunnelFold.Rows, "SSH port", sshPort), Row(tunnelFold.Rows, "SSH user", sshUser),
             Row(tunnelFold.Rows, "SSH key file", BrowseRow.Of(sshKey, () => BrowseAsync(sshKey, "SSH Private Key"))), Row(tunnelFold.Rows, "Password or key passphrase", sshSecret)];
@@ -278,6 +319,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                 awsRegion.Text = cloud.Region;
                 awsSecret.Text = cloud.Secret;
                 awsCluster.Text = cloud.Cluster;
+                entraTenant.Text = cloud.Tenant;
                 signInFold.IsOpen = true;
             }
             if (initial.Tunnel is { } through)
@@ -377,7 +419,8 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         void ShowSignIn()
         {
             DatabaseKind kind = initial?.Found is not null ? initial.Kind : (DatabaseKind)provider.SelectedIndex;
-            bool aws = signIn.SelectedIndex > 0;
+            bool entra = signIn.SelectedIndex == (int)CloudSignInKind.AzureEntra + 1;
+            bool aws = signIn.SelectedIndex > 0 && !entra;
             foreach (Grid row in awsRows)
             {
                 row.IsVisible = aws;
@@ -385,10 +428,113 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             secretRow.IsVisible = signIn.SelectedIndex == (int)CloudSignInKind.AwsSecret + 1;
             clusterRow.IsVisible = signIn.SelectedIndex == (int)CloudSignInKind.AwsIam + 1 && kind == DatabaseKind.Redshift;
             signInNote.IsVisible = aws;
+            foreach (Grid row in entraRows)
+            {
+                row.IsVisible = entra;
+            }
+            entraNote.IsVisible = entra;
+            entraSaid.IsVisible = entra && entraSaid.Text is { Length: > 0 };
             bool remote = !DatabaseKinds.IsFile(kind);
             // Redshift's IAM sign-in, as a secret, gives the user it signs in as.
             userRow.IsVisible = remote && !foundOnly && !secretRow.IsVisible && !clusterRow.IsVisible && kind != DatabaseKind.CosmosDb;
-            passwordRow.IsVisible = remote && !foundOnly && !aws;
+            user.PlaceholderText = entra ? "The account's name" : null;
+            passwordRow.IsVisible = remote && !foundOnly && signIn.SelectedIndex <= 0;
+            if (entra && !accountsListed)
+            {
+                IdeErrors.Observe(ListAccountsAsync(initial?.SignIn?.Account));
+            }
+            ShowServers();
+        }
+
+        // The accounts signed in, the one given chosen, then the servers it reaches listed.
+        async Task ListAccountsAsync(string? choose)
+        {
+            accountsListed = true;
+            IReadOnlyList<string> names = await BackgroundWork.Run(AzureSignIn.AccountsAsync, closing.Token);
+            string[] listed = [OnlyAccount, .. names, .. choose is { Length: > 0 } && !names.Contains(choose, StringComparer.OrdinalIgnoreCase) ? [choose] : (string[])[]];
+            relisting = true;
+            try
+            {
+                entraAccount.ItemsSource = listed;
+                entraAccount.SelectedIndex = choose is { Length: > 0 } ? Math.Max(0, Array.FindIndex(listed, n => string.Equals(n, choose, StringComparison.OrdinalIgnoreCase))) : 0;
+            }
+            finally
+            {
+                relisting = false;
+            }
+            await ListServersAsync();
+        }
+
+        async Task ListServersAsync()
+        {
+            string account = entraAccount.SelectedIndex > 0 ? entraAccount.SelectedItem as string ?? string.Empty : string.Empty;
+            if (((string[])entraAccount.ItemsSource!).Length == 1)
+            {
+                servers = [];
+                SayEntra("Sign in to list the servers your subscriptions hold.");
+                ShowServers();
+                return;
+            }
+            SayEntra("Listing the servers your subscriptions hold…");
+            try
+            {
+                servers = await BackgroundWork.Run(() => AzureServers.ListAsync(account, closing.Token), closing.Token);
+                SayEntra(string.Empty);
+            }
+            catch (IOException failed)
+            {
+                servers = [];
+                SayEntra(failed.Message);
+            }
+            catch (OperationCanceledException) when (closing.IsCancellationRequested)
+            {
+                return;
+            }
+            ShowServers();
+        }
+
+        // Sign In: an account signed in on Entra's page in the browser, a device's code said where that cannot answer here.
+        async Task SignInToEntraAsync()
+        {
+            entraSignIn.IsEnabled = false;
+            SayEntra("Sign in on the page your browser opened…");
+            try
+            {
+                string account = await AzureSignIn.SignInAsync(browse!, code => UiThread.Post(() => SayEntra($"Sign in on the page your browser opened: enter the code {code}")),
+                    closing.Token);
+                await ListAccountsAsync(account);
+            }
+            catch (IOException failed)
+            {
+                SayEntra(failed.Message);
+            }
+            catch (OperationCanceledException) when (closing.IsCancellationRequested)
+            {
+                return;
+            }
+            finally
+            {
+                entraSignIn.IsEnabled = true;
+            }
+        }
+
+        // The servers of the provider's kind, after the choice of none, which keeps the host typed above.
+        void ShowServers()
+        {
+            DatabaseKind kind = (DatabaseKind)provider.SelectedIndex;
+            object[] listed = [ServerAbove, .. servers.Where(s => s.Kind == kind)];
+            if (entraServer.ItemsSource is object[] shown && shown.SequenceEqual(listed))
+            {
+                return;
+            }
+            entraServer.ItemsSource = listed;
+            entraServer.SelectedIndex = 0;
+        }
+
+        void SayEntra(string words)
+        {
+            entraSaid.Text = ContainerSecrets.InSaid(words);
+            entraSaid.IsVisible = words.Length > 0 && signIn.SelectedIndex == (int)CloudSignInKind.AzureEntra + 1;
         }
 
         async Task ListProfilesAsync()
@@ -409,7 +555,15 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             CloudSignInKind chosen = (CloudSignInKind)(signIn.SelectedIndex - 1);
             if (!CloudSignIns.Signs(chosen, kind))
             {
-                throw new ArgumentException(Refusals.NoCloudSignIn(DatabaseKinds.Title(kind)));
+                throw new ArgumentException(CloudSignIns.WhyNot(chosen, kind));
+            }
+            if (chosen == CloudSignInKind.AzureEntra)
+            {
+                return new CloudSignIn(chosen, string.Empty, string.Empty)
+                {
+                    Account = entraAccount.SelectedIndex > 0 ? entraAccount.SelectedItem as string ?? string.Empty : string.Empty,
+                    Tenant = entraTenant.Text?.Trim() ?? string.Empty,
+                };
             }
             if (chosen == CloudSignInKind.AwsSecret && string.IsNullOrWhiteSpace(awsSecret.Text))
             {
@@ -484,7 +638,13 @@ public sealed class DatabaseConnectionDialog : IdeWindow
     }
 
     /// <summary>The cloud sign-ins offered, by <see cref="CloudSignInKind"/> after the password's.</summary>
-    private static readonly string[] SignInTitles = ["The password above", "AWS IAM authentication", "AWS Secrets Manager secret"];
+    private static readonly string[] SignInTitles = ["The password above", "AWS IAM authentication", "AWS Secrets Manager secret", "Microsoft Entra ID"];
+
+    /// <summary>The Entra ID account of a connection that names none: the one signed in.</summary>
+    private const string OnlyAccount = "The one signed in";
+
+    /// <summary>The Azure server of a connection that names none listed: the host given above.</summary>
+    private const string ServerAbove = "The host above";
 
     /// <summary>The profile the environment's keys sign in with, else AWS_PROFILE's or the default.</summary>
     private const string EnvironmentProfile = "The environment's, else the default";

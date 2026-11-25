@@ -265,6 +265,7 @@
     <PackageVersion Include="StackExchange.Redis" Version="3.4.35" />
     <PackageVersion Include="AWSSDK.DynamoDBv2" Version="4.1.0.3" />
     <PackageVersion Include="AWSSDK.RDS" Version="4.1.1.1" />
+    <PackageVersion Include="Microsoft.Identity.Client" Version="4.92.0" />
     <PackageVersion Include="AWSSDK.Redshift" Version="4.1.0.2" />
     <PackageVersion Include="AWSSDK.RedshiftServerless" Version="4.1.0.2" />
     <PackageVersion Include="AWSSDK.SecretsManager" Version="4.1.1.2" />

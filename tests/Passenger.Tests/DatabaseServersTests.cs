@@ -57,6 +57,9 @@ public sealed class DatabaseServersTests
     /// <summary>The PostgreSQL row's server, signed in to through AWS's sign-ins (<see cref="AwsSignIns"/>).</summary>
     private const string AwsPostgres = "postgres:17-alpine, signed in through AWS";
 
+    /// <summary>The PostgreSQL and MariaDB servers signed in to through Microsoft Entra ID (<see cref="EntraSignIns"/>).</summary>
+    private const string EntraDatabases = "postgres:17-alpine and mariadb:11.4 by Entra ID";
+
     /// <summary>Cassandra, which runs on Arm as on x86-64, pinned.</summary>
     private const string CassandraImage = "cassandra:5.0.8";
 
@@ -76,10 +79,20 @@ public sealed class DatabaseServersTests
     [InlineData(DatabaseKind.DynamoDb, DynamoImage)]
     [InlineData(DatabaseKind.Cassandra, CassandraImage)]
     [InlineData(DatabaseKind.Postgres, AwsPostgres)]
+    [InlineData(DatabaseKind.Postgres, EntraDatabases)]
     public void A_server_is_found_explored_run_and_completed_through_its_driver(DatabaseKind kind, string image)
     {
         Assert.SkipWhen(kind == DatabaseKind.Snowflake, "Snowflake runs only as Snowflake's own service, which no container stands in for, and this run has no account of it");
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        if (image == EntraDatabases)
+        {
+            foreach (string needed in (string[])["postgres:17-alpine", "mariadb:11.4"])
+            {
+                Assert.SkipWhen(Docker.Said("image", "inspect", needed) is null, $"The engine lacks {needed}, which this test never pulls: pull it to run the test");
+            }
+            EntraSignIns();
+            return;
+        }
         string pulled = image == AwsPostgres ? "postgres:17-alpine" : image;
         Assert.SkipWhen(Docker.Said("image", "inspect", pulled) is null, $"The engine lacks {pulled}, which this test never pulls: pull it to run the test");
         if (image == AwsPostgres)
@@ -1680,6 +1693,167 @@ public sealed class DatabaseServersTests
         {
             Environment.SetEnvironmentVariable(AwsProfiles.EndpointVariable, null);
             Docker.Remove(name);
+        }
+    }
+
+    /// <summary>PostgreSQL and MariaDB signed in to by Microsoft Entra ID tokens as Azure's servers take them, as the password
+    /// of the account's own user, Entra and Resource Manager a stand-in (<see cref="StandInEntra"/>): a PostgreSQL connection
+    /// made before any account is signed in, refused until Sign In opens Entra's page and the person signs in there as ann;
+    /// then a MariaDB connection whose dialog signs bob in, lists the servers his subscription holds and takes his, read as
+    /// bob, by an agent too.</summary>
+    private static void EntraSignIns()
+    {
+        string pid = Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
+        string postgres = $"ptest{pid}dbentrapg";
+        string maria = $"ptest{pid}dbentramy";
+        using StandInEntra entra = new();
+        Environment.SetEnvironmentVariable(AzureSignIn.EndpointVariable, entra.Root);
+        try
+        {
+            Docker.Run(["run", "-d", "--name", postgres, "--label", Docker.RunLabel, "-e", $"POSTGRES_PASSWORD={Password}", "-p", "127.0.0.1::5432", "postgres:17-alpine"]);
+            Docker.Run(["run", "-d", "--name", maria, "--label", Docker.RunLabel, "-e", $"MARIADB_ROOT_PASSWORD={Password}", "-e", "MARIADB_DATABASE=shop", "-p", "127.0.0.1::3306",
+                "mariadb:11.4"]);
+            int postgresPort = Published(postgres, 5432);
+            int mariaPort = Published(maria, 3306);
+            Assert.True(Ui.Await(Waiting.Apart(() => Waiting.UntilAsync(() => EntraUsersMadeAsync(postgresPort, mariaPort, made: false), TimeSpan.FromMinutes(2))),
+                "both servers to take connections", TimeSpan.FromMinutes(3)), "PostgreSQL or MariaDB never took connections");
+            Assert.True(Ui.Await(Waiting.Apart(() => EntraUsersMadeAsync(postgresPort, mariaPort, made: true)), "the accounts' users made"), "The accounts' users could not be made");
+            entra.Servers.Enqueue(("Microsoft.DBforPostgreSQL/flexibleServers", "shop-pg", "127.0.0.1"));
+            entra.Servers.Enqueue(("Microsoft.DBforMySQL/flexibleServers", "shop-mysql", "127.0.0.1"));
+            MainWindow window = Ui.OpenFolder(TestFolders.Create("database-entra"), languageServer: false);
+            try
+            {
+                window.ShowToolWindow(ToolWindowIds.Database);
+                DatabaseConnectionDialog Add(DatabaseKind kind, string name)
+                {
+                    Assert.True(window.Perform(AppActions.DatabaseAdd), "New Database Connection did not run");
+                    Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "the connection dialog");
+                    DatabaseConnectionDialog dialog = window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible);
+                    Field<ComboBox>(dialog, "DatabaseProvider").SelectedIndex = (int)kind;
+                    Field<TextBox>(dialog, "DatabaseConnectionName").Text = name;
+                    Ui.Click(Field<Button>(dialog, "DatabaseSignInSection"));
+                    Field<ComboBox>(dialog, "DatabaseSignIn").SelectedIndex = (int)CloudSignInKind.AzureEntra + 1;
+                    return dialog;
+                }
+                static T Field<T>(DatabaseConnectionDialog dialog, string field) where T : Control => dialog.GetVisualDescendants().OfType<T>().Single(c => c.Name == field);
+                // Entra's page as the browser opened it once the sign-in began, signed in on as the account given.
+                void SignInOnEntra(string account, Action begin)
+                {
+                    int had = window.Browsed.Count;
+                    begin();
+                    Ui.PumpUntil(() => window.Browsed.Count > had, "Entra's sign-in page opened in the browser", TimeSpan.FromMinutes(1));
+                    Uri page = window.Browsed[^1];
+                    Assert.Equal("login.microsoftonline.com", page.Host);
+                    Ui.Await(Waiting.Apart(() => StandInEntra.ApproveAsync(page, account)), $"{account}'s sign-in on Entra's page", TimeSpan.FromMinutes(1));
+                }
+
+                // Made before any account is signed in: refused until Sign In.
+                DatabaseConnectionDialog first = Add(DatabaseKind.Postgres, "Shop on PostgreSQL");
+                Field<TextBox>(first, "DatabaseHost").Text = "127.0.0.1";
+                Field<NumericUpDown>(first, "DatabasePort").Value = postgresPort;
+                Field<TextBox>(first, "DatabaseName").Text = "postgres";
+                Assert.False(Field<TextBox>(first, "DatabasePassword").IsEffectivelyVisible, "The password stayed asked for with Entra ID's sign-in chosen");
+                Ui.ClickButton(first, "Connect");
+                Ui.WaitFor(() => !first.IsVisible && window.Database.Sources.Any(s => s.Name == "Shop on PostgreSQL"),
+                    () => $"the connection kept ({Field<TextBlock>(first, "DatabaseConnectionError").Text}, the dialog shown: {first.IsVisible}); the log ends:\n{string.Join('\n', Ui.IdeLog().Split('\n').TakeLast(15))}");
+                Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
+                DatabaseNode postgresRow = window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop on PostgreSQL");
+                if (!postgresRow.IsExpanded)
+                {
+                    window.DatabaseExplorer.Choose(postgresRow);
+                    Ui.Await(window.DatabaseExplorer.ToggleAsync(postgresRow), "the connection to be refused");
+                }
+                Assert.False(postgresRow.IsExpanded, "A connection by Entra ID opened with no account signed in");
+                Assert.Equal(Refusals.AzureSignInNeeded(null), window.Database.Said);
+                window.DatabaseExplorer.Choose(postgresRow);
+                List<(bool Succeeded, string Said)> told = [];
+                window.Actions.Work.Told += (_, outcome) => told.Add(outcome);
+                SignInOnEntra("ann", () => Assert.True(window.Perform(AppActions.DatabaseSignIn), "Sign In did not run"));
+                Ui.WaitFor(() => window.Actions.Work.Of(AppActions.DatabaseSignIn) is null && told.Any(t => t.Said.Contains("Entra", StringComparison.Ordinal)),
+                    () => $"the sign-in told; Entra heard:\n{string.Join('\n', entra.Heard)}\nand the log says:\n{string.Join('\n', Ui.IdeLog().Split('\n').Where(l => l.Contains("Entra", StringComparison.Ordinal)))}",
+                    TimeSpan.FromMinutes(1));
+                Assert.Contains((true, $"Signed in to Microsoft Entra ID as {StandInEntra.AccountOf("ann")}"), told);
+                Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
+                foreach (string row in (string[])["Shop on PostgreSQL", "postgres", "public", "Tables"])
+                {
+                    if (window.DatabaseExplorer.Rows.Any(r => r.Title == row && r.Expands && !r.IsExpanded))
+                    {
+                        DatabaseTests.Open(window, row);
+                    }
+                }
+                Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == DatabaseNodeKind.Table && r.Title == "orders" && r.Source.Name == "Shop on PostgreSQL");
+                Assert.Contains((StandInEntra.AccountOf("ann"), StandInEntra.Tenant, "ossrdbms"), entra.Issued);
+
+                // The dialog's own Sign In, its servers listed from the account's subscription, one chosen.
+                DatabaseConnectionDialog second = Add(DatabaseKind.MySql, "Shop on MySQL");
+                ComboBox accounts = Field<ComboBox>(second, "DatabaseEntraAccount");
+                Ui.WaitFor(() => accounts.Items.Contains(StandInEntra.AccountOf("ann")), () => $"ann listed among {string.Join(", ", accounts.Items)}");
+                SignInOnEntra("bob", () => Ui.Click(Field<Button>(second, "DatabaseEntraSignIn")));
+                Ui.WaitFor(() => accounts.SelectedItem as string == StandInEntra.AccountOf("bob"), () => $"bob chosen, where {accounts.SelectedItem} is");
+                ComboBox listed = Field<ComboBox>(second, "DatabaseEntraServer");
+                Ui.WaitFor(() => listed.Items.OfType<AzureServer>().Any(), () => $"bob's servers listed: {string.Join(", ", listed.Items)}");
+                Assert.Equal(["shop-mysql"], listed.Items.OfType<AzureServer>().Select(s => s.Name));
+                listed.SelectedItem = listed.Items.OfType<AzureServer>().Single();
+                Assert.Equal("127.0.0.1", Field<TextBox>(second, "DatabaseHost").Text);
+                Assert.Equal(StandInEntra.Tenant, Field<TextBox>(second, "DatabaseEntraTenant").Text);
+                Field<NumericUpDown>(second, "DatabasePort").Value = mariaPort;
+                Field<TextBox>(second, "DatabaseName").Text = "shop";
+                Ui.ClickButton(second, "Connect");
+                Ui.WaitFor(() => !second.IsVisible && window.Database.Sources.Any(s => s.Name == "Shop on MySQL"), () => Field<TextBlock>(second, "DatabaseConnectionError").Text ?? "the connection kept");
+                Assert.Equal(new CloudSignIn(CloudSignInKind.AzureEntra, string.Empty, string.Empty) { Account = StandInEntra.AccountOf("bob"), Tenant = StandInEntra.Tenant },
+                    window.Database.Sources.Single(s => s.Name == "Shop on MySQL").SignIn);
+                Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
+                object answered = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).Database(connection: "Shop on MySQL", sql: "SELECT CURRENT_USER(), count(*) FROM orders"),
+                    "an agent's read as bob", TimeSpan.FromMinutes(1));
+                Passenger.App.Mcp.DatabaseQueryResult answer = Assert.Single(Assert.IsType<Passenger.App.Mcp.DatabaseQueryResult[]>(answered));
+                Assert.True(answer.Error is null, $"An agent's read through bob's sign-in failed: {answer.Error}");
+                Assert.Equal($"{StandInEntra.AccountOf("bob")}@%", answer.Sets[0].Rows[0][0]);
+                Assert.Equal("2", answer.Sets[0].Rows[0][1]);
+                Assert.Contains((StandInEntra.AccountOf("bob"), StandInEntra.Tenant, "arm"), entra.Issued);
+                Assert.Contains((StandInEntra.AccountOf("bob"), StandInEntra.Tenant, "ossrdbms"), entra.Issued);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(AzureSignIn.EndpointVariable, "http://127.0.0.1:9/");
+            Docker.Remove(postgres);
+            Docker.Remove(maria);
+        }
+    }
+
+    /// <summary>Whether both servers take connections; or, <paramref name="made"/>, the users Entra ID's accounts sign in as
+    /// made, each with its token as its password (ann's on PostgreSQL, bob's on MariaDB) and the orders it reads.</summary>
+    private static async Task<bool> EntraUsersMadeAsync(int postgres, int maria, bool made)
+    {
+        try
+        {
+            await using (Npgsql.NpgsqlConnection connection = new($"Host=127.0.0.1;Port={postgres};Username=postgres;Password={Password};Database=postgres;Pooling=false"))
+            {
+                await connection.OpenAsync();
+                await using Npgsql.NpgsqlCommand command = connection.CreateCommand();
+                command.CommandText = !made ? "SELECT 1" : $"CREATE USER \"{StandInEntra.AccountOf("ann")}\" PASSWORD '{StandInEntra.TokenOf("ann", "ossrdbms")}'; "
+                    + "CREATE TABLE orders (id int PRIMARY KEY, name text); INSERT INTO orders VALUES (1, 'tea'), (2, 'coffee'); "
+                    + $"GRANT SELECT ON orders TO \"{StandInEntra.AccountOf("ann")}\"";
+                await command.ExecuteNonQueryAsync();
+            }
+            await using (MySqlConnector.MySqlConnection connection = new($"Server=127.0.0.1;Port={maria};User ID=root;Password={Password};Database=shop;Pooling=false"))
+            {
+                await connection.OpenAsync();
+                await using MySqlConnector.MySqlCommand command = connection.CreateCommand();
+                command.CommandText = !made ? "SELECT 1" : $"CREATE USER '{StandInEntra.AccountOf("bob")}'@'%' IDENTIFIED BY '{StandInEntra.TokenOf("bob", "ossrdbms")}'; "
+                    + "CREATE TABLE orders (id int PRIMARY KEY, name text); INSERT INTO orders VALUES (1, 'tea'), (2, 'coffee'); "
+                    + $"GRANT SELECT ON shop.* TO '{StandInEntra.AccountOf("bob")}'@'%'";
+                await command.ExecuteNonQueryAsync();
+            }
+            return true;
+        }
+        catch (Exception unready) when (unready is Npgsql.NpgsqlException or MySqlConnector.MySqlException or IOException or System.Net.Sockets.SocketException)
+        {
+            return false;
         }
     }
 

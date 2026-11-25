@@ -399,14 +399,6 @@
         "resolved": "10.11.0",
         "contentHash": "h4DX/TdJU4fk1GGaf19n6Kujkj6VXbGeL4UEOsQ8+ZJC5fVApPauokCtvBP684BYbczUYZQNfo1mbmyHG4WVSg=="
       },
-      "Microsoft.Identity.Client": {
-        "type": "Transitive",
-        "resolved": "4.83.1",
-        "contentHash": "jOLIrZ3cynoqHLLO1cXplFFabrhrMEYs/EuKHvmCyrOm1axqiVFT6nCSnHxk7w5+d2BeQfCdM12Yf/0X7OeS1g==",
-        "dependencies": {
-          "Microsoft.IdentityModel.Abstractions": "8.14.0"
-        }
-      },
       "Microsoft.Identity.Client.Extensions.Msal": {
         "type": "Transitive",
         "resolved": "4.83.1",
@@ -871,6 +863,7 @@
           "Microsoft.Azure.Cosmos": "[3.64.0, )",
           "Microsoft.Data.SqlClient": "[7.1.2, )",
           "Microsoft.Data.Sqlite": "[11.0.0, )",
+          "Microsoft.Identity.Client": "[4.92.0, )",
           "Microsoft.TestPlatform.TranslationLayer": "[18.12.0, )",
           "Microsoft.VisualStudio.Threading.Only": "[18.7.23, )",
           "ModelContextProtocol.Core": "[2.4.0, )",
@@ -1312,6 +1305,15 @@
         "contentHash": "uqiUXrXzIuVqm7h3G9Sr+HuwY8LNKqRDt/yHMOAOFGvzySX7ZVTgFiO0LUKFO+c92qYCn0Gml838quCOfai7RA==",
         "dependencies": {
           "Microsoft.Diagnostics.NETCore.Client": "0.2.661903"
+        }
+      },
+      "Microsoft.Identity.Client": {
+        "type": "CentralTransitive",
+        "requested": "[4.92.0, )",
+        "resolved": "4.92.0",
+        "contentHash": "mvzvyZ0pG8gODD8+76u1HfpHzHk/Df8ylLdrrJImWdbAcV0PUx41Q/S3eojIAhH9T+upRf2cxKRli9208GC3Bw==",
+        "dependencies": {
+          "Microsoft.IdentityModel.Abstractions": "8.14.0"
         }
       },
       "Microsoft.TestPlatform.ObjectModel": {

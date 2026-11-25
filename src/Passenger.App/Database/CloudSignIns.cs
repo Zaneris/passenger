@@ -21,38 +21,89 @@ public enum CloudSignInKind
 
     /// <summary>The user and password a Secrets Manager secret holds, read at each connection.</summary>
     AwsSecret,
+
+    /// <summary>A Microsoft Entra ID token of the account signed in, asked at each connection (<see cref="AzureSignIn"/>).</summary>
+    AzureEntra,
 }
 
 /// <summary>A connection's cloud sign-in: its kind, the AWS profile it signs in with (empty for the environment's or the
 /// default one) and the region it asks (empty for the one the server's host names, else the profile's); for Secrets
 /// Manager the secret's name or ARN, and for Redshift's IAM the cluster or serverless workgroup (workgroup/NAME), empty for
-/// the one its host names.</summary>
+/// the one its host names; for Entra ID the account (empty for the one signed in) and the tenant its token is of (empty
+/// for the account's own).</summary>
 public sealed record CloudSignIn(CloudSignInKind Kind, string Profile, string Region)
 {
     public string Secret { get; init; } = string.Empty;
 
     public string Cluster { get; init; } = string.Empty;
+
+    public string Account { get; init; } = string.Empty;
+
+    public string Tenant { get; init; } = string.Empty;
 }
+
+/// <summary>A connection's string with its sign-in laid over it, and the token SqlClient takes apart from it (Entra ID's,
+/// for SQL Server), null for none.</summary>
+public sealed record SignedIn(string Connection, string? AccessToken);
 
 /// <summary>What a cloud sign-in lays over a connection's string as it opens: the password an IAM token is, or the user and
 /// password a secret holds, each made or read at each connection and never kept, masked wherever said.</summary>
 internal static class CloudSignIns
 {
     /// <summary>The kinds each sign-in signs in to: IAM authentication PostgreSQL's, MySQL's and Redshift's (RDS for SQL
-    /// Server takes none), a secret every kind RDS runs and Redshift.</summary>
+    /// Server takes none), a secret every kind RDS runs and Redshift, Entra ID Azure's SQL, PostgreSQL and MySQL.</summary>
     public static bool Signs(CloudSignInKind sign, DatabaseKind kind) => sign switch
     {
         CloudSignInKind.AwsIam => kind is DatabaseKind.Postgres or DatabaseKind.MySql or DatabaseKind.Redshift,
+        CloudSignInKind.AzureEntra => kind is DatabaseKind.Postgres or DatabaseKind.MySql or DatabaseKind.SqlServer,
         _ => kind is DatabaseKind.Postgres or DatabaseKind.MySql or DatabaseKind.SqlServer or DatabaseKind.Redshift,
     };
 
-    /// <summary>The connection's string with what its sign-in gives laid over it.</summary>
-    public static async Task<string> SignedInAsync(DatabaseKind kind, string connection, CloudSignIn signIn, CancellationToken cancel)
+    /// <summary>Why a kind takes no sign-in of a kind, in its own words.</summary>
+    public static string WhyNot(CloudSignInKind sign, DatabaseKind kind) =>
+        sign == CloudSignInKind.AzureEntra ? Refusals.NoEntraSignIn(DatabaseKinds.Title(kind)) : Refusals.NoCloudSignIn(DatabaseKinds.Title(kind));
+
+    /// <summary>The connection's string with what its sign-in gives laid over it, and SQL Server's Entra ID token apart.</summary>
+    public static async Task<SignedIn> SignedInAsync(DatabaseKind kind, string connection, CloudSignIn signIn, CancellationToken cancel)
     {
         if (!Signs(signIn.Kind, kind))
         {
-            throw new InvalidOperationException(Refusals.NoCloudSignIn(DatabaseKinds.Title(kind)));
+            throw new InvalidOperationException(WhyNot(signIn.Kind, kind));
         }
+        if (signIn.Kind == CloudSignInKind.AzureEntra)
+        {
+            return await EntraAsync(kind, connection, signIn, cancel);
+        }
+        return new SignedIn(await AwsAsync(kind, connection, signIn, cancel), null);
+    }
+
+    /// <summary>An Entra ID token of the sign-in's account for the kind's Azure service: SQL Server's handed to SqlClient
+    /// apart, its own user and password taken off; PostgreSQL's and MySQL's the password, the account's name the user where
+    /// the connection names none.</summary>
+    private static async Task<SignedIn> EntraAsync(DatabaseKind kind, string connection, CloudSignIn signIn, CancellationToken cancel)
+    {
+        string account = signIn.Account is { Length: > 0 } named ? named : await AzureSignIn.OnlyAccountAsync();
+        string token = await AzureSignIn.TokenAsync(account, signIn.Tenant, kind == DatabaseKind.SqlServer ? AzureSignIn.AzureSql : AzureSignIn.OpenSourceDatabases, cancel);
+        DbConnectionStringBuilder laid = DatabaseKinds.Builder(kind, connection);
+        if (kind == DatabaseKind.SqlServer)
+        {
+            foreach (string key in (string[])["User ID", "Password", "Integrated Security", "Authentication"])
+            {
+                laid.Remove(key);
+            }
+            return new SignedIn(laid.ConnectionString, token);
+        }
+        if (DatabaseKinds.Value(connection, "Username", "User ID", "UserID", "User", "Uid") is null)
+        {
+            laid["User ID"] = account;
+        }
+        laid["Password"] = token;
+        return new SignedIn(laid.ConnectionString, null);
+    }
+
+    /// <summary>The connection's string with what an AWS sign-in gives laid over it.</summary>
+    private static async Task<string> AwsAsync(DatabaseKind kind, string connection, CloudSignIn signIn, CancellationToken cancel)
+    {
         (string host, int port) = DatabaseKinds.Endpoint(kind, connection);
         string region = RegionOf(signIn, host) ?? throw new InvalidOperationException(Refusals.NoAwsRegion(host));
         AWSCredentials credentials = await AwsProfiles.CredentialsAsync(signIn.Profile, cancel);
@@ -149,12 +200,16 @@ internal static class CloudSignIns
     /// <summary>The AWS profile a connection signs in with: its sign-in's, a DynamoDB connection's own with no key of its
     /// own (empty for the environment's or the default); null for one that signs in to no AWS service.</summary>
     public static string? ProfileOf(DatabaseSource source) =>
-        source.SignIn is { } signIn ? signIn.Profile
+        source.SignIn is { } signIn ? (signIn.Kind == CloudSignInKind.AzureEntra ? null : signIn.Profile)
         : source.Kind == DatabaseKind.DynamoDb && DatabaseKinds.Value(source.ConnectionString, "AccessKey") is null && DatabaseKinds.Value(source.ConnectionString, "ServiceURL", "Endpoint") is null
             ? DatabaseKinds.Value(source.ConnectionString, "Profile") ?? string.Empty
         : null;
 
+    /// <summary>Whether a connection signs in through Entra ID, whose sign-in Sign In makes.</summary>
+    public static bool SignsInToEntra(DatabaseSource source) => source.SignIn is { Kind: CloudSignInKind.AzureEntra };
+
     /// <summary>Whether a kept sign-in reads as one: a kind there is, and a secret named where it reads one.</summary>
     public static bool Usable(CloudSignIn? signIn) =>
-        signIn is { Profile: not null, Region: not null, Secret: not null, Cluster: not null } && Enum.IsDefined(signIn.Kind) && (signIn.Kind != CloudSignInKind.AwsSecret || signIn.Secret.Length > 0);
+        signIn is { Profile: not null, Region: not null, Secret: not null, Cluster: not null, Account: not null, Tenant: not null } && Enum.IsDefined(signIn.Kind)
+        && (signIn.Kind != CloudSignInKind.AwsSecret || signIn.Secret.Length > 0);
 }

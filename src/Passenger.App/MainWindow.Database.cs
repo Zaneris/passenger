@@ -164,13 +164,14 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools/Database", 2, 4)],
             Words = ["TTL", "EXPIRE", "PERSIST", "Redis"],
         });
-        actions!.Add(new IdeAction(AppActions.DatabaseSignIn, "Sign In…", "Database", _ => IdeErrors.Observe(SignInToAwsAsync()))
+        actions!.Add(new IdeAction(AppActions.DatabaseSignIn, "Sign In…", "Database", _ => IdeErrors.Observe(SignInToCloudAsync()))
         {
             WhyNot = _ => ChosenConnection() is not { } chosen ? Refusals.NoDatabaseConnection
-                : CloudSignIns.ProfileOf(chosen) is not { } profile || !AwsProfiles.SignsInThroughIdentityCenter(profile) ? Refusals.NoIdentityCenterSignIn
+                : !CloudSignIns.SignsInToEntra(chosen) && (CloudSignIns.ProfileOf(chosen) is not { } profile || !AwsProfiles.SignsInThroughIdentityCenter(profile))
+                    ? Refusals.NoBrowserSignIn
                 : actions!.Work.Of(AppActions.DatabaseSignIn) is { } under ? ActionWork.Busy(under) : PersonsOwn(),
             Menus = [new MenuPlace("Tools/Database", 3, 2)],
-            Words = ["AWS", "IAM Identity Center", "SSO", "aws sso login"],
+            Words = ["AWS", "IAM Identity Center", "SSO", "aws sso login", "Azure", "Microsoft Entra ID", "az login"],
         });
         Mark(AppActions.DatabaseReadOnly, "Read-Only Connection", DatabaseMark.ReadOnly);
         Mark(AppActions.DatabaseProduction, "Production Connection", DatabaseMark.Production);
@@ -293,10 +294,16 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Sign In: the chosen connection's AWS profile signed in through IAM Identity Center, its page opened in the
-    /// browser for the person's approval there and the code it shows said meanwhile; then the connection read again.</summary>
-    private async Task SignInToAwsAsync()
+    /// <summary>Sign In: an account signed in to Microsoft Entra ID for a connection that signs in by it, else the chosen
+    /// connection's AWS profile signed in through IAM Identity Center, each page opened in the browser for the person there
+    /// and any code it shows said meanwhile; then the connections read again.</summary>
+    private async Task SignInToCloudAsync()
     {
+        if (ChosenConnection() is { } entra && CloudSignIns.SignsInToEntra(entra))
+        {
+            await SignInToEntraAsync();
+            return;
+        }
         if (ChosenConnection() is not { } source || CloudSignIns.ProfileOf(source) is not { } profile || database is not { } controller
             || actions!.Work.Begin(AppActions.DatabaseSignIn, $"Signing in to AWS profile {profile}…") is not { } work)
         {
@@ -318,6 +325,36 @@ public partial class MainWindow
             catch (OperationCanceledException) when (work.IsStopped)
             {
                 work.Tell(false, $"Stopped signing in to AWS profile {profile}");
+                return;
+            }
+        }
+        await controller.RefreshAsync();
+    }
+
+    /// <summary>Sign In for an Entra ID connection: Entra's page opened in the browser for the person to sign in there, a
+    /// device's code said where that page cannot answer this machine; then the connections read again.</summary>
+    private async Task SignInToEntraAsync()
+    {
+        if (database is not { } controller || actions!.Work.Begin(AppActions.DatabaseSignIn, "Signing in to Microsoft Entra ID…") is not { } work)
+        {
+            return;
+        }
+        using (work)
+        {
+            try
+            {
+                string account = await AzureSignIn.SignInAsync(page => UiThread.Post(() => Browse(page)),
+                    code => UiThread.Post(() => work.Say($"Sign in on the page your browser opened: enter the code {code}")), work.Stopping);
+                work.Tell(true, $"Signed in to Microsoft Entra ID as {account}");
+            }
+            catch (IOException failed)
+            {
+                work.Tell(false, failed.Message);
+                return;
+            }
+            catch (OperationCanceledException) when (work.IsStopped)
+            {
+                work.Tell(false, "Stopped signing in to Microsoft Entra ID");
                 return;
             }
         }
@@ -392,7 +429,7 @@ public partial class MainWindow
         {
             return;
         }
-        DatabaseConnectionDialog dialog = new(folder, original);
+        DatabaseConnectionDialog dialog = new(folder, original, page => UiThread.Post(() => Browse(page)));
         if (await dialog.ShowDialog<DatabaseSource?>(this) is not { } source || session != current)
         {
             return;

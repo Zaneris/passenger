@@ -69,6 +69,8 @@
     <!-- AWS's sign-ins to databases: RDS's IAM tokens, Redshift's credentials, Secrets Manager's secrets, and a profile's
          assumed role and IAM Identity Center sign-in. -->
     <PackageReference Include="AWSSDK.RDS" />
+    <!-- Microsoft Entra ID's sign-in to Azure's databases, MSAL's own, which ClrMD's Azure.Identity carries an older one of. -->
+    <PackageReference Include="Microsoft.Identity.Client" />
     <PackageReference Include="AWSSDK.Redshift" />
     <PackageReference Include="AWSSDK.RedshiftServerless" />
     <PackageReference Include="AWSSDK.SecretsManager" />
