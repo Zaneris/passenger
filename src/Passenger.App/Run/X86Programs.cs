@@ -1,3 +1,4 @@
+using System.Reflection.PortableExecutable;
 using System.Runtime.Versioning;
 using Microsoft.Win32;
 using Passenger.Core;
@@ -20,6 +21,36 @@ public static class X86Programs
     /// <summary>Whether a project's evaluation builds a program that runs as a 32-bit x86 process: its PlatformTarget x86.</summary>
     public static bool Builds(IReadOnlyDictionary<string, string> properties) =>
         string.Equals(properties.GetValueOrDefault(MSBuildNames.PlatformTarget), AppHosts.X86, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Whether a built assembly loads only into a 32-bit x86 process, by its header: one built for x86 requires 32
+    /// bits, where one built for AnyCPU preferring 32 bits requires and prefers them, and any process loads it. False for a
+    /// file that is no assembly or could not be read.</summary>
+    public static bool Requires(Stream assembly)
+    {
+        try
+        {
+            using PEReader read = new(assembly, PEStreamOptions.LeaveOpen);
+            return read.PEHeaders.CorHeader is { } header && (header.Flags & (CorFlags.Requires32Bit | CorFlags.Prefers32Bit)) == CorFlags.Requires32Bit;
+        }
+        catch (BadImageFormatException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary><see cref="Requires(Stream)"/> of a built assembly's file; false where it could not be read.</summary>
+    public static bool Requires(string assembly)
+    {
+        try
+        {
+            using FileStream file = File.OpenRead(assembly);
+            return Requires(file);
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     /// <summary>The x86 .NET installation this machine's x86 apphost takes its runtime from, by a program's own variables
     /// (<paramref name="given"/>, its configuration's) over the IDE's (<see cref="Root(IReadOnlyDictionary{string,string},Func{string,string?},Func{string?},string)"/>).</summary>

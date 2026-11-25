@@ -42,6 +42,10 @@ public sealed class XamlService : IDisposable
 
     private readonly Dictionary<string, XamlLoading> projects = new(PathNames.Comparer);
     private readonly Dictionary<OpenDocument, XamlDocument> documents = [];
+
+    /// <summary>The open XAML files no project was found for yet, looked for again as the window lists its projects
+    /// (<see cref="ProjectsListed"/>).</summary>
+    private readonly HashSet<OpenDocument> unplaced = [];
     private readonly Dictionary<OpenDocument, TypedSource> sources = [];
     private readonly List<SourcesPending> pending = [];
 
@@ -74,6 +78,11 @@ public sealed class XamlService : IDisposable
     /// <summary>Where a library's own files come from (a theme's XAML for go to declaration): its Source Link unless
     /// set.</summary>
     public ILibraryFiles LibraryFiles { get; set; } = new SourceLink();
+
+    /// <summary>The C# project the window lists that holds a file (<see cref="ProjectSession.ProjectOf"/>), the project of a
+    /// file the walk up from it finds none for: one the person opened, in a folder the walk passes over as another account's.
+    /// UI thread.</summary>
+    public Func<string, string?>? Listed { get; set; }
 
     /// <summary>What MSBuild's evaluation says of a project, by its path, asked from any thread: where its assets file,
     /// packages and build are, which a project's XAML and preview take before what its folders suggest.</summary>
@@ -194,12 +203,17 @@ public sealed class XamlService : IDisposable
         {
             if (ProjectOf(document.Path) is { } loading)
             {
+                unplaced.Remove(document);
                 XamlDocument xaml = new(this, document, loading);
                 documents[document] = xaml;
                 foreach (SourcesPending change in pending)
                 {
                     change.Hold(xaml);
                 }
+            }
+            else
+            {
+                unplaced.Add(document);
             }
             return;
         }
@@ -220,9 +234,20 @@ public sealed class XamlService : IDisposable
         }
     }
 
+    /// <summary>The window has read its projects, first or again: each open XAML file no project was found for looks again.</summary>
+    public void ProjectsListed()
+    {
+        UiThread.Check();
+        foreach (OpenDocument document in unplaced.ToList())
+        {
+            Attach(document);
+        }
+    }
+
     public void Detach(OpenDocument document)
     {
         UiThread.Check();
+        unplaced.Remove(document);
         if (documents.Remove(document, out XamlDocument? xaml))
         {
             xaml.Dispose();
@@ -369,9 +394,13 @@ public sealed class XamlService : IDisposable
         [.. colours.Where(c => c.Offset <= text.Length).Select(c => new ColourMark(text.GetLineFromOffset(c.Offset),
             Avalonia.Media.Color.FromArgb(c.Colour.A, c.Colour.R, c.Colour.G, c.Colour.B), c))];
 
-    /// <summary>The load of the project a XAML file is in, begun if it has not been; null for a file in no C# project.
-    /// Whether the project's XAML is one Passenger reads is learned off the UI thread, as the load begins.</summary>
-    private XamlLoading? ProjectOf(string path) => ProjectFile(path) is { } project ? LoadingOf(project) : null;
+    /// <summary>The load of the project a XAML file is in, begun if it has not been: the nearest the walk up from it finds,
+    /// else the C# project the window lists holding it (<see cref="Listed"/>); null for a file in no C# project. Whether the
+    /// project's XAML is one Passenger reads is learned off the UI thread, as the load begins.</summary>
+    private XamlLoading? ProjectOf(string path) =>
+        (ProjectFile(path) ?? (Listed?.Invoke(path) is { } listed && listed.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) ? listed : null)) is { } project
+            ? LoadingOf(project)
+            : null;
 
     /// <summary>The load of a project by its file, begun if it has not been.</summary>
     private XamlLoading LoadingOf(string project)
@@ -915,6 +944,7 @@ public sealed class XamlService : IDisposable
         {
             Detach(document);
         }
+        unplaced.Clear();
         projects.Clear();
     }
 

@@ -142,6 +142,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Xaml.Snapshots = () => setup.Editors.Texts().Open;
         Xaml.Evaluations = path => evaluations.GetValueOrDefault(path);
         Xaml.Server = () => CSharp?.Session;
+        Xaml.Listed = path => ProjectOf(path)?.Path;
         Frameworks.Changed += (_, project) => FollowFramework(project);
         BuildChoices.Changed += (_, _) => FollowBuildChoice();
         GodotScenes = new Godot.GodotSceneIndex { Texts = setup.Editors.Texts, Files = () => (Index.Root, Index.Files), FilesWhole = () => Index.IsWhole, GameOf = GodotOf };
@@ -2001,6 +2002,7 @@ public sealed class ProjectSession : IAsyncDisposable
         TakeFilter(read);
         Workspace = Models.Apply(read);
         Configurations.Configure(Projects);
+        Xaml.ProjectsListed();
         // Programs found beside what it loaded are loaded beside them, where a server fed its projects can take them.
         if (!loaded && !(programs is not null && CSharp?.Load(Workspace, programs) == true))
         {
