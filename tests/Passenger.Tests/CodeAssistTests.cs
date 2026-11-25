@@ -168,14 +168,16 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>Fixes and context actions do what they offer: Fix All in the solution undone in every file at once, a
-    /// fix the server will not make saying why, an agent's action with choices; Escape closes their lists wherever the
-    /// keys are; live and postfix templates expand and end as their editor moves on; Extend Selection grows and
-    /// shrinks; and type and parameter hints show and go with Settings.</summary>
+    /// fix the server will not make saying why, the using of an extension method a call bound to another receiver's
+    /// takes, an agent's action with choices; Escape closes their lists wherever the keys are; live and postfix templates
+    /// expand and end as their editor moves on; Extend Selection grows and shrinks; and type and parameter hints show and
+    /// go with Settings.</summary>
     [AvaloniaFact]
     public void Fixes_context_actions_templates_and_selection_do_what_they_offer_and_take_back_whole()
     {
         Flow.StepApart("Fix All in the solution reaching a file not open is undone in every file it changed at once", () => new CodeAssistTests(project), t => t.Fix_all_in_the_solution_reaching_a_file_not_open_is_undone_in_every_file_it_changed_at_once());
         Flow.StepApart("a fix the language server will not make, once chosen, says why in the status bar", () => new CodeAssistTests(project), t => t.A_fix_the_language_server_will_not_make_once_chosen_says_why_in_the_status_bar());
+        Flow.StepApart("a call bound only to another receiver's extension method is offered the using of one that takes its own", () => new CodeAssistTests(project), t => t.A_call_bound_only_to_another_receivers_extension_method_is_offered_the_using_of_one_that_takes_its_own());
         Flow.StepApart("through MCP an action with choices lists them, asks for one and applies the one named", () => new CodeAssistTests(project), t => t.Through_mcp_an_action_with_choices_lists_them_asks_for_one_and_applies_the_one_named());
         Flow.StepApart("Escape closes the lists of choices and the rename box wherever the keys are", () => new CodeAssistTests(project), t => t.Escape_closes_the_lists_of_choices_and_the_rename_box_wherever_the_keys_are());
         Flow.StepApart("live and postfix templates expand where they belong, fill their variables and wrap what they follow", () => new CodeAssistTests(project), t => t.Live_and_postfix_templates_expand_where_they_belong_fill_their_variables_and_wrap_what_they_follow());
@@ -2245,6 +2247,28 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>Under System.Linq's using, FirstOrDefaultAsync on an IQueryable binds to .NET's AsyncEnumerable, which takes
+    /// no IQueryable (CS0411), as EF Core's does without its using: Quick Fix offers the using of the namespace whose
+    /// extension method takes it, and choosing it ends the error.</summary>
+    private void A_call_bound_only_to_another_receivers_extension_method_is_offered_the_using_of_one_that_takes_its_own()
+    {
+        MainWindow window = project.Open("Queried.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument queried = window.EditorArea.Active!;
+        Ui.PlaceAfter(editor, "n > 1).FirstOrDefault");
+        window.KeyTextInput("Async");
+        bool Uninferred() => window.CSharpService!.For(queried)!.Diagnostics.Any(d => d.Code?.ToString() == "CS0411");
+        Ui.WaitFor(Uninferred, "FirstOrDefaultAsync's error, AsyncEnumerable's taking no IQueryable");
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Contains("using Queries;"),
+            () => $"Quick Fix to offer Queries' using, whose FirstOrDefaultAsync takes an IQueryable, where it offers only {string.Join("; ", window.Assist.Offered)}");
+        Choose(window, "using Queries;");
+        Ui.WaitFor(() => editor.Document.Snapshot.ToString().StartsWith("using System.Linq;\nusing Queries;\n", StringComparison.Ordinal),
+            () => $"Queries' using to be written under System.Linq's:\n{editor.Document.Snapshot}");
+        Ui.WaitFor(() => !Uninferred(), "the call to bind to Queries' FirstOrDefaultAsync once its using is written");
+        window.Close();
+    }
+
     private void A_fix_the_language_server_will_not_make_once_chosen_says_why_in_the_status_bar()
     {
         MainWindow window = project.Open("Program.cs");
@@ -3463,6 +3487,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Greeters.cs"), "class Greeter(string name, int times)\n{\n    public string Name => name;\n\n    public int Times => times;\n\n"
                 + "    public static Greeter Of(string name)\n    {\n        Greeter made = new(name, 2);\n        return made;\n    }\n}\n");
             File.WriteAllText(PathOf("Releases.cs"), "record Release(string Version, int Downloads);\n");
+            File.WriteAllText(PathOf("Queried.cs"), "using System.Linq;\n\nnamespace Queries\n{\n    public static class QueryFirsts\n    {\n"
+                + "        public static T FirstOrDefaultAsync<T>(this IQueryable<T> source) => source.FirstOrDefault();\n    }\n}\n\n"
+                + "static class Queried\n{\n    public static int First(IQueryable<int> numbers) => numbers.Where(n => n > 1).FirstOrDefault();\n}\n");
             File.WriteAllText(PathOf("ReleaseReaders.cs"), "static class ReleaseReaders\n{\n    public static string Of(Release release) => release.Version;\n\n"
                 + "    public static Release Next(Release release) => release with { Version = \"2.0\" };\n}\n");
             File.WriteAllText(PathOf("Mixed.cs"), "static class Mixed\n{\n    /* Pasted:\u2028one,\r\ntwo,\u0085three. */\n    public static int Value()\n    {\n        int total = 1;\n          return total;\n    }\n}\n");
