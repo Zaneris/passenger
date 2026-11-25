@@ -738,6 +738,16 @@ public static class Declared
         new(D.VersionControlPage, "Highlighting differences", "diff highlight highlighting differences words characters lines inline changed git vcs",
             "What a diff marks inside the lines that changed. A diff's own Settings changes it too."));
 
+    public static readonly ChoiceSetting<CheckoutChanges> ChangesAtCheckout = new(s => s.ChangesAtCheckout, (s, v) => s with { ChangesAtCheckout = v },
+        [(CheckoutChanges.Ask, "Ask"), (CheckoutChanges.Bring, "Bring them along"), (CheckoutChanges.StashAndReturn, "Stash them, unstashed on return"),
+            (CheckoutChanges.Stash, "Stash them")],
+        new(D.VersionControlPage, "Uncommitted changes at a checkout",
+            "checkout check out switch branch revision uncommitted changes local modifications stash shelve discard bring carry keep smart git vcs",
+            "What checking out a branch or a commit does with changes not yet committed: you are asked, or they are brought along, "
+            + "or stashed, then unstashed as the branch they were left on is checked out again, or left in the stash list. Where "
+            + "the branch checked out changes a file they change too, git cannot bring them, and you are asked. The question's "
+            + "Don't ask again sets this. An agent's checkout brings them unless it asks for a stash."));
+
     /// <summary>The keys XAML's layout is said over by: the XML formatter's (<c>xml_</c>, read under <c>resharper_xml_</c>
     /// too), and any <paramref name="more"/> after it.</summary>
     private static EditorConfigOver Xml(string key, params string[] more) => new(["xml_" + key, .. more], Language.Xaml) { Aliases = ["resharper_xml_" + key] };

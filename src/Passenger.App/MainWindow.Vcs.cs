@@ -169,9 +169,11 @@ public partial class MainWindow
         view.ActionRequested += (_, action) => Request(action);
         view.NewBranchRequested += (_, commit) =>
         {
-            NamePopup popup = new($"New Branch from {commit.Short}", string.Empty, async name => (await session.Vcs.NewBranchAtAsync(name, commit.Hash)).Problem);
+            NamePopup popup = new($"New Branch from {commit.Short}", string.Empty,
+                async name => (await SwitchWithChangesAsync(name.Trim(), commit.Hash, () => session.Vcs.NewBranchAtAsync(name, commit.Hash)))?.Problem);
             popups.Show(popup, _ => { });
         };
+        view.CheckoutRequested += (_, commit) => IdeErrors.Observe(CheckoutRevisionAsync(commit));
         view.NewTagRequested += (_, commit) => IdeErrors.Observe(ShowNewTagAsync(commit.Hash));
         view.ResetRequested += (_, reset) => IdeErrors.Observe(ResetToAsync(reset));
         view.InteractiveRebaseRequested += (_, commit) => IdeErrors.Observe(InteractiveRebaseAsync(commit));
@@ -193,7 +195,7 @@ public partial class MainWindow
         {
             if (session == next)
             {
-                session.State?.Commit.Set(session.State.Commit.Value with { SignOff = vcs.SignOff, GroupsByDirectory = vcs.GroupsByDirectory });
+                session.State?.Commit.Set(session.State.Commit.Value with { SignOff = vcs.SignOff, GroupsByDirectory = vcs.GroupsByDirectory, Returning = [.. vcs.Returning] });
             }
         };
         vcs.ChooseRemote = ChooseRemoteAsync;
@@ -1132,12 +1134,7 @@ public partial class MainWindow
         }
         // The files are listed, so what goes back is seen before it does, and every file a rollback deletes is said to be.
         string what = changes.Count == 1 ? changes[0].Name : $"these {Numbers.Said(changes.Count)} files";
-        string kept = changes.Any(c => c.Kind is ChangeKind.Added) ? " Files added to Git stay on disk, unversioned." : string.Empty;
-        bool unversioned = changes.Any(c => c.Kind is ChangeKind.Unversioned);
-        bool tracked = changes.Any(c => c.Kind is not (ChangeKind.Unversioned or ChangeKind.Added));
-        string lost = (unversioned ? " Unversioned files are deleted to the Trash, and Undo brings them back." : string.Empty)
-            + (!tracked ? string.Empty : unversioned ? " The other changes cannot be undone." : " This cannot be undone.");
-        string text = $"Roll back the changes to {what}?{kept}{lost}";
+        string text = $"Roll back the changes to {what}?{LostWords(changes)}";
         if (await ConfirmAsync("Rollback Changes", text, "Rollback", ToolWindows.CommitView.FileList(changes, VcsOf(changes).Repository)))
         {
             await VcsOf(changes).RollbackAsync(changes);

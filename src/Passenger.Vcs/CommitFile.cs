@@ -139,6 +139,14 @@ internal sealed class CommitFile : IDisposable
         return new CommitFile(false, path, path + ".lock");
     }
 
+    /// <summary>A copy of an index (<paramref name="bytes"/>) for a trial of its own in <paramref name="gitDir"/>, as
+    /// <see cref="Index(string, string)"/>, written whole; one whose write fails is deleted, and the failure thrown.</summary>
+    public static CommitFile Index(string gitDir, string kind, ReadOnlySpan<byte> bytes)
+    {
+        string path = System.IO.Path.Combine(gitDir, $"passenger-{kind}-{Guid.NewGuid():N}");
+        return Written(path, bytes, leftToOperation: false, path + ".lock");
+    }
+
     public void Dispose()
     {
         foreach (string file in files)
@@ -165,9 +173,9 @@ internal sealed class CommitFile : IDisposable
         }
     }
 
-    private static CommitFile Written(string path, ReadOnlySpan<byte> bytes, bool leftToOperation)
+    private static CommitFile Written(string path, ReadOnlySpan<byte> bytes, bool leftToOperation, params string[] with)
     {
-        CommitFile file = new(leftToOperation, path);
+        CommitFile file = new(leftToOperation, [path, .. with]);
         FileStreamOptions options = new() { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
         if (!OperatingSystem.IsWindows())
         {

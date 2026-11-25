@@ -476,6 +476,11 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// editors at first, or a window of its own over the IDE's.</summary>
     public DiffPlace OpenDiffsIn { get; init; } = DiffPlace.Tab;
 
+    /// <summary>What the person's checkout does with changes not yet committed: asked at first, or brought along as git
+    /// carries them, or stashed (unstashed again on returning, or left in the stash list); asked wherever git cannot bring
+    /// them. The question's Don't ask again sets it to the way chosen.</summary>
+    public CheckoutChanges ChangesAtCheckout { get; init; } = CheckoutChanges.Ask;
+
     /// <summary>Highlight Words in a change bar's popup: the words that changed marked in what the lines were and in
     /// the file while the popup is open; the popup's toggle changes it.</summary>
     public bool ChangePopupWords { get; init; } = true;
@@ -842,6 +847,15 @@ public enum CSharpFormatter
 {
     Passenger,
     DotnetFormat,
+}
+
+/// <summary>What a checkout does with changes not yet committed, in the order Settings lists them.</summary>
+public enum CheckoutChanges
+{
+    Ask,
+    Bring,
+    StashAndReturn,
+    Stash,
 }
 
 /// <summary>Where a diff opens, in the order Settings lists them.</summary>

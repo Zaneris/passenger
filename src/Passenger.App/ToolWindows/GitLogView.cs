@@ -88,7 +88,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             } : [],
             ListMenus.Item("Copy Revision Number", () => IdeErrors.Observe(ListMenus.CopyAsync(this, commit.Hash))),
             new Separator(),
-            ListMenus.Item("Checkout Revision", () => IdeErrors.Observe(vcs.CheckoutRevisionAsync(commit.Hash))),
+            ListMenus.Item("Checkout Revision", () => CheckoutRequested?.Invoke(this, commit)),
             ListMenus.Item("New Branch…", () => NewBranchRequested?.Invoke(this, commit)),
             ListMenus.Item("New Tag…", () => NewTagRequested?.Invoke(this, commit)),
             new Separator(),
@@ -244,6 +244,9 @@ public sealed class GitLogView : DockPanel, IOwnKeys
 
     /// <summary>A branch to make at a commit, its name to be asked for.</summary>
     public event EventHandler<CommitInfo>? NewBranchRequested;
+
+    /// <summary>A commit to check out on its own, which the window asks of where changes are not yet committed.</summary>
+    public event EventHandler<CommitInfo>? CheckoutRequested;
 
     /// <summary>The commits from one up to HEAD to plan an interactive rebase of.</summary>
     public event EventHandler<CommitInfo>? InteractiveRebaseRequested;

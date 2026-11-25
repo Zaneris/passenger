@@ -70,23 +70,37 @@ public static class DialogFooter
     /// on macOS, as This Window, New Window, Cancel stand.</summary>
     public static StackPanel Answers(params Button[] answers) => Buttons(OperatingSystem.IsMacOS() ? [.. answers.Reverse()] : answers);
 
-    /// <summary>The footer's row: its buttons at the right, and at the left what goes beside them.</summary>
-    public static DockPanel Row(StackPanel buttons, Control? left = null)
+    /// <summary>The footer's row: its buttons at the right, and at the left what goes beside them, in the room they leave
+    /// (a problem's words); where it <paramref name="holdsLeft"/> (a question's Don't ask again), that keeps its whole width
+    /// and the buttons stand in the rest, one under another where they do not fit.</summary>
+    public static DockPanel Row(StackPanel buttons, Control? left = null, bool holdsLeft = false)
     {
         DockPanel row = new();
-        DockPanel.SetDock(buttons, Dock.Right);
-        row.Children.Add(buttons);
         if (left is not null)
         {
             left.VerticalAlignment = VerticalAlignment.Center;
             left.Margin = new Thickness(0, 0, Gaps.Group, 0);
+        }
+        if (left is not null && holdsLeft)
+        {
+            DockPanel.SetDock(left, Dock.Left);
+            buttons.HorizontalAlignment = HorizontalAlignment.Right;
+            row.Children.Add(left);
+            row.Children.Add(buttons);
+            return row;
+        }
+        DockPanel.SetDock(buttons, Dock.Right);
+        row.Children.Add(buttons);
+        if (left is not null)
+        {
             row.Children.Add(left);
         }
         return row;
     }
 
     /// <summary>The bar under a dialog's page that its footer's row stands in (Shell.axaml's <c>Border.footerBar</c>).</summary>
-    public static Border Bar(StackPanel buttons, Control? left = null) => new() { Classes = { StyleClasses.FooterBar }, Child = Row(buttons, left) };
+    public static Border Bar(StackPanel buttons, Control? left = null, bool holdsLeft = false) =>
+        new() { Classes = { StyleClasses.FooterBar }, Child = Row(buttons, left, holdsLeft) };
 
     /// <summary>A dialog's whole content: its page, and under it the footer's bar across the window.</summary>
     public static DockPanel Page(Control page, Border bar)
@@ -131,7 +145,7 @@ public static class DialogFooter
         page.Children.Add(new TextBlock { Classes = { StyleClasses.DialogTitle }, Text = title, TextWrapping = TextWrapping.Wrap });
         page.Children.AddRange(said);
         // On a screen too short for its words, they scroll above the answers, which stay in reach.
-        dialog.Content = Page(new ScrollViewer { Content = page }, Bar(answers, left));
+        dialog.Content = Page(new ScrollViewer { Content = page }, Bar(answers, left, holdsLeft: true));
     }
 
     /// <summary>A question's Don't ask again, which goes beside its answers (<see cref="Question"/>'s left): ticked as the

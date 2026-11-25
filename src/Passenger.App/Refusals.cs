@@ -1144,6 +1144,16 @@ public static class Refusals
     public const string CloseIsThePersons = "Only the person closes this window, which Passenger asks them about first as Settings says (Confirm before closing): "
         + "ask them to";
 
+    /// <summary>An agent's input answering whether a checkout discards the uncommitted changes: the person discards them.</summary>
+    public const string DiscardIsThePersons = "Only the person discards their uncommitted changes as a branch is checked out, which cannot be undone: ask them to";
+
+    /// <summary>A checkout's question of uncommitted changes, where git would refuse to carry them to <paramref name="to"/>:
+    /// the files it would write over there, or git's own words where it named none.</summary>
+    public static string CannotBring(string to, IReadOnlyList<string> files, string said) => files.Count == 0
+        ? $"Git cannot bring them to {to}: {said}"
+        : $"Git cannot bring them: {to} changes {(files.Count <= 3 ? Plural.Listed(files) : $"{string.Join(", ", files.Take(2))} and {Plural.Of(files.Count - 2, "more file")}")} too, "
+            + "which checking it out would write over";
+
     /// <summary>An agent's install of what a mobile project needs: the person installs it, accepting what it asks.</summary>
     public const string AgentInstallsMobile = "Only the person installs what a mobile project needs (a workload downloads from NuGet, the Android SDK asks them to accept "
         + "its licences): ask them to, with the banner over Passenger's window";

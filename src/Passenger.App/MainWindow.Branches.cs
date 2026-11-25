@@ -20,6 +20,7 @@ public partial class MainWindow
     {
         panel.Favorites = branchFavorites;
         panel.NewBranchRequested += (_, branch) => ShowNewBranchFrom(branch);
+        panel.CheckoutRequested += (_, branch) => IdeErrors.Observe(CheckoutAsync(branch, panel.Branches));
         panel.RenameRequested += (_, branch) => ShowRenameBranch(branch);
         panel.PushRequested += (_, branch) => IdeErrors.Observe(ShowPushAsync(branch, elsewhere: false));
         panel.DeleteRequested += (_, branch) => IdeErrors.Observe(DeleteBranchAsync(branch));
@@ -63,7 +64,8 @@ public partial class MainWindow
             RefKind.Remote => from.Name[(from.Name.IndexOf('/', StringComparison.Ordinal) + 1)..],
             _ => string.Empty,
         };
-        NamePopup popup = new($"Create Branch from {from.Name}", initial, async name => (await session.Vcs.NewBranchFromAsync(name.Trim(), from)).Problem);
+        NamePopup popup = new($"Create Branch from {from.Name}", initial,
+            async name => (await SwitchWithChangesAsync(name.Trim(), from.Ref.FullName, () => session.Vcs.NewBranchFromAsync(name.Trim(), from)))?.Problem);
         popups.Show(popup, _ => { });
         return popup;
     }

@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.LogicalTree;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
@@ -79,7 +80,8 @@ public sealed class BranchesTests : IDisposable
     /// <summary>The Branches panel beyond the gate's as one flow, each step the check one test made in an instance of
     /// its own: each side button greyed with why where the chosen row gives it nothing to act on, Show Diff with
     /// Working Tree listing its files and opening their diffs, an added row's diff showing the file beside the branch's
-    /// empty side, and the branch menu over 5,000 branches costing the window what 30 do.</summary>
+    /// empty side, the branch menu over 5,000 branches costing the window what 30 do, and a checkout with uncommitted
+    /// changes asking what becomes of them.</summary>
     [AvaloniaFact]
     public void A_branchs_diff_with_the_working_tree_opens_its_files_and_the_panel_says_what_it_cannot_do()
     {
@@ -88,7 +90,104 @@ public sealed class BranchesTests : IDisposable
         Flow.StepApart<BranchesTests>("show diff on an added row of the working tree comparison shows the file beside the branchs empty side", t => t.Show_diff_on_an_added_row_of_the_working_tree_comparison_shows_the_file_beside_the_branchs_empty_side());
         Flow.StepApart<BranchesTests>("the branch menu over 5000 branches costs the window what 30 do and more branches searches them all", t => t.The_branch_menu_over_5000_branches_costs_the_window_what_30_do_and_more_branches_searches_them_all());
         Flow.StepApart<BranchesTests>("get from a branch takes its version of a changed file one it lacks and one only it has each one undo and a closed files diff with it is edited in place", t => t.Get_from_a_branch_takes_its_version_of_a_changed_file_one_it_lacks_and_one_only_it_has_each_one_undo_and_a_closed_files_diff_with_it_is_edited_in_place());
+        Flow.StepApart<BranchesTests>("a checkout with uncommitted changes asks to bring stash or discard them saying where git cannot bring them and unstashes on return", t => t.A_checkout_with_uncommitted_changes_asks_to_bring_stash_or_discard_them_saying_where_git_cannot_bring_them_and_unstashes_on_return());
     }
+
+    /// <summary>Checkout with changes not yet committed asks what becomes of them, their files listed: Bring takes them
+    /// along as git does; Stash puts them away, new files too, and checking that branch out again unstashes them, as
+    /// its box asked; where the branch checked out changes a file they change too, Bring is greyed saying why and Stash is
+    /// Enter's, and Discard… rolls them back once the person agrees; with Don't ask again ticked, the way chosen is
+    /// Settings' from then on and nothing is asked; and a checkout with no change asks nothing.</summary>
+    private void A_checkout_with_uncommitted_changes_asks_to_bring_stash_or_discard_them_saying_where_git_cannot_bring_them_and_unstashes_on_return()
+    {
+        string shop = Path.Combine(folder, "Shop.cs");
+        string longer = Shop.Replace("int count", "long count", StringComparison.Ordinal);
+        MainWindow window = Open(seen: true);
+        List<string> confirmed = [];
+        window.Confirm = (title, text, yes) =>
+        {
+            confirmed.Add($"{title}: {text}");
+            return Task.FromResult(true);
+        };
+        BranchesPanel panel = window.GitBranches;
+        ListBox rows = List(panel);
+        try
+        {
+            // Bring: Shop.cs's change goes along to feature, which leaves Shop.cs as main has it.
+            File.WriteAllText(shop, longer);
+            Ui.WaitFor(() => window.Vcs.Changes.Count == 1, "Shop.cs changed, Git listing it");
+            ChoiceDialog question = Asked(window, panel, rows, "feature");
+            Assert.Equal([MainWindow.BringChanges, MainWindow.StashChanges, MainWindow.DiscardUncommitted, "Cancel"], Answers(question).Select(b => (string)b.Content!));
+            Assert.True(question.GetVisualDescendants().OfType<CheckBox>().Single(c => (string?)c.Content == "Don't ask again").Bounds.Width > 0, "The question's Don't ask again has no room beside its answers");
+            Assert.True(Answers(question)[0] is { IsEnabled: true, IsDefault: true }, "Bring, which git can do here, is not Enter's");
+            Assert.Contains(question.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Your changes to Shop.cs are not committed. Bring them to feature, stash them, or discard them?");
+            Ui.ClickButton(question, MainWindow.BringChanges);
+            Ui.Landed(() => window.Vcs.Branch == "feature", "the checkout of feature, Shop.cs's change brought along");
+            Assert.Equal(longer, File.ReadAllText(shop));
+
+            // Stash, its box ticked: main checked out with Shop.cs as committed, and feature again brings the change back.
+            question = Asked(window, panel, rows, "main");
+            CheckBox back = question.GetVisualDescendants().OfType<CheckBox>().Single(c => (string?)c.Content == "Unstash them as feature is checked out again");
+            Assert.True(back.IsChecked, "The box unstashing a stash on returning to feature was not ticked to begin with");
+            Ui.ClickButton(question, MainWindow.StashChanges);
+            Ui.Landed(() => window.Vcs.Branch == "main", "the checkout of main, Shop.cs's change stashed");
+            Assert.Equal(Shop, File.ReadAllText(shop));
+            Assert.Equal([$"On feature: {VcsController.StashedFor("main")}"], StashList());
+            Choose(panel, rows, "feature", "Checkout");
+            Ui.WaitFor(() => window.Vcs.Branch == "feature" && File.ReadAllText(shop) == longer, () => $"feature checked out again and its stashed change unstashed: {window.Status}");
+            Assert.Null(window.ChangesQuestion);
+            Assert.Empty(StashList());
+            Assert.Equal("Checked out feature, and the changes left on it were unstashed", window.Status);
+
+            // Feature.cs changed too, which main has none of: git cannot bring the changes, so Bring is greyed and Stash takes Enter.
+            File.WriteAllText(Path.Combine(folder, "Feature.cs"), "class Feature { int more; }\n");
+            Ui.WaitFor(() => window.Vcs.Changes.Count == 2, "Feature.cs changed too, Git listing both");
+            question = Asked(window, panel, rows, "main");
+            Button bring = Answers(question)[0];
+            Assert.False(bring.IsEnabled, "Bring is offered where git would refuse to bring Feature.cs's change to main");
+            Assert.Equal("Git cannot bring them: main changes Feature.cs too, which checking it out would write over", ToolTip.GetTip(bring));
+            Assert.True(Answers(question)[1].IsDefault, "Stash is not Enter's where Bring cannot be had");
+            Ui.ClickButton(question, MainWindow.DiscardUncommitted);
+            Ui.WaitFor(() => window.Vcs.Branch == "main", () => $"main checked out once the changes were discarded: {window.Status}");
+            Assert.Equal(["Discard Changes: Discard the changes to these 2 files and check out main? This cannot be undone."], confirmed);
+            Assert.True(File.ReadAllText(shop) == Shop && !File.Exists(Path.Combine(folder, "Feature.cs")) && StashList().Length == 0,
+                "Discard… left a change, Feature.cs, or a stash behind");
+
+            // Don't ask again with Bring: kept in Settings, the next checkout with changes brings them, asking nothing.
+            File.WriteAllText(shop, longer);
+            Ui.WaitFor(() => window.Vcs.Changes.Count == 1, "Shop.cs changed again");
+            question = Asked(window, panel, rows, "team/login");
+            question.GetVisualDescendants().OfType<CheckBox>().Single(c => (string?)c.Content == "Don't ask again").IsChecked = true;
+            Ui.ClickButton(question, MainWindow.BringChanges);
+            Ui.Landed(() => window.Vcs.Branch == "team/login", "the checkout of team/login");
+            Assert.Equal(Passenger.App.Settings.CheckoutChanges.Bring, window.Settings.ChangesAtCheckout);
+            Choose(panel, rows, "main", "Checkout");
+            Ui.Landed(() => window.Vcs.Branch == "main", "main checked out, Shop.cs's change brought along without a question");
+            Assert.Null(window.ChangesQuestion);
+            Assert.Equal(longer, File.ReadAllText(shop));
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { ChangesAtCheckout = Passenger.App.Settings.CheckoutChanges.Ask });
+            window.Close();
+        }
+
+        static ChoiceDialog Asked(MainWindow window, BranchesPanel panel, ListBox rows, string branch)
+        {
+            Assert.True(panel.Select(branch), $"The branches panel has no {branch}");
+            Ui.ChooseFromMenu(rows, "Checkout");
+            Ui.PumpUntil(() => window.ChangesQuestion is { IsVisible: true } || window.Vcs.Branch == branch,
+                $"the question of the uncommitted changes at {branch}'s checkout");
+            Assert.True(window.ChangesQuestion is not null, $"{branch} was checked out without a question of the uncommitted changes: {window.Status}");
+            return DialogButtonsTests.Check(window.ChangesQuestion!);
+        }
+
+        static Button[] Answers(ChoiceDialog question) =>
+            [.. question.GetVisualDescendants().OfType<Button>().Where(b => b is not Avalonia.Controls.Primitives.ToggleButton && b.Content is string && b.IsEffectivelyVisible)
+                .OrderBy(b => (string)b.Content! == "Cancel" ? 1 : 0).ThenBy(b => Array.IndexOf<string>([MainWindow.BringChanges, MainWindow.StashChanges, MainWindow.DiscardUncommitted], (string)b.Content!))];
+    }
+
+    private string[] StashList() => Git("stash", "list", "--format=%gs").Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
     private void The_panel_lists_head_local_branches_by_directory_the_remotes_branches_and_the_tags_in_riders_order()
     {
@@ -692,9 +791,22 @@ public sealed class BranchesTests : IDisposable
         return item;
     }
 
-    private MainWindow Open()
+    /// <summary>The window on the repository with the Git window's branches shown; <paramref name="seen"/>, one the person
+    /// sees, as only such a window asks them.</summary>
+    private MainWindow Open(bool seen = false)
     {
-        MainWindow window = Ui.OpenFolder(folder, width: 1300, height: 900);
+        MainWindow window;
+        if (seen)
+        {
+            window = new MainWindow { Width = 1300, Height = 900, Unseen = false };
+            window.Show();
+            window.OpenFolder(folder);
+            Ui.Settle();
+        }
+        else
+        {
+            window = Ui.OpenFolder(folder, width: 1300, height: 900);
+        }
         window.Perform(AppActions.ShowGit);
         Ui.Settle();
         Ui.Landed(() => window.GitBranches.Rows.Count > 0, "the branches panel");

@@ -102,7 +102,8 @@ public sealed class VcsController : IDisposable
 
     private bool groupsByDirectory;
 
-    /// <summary>Raised when <see cref="SignOff"/> or <see cref="GroupsByDirectory"/> changes, for the folder to keep them.</summary>
+    /// <summary>Raised when <see cref="SignOff"/>, <see cref="GroupsByDirectory"/> or <see cref="Returning"/> changes, for the
+    /// folder to keep them.</summary>
     public event EventHandler? KeptChanged;
 
     /// <summary>Why git cannot read the folder's repository: it refused the one the folder is in (one another user owns,
@@ -146,9 +147,7 @@ public sealed class VcsController : IDisposable
         {
             return Refusals.InWorktree(branch.Name, worktree);
         }
-        string? local = branch.Kind == RefKind.Local ? branch.Name
-            : branch.Kind == RefKind.Remote && all.Any(b => b.Kind == RefKind.Local && b.Name == LocalNameOf(branch)) ? LocalNameOf(branch)
-            : null;
+        string? local = branch.Kind == RefKind.Local ? branch.Name : branch.Kind == RefKind.Remote ? LocalOf(branch, all) : null;
         return local is not null ? await repository.WhyNotCheckedOutAsync(local) : await repository.WhyNotSwitchedAsync(branch.Ref.FullName);
     }
 
@@ -1583,14 +1582,102 @@ public sealed class VcsController : IDisposable
         {
             return SwitchAsync(repository => repository.CheckoutRevisionAsync(branch.Ref.FullName), $"Checked out {branch.Name}", "Git checkout");
         }
-        string local = LocalNameOf(branch);
-        return all.Any(b => b.Kind == RefKind.Local && b.Name == local)
+        return LocalOf(branch, all) is { } local
             ? CheckoutAsync(local)
-            : SwitchAsync(repository => repository.CheckoutTrackingAsync(branch.Name), $"Checked out new branch {local} from {branch.Name}", "Git checkout");
+            : SwitchAsync(repository => repository.CheckoutTrackingAsync(branch.Name), $"Checked out new branch {LocalNameOf(branch)} from {branch.Name}", "Git checkout");
     }
 
     /// <summary>The local branch a remote's branch is checked out as: its name past the remote's.</summary>
     private static string LocalNameOf(BranchInfo branch) => branch.Name[(branch.Name.IndexOf('/', StringComparison.Ordinal) + 1)..];
+
+    /// <summary>The local branch Checkout of a remote's branch checks out where there is one: the one tracking it, else the
+    /// one of its name; null where it makes one.</summary>
+    public static string? LocalOf(BranchInfo remote, IReadOnlyList<BranchInfo> all) =>
+        all.FirstOrDefault(b => b.Kind == RefKind.Local && b.Upstream == remote.Name)?.Name
+        ?? all.FirstOrDefault(b => b.Kind == RefKind.Local && b.Name == LocalNameOf(remote))?.Name;
+
+    /// <summary>What Checkout of a branch or tag moves the working tree to, as git names it: the local branch it checks
+    /// out, the remote's branch it makes one from, or the tag.</summary>
+    public static string TargetOf(BranchInfo branch, IReadOnlyList<BranchInfo> all) =>
+        branch.Kind == RefKind.Remote && LocalOf(branch, all) is { } local ? $"refs/heads/{local}" : branch.Ref.FullName;
+
+    /// <summary>The uncommitted changes git would have to write over to move the working tree to <paramref name="target"/>
+    /// (<see cref="Git.InTheWayAsync"/>); null where it would carry them along, or there is no working tree.</summary>
+    public async Task<ChangesInTheWay?> InTheWayAsync(string target) => git is { } repository ? await repository.InTheWayAsync(target) : null;
+
+    /// <summary>The uncommitted changes as they stand once what is open is saved and the status read again, which a checkout
+    /// would take along; none, and why, where the saves were refused.</summary>
+    public async Task<(IReadOnlyList<FileChange> Changes, string? Unsaved)> ChangesSavedAsync()
+    {
+        UiThread.Check();
+        if (await SavedFirstAsync() is { } unsaved)
+        {
+            return ([], unsaved);
+        }
+        await RefreshAsync();
+        return (Changes, null);
+    }
+
+    /// <summary>A checkout (<paramref name="checkout"/>, to <paramref name="to"/>) with the uncommitted changes stashed
+    /// first, new files too, under words saying where the checkout went, and unstashed again where it fails: what came of
+    /// it, and the stash it left where it went.</summary>
+    public async Task<(VcsOutcome Outcome, StashInfo? Stash)> StashedCheckoutAsync(string to, Func<Task<VcsOutcome>> checkout)
+    {
+        VcsOutcome stashed = await StashAsync(StashedFor(to));
+        if (!stashed.Succeeded)
+        {
+            return (stashed, null);
+        }
+        StashInfo? stash = (await StashesAsync()).FirstOrDefault();
+        VcsOutcome switched = await checkout();
+        if (switched.Succeeded || stash is null)
+        {
+            return (switched, switched.Succeeded ? stash : null);
+        }
+        VcsOutcome back = await UnstashAsync(stash, pop: true);
+        return (Report(false, back.Succeeded ? $"{switched.Message}. Your changes were unstashed again" : $"{switched.Message}. {back.Message}"), null);
+    }
+
+    /// <summary>What a stash a checkout made says, beside the branch git names it was made on.</summary>
+    public static string StashedFor(string to) => $"Changes left as {to} was checked out";
+
+    /// <summary>The stashes a checkout made that are unstashed as the branch they were made on is checked out again, by the
+    /// folder's repositories' tops, as the folder keeps them.</summary>
+    public IReadOnlyList<ReturningStash> Returning
+    {
+        get => returning;
+        set
+        {
+            if (!returning.SequenceEqual(value))
+            {
+                returning = value;
+                KeptChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    private IReadOnlyList<ReturningStash> returning = [];
+
+    /// <summary>Has <paramref name="stash"/> unstashed as <paramref name="branch"/> is checked out again here.</summary>
+    public void ReturnOnCheckout(string branch, StashInfo stash)
+    {
+        if (git is { } repository)
+        {
+            Returning = [.. returning.Where(r => !(r.Repository == repository.Root && r.Branch == branch)), new ReturningStash(repository.Root, branch, stash.Commit)];
+        }
+    }
+
+    /// <summary>The stash to unstash now that <paramref name="branch"/> is checked out again, taken from those kept, where it
+    /// is listed still; null where none is.</summary>
+    public async Task<StashInfo?> TakeReturningAsync(string branch)
+    {
+        if (git is not { } repository || returning.FirstOrDefault(r => r.Repository == repository.Root && r.Branch == branch) is not { } kept)
+        {
+            return null;
+        }
+        Returning = [.. returning.Where(r => r != kept)];
+        return (await StashesAsync()).FirstOrDefault(s => s.Commit == kept.Stash);
+    }
 
     /// <summary>New Branch from: a branch made where another (or a tag) is, checked out.</summary>
     public Task<VcsOutcome> NewBranchFromAsync(string name, BranchInfo from) =>

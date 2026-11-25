@@ -187,6 +187,10 @@ public sealed record GitConflict(string Path, bool HasBase, bool HasOurs, bool H
 /// was made.</summary>
 public sealed record StashInfo(int Index, string Commit, string Message, DateTimeOffset Time);
 
+/// <summary>Why git would refuse to carry the uncommitted changes to another commit: the changed and new files it would
+/// write over there (full paths), and its own words, which say why where it named none of them.</summary>
+public sealed record ChangesInTheWay(IReadOnlyList<string> Files, string Said);
+
 /// <summary>What looking for a folder's working tree found: the tree, or none; and why there is none where git cannot say:
 /// it refused the one it found (a repository another user owns, as on a FAT or network drive, until safe.directory names
 /// it), in its words, it was not run in a folder not trusted (<see cref="UntrustedGit"/>), or it is not installed
@@ -628,6 +632,47 @@ public sealed partial class Git
             }
         }
         return null;
+    }
+
+    /// <summary>Whether git would refuse to move the working tree from HEAD to <paramref name="target"/> with its uncommitted
+    /// changes, as a checkout does where the target changes a file they change too (or has one where a new file stands): git's
+    /// own trial of the move, in a copy of the index whose files' stats are read again first, so the real index stays as it
+    /// stands. Null where git would carry them along, or HEAD or the target names no commit.</summary>
+    public async Task<ChangesInTheWay?> InTheWayAsync(string target)
+    {
+        // What git answers is what the window shows next (a question's choice greyed): a screenshot waits for it.
+        using GitHold held = new();
+        if (await CommitOfAsync("HEAD") is not { } head || await CommitOfAsync(target) is not { } to || head == to)
+        {
+            return null;
+        }
+        GitResult named = await RunAsync(Root, ["rev-parse", "--git-path", "index"]);
+        byte[] index;
+        try
+        {
+            index = await File.ReadAllBytesAsync(System.IO.Path.Combine(Root, named.Output.Trim()));
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+        using CommitFile trial = CommitFile.Index(GitDir, "trial", index);
+        Dictionary<string, string> environment = new() { [GitVariables.IndexFile] = trial.Path };
+        await RunAsync(Root, ["update-index", "-q", "--refresh"], environment: environment, answers: [1]);
+        GitResult tried = await RunAsync(Root, ["read-tree", "-m", "-u", "-n", "--exclude-per-directory=.gitignore", head, to], environment: environment, answers: [128]);
+        if (tried.Succeeded)
+        {
+            return null;
+        }
+        // The trial names only the first file git met: those in the way are the changed or new where the two commits differ.
+        GitResult changed = await RunAsync(Root, ["diff-index", "--name-only", "-z", "--no-renames", head, "--"], environment: environment);
+        GitResult untracked = await RunAsync(Root, ["ls-files", "-z", "--others", "--exclude-standard"]);
+        HashSet<string> differing = new(await DifferingAsync(head, to) ?? [], StringComparer.Ordinal);
+        DiskNames names = new(Root);
+        string[] files = [.. ((string[])[.. changed.Succeeded ? changed.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries) : [],
+            .. untracked.Succeeded ? untracked.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries) : []])
+            .Where(differing.Contains).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Select(names.Full)];
+        return new ChangesInTheWay(files, OneLine(tried.Message));
     }
 
     /// <summary>The files a checkout of a branch by its name writes out (<see cref="SwitchedAsync"/>): to the local branch,
@@ -2943,7 +2988,7 @@ public sealed partial class Git
     {
         ["checkout"] = [], ["switch"] = [], ["restore"] = ["--staged"], ["reset"] = [], ["merge"] = [], ["rebase"] = [], ["pull"] = [],
         ["stash"] = ["list", "show"], ["cherry-pick"] = [], ["revert"] = [], ["am"] = [], ["apply"] = ["--cached", "--check", "--stat", "--numstat", "--summary"],
-        ["rm"] = ["--cached"], ["mv"] = [], ["clean"] = ["-n", "--dry-run"], ["read-tree"] = [], ["checkout-index"] = [],
+        ["rm"] = ["--cached"], ["mv"] = [], ["clean"] = ["-n", "--dry-run"], ["read-tree"] = ["-n", "--dry-run"], ["checkout-index"] = [],
     };
 
     /// <summary>How many of Passenger's git commands writing a work tree run now, and when the last one ended (a

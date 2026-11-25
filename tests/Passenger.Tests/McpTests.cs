@@ -2257,8 +2257,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's vcs tools refuse what the repository has not, naming what there is, and change nothing: a checkout
     /// of a branch not there names create and the branches there are, never git's "fatal: invalid reference"; a log of no
     /// commits is refused; a stash with a message but no action, which lists and so puts nothing away, says to give push, and
-    /// an action vcs_stash has not is refused as one; and the history of lines past a file's end names how many it has, never
-    /// as lines not committed yet.</summary>
+    /// an action vcs_stash has not is refused as one; the history of lines past a file's end names how many it has, never
+    /// as lines not committed yet; and a checkout's changes are brought or stashed alone, a stash leaving the branch clean.</summary>
     private async Task An_agents_vcs_tools_refuse_a_branch_a_stash_action_and_lines_the_repository_has_not_naming_what_there_is()
     {
         string repository = TestFolders.Create("mcp-vcs-refused-");
@@ -2291,6 +2291,14 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"The history of lines past Notes.txt's end answered: {Text(past)}");
         JsonElement last = Assert.Single((await Call(client, McpTools.VcsLog, new() { ["path"] = "Notes.txt", ["startLine"] = 3, ["endLine"] = 3 })).EnumerateArray());
         Assert.Equal("First", last.GetProperty("subject").GetString());
+
+        // A checkout's changes are brought or stashed, nothing else: stash leaves the branch made clean, vcs_stash holding them.
+        CallToolResult discard = await Result(client, McpTools.VcsCheckout, new() { ["branch"] = "aside", ["create"] = true, ["changes"] = "discard" });
+        Assert.True(discard.IsError == true && Text(discard).Contains("No changes 'discard'; there are bring and stash", StringComparison.Ordinal),
+            $"A checkout's changes vcs_checkout does not have answered: {Text(discard)}");
+        Assert.Equal($"On aside; the changes were stashed as stash@{{0}} (On main: {Passenger.App.Vcs.VcsController.StashedFor("aside")})",
+            (await Call(client, McpTools.VcsCheckout, new() { ["branch"] = "aside", ["create"] = true, ["changes"] = "stash" })).GetString());
+        Assert.Equal("one\ntwo\nthree", File.ReadAllText(notes));
     }
 
     /// <summary>An agent's edit of a Latin-1 file with a character Latin-1 cannot hold is saved as UTF-8, as the person's

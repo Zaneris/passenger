@@ -389,9 +389,14 @@ public sealed partial class PassengerTools
     private const int MostCommitFiles = 20;
 
     [McpServerTool(Name = McpTools.VcsCheckout, Title = "Check out a branch", Destructive = true), Description(
-        "Checks out a branch (with create, a new one from the head), as the branch menu does; open files take what is on disk after.")]
-    public Task<string> VcsCheckout(string branch, bool create = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
+        "Checks out a branch (with create, a new one from the head), as the branch menu does; open files take what is on disk after. " +
+        "changes: bring (uncommitted changes go along, as git carries them) or stash (put away first, new files too; vcs_stash pops them).")]
+    public Task<string> VcsCheckout(string branch, bool create = false, string changes = "bring", CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
+        if (changes is not ("bring" or "stash"))
+        {
+            throw new ArgumentException($"No changes '{changes}'; there are bring and stash", nameof(changes));
+        }
         VcsController vcs = Session.Vcs;
         await vcs.Opened;
         // A branch named that git has not, nor a remote's of that name it would track, is said in words an agent goes on from.
@@ -407,12 +412,22 @@ public sealed partial class PassengerTools
             throw new InvalidOperationException(refused);
         }
         AgentCall.Say($"Checking out {branch}");
-        VcsOutcome switched = create ? await vcs.NewBranchAsync(branch) : await vcs.CheckoutAsync(branch);
+        Func<Task<VcsOutcome>> checkout = create ? () => vcs.NewBranchAsync(branch) : () => vcs.CheckoutAsync(branch);
+        StashInfo? stashed = null;
+        VcsOutcome switched;
+        if (changes == "stash" && (await vcs.ChangesSavedAsync()).Changes.Count > 0)
+        {
+            (switched, stashed) = await vcs.StashedCheckoutAsync(branch, checkout);
+        }
+        else
+        {
+            switched = await checkout();
+        }
         if (switched.Problem is { } failed)
         {
             throw new InvalidOperationException(failed);
         }
-        return $"On {vcs.Branch}";
+        return stashed is null ? $"On {vcs.Branch}" : $"On {vcs.Branch}; the changes were stashed as stash@{{0}} ({stashed.Message})";
     });
 
     [McpServerTool(Name = McpTools.VcsStash, Title = "Stash or unstash changes", Destructive = true), Description(

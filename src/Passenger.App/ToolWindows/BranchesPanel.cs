@@ -207,6 +207,9 @@ public sealed class BranchesPanel : DockPanel
 
     public event EventHandler<BranchInfo>? NavigateRequested;
 
+    /// <summary>A branch or tag to check out, which the window asks of where changes are not yet committed.</summary>
+    public event EventHandler<BranchInfo>? CheckoutRequested;
+
     public event EventHandler<BranchInfo>? NewBranchRequested;
 
     public event EventHandler<BranchInfo>? RenameRequested;
@@ -273,7 +276,7 @@ public sealed class BranchesPanel : DockPanel
         }
         if (!isCurrent)
         {
-            Add("Checkout", () => IdeErrors.Observe(vcs.CheckoutRefAsync(branch, Branches)));
+            Add("Checkout", () => CheckoutRequested?.Invoke(this, branch));
             IdeErrors.Observe(GreyWhenRefusedAsync((MenuItem)items[^1], vcs.WhyNotCheckoutRefAsync(branch, Branches)));
         }
         Add($"New Branch from {it}…", () => NewBranchRequested?.Invoke(this, branch));

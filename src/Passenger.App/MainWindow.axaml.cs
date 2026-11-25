@@ -1125,6 +1125,7 @@ public partial class MainWindow : IdeWindow
         branchFavorites = opening.GitBranches.Value;
         session.Vcs.SignOff = opening.Commit.Value.SignOff;
         session.Vcs.GroupsByDirectory = opening.Commit.Value.GroupsByDirectory;
+        session.Vcs.Returning = opening.Commit.Value.Returning;
         if (gitView?.Log.Branches is { } branches)
         {
             branches.Favorites = branchFavorites;

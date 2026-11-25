@@ -412,6 +412,7 @@ public sealed partial class SettingsDialog : IdeWindow
 
         Add(Declared.OpenDiffsIn);
         Add(Declared.DiffHighlighting);
+        Add(Declared.ChangesAtCheckout);
 
         CheckBox implicitly = Check(Working.OpenBuildWindowOnImplicitBuild, v => Change(s => s with { OpenBuildWindowOnImplicitBuild = v }));
         implicitly.IsEnabled = Working.OpenBuildWindowOnBuild;

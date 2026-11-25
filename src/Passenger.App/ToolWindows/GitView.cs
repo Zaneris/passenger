@@ -69,6 +69,9 @@ public sealed class GitView : DockPanel
 
     public event EventHandler<CommitInfo>? NewBranchRequested;
 
+    /// <summary>A commit any tab's log checks out on its own.</summary>
+    public event EventHandler<CommitInfo>? CheckoutRequested;
+
     public event EventHandler<(CommitInfo Commit, ResetMode Mode)>? ResetRequested;
 
     public event EventHandler<CommitInfo>? InteractiveRebaseRequested;
@@ -207,6 +210,7 @@ public sealed class GitView : DockPanel
         view.OpenRequested += (_, path) => OpenRequested?.Invoke(this, path);
         view.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
         view.NewBranchRequested += (_, commit) => NewBranchRequested?.Invoke(this, commit);
+        view.CheckoutRequested += (_, commit) => CheckoutRequested?.Invoke(this, commit);
         view.ResetRequested += (_, reset) => ResetRequested?.Invoke(this, reset);
         view.InteractiveRebaseRequested += (_, commit) => InteractiveRebaseRequested?.Invoke(this, commit);
         view.NewTagRequested += (_, commit) => NewTagRequested?.Invoke(this, commit);
