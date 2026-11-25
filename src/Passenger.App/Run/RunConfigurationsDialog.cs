@@ -1284,7 +1284,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             ToolTip.SetTip(SharedBox, SharedTip());
             if (shown.IsMultiple)
             {
-                StartsTable.Set(shown.Starts, [.. projects.Where(p => p.IsRunnable && p.GodotFolder is null)], p => [.. LaunchProfile.Read(p).Select(l => l.Name)]);
+                StartsTable.Set(shown.Starts, [.. projects.Where(p => p.GodotFolder is null && LaunchProfile.Runs(p))], p => [.. LaunchProfile.Read(p).Select(l => l.Name)]);
             }
             DockerfileBox.Text = Shown(shown.Dockerfile);
             ContextBox.Text = Shown(shown.Context);

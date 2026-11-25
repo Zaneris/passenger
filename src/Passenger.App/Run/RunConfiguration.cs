@@ -318,11 +318,11 @@ public sealed record RunConfiguration
         return null;
     }
 
-    /// <summary>The configurations the folder's executable projects make: one per launch profile, named "Project: profile",
-    /// and the project itself when none of its profiles runs it here (a Godot project's game), with a Godot project's editor
-    /// beside it ("Project: Godot Editor"), the workspace's Godot projects of GDScript alone among them (<see cref="WorkspaceModel.ScriptGames"/>);
-    /// then single-file AppHosts, the container ones (<see cref="Containers.ContainerConfigurations"/>), and each Node
-    /// package's scripts, "package: script" (<see cref="OfScript"/>).</summary>
+    /// <summary>The configurations the folder's projects make: one per launch profile, "Project: profile", and the project
+    /// itself when none runs it here (a Godot project's game), a library's profiles starting a program of their own alone
+    /// (<see cref="LaunchProfile.OfLibrary"/>), a Godot project's editor beside it ("Project: Godot Editor"), the workspace's
+    /// Godot projects of GDScript alone among them (<see cref="WorkspaceModel.ScriptGames"/>); then single-file AppHosts, the
+    /// container ones (<see cref="Containers.ContainerConfigurations"/>), and each Node package's scripts (<see cref="OfScript"/>).</summary>
     public static IReadOnlyList<RunConfiguration> Generate(IEnumerable<ProjectModel> projects, WorkspaceModel? workspace = null,
         IEnumerable<string>? singleFileAppHosts = null, IEnumerable<NodePackage>? packages = null)
     {
@@ -331,16 +331,19 @@ public sealed record RunConfiguration
         foreach (ProjectModel project in all.Where(p => p.Exists).Concat(workspace?.ScriptGames(all).Select(ProjectModel.OfScriptGame) ?? []))
         {
             bool godot = project.Godot() is not null;
-            if (!project.IsRunnable && !godot)
+            // A library runs only as its profiles start a program loading it.
+            IReadOnlyList<LaunchProfile> ofLibrary = Run.LaunchProfile.OfLibrary(project);
+            if (!project.IsRunnable && !godot && ofLibrary.Count == 0)
             {
                 continue;
             }
             string name = NameOf(project);
             // A profile tied to a platform its apps run on makes none: the project's own takes it where that platform is the target.
-            IReadOnlyList<LaunchProfile> profiles = project.IsScriptGame ? [] : Devices.DeviceTargets.OwnProfiles(project.TargetFrameworks, Run.LaunchProfile.Read(project));
+            IReadOnlyList<LaunchProfile> profiles = project.IsScriptGame ? [] : ofLibrary.Count > 0 ? ofLibrary
+                : Devices.DeviceTargets.OwnProfiles(project.TargetFrameworks, Run.LaunchProfile.Read(project));
             string? drawing = DrawingPackage(project, all);
             ConsoleKind console = drawing is null ? ConsoleKind.Internal : ConsoleKind.Terminal;
-            if (!profiles.Any(p => p.Unsupported is null && !p.RunsInContainer))
+            if (ofLibrary.Count == 0 && !profiles.Any(p => p.Unsupported is null && !p.RunsInContainer))
             {
                 generated.Add(new RunConfiguration
                 {

@@ -374,7 +374,7 @@ public partial class MainWindow
     /// made from it.</summary>
     private IEnumerable<RunTarget> ProfileTargets(string path, TextSnapshot text)
     {
-        ProjectModel[] owners = [.. Projects.Where(p => p.Exists && p.IsRunnable && Core.PathNames.Same(LaunchProfile.SettingsPath(p), path))];
+        ProjectModel[] owners = [.. Projects.Where(p => p.Exists && Core.PathNames.Same(LaunchProfile.SettingsPath(p), path) && LaunchProfile.Runs(p))];
         if (owners.Length == 0)
         {
             yield break;
