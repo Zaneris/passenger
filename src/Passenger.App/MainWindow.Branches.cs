@@ -21,6 +21,7 @@ public partial class MainWindow
         panel.Favorites = branchFavorites;
         panel.NewBranchRequested += (_, branch) => ShowNewBranchFrom(branch);
         panel.RenameRequested += (_, branch) => ShowRenameBranch(branch);
+        panel.PushRequested += (_, branch) => IdeErrors.Observe(ShowPushAsync(branch));
         panel.DeleteRequested += (_, branch) => IdeErrors.Observe(DeleteBranchAsync(branch));
         panel.CompareRequested += (_, branch) => CompareWithCurrent(branch);
         panel.WorkingTreeDiffRequested += (_, branch) => ShowWorkingTreeDiff(branch);

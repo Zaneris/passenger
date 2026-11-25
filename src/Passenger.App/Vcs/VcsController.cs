@@ -1947,9 +1947,10 @@ public sealed class VcsController : IDisposable
             $"Updated {branch.Name}", "Git update");
     }
 
-    /// <summary>Push of a branch: pushed to the branch it tracks, or where it tracks none, to the only remote or the one
-    /// of several the person chooses, then tracked.</summary>
-    public async Task<VcsOutcome> PushBranchAsync(BranchInfo branch)
+    /// <summary>Push of a branch: pushed to the branch it tracks, or where it tracks none, to <paramref name="remote"/> (as
+    /// the Push dialog chose it), else the only remote or the one of several the person chooses, then tracked; forced, as
+    /// <see cref="Git.PushBranchAsync"/> forces it, where <paramref name="force"/> (the Push dialog's Force Push).</summary>
+    public async Task<VcsOutcome> PushBranchAsync(BranchInfo branch, bool force = false, string? remote = null)
     {
         UiThread.Check();
         if (git is not { } repository)
@@ -1960,8 +1961,11 @@ public sealed class VcsController : IDisposable
         {
             return Report(false, untrusted);
         }
-        string? remote = null;
-        if (branch.UpstreamRemote is null || branch.UpstreamBranch is null)
+        if (branch.Upstream is not null)
+        {
+            remote = null;
+        }
+        else if (remote is null)
         {
             (remote, string? refused) = await RemoteForAsync(repository, branch.Name, ask: true);
             if (refused is not null)
@@ -1969,15 +1973,33 @@ public sealed class VcsController : IDisposable
                 return Report(false, refused);
             }
         }
-        if (!Begin(AppActions.Push, $"Pushing {branch.Name}…", out Working? work, stoppable: true))
+        string pushing = force ? "Force pushing" : "Pushing";
+        if (!Begin(AppActions.Push, $"{pushing} {branch.Name}…", out Working? work, stoppable: true))
         {
             return Report(false, UnderWay(AppActions.Push));
         }
         using Working? held = work;
-        GitResult? pushed = await RemoteAsync(work, (stopping, asker) => repository.PushBranchAsync(branch, remote, stopping, asker));
+        GitResult? pushed = await RemoteAsync(work, (stopping, asker) => repository.PushBranchAsync(branch, remote, force, stopping, asker));
         await RefreshAsync();
-        return pushed is null ? Report(false, "Push stopped")
-            : Report(pushed.Succeeded, pushed.Succeeded ? $"Pushed {branch.Name}" : $"Push failed: {pushed.Message}");
+        string push = force ? "Force push" : "Push";
+        return pushed is null ? Report(false, $"{push} stopped")
+            : Report(pushed.Succeeded, pushed.Succeeded ? $"{(force ? "Force pushed" : "Pushed")} {branch.Name}" : $"{push} failed: {pushed.Message}");
+    }
+
+    /// <summary>What the Push dialog shows of a local branch before it is pushed: where it goes, the commits it sends, and
+    /// how many of the remote's branch's commits it lacks (a rebase's or an amend's, which only a force push replaces).
+    /// Null where there is no repository.</summary>
+    public async Task<PushCommitsPlan?> PushPlanAsync(BranchInfo branch)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return null;
+        }
+        IReadOnlyList<string> remotes = branch.Upstream is null ? await repository.RemotesAsync() : [];
+        IReadOnlyList<CommitInfo> outgoing = await repository.OutgoingAsync(branch, PushCommitsPlan.MostListed);
+        int behind = branch.Upstream is null ? 0 : (await repository.DivergenceAsync(branch))?.Behind ?? 0;
+        return new PushCommitsPlan(branch, remotes, outgoing, behind);
     }
 
     /// <summary>The remotes with their URLs, in git's order; none outside a working tree.</summary>
@@ -2881,6 +2903,15 @@ public sealed class VcsController : IDisposable
         /// <summary>Whether git stores the file's lines alike whichever of LF and CRLF ends them, asked of the version read.</summary>
         public (Task<FileVersion?> Of, Task<bool> Alike)? Breaks { get; set; }
     }
+}
+
+/// <summary>What a push of a local branch would do, as the Push dialog shows it: the remotes it may go to where it tracks
+/// none (empty where it tracks one), the commits it sends, newest first, and how many commits of the branch it tracks it
+/// lacks, which a push without force is refused for.</summary>
+public sealed record PushCommitsPlan(BranchInfo Branch, IReadOnlyList<string> Remotes, IReadOnlyList<CommitInfo> Outgoing, int Behind)
+{
+    /// <summary>How many outgoing commits the dialog lists at most, however many the branch sends.</summary>
+    public const int MostListed = 1000;
 }
 
 /// <summary>A conflicted file's versions as the merge window shows them: the one both sides came from, yours (left) and
