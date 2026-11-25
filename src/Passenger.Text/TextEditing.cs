@@ -16,6 +16,10 @@ public sealed record EditPlan(IReadOnlyList<TextEdit> Edits, SelectionSet Select
     /// <summary>The pairs of brackets a line break split, the closer pushed onto a line of its own below the caret: where
     /// each bracket stands in the text after, one pair for each caret that split one.</summary>
     public IReadOnlyList<SplitPair> Split { get; init; } = [];
+
+    /// <summary>The closers the typing help wrote after an opener or a quote typed, each at the caret it typed at: where
+    /// each stands in the text after, its opener just before it.</summary>
+    public IReadOnlyList<int> Closed { get; init; } = [];
 }
 
 /// <summary>A pair of brackets a line break split (<see cref="EditPlan.Split"/>): the opener's and the closer's places.</summary>
@@ -44,7 +48,7 @@ public static class TextEditing
     }
 
     /// <summary>Typing with the editor's help: a bracket or quote typed over a selection wraps it, an
-    /// opener before a space gets its closer, and a closer typed in front of the same closer steps
+    /// opener before a space gets its closer (<see cref="EditPlan.Closed"/>), and a closer typed in front of the same closer steps
     /// over it; where only white space and a line break stand before that closer, and the code takes it for the
     /// closer of what the caret is in, every bracket around paired (<paramref name="closesWhole"/>, by its place), it
     /// types over it all the same (<see cref="OverWritten"/>). Anything else is <see cref="Insert"/>.</summary>
@@ -58,6 +62,7 @@ public static class TextEditing
         int opener = Openers.IndexOf(c);
         bool quote = c is '"' or '\'';
         List<Replacement> replacements = [];
+        List<int> closed = [];
         for (int i = 0; i < selections.Count; i++)
         {
             Selection s = selections.Items[i];
@@ -81,17 +86,20 @@ public static class TextEditing
             else if (s.IsEmpty && opener >= 0 && (char.IsWhiteSpace(next) || Closers.Contains(next) || next is ';' or ','))
             {
                 replacements.Add(new Replacement(s.Start, s.End, c.ToString() + Closers[opener], 1, 1, i));
+                closed.Add(i);
             }
             else if (s.IsEmpty && quote && !(s.Start > 0 && WordCharacters.IsWordAt(text, s.Start - 1)) && !WordCharacters.IsWord(next) && previous != c)
             {
                 replacements.Add(new Replacement(s.Start, s.End, new string(c, 2), 1, 1, i));
+                closed.Add(i);
             }
             else
             {
                 replacements.Add(new Replacement(s.Start, s.End, typed, 1, 1, i));
             }
         }
-        return Build(replacements, selections, EditKind.Typing);
+        EditPlan plan = Build(replacements, selections, EditKind.Typing);
+        return closed.Count == 0 ? plan : plan with { Closed = [.. closed.Select(owner => plan.Selections.Items[owner].Caret)] };
     }
 
     /// <summary>A closer typed at <paramref name="caret"/> over the same closer further on, only white space and a line break

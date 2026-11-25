@@ -463,6 +463,7 @@ public sealed partial class CodeEditor : Control
         document.ChangedFirst -= OnChangedFirst;
         document.Changed -= OnDocumentChanged;
         ForgetSplitBlocks();
+        ForgetTypedClosers();
         document = value;
         document.ChangedFirst += OnChangedFirst;
         document.Changed += OnDocumentChanged;
@@ -814,6 +815,7 @@ public sealed partial class CodeEditor : Control
         selections = clamped;
         caretsText = document.Snapshot;
         FollowSplitBlocks();
+        FollowTypedClosers();
         CheckSnippet();
         if (reveal)
         {

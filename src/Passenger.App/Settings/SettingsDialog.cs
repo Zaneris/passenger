@@ -358,6 +358,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.VimMode);
         Add(Declared.VimKeysToKeymap, Declared.VimKeysToKeymap.Box(Working, Change, stroke => KeymapDoes(actions, stroke)));
         Add(Declared.CloseTags);
+        Add(Declared.TabStepsOverClosers);
         Add(Declared.CompletionParentheses);
         Add(Declared.FormatOnType);
         Add(Declared.XamlWorkspace);

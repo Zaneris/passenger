@@ -51,13 +51,14 @@ public sealed class EditingBehaviourTests
         Flow.StepApart<EditingBehaviourTests>("a composition moves the text after it aside rather than covering it and goes in as typed", t => t.A_composition_moves_the_text_after_it_aside_rather_than_covering_it_and_goes_in_as_typed());
     }
 
-    /// <summary>Occurrences taken from a caret leave longer names holding the word alone, and a brace typed above the
-    /// one Enter wrote types over it unless a block around lacks its own.</summary>
+    /// <summary>Occurrences taken from a caret leave longer names holding the word alone, a brace typed above the one
+    /// Enter wrote types over it unless a block around lacks its own, and Tab steps over a closer the typing help wrote.</summary>
     [AvaloniaFact]
     public void Words_and_braces_typed_go_where_a_person_means()
     {
         Flow.StepApart<EditingBehaviourTests>("occurrences of a word taken from a caret leave longer names holding it alone", t => t.Occurrences_of_a_word_taken_from_a_caret_leave_longer_names_holding_it_alone());
         Flow.StepApart<EditingBehaviourTests>("a brace typed above the one enter wrote types over it unless a block around lacks its own", t => t.A_brace_typed_above_the_one_enter_wrote_types_over_it_unless_a_block_around_lacks_its_own());
+        Flow.StepApart<EditingBehaviourTests>("tab steps over a closer the typing help wrote and indents before one the person wrote", t => t.Tab_steps_over_a_closer_the_typing_help_wrote_and_indents_before_one_the_person_wrote());
     }
 
     private void Carets_cloned_down_the_lines_type_together_and_undo_as_one()
@@ -488,5 +489,37 @@ public sealed class EditingBehaviourTests
         open.PlaceCaret(Lacking.Length);
         open.Type("}");
         Assert.Equal(Lacking + "}\n    }\n}\n", open.Text);
+    }
+
+    /// <summary>Tab steps over the quote and the bracket the typing help wrote after the ones typed, the caret still inside
+    /// each pair; before a bracket the person wrote, after the caret left the pair, or with the setting off, it indents.</summary>
+    private void Tab_steps_over_a_closer_the_typing_help_wrote_and_indents_before_one_the_person_wrote()
+    {
+        EditorRig rig = new("f\n");
+        rig.PlaceCaret(1);
+        rig.Type("(");
+        rig.Type("\"");
+        rig.Type("a");
+        rig.Press("TAB");
+        rig.Press("TAB");
+        Assert.True((rig.Text, rig.Caret) == ("f(\"a\")\n", 6), $"Tab twice left {rig.Text.ReplaceLineEndings("⏎")} with the caret at {rig.Caret}, where it steps over the quote and the bracket to 6");
+
+        EditorRig written = new("g(b)\n");
+        written.PlaceCaret(3);
+        written.Press("TAB");
+        EditorRig left = new("h\n");
+        left.PlaceCaret(1);
+        left.Type("(");
+        left.Press("LEFT");
+        left.Press("RIGHT");
+        left.Press("TAB");
+        EditorRig off = new("k\n");
+        off.Editor.TabStepsOverClosers = false;
+        off.PlaceCaret(1);
+        off.Type("(");
+        off.Press("TAB");
+        Assert.True(written.Text != "g(b)\n" && left.Text != "h()\n" && off.Text != "k()\n",
+            $"Tab left {written.Text.Trim()} before a bracket written by hand, {left.Text.Trim()} once the caret had left the pair and {off.Text.Trim()} with the setting off, "
+            + "where each indents");
     }
 }

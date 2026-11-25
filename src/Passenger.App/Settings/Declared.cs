@@ -224,6 +224,11 @@ public static class Declared
     public static readonly ToggleSetting CloseTags = new(s => s.CloseTags, (s, v) => s with { CloseTags = v },
         new(D.EditorPage, "Close tags on '>' and '</'", "auto close closing end tags markup xml xaml html razor blazor msbuild elements"));
 
+    public static readonly ToggleSetting TabStepsOverClosers = new(s => s.TabStepsOverClosers, (s, v) => s with { TabStepsOverClosers = v },
+        new(D.EditorPage, "Tab steps over a closing bracket or quote typed for you", "tab out jump outside closing bracket parenthesis brace quote typing smart keys",
+            "Typing an opening bracket or quote writes its closer after the caret; with the caret still right before it, Tab steps over it. "
+            + "Before a closer you typed yourself, or once the caret has left the pair, Tab indents as ever."));
+
     public static readonly ToggleSetting CompletionParentheses = new(s => s.CompletionParentheses, (s, v) => s with { CompletionParentheses = v },
         new(D.EditorPage, "Add parentheses to a method chosen from completion", "completion parentheses brackets call method invocation arguments autocomplete",
             $"A C# method chosen by {KeyWords.Of(Avalonia.Input.Key.Enter)}, {KeyWords.Of(Avalonia.Input.Key.Tab)} or a click is written as a call, "

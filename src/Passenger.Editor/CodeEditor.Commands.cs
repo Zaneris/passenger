@@ -182,7 +182,10 @@ public sealed partial class CodeEditor
                 Apply(TextEditing.StartNewLine(text, selections, eol, Indent, above: true));
                 return true;
             case EditorActions.Indent:
-                Apply(TextEditing.Indent(text, selections, Indent));
+                if (!StepsOverTypedCloser())
+                {
+                    Apply(TextEditing.Indent(text, selections, Indent));
+                }
                 return true;
             case EditorActions.Outdent:
                 Apply(TextEditing.Outdent(text, selections, Indent));
@@ -281,6 +284,7 @@ public sealed partial class CodeEditor
             editing = false;
         }
         KeepSplitBlocks(plan);
+        KeepTypedClosers(plan);
         FollowMoves(foldsBefore, plan);
         // A caret the edit leaves where a row wraps stands after the text it typed, at the end of the row before.
         nextWrapLeaning = CaretsAtWraps(plan.Selections);

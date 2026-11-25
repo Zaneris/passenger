@@ -251,6 +251,7 @@ public partial class MainWindow
         editor.UsesVim = with.VimMode;
         editor.VimLeavesKeys = Declared.VimKeysToKeymap.Given(with);
         editor.ClosesTags = with.CloseTags;
+        editor.TabStepsOverClosers = with.TabStepsOverClosers;
         editor.WrapIndent = with.SoftWrapIndent;
         editor.ZoomsWithWheel = with.WheelZoom;
         editor.InvalidateVisual();

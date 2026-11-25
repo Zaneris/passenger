@@ -111,6 +111,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// the open element's name.</summary>
     public bool CloseTags { get; init; } = true;
 
+    /// <summary>Tab steps over a closing bracket or quote the typing help wrote after the one typed, where the caret
+    /// stands right before it, rather than indenting; on until turned off.</summary>
+    public bool TabStepsOverClosers { get; init; } = true;
+
     /// <summary>In C#, a method chosen from the completion list by Enter, Tab or a click is written called, its parentheses
     /// after it and the caret between them where it takes arguments; off, its name alone.</summary>
     public bool CompletionParentheses { get; init; } = true;
