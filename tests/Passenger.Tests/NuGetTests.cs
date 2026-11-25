@@ -1359,8 +1359,10 @@ public sealed class NuGetTests : IDisposable
     }
 
     /// <summary>The Updates tab lists a vulnerable version a project's framework gets only through another package beside the
-    /// updates, with the version that fixes it, though the project's own references are current; Update All references it
-    /// there, and the tab then lists no fix, the reference made at 1.0.1 at most an update to 1.1.0 like any other.</summary>
+    /// updates, with the version that fixes it, though the project's own references are current, tagged as a vulnerability
+    /// fix under every kind of package listed; Update All takes what the filters leave, nothing where Used By names a project
+    /// with no fix, else references it there, and the tab then lists no fix, the reference made at 1.0.1 at most an update
+    /// to 1.1.0 like any other.</summary>
     private void The_updates_tab_lists_a_vulnerable_version_brought_in_with_its_fix_and_update_all_makes_the_fix()
     {
         const string Charts = "Passenger.Charts";
@@ -1376,6 +1378,19 @@ public sealed class NuGetTests : IDisposable
         Assert.True(row is { Id: Id, Version: "1.0.0", MovesTo: "1.0.1", IsVulnerable: true } && row.Fixes.Single().Value.Frameworks.SequenceEqual([TestProjects.Framework]),
             $"Updates lists {row.Id} {row.Version} → {row.MovesTo} ({(row.IsVulnerable ? "marked" : "unmarked")}), not {TestProjects.Framework}'s 1.0.0 brought in, fixed by 1.0.1 there");
         Assert.Equal("1.0.1", nuget.ChosenVersion);
+        Border? fixing = Tag(Ui.Row(nuget.PackageList, row), "vulnerability fix");
+        Assert.True(nuget.Kinds == PackageKinds.Referenced && fixing is { IsVisible: true } && ToolTip.GetTip(fixing) is string told
+            && told.StartsWith("Lib: references 1.0.1", StringComparison.Ordinal) && told.EndsWith("in place of the vulnerable 1.0.0 brought in by Passenger.Charts", StringComparison.Ordinal),
+            $"The fix, listed under {nuget.Kinds}, is {(fixing?.IsVisible == true ? $"tagged as a vulnerability fix telling \"{ToolTip.GetTip(fixing)}\"" : "not tagged as a vulnerability fix")}");
+
+        // Update All takes what the filters leave: Used By a project with no such fix, nothing.
+        nuget.Kinds = PackageKinds.TransitiveOnly;
+        Assert.Same(row, Assert.Single(nuget.Rows));
+        nuget.UsedBy = Named(window, "App").Path;
+        Assert.True(nuget.Rows.Count == 0 && !nuget.CanUpdateAll && nuget.UpdateAllWhyNot == "The filters leave no update",
+            $"Used By App, which has nothing to fix, the Updates tab lists {nuget.Rows.Count} and Update All is {(nuget.CanUpdateAll ? "on" : $"off: {nuget.UpdateAllWhyNot}")}");
+        nuget.UsedBy = null;
+        nuget.Kinds = PackageKinds.Referenced;
 
         Ui.Click(nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update All")));
         Ui.Landed(() => !nuget.IsBusy && nuget.Rows.All(r => r.Fixes.Count == 0 && r.UpdateVersion == "1.1.0"),

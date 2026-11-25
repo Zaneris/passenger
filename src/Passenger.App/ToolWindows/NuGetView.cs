@@ -322,7 +322,7 @@ public sealed partial class NuGetView : DockPanel
     private void EnableActions()
     {
         updateAll.IsEnabled = CanUpdateAll;
-        ToolTip.SetTip(updateAll, $"Update all {Numbers.Said(updateRows.Count)} packages across their projects, including results hidden by search");
+        ToolTip.SetTip(updateAll, $"Update the {Plural.Of(ToUpdate.Count, "package")} the filters leave across their projects, including results hidden by search");
         foreach ((Button button, bool putsIn, string? tip) in lineActions)
         {
             ToolButtons.Grey(button, WhyNot(putsIn), tip);
@@ -1225,10 +1225,10 @@ public sealed partial class NuGetView : DockPanel
     }
 
     /// <summary>A package's row: its icon, its id (strong where a project references it), its version muted, a tag on one
-    /// projects get only through others, on one a project has a deprecated version of and on one whose newer version a
-    /// range keeps out (saying why on hover), its description or what brings it in on hover, and a warning saying the
-    /// gravest advisory where a version a project has is vulnerable. In a narrow list the id is cut, its version and marks
-    /// kept whole after it.</summary>
+    /// projects get only through others, on one a project has a deprecated version of, on one whose newer version a range
+    /// keeps out and on one the Updates tab fixes a vulnerable version of (each saying why on hover), its description or
+    /// what brings it in on hover, and a warning saying the gravest advisory where a version a project has is vulnerable.
+    /// In a narrow list the id is cut, its version and marks kept whole after it.</summary>
     private Control Row()
     {
         TextBlock version = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
@@ -1239,10 +1239,11 @@ public sealed partial class NuGetView : DockPanel
         Border transitive = Tagged("transitive");
         Border deprecated = Tagged("deprecated");
         Border held = Tagged("held back");
+        Border fix = Tagged("vulnerability fix");
         RowIcon warning = Warning(string.Empty);
         warning.Margin = new Thickness(Gaps.Small, 0, 0, 0);
-        ShrinkingRow line = new() { Height = ListRow.Height, Children = { icon, id, version, transitive, deprecated, held, warning } };
-        foreach (Control kept in (Control[])[version, transitive, deprecated, held])
+        ShrinkingRow line = new() { Height = ListRow.Height, Children = { icon, id, version, transitive, deprecated, held, fix, warning } };
+        foreach (Control kept in (Control[])[version, transitive, deprecated, held, fix])
         {
             ShrinkingRow.SetKeepsWidth(kept, true);
         }
@@ -1256,12 +1257,20 @@ public sealed partial class NuGetView : DockPanel
             ToolTip.SetTip(deprecated, row.Deprecated is { } said ? DeprecationTip(said.Version, said.Said) : null);
             held.IsVisible = row.HeldBack is not null;
             ToolTip.SetTip(held, row.HeldBack);
+            fix.IsVisible = row.Fixes.Count > 0;
+            ToolTip.SetTip(fix, row.Fixes.Count > 0 ? FixWords(row) : null);
             ToolTip.SetTip(line, row.IsTransitive ? $"Brought in by {BroughtBy(row.Transitive.Values.SelectMany(v => v))}"
                 : row.Description.Length > 0 ? row.Description : null);
             warning.IsVisible = row.IsVulnerable;
             ToolTip.SetTip(warning, row.IsVulnerable ? $"Known security vulnerability: {row.Advisories[0].Severity} severity ({row.Advisories[0].Address})" : null);
         });
     }
+
+    /// <summary>What a row's fixes of vulnerable versions its projects get through others do, a line per project: the
+    /// version referenced, where, in place of what, brought in by what.</summary>
+    private string FixWords(PackageRow row) => string.Join("\n", row.Fixes.Select(f =>
+        $"{model.Projects.FirstOrDefault(p => PathNames.Same(p.Path, f.Key))?.Name ?? Path.GetFileNameWithoutExtension(f.Key)}: references {f.Value.Version}{f.Value.Where}, "
+        + $"in place of the vulnerable {Plural.Listed([.. f.Value.Fixes.Select(u => u.Version).Distinct(StringComparer.OrdinalIgnoreCase)])} brought in by {BroughtBy(f.Value.Fixes)}"));
 
     /// <summary>A small tag after a row's words ("transitive").</summary>
     private static Border Tagged(string words)

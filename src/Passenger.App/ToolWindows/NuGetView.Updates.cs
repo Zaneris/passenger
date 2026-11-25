@@ -15,10 +15,18 @@ public sealed partial class NuGetView
 
     public bool ShowsUpdates => showsUpdates;
 
-    public bool CanUpdateAll => showsUpdates && !checkingUpdates && !updatingAll && !model.IsBusy && updateRows.Any(r => r.MovesTo is not null);
+    public bool CanUpdateAll => showsUpdates && !checkingUpdates && !updatingAll && !model.IsBusy && ToUpdate.Count > 0;
 
     public string? UpdateAllWhyNot => CanUpdateAll ? null : model.IsBusy || updatingAll ? Refusals.PackageChangeUnderWay
-        : checkingUpdates ? "Checking for updates" : !showsUpdates ? "Open the Updates tab first" : "No updates available";
+        : checkingUpdates ? "Checking for updates" : !showsUpdates ? "Open the Updates tab first"
+        : updateRows.Any(r => r.MovesTo is not null) ? "The filters leave no update" : "No updates available";
+
+    /// <summary>The rows whose updates and fixes Update All makes: those the Sort and Filter leave, the search's words
+    /// hiding none.</summary>
+    private IReadOnlyList<PackageRow> ToUpdate => [.. Filtered(updateRows).Where(r => r.MovesTo is not null)];
+
+    /// <summary>Whether Update All moves a project's references: every project's, else the one Used By names alone.</summary>
+    private bool UpdatesIn(string project) => usedBy is null || PathNames.Same(usedBy, project);
 
     public void ShowUpdates()
     {
@@ -243,9 +251,10 @@ public sealed partial class NuGetView
             return;
         }
         FolderPackages folder = model;
-        PackageUpdate[] targets = [.. updateRows.SelectMany(r => r.Moves.GroupBy(m => m.Value, StringComparer.OrdinalIgnoreCase)
+        IReadOnlyList<PackageRow> shown = ToUpdate;
+        PackageUpdate[] targets = [.. shown.SelectMany(r => r.Moves.Where(m => UpdatesIn(m.Key)).GroupBy(m => m.Value, StringComparer.OrdinalIgnoreCase)
                 .Select(g => new PackageUpdate(r.Id, g.Key, [.. g.Select(m => m.Key)]))),
-            .. updateRows.SelectMany(r => r.Fixes.Select(f => new PackageUpdate(r.Id, f.Value.Version, [f.Key]) { Frameworks = f.Value.Frameworks }))];
+            .. shown.SelectMany(r => r.Fixes.Where(f => UpdatesIn(f.Key)).Select(f => new PackageUpdate(r.Id, f.Value.Version, [f.Key]) { Frameworks = f.Value.Frameworks }))];
         updatingAll = true;
         EnableActions();
         try
