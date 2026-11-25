@@ -207,8 +207,9 @@ public sealed class BranchesPanel : DockPanel
 
     public event EventHandler<BranchInfo>? NavigateRequested;
 
-    /// <summary>A branch or tag to check out, which the window asks of where changes are not yet committed.</summary>
-    public event EventHandler<BranchInfo>? CheckoutRequested;
+    /// <summary>A branch or tag to check out, with the branches its menu was made among, which the window asks of where
+    /// changes are not yet committed.</summary>
+    public event EventHandler<(BranchInfo Branch, IReadOnlyList<BranchInfo> All)>? CheckoutRequested;
 
     public event EventHandler<BranchInfo>? NewBranchRequested;
 
@@ -257,9 +258,11 @@ public sealed class BranchesPanel : DockPanel
     /// <summary>A branch was marked or unmarked as a favourite, for the folder to keep.</summary>
     public event EventHandler<GitBranchesState>? FavoritesChanged;
 
-    /// <summary>The menu of a branch or tag here: the items that cannot run on it are left out.</summary>
-    public IReadOnlyList<Control> Menu(BranchInfo branch)
+    /// <summary>The menu of a branch or tag here, or among <paramref name="all"/> another list read (the branch menu's): the
+    /// items that cannot run on it are left out.</summary>
+    public IReadOnlyList<Control> Menu(BranchInfo branch, IReadOnlyList<BranchInfo>? all = null)
     {
+        IReadOnlyList<BranchInfo> among = all ?? Branches;
         string? current = vcs.Branch;
         string here = current is null ? "Current" : Quoted(current);
         string it = Quoted(branch.Name);
@@ -276,8 +279,8 @@ public sealed class BranchesPanel : DockPanel
         }
         if (!isCurrent)
         {
-            Add("Checkout", () => CheckoutRequested?.Invoke(this, branch));
-            IdeErrors.Observe(GreyWhenRefusedAsync((MenuItem)items[^1], vcs.WhyNotCheckoutRefAsync(branch, Branches)));
+            Add("Checkout", () => CheckoutRequested?.Invoke(this, (branch, among)));
+            IdeErrors.Observe(GreyWhenRefusedAsync((MenuItem)items[^1], vcs.WhyNotCheckoutRefAsync(branch, among)));
         }
         Add($"New Branch from {it}…", () => NewBranchRequested?.Invoke(this, branch));
         if (branch.Kind != RefKind.Tag)
@@ -605,9 +608,7 @@ public sealed class BranchesPanel : DockPanel
         }
     }
 
-    private string RemoteOf(BranchInfo branch) =>
-        Remotes.Where(r => branch.Name.StartsWith(r + "/", StringComparison.Ordinal)).MaxBy(r => r.Length)
-        ?? branch.Name[..Math.Max(0, branch.Name.IndexOf('/', StringComparison.Ordinal))];
+    private string RemoteOf(BranchInfo branch) => VcsController.RemoteOf(branch, Remotes);
 
     private static BranchNode? Find(IEnumerable<BranchNode> nodes, Func<BranchNode, bool> match)
     {

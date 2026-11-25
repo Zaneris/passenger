@@ -1144,6 +1144,9 @@ public static class Refusals
     public const string CloseIsThePersons = "Only the person closes this window, which Passenger asks them about first as Settings says (Confirm before closing): "
         + "ask them to";
 
+    /// <summary>A remote's menu in the branch popup, with none of its branches fetched.</summary>
+    public static string NothingFetched(string remote) => $"No branch of {remote} is fetched yet: Fetch reads them";
+
     /// <summary>An agent's input answering whether a checkout discards the uncommitted changes: the person discards them.</summary>
     public const string DiscardIsThePersons = "Only the person discards their uncommitted changes as a branch is checked out, which cannot be undone: ask them to";
 

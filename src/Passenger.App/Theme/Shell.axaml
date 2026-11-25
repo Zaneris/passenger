@@ -534,6 +534,11 @@
     <Style Selector="TextBlock.muted">
         <Setter Property="Foreground" Value="{DynamicResource Passenger.TextMuted}" />
     </Style>
+    <!-- What a menu item says muted after its words (MenuChoice's detail: a local branch's upstream) in the keys' colour on
+         the chosen item's band, as its keys are: after the muted style, which it overrides. -->
+    <Style Selector="MenuItem:selected > app|ShrinkingRow > TextBlock.muted, MenuItem:pointerover > app|ShrinkingRow > TextBlock.muted">
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.Menu.SelectedKeys}" />
+    </Style>
     <!-- A call's signature its arguments no longer fit, among those that do (Parameter Info): there to read, set back. -->
     <Style Selector="Border.unfit">
         <Setter Property="Opacity" Value="0.5" />

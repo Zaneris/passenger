@@ -1567,6 +1567,17 @@ public sealed class VcsController : IDisposable
     public async Task<(IReadOnlyList<BranchInfo> Branches, IReadOnlyList<string> Remotes)> BranchTreeAsync() =>
         git is { } repository ? await repository.BranchTreeAsync() : ([], []);
 
+    /// <summary>The local branches and the remotes' branches, the one committed to last first, with the remotes; none outside a
+    /// working tree.</summary>
+    public async Task<(IReadOnlyList<BranchInfo> Branches, IReadOnlyList<string> Remotes)> RecentBranchesAsync() =>
+        git is { } repository ? await repository.RecentBranchesAsync() : ([], []);
+
+    /// <summary>The remote a remote's branch is of: the longest of <paramref name="remotes"/> its name begins with, else what
+    /// comes before its first slash.</summary>
+    public static string RemoteOf(BranchInfo branch, IReadOnlyList<string> remotes) =>
+        remotes.Where(r => branch.Name.StartsWith(r + "/", StringComparison.Ordinal)).MaxBy(r => r.Length)
+        ?? branch.Name[..Math.Max(0, branch.Name.IndexOf('/', StringComparison.Ordinal))];
+
     /// <summary>The local branches, the one committed to last first; none outside a working tree.</summary>
     public async Task<IReadOnlyList<BranchInfo>> LocalBranchesAsync() => git is { } repository ? await repository.LocalBranchesAsync() : [];
 

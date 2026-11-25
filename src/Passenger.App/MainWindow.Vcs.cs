@@ -288,7 +288,8 @@ public partial class MainWindow
     }
 
     /// <summary>The branch popup: new branch, commit, push, then the local branches (the current, favourites and last
-    /// committed to, at most <see cref="BranchesListed"/>), each with its own menu, and More Branches… for the rest.</summary>
+    /// committed to, at most <see cref="BranchesListed"/>), each with its own menu and what it tracks, More Branches… for the
+    /// rest, and each remote's branches in a menu of its own; letters typed search the locals and the remotes' together.</summary>
     private void OnBranchClicked(object? sender, RoutedEventArgs e) => ShowBranches(BranchButton);
 
     /// <summary>The branch popup from the status bar's branch, as from the toolbar's Git widget.</summary>
@@ -342,26 +343,85 @@ public partial class MainWindow
         menu.Items.Add(Action(AppActions.Push));
         menu.Items.Add(Action(AppActions.Stash));
         menu.Items.Add(Action(AppActions.Unstash));
-        menu.Items.Add(new Separator());
-        menu.Items.Add(ToolWindows.ListMenus.Heading("Local"));
-        IReadOnlyList<BranchInfo> local = await session.Vcs.LocalBranchesAsync();
-        // Each branch opens its own menu (Checkout, Merge into Current and the rest), so only Checkout checks one out.
-        foreach (BranchInfo branch in Listed(local, gitView?.Log.Branches?.Favorites ?? branchFavorites))
-        {
-            menu.Items.Add(MenuChoice.Holding(branch.Name, branch.IsCurrent, () => GitBranches.Menu(branch)));
-        }
-        if (local.Count > BranchesListed)
-        {
-            menu.Items.Add(ToolWindows.ListMenus.Item("More Branches…", ShowAllBranches));
-        }
+        Control[] acts = [.. menu.Items.OfType<Control>()];
+        (IReadOnlyList<BranchInfo> all, IReadOnlyList<string> remotes) = await session.Vcs.RecentBranchesAsync();
+        ToolWindows.GitBranchesState favorites = gitView?.Log.Branches?.Favorites ?? branchFavorites;
+        BranchMenus branches = new(this, all, remotes, favorites);
+        MenuSearch.Attach(menu, typed => typed.Length == 0 ? [.. acts, .. branches.Whole()] : branches.Found(typed));
         Open(menu, widget);
     }
 
-    /// <summary>How many local branches the branch popup lists at most, whatever the repository holds.</summary>
+    /// <summary>The branch popup's branches, as read as it opened: each opens its own menu (Checkout, Merge into Current and
+    /// the rest), so only Checkout checks one out.</summary>
+    private sealed class BranchMenus(MainWindow window, IReadOnlyList<BranchInfo> all, IReadOnlyList<string> remotes, ToolWindows.GitBranchesState favorites)
+    {
+        private readonly List<BranchInfo> local = [.. all.Where(b => b.Kind == RefKind.Local)];
+
+        /// <summary>The branches as the popup lists them before any search: the locals, More Branches… for the rest, and a
+        /// menu of each remote's.</summary>
+        public List<Control> Whole()
+        {
+            List<Control> items = [new Separator(), ToolWindows.ListMenus.Heading("Local"), .. Listed(local, favorites).Select(b => Item(b, b.Name))];
+            if (local.Count > BranchesListed)
+            {
+                items.Add(ToolWindows.ListMenus.Item("More Branches…", () => window.ShowAllBranches()));
+            }
+            string[] named = [.. remotes.Concat(all.Where(b => b.Kind == RefKind.Remote).Select(b => VcsController.RemoteOf(b, remotes))).Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.OrdinalIgnoreCase)];
+            if (named.Length > 0)
+            {
+                items.Add(ToolWindows.ListMenus.Heading("Remote"));
+                items.AddRange(named.Select(remote => ToolWindows.ListMenus.Sub(remote, () => Remote(remote))));
+            }
+            return items;
+        }
+
+        /// <summary>The locals and the remotes' branches whose names hold <paramref name="typed"/>, said above them, each at most
+        /// <see cref="BranchesListed"/>, with More Branches… searching the rest in the Git window.</summary>
+        public List<Control> Found(string typed)
+        {
+            List<BranchInfo> locals = [.. local.Where(b => b.Name.Contains(typed, StringComparison.OrdinalIgnoreCase))];
+            List<BranchInfo> remote = [.. all.Where(b => b.Kind == RefKind.Remote && b.Name.Contains(typed, StringComparison.OrdinalIgnoreCase))];
+            List<Control> items = [ToolWindows.ListMenus.Notice(DropDownSearch.Said(typed, locals.Count + remote.Count))];
+            foreach ((string heading, List<BranchInfo> found) in (ReadOnlySpan<(string, List<BranchInfo>)>)[("Local", locals), ("Remote", remote)])
+            {
+                if (found.Count > 0)
+                {
+                    items.Add(ToolWindows.ListMenus.Heading(heading));
+                    items.AddRange(Listed(found, favorites).Select(b => Item(b, b.Name)));
+                }
+            }
+            if (locals.Count > BranchesListed || remote.Count > BranchesListed)
+            {
+                items.Add(ToolWindows.ListMenus.Item("More Branches…", () => window.ShowAllBranches(typed)));
+            }
+            return items;
+        }
+
+        /// <summary>A remote's menu: its branches, favourites first, then those committed to last, with More Branches… for
+        /// the rest; where none is fetched, words saying Fetch reads them.</summary>
+        private List<Control> Remote(string remote)
+        {
+            List<BranchInfo> its = [.. all.Where(b => b.Kind == RefKind.Remote && VcsController.RemoteOf(b, remotes) == remote)];
+            List<Control> items = [.. Listed(its, favorites).Select(b => Item(b, b.Name[(remote.Length + 1)..]))];
+            if (its.Count > BranchesListed)
+            {
+                items.Add(ToolWindows.ListMenus.Item("More Branches…", () => window.ShowAllBranches(remote + "/")));
+            }
+            return items.Count > 0 ? items : [ToolWindows.ListMenus.Notice(Refusals.NothingFetched(remote))];
+        }
+
+        /// <summary>A branch, shown as <paramref name="shown"/>, opening its own menu; a local one saying what it tracks.</summary>
+        private MenuItem Item(BranchInfo branch, string shown) =>
+            MenuChoice.Holding(shown, branch.IsCurrent, () => window.GitBranches.Menu(branch, all), branch.Kind == RefKind.Local ? branch.Upstream : null);
+    }
+
+    /// <summary>How many local branches the branch popup lists at most, whatever the repository holds, and how many of a
+    /// remote's or of a search's.</summary>
     private const int BranchesListed = 10;
 
-    /// <summary>The local branches the branch popup lists, of those read with the one committed to last first: the current
-    /// one, then the favourites, then the rest, at most <see cref="BranchesListed"/>.</summary>
+    /// <summary>The branches the branch popup lists, of those read with the one committed to last first: the current one,
+    /// then the favourites, then the rest, at most <see cref="BranchesListed"/>.</summary>
     private static List<BranchInfo> Listed(IReadOnlyList<BranchInfo> local, ToolWindows.GitBranchesState favorites)
     {
         List<BranchInfo> listed = [];
@@ -378,11 +438,13 @@ public partial class MainWindow
         return listed;
     }
 
-    /// <summary>More Branches… of the branch popup: the Git window's branches panel, its search box given the keys.</summary>
-    private void ShowAllBranches()
+    /// <summary>More Branches… of the branch popup: the Git window's branches panel, its search box given the keys, holding
+    /// what the popup searched for (<paramref name="search"/>) chosen, so what is typed searches afresh.</summary>
+    private void ShowAllBranches(string search = "")
     {
         ShowToolWindow(ToolWindowIds.Git);
         GitWindow.ShowLog();
+        GitBranches.SearchText = search;
         GitBranches.FocusSearch();
     }
 

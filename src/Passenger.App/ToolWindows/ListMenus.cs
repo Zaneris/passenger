@@ -116,6 +116,26 @@ public static class ListMenus
     /// <summary>A submenu of items.</summary>
     public static MenuItem Sub(string header, params IEnumerable<Control> items) => new() { Header = header, ItemsSource = items.ToArray() };
 
+    /// <summary>A submenu whose items are made as it first opens (<see cref="MadeOnOpen"/>): a remote's branches.</summary>
+    public static MenuItem Sub(string header, Func<IReadOnlyList<Control>> made) => MadeOnOpen(new MenuItem { Header = header }, made);
+
+    /// <summary>Gives <paramref name="item"/> a submenu whose items are made as it first opens, so one whose submenu stays shut
+    /// costs nothing: a stand-in until then shows it opens one, which a click or Enter opens.</summary>
+    public static MenuItem MadeOnOpen(MenuItem item, Func<IReadOnlyList<Control>> items)
+    {
+        item.ItemsSource = (Control[])[new Separator()];
+        bool made = false;
+        item.SubmenuOpened += (_, e) =>
+        {
+            if (e.Source == item && !made)
+            {
+                made = true;
+                item.ItemsSource = items();
+            }
+        };
+        return item;
+    }
+
     /// <summary>The heading over a group of a menu's items (a list of branches, of solutions): words at the caption's step,
     /// muted, which the keys and the pointer pass over, and a screen reader hears as a heading.</summary>
     public static MenuItem Heading(string words)

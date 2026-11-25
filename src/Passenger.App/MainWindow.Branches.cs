@@ -20,7 +20,7 @@ public partial class MainWindow
     {
         panel.Favorites = branchFavorites;
         panel.NewBranchRequested += (_, branch) => ShowNewBranchFrom(branch);
-        panel.CheckoutRequested += (_, branch) => IdeErrors.Observe(CheckoutAsync(branch, panel.Branches));
+        panel.CheckoutRequested += (_, asked) => IdeErrors.Observe(CheckoutAsync(asked.Branch, asked.All));
         panel.RenameRequested += (_, branch) => ShowRenameBranch(branch);
         panel.PushRequested += (_, branch) => IdeErrors.Observe(ShowPushAsync(branch, elsewhere: false));
         panel.DeleteRequested += (_, branch) => IdeErrors.Observe(DeleteBranchAsync(branch));

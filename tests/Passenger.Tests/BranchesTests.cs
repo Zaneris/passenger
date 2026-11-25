@@ -80,8 +80,8 @@ public sealed class BranchesTests : IDisposable
     /// <summary>The Branches panel beyond the gate's as one flow, each step the check one test made in an instance of
     /// its own: each side button greyed with why where the chosen row gives it nothing to act on, Show Diff with
     /// Working Tree listing its files and opening their diffs, an added row's diff showing the file beside the branch's
-    /// empty side, the branch menu over 5,000 branches costing the window what 30 do, and a checkout with uncommitted
-    /// changes asking what becomes of them.</summary>
+    /// empty side, the branch menu over 5,000 branches costing the window what 30 do, a checkout with uncommitted
+    /// changes asking what becomes of them, and the branch menu listing and searching the remotes' branches.</summary>
     [AvaloniaFact]
     public void A_branchs_diff_with_the_working_tree_opens_its_files_and_the_panel_says_what_it_cannot_do()
     {
@@ -91,6 +91,53 @@ public sealed class BranchesTests : IDisposable
         Flow.StepApart<BranchesTests>("the branch menu over 5000 branches costs the window what 30 do and more branches searches them all", t => t.The_branch_menu_over_5000_branches_costs_the_window_what_30_do_and_more_branches_searches_them_all());
         Flow.StepApart<BranchesTests>("get from a branch takes its version of a changed file one it lacks and one only it has each one undo and a closed files diff with it is edited in place", t => t.Get_from_a_branch_takes_its_version_of_a_changed_file_one_it_lacks_and_one_only_it_has_each_one_undo_and_a_closed_files_diff_with_it_is_edited_in_place());
         Flow.StepApart<BranchesTests>("a checkout with uncommitted changes asks to bring stash or discard them saying where git cannot bring them and unstashes on return", t => t.A_checkout_with_uncommitted_changes_asks_to_bring_stash_or_discard_them_saying_where_git_cannot_bring_them_and_unstashes_on_return());
+        Flow.StepApart<BranchesTests>("the branch menu lists each remotes branches searches them with the locals and checks one out tracking it", t => t.The_branch_menu_lists_each_remotes_branches_searches_them_with_the_locals_and_checks_one_out_tracking_it());
+    }
+
+    /// <summary>The toolbar's branch menu lists a local branch with what it tracks, and each remote's branches in a menu of its
+    /// own, one no local branch tracks among them; letters typed search the locals and the remotes' together, saying what
+    /// they found at the top, Backspace taking one back and Escape all of them before the menu closes; and a remote's branch
+    /// chosen from the search checks out as a new local branch tracking it.</summary>
+    private void The_branch_menu_lists_each_remotes_branches_searches_them_with_the_locals_and_checks_one_out_tracking_it()
+    {
+        Git("push", "-q", "origin", "team/login:refs/heads/review");
+        MainWindow window = Open();
+        ContextMenu menu = OpenBranchWidget(window);
+        string[] listed = Said(menu);
+        string[] branches = [.. listed.SkipWhile(i => i != "Local")];
+        Assert.True(branches.Length == 6 && branches[1] == "main [origin/main]" && branches[4..] is ["Remote", "origin"]
+            && branches[2..4].Order(StringComparer.Ordinal).SequenceEqual(["feature [origin/feature]", "team/login"]),
+            $"The branch menu lists [{string.Join(", ", listed)}]");
+
+        MenuItem origin = Reach(window, menu.Items.OfType<MenuItem>(), "origin");
+        Ui.Press(window, "Enter");
+        Assert.True(origin.IsSubMenuOpen, "Choosing origin in the branch menu opened no menu of its branches");
+        Assert.Equal(["feature", "main", "review"], origin.Items.OfType<MenuItem>().Select(MenuChoice.NameOf).Order(StringComparer.Ordinal));
+        Ui.Press(window, "Left");
+
+        window.KeyTextInput("rev");
+        Ui.Settle();
+        Assert.Equal(["“rev”: 1 match", "Remote", "origin/review"], Said(menu));
+        Ui.Press(window, "BACK");
+        Assert.True(Said(menu) is ["“re”: 3 matches", "Local", "feature [origin/feature]", "Remote", _, _] found && found[4..].Order(StringComparer.Ordinal).SequenceEqual(["origin/feature", "origin/review"]),
+            $"With re typed the branch menu lists [{string.Join(", ", Said(menu))}]");
+        Ui.Press(window, "ESCAPE");
+        Assert.True(menu.IsOpen && Said(menu).SequenceEqual(listed), $"Escape over a search left the menu {(menu.IsOpen ? "listing " + string.Join(", ", Said(menu)) : "closed")}");
+
+        window.KeyTextInput("rev");
+        Ui.Settle();
+        MenuItem review = Reach(window, menu.Items.OfType<MenuItem>(), "origin/review");
+        Ui.Press(window, "Enter");
+        Reach(window, review.Items.OfType<MenuItem>(), "Checkout");
+        Ui.Press(window, "Enter");
+        Ui.WaitFor(() => window.Vcs.Branch == "review", () => $"origin/review checked out as review: {window.Status}");
+        Assert.Equal("origin/review", Git("rev-parse", "--abbrev-ref", "review@{upstream}").Trim());
+        Assert.Equal("Checked out new branch review from origin/review", window.Status);
+        window.Close();
+
+        // Each item as the menu shows it: its name, and after it in brackets what a branch tracks.
+        static string[] Said(ContextMenu menu) => [.. menu.Items.OfType<MenuItem>().Select(i =>
+            $"{MenuChoice.NameOf(i)}{(Avalonia.Automation.AutomationProperties.GetHelpText(i) is { Length: > 0 } tracks ? $" [{tracks}]" : string.Empty)}")];
     }
 
     /// <summary>Checkout with changes not yet committed asks what becomes of them, their files listed: Bring takes them
@@ -695,7 +742,7 @@ public sealed class BranchesTests : IDisposable
             MenuItem[] branches = [.. items.SkipWhile(i => i.Header as string != "Local").Skip(1).SkipLast(1)];
             Assert.Equal(
                 ["main", "recent-12", "recent-11", "recent-10", "recent-09", "recent-08", "recent-07", "recent-06", "recent-05", "recent-04"],
-                branches.Select(i => i.Header as string));
+                branches.Select(MenuChoice.NameOf));
             Assert.True(branches[0].IsChecked, "main, the current branch, is not checked in the branch menu");
             Assert.Equal("More Branches…", items[^1].Header);
             MenuItem[] made = [.. branches.Where(b => b.Items.OfType<MenuItem>().Any())];
@@ -781,8 +828,8 @@ public sealed class BranchesTests : IDisposable
     /// <summary>The arrow keys taken down a menu to an item, as a person moves to it.</summary>
     private static MenuItem Reach(MainWindow window, IEnumerable<MenuItem> items, string header)
     {
-        MenuItem item = items.FirstOrDefault(i => i.Header as string == header)
-            ?? throw new InvalidOperationException($"The menu has no {header}: [{string.Join(", ", items.Select(i => i.Header))}]");
+        MenuItem item = items.FirstOrDefault(i => MenuChoice.NameOf(i) == header)
+            ?? throw new InvalidOperationException($"The menu has no {header}: [{string.Join(", ", items.Select(MenuChoice.NameOf))}]");
         for (int presses = 0; !item.IsSelected; presses++)
         {
             Assert.True(presses < 30, $"Down never reached {header} in the menu");

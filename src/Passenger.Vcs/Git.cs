@@ -1190,6 +1190,17 @@ public sealed partial class Git
         return refs.Succeeded ? BranchesOf(refs.Output) : [];
     });
 
+    /// <summary>The local branches and the remotes' branches, the one committed to last first, each as
+    /// <see cref="BranchTreeAsync"/> reads it, with the remotes' names. Read and parsed off the caller's thread.</summary>
+    public Task<(IReadOnlyList<BranchInfo> Branches, IReadOnlyList<string> Remotes)> RecentBranchesAsync() =>
+        BackgroundWork.Run<(IReadOnlyList<BranchInfo>, IReadOnlyList<string>)>(async () =>
+        {
+            GitResult refs = await RunAsync(Root, ["for-each-ref", "--sort=-committerdate", BranchFormat, "refs/heads", "refs/remotes"]);
+            GitResult remotes = await RunAsync(Root, ["remote"]);
+            return (refs.Succeeded ? BranchesOf(refs.Output) : [],
+                remotes.Succeeded ? remotes.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : []);
+        });
+
     /// <summary>What a branch or tag is read as, in the fields <see cref="BranchesOf"/> takes.</summary>
     private const string BranchFormat =
         "--format=%(HEAD)%1f%(refname)%1f%(objectname)%1f%(*objectname)%1f%(upstream:remotename)%1f%(upstream:remoteref)%1f%(refname:short)%1f%(worktreepath)";
