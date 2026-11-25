@@ -28,6 +28,17 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-25
+
+- `AspireStandInTests`' `Aspire_services_are_debugged_and_hot_reloaded_or_run_on_saying_why_the_debugger_could_not_reach_them`,
+  CI 45640821202 (Windows report shard 3), at 4001e6ff7: "The API's console does not say the one apply its edit took: …
+  A line of Hot Reload: C# changes applied in 1742 ms: Program.cs (1 method updated)". **A bug in the IDE**: its own words
+  were put on the end of a program's unfinished line. Since 9adcb549c (#2254) the stand-in service writes a line in two
+  writes, and the step's Hot Reload update held it between them past the moment an unfinished line shows as it stands,
+  so the update's words joined "A line of " and the rest of the line came below. OutputView.Append begins the IDE's words
+  on a line of their own there, and a Run's Hot Reload words go through it rather than into the program's output
+  (66b0afdd0); ConsoleSinkTests holds it, and the class passes on the Mac and the Windows VM.
+
 ## 2026-11-24
 
 - `MauiSimulatorTests`' `A_maui_apps_ios_head_debugged_on_a_simulator_stops_steps_evaluates_and_takes_a_hot_reload_edit`,
