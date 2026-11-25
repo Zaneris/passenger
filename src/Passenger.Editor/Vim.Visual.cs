@@ -1103,6 +1103,16 @@ public sealed partial class Vim
         return at;
     }
 
+    /// <summary>The last character of the last line before a line's run of empty lines that holds any.</summary>
+    private static int LastCharacterBefore(TextSnapshot text, int line)
+    {
+        while (line > 0 && text.GetLine(line - 1).Length == 0)
+        {
+            line--;
+        }
+        return VimMotions.StepBack(text, text.GetLine(line - 1).End);
+    }
+
     /// <summary>Where the white ending a line begins: its blanks, and for a line of blanks alone those ending the line
     /// above too; the line's end where it ends in none.</summary>
     private static int WhiteEnding(TextSnapshot text, int line)
@@ -1212,9 +1222,9 @@ public sealed partial class Vim
             if (runLast < lastLine && !next && (n == 1 ? inner || unindented : n == 2 && inner && unindented)
                 && LastWrittenBefore(text, r.Cursor) is { } before)
             {
-                // From an empty line two or more above its run's last, is goes back to the last character before the run (2is and as before text unindented).
+                // From an empty line two or more above its run's last, is goes back to the last written character before the run, 2is and as (before text unindented) to its last character.
                 more = true;
-                return new Region(r.Cursor, before);
+                return new Region(r.Cursor, n == 1 && inner ? before : LastCharacterBefore(text, inRun.Line));
             }
             if (n == 1 && runLast < lastLine && (inner || (next && text[text.GetLineStart(runLast + 1)] is not (' ' or '\t'))))
             {
