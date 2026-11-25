@@ -593,7 +593,8 @@ public sealed class BranchesPanel : DockPanel
     }
 
     /// <summary>A row for whichever group, branch or tag the list hands its container: a group's chevron, a branch's or
-    /// tag's mark (a favourite's star, the current branch's in the accent), its name, and where a local branch pushes.</summary>
+    /// tag's mark (a favourite's star; the current branch's in the chosen mark's colour, which reads on every ground a row
+    /// stands on, the chosen row's too), its name, and where a local branch pushes.</summary>
     private Control Row()
     {
         RowExpander chevron = RowExpander.Of<BranchNode>(Toggle);
@@ -610,7 +611,7 @@ public sealed class BranchesPanel : DockPanel
             chevron.IsOpen = node.IsExpanded;
             mark.IsVisible = node.Kind is BranchNodeKind.Ref or BranchNodeKind.Head;
             mark.DataKey = node.Branch?.Kind == RefKind.Tag ? IconKeys.Label : node.IsFavorite ? IconKeys.StarFilled : IconKeys.Branch;
-            mark.ForegroundKey = node.IsFavorite ? TokenKeys.Vcs_Favorite : node.Branch?.IsCurrent == true || node.Kind == BranchNodeKind.Head ? TokenKeys.Accent : null;
+            mark.ForegroundKey = node.IsFavorite ? TokenKeys.Vcs_Favorite : node.Branch?.IsCurrent == true || node.Kind == BranchNodeKind.Head ? TokenKeys.ChosenMark : null;
             name.Text = node.Title;
             name.Classes.Set(StyleClasses.Strong, node.Kind is BranchNodeKind.Group);
             tracked.IsVisible = node.Branch is { Kind: RefKind.Local, Upstream: not null };

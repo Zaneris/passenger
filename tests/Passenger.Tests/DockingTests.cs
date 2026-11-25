@@ -15,12 +15,13 @@ namespace Passenger.Tests;
 /// window it opens in.</summary>
 public sealed class DockingTests
 {
-    /// <summary>A stripe's buttons show and hide their windows and dock them where dragged, and its checklist takes a
-    /// window off the stripe and back, as one flow, each step the check one test made in an instance of its
-    /// own.</summary>
+    /// <summary>A stripe's buttons, each told apart by an icon of its own, show and hide their windows and dock them where
+    /// dragged, and its checklist takes a window off the stripe and back, as one flow, each step the check one test made in
+    /// an instance of its own.</summary>
     [AvaloniaFact]
     public void Stripe_buttons_show_hide_and_dock_tool_windows_where_they_are_dropped()
     {
+        Flow.StepApart<DockingTests>("every tool window wears an icon no other tool window wears", t => t.Every_tool_window_wears_an_icon_no_other_tool_window_wears());
         Flow.StepApart<DockingTests>("a stripe button shows its window in its place and hides the one there", t => t.A_stripe_button_shows_its_window_in_its_place_and_hides_the_one_there());
         Flow.StepApart<DockingTests>("a stripe button dragged to the other stripe docks its window on that side", t => t.A_stripe_button_dragged_to_the_other_stripe_docks_its_window_on_that_side());
         Flow.StepApart<DockingTests>("a drop above the first lower button of a stripe with no upper ones docks in its upper group", t => t.A_drop_above_the_first_lower_button_of_a_stripe_with_no_upper_ones_docks_in_its_upper_group());
@@ -57,6 +58,23 @@ public sealed class DockingTests
         Flow.StepApart<DockingTests>("Restore Default Layout puts every tool window back where it first was docked at its first size", t => t.Restore_Default_Layout_puts_every_tool_window_back_where_it_first_was_docked_at_its_first_size());
         Flow.StepApart<DockingTests>("a hidden tool windows view is built only as it is first shown and a console shows what was written before", t => t.A_hidden_tool_windows_view_is_built_only_as_it_is_first_shown_and_a_console_shows_what_was_written_before());
         Flow.StepApart<DockingTests>("Find in the Run console finds in its output", t => t.Find_in_the_Run_console_finds_in_its_output());
+    }
+
+    /// <summary>A stripe button is told from the others by its icon alone: no two tool windows wear one shape, whatever
+    /// their icons' keys.</summary>
+    private void Every_tool_window_wears_an_icon_no_other_tool_window_wears()
+    {
+        string icons = File.ReadAllText(Path.Combine(Passenger.Tests.Debugging.Helpers.Debuggees.Root, "src", "Passenger.App", "Theme", "Icons.axaml"));
+        Dictionary<string, string> shapes = System.Text.RegularExpressions.Regex.Matches(icons, @"x:Key=""([^""]+)"">([^<]+)<")
+            .ToDictionary(m => m.Groups[1].Value, m => m.Groups[2].Value);
+        MainWindow window = Open();
+        ToolWindow[] tools = [.. window.DockHost.Windows];
+        window.Close();
+        Assert.True(tools.Length == typeof(ToolWindowIds).GetFields().Length,
+            $"The window holds {tools.Length} tool windows, not one for each of the {typeof(ToolWindowIds).GetFields().Length} ids, so the rest wear icons unchecked");
+        string[] shared = [.. tools.GroupBy(t => shapes[t.Icon]).Where(g => g.Count() > 1).Select(g => string.Join(" and ", g.Select(t => t.Title)))];
+        Assert.True(shared.Length == 0,
+            $"{string.Join("; ", shared)} wear one icon, so their stripe buttons cannot be told apart: give each its own in tools/icons.py");
     }
 
     private void A_stripe_button_shows_its_window_in_its_place_and_hides_the_one_there()

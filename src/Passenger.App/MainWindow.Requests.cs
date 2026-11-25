@@ -54,7 +54,7 @@ public partial class MainWindow
     private void AddRequests()
     {
         requestLog = new RequestLog(RouteReached);
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Requests, "Requests", IconKeys.Endpoints, MakeRequests, Docking.ToolAnchor.BottomRight)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Requests, "Requests", IconKeys.Requests, MakeRequests, Docking.ToolAnchor.BottomRight)
         {
             Serves = ToolWindowServes.WebApps,
             Action = AppActions.ShowRequests,
