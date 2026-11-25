@@ -59,6 +59,9 @@
     <PackageReference Include="Npgsql" />
     <PackageReference Include="Microsoft.Data.SqlClient" />
     <PackageReference Include="MySqlConnector" />
+    <PackageReference Include="DuckDB.NET.Data.Full" />
+    <PackageReference Include="ClickHouse.Driver" />
+    <PackageReference Include="Snowflake.Data" />
     <PackageReference Include="SSH.NET" />
     <PackageReference Include="Avalonia.Desktop" />
     <!-- Avalonia.Headless names this package, though nothing of it is read: the window draws in Passenger's own Inter

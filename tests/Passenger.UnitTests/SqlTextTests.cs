@@ -34,6 +34,12 @@ public sealed class SqlTextTests
                 ["DECLARE @n int = 1;\nSELECT [a;GO], 'GO' AS x, @n;", "SELECT 2;"]),
             ("a transaction's BEGIN opens no block", DatabaseKind.SqlServer,
                 "CREATE PROCEDURE p AS BEGIN BEGIN TRAN; UPDATE t SET a = 1; COMMIT; END\nGO", ["CREATE PROCEDURE p AS BEGIN BEGIN TRAN; UPDATE t SET a = 1; COMMIT; END"]),
+            ("ClickHouse's # comments, backticks with backslash escapes and backslash escapes in strings", DatabaseKind.ClickHouse,
+                "SELECT 'a\\';b', `c\\`;d` # e;f\nFROM t; SELECT 2", ["SELECT 'a\\';b', `c\\`;d` # e;f\nFROM t", "SELECT 2"]),
+            ("Snowflake's // comments and $$ strings", DatabaseKind.Snowflake,
+                "SELECT $$a;b$$ // c;d\n; SELECT 'e\\';f'", ["SELECT $$a;b$$ // c;d", "SELECT 'e\\';f'"]),
+            ("DuckDB's nested comments and a path read as a string", DatabaseKind.DuckDb,
+                "SELECT * FROM 'data/a;b.csv' /* x; /* y; */ z; */; SELECT 2", ["SELECT * FROM 'data/a;b.csv' /* x; /* y; */ z; */", "SELECT 2"]),
         }, row => Assert.Equal(row.Runs, SqlText.Runs(row.Sql, row.Kind)), row => row.Holds);
         Cases.Each(new (string Holds, string Sql, int Caret, string? At)[]
         {
@@ -136,6 +142,14 @@ public sealed class SqlTextTests
                 """), ["Nested Loops", "Clustered Index Seek", "Table Scan"], "Table Scan on orders"),
             ("SQLite's rows, each under its parent, with no costs", () => SqlPlans.FromSqlite([(2, 0, "SCAN Products"), (5, 0, "SEARCH Orders USING INTEGER PRIMARY KEY (rowid=?)")]),
                 ["query plan", "SCAN Products", "SEARCH Orders USING INTEGER PRIMARY KEY (rowid=?)"], null),
+            ("DuckDB's JSON, each operator's children under it", () => SqlPlans.FromDuckDb("""
+                [{"name": "PROJECTION ", "children": [{"name": "SEQ_SCAN ", "children": [], "extra_info": {"Table": "stock", "Estimated Cardinality": "2"}}],
+                  "extra_info": {"Projections": "item"}}]
+                """), ["PROJECTION", "SEQ_SCAN"], null),
+            ("Snowflake's JSON, each operation under the one its parent operators name", () => SqlPlans.FromSnowflake("""
+                {"GlobalStats": {"partitionsTotal": 1}, "Operations": [[{"id": 0, "operation": "Result", "expressions": ["T.A"]},
+                  {"id": 1, "parentOperators": [0], "operation": "TableScan", "objects": ["DB.PUBLIC.T"]}]]}
+                """), ["query plan", "Result", "TableScan"], null),
         }, row =>
         {
             PlanStep plan = row.Read();

@@ -34,6 +34,10 @@ public static class DatabaseSsl
     /// <summary>Whether a kind of database takes a client certificate.</summary>
     public static bool TakesClientCertificate(DatabaseKind kind) => kind is DatabaseKind.Postgres or DatabaseKind.MySql;
 
+    /// <summary>Whether the connection dialog offers the kind's SSL: PostgreSQL's, SQL Server's and MySQL's, whose drivers
+    /// take it from these settings (ClickHouse's https and Snowflake's own are their connection strings').</summary>
+    public static bool Offered(DatabaseKind kind) => kind is DatabaseKind.Postgres or DatabaseKind.SqlServer or DatabaseKind.MySql;
+
     /// <summary>What a connection string says of its SSL.</summary>
     public static SslSettings Of(DatabaseKind kind, string connection)
     {

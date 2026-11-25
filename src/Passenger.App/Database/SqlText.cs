@@ -78,15 +78,15 @@ public static class SqlText
     {
         char c = sql[at];
         char next = at + 1 < sql.Length ? sql[at + 1] : '\0';
-        if (c == '-' && next == '-' || c == '#' && kind == DatabaseKind.MySql)
+        if (c == '-' && next == '-' || c == '#' && kind is DatabaseKind.MySql or DatabaseKind.ClickHouse || c == '/' && next == '/' && kind == DatabaseKind.Snowflake)
         {
             int end = sql.IndexOfAny(['\r', '\n'], at);
             return end < 0 ? sql.Length : end;
         }
         if (c == '/' && next == '*')
         {
-            // PostgreSQL and SQL Server nest block comments; MySQL and SQLite end one at its first close.
-            bool nests = kind is DatabaseKind.Postgres or DatabaseKind.SqlServer;
+            // PostgreSQL, SQL Server and DuckDB nest block comments; the others end one at its first close.
+            bool nests = kind is DatabaseKind.Postgres or DatabaseKind.SqlServer or DatabaseKind.DuckDb;
             int open = 1;
             int i = at + 2;
             while (i < sql.Length && open > 0)
@@ -108,18 +108,18 @@ public static class SqlText
             }
             return i;
         }
-        if (c == '$' && kind == DatabaseKind.Postgres && DollarTag(sql, at) is { } tag)
+        if (c == '$' && kind is DatabaseKind.Postgres or DatabaseKind.DuckDb or DatabaseKind.Snowflake && DollarTag(sql, at) is { } tag)
         {
             int end = sql.IndexOf(tag, at + tag.Length, StringComparison.Ordinal);
             return end < 0 ? sql.Length : end + tag.Length;
         }
-        bool escapes = kind == DatabaseKind.MySql || kind == DatabaseKind.Postgres && at > 0 && sql[at - 1] is 'E' or 'e'
+        bool escapes = kind is DatabaseKind.MySql or DatabaseKind.ClickHouse or DatabaseKind.Snowflake || kind == DatabaseKind.Postgres && at > 0 && sql[at - 1] is 'E' or 'e'
             && (at < 2 || !char.IsLetterOrDigit(sql[at - 2]));
         return c switch
         {
             '\'' => Quoted(sql, at, '\'', escapes),
-            '"' => Quoted(sql, at, '"', kind == DatabaseKind.MySql),
-            '`' when kind is DatabaseKind.MySql or DatabaseKind.Sqlite => Quoted(sql, at, '`', false),
+            '"' => Quoted(sql, at, '"', kind is DatabaseKind.MySql or DatabaseKind.ClickHouse),
+            '`' when kind is DatabaseKind.MySql or DatabaseKind.Sqlite or DatabaseKind.ClickHouse => Quoted(sql, at, '`', kind == DatabaseKind.ClickHouse),
             '[' when kind is DatabaseKind.SqlServer or DatabaseKind.Sqlite => Quoted(sql, at, ']', false),
             _ => null,
         };
@@ -129,7 +129,7 @@ public static class SqlText
     private static bool QuotesName(char quote, DatabaseKind kind) => quote switch
     {
         '"' => kind != DatabaseKind.MySql,
-        '`' => kind is DatabaseKind.MySql or DatabaseKind.Sqlite,
+        '`' => kind is DatabaseKind.MySql or DatabaseKind.Sqlite or DatabaseKind.ClickHouse,
         '[' => kind is DatabaseKind.SqlServer or DatabaseKind.Sqlite,
         _ => false,
     };
@@ -309,11 +309,13 @@ public static class SqlText
         return more ? null : statement[tokens[from + 1].Start..tokens[last].End];
     }
 
-    /// <summary>A name quoted as the database quotes one: SQL Server's brackets, MySQL's backticks, else double quotes.</summary>
+    /// <summary>A name quoted as the database quotes one: SQL Server's brackets, MySQL's backticks, ClickHouse's backticks
+    /// escaped by backslashes, else double quotes.</summary>
     public static string QuotedName(DatabaseKind kind, string name) => kind switch
     {
         DatabaseKind.SqlServer => "[" + name.Replace("]", "]]", StringComparison.Ordinal) + "]",
         DatabaseKind.MySql => "`" + name.Replace("`", "``", StringComparison.Ordinal) + "`",
+        DatabaseKind.ClickHouse => "`" + name.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("`", "\\`", StringComparison.Ordinal) + "`",
         _ => "\"" + name.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"",
     };
 

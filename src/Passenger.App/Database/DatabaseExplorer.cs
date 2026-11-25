@@ -264,7 +264,7 @@ public sealed class DatabaseExplorer : DockPanel
             foreach (DatabaseNode node in nodes)
             {
                 if (node.Source.Id == source.Id && (node.Kind == DatabaseNodeKind.Database && node.Database == database
-                    || node.Kind == DatabaseNodeKind.Connection && node.Source.Kind == DatabaseKind.Sqlite))
+                    || node.Kind == DatabaseNodeKind.Connection && DatabaseKinds.IsFile(node.Source.Kind)))
                 {
                     return node;
                 }
@@ -303,7 +303,7 @@ public sealed class DatabaseExplorer : DockPanel
         int depth = node.Depth + 1;
         switch (node.Kind)
         {
-            case DatabaseNodeKind.Connection when source.Kind == DatabaseKind.Sqlite:
+            case DatabaseNodeKind.Connection when DatabaseKinds.IsFile(source.Kind):
                 return await ObjectsAsync(node, source.Database, depth);
             case DatabaseNodeKind.Connection:
                 IReadOnlyList<string>? databases = await controller.ReadAsync(source, $"Opening {source.Name}…", cancel => DatabaseClient.DatabasesAsync(source, cancel));
@@ -355,21 +355,23 @@ public sealed class DatabaseExplorer : DockPanel
         {
             return null;
         }
-        bool flat = source.Kind is DatabaseKind.Sqlite or DatabaseKind.MySql;
+        bool flat = source.Kind == DatabaseKind.Sqlite || DatabaseKinds.SchemaIsDatabase(source.Kind);
         List<DatabaseNode> shown = [];
         foreach ((string schema, IReadOnlyList<DatabaseObject> objects) in read)
         {
             int level = flat ? depth : depth + 1;
             List<DatabaseNode> groups = [];
-            foreach ((DatabaseObjectKind kind, string title) in new[] { (DatabaseObjectKind.Table, "Tables"), (DatabaseObjectKind.View, "Views"), (DatabaseObjectKind.Routine, "Routines") })
+            foreach ((DatabaseObjectKind kind, string title) in new[] { (DatabaseObjectKind.Table, "Tables"), (DatabaseObjectKind.View, "Views"), (DatabaseObjectKind.Routine, "Routines"),
+                (DatabaseObjectKind.File, "Files") })
             {
+                // A folder's file reads as a view does.
                 List<DatabaseNode> members = [.. objects.Where(o => o.Kind == kind).Select(o => new DatabaseNode(kind switch
                 {
                     DatabaseObjectKind.Table => DatabaseNodeKind.Table,
-                    DatabaseObjectKind.View => DatabaseNodeKind.View,
+                    DatabaseObjectKind.View or DatabaseObjectKind.File => DatabaseNodeKind.View,
                     _ => DatabaseNodeKind.Routine,
                 }, o.Name, level + 1, source) { Database = database, Schema = o.Schema, Object = o.Name, Detail = o.Detail })];
-                if (members.Count > 0 || kind == DatabaseObjectKind.Table)
+                if (members.Count > 0 || kind == DatabaseObjectKind.Table && objects.Any(o => o.Kind != DatabaseObjectKind.File))
                 {
                     groups.Add(Group(title, level, node, members));
                 }

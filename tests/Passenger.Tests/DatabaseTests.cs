@@ -668,6 +668,40 @@ public sealed class DatabaseTests
                     () => $"{window.Database.Said} [{string.Join(", ", window.Database.Sources.Select(s => s.Name))}] of {window.Session.Projects.Count} projects");
                 Assert.Equal(DatabaseMark.Production, window.Database.Sources.Single(s => s.Name == "Shop").Mark);
             });
+            Flow.Step("a DuckDB file of the folder opens down to its table's columns, and the folder's CSV reads through it as a table and in its console", () =>
+            {
+                using (DuckDB.NET.Data.DuckDBConnection duck = new($"Data Source={Path.Combine(folder, "stock.duckdb")}"))
+                {
+                    duck.Open();
+                    using DuckDB.NET.Data.DuckDBCommand made = duck.CreateCommand();
+                    made.CommandText = "CREATE TABLE stock (id INTEGER PRIMARY KEY, item VARCHAR NOT NULL, count INTEGER); INSERT INTO stock VALUES (1, 'bolt', 40), (2, 'nut', 12);";
+                    made.ExecuteNonQuery();
+                }
+                TestFolders.Write(folder, "data/sales.csv", "item,sold\nbolt,3\nnut,5\nwasher,7\n");
+                Assert.True(window.Perform(AppActions.DatabaseRefresh), $"Refresh Database Connections did not run: {window.Status}");
+                Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy && window.Database.Sources.Any(s => s.Kind == DatabaseKind.DuckDb), () => window.Database.Said);
+                DatabaseSource stock = Assert.Single(window.Database.Sources, s => s.Kind == DatabaseKind.DuckDb);
+                Assert.Equal(("stock.duckdb", "found in the folder"), (stock.Name, stock.Found));
+                foreach (string row in (string[])["stock.duckdb", "main", "Tables", "stock", "Columns"])
+                {
+                    Open(window, row);
+                }
+                Assert.Contains(Explorer(window).Rows, r => r.Kind == DatabaseNodeKind.Column && r.Title == "id" && r.Detail.Contains("primary key", StringComparison.Ordinal));
+                Assert.Contains(Explorer(window).Rows, r => r.Kind == DatabaseNodeKind.Column && r.Title == "item" && r.Detail.Contains("not null", StringComparison.Ordinal));
+                Open(window, DuckDbFiles.Schema);
+                Open(window, "Files");
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Title == "data/sales.csv"));
+                Assert.True(window.Perform(AppActions.DatabaseOpenTable), $"Open Table Data did not run: {window.Status}");
+                Ui.WaitFor(() => Data(window)?.Rows?.RowCount == 3, () => $"sales.csv's rows among the editors ({window.Database.Said})");
+                Assert.NotNull(Data(window)!.WhyNotEdited);
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "stock.duckdb"));
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "stock.duckdb's console");
+                Run(window, "SELECT s.item, s.sold * k.count AS worth FROM 'data/sales.csv' s JOIN stock k USING (item) ORDER BY 1;");
+                SqlConsole duckConsole = window.EditorArea.ActiveGroup.Console!.Console!;
+                Assert.True(duckConsole.Results is [{ Error: null }], duckConsole.Said);
+                Assert.Equal(["bolt 120", "nut 60"], Enumerable.Range(0, 2).Select(r => $"{duckConsole.Results[0].Sets[0].Cell(r, 0)} {duckConsole.Results[0].Sets[0].Cell(r, 1)}"));
+            });
         }
         finally
         {

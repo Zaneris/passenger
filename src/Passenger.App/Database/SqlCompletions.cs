@@ -40,6 +40,12 @@ public static class SqlCompletions
         DatabaseKind.SqlServer => (string[])["TOP", "OFFSET", "FETCH NEXT", "ROWS ONLY", "DECLARE", "EXEC", "OUTPUT", "MERGE", "IDENTITY", "NVARCHAR", "GO"],
         DatabaseKind.Postgres => ["LIMIT", "OFFSET", "RETURNING", "ILIKE", "ON CONFLICT", "DO NOTHING", "SERIAL", "JSONB", "EXPLAIN", "ANALYZE"],
         DatabaseKind.MySql => ["LIMIT", "OFFSET", "AUTO_INCREMENT", "SHOW TABLES", "DESCRIBE", "REPLACE INTO", "ENGINE", "EXPLAIN"],
+        DatabaseKind.DuckDb => ["LIMIT", "OFFSET", "QUALIFY", "PIVOT", "UNPIVOT", "EXCLUDE", "REPLACE", "SUMMARIZE", "DESCRIBE", "ATTACH", "COPY", "EXPLAIN",
+            "read_parquet", "read_csv", "read_json", "GROUP BY ALL", "ORDER BY ALL", "ASOF JOIN"],
+        DatabaseKind.ClickHouse => ["LIMIT", "OFFSET", "FINAL", "SAMPLE", "PREWHERE", "ARRAY JOIN", "LIMIT BY", "WITH TOTALS", "SETTINGS", "FORMAT",
+            "ENGINE", "MergeTree", "PARTITION BY", "TTL", "SHOW TABLES", "DESCRIBE", "EXPLAIN", "OPTIMIZE TABLE", "ALTER TABLE"],
+        DatabaseKind.Snowflake => ["LIMIT", "OFFSET", "QUALIFY", "ILIKE", "FLATTEN", "LATERAL", "PIVOT", "UNPIVOT", "MATCH_RECOGNIZE", "SAMPLE",
+            "SHOW TABLES", "DESCRIBE", "USE WAREHOUSE", "USE ROLE", "CLONE", "VARIANT", "EXPLAIN"],
         _ => ["LIMIT", "OFFSET", "AUTOINCREMENT", "PRAGMA", "REPLACE INTO", "GLOB", "WITHOUT ROWID", "EXPLAIN QUERY PLAN"],
     }];
 
@@ -84,18 +90,14 @@ public static class SqlCompletions
     }
 
     /// <summary>A name as the database reads it: as written where it is a plain name (lower case alone for PostgreSQL, which
-    /// folds the rest), else in the database's quotes.</summary>
+    /// folds the rest, upper case alone for Snowflake, which folds it the other way), else in the database's quotes.</summary>
     public static string Quoted(string name, DatabaseKind kind)
     {
         bool plain = name.Length > 0 && (char.IsLetter(name[0]) || name[0] == '_') && name.All(c => char.IsLetterOrDigit(c) || c == '_')
             && (kind != DatabaseKind.Postgres || !name.Any(char.IsUpper))
+            && (kind != DatabaseKind.Snowflake || !name.Any(char.IsLower))
             && !Common.Contains(name, StringComparer.OrdinalIgnoreCase);
-        return plain ? name : kind switch
-        {
-            DatabaseKind.SqlServer => "[" + name.Replace("]", "]]", StringComparison.Ordinal) + "]",
-            DatabaseKind.MySql => "`" + name.Replace("`", "``", StringComparison.Ordinal) + "`",
-            _ => "\"" + name.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"",
-        };
+        return plain ? name : SqlText.QuotedName(kind, name);
     }
 
     private static bool IsNamePart(char c) => char.IsLetterOrDigit(c) || c is '_' or '$';

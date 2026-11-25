@@ -530,6 +530,11 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             console.Raise();
             return console.Running ? Refusals.SqlRunning : Refusals.TransactionOpen;
         }
+        if (manual && console.Connection is { } id && Find(id) is { } source && !DatabaseKinds.HasTransactions(source.Kind))
+        {
+            console.Raise();
+            return Refusals.NoTransactions(DatabaseKinds.Title(source.Kind));
+        }
         console.Manual = manual;
         if (!manual)
         {
@@ -770,9 +775,9 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
     {
         UiThread.Check();
         DatabaseSource[] kin = [.. Sources.Where(s => s.Kind == kind)];
-        if (kind == DatabaseKind.Sqlite)
+        if (DatabaseKinds.IsFile(kind))
         {
-            return kin.FirstOrDefault(s => PathNames.Same(new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(s.ConnectionString).DataSource, source));
+            return kin.FirstOrDefault(s => PathNames.Same(DatabaseKinds.FileOf(kind, s.ConnectionString), source));
         }
         (string host, int? port) = DatabaseKinds.EndpointOfSource(kind, source);
         return kin.FirstOrDefault(s => DatabaseKinds.Endpoint(kind, s.ConnectionString) is var at && DatabaseKinds.SameHost(at.Host, host) && (port is null || at.Port == port)

@@ -39,11 +39,13 @@ public sealed class SqlInserts(TextWriter into, InsertTarget target, string line
     public static string Literal(object? value, string type, DatabaseKind kind) => value switch
     {
         null or DBNull => "NULL",
-        bool truth => kind is DatabaseKind.Postgres or DatabaseKind.MySql ? truth ? "TRUE" : "FALSE" : truth ? "1" : "0",
+        bool truth => kind is DatabaseKind.Sqlite or DatabaseKind.SqlServer ? truth ? "1" : "0" : truth ? "TRUE" : "FALSE",
         byte[] bytes => kind switch
         {
             DatabaseKind.Postgres => $"'\\x{Convert.ToHexStringLower(bytes)}'::bytea",
             DatabaseKind.SqlServer => "0x" + Convert.ToHexString(bytes),
+            DatabaseKind.DuckDb or DatabaseKind.ClickHouse => $"unhex('{Convert.ToHexString(bytes)}')",
+            DatabaseKind.Snowflake => $"TO_BINARY('{Convert.ToHexString(bytes)}', 'HEX')",
             _ => $"X'{Convert.ToHexString(bytes)}'",
         },
         _ when RowValues.IsNumber(value) => RowValues.Text(value)!,
@@ -56,7 +58,7 @@ public sealed class SqlInserts(TextWriter into, InsertTarget target, string line
         string inside = text.Replace("'", "''", StringComparison.Ordinal);
         return kind switch
         {
-            DatabaseKind.MySql => "'" + inside.Replace("\\", "\\\\", StringComparison.Ordinal) + "'",
+            DatabaseKind.MySql or DatabaseKind.ClickHouse or DatabaseKind.Snowflake => "'" + inside.Replace("\\", "\\\\", StringComparison.Ordinal) + "'",
             DatabaseKind.SqlServer => "N'" + inside + "'",
             _ => "'" + inside + "'",
         };

@@ -34,6 +34,9 @@ public sealed class DatabaseServersTests
     private const string SshPassword = "Passenger-ssh-4e2a";
     private const string ClientKeyPassword = "Passenger-key-91b3";
 
+    /// <summary>ClickHouse's server, its long-term release pinned.</summary>
+    private const string ClickHouseImage = "clickhouse/clickhouse-server:26.3.71.3-alpine";
+
     /// <summary>The bastion's image, pinned to the one the test was written against.</summary>
     private const string SshImage = "lscr.io/linuxserver/openssh-server@sha256:c8431b8982e7eb3935ebf9c46607d19c6417e39c12ce884cc66945df2e9334e8";
 
@@ -41,10 +44,18 @@ public sealed class DatabaseServersTests
     [InlineData(DatabaseKind.Postgres, "postgres:17-alpine")]
     [InlineData(DatabaseKind.MySql, "mariadb:11.4")]
     [InlineData(DatabaseKind.SqlServer, "mcr.microsoft.com/mssql/server:2022-latest")]
+    [InlineData(DatabaseKind.ClickHouse, ClickHouseImage)]
+    [InlineData(DatabaseKind.Snowflake, "")]
     public void A_server_is_found_explored_run_and_completed_through_its_driver(DatabaseKind kind, string image)
     {
+        Assert.SkipWhen(kind == DatabaseKind.Snowflake, "Snowflake runs only as Snowflake's own service, which no container stands in for, and this run has no account of it");
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         Assert.SkipWhen(Docker.Said("image", "inspect", image) is null, $"The engine lacks {image}, which this test never pulls: pull it to run the test");
+        if (kind == DatabaseKind.ClickHouse)
+        {
+            ClickHouse();
+            return;
+        }
         Assert.SkipWhen(Docker.Said("image", "inspect", SshImage) is null, $"The engine lacks {SshImage}, which this test never pulls: pull it to run the test");
         Assert.SkipWhen(Programs.OnPath("ssh-agent") is null || Programs.OnPath("ssh-add") is null || Programs.OnPath("ssh") is null,
             "ssh, ssh-agent and ssh-add, which hold the tunnel's key and carry a ProxyCommand, are not on PATH");
@@ -728,6 +739,103 @@ public sealed class DatabaseServersTests
         editor.Select(new TextRange(0, editor.Document.Snapshot.Length));
         window.KeyTextInput(statement);
         Ui.Press(window, "ESCAPE");
+    }
+
+    /// <summary>ClickHouse in a container of the test's own: its connection found in the folder's settings by its project's
+    /// driver, its explorer down to a table's key column with its sorting key, a table's rows and DDL, a console's query run
+    /// and explained as a plan's tree, completion of a table's columns, and a table's changes and a manual transaction each
+    /// refused, saying why, as ClickHouse writes no row by its key and runs each statement alone.</summary>
+    private static void ClickHouse()
+    {
+        string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}dbclickhouse";
+        try
+        {
+            Docker.Run(["run", "-d", "--name", name, "--label", Docker.RunLabel, "-p", "127.0.0.1::8123", "-e", "CLICKHOUSE_DB=shop", "-e", "CLICKHOUSE_USER=passenger",
+                "-e", "CLICKHOUSE_PASSWORD=" + Password, "-e", "CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1", ClickHouseImage]);
+            string connection = $"Host=127.0.0.1;Port={Published(name, 8123)};Database=shop;Username=passenger;Password={Password}";
+            Ui.WaitFor(() => ClickHouseMade(connection), $"{ClickHouseImage} to take connections and hold the shop's tables", TimeSpan.FromMinutes(3));
+            string folder = TestFolders.Create("database-clickhouse");
+            TestFolders.Write(folder, "Shop.csproj", TestProjects.Console().With("  <ItemGroup>\n    <PackageReference Include=\"ClickHouse.Driver\" Version=\"1.5.0\" />\n  </ItemGroup>\n"));
+            TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
+            TestFolders.Write(folder, "appsettings.json", $$$"""{"ConnectionStrings":{"Shop":"{{{connection}}}"}}""");
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            try
+            {
+                window.ShowToolWindow(ToolWindowIds.Database);
+                Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy && window.Database.Sources.Any(s => s.Name == "Shop"), () => window.Database.Said);
+                Assert.Equal(DatabaseKind.ClickHouse, window.Database.Sources.Single(s => s.Name == "Shop").Kind);
+                foreach (string row in (string[])["Shop", "shop", "Tables", "products", "Columns"])
+                {
+                    DatabaseTests.Open(window, row);
+                }
+                Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == DatabaseNodeKind.Column && r.Title == "id" && r.Detail.Contains("primary key", StringComparison.Ordinal));
+                DatabaseTests.Open(window, "Keys");
+                Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == DatabaseNodeKind.Key && r.Title == "ORDER BY · id");
+
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "products"));
+                Assert.True(window.Perform(AppActions.DatabaseOpenTable), "Open Table Data did not run");
+                Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTable is { Reading: false, Rows.RowCount: 3 }, () => $"products' rows ({window.Database.Said})");
+                Assert.Equal(Refusals.NoRowEdits("ClickHouse"), window.EditorArea.Active!.DatabaseTable!.WhyNotEdited);
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "products"));
+                Assert.True(window.Perform(AppActions.DatabaseShowDdl), "Show DDL did not run");
+                Ui.WaitFor(() => window.EditorArea.Active?.Name.EndsWith("products.sql", StringComparison.Ordinal) == true && !window.Database.Busy, () => window.Database.Said);
+                Assert.Contains("ENGINE = MergeTree", window.EditorArea.Active!.Text.Snapshot.ToString(), StringComparison.Ordinal);
+
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console with its results under it");
+                SqlConsole console = window.EditorArea.ActiveGroup.Console!.Console!;
+                Replace(window, "SELECT name, price FROM products WHERE id < 3 ORDER BY id");
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                Ui.WaitFor(() => !console.Running && console.Results.Count == 1, () => console.Said, TimeSpan.FromMinutes(1));
+                Assert.True(console.Results[0].Error is null, console.Said);
+                Assert.Equal(["tea", "coffee"], Enumerable.Range(0, 2).Select(r => console.Results[0].Sets[0].Cell(r, 0)));
+                Assert.DoesNotContain(Password, console.Said, StringComparison.Ordinal);
+                Assert.True(window.Perform(AppActions.DatabaseExplain), "Explain Plan did not run");
+                Ui.WaitFor(() => !console.Running && console.Plan is not null, () => console.Said, TimeSpan.FromMinutes(1));
+                Assert.Contains(SqlPlans.Each(console.Plan!), step => step.Operation.Contains("ReadFromMergeTree", StringComparison.Ordinal));
+                Assert.Equal(Refusals.NoTransactions("ClickHouse"), window.Database.SetManual(console, true));
+
+                CodeEditor editor = window.EditorArea.CodeEditor;
+                Replace(window, "SELECT  FROM products p");
+                editor.Selections = SelectionSet.Single("SELECT ".Length);
+                window.KeyTextInput("p");
+                window.KeyTextInput(".");
+                Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("name") && window.Assist.CompletionLabels.Contains("price"),
+                    () => $"products' columns after p., where the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+                Ui.Press(window, "ESCAPE");
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            Docker.Said("rm", "-f", name);
+        }
+    }
+
+    /// <summary>Whether ClickHouse takes connections, its shop's table made and filled once it does.</summary>
+    private static bool ClickHouseMade(string connection)
+    {
+        try
+        {
+            using ClickHouse.Driver.ADO.ClickHouseConnection made = new(connection);
+            made.Open();
+            foreach (string statement in (string[])["CREATE TABLE IF NOT EXISTS products (id UInt32, name String, price Float64) ENGINE = MergeTree ORDER BY id",
+                "TRUNCATE TABLE products", "INSERT INTO products VALUES (1, 'tea', 2.5), (2, 'coffee', 3), (3, 'milk', 1)"])
+            {
+                using DbCommand command = made.CreateCommand();
+                command.CommandText = statement;
+                command.ExecuteNonQuery();
+            }
+            return true;
+        }
+        catch (Exception unready) when (unready is DbException or System.Net.Http.HttpRequestException or IOException or InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private static void Run(MainWindow window, string statement)

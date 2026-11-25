@@ -437,7 +437,7 @@ public partial class MainWindow
         }
         ProjectSession asked = session;
         string? folder = chosen.Request.Project is { } project ? Path.GetDirectoryName(project) : null;
-        string place = kind == DatabaseKind.Sqlite ? await BackgroundWork.Run(() => PathNames.Canonical(told.Source)) : told.Source;
+        string place = DatabaseKinds.IsFile(kind) ? await BackgroundWork.Run(() => PathNames.Canonical(told.Source)) : told.Source;
         if (session != asked)
         {
             return;
@@ -445,8 +445,9 @@ public partial class MainWindow
         ShowToolWindow(ToolWindowIds.Database);
         await DatabasesFoundAsync();
         DatabaseSource? reaching = Database.Reaching(kind, place, told.Name, folder);
-        if (reaching is null && kind == DatabaseKind.Sqlite
-            && DatabaseDiscovery.Source(Path.GetFileNameWithoutExtension(place), $"used by {chosen.Request.From}'s requests", $"Data Source={place}", folder ?? Path.GetDirectoryName(place)!, []) is { } file)
+        if (reaching is null && DatabaseKinds.IsFile(kind)
+            && DatabaseDiscovery.Source(Path.GetFileNameWithoutExtension(place), $"used by {chosen.Request.From}'s requests", $"Data Source={place}", folder ?? Path.GetDirectoryName(place)!,
+                kind == DatabaseKind.DuckDb ? ["DuckDB.NET.Data"] : []) is { } file)
         {
             reaching = (await ShowDatabaseOfAsync(file, lasting: true)).Used;
         }

@@ -14,8 +14,9 @@ public sealed record PlanStep(string Operation, string Detail, double? Cost, dou
 }
 
 /// <summary>A statement's plan as each database explains it without running it: PostgreSQL's EXPLAIN (FORMAT JSON), MySQL's
-/// and MariaDB's EXPLAIN FORMAT=JSON, SQL Server's SHOWPLAN_XML and SQLite's EXPLAIN QUERY PLAN (which says no cost or
-/// rows), read into one tree of steps.</summary>
+/// and MariaDB's EXPLAIN FORMAT=JSON, SQL Server's SHOWPLAN_XML, SQLite's EXPLAIN QUERY PLAN (which says no cost or rows),
+/// DuckDB's EXPLAIN (FORMAT json), ClickHouse's EXPLAIN json = 1 (PostgreSQL's shape) and Snowflake's EXPLAIN USING JSON,
+/// read into one tree of steps.</summary>
 public static class SqlPlans
 {
     /// <summary>What a database is asked to explain a statement: the statement read and planned, never run.</summary>
@@ -24,6 +25,9 @@ public static class SqlPlans
         DatabaseKind.Postgres => $"EXPLAIN (FORMAT JSON) {statement}",
         DatabaseKind.MySql => $"EXPLAIN FORMAT=JSON {statement}",
         DatabaseKind.Sqlite => $"EXPLAIN QUERY PLAN {statement}",
+        DatabaseKind.DuckDb => $"EXPLAIN (FORMAT json) {statement}",
+        DatabaseKind.ClickHouse => $"EXPLAIN json = 1, description = 1 {statement}",
+        DatabaseKind.Snowflake => $"EXPLAIN USING JSON {statement}",
         _ => statement,
     };
 
@@ -152,6 +156,50 @@ public static class SqlPlans
         return new PlanStep("query plan", string.Empty, null, null, Under(0));
 
         List<PlanStep> Under(long parent) => [.. rows.Where(r => r.Parent == parent && r.Id != parent).Select(r => new PlanStep(r.Detail, string.Empty, null, null, Under(r.Id)))];
+    }
+
+    /// <summary>DuckDB's plan: its JSON's operators, each with its children, its extra information said in its detail and
+    /// its estimated cardinality as its rows.</summary>
+    public static PlanStep FromDuckDb(string json)
+    {
+        using JsonDocument read = JsonDocument.Parse(json);
+        JsonElement[] roots = read.RootElement.ValueKind == JsonValueKind.Array ? [.. read.RootElement.EnumerateArray()] : [read.RootElement];
+        return roots.Length == 1 ? DuckDb(roots[0]) : new PlanStep("query plan", string.Empty, null, null, [.. roots.Select(DuckDb)]);
+
+        static PlanStep DuckDb(JsonElement step)
+        {
+            JsonElement? extra = Passenger.Core.JsonMembers.Value(step, "extra_info");
+            List<(string Name, string Value)> said = extra is { ValueKind: JsonValueKind.Object } info
+                ? [.. info.EnumerateObject().Select(p => (p.Name, p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() ?? string.Empty : p.Value.ToString()))] : [];
+            double? rows = said.Where(p => p.Name == "Estimated Cardinality").Select(p => Number(p.Value.TrimStart('~'))).FirstOrDefault();
+            string detail = string.Join(" · ", said.Where(p => p.Name != "Estimated Cardinality").Select(p => $"{p.Name}: {p.Value.ReplaceLineEndings(" ").Trim()}"));
+            List<PlanStep> steps = Passenger.Core.JsonMembers.Value(step, "children") is { ValueKind: JsonValueKind.Array } children ? [.. children.EnumerateArray().Select(DuckDb)] : [];
+            return new PlanStep(Text(step, "name").Trim(), detail, null, rows, steps);
+        }
+    }
+
+    /// <summary>Snowflake's plan: its JSON's operations, each under the one its parent operators name, its objects and
+    /// expressions said in its detail.</summary>
+    public static PlanStep FromSnowflake(string json)
+    {
+        using JsonDocument read = JsonDocument.Parse(json);
+        List<(long Id, string Operation, string Detail, double? Rows, long[] Parents)> operations = [];
+        if (Passenger.Core.JsonMembers.Value(read.RootElement, "Operations") is { ValueKind: JsonValueKind.Array } plans)
+        {
+            foreach (JsonElement operation in plans.EnumerateArray().SelectMany(p => p.ValueKind == JsonValueKind.Array ? p.EnumerateArray() : Enumerable.Repeat(p, 1)))
+            {
+                string detail = string.Join(" · ", new[] { "objects", "expressions" }.Select(n => Passenger.Core.JsonMembers.Value(operation, n))
+                    .Where(v => v is { ValueKind: JsonValueKind.Array }).SelectMany(v => v!.Value.EnumerateArray().Select(e => e.ToString())));
+                long[] parents = Passenger.Core.JsonMembers.Value(operation, "parentOperators") is { ValueKind: JsonValueKind.Array } up
+                    ? [.. up.EnumerateArray().Where(p => p.ValueKind == JsonValueKind.Number).Select(p => p.GetInt64())] : [];
+                operations.Add((Passenger.Core.JsonMembers.Value(operation, "id") is { ValueKind: JsonValueKind.Number } id ? id.GetInt64() : operations.Count,
+                    Text(operation, "operation"), detail, Number(operation, "rows"), parents));
+            }
+        }
+        return new PlanStep("query plan", string.Empty, null, null, Under(null));
+
+        List<PlanStep> Under(long? parent) => [.. operations.Where(o => parent is { } p ? o.Parents.Contains(p) : o.Parents.Length == 0)
+            .Select(o => new PlanStep(o.Operation, o.Detail, null, o.Rows, Under(o.Id)))];
     }
 
     /// <summary>The step that costs the most alone, where the plan says costs; null where it says none.</summary>

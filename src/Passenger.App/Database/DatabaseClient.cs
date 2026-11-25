@@ -14,7 +14,7 @@ namespace Passenger.App.Database;
 
 public sealed record DatabaseFilter(string Column, string Value, string Operator);
 
-internal static class DatabaseClient
+internal static partial class DatabaseClient
 {
     internal const int PageSize = 100;
 
@@ -37,7 +37,7 @@ internal static class DatabaseClient
             whole = DatabaseKinds.LaidOver(source.Kind, whole, KeptConnection.Joined(source.Kind, source.Over, overSecret));
         }
         string? through = null;
-        if (source.Tunnel is { } tunnel && source.Kind != DatabaseKind.Sqlite)
+        if (source.Tunnel is { } tunnel && !DatabaseKinds.IsFile(source.Kind) && source.Kind != DatabaseKind.Snowflake)
         {
             (string host, int port) = DatabaseKinds.Endpoint(source.Kind, whole);
             whole = DatabaseKinds.AtLoopback(source.Kind, whole, await SshTunnels.PortAsync(source, tunnel, host, port, cancel), host);
@@ -55,8 +55,16 @@ internal static class DatabaseClient
             DatabaseKind.Postgres => new NpgsqlConnection(postgres!.ConnectionString),
             DatabaseKind.SqlServer => new SqlConnection(new SqlConnectionStringBuilder(whole) { Pooling = false }.ConnectionString),
             DatabaseKind.MySql => MySql(whole, through),
+            DatabaseKind.DuckDb => DuckDb(whole, readOnly),
+            DatabaseKind.ClickHouse => new ClickHouse.Driver.ADO.ClickHouseConnection(whole),
+            DatabaseKind.Snowflake => new Snowflake.Data.Client.SnowflakeDbConnection { ConnectionString = whole },
             _ => throw new InvalidOperationException("Unknown database provider"),
         };
+        if (readOnly && connection is ClickHouse.Driver.ADO.ClickHouseConnection clickHouse)
+        {
+            // 2 refuses every change of data or schema and still takes the settings a query sends.
+            clickHouse.CustomSettings["readonly"] = 2;
+        }
         if (through is not null && connection is NpgsqlConnection npgsql)
         {
             npgsql.SslClientAuthenticationOptionsCallback = options => options.TargetHost = through;
@@ -68,6 +76,13 @@ internal static class DatabaseClient
             {
                 await using DbCommand command = connection.CreateCommand();
                 command.CommandText = "SET SESSION TRANSACTION READ ONLY";
+                await command.ExecuteNonQueryAsync(cancel);
+            }
+            if (source.Kind == DatabaseKind.DuckDb && Directory.Exists(source.Folder))
+            {
+                // A relative path in a query is read from the folder, whose files the explorer lists.
+                await using DbCommand command = connection.CreateCommand();
+                command.CommandText = $"SET file_search_path = {DuckDbFiles.Read(source.Folder)}";
                 await command.ExecuteNonQueryAsync(cancel);
             }
             return connection;
@@ -125,6 +140,18 @@ internal static class DatabaseClient
         return connection;
     }
 
+    /// <summary>A DuckDB connection: its file opened as it is, never made where it is not there (as DuckDB would), read-only
+    /// where the connection is; one in memory takes the folder's files alone.</summary>
+    private static DuckDB.NET.Data.DuckDBConnection DuckDb(string whole, bool readOnly)
+    {
+        string file = DatabaseKinds.FileOf(DatabaseKind.DuckDb, whole);
+        if (file.Length > 0 && !File.Exists(file))
+        {
+            throw new IOException($"No DuckDB database file {file}");
+        }
+        return new DuckDB.NET.Data.DuckDBConnection(readOnly && file.Length > 0 ? DatabaseKinds.With(whole, "ACCESS_MODE", "READ_ONLY") : whole);
+    }
+
     /// <summary>Marks each part of a connection string's secret parts, so no message says them.</summary>
     private static void MarkSecrets(string? secret)
     {
@@ -142,7 +169,8 @@ internal static class DatabaseClient
     internal static string Quote(DatabaseKind kind, string name) => SqlText.QuotedName(kind, name);
 
     internal static string Full(DatabaseKind kind, DatabaseTable table) =>
-        (table.Schema.Length > 0 ? Quote(kind, table.Schema) + "." : string.Empty) + Quote(kind, table.Name);
+        kind == DatabaseKind.DuckDb && table.Schema == DuckDbFiles.Schema ? DuckDbFiles.Read(table.Name)
+        : (table.Schema.Length > 0 ? Quote(kind, table.Schema) + "." : string.Empty) + Quote(kind, table.Name);
 
     internal static async Task<IReadOnlyList<DatabaseTable>> TablesAsync(DatabaseSource source, CancellationToken cancel)
     {
@@ -152,7 +180,10 @@ internal static class DatabaseClient
             DatabaseKind.Sqlite => "SELECT '', name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
             DatabaseKind.Postgres => "SELECT table_schema, table_name FROM information_schema.tables WHERE table_type='BASE TABLE' AND table_schema NOT IN ('pg_catalog','information_schema') ORDER BY 1,2",
             DatabaseKind.SqlServer => "SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' ORDER BY 1,2",
-            _ => "SELECT table_schema, table_name FROM information_schema.tables WHERE table_type='BASE TABLE' AND table_schema=DATABASE() ORDER BY 1,2",
+            DatabaseKind.MySql => "SELECT table_schema, table_name FROM information_schema.tables WHERE table_type='BASE TABLE' AND table_schema=DATABASE() ORDER BY 1,2",
+            DatabaseKind.DuckDb => "SELECT table_schema, table_name FROM information_schema.tables WHERE table_type='BASE TABLE' AND table_catalog=current_database() ORDER BY 1,2",
+            DatabaseKind.ClickHouse => "SELECT database, name FROM system.tables WHERE database=currentDatabase() AND engine NOT LIKE '%View' ORDER BY name",
+            _ => "SELECT table_schema, table_name FROM information_schema.tables WHERE table_type='BASE TABLE' AND table_schema<>'INFORMATION_SCHEMA' ORDER BY 1,2",
         };
         DatabaseRows rows = await ReadAsync(connection, sql, [], cancel, limit: 10000);
         return [.. rows.Rows.Select(r => new DatabaseTable((string)r[0]!, (string)r[1]!))];
@@ -161,6 +192,10 @@ internal static class DatabaseClient
     internal static async Task<DatabaseSchema> SchemaAsync(DatabaseSource source, DatabaseTable table, CancellationToken cancel)
     {
         await using DbConnection connection = await OpenAsync(source, cancel);
+        if (source.Kind is DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake)
+        {
+            return await AnalyticalSchemaAsync(connection, source.Kind, table, cancel);
+        }
         List<DatabaseColumn> columns = [];
         List<string> keys = [];
         List<DatabasePart> indexes = [];
@@ -229,6 +264,53 @@ internal static class DatabaseClient
         return new DatabaseSchema(table, columns, keys, indexes) { Triggers = triggers };
     }
 
+    /// <summary>A DuckDB, ClickHouse or Snowflake table's or view's columns, keys and indexes as its catalog gives them: a
+    /// folder's file's as DuckDB reads it; ClickHouse's keys its primary, sorting and partition keys, its indexes the ones
+    /// that skip data; Snowflake's none, as it enforces no key and holds no index.</summary>
+    private static async Task<DatabaseSchema> AnalyticalSchemaAsync(DbConnection connection, DatabaseKind kind, DatabaseTable table, CancellationToken cancel)
+    {
+        (string, object?)[] parameters = [("@schema", table.Schema), ("@table", table.Name)];
+        List<DatabaseColumn> columns = [];
+        List<string> keys = [];
+        List<DatabasePart> indexes = [];
+        if (kind == DatabaseKind.DuckDb && table.Schema == DuckDbFiles.Schema)
+        {
+            DatabaseRows described = await ReadAsync(connection, $"DESCRIBE SELECT * FROM {DuckDbFiles.Read(table.Name)}", [], cancel);
+            columns.AddRange(described.Rows.Select(r => new DatabaseColumn(Text(r[0]), Text(r[1]), Text(r[2]) != "NO", false, false)));
+            return new DatabaseSchema(table, columns, keys, indexes);
+        }
+        if (kind == DatabaseKind.ClickHouse)
+        {
+            DatabaseRows info = await ReadAsync(connection, "SELECT name, type, is_in_primary_key, default_kind FROM system.columns WHERE database=@schema AND table=@table ORDER BY position", parameters, cancel);
+            columns.AddRange(info.Rows.Select(r => new DatabaseColumn(Text(r[0]), Text(r[1]), Text(r[1]).StartsWith("Nullable(", StringComparison.Ordinal),
+                Convert.ToInt32(r[2], CultureInfo.InvariantCulture) != 0, Text(r[3]) is "MATERIALIZED" or "ALIAS")));
+            DatabaseRows told = await ReadAsync(connection, "SELECT primary_key, sorting_key, partition_key FROM system.tables WHERE database=@schema AND name=@table", parameters, cancel);
+            foreach (object?[] row in told.Rows)
+            {
+                keys.AddRange(new[] { ("PRIMARY KEY", Text(row[0])), ("ORDER BY", Text(row[1])), ("PARTITION BY", Text(row[2])) }.Where(k => k.Item2.Length > 0).Select(k => $"{k.Item1} · {k.Item2}"));
+            }
+            DatabaseRows skipping = await ReadAsync(connection, "SELECT name, type, expr FROM system.data_skipping_indices WHERE database=@schema AND table=@table ORDER BY name", parameters, cancel);
+            indexes.AddRange(skipping.Rows.Select(r => new DatabasePart(Text(r[0]), $"{Text(r[0])} · {Text(r[1])} · {Text(r[2])}")));
+            return new DatabaseSchema(table, columns, keys, indexes);
+        }
+        string catalog = kind == DatabaseKind.DuckDb ? " AND table_catalog=current_database()" : string.Empty;
+        DatabaseRows read = await ReadAsync(connection, $"SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema=@schema AND table_name=@table{catalog} ORDER BY ordinal_position", parameters, cancel);
+        HashSet<string> primary = [];
+        if (kind == DatabaseKind.DuckDb)
+        {
+            DatabaseRows constraints = await ReadAsync(connection, "SELECT constraint_type, array_to_string(constraint_column_names, ', ') FROM duckdb_constraints() "
+                + "WHERE database_name=current_database() AND schema_name=@schema AND table_name=@table AND constraint_type IN ('PRIMARY KEY', 'UNIQUE', 'FOREIGN KEY') ORDER BY 1", parameters, cancel);
+            keys.AddRange(constraints.Rows.Select(r => $"{Text(r[0])} · {Text(r[1])}"));
+            primary.UnionWith(constraints.Rows.Where(r => Text(r[0]) == "PRIMARY KEY").SelectMany(r => Text(r[1]).Split(", ")));
+            DatabaseRows indexed = await ReadAsync(connection, "SELECT index_name, sql FROM duckdb_indexes() WHERE database_name=current_database() AND schema_name=@schema AND table_name=@table ORDER BY 1", parameters, cancel);
+            indexes.AddRange(indexed.Rows.Select(r => new DatabasePart(Text(r[0]), $"{Text(r[0])} · {Text(r[1])}")));
+        }
+        columns.AddRange(read.Rows.Select(r => new DatabaseColumn(Text(r[0]), Text(r[1]), Text(r[2]) == "YES", primary.Contains(Text(r[0])), false)));
+        return new DatabaseSchema(table, columns, keys, indexes);
+
+        static string Text(object? value) => Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+    }
+
     internal static async Task<DatabaseRows> PageAsync(DatabaseSource source, DatabaseSchema schema, int offset, CancellationToken cancel, DatabaseFilter? filter = null,
         (string Column, bool Descending)? sort = null)
     {
@@ -269,6 +351,8 @@ internal static class DatabaseClient
             {
                 DatabaseKind.SqlServer => $"CONVERT(nvarchar(max), {column})",
                 DatabaseKind.MySql => $"CAST({column} AS CHAR)",
+                DatabaseKind.ClickHouse => $"toString({column})",
+                DatabaseKind.Snowflake => $"TO_VARCHAR({column})",
                 _ => $"CAST({column} AS TEXT)",
             };
             where = filter.Operator switch
@@ -288,7 +372,7 @@ internal static class DatabaseClient
     /// <summary>The databases of the connection's server; SQLite's main database alone.</summary>
     internal static async Task<IReadOnlyList<string>> DatabasesAsync(DatabaseSource source, CancellationToken cancel)
     {
-        if (source.Kind == DatabaseKind.Sqlite)
+        if (DatabaseKinds.IsFile(source.Kind))
         {
             return [source.Database];
         }
@@ -297,10 +381,13 @@ internal static class DatabaseClient
         {
             DatabaseKind.Postgres => "SELECT datname FROM pg_database WHERE NOT datistemplate AND datallowconn ORDER BY 1",
             DatabaseKind.SqlServer => "SELECT name FROM sys.databases WHERE HAS_DBACCESS(name)=1 ORDER BY name",
+            DatabaseKind.ClickHouse => "SELECT name FROM system.databases WHERE name NOT IN ('system','information_schema','INFORMATION_SCHEMA') ORDER BY name",
+            DatabaseKind.Snowflake => "SHOW TERSE DATABASES",
             _ => "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema','performance_schema','mysql','sys') ORDER BY 1",
         };
         DatabaseRows rows = await ReadAsync(connection, sql, [], cancel);
-        return [.. rows.Rows.Select(r => Convert.ToString(r[0], CultureInfo.InvariantCulture) ?? string.Empty)];
+        int named = source.Kind == DatabaseKind.Snowflake ? Math.Max(0, Array.FindIndex(rows.Columns, c => c.Equals("name", StringComparison.OrdinalIgnoreCase))) : 0;
+        return [.. rows.Rows.Select(r => Convert.ToString(r[named], CultureInfo.InvariantCulture) ?? string.Empty)];
     }
 
     /// <summary>A database's schemas (none of the system's) with the tables, views and routines each holds; MySQL's database is
@@ -328,6 +415,18 @@ internal static class DatabaseClient
                     "SELECT s.name FROM sys.schemas s WHERE s.name NOT IN ('sys','INFORMATION_SCHEMA','guest') AND s.name NOT LIKE 'db\\_%' ESCAPE '\\' ORDER BY 1",
                     "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE FROM INFORMATION_SCHEMA.TABLES ORDER BY 1,2",
                     "SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE FROM INFORMATION_SCHEMA.ROUTINES ORDER BY 1,2"),
+                DatabaseKind.DuckDb => (
+                    "SELECT schema_name FROM information_schema.schemata WHERE catalog_name=current_database() AND schema_name NOT IN ('information_schema','pg_catalog') ORDER BY 1",
+                    "SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_catalog=current_database() AND table_schema NOT IN ('information_schema','pg_catalog') ORDER BY 1,2",
+                    "SELECT schema_name, function_name, function_type FROM duckdb_functions() WHERE NOT internal AND database_name=current_database() ORDER BY 1,2"),
+                DatabaseKind.ClickHouse => (
+                    "SELECT currentDatabase()",
+                    "SELECT database, name, engine FROM system.tables WHERE database=currentDatabase() ORDER BY name",
+                    "SELECT currentDatabase(), name, 'function' FROM system.functions WHERE origin='SQLUserDefined' ORDER BY name"),
+                DatabaseKind.Snowflake => (
+                    "SELECT schema_name FROM information_schema.schemata WHERE schema_name<>'INFORMATION_SCHEMA' ORDER BY 1",
+                    "SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema<>'INFORMATION_SCHEMA' ORDER BY 1,2",
+                    "SELECT function_schema, function_name, 'function' FROM information_schema.functions UNION ALL SELECT procedure_schema, procedure_name, 'procedure' FROM information_schema.procedures ORDER BY 1,2"),
                 _ => (
                     "SELECT DATABASE()",
                     "SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema=DATABASE() ORDER BY 1,2",
@@ -345,6 +444,11 @@ internal static class DatabaseClient
                     (Convert.ToString(row[2], CultureInfo.InvariantCulture) ?? string.Empty).ToLowerInvariant()));
             }
         }
+        if (source.Kind == DatabaseKind.DuckDb && DuckDbFiles.Under(source.Folder) is { Count: > 0 } files)
+        {
+            schemas.Add(DuckDbFiles.Schema);
+            objects.AddRange(files.Select(f => new DatabaseObject(DuckDbFiles.Schema, f, DatabaseObjectKind.File)));
+        }
         return [.. schemas.Union(objects.Select(o => o.Schema)).Select(schema => (schema, (IReadOnlyList<DatabaseObject>)[.. objects.Where(o => o.Schema == schema)]))];
     }
 
@@ -357,7 +461,11 @@ internal static class DatabaseClient
             DatabaseKind.Sqlite => "SELECT '', m.name, p.name, p.type FROM sqlite_schema m JOIN pragma_table_info(m.name) p WHERE m.type IN ('table','view') AND m.name NOT LIKE 'sqlite_%' ORDER BY m.name, p.cid",
             DatabaseKind.Postgres => "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns WHERE table_schema NOT IN ('pg_catalog','information_schema') ORDER BY 1, 2, ordinal_position",
             DatabaseKind.SqlServer => "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS ORDER BY 1, 2, ORDINAL_POSITION",
-            _ => "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = DATABASE() ORDER BY 1, 2, ordinal_position",
+            DatabaseKind.MySql => "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = DATABASE() ORDER BY 1, 2, ordinal_position",
+            DatabaseKind.DuckDb => "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns WHERE table_catalog = current_database() "
+                + "AND table_schema NOT IN ('information_schema','pg_catalog') ORDER BY 1, 2, ordinal_position",
+            DatabaseKind.ClickHouse => "SELECT database, table, name, type FROM system.columns WHERE database = currentDatabase() ORDER BY 1, 2, position",
+            _ => "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns WHERE table_schema <> 'INFORMATION_SCHEMA' ORDER BY 1, 2, ordinal_position",
         };
         DatabaseRows rows = await ReadAsync(connection, sql, [], cancel, limit: 50000);
         return new SqlCatalog([.. rows.Rows.GroupBy(r => (Schema: Text(r[0]), Table: Text(r[1])))
@@ -508,6 +616,9 @@ internal static class DatabaseClient
         }
         return source.Kind switch
         {
+            DatabaseKind.DuckDb => SqlPlans.FromDuckDb(Said(0, rows.ColumnCount - 1)),
+            DatabaseKind.ClickHouse => SqlPlans.FromPostgres(string.Join('\n', Enumerable.Range(0, rows.RowCount).Select(r => Said(r, 0)))),
+            DatabaseKind.Snowflake => SqlPlans.FromSnowflake(Said(0, 0)),
             DatabaseKind.Postgres => SqlPlans.FromPostgres(Said(0, 0)),
             DatabaseKind.MySql => SqlPlans.FromMySql(Said(0, 0)),
             DatabaseKind.SqlServer => SqlPlans.FromSqlServer(Said(0, 0)),
@@ -553,6 +664,7 @@ internal static class DatabaseClient
             {
                 Written(command, $"@v{i}", given[i].Read, given[i].Text);
             }
+            Place(command);
             await command.ExecuteNonQueryAsync(cancel);
         }
         await transaction.CommitAsync(cancel);
@@ -587,6 +699,7 @@ internal static class DatabaseClient
             };
             await using DbCommand command = Command(locked);
             Keyed(command, key);
+            Place(command);
             DatabaseRows now;
             await using (DbDataReader reader = await command.ExecuteReaderAsync(cancel))
             {
@@ -613,6 +726,7 @@ internal static class DatabaseClient
                 Written(command, $"@v{i}", set[i].Read, set[i].Text);
             }
             Keyed(command, key);
+            Place(command);
             int affected = await command.ExecuteNonQueryAsync(cancel);
             if (affected != 1)
             {
@@ -658,10 +772,57 @@ internal static class DatabaseClient
         {
             Add(command, name, value);
         }
+        Place(command);
         using CancellationTokenRegistration interrupt = Interrupt(connection, cancel);
         await using DbDataReader reader = await command.ExecuteReaderAsync(cancel);
         return await RowsAsync(reader, limit, cancel);
     }
+
+    /// <summary>A command's @name parameters as its driver binds them: DuckDB's $name, ClickHouse's {name:Type} of the value's
+    /// type, Snowflake's ? in the order they stand; the others' as written.</summary>
+    internal static void Place(DbCommand command)
+    {
+        if (command.Connection is not (DuckDB.NET.Data.DuckDBConnection or ClickHouse.Driver.ADO.ClickHouseConnection or Snowflake.Data.Client.SnowflakeDbConnection)
+            || command.Parameters.Count == 0)
+        {
+            return;
+        }
+        Dictionary<string, object?> given = command.Parameters.Cast<DbParameter>().ToDictionary(p => p.ParameterName.TrimStart('@'), p => p.Value is DBNull ? null : p.Value, StringComparer.Ordinal);
+        command.Parameters.Clear();
+        List<(string Name, object? Value)> placed = [];
+        command.CommandText = Parameter().Replace(command.CommandText, match =>
+        {
+            string name = match.Groups[1].Value;
+            if (!given.TryGetValue(name, out object? value))
+            {
+                return match.Value;
+            }
+            switch (command.Connection)
+            {
+                case DuckDB.NET.Data.DuckDBConnection:
+                    placed.Add((name, value));
+                    return "$" + name;
+                case ClickHouse.Driver.ADO.ClickHouseConnection:
+                    placed.Add((name, value));
+                    string type = value switch { null => "Nullable(String)", bool => "Bool", int => "Int32", long => "Int64", double => "Float64", decimal => "Decimal(38, 10)", _ => "String" };
+                    return "{" + name + ":" + type + "}";
+                default:
+                    placed.Add(((placed.Count + 1).ToString(CultureInfo.InvariantCulture), value));
+                    return "?";
+            }
+        });
+        foreach ((string name, object? value) in placed.DistinctBy(p => p.Name))
+        {
+            DbParameter parameter = command.CreateParameter();
+            parameter.ParameterName = name;
+            parameter.Value = value ?? DBNull.Value;
+            parameter.DbType = value switch { int => DbType.Int32, long => DbType.Int64, double => DbType.Double, decimal => DbType.Decimal, bool => DbType.Boolean, _ => DbType.String };
+            command.Parameters.Add(parameter);
+        }
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"(?<![\w@])@(\w+)")]
+    private static partial System.Text.RegularExpressions.Regex Parameter();
 
     /// <summary>Closes a reader, whose driver reports the cancel of a result cut short as a failure of its own.</summary>
     private static async Task LetGoAsync(DbDataReader reader, bool cut)

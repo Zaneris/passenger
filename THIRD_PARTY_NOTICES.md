@@ -30,6 +30,19 @@ dbgshim's musl Linux natives are the container tools' (below), which the app nev
 | `MySqlConnector` | The Database window's MySQL and MariaDB provider | MIT | Copyright 2016–2026 Bradley Grainger |
 | `SSH.NET` | A database connection's SSH tunnel through a bastion | MIT | Copyright © Renci 2010-2026 |
 | `BouncyCastle.Cryptography` | SSH.NET's ciphers, keys and key exchange | MIT | Copyright © Legion of the Bouncy Castle Inc. 2000-2026 |
+| `DuckDB.NET.Data.Full`, `DuckDB.NET.Bindings.Full` | The Database window's DuckDB provider, with DuckDB's own native library for each system (libduckdb, MIT, Copyright 2018-2026 Stichting DuckDB Foundation) | MIT | Copyright © 2020 - 2026 Giorgi Dalakishvili |
+| `Apache.Arrow`, `Apache.Arrow.Scalars` | Arrow's columns, which the DuckDB and Snowflake providers read results through | Apache-2.0 | Copyright 2016-2025 The Apache Software Foundation |
+| `ClickHouse.Driver` | The Database window's ClickHouse provider | MIT | ClickHouse |
+| `NodaTime` | the ClickHouse provider's dates and times | Apache-2.0 | Jon Skeet |
+| `Microsoft.IO.RecyclableMemoryStream` | the ClickHouse provider's buffers | MIT | © Microsoft Corporation. All rights reserved. |
+| `Snowflake.Data` | The Database window's Snowflake provider | Apache-2.0 | Snowflake |
+| `AWSSDK.Core`, `AWSSDK.S3` | the Snowflake provider's stages on Amazon S3, which a query's large results and PUT and GET reach | Apache-2.0 | Amazon Web Services |
+| `Azure.Storage.Blobs`, `Azure.Storage.Common` | the Snowflake provider's stages on Azure | MIT | © Microsoft Corporation. All rights reserved. |
+| `Google.Cloud.Storage.V1`, `Google.Apis`, `Google.Apis.Auth`, `Google.Apis.Core`, `Google.Apis.Storage.v1` | the Snowflake provider's stages on Google Cloud | Apache-2.0 | Copyright 2021-2026 Google LLC |
+| `Google.Api.Gax`, `Google.Api.Gax.Rest` | Google Cloud Storage's client support | BSD-3-Clause | Copyright 2020 Google LLC |
+| `TimeZoneConverter` | the Snowflake provider's time zones | MIT | Matt Johnson-Pint |
+| `Tomlyn.Signed` | the Snowflake provider's connections.toml | BSD-2-Clause | Alexandre Mutel |
+| `Mono.Unix`, `System.Management`, `System.CodeDom`, `System.IO.Hashing` | the Snowflake and Google Cloud providers' file modes, machine details and hashes | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Data.SqlClient`, `Microsoft.Data.SqlClient.Extensions.Abstractions`, `Microsoft.Data.SqlClient.Internal.Logging`, `Microsoft.Data.SqlClient.SNI.runtime` | The Database window's SQL Server provider and its native transport | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Bcl.Cryptography`, `Microsoft.IdentityModel.JsonWebTokens`, `Microsoft.IdentityModel.Logging`, `Microsoft.IdentityModel.Protocols`, `Microsoft.IdentityModel.Protocols.OpenIdConnect`, `Microsoft.IdentityModel.Tokens`, `Microsoft.SqlServer.Server`, `System.IdentityModel.Tokens.Jwt`, `System.Threading.RateLimiting`, `System.Security.Cryptography.Pkcs` | SQL Server's authentication, cryptography and protocol dependencies | MIT | © Microsoft Corporation. All rights reserved. |
 | `Google.Protobuf` | Aspire resource service protocol messages | BSD-3-Clause | Copyright 2015, Google Inc. |

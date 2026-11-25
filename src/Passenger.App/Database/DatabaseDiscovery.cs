@@ -60,6 +60,17 @@ internal static class DatabaseDiscovery
                 }
             }
         }
+        // The folder's own DuckDB files, and its Parquet and CSV files, which a DuckDB in memory reads where none is there.
+        if (session.Folder is { } open)
+        {
+            (IReadOnlyList<string> databases, bool files) = await BackgroundWork.Run(() => DuckDbFiles.In(open), cancel);
+            found.AddRange(databases.Select(d => new DatabaseSource(Path.GetFileName(d), DatabaseKind.DuckDb, open) { ConnectionString = $"Data Source={d}", Found = "found in the folder" })
+                .Where(d => !found.Any(s => s.Kind == d.Kind && s.ConnectionString == d.ConnectionString)));
+            if (files && !found.Any(s => s.Kind == DatabaseKind.DuckDb))
+            {
+                found.Add(new DatabaseSource(DuckDbFiles.Schema, DatabaseKind.DuckDb, open) { ConnectionString = "Data Source=:memory:", Found = "found in the folder's Parquet and CSV files" });
+            }
+        }
         cancel.ThrowIfCancellationRequested();
         return found;
     }
@@ -128,10 +139,14 @@ internal static class DatabaseDiscovery
         string[] references = [.. packages];
         bool sqlServer = parsed.ContainsKey("Initial Catalog") || parsed.ContainsKey("Integrated Security") || parsed.ContainsKey("Trusted_Connection")
             || references.Any(p => p.Contains("SqlClient", StringComparison.OrdinalIgnoreCase) || p.Contains("SqlServer", StringComparison.OrdinalIgnoreCase));
-        DatabaseKind? kind = parsed.ContainsKey("Host") ? DatabaseKind.Postgres
+        bool clickHouse = references.Any(p => p.Contains("ClickHouse", StringComparison.OrdinalIgnoreCase));
+        string? file = DatabaseKinds.Value(value, "Data Source", "DataSource");
+        bool duck = references.Any(p => p.Contains("DuckDB", StringComparison.OrdinalIgnoreCase)) || file is not null && PathNames.HasExtension(file, [".duckdb", ".ddb"]);
+        DatabaseKind? kind = parsed.ContainsKey("account") ? DatabaseKind.Snowflake
+            : parsed.ContainsKey("Host") ? clickHouse ? DatabaseKind.ClickHouse : DatabaseKind.Postgres
             : parsed.ContainsKey("Server") ? parsed.ContainsKey("Port") || references.Any(p => p.Contains("MySql", StringComparison.OrdinalIgnoreCase)) ? DatabaseKind.MySql : DatabaseKind.SqlServer
             : parsed.ContainsKey("Data Source") || parsed.ContainsKey("DataSource") || parsed.ContainsKey("Filename")
-                ? sqlServer ? DatabaseKind.SqlServer : DatabaseKind.Sqlite
+                ? sqlServer ? DatabaseKind.SqlServer : duck ? DatabaseKind.DuckDb : DatabaseKind.Sqlite
             : null;
         if (kind == DatabaseKind.Sqlite)
         {
@@ -142,6 +157,10 @@ internal static class DatabaseDiscovery
             }
             sqlite.DataSource = PathNames.Canonical(Path.GetFullPath(sqlite.DataSource, folder));
             value = sqlite.ConnectionString;
+        }
+        else if (kind == DatabaseKind.DuckDb && file is { Length: > 0 } && file != ":memory:")
+        {
+            value = DatabaseKinds.With(value, "Data Source", PathNames.Canonical(Path.GetFullPath(file, folder)));
         }
         return kind is { } provider ? new DatabaseSource(name, provider, folder) { ConnectionString = value, Found = found } : null;
     }

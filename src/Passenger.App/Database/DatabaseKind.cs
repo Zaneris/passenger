@@ -6,4 +6,7 @@ public enum DatabaseKind
     Postgres,
     SqlServer,
     MySql,
+    DuckDb,
+    ClickHouse,
+    Snowflake,
 }

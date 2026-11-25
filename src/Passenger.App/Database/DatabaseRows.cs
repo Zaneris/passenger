@@ -56,23 +56,29 @@ public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folde
     /// <summary>What its history is kept by: a found connection's <see cref="FoundKey"/>, one made by hand its id.</summary>
     public string HistoryKey => Found is null ? Account : FoundKey;
 
-    /// <summary>The database it opens in: its connection string's, or for SQLite its file's name.</summary>
+    /// <summary>The database it opens in: its connection string's, for a file of its own the file's name (DuckDB's in
+    /// memory "memory"), for ClickHouse's none named its "default".</summary>
     public string Database => Kind switch
     {
         DatabaseKind.Sqlite => Path.GetFileName(new SqliteConnectionStringBuilder(ConnectionString).DataSource),
         DatabaseKind.Postgres => new NpgsqlConnectionStringBuilder(ConnectionString).Database ?? string.Empty,
         DatabaseKind.SqlServer => new SqlConnectionStringBuilder(ConnectionString).InitialCatalog,
-        _ => new MySqlConnectionStringBuilder(ConnectionString).Database,
+        DatabaseKind.MySql => new MySqlConnectionStringBuilder(ConnectionString).Database,
+        DatabaseKind.DuckDb => DatabaseKinds.FileOf(Kind, ConnectionString) is { Length: > 0 } file ? Path.GetFileName(file) : "memory",
+        DatabaseKind.ClickHouse => DatabaseKinds.Value(ConnectionString, "Database") ?? "default",
+        _ => DatabaseKinds.Value(ConnectionString, "db") ?? string.Empty,
     };
 
     /// <summary>The same connection opening another database of its server.</summary>
-    public DatabaseSource In(string database) => database == Database || Kind == DatabaseKind.Sqlite ? this : this with
+    public DatabaseSource In(string database) => database == Database || DatabaseKinds.IsFile(Kind) ? this : this with
     {
         ConnectionString = Kind switch
         {
             DatabaseKind.Postgres => new NpgsqlConnectionStringBuilder(ConnectionString) { Database = database }.ConnectionString,
             DatabaseKind.SqlServer => new SqlConnectionStringBuilder(ConnectionString) { InitialCatalog = database }.ConnectionString,
-            _ => new MySqlConnectionStringBuilder(ConnectionString) { Database = database }.ConnectionString,
+            DatabaseKind.MySql => new MySqlConnectionStringBuilder(ConnectionString) { Database = database }.ConnectionString,
+            DatabaseKind.ClickHouse => DatabaseKinds.With(ConnectionString, "Database", database),
+            _ => DatabaseKinds.With(ConnectionString, "db", database),
         },
     };
 
@@ -114,6 +120,7 @@ public enum DatabaseObjectKind
     Trigger,
     Index,
     Column,
+    File,
 }
 
 /// <summary>A table, view or routine of a schema; a routine's detail says whether it is a function or a procedure.</summary>

@@ -84,6 +84,7 @@ public sealed class DatabaseTableTab : IDatabaseTab
 
     /// <summary>Why the table takes no change: its connection marked read-only, or no primary key to find a row again by.</summary>
     public string? WhyNotEdited => Now.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(Now.Name)
+        : !DatabaseKinds.EditsRows(Now.Kind) ? Refusals.NoRowEdits(DatabaseKinds.Title(Now.Kind))
         : schema is not null && !schema.Columns.Any(c => c.Primary) ? Refusals.NoPrimaryKey(Table.ToString()) : null;
 
     private string? Busy => operation is not null || !Valid ? Refusals.DatabaseBusy : null;
@@ -93,7 +94,8 @@ public sealed class DatabaseTableTab : IDatabaseTab
     public string? WhyNotAddRow => Busy ?? WhyNotEdited ?? (shown is null ? Refusals.DatabaseBusy : null);
     public string? WhyNotDeleteRows => Busy ?? WhyNotEdited ?? (ChosenRows().Count == 0 ? Refusals.NoRowChosen : null);
     /// <summary>Why a file's rows may not be imported into the table: its connection marked read-only, or its columns not read yet.</summary>
-    public string? WhyNotImport => Now.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(Now.Name) : schema is null ? Refusals.DatabaseBusy : null;
+    public string? WhyNotImport => Now.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(Now.Name)
+        : !DatabaseKinds.EditsRows(Now.Kind) ? Refusals.NoRowEdits(DatabaseKinds.Title(Now.Kind)) : schema is null ? Refusals.DatabaseBusy : null;
 
     /// <summary>The table's columns as last read, null until they are.</summary>
     public DatabaseSchema? Schema => schema;

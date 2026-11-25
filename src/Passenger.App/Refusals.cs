@@ -671,6 +671,15 @@ public static class Refusals
     /// <summary>A database action while the Database window reads a connection.</summary>
     public const string DatabaseBusy = "A database operation is under way";
 
+    /// <summary>A table's changes, or an import, on a database that writes no row by its key.</summary>
+    public static string NoRowEdits(string kind) => $"{kind} changes rows by statements, not one by one: change them in a SQL console";
+
+    /// <summary>Manual commit on a database whose statements each stand alone.</summary>
+    public static string NoTransactions(string kind) => $"{kind} runs each statement alone, with no transaction to commit or roll back";
+
+    /// <summary>A schema diagram or comparison of a database whose keys and constraints these read in no way of its own.</summary>
+    public static string NoSchemaReads(string kind) => $"Schema diagrams and comparisons read SQLite, PostgreSQL, SQL Server and MySQL, not {kind}";
+
     /// <summary>A statement, or a table's changes, that would change data or schema on a connection marked read-only.</summary>
     public static string ReadOnlyConnection(string connection) => $"{connection} is marked read-only: nothing that changes its data or schema runs there";
 

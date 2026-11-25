@@ -235,7 +235,9 @@ public partial class MainWindow
 
         string? WhyNotObject() => databaseExplorer?.Chosen is not { Target: not null } chosen ? Refusals.NoDatabaseObject : WhyNotOpened(chosen.Source) ?? PersonsOwn();
 
-        string? WhyNotSchema() => databaseExplorer?.Chosen is not { Kind: not DatabaseNodeKind.Note } chosen ? Refusals.NoDatabaseConnection : WhyNotOpened(chosen.Source) ?? PersonsOwn();
+        string? WhyNotSchema() => databaseExplorer?.Chosen is not { Kind: not DatabaseNodeKind.Note } chosen ? Refusals.NoDatabaseConnection
+            : chosen.Source.Kind is DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake ? Refusals.NoSchemaReads(DatabaseKinds.Title(chosen.Source.Kind))
+            : WhyNotOpened(chosen.Source) ?? PersonsOwn();
 
         string? PersonsOwn() => AgentsOwn || Mcp.AgentCall.Current is not null ? Refusals.AsksThePerson : null;
     }
@@ -398,10 +400,11 @@ public partial class MainWindow
         {
             return;
         }
-        string elsewhere = within == source.Database || source.Kind == DatabaseKind.Sqlite ? string.Empty : source.Kind switch
+        string elsewhere = within == source.Database || DatabaseKinds.IsFile(source.Kind) ? string.Empty : source.Kind switch
         {
             DatabaseKind.SqlServer => $"USE {DatabaseClient.Quote(source.Kind, within)}\nGO\n",
-            DatabaseKind.MySql => $"USE {DatabaseClient.Quote(source.Kind, within)};\n",
+            DatabaseKind.MySql or DatabaseKind.ClickHouse => $"USE {DatabaseClient.Quote(source.Kind, within)};\n",
+            DatabaseKind.Snowflake => $"USE DATABASE {DatabaseClient.Quote(source.Kind, within)};\n",
             _ => $"-- Of database {within}, which this console's connection does not open\n",
         };
         WriteIntoConsole(shown, elsewhere + text);
@@ -414,9 +417,15 @@ public partial class MainWindow
         string within = node.Database is { Length: > 0 } named ? named : node.Source.Database;
         string schema = node.Source.Kind switch
         {
-            DatabaseKind.MySql => within,
+            DatabaseKind.MySql or DatabaseKind.ClickHouse => within,
             DatabaseKind.Sqlite => string.Empty,
-            _ => node.Schema is { Length: > 0 } own ? own : node.Source.Kind == DatabaseKind.SqlServer ? "dbo" : "public",
+            _ => node.Schema is { Length: > 0 } own ? own : node.Source.Kind switch
+            {
+                DatabaseKind.SqlServer => "dbo",
+                DatabaseKind.DuckDb => "main",
+                DatabaseKind.Snowflake => "PUBLIC",
+                _ => "public",
+            },
         };
         return (within, schema);
     }

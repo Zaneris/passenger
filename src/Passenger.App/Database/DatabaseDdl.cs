@@ -99,6 +99,8 @@ internal static class DatabaseDdl
                 {
                     DatabaseKind.SqlServer => $"ALTER TABLE {name} ADD {column} nvarchar(100) NULL{end}",
                     DatabaseKind.MySql => $"ALTER TABLE {name} ADD COLUMN {column} varchar(100) NULL{end}",
+                    DatabaseKind.ClickHouse => $"ALTER TABLE {name} ADD COLUMN {column} Nullable(String){end}",
+                    DatabaseKind.DuckDb or DatabaseKind.Snowflake => $"ALTER TABLE {name} ADD COLUMN {column} varchar{end}",
                     _ => $"ALTER TABLE {name} ADD COLUMN {column} text{end}",
                 };
             case DdlScript.Alter when target.Kind == DatabaseObjectKind.Column:
@@ -106,8 +108,9 @@ internal static class DatabaseDdl
                 string quoted = DatabaseClient.Quote(kind, target.Name);
                 return kind switch
                 {
-                    DatabaseKind.Postgres => $"ALTER TABLE {table} ALTER COLUMN {quoted} TYPE {target.Detail}{end}",
-                    DatabaseKind.MySql => $"ALTER TABLE {table} MODIFY COLUMN {quoted} {target.Detail}{end}",
+                    DatabaseKind.Postgres or DatabaseKind.DuckDb => $"ALTER TABLE {table} ALTER COLUMN {quoted} TYPE {target.Detail}{end}",
+                    DatabaseKind.MySql or DatabaseKind.ClickHouse => $"ALTER TABLE {table} MODIFY COLUMN {quoted} {target.Detail}{end}",
+                    DatabaseKind.Snowflake => $"ALTER TABLE {table} ALTER COLUMN {quoted} SET DATA TYPE {target.Detail}{end}",
                     DatabaseKind.SqlServer => $"ALTER TABLE {table} ALTER COLUMN {quoted} {target.Detail}{end}",
                     _ => $"ALTER TABLE {table} RENAME COLUMN {quoted} TO {quoted}{end}",
                 };
@@ -137,8 +140,9 @@ internal static class DatabaseDdl
             DatabaseObjectKind.Trigger => kind == DatabaseKind.Postgres ? $"DROP TRIGGER {own} ON {table}" : kind == DatabaseKind.Sqlite ? $"DROP TRIGGER {own}" : $"DROP TRIGGER {name}",
             DatabaseObjectKind.Index => kind switch
             {
-                DatabaseKind.Postgres => $"DROP INDEX {name}",
+                DatabaseKind.Postgres or DatabaseKind.DuckDb => $"DROP INDEX {name}",
                 DatabaseKind.Sqlite => $"DROP INDEX {own}",
+                DatabaseKind.ClickHouse => $"ALTER TABLE {table} DROP INDEX {own}",
                 _ => $"DROP INDEX {own} ON {table}",
             },
             _ => $"ALTER TABLE {table} DROP COLUMN {own}",
@@ -152,7 +156,8 @@ internal static class DatabaseDdl
         (DatabaseKind.SqlServer, DatabaseObjectKind.View or DatabaseObjectKind.Routine or DatabaseObjectKind.Trigger) => "OR ALTER",
         (DatabaseKind.Postgres, DatabaseObjectKind.View or DatabaseObjectKind.Trigger) => "OR REPLACE",
         (DatabaseKind.Postgres, DatabaseObjectKind.Routine) => string.Empty,
-        (DatabaseKind.MySql, DatabaseObjectKind.View) => "OR REPLACE",
+        (DatabaseKind.MySql or DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake, DatabaseObjectKind.View) => "OR REPLACE",
+        (DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake, DatabaseObjectKind.Routine) => "OR REPLACE",
         _ => null,
     };
 
@@ -184,7 +189,10 @@ internal static class DatabaseDdl
             DatabaseKind.Sqlite => await SqliteAsync(connection, target, cancel),
             DatabaseKind.Postgres => await PostgresAsync(connection, target, cancel),
             DatabaseKind.MySql => await MySqlAsync(connection, target, cancel),
-            _ => await SqlServerAsync(connection, target, cancel),
+            DatabaseKind.SqlServer => await SqlServerAsync(connection, target, cancel),
+            DatabaseKind.DuckDb => await DuckDbAsync(connection, target, cancel),
+            DatabaseKind.ClickHouse => await ClickHouseAsync(connection, target, cancel),
+            _ => await SnowflakeAsync(connection, target, cancel),
         };
         if (parts.Count == 0)
         {
@@ -221,6 +229,43 @@ internal static class DatabaseDdl
         }
         return parts;
     }
+
+    /// <summary>DuckDB's own text of a table (with its indexes after it), a view, an index or a macro; a folder's file has none.</summary>
+    private static async Task<List<string>> DuckDbAsync(DbConnection connection, DatabaseObjectRef target, CancellationToken cancel)
+    {
+        (string, object?)[] named = [("@schema", target.Schema), ("@name", target.Name)];
+        const string Here = "database_name=current_database() AND schema_name=@schema";
+        List<string> parts = target.Kind switch
+        {
+            DatabaseObjectKind.Table => Texts(await Read(connection, $"SELECT sql FROM duckdb_tables() WHERE {Here} AND table_name=@name", named, cancel)),
+            DatabaseObjectKind.View => Texts(await Read(connection, $"SELECT sql FROM duckdb_views() WHERE {Here} AND view_name=@name", named, cancel)),
+            DatabaseObjectKind.Index => Texts(await Read(connection, $"SELECT sql FROM duckdb_indexes() WHERE {Here} AND index_name=@name", named, cancel)),
+            DatabaseObjectKind.Routine => [.. (await Read(connection, $"SELECT parameters, macro_definition FROM duckdb_functions() WHERE {Here} AND function_name=@name AND NOT internal", named, cancel))
+                .Rows.Select(r => $"CREATE MACRO {Named(DatabaseKind.DuckDb, target)}({string.Join(", ", r[0] as System.Collections.IEnumerable is { } list ? list.Cast<object>() : [])}) AS {Text(r[1])}")],
+            _ => [],
+        };
+        if (target.Kind == DatabaseObjectKind.Table && parts.Count > 0)
+        {
+            parts.AddRange(Texts(await Read(connection, $"SELECT sql FROM duckdb_indexes() WHERE {Here} AND table_name=@name AND sql IS NOT NULL ORDER BY index_name", named, cancel)));
+        }
+        return parts;
+    }
+
+    /// <summary>ClickHouse's own text of a table or view (SHOW CREATE TABLE), or a function of SQL.</summary>
+    private static async Task<List<string>> ClickHouseAsync(DbConnection connection, DatabaseObjectRef target, CancellationToken cancel) => target.Kind switch
+    {
+        DatabaseObjectKind.Table or DatabaseObjectKind.View => Texts(await Read(connection, $"SHOW CREATE TABLE {Named(DatabaseKind.ClickHouse, target)}", [], cancel)),
+        DatabaseObjectKind.Routine => Texts(await Read(connection, $"SHOW CREATE FUNCTION {DatabaseClient.Quote(DatabaseKind.ClickHouse, target.Name)}", [], cancel)),
+        _ => [],
+    };
+
+    /// <summary>Snowflake's own text of a table or view (GET_DDL).</summary>
+    private static async Task<List<string>> SnowflakeAsync(DbConnection connection, DatabaseObjectRef target, CancellationToken cancel) => target.Kind switch
+    {
+        DatabaseObjectKind.Table or DatabaseObjectKind.View => Texts(await Read(connection, "SELECT GET_DDL(@type, @full)",
+            [("@type", target.Kind == DatabaseObjectKind.View ? "VIEW" : "TABLE"), ("@full", Named(DatabaseKind.Snowflake, target))], cancel)),
+        _ => [],
+    };
 
     private static async Task<List<string>> PostgresAsync(DbConnection connection, DatabaseObjectRef target, CancellationToken cancel)
     {

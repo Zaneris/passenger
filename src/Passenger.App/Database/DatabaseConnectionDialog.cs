@@ -20,7 +20,7 @@ namespace Passenger.App.Database;
 /// (<see cref="SshTunnels"/>).</summary>
 public sealed class DatabaseConnectionDialog : IdeWindow
 {
-    private readonly FormDropDown provider = new() { Name = "DatabaseProvider", ItemsSource = new[] { "SQLite", "PostgreSQL", "SQL Server", "MySQL / MariaDB" }, SelectedIndex = 1 };
+    private readonly FormDropDown provider = new() { Name = "DatabaseProvider", ItemsSource = DatabaseKinds.Offered, SelectedIndex = 1 };
     private readonly TextBox name = new() { Name = "DatabaseConnectionName", PlaceholderText = "Local shop" };
     private readonly TextBox host = new() { Name = "DatabaseHost", Text = "localhost" };
     private readonly NumericUpDown port = new() { Name = "DatabasePort", Minimum = 1, Maximum = 65535, Value = 5432, FormatString = "0" };
@@ -71,7 +71,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         own.Add(Row(fields, "Provider", provider));
         Grid databaseRow = Row(fields, "Database", database, out TextBlock databaseLabel);
         own.Add(databaseRow);
-        Grid hostRow = Row(fields, "Host", host);
+        Grid hostRow = Row(fields, "Host", host, out TextBlock hostLabel);
         Grid portRow = Row(fields, "Port", port);
         Grid userRow = Row(fields, "User", user);
         Grid passwordRow = Row(fields, "Password", password);
@@ -139,6 +139,12 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                     sqlite.DataSource = PathNames.Canonical(Path.GetFullPath(sqlite.DataSource, folder));
                     written = sqlite.ConnectionString;
                 }
+                else if (kind == DatabaseKind.DuckDb)
+                {
+                    // None named is a database in memory, which reads the folder's files alone.
+                    string file = DatabaseKinds.FileOf(kind, written);
+                    written = DatabaseKinds.With(written, "Data Source", file.Length == 0 ? ":memory:" : PathNames.Canonical(Path.GetFullPath(file, folder)));
+                }
                 else if (sslChosen)
                 {
                     written = DatabaseSsl.With(kind, written, chosen, keyPassword);
@@ -162,7 +168,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             {
                 return;
             }
-            if (tunnel.IsChecked != true || made.Kind == DatabaseKind.Sqlite)
+            if (tunnel.IsChecked != true || !Tunnels(made.Kind))
             {
                 Close(made with { Tunnel = null });
                 return;
@@ -267,6 +273,18 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                 case DatabaseKind.Sqlite:
                     database.Text = new SqliteConnectionStringBuilder(initial.ConnectionString).DataSource;
                     break;
+                case DatabaseKind.DuckDb:
+                    database.Text = DatabaseKinds.FileOf(initial.Kind, initial.ConnectionString);
+                    break;
+                case DatabaseKind.ClickHouse:
+                    (string clickHost, int clickPort) = DatabaseKinds.Endpoint(initial.Kind, initial.ConnectionString);
+                    host.Text = clickHost; port.Value = clickPort; database.Text = DatabaseKinds.Value(initial.ConnectionString, "Database");
+                    user.Text = DatabaseKinds.Value(initial.ConnectionString, "Username", "User"); password.Text = DatabaseKinds.Value(initial.ConnectionString, "Password");
+                    break;
+                case DatabaseKind.Snowflake:
+                    host.Text = DatabaseKinds.Value(initial.ConnectionString, "account"); database.Text = DatabaseKinds.Value(initial.ConnectionString, "db");
+                    user.Text = DatabaseKinds.Value(initial.ConnectionString, "user"); password.Text = DatabaseKinds.Value(initial.ConnectionString, "password");
+                    break;
                 case DatabaseKind.Postgres:
                     NpgsqlConnectionStringBuilder pg = new(initial.ConnectionString);
                     host.Text = pg.Host; port.Value = pg.Port; database.Text = pg.Database; user.Text = pg.Username; password.Text = pg.Password;
@@ -292,7 +310,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
 
         void ShowSsl()
         {
-            bool remote = provider.SelectedIndex != (int)DatabaseKind.Sqlite;
+            bool remote = DatabaseSsl.Offered((DatabaseKind)provider.SelectedIndex);
             certificateRow.IsVisible = remote && ssl.SelectedIndex >= (int)SslChoice.VerifyAuthority;
             foreach (Grid row in client)
             {
@@ -312,21 +330,28 @@ public sealed class DatabaseConnectionDialog : IdeWindow
 
         void ShowProvider()
         {
-            bool remote = provider.SelectedIndex != (int)DatabaseKind.Sqlite;
-            sslFold.Opener.IsVisible = remote;
-            tunnelFold.Opener.IsVisible = remote;
-            sslFold.IsOpen &= remote;
-            tunnelFold.IsOpen &= remote;
-            certificateLabel.Text = provider.SelectedIndex == (int)DatabaseKind.SqlServer ? "Server certificate" : "Certificate authority";
+            DatabaseKind kind = (DatabaseKind)provider.SelectedIndex;
+            bool remote = !DatabaseKinds.IsFile(kind);
+            sslFold.Opener.IsVisible = DatabaseSsl.Offered(kind);
+            tunnelFold.Opener.IsVisible = Tunnels(kind);
+            sslFold.IsOpen &= DatabaseSsl.Offered(kind);
+            tunnelFold.IsOpen &= Tunnels(kind);
+            certificateLabel.Text = kind == DatabaseKind.SqlServer ? "Server certificate" : "Certificate authority";
             ShowSsl();
             ShowTunnel();
             foreach (Grid row in (Grid[])[hostRow, portRow, userRow, passwordRow])
             {
-                row.IsVisible = remote && !foundOnly;
+                row.IsVisible = remote && !foundOnly && (row != portRow || kind != DatabaseKind.Snowflake);
             }
+            hostLabel.Text = kind == DatabaseKind.Snowflake ? "Account" : "Host";
+            // A server's usual host is this machine, an account never.
+            host.Text = kind == DatabaseKind.Snowflake && host.Text == "localhost" ? string.Empty
+                : kind != DatabaseKind.Snowflake && string.IsNullOrEmpty(host.Text) && initial is null ? "localhost" : host.Text;
+            host.PlaceholderText = kind == DatabaseKind.Snowflake ? "xy12345.eu-west-1" : null;
             databaseLabel.Text = remote ? "Database" : "Database file";
-            database.PlaceholderText = remote ? "shop" : "Full path, or a path relative to the open folder";
-            port.Value = provider.SelectedIndex switch { (int)DatabaseKind.Postgres => 5432, (int)DatabaseKind.SqlServer => 1433, _ => 3306 };
+            database.PlaceholderText = remote ? "shop" : kind == DatabaseKind.DuckDb ? "A path from the open folder, or none for its files in memory"
+                : "Full path, or a path relative to the open folder";
+            port.Value = DatabaseKinds.Port(kind);
             integratedRow.IsVisible = provider.SelectedIndex == (int)DatabaseKind.SqlServer && !foundOnly;
             ShowAuthentication();
         }
@@ -376,22 +401,27 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         DatabaseKind.Sqlite => Path.GetFileName(new SqliteConnectionStringBuilder(written).DataSource),
         DatabaseKind.Postgres => $"{new NpgsqlConnectionStringBuilder(written).Database} at {new NpgsqlConnectionStringBuilder(written).Host}",
         DatabaseKind.SqlServer => $"{new SqlConnectionStringBuilder(written).InitialCatalog} at {new SqlConnectionStringBuilder(written).DataSource}",
-        _ => $"{new MySqlConnectionStringBuilder(written).Database} at {new MySqlConnectionStringBuilder(written).Server}",
+        DatabaseKind.MySql => $"{new MySqlConnectionStringBuilder(written).Database} at {new MySqlConnectionStringBuilder(written).Server}",
+        DatabaseKind.DuckDb => DatabaseKinds.FileOf(kind, written) is { Length: > 0 } file ? Path.GetFileName(file) : "DuckDB in memory",
+        DatabaseKind.ClickHouse => $"{DatabaseKinds.Value(written, "Database") ?? "default"} at {DatabaseKinds.Endpoint(kind, written).Host}",
+        _ => $"{DatabaseKinds.Value(written, "db")} at {DatabaseKinds.Value(written, "account")}",
     };
+
+    /// <summary>Whether the kind's connection may go through an SSH tunnel: a server reached at a host and port, but
+    /// Snowflake's, whose service is reached by its account's name alone.</summary>
+    private static bool Tunnels(DatabaseKind kind) => !DatabaseKinds.IsFile(kind) && kind != DatabaseKind.Snowflake;
 
     private string Build(DatabaseKind kind)
     {
         if (!string.IsNullOrWhiteSpace(connection.Text))
         {
-            return kind switch
-            {
-                DatabaseKind.Sqlite => new SqliteConnectionStringBuilder(connection.Text).ConnectionString,
-                DatabaseKind.Postgres => new NpgsqlConnectionStringBuilder(connection.Text).ConnectionString,
-                DatabaseKind.SqlServer => new SqlConnectionStringBuilder(connection.Text).ConnectionString,
-                _ => new MySqlConnectionStringBuilder(connection.Text).ConnectionString,
-            };
+            return DatabaseKinds.Builder(kind, connection.Text).ConnectionString;
         }
-        if (kind != DatabaseKind.Sqlite && (string.IsNullOrWhiteSpace(host.Text) || string.IsNullOrWhiteSpace(database.Text)))
+        if (kind == DatabaseKind.Snowflake && string.IsNullOrWhiteSpace(host.Text))
+        {
+            throw new ArgumentException("Enter the account");
+        }
+        if (!DatabaseKinds.IsFile(kind) && kind != DatabaseKind.Snowflake && (string.IsNullOrWhiteSpace(host.Text) || string.IsNullOrWhiteSpace(database.Text)))
         {
             throw new ArgumentException("Enter the host and database name");
         }
@@ -410,8 +440,15 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                 DataSource = SqlAddress(host.Text!.Trim(), number), InitialCatalog = database.Text!.Trim(), IntegratedSecurity = integrated.IsChecked == true,
                 UserID = integrated.IsChecked == true ? string.Empty : user.Text ?? string.Empty, Password = integrated.IsChecked == true ? string.Empty : password.Text ?? string.Empty,
             }.ConnectionString,
-            _ => new MySqlConnectionStringBuilder(baseline) { Server = host.Text!.Trim(), Port = (uint)number, Database = database.Text!.Trim(), UserID = user.Text ?? string.Empty, Password = password.Text ?? string.Empty }.ConnectionString,
+            DatabaseKind.MySql => new MySqlConnectionStringBuilder(baseline) { Server = host.Text!.Trim(), Port = (uint)number, Database = database.Text!.Trim(), UserID = user.Text ?? string.Empty, Password = password.Text ?? string.Empty }.ConnectionString,
+            DatabaseKind.DuckDb => DatabaseKinds.With(baseline, "Data Source", database.Text?.Trim() ?? string.Empty),
+            DatabaseKind.ClickHouse => Written(baseline, ("Host", host.Text!.Trim()), ("Port", number.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                ("Database", database.Text!.Trim()), ("Username", user.Text ?? string.Empty), ("Password", password.Text ?? string.Empty)),
+            _ => Written(baseline, ("account", host.Text!.Trim()), ("db", database.Text?.Trim() ?? string.Empty), ("user", user.Text ?? string.Empty), ("password", password.Text ?? string.Empty)),
         };
+
+        static string Written(string connection, params (string Key, string Value)[] values) =>
+            values.Aggregate(connection, (written, value) => DatabaseKinds.With(written, value.Key, value.Value));
     }
 
     private string SqlAddress(string written, int number)
