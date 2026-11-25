@@ -64,6 +64,9 @@ public abstract class Table
     /// <summary>The table as its file has it, whatever order it is shown in.</summary>
     public virtual Table Unsorted => this;
 
+    /// <summary>Whether a cell stands for a field its row lacks (a document's), drawn muted apart from any value, null too.</summary>
+    public virtual bool IsAbsent(int row, int column) => false;
+
     /// <summary>The column its rows are sorted by and which way; null in the file's own order.</summary>
     public virtual (int Column, bool Descending)? Sort => null;
 

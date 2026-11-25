@@ -189,7 +189,7 @@ public sealed class DatabaseServersTests
                 Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == DatabaseNodeKind.View && r.Title == "cheap");
 
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
-                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console is not null, "the console with its results under it");
                 window.KeyTextInput("SELECT name FROM products ORDER BY id;");
                 Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
@@ -396,7 +396,7 @@ public sealed class DatabaseServersTests
                 Assert.StartsWith("SHA256:", Assert.Single(direct.Tunnel!.HostKeys).Fingerprint, StringComparison.Ordinal);
                 Assert.Equal(SshPassword, SystemCredentials.Read(DatabaseController.CredentialService, direct.TunnelAccount));
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == direct.Id));
-                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is { } opened && opened != console, "a console of the connection through the bastion");
                 SqlConsole through = window.EditorArea.ActiveGroup.Console!.Console!;
                 Replace(window, kind switch
@@ -448,7 +448,7 @@ public sealed class DatabaseServersTests
                 Assert.Equal(["bastion"], behind.Tunnel!.HostKeys.Select(k => k.Host));
                 Assert.Equal(written, File.ReadAllText(Path.Combine(folder, "appsettings.json")));
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Behind"));
-                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is { } opened && opened != console && opened != through, "a console of the found connection");
                 SqlConsole jumped = window.EditorArea.ActiveGroup.Console!.Console!;
                 Replace(window, kind switch
@@ -484,7 +484,7 @@ public sealed class DatabaseServersTests
                 Ui.ClickButton(trust, "Trust");
                 Ui.WaitFor(() => !dialog.IsVisible, () => Field<TextBlock>("DatabaseConnectionError").Text ?? "the proxied connection kept", TimeSpan.FromMinutes(1));
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Proxied"));
-                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is { } opened && opened != jumped && opened != through && opened != console, "a console of the proxied connection");
                 SqlConsole proxied = window.EditorArea.ActiveGroup.Console!.Console!;
                 Run(window, "SELECT name FROM products WHERE id = 2");
@@ -816,7 +816,7 @@ public sealed class DatabaseServersTests
                 Assert.Contains("ENGINE = MergeTree", window.EditorArea.Active!.Text.Snapshot.ToString(), StringComparison.Ordinal);
 
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
-                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console with its results under it");
                 SqlConsole console = window.EditorArea.ActiveGroup.Console!.Console!;
                 Replace(window, "SELECT name, price FROM products WHERE id < 3 ORDER BY id");
@@ -850,11 +850,11 @@ public sealed class DatabaseServersTests
         }
     }
 
-    /// <summary>MongoDB in a container of the test's own: its connection found by its URI, its explorer down to a collection's
-    /// fields and indexes, its documents as rows with the chosen one's tree beside them, a field written, a document deleted
-    /// and one added and submitted, one changed since it was read refusing them; a console of its shell running a find and a
-    /// pipeline, completion of the collections and a collection's calls, a read-only mark refusing a delete, and an agent's
-    /// count read while its insert is refused.</summary>
+    /// <summary>MongoDB in a container of the test's own: its connection found by its URI, its explorer down to fields and
+    /// indexes, its documents as rows (a missing field apart from null) with the chosen one's tree beside them, fields written,
+    /// one added to a document that lacked it, a document deleted and one added, submitted, one changed since read refusing
+    /// them; a console of its shell running a find and a pipeline, completion of the collections and a collection's calls, a
+    /// read-only mark refusing a delete, and an agent's count read while its insert is refused.</summary>
     private static void Mongo()
     {
         string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}dbmongo";
@@ -896,21 +896,30 @@ public sealed class DatabaseServersTests
                 int named = Array.IndexOf(data.Rows!.Columns, "name");
                 int qty = Array.IndexOf(data.Rows.Columns, "qty");
                 int Row(string order) => Enumerable.Range(0, data.Rows!.RowCount).Single(r => data.Rows.Cell(r, named) == order);
+                int note = Array.IndexOf(data.Rows.Columns, "note");
+                Assert.True(data.Shown!.IsAbsent(Row("tea"), note) && !data.Shown.IsAbsent(Row("milk"), note) && data.Shown.Cell(Row("milk"), note) == "NULL",
+                    "A field the document lacks reads as NULL does");
+                Assert.Equal(["Add Document", "Delete Documents"], new[] { AppActions.DatabaseAddRow, AppActions.DatabaseDeleteRows }
+                    .Select(id => window.Actions[id]!.TitleWhere(window.Actions.Context())));
                 grid.Choose((Row("tea"), named), (Row("tea"), named));
                 DocumentTree tree = Tab<DocumentTree>(window, "DatabaseTabDocument");
                 Ui.WaitFor(() => tree.Rows.Any(r => r.Name == "address" && r.Value == "1 field"), () => string.Join(", ", tree.Rows.Select(r => $"{r.Name}={r.Value}")));
                 Assert.Contains(tree.Rows, r => r.Name == "_id" && r.Kind == "objectId" && r.Value.StartsWith("ObjectId(", StringComparison.Ordinal));
                 Write(window, grid, (Row("tea"), qty), "7");
+                Write(window, grid, (Row("coffee"), note), "decaf");
+                Assert.False(data.Shown.IsAbsent(Row("coffee"), note), "A field written into a document that lacked it reads as missing still");
                 grid.Choose((Row("milk"), named), (Row("milk"), named));
                 Assert.True(window.Perform(AppActions.DatabaseDeleteRows), "Delete Rows did not run");
                 Write(window, grid, (data.Shown!.RowCount - 1, named), "water");
-                Assert.Equal("1 row changed, 1 row deleted, 1 row added pending", data.Edits.Said);
+                Assert.Equal("2 documents changed, 1 document deleted, 1 document added pending", data.EditsSaid);
                 Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
                 Ui.WaitFor(() => data.Edits.IsEmpty && !data.Reading, () => data.Said);
                 Assert.Equal(MongoDB.Bson.BsonType.Int32, Order("tea")!["qty"].BsonType);
                 Assert.Equal(7, Order("tea")!["qty"].AsInt32);
                 Assert.Null(Order("milk"));
                 Assert.NotNull(Order("water"));
+                Assert.Equal("decaf", Order("coffee")!["note"].AsString);
+                Assert.False(Order("tea")!.Contains("note"), "A field left missing was written");
                 orders.UpdateOne(new MongoDB.Bson.BsonDocument("name", "coffee"), new MongoDB.Bson.BsonDocument("$set", new MongoDB.Bson.BsonDocument("qty", 6)));
                 Write(window, grid, (Row("coffee"), qty), "9");
                 Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
@@ -920,7 +929,7 @@ public sealed class DatabaseServersTests
 
                 // A console of MongoDB's shell: a find and a pipeline, the documents' tree beside the rows.
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
-                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console with its results under it");
                 Assert.EndsWith(".mongodb", window.EditorArea.Active!.Path, StringComparison.Ordinal);
                 SqlConsole console = window.EditorArea.ActiveGroup.Console!.Console!;
@@ -983,7 +992,7 @@ public sealed class DatabaseServersTests
             orders.InsertMany([
                 MongoDB.Bson.BsonDocument.Parse("{ name: 'tea', qty: 2, tags: ['hot'], address: { city: 'Oslo' } }"),
                 MongoDB.Bson.BsonDocument.Parse("{ name: 'coffee', qty: 5, tags: ['hot', 'strong'] }"),
-                MongoDB.Bson.BsonDocument.Parse("{ name: 'milk', qty: 1 }"),
+                MongoDB.Bson.BsonDocument.Parse("{ name: 'milk', qty: 1, note: null }"),
             ]);
             return true;
         }
@@ -1046,7 +1055,7 @@ public sealed class DatabaseServersTests
                 Assert.Equal(7, Convert.ToInt32(written.Resource["qty"], CultureInfo.InvariantCulture));
 
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
-                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console with its results under it");
                 SqlConsole console = window.EditorArea.ActiveGroup.Console!.Console!;
                 Run(window, "SELECT o.name, o.qty FROM orders o WHERE o.qty > 1");

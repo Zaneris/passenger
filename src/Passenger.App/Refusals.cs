@@ -657,7 +657,7 @@ public static class Refusals
     public const string NoPlan = "Only a query or a change of rows has a plan to explain";
 
     /// <summary>Query History, Explain Plan or a console's own action with no console of a connection shown.</summary>
-    public const string NoSqlConsole = "Open a SQL console of a connection first";
+    public const string NoSqlConsole = "Open a query console of a connection first";
 
     /// <summary>Run Statement with the caret where no statement stands.</summary>
     public const string NoSqlStatement = "No statement here to run";
@@ -672,7 +672,7 @@ public static class Refusals
     public const string DatabaseBusy = "A database operation is under way";
 
     /// <summary>A table's changes, or an import, on a database that writes no row by its key.</summary>
-    public static string NoRowEdits(string kind) => $"{kind} changes rows by statements, not one by one: change them in a SQL console";
+    public static string NoRowEdits(string kind) => $"{kind} changes rows by statements, not one by one: change them in a query console";
 
     /// <summary>A DuckDB connection opened where its engine could not be had: a release's download that failed or did not match.</summary>
     public static string NoDuckDbEngine(string why) => $"DuckDB could not be opened: {why}";

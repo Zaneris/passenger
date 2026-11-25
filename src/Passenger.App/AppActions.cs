@@ -180,7 +180,7 @@ public static class AppActions
     // The Migrations window over the folder's EF Core contexts, its commands, and the fix of what keeps dotnet ef from
     // working that it shows first: no key of Rider's.
     public const string ShowMigrations = "app.showMigrations";
-    // The Database window: its connections, their explorer, a table's data and SQL consoles.
+    // The Database window: its connections, their explorer, a table's data and query consoles.
     public const string ShowDatabase = "app.showDatabase";
     public const string DatabaseRefresh = "app.database.refresh";
     public const string DatabaseConnect = "app.database.connect";

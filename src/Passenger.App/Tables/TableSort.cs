@@ -95,6 +95,8 @@ public sealed class SortedTable(Table source, int by, bool descending, int[] ord
 
     public override bool IsNewRow(int row) => source.IsNewRow(order[row]);
 
+    public override bool IsAbsent(int row, int column) => source.IsAbsent(order[row], column);
+
     public override string? DeleteTitle(int rows) => source.DeleteTitle(rows);
 
     public override CellMark MarkOf(int row, int column) => source.MarkOf(order[row], column);

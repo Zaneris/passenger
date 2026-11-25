@@ -196,7 +196,7 @@ public sealed class DatabaseTests
                 Directory.CreateDirectory(Path.GetDirectoryName(console)!);
                 File.WriteAllText(console, "SELECT Name FROM Products WHERE Id < 4 ORDER BY Id;\nSELECT COUNT(*) AS n FROM Orders;\nSELECT * FROM Nope;\n");
                 Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
-                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
                 Ui.WaitFor(() => window.EditorArea.Active?.Path == PathNames.Canonical(console) && window.EditorArea.ActiveGroup.Console is not null, "Shop's console with its results under it");
                 Assert.True(window.EditorArea.ActiveGroup.SideUnder, "A console's results stand beside its SQL, not under it");
                 CodeEditor editor = window.EditorArea.CodeEditor;
@@ -596,7 +596,7 @@ public sealed class DatabaseTests
                 Ui.ChooseFromMenu(tree, "Production");
                 Assert.Equal(DatabaseMark.Production, window.Database.Sources.Single(s => s.Name == "Shop").Mark);
                 Assert.Equal(DatabaseMark.Production, Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop").Mark);
-                Ui.ChooseFromMenu(tree, "Open SQL Console");
+                Ui.ChooseFromMenu(tree, "Open Query Console");
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console is not null, "Shop's console");
                 Assert.Equal(DatabaseMark.Production, window.EditorArea.MarkOf!(window.EditorArea.Active!));
                 Assert.Contains("production", Tab<Banner>(window, "ConsoleMark").Said, StringComparison.Ordinal);
@@ -696,7 +696,7 @@ public sealed class DatabaseTests
                 Ui.WaitFor(() => Data(window)?.Rows?.RowCount == 3, () => $"sales.csv's rows among the editors ({window.Database.Said})");
                 Assert.NotNull(Data(window)!.WhyNotEdited);
                 Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "stock.duckdb"));
-                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "stock.duckdb's console");
                 Run(window, "SELECT s.item, s.sold * k.count AS worth FROM 'data/sales.csv' s JOIN stock k USING (item) ORDER BY 1;");
                 SqlConsole duckConsole = window.EditorArea.ActiveGroup.Console!.Console!;

@@ -143,7 +143,7 @@ internal static class DocumentClient
         {
             Columns = [.. schema.Columns, .. columns.Skip(schema.Columns.Count).Select(name => new DatabaseColumn(name, "mixed", true, false, IsSystemField(source.Kind, name)))],
         };
-        return new DatabaseRows(columns, [.. read.Select(r => columns.Select(c => r.Fields.GetValueOrDefault(c)).ToArray())], more)
+        return new DatabaseRows(columns, [.. read.Select(r => columns.Select(c => Of(r.Fields, c)).ToArray())], more)
         {
             Schema = widened,
             Offset = offset,
@@ -168,7 +168,8 @@ internal static class DocumentClient
                 foreach ((RowKey changed, ChangedRow row) in edits.Changed)
                 {
                     BsonDocument read = new(key, ToBson(changed.Values[0]));
-                    read.AddRange(row.Written.Keys.Select(column => new BsonElement(page.Columns[column], ToBson(row.Read[column] is JsonText ? null : row.Read[column]))));
+                    read.AddRange(row.Written.Keys.Select(column => new BsonElement(page.Columns[column], row.Read[column] is AbsentField
+                        ? new BsonDocument("$exists", false) : ToBson(row.Read[column] is JsonText ? null : row.Read[column]))));
                     if (await collection.CountDocumentsAsync(read, cancellationToken: cancel) == 0)
                     {
                         throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), changed.ToString()));
@@ -440,9 +441,9 @@ internal static class DocumentClient
             double or decimal or int or long when double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) => number,
             bool when bool.TryParse(text, out bool truth) => truth,
             DateTime when DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out DateTime at) => new BsonDateTime(at),
-            null when long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long whole) => whole,
-            null when double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) => number,
-            null when bool.TryParse(text, out bool truth) => truth,
+            null or AbsentField when long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long whole) => whole,
+            null or AbsentField when double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) => number,
+            null or AbsentField when bool.TryParse(text, out bool truth) => truth,
             _ => new BsonString(text),
         };
     }
@@ -629,11 +630,14 @@ internal static class DocumentClient
     {
         List<(Dictionary<string, object?> Fields, string Json)> read = [.. documents];
         string[] columns = [.. read.SelectMany(r => r.Fields.Keys).Distinct(StringComparer.Ordinal)];
-        return new DatabaseRows(columns, [.. read.Select(r => columns.Select(c => r.Fields.GetValueOrDefault(c)).ToArray())], more)
+        return new DatabaseRows(columns, [.. read.Select(r => columns.Select(c => Of(r.Fields, c)).ToArray())], more)
         {
             Documents = [.. read.Select(r => r.Json)],
         };
     }
+
+    /// <summary>A document's field by its name, or <see cref="AbsentField"/> where it lacks it.</summary>
+    private static object? Of(Dictionary<string, object?> fields, string name) => fields.TryGetValue(name, out object? value) ? value : AbsentField.Value;
 
     /// <summary>MongoDB's documents as a console's rows.</summary>
     internal static DatabaseRows Rows(IReadOnlyList<BsonDocument> documents, bool more) => Rows(documents.Select(d => (Fields(d), d.ToJson(Relaxed))), more);

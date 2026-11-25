@@ -50,15 +50,18 @@ public sealed record PendingEdits
     public bool IsEmpty => Changed.IsEmpty && Deleted.IsEmpty && Added.IsEmpty;
 
     /// <summary>How many rows it changes, deletes and adds, said in a line.</summary>
-    public string Said => IsEmpty ? "No changes pending"
-        : string.Join(", ", new[] { (Changed.Count, "changed"), (Deleted.Count, "deleted"), (Added.Count, "added") }
-            .Where(c => c.Item1 > 0).Select(c => $"{Plural.Of(c.Item1, "row")} {c.Item2}")) + " pending";
+    public string Said => SaidOf("row");
 
-    /// <summary>A cell of a row read written, or put back as read where <paramref name="text"/> is its own.</summary>
-    public PendingEdits Write(RowKey key, object?[] read, int column, string? text, string? readText)
+    /// <summary>How many it changes, deletes and adds, said in a line of what a row is (a document).</summary>
+    public string SaidOf(string noun) => IsEmpty ? "No changes pending"
+        : string.Join(", ", new[] { (Changed.Count, "changed"), (Deleted.Count, "deleted"), (Added.Count, "added") }
+            .Where(c => c.Item1 > 0).Select(c => $"{Plural.Of(c.Item1, noun)} {c.Item2}")) + " pending";
+
+    /// <summary>A cell of a row read written, or put back as read where what is written is <paramref name="asRead"/>.</summary>
+    public PendingEdits Write(RowKey key, object?[] read, int column, string? text, bool asRead)
     {
         ChangedRow row = Changed.GetValueOrDefault(key) ?? new ChangedRow(read, ImmutableDictionary<int, string?>.Empty);
-        ImmutableDictionary<int, string?> written = text == readText ? row.Written.Remove(column) : row.Written.SetItem(column, text);
+        ImmutableDictionary<int, string?> written = asRead ? row.Written.Remove(column) : row.Written.SetItem(column, text);
         return this with { Changed = written.IsEmpty ? Changed.Remove(key) : Changed.SetItem(key, row with { Written = written }) };
     }
 
@@ -172,6 +175,10 @@ public sealed class PendingTable(DatabaseRows page, PendingEdits edits, bool edi
 
     public override CellValue ValueOf(int row, int column) => IsRead(row) ? Page.ValueOf(row, column) : new CellValue(CellKind.Text);
 
+    /// <summary>A field a read document lacks, until a cell is written in it.</summary>
+    public override bool IsAbsent(int row, int column) => IsRead(row) && Page.IsAbsent(row, column)
+        && !(KeyOf(row) is { } key && Edits.Changed.TryGetValue(key, out ChangedRow? changed) && changed.Written.ContainsKey(column));
+
     public override bool IsEditable(int row, int column)
     {
         if (!Editable || Page.Schema is not { } schema || schema.Columns.FirstOrDefault(c => c.Name == Page.Columns[column]) is not { } shown)
@@ -185,7 +192,10 @@ public sealed class PendingTable(DatabaseRows page, PendingEdits edits, bool edi
         return KeyOf(row) is { } key && !Edits.Deleted.ContainsKey(key) && Page.IsEditable(row, column);
     }
 
-    public override string? DeleteTitle(int rows) => Editable ? $"Delete {Plural.Noun(rows, "Row")}" : null;
+    /// <summary>What a row is, as its menus name it: a Row, or a Document of a collection.</summary>
+    public string Noun { get; init; } = "Row";
+
+    public override string? DeleteTitle(int rows) => Editable ? $"Delete {Plural.Noun(rows, Noun)}" : null;
 
     public override CellMark MarkOf(int row, int column)
     {

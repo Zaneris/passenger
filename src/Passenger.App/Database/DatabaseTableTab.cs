@@ -69,6 +69,15 @@ public sealed class DatabaseTableTab : IDatabaseTab
     /// <summary>The changes not yet written.</summary>
     public PendingEdits Edits => edits;
 
+    /// <summary>Whether it shows a collection's documents rather than a table's rows.</summary>
+    public bool HoldsDocuments => DatabaseKinds.HoldsDocuments(connection.Kind);
+
+    /// <summary>What a row is, as its bar and menus name it.</summary>
+    private string Noun => HoldsDocuments ? "Document" : "Row";
+
+    /// <summary>How many rows (a collection's documents) its changes change, delete and add, said in a line.</summary>
+    public string EditsSaid => edits.SaidOf(Noun.ToLowerInvariant());
+
     /// <summary>Whether a read or a write of it is under way.</summary>
     public bool Reading => operation is not null;
 
@@ -299,7 +308,8 @@ public sealed class DatabaseTableTab : IDatabaseTab
         else if (table.KeyOf(row) is { } key)
         {
             object?[] read = table.Page.Rows[row];
-            Edit(edits.Write(key, read, write.Column, text, read[write.Column] is null ? null : table.Page.Cell(row, write.Column)));
+            // A field the document lacks is written whatever is written in it, NULL adding it as null.
+            Edit(edits.Write(key, read, write.Column, text, read[write.Column] is not AbsentField && text == (read[write.Column] is null ? null : table.Page.Cell(row, write.Column))));
         }
     }
 
@@ -326,7 +336,7 @@ public sealed class DatabaseTableTab : IDatabaseTab
     private void Show(DatabaseRows page)
     {
         rows = page;
-        shown = new PendingTable(page, edits, editable: WhyNotEdited is null);
+        shown = new PendingTable(page, edits, editable: WhyNotEdited is null) { Noun = Noun };
     }
 
     private void Follow()
@@ -404,8 +414,8 @@ public sealed class DatabaseTableTab : IDatabaseTab
         next.Name = "DatabaseNextPage";
         Button cancel = ToolButtons.Of(IconKeys.Stop, "Stop");
         cancel.Name = "DatabaseTableCancel";
-        Button add = ToolButtons.Of(AppActions.DatabaseAddRow, IconKeys.Add, "Add Row", request);
-        Button delete = ToolButtons.Of(AppActions.DatabaseDeleteRows, IconKeys.Clear, "Delete Rows", request);
+        Button add = ToolButtons.Of(AppActions.DatabaseAddRow, IconKeys.Add, $"Add {Noun}", request);
+        Button delete = ToolButtons.Of(AppActions.DatabaseDeleteRows, IconKeys.Clear, $"Delete {Noun}s", request);
         Button submit = ToolButtons.Of(AppActions.DatabaseSubmit, IconKeys.Commit, "Submit Changes", request);
         Button revert = ToolButtons.Of(AppActions.DatabaseRevert, IconKeys.Rollback, "Revert Changes", request);
         Button export = ToolButtons.Of(AppActions.DatabaseExport, IconKeys.Export, "Export Data…", request);
@@ -505,8 +515,8 @@ public sealed class DatabaseTableTab : IDatabaseTab
                 ListMenus.Keyed("Export Data…", AppActions.DatabaseExport, () => request(AppActions.DatabaseExport), schema is null ? Refusals.DatabaseBusy : null),
                 ListMenus.Keyed("Import Data…", AppActions.DatabaseImport, () => request(AppActions.DatabaseImport), WhyNotImport),
                 new Separator(),
-                ListMenus.Keyed("Add Row", AppActions.DatabaseAddRow, () => request(AppActions.DatabaseAddRow), WhyNotAddRow),
-                ListMenus.Keyed("Delete Rows", AppActions.DatabaseDeleteRows, () => request(AppActions.DatabaseDeleteRows), WhyNotDeleteRows),
+                ListMenus.Keyed($"Add {Noun}", AppActions.DatabaseAddRow, () => request(AppActions.DatabaseAddRow), WhyNotAddRow),
+                ListMenus.Keyed($"Delete {Noun}s", AppActions.DatabaseDeleteRows, () => request(AppActions.DatabaseDeleteRows), WhyNotDeleteRows),
                 ListMenus.Keyed("Submit Changes", AppActions.DatabaseSubmit, () => request(AppActions.DatabaseSubmit), WhyNotSubmit),
                 ListMenus.Keyed("Revert Changes", AppActions.DatabaseRevert, () => request(AppActions.DatabaseRevert), WhyNotRevert),
                 new Separator(),
@@ -548,7 +558,7 @@ public sealed class DatabaseTableTab : IDatabaseTab
                 DatabaseMark.ReadOnly => Refusals.ReadOnlyConnection(now.Name),
                 _ => null,
             });
-            status.Text = Said + (edits.IsEmpty || operation is not null ? string.Empty : $" · {edits.Said}");
+            status.Text = Said + (edits.IsEmpty || operation is not null ? string.Empty : $" · {EditsSaid}");
         }
     }
 

@@ -129,6 +129,19 @@ public enum DatabaseObjectKind
 /// <summary>A table, view or routine of a schema; a routine's detail says whether it is a function or a procedure.</summary>
 public sealed record DatabaseObject(string Schema, string Name, DatabaseObjectKind Kind, string Detail = "");
 
+/// <summary>A field a document lacks, which its row's cell stands for apart from null: shown muted as "missing", a cell
+/// written in it adding the field, which MongoDB and Cosmos DB tell apart from one holding null.</summary>
+public sealed class AbsentField
+{
+    public static readonly AbsentField Value = new();
+
+    private AbsentField()
+    {
+    }
+
+    public override string ToString() => "missing";
+}
+
 /// <summary>What one run of a statement or batch came to: its result sets, the rows it changed, or why it failed.</summary>
 public sealed record SqlResult(string Statement, IReadOnlyList<DatabaseRows> Sets, int Affected, string? Error, TimeSpan Took);
 
@@ -178,15 +191,17 @@ public sealed class DatabaseRows(string[] columns, object?[][] rows, bool more =
     public override int RowNumber(int row) => Offset + row + 1;
     public override bool IsNumber(int row, int column) => Rows[row][column] is byte or short or int or long or float or double or decimal;
 
+    public override bool IsAbsent(int row, int column) => Rows[row][column] is AbsentField;
+
     public override CellValue ValueOf(int row, int column) => Rows[row][column] switch
     {
-        null => new CellValue(CellKind.Empty),
+        null or AbsentField => new CellValue(CellKind.Empty),
         byte or short or int or long or float or double or decimal => new CellValue(CellKind.Number, Convert.ToDouble(Rows[row][column], CultureInfo.InvariantCulture)),
         DateTime date => new CellValue(CellKind.Date, date.Ticks),
         _ => new CellValue(CellKind.Text),
     };
 
-    public override object? ValueAt(int row, int column) => Rows[row][column];
+    public override object? ValueAt(int row, int column) => Rows[row][column] is AbsentField ? null : Rows[row][column];
 
     public override string TypeOf(int column) => column < Types.Length ? Types[column] : string.Empty;
 
@@ -195,7 +210,7 @@ public sealed class DatabaseRows(string[] columns, object?[][] rows, bool more =
     public override bool IsEditable(int row, int column) => Schema is { } schema && schema.Columns.Any(c => c.Primary)
         && schema.Columns.Where(c => c.Primary).All(c => Array.IndexOf(Columns, c.Name) switch { < 0 => false, int key => Rows[row][key] is not null })
         && schema.Columns.FirstOrDefault(c => c.Name == Columns[column]) is { Primary: false, Generated: false }
-        && Rows[row][column] is null or string or long or int or short or byte or double or float or decimal or bool;
+        && Rows[row][column] is null or AbsentField or string or long or int or short or byte or double or float or decimal or bool;
 
     public override string Cell(int row, int column) => ContainerSecrets.InSaid(Rows[row][column] switch
     {

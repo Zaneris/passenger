@@ -120,7 +120,7 @@ public sealed partial class PassengerTools
     private static DatabaseRowsInfo Rows(DatabaseRows set, int room, Func<string, string> mask)
     {
         bool[] secret = [.. set.Columns.Select(c => ContainerSecrets.Secret(c))];
-        string?[][] shown = [.. set.Rows.Select(row => row.Select((value, i) => value is null or DBNull ? null : secret[i] ? ContainerSecrets.Masked : Cell(value)).ToArray())];
+        string?[][] shown = [.. set.Rows.Select(row => row.Select((value, i) => value is null or DBNull or AbsentField ? null : secret[i] ? ContainerSecrets.Masked : Cell(value)).ToArray())];
         (IReadOnlyList<string?[]> kept, string? more) = AgentAnswers.Within(shown, row => row.Sum(v => (v?.Length ?? 4) + 3), room, "row", "ask with fewer columns or a narrower query");
         return new DatabaseRowsInfo(set.Columns, kept, more ?? (set.More ? $"More rows than {set.Rows.Length.ToString(CultureInfo.InvariantCulture)} left unread: ask with rows or a narrower query" : null));
 

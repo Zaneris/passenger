@@ -111,7 +111,7 @@ public partial class MainWindow
         Add(AppActions.DatabaseRefresh, "Refresh Database Connections", controller.RefreshAsync, () => Folder is null ? Refusals.NoFolder : null);
         Add(AppActions.DatabaseConnect, "Open Database Connection", OpenChosenConnectionAsync,
             () => ChosenConnection() is not { } chosen ? Refusals.NoDatabaseConnection : WhyNotOpened(chosen) ?? PersonsOwn());
-        Add(AppActions.DatabaseConsole, "Open SQL Console", () => OpenSqlConsoleAsync(),
+        Add(AppActions.DatabaseConsole, "Open Query Console", () => OpenSqlConsoleAsync(),
             () => ChosenConnection() is not { } chosen ? Refusals.NoDatabaseConnection : WhyNotOpened(chosen) ?? PersonsOwn());
         Add(AppActions.DatabaseShowDdl, "Show DDL", ShowDdlAsync, WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 0));
         Add(AppActions.DatabaseScriptCreate, "Generate Create Script", () => ScriptIntoConsoleAsync(DdlScript.Create), WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 1));
@@ -155,8 +155,8 @@ public partial class MainWindow
         Transaction(AppActions.DatabaseRollback, "Roll Back", commit: false, 3);
         Table(AppActions.DatabaseSubmit, "Submit Changes", table => IdeErrors.Observe(table.SubmitAsync()), table => table.WhyNotSubmit, 0);
         Table(AppActions.DatabaseRevert, "Revert Changes", table => table.Revert(), table => table.WhyNotRevert, 1);
-        Table(AppActions.DatabaseAddRow, "Add Row", table => table.AddRow(), table => table.WhyNotAddRow, 2);
-        Table(AppActions.DatabaseDeleteRows, "Delete Rows", table => table.DeleteRows(), table => table.WhyNotDeleteRows, 3);
+        Table(AppActions.DatabaseAddRow, "Add Row", table => table.AddRow(), table => table.WhyNotAddRow, 2, "Add Document");
+        Table(AppActions.DatabaseDeleteRows, "Delete Rows", table => table.DeleteRows(), table => table.WhyNotDeleteRows, 3, "Delete Documents");
         Mark(AppActions.DatabaseReadOnly, "Read-Only Connection", DatabaseMark.ReadOnly);
         Mark(AppActions.DatabaseProduction, "Production Connection", DatabaseMark.Production);
         actions!.Add(new IdeAction(AppActions.DatabaseExport, "Export Data…", "Database", context => IdeErrors.Observe(ExportDataAsync(context)))
@@ -202,7 +202,8 @@ public partial class MainWindow
             });
         }
 
-        void Table(string id, string title, Action<DatabaseTableTab> run, Func<DatabaseTableTab, string?> why, int at)
+        // A collection's tab names its rows as the documents they are.
+        void Table(string id, string title, Action<DatabaseTableTab> run, Func<DatabaseTableTab, string?> why, int at, string? documents = null)
         {
             actions!.Add(new IdeAction(id, title, "Database", _ =>
             {
@@ -214,6 +215,7 @@ public partial class MainWindow
             {
                 WhyNot = _ => Editors.Active?.DatabaseTable is not { } table ? Refusals.NoDatabaseTable : why(table) ?? PersonsOwn(),
                 Menus = [new MenuPlace("Tools/Database", 2, at)],
+                TitleIn = documents is null ? null : context => context.File?.DatabaseTable is { HoldsDocuments: true } ? documents : title,
             });
         }
 
@@ -930,7 +932,7 @@ public partial class MainWindow
         {
             return true;
         }
-        string held = Plural.Listed([.. tables.Select(t => $"{t.Table}'s {t.Edits.Said.Replace(" pending", string.Empty, StringComparison.Ordinal)}"),
+        string held = Plural.Listed([.. tables.Select(t => $"{t.Table}'s {t.EditsSaid.Replace(" pending", string.Empty, StringComparison.Ordinal)}"),
             .. consoles.Select(c => $"the transaction open in {Path.GetFileName(c.Path)}")]);
         string? answer = await Choose("Database Changes Not Written", $"{Containers.ContainerSecrets.InSaid(held)} would be lost {leaving}.\n\n"
             + "Write and Commit submits the tables' changes and commits the transactions; Discard drops the changes and rolls the transactions back.",
@@ -1036,7 +1038,7 @@ public partial class MainWindow
 
     private async Task CloseTableAsync(Editors.EditorGroup group, Workspace.OpenDocument document, DatabaseTableTab table)
     {
-        string? chosen = await new ChoiceDialog("Close Table", $"{table.Table} has changes not yet written: {table.Edits.Said.Replace(" pending", string.Empty, StringComparison.Ordinal)}. "
+        string? chosen = await new ChoiceDialog("Close Table", $"{table.Table} has changes not yet written: {table.EditsSaid.Replace(" pending", string.Empty, StringComparison.Ordinal)}. "
             + "Submit them before it closes, or discard them?", ["Submit", "Discard"], null).ShowDialog<string?>(this);
         if (chosen == "Submit")
         {

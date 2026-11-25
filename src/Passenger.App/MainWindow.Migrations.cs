@@ -133,7 +133,7 @@ public partial class MainWindow
             WhyNot = context => none(context) ?? (controller.Startup is null ? Refusals.NoEfCore : null),
             TitleIn = _ => controller.Context is { } context ? $"Open {context}'s Database" : "Open Context's Database",
             Menus = [new MenuPlace("Tools/Migrations", 1, 2)],
-            Words = ["Database window", "connection string", "SQL console"],
+            Words = ["Database window", "connection string", "query console"],
         });
         actions.Add(new IdeAction(A.MigrationsFix, "Fix What Migrations Lack", "Migrations", c =>
         {

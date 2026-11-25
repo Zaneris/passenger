@@ -143,7 +143,7 @@ public sealed class CellGrid : Control, IOwnKeys
         Reveal(caret);
         written = caret;
         writtenIn = table;
-        string text = typed ?? table.Cell(caret.Row, caret.Column);
+        string text = typed ?? Shown(table, caret.Row, caret.Column);
         TextBox writing = new()
         {
             Classes = { StyleClasses.Cell, StyleClasses.Code },
@@ -220,11 +220,14 @@ public sealed class CellGrid : Control, IOwnKeys
         LogicalChildren.Remove(boxFrame!);
         boxFrame = null;
         InvalidateVisual();
-        if (keep && writtenIn is { } at && written.Row < at.RowCount && text != at.Cell(written.Row, written.Column))
+        if (keep && writtenIn is { } at && written.Row < at.RowCount && text != Shown(at, written.Row, written.Column))
         {
             CellWritten?.Invoke(this, new CellWrite(at, [at.FileRow(written.Row)], written.Column, text));
         }
     }
+
+    /// <summary>A cell's text as its box is given it: a field the row lacks as nothing at all.</summary>
+    private static string Shown(Table table, int row, int column) => table.IsAbsent(row, column) ? string.Empty : table.Cell(row, column);
 
     /// <summary>While a cell is written its box takes Enter, Tab and Escape; else Enter and F2 open a cell for writing.</summary>
     public bool TakesKey(KeyEventArgs e) => box is not null
@@ -1039,7 +1042,8 @@ public sealed class CellGrid : Control, IOwnKeys
         }
         bool number = table!.IsNumber(row, column);
         // A number on a change's ground stands as numbers do, in the text's colour, which every such ground is read with.
-        if (Text(row, column, place.Width, plain, number && table.MarkOf(row, column) == CellMark.None ? colours.Number : colours.Text) is { } text)
+        IBrush brush = table.IsAbsent(row, column) ? colours.Muted : number && table.MarkOf(row, column) == CellMark.None ? colours.Number : colours.Text;
+        if (Text(row, column, place.Width, plain, brush) is { } text)
         {
             DrawText(context, text, place, number);
         }
@@ -1106,7 +1110,7 @@ public sealed class CellGrid : Control, IOwnKeys
     /// <summary>The theme's brushes the table draws with, read once per look.</summary>
     private sealed record Palette(IBrush Background, IBrush Text, IBrush Number, IBrush Header, IBrush HeaderText, IBrush HeaderChosen,
         IBrush RowNumber, IBrush Grid, IBrush Edge, IBrush Selection, IBrush SelectionInactive, IBrush SearchMatch, IBrush SearchCurrent, IPen CaretPen,
-        Geometry? Up, Geometry? Down, IBrush Changed, IBrush Added, IBrush Deleted, IBrush ChangedMark, IBrush AddedMark, IBrush DeletedMark)
+        Geometry? Up, Geometry? Down, IBrush Changed, IBrush Added, IBrush Deleted, IBrush ChangedMark, IBrush AddedMark, IBrush DeletedMark, IBrush Muted)
     {
         /// <summary>A cell's ground for a change not yet written, as a diff's lines show theirs.</summary>
         public IBrush? Pending(CellMark mark) => mark switch
@@ -1151,7 +1155,8 @@ public sealed class CellGrid : Control, IOwnKeys
                 Brush(TokenKeys.Diff_Deleted),
                 Brush(TokenKeys.Vcs_Modified),
                 Brush(TokenKeys.Vcs_Added),
-                Brush(TokenKeys.Vcs_Deleted));
+                Brush(TokenKeys.Vcs_Deleted),
+                Brush(TokenKeys.TextMuted));
         }
     }
 }
