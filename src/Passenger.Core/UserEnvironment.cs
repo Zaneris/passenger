@@ -8,11 +8,20 @@ namespace Passenger.Core;
 /// program Explorer starts next takes: a variable read as written, its %names% unexpanded, and written keeping the kind
 /// it had (one that may hold %names% where it is new), read back, then told to every window as Windows' own settings tell
 /// it. Its Path changes a folder at a time (<see cref="With"/>, <see cref="Without"/>), every other entry kept as written,
-/// where it was. A program running already, a terminal among them, keeps the environment it started with.</summary>
+/// where it was. A program running already, a terminal among them, keeps the environment it started with; the Path a
+/// program started now would take, the machine's with the user's, is <see cref="PathNow"/>.</summary>
 public static partial class UserEnvironment
 {
     /// <summary>The variable naming the folders a command is looked for in.</summary>
     public const string PathVariable = "Path";
+
+    /// <summary>A test's stand-in for the Path a program started now would take, read in place of the machine's and the
+    /// user's: a Path as Windows writes one, ";" naming no folder.</summary>
+    [IdentifierHome]
+    public const string PathNowVariable = "PASSENGER_WINDOWS_PATH";
+
+    /// <summary>The key under HKEY_LOCAL_MACHINE holding the machine's variables.</summary>
+    private const string MachineKey = @"SYSTEM\CurrentControlSet\Control\Session Manager\Environment";
 
     /// <summary>A test's stand-in for the variables, by name; null for the registry's.</summary>
     public static Dictionary<string, string>? StandIn { get; set; }
@@ -75,6 +84,44 @@ public static partial class UserEnvironment
         return true;
     }
 
+    /// <summary>The Path Windows gives a program started now, as written (its %names% unexpanded): the machine's, then the
+    /// user's, as Windows joins them; a test's stand-in (<see cref="PathNowVariable"/>) in their place. Null off Windows.</summary>
+    public static string? PathNow()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+        if (Environment.GetEnvironmentVariable(PathNowVariable) is { } standIn)
+        {
+            return standIn;
+        }
+        return string.Join(';', ((string?[])[MachinePath(), Get(PathVariable)]).Where(path => !string.IsNullOrEmpty(path)));
+    }
+
+    /// <summary>The folders a Path names that no entry of <paramref name="had"/> is, as Windows reads an entry
+    /// (<see cref="Names"/>), its %names% expanded, each once and in the Path's order; an entry that is no whole path from a
+    /// drive or a share (a relative one, a %name% left unexpanded) is passed over, as no folder to look for a program in.</summary>
+    public static IReadOnlyList<string> Beyond(string? path, IReadOnlyList<string> had)
+    {
+        List<string> beyond = [];
+        foreach (string entry in Entries(path))
+        {
+            string folder = Environment.ExpandEnvironmentVariables(entry).Trim().Trim('"');
+            if (Whole(folder) && !had.Any(at => Names(at, folder)) && !beyond.Any(at => Names(at, folder)))
+            {
+                beyond.Add(folder);
+            }
+        }
+        return beyond;
+    }
+
+    /// <summary>Whether a path is whole as Windows reads one, either slash: from a drive's root (C:\) or a share
+    /// (\\server\share).</summary>
+    private static bool Whole(string path) =>
+        path is [var drive, ':', '\\' or '/', ..] && char.IsAsciiLetter(drive)
+        || path is ['\\' or '/', '\\' or '/', var server, ..] && server is not ('\\' or '/' or '?' or '.');
+
     /// <summary>Whether the Path names a folder.</summary>
     public static bool Holds(string folder) => Entries(Get(PathVariable)).Any(entry => Names(entry, folder));
 
@@ -118,6 +165,13 @@ public static partial class UserEnvironment
     {
         using RegistryKey? environment = Registry.CurrentUser.OpenSubKey(Key);
         return environment?.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static string? MachinePath()
+    {
+        using RegistryKey? environment = Registry.LocalMachine.OpenSubKey(MachineKey);
+        return environment?.GetValue(PathVariable, null, RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
     }
 
     /// <summary>Writes a variable keeping its kind, reads it back, then tells every window, as Windows' own settings do, so
