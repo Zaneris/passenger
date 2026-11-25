@@ -23,6 +23,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- What the linked Breaks.cs hands the debugger: the app's WinUI element and property, which the inspector reaches by
+         reflection alone. -->
+    <Using Include="System.Object" Alias="InspectedObject" />
+    <Using Include="System.Object" Alias="InspectedProperty" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- What Passenger and its inspectors say to each other, and the app's end of the socket, one definition for all. -->
     <Compile Include="../Passenger.Inspector/Protocol.cs" Link="Protocol.cs" />
     <Compile Include="../Passenger.Inspector/Connection.cs" Link="Connection.cs" />
@@ -33,6 +40,7 @@
     <Compile Include="../Passenger.Inspector/ElementTrees.cs" Link="ElementTrees.cs" />
     <Compile Include="../Passenger.Inspector/XamlPlaces.cs" Link="XamlPlaces.cs" />
     <Compile Include="../Passenger.Inspector/BindingFailures.cs" Link="BindingFailures.cs" />
+    <Compile Include="../Passenger.Inspector/Breaks.cs" Link="Breaks.cs" />
     <Compile Include="../Passenger.Core/Spelling.cs" Link="Spelling.cs" />
     <Compile Include="../Passenger.Core/RuntimeVariables.cs" Link="RuntimeVariables.cs" />
     <Compile Include="../Passenger.Core/StartupHooks.cs" Link="StartupHooks.cs" />

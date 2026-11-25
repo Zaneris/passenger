@@ -120,7 +120,20 @@ public sealed class WinUITests : IClassFixture<WinUITests.Gallery>
 
             PassengerTools agent = new(window);
             Assert.Contains("Button#Go \"Go\"", Ui.Await(agent.AppTree(filter: "Button"), "an agent's look at the app's buttons", Slow), StringComparison.Ordinal);
-            string clicked = Ui.Await(agent.AppClick(control: "#Go"), "an agent's click on Go", Slow);
+            // XAML Binding Errors stops the app where the click moves the caption's DataContext to a person, which lacks Greting.
+            BreakpointStore breakpoints = window.Debugger.Breakpoints;
+            breakpoints.Update(breakpoints.BindingErrors, enabled: true, suspend: true, null, null, null);
+            Task<string> clicking = agent.AppClick(control: "#Go");
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.Debugger.Stop?.Binding is not null,
+                () => $"XAML Binding Errors to stop the app as the click fails the caption's binding; the debugger is {window.Debugger.Session?.State}, "
+                    + $"stopped at {window.Debugger.Stop?.Top?.Name}: {Ui.Said(window)}", Slow);
+            BindingProblem stopped = window.Debugger.Stop!.Binding!;
+            Assert.True(stopped.Failure is { Path: "Greting", Type: "Person", Control: "TextBlock#Caption" } && PathNames.Same(stopped.Problem.Path ?? string.Empty, xaml),
+                $"The stop was taken for {stopped.Failure.Control}.{stopped.Failure.Property} to {stopped.Failure.Path} on {stopped.Failure.Type} at {stopped.Problem.Path}");
+            Assert.Contains(window.Debugger.Stop!.Frames, f => f.Name.Contains("OnGo", StringComparison.Ordinal));
+            breakpoints.Update(breakpoints.BindingErrors, enabled: false, suspend: true, null, null, null);
+            Ui.Run(window, AppActions.Resume);
+            string clicked = Ui.Await(clicking, "an agent's click on Go", Slow);
             Assert.StartsWith("Clicked Button#Go", clicked, StringComparison.Ordinal);
             Ui.WaitFor(() => Ui.Await(agent.AppTree(control: "#Go"), "an agent's look at Go", Slow).Contains("\"Going\"", StringComparison.Ordinal),
                 "Go to say Going once the agent clicked it", Slow);

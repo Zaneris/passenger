@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Reflection;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Passenger.Inspector.WinUI;
@@ -87,7 +89,7 @@ internal static partial class Bindings
                 held.Add(message);
                 return;
             }
-            Tell(message);
+            Failed(message);
         }
         catch (Exception error)
         {
@@ -96,7 +98,29 @@ internal static partial class Bindings
         }
     }
 
-    private static void Tell(string message) => BindingFailures.Record(message, debugged: false, (id, listed) => Read(id, message, listed));
+    /// <summary>A failure told as it happens, and where the app is debugged, the app stopped there (<see cref="Breaks"/>), as
+    /// XAML Binding Errors stops it: WinUI raises BindingFailed on the thread that evaluated the binding, as it fails, so the
+    /// stack is the one that failed. The control is found where its element is named, its DataContext read from it.</summary>
+    private static void Failed(string message)
+    {
+        bool debugged = Debugger.IsAttached;
+        if (Tell(message, debugged) is not { } failure || !debugged || inspector is not { } inspecting)
+        {
+            return;
+        }
+        Match targeted = Target().Match(message);
+        object? control = targeted.Success && targeted.Groups["name"].Value is { Length: > 0 } name && name != "null"
+            && inspecting.Named(targeted.Groups["type"].Value, name) is { } element ? inspecting.ObjectOf(element) : null;
+        object? property = control?.GetType().GetProperty($"{failure.Property}Property", BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetValue(null);
+        object? dataContext = control is null ? null : Projected.Get(control, "DataContext");
+        failure = failure with { DataContext = dataContext is null ? null : Words.TypeName(dataContext.GetType()) };
+        Breaks.BindingFailed(new BindingError(control, property, dataContext, failure, JsonSerializer.Serialize(failure, WireJson.Default.BindingFailure)));
+    }
+
+    /// <summary>A failure recorded, as it happened (where the app is <paramref name="debugged"/>, each one made to stop at)
+    /// or as found once the tree was known; null where it is neither listed nor stopped at.</summary>
+    private static BindingFailure? Tell(string message, bool debugged = false) =>
+        BindingFailures.Record(message, debugged, (id, listed) => Read(id, message, listed));
 
     /// <summary>A failure as WinUI words it ("BindingExpression path error: 'Nmae' property not found on 'App.Person'. …
     /// target element is 'Microsoft.UI.Xaml.Controls.TextBlock' (Name='Caption'); target property is 'Text' …").</summary>
