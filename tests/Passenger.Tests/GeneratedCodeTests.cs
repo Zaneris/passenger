@@ -53,13 +53,14 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
         Flow.StepApart("Go to Symbol lists a class a generator declares after the person's symbols and opens its code read-only", () => new GeneratedCodeTests(app), t => t.Go_to_symbol_lists_a_class_a_generator_declares_after_the_persons_symbols_and_opens_its_code_read_only());
         Flow.StepApart("Find Usages sets generated code apart with each side's count, shows a side alone for later searches, and goes into it", () => new GeneratedCodeTests(app), t => t.Find_usages_sets_generated_code_apart_with_each_sides_count_shows_a_side_alone_for_later_searches_and_goes_into_it());
         Flow.StepApart("the call hierarchy in a generator's code lists the method's callers and callees", () => new GeneratedCodeTests(app), t => t.Call_hierarchy_in_a_generators_code_lists_the_methods_callers_and_callees_and_leaves_the_code_following_its_pattern());
-        Flow.StepApart("the Explorer's Dependencies list each source generator's documents, which open read-only and follow the code", () => new GeneratedCodeTests(app), t => t.The_Explorers_Dependencies_list_each_source_generators_documents_which_open_read_only_and_follow_the_code());
+        Flow.StepApart("the Explorer's Dependencies list each source generator's documents, which open read-only, follow the code and stay open as the Explorer is shown anew", () => new GeneratedCodeTests(app), t => t.The_Explorers_Dependencies_list_each_source_generators_documents_which_open_read_only_follow_the_code_and_stay_open_as_the_Explorer_is_shown_anew());
     }
 
     /// <summary>The project's Dependencies list Source Generators, each generator by its type's name and the documents it makes
-    /// by their hint names; Enter on one opens it read-only as Go to Declaration's do; and a type the code gives the JSON
-    /// context, typed and not saved or built, brings its document under the JSON generator once the server makes it.</summary>
-    private void The_Explorers_Dependencies_list_each_source_generators_documents_which_open_read_only_and_follow_the_code()
+    /// by their hint names; Enter on one opens it read-only as Go to Declaration's do; a type the code gives the JSON
+    /// context, typed and not saved or built, brings its document under the JSON generator once the server makes it; and
+    /// the Explorer shown anew keeps them listed and open.</summary>
+    private void The_Explorers_Dependencies_list_each_source_generators_documents_which_open_read_only_follow_the_code_and_stay_open_as_the_Explorer_is_shown_anew()
     {
         MainWindow window = app.Open(app.PathOf("Patterns.cs"));
         try
@@ -89,6 +90,17 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
             window.KeyTextInput(" [JsonSerializable(typeof(Circle))]");
             Ui.WaitFor(() => tree.Rows.Any(r => r.Kind == NodeKind.GeneratedFile && r.Name == "ShapeContext.Circle.g.cs"),
                 () => $"the JSON generator's document of Circle, typed in the code, under its generator in the Explorer: [{Rows(tree)}]");
+
+            // The project's file changed on disk has the solution read again, which shows the Explorer anew.
+            ExplorerNode? before = tree.Root;
+            string project = File.ReadAllText(app.PathOf("Gallery.csproj"));
+            int properties = project.IndexOf("</PropertyGroup>", StringComparison.Ordinal);
+            File.WriteAllText(app.PathOf("Gallery.csproj"), project.Insert(properties, "  <Description>Gallery</Description>\n  "));
+            Ui.WaitFor(() => tree.Root != before, () => $"the Explorer shown anew once Gallery.csproj changed: [{Rows(tree)}]");
+            Ui.Settle();
+            Assert.True(tree.Rows.Any(r => r is { Kind: NodeKind.Generators, IsExpanded: true }) && tree.Rows.Any(r => r is { Kind: NodeKind.Generator, Name: "RegexGenerator", IsExpanded: true })
+                && tree.Rows.Any(r => r is { Kind: NodeKind.GeneratedFile, Name: "ShapeContext.Circle.g.cs" }),
+                $"The Explorer shown anew lost the open Source Generators and their documents: [{Rows(tree)}]");
         }
         finally
         {

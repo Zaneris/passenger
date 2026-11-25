@@ -225,7 +225,6 @@ public sealed class ExplorerTree
         projects.Clear();
         files.Clear();
         shared.Clear();
-        generated.Clear();
         HashSet<string> kept = new(PathNames.Comparer);
         foreach (ProjectModel project in shown)
         {
@@ -236,7 +235,11 @@ public sealed class ExplorerTree
                 shared.TryAdd(SharedProjects.ItemsFileOf(project.Path), project.Path);
             }
         }
-        // A restore read stays with its project shown again, so the rows a refresh opens again open its packages too.
+        // Kept with a project shown again, as neither is told again unchanged, so a refresh opens their rows again too.
+        foreach (string gone in generated.Keys.Where(p => !kept.Contains(p)).ToList())
+        {
+            generated.Remove(gone);
+        }
         foreach (string gone in restored.Keys.Where(p => !kept.Contains(p)).ToList())
         {
             restored.Remove(gone);
