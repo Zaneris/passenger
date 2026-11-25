@@ -137,6 +137,7 @@ public partial class MainWindow
         view.MergeRequested += (_, path) => IdeErrors.Observe(MergeAsync(path));
         view.StageRequested += (_, asked) => IdeErrors.Observe(StageFilesAsync(asked.Changes, asked.Stage));
         view.RepositoryChosen += (_, _) => ShowGitStatus();
+        view.PushRequested += (_, repository) => IdeErrors.Observe(ShowPushAsync(null, elsewhere: false, repository));
         view.CommittedUnsigned += (_, _) => IdeErrors.Observe(AskCommitSigningAsync());
         view.Committed += (_, made) =>
         {
@@ -415,53 +416,6 @@ public partial class MainWindow
         popup.DetachedFromVisualTree += (_, _) => answer.TrySetResult(chosen);
         popups.Show(popup, _ => { });
         return answer.Task;
-    }
-
-    /// <summary>The Push dialog while it is open; null once it closes.</summary>
-    public PushCommitsDialog? PushCommits { get; private set; }
-
-    /// <summary>Push…, as Rider's: the Push dialog on a local branch (the one checked out where none is given), its
-    /// commits read first, then pushed as chosen; Force Push only once the person agrees to replace what the remote's
-    /// branch has. A detached head, or a branch with no remote to go to, is pushed as it stands, which says why not.</summary>
-    private async Task ShowPushAsync(BranchInfo? branch)
-    {
-        VcsController vcs = session.Vcs;
-        PushCommitsPlan? plan;
-        using (Working? reading = BeginWork(AppActions.Push, "Reading what Push sends…"))
-        {
-            if (reading is null)
-            {
-                return;
-            }
-            branch ??= (await vcs.LocalBranchesAsync()).FirstOrDefault(b => b.IsCurrent);
-            plan = branch is null ? null : await vcs.PushPlanAsync(branch);
-        }
-        if (branch is null || plan is null || (branch.Upstream is null && plan.Remotes.Count == 0))
-        {
-            await (branch is null ? vcs.PushAsync() : vcs.PushBranchAsync(branch));
-            return;
-        }
-        PushCommitsDialog dialog = new(plan);
-        PushCommits = dialog;
-        try
-        {
-            await dialog.ShowDialog(this);
-        }
-        finally
-        {
-            PushCommits = null;
-        }
-        if (dialog.Chosen is not { } chosen || vcs != session.Vcs)
-        {
-            return;
-        }
-        string target = branch.Upstream ?? $"{chosen.Remote ?? plan.Remotes[0]}/{branch.Name}";
-        if (chosen.Force && !await Confirm("Force Push",
-            $"Force push {branch.Name} to {target}? Commits there that {branch.Name} lacks are replaced, unless someone pushed to it since it was last fetched.", "Force Push"))
-        {
-            return;
-        }
-        await vcs.PushBranchAsync(branch, chosen.Force, chosen.Remote);
     }
 
     /// <summary>The question git asked last while it reached a remote, while the window asks it; null once answered.</summary>
@@ -950,8 +904,8 @@ public partial class MainWindow
             IdeErrors.Observe(session.Vcs.RefreshAsync());
             CommitView.FocusMessage();
         }, new("Git", 0, 0));
-        // An agent's Push pushes as it stands, the dialog being the person's to answer.
-        Add(AppActions.Push, "Push…", context => IdeErrors.Observe(AskedByAgent(context) ? session.Vcs.PushAsync() : ShowPushAsync(null)), new("Git", 0, 1), remote: true);
+        // An agent's Push pushes as it stands, the dialog and a remote's choice being the person's to answer.
+        Add(AppActions.Push, "Push…", context => IdeErrors.Observe(AskedByAgent(context) ? session.Vcs.PushAsync(ask: false) : ShowPushAsync(null, elsewhere: false)), new("Git", 0, 1), remote: true);
         Add(AppActions.UpdateProject, "Update Project…", context => IdeErrors.Observe(session.Vcs.UpdateAsync()), new("Git", 0, 2), remote: true);
         Add(AppActions.Fetch, "Fetch", context => IdeErrors.Observe(session.Vcs.FetchAsync()), new("Git", 0, 3), remote: true);
         Add(AppActions.Branches, "Branches…", _ => ShowBranches(BranchButton), new("Git", 0, 4));

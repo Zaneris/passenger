@@ -21,7 +21,7 @@ public partial class MainWindow
         panel.Favorites = branchFavorites;
         panel.NewBranchRequested += (_, branch) => ShowNewBranchFrom(branch);
         panel.RenameRequested += (_, branch) => ShowRenameBranch(branch);
-        panel.PushRequested += (_, branch) => IdeErrors.Observe(ShowPushAsync(branch));
+        panel.PushRequested += (_, branch) => IdeErrors.Observe(ShowPushAsync(branch, elsewhere: false));
         panel.DeleteRequested += (_, branch) => IdeErrors.Observe(DeleteBranchAsync(branch));
         panel.CompareRequested += (_, branch) => CompareWithCurrent(branch);
         panel.WorkingTreeDiffRequested += (_, branch) => ShowWorkingTreeDiff(branch);
@@ -33,7 +33,7 @@ public partial class MainWindow
         panel.OpenWorktreeRequested += (_, asked) => OpenWorktree(asked.Worktree, asked.NewWindow);
         panel.RemoveWorktreeRequested += (_, worktree) => IdeErrors.Observe(RemoveWorktreeAsync(worktree));
         panel.WhyNotRemoveWorktree = WhyNotRemoveWorktree;
-        panel.PushToRequested += (_, branch) => IdeErrors.Observe(ShowPushToAsync(branch));
+        panel.PushToRequested += (_, branch) => IdeErrors.Observe(ShowPushAsync(branch, elsewhere: true));
         panel.AddRemoteRequested += (_, _) => IdeErrors.Observe(EditRemoteAsync(null));
         panel.ManageRemotesRequested += (_, _) => ShowRemotes();
         panel.EditRemoteRequested += (_, name) => IdeErrors.Observe(EditRemoteNamedAsync(name, EditRemoteAsync));

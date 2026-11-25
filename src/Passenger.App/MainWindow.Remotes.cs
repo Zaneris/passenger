@@ -6,8 +6,8 @@ namespace Passenger.App;
 
 /// <summary>Remotes, managed in the Remotes dialog (Manage Remotes… in the Git menu) and from a remote's menu in the Git
 /// log's branches panel: added and edited in the Add Remote dialog, which says what each does before it runs, and removed
-/// once the person agrees; and a branch pushed to any remote in the Push dialog (Push to…, the Git menu and a branch's
-/// menu), whatever it tracks.</summary>
+/// once the person agrees; and a branch pushed in the Push dialog (Push… and Push to…, the Git menu and a branch's menu)
+/// to where it tracks or any remote, forced under a lease once the person agrees.</summary>
 public partial class MainWindow
 {
     private RemotesDialog? remotesDialog;
@@ -25,7 +25,7 @@ public partial class MainWindow
 
     private void AddRemoteActions()
     {
-        actions!.Add(new IdeAction(AppActions.PushTo, "Push to…", "Git", _ => IdeErrors.Observe(ShowPushToAsync(null)))
+        actions!.Add(new IdeAction(AppActions.PushTo, "Push to…", "Git", _ => IdeErrors.Observe(ShowPushAsync(null, elsewhere: true)))
         {
             WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository
                 : session.Vcs.WhyNotRemote ?? (session.Vcs.Branch is null ? Refusals.Detached : null)),
@@ -105,13 +105,16 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Push to…: the Push dialog for a local branch (the one checked out where none is given), then the plan it
-    /// closes with pushed.</summary>
-    public async Task ShowPushToAsync(BranchInfo? branch)
+    /// <summary>Push… (where the branch goes as it tracks, or for a branch tracking none, to origin or the first remote) or
+    /// Push to… (<paramref name="elsewhere"/>: to another remote than the one tracked): the Push dialog for a local branch of
+    /// <paramref name="of"/>'s repository (the window's where none is given), the one checked out where none is given, what a
+    /// push there sends read first; then the plan it closes with pushed, a force push only once the person agrees.</summary>
+    public async Task ShowPushAsync(BranchInfo? branch, bool elsewhere, VcsController? of = null)
     {
-        VcsController vcs = session.Vcs;
+        VcsController vcs = of ?? session.Vcs;
         PushStart start;
-        using (Working? reading = BeginWork(AppActions.PushTo, "Reading the remotes…"))
+        PushPreview? first;
+        using (Working? reading = BeginWork(elsewhere ? AppActions.PushTo : AppActions.Push, "Reading what Push sends…"))
         {
             if (reading is null)
             {
@@ -125,14 +128,22 @@ public partial class MainWindow
                 return;
             }
             string? tracked = pushed.UpstreamBranch is { } full && full.StartsWith("refs/heads/", StringComparison.Ordinal) ? full["refs/heads/".Length..] : pushed.UpstreamBranch;
-            start = new PushStart(pushed.Name, pushed.UpstreamRemote, tracked, await vcs.RemotesAsync());
+            start = new PushStart(pushed.Name, pushed.UpstreamRemote, tracked, await vcs.RemotesAsync(), elsewhere);
+            first = start.Remote is { } remote && RefNames.WhyNot(start.RemoteBranch, "branch") is null ? await vcs.PushPreviewAsync(start.Branch, remote, start.RemoteBranch) : null;
         }
-        PushDialog dialog = new(start, vcs.PushPreviewAsync);
+        PushDialog dialog = new(start, vcs.PushPreviewAsync, first);
         pushDialog = dialog;
         dialog.Closed += (_, _) => pushDialog = pushDialog == dialog ? null : pushDialog;
-        if (await dialog.ShowDialog<PushPlan?>(Frontmost) is { } plan && vcs == session.Vcs)
+        if (await dialog.ShowDialog<PushPlan?>(Frontmost) is not { } plan || (vcs != session.Vcs && !session.Others.Contains(vcs)))
         {
-            await vcs.PushToAsync(plan);
+            return;
         }
+        string there = $"{plan.Remote}/{plan.RemoteBranch}";
+        if (plan.Force && !await Confirm("Force Push", $"Force push {plan.Branch} to {there}? The commits there that {plan.Branch} lacks are replaced. "
+            + $"Git replaces only what {plan.Branch} once held, as {there} was last fetched: where someone pushed there since, it refuses and nothing is replaced.", "Force Push"))
+        {
+            return;
+        }
+        await vcs.PushToAsync(plan);
     }
 }

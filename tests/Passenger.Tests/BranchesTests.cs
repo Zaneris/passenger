@@ -254,9 +254,9 @@ public sealed class BranchesTests : IDisposable
         Assert.Equal(Git("rev-parse", "origin/feature").Trim(), Git("rev-parse", "feature").Trim());
 
         Choose(panel, rows, "hotfix", "Push…");
-        Ui.PumpUntil(() => window.PushCommits is { IsVisible: true }, "the Push dialog for hotfix to show");
-        Ui.ClickButton(window.PushCommits!, "Push");
-        Ui.Landed(() => window.Status == "Pushed hotfix", "the push of hotfix");
+        Ui.PumpUntil(() => window.PushWindow is { IsVisible: true }, "the Push dialog for hotfix to show");
+        Ui.ClickButton(window.PushWindow!, "Push");
+        Ui.Landed(() => window.Status == "Pushed hotfix to origin/hotfix, which it tracks from now on", "the push of hotfix");
         Assert.Equal(Git("rev-parse", "hotfix").Trim(), TestGit.Run(origin, "rev-parse", "hotfix").Trim());
         Assert.Equal("origin/hotfix", Git("rev-parse", "--abbrev-ref", "hotfix@{upstream}").Trim());
         window.Close();

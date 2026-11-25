@@ -537,13 +537,16 @@ public sealed class CommitView : DockPanel, IOwnKeys
         }
     }
 
+    /// <summary>Push… of a repository's tab, which the window asks of in its Push dialog.</summary>
+    public event EventHandler<VcsController>? PushRequested;
+
     /// <summary>A repository's tab's menu: its own Update Project, Push… and Fetch, whichever tab is chosen.</summary>
-    private static ContextMenu RepositoryMenu(VcsController repository) => new()
+    private ContextMenu RepositoryMenu(VcsController repository) => new()
     {
         ItemsSource = (Control[])
         [
             ListMenus.Item("Update Project…", () => IdeErrors.Observe(repository.UpdateAsync()), repository.WhyNotRemote),
-            ListMenus.Item("Push…", () => IdeErrors.Observe(repository.PushAsync()), repository.WhyNotRemote),
+            ListMenus.Item("Push…", () => PushRequested?.Invoke(this, repository), repository.WhyNotRemote),
             ListMenus.Item("Fetch", () => IdeErrors.Observe(repository.FetchAsync()), repository.WhyNotRemote),
         ],
     };

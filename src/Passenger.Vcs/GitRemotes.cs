@@ -8,14 +8,19 @@ public sealed record RemoteInfo(string Name, string Url, string? PushUrl = null)
 /// then on, and for a new one whether its branches are fetched at once.</summary>
 public sealed record RemotePlan(string? Was, string Name, string Url, bool Fetch = false);
 
-/// <summary>A local branch to push: the remote and the branch there it goes to, and whether the branch tracks that one
-/// from then on.</summary>
-public sealed record PushPlan(string Branch, string Remote, string RemoteBranch, bool Track);
+/// <summary>A local branch to push: the remote and the branch there it goes to, whether the branch tracks that one from
+/// then on, and whether it replaces what the remote's branch has that the branch lacks (Force Push).</summary>
+public sealed record PushPlan(string Branch, string Remote, string RemoteBranch, bool Track, bool Force = false);
 
 /// <summary>What a push would send, as this repository last fetched the remote: the commits the remote's branch lacks
-/// (those no branch of the remote has where it has none of the name yet), whether it has one of the name, and how many
-/// commits it has that the branch lacks, which git refuses to push over.</summary>
-public sealed record PushPreview(IReadOnlyList<CommitInfo> Sends, bool RemoteHasBranch, int RemoteAhead);
+/// (those no branch of the remote has where it has none of the name yet), newest first and at most
+/// <see cref="MostListed"/> of them, how many in all, whether it has one of the name, and how many commits it has that
+/// the branch lacks, which git refuses to push over but for a force push.</summary>
+public sealed record PushPreview(IReadOnlyList<CommitInfo> Sends, int SendsCount, bool RemoteHasBranch, int RemoteAhead)
+{
+    /// <summary>How many of the commits it sends are listed at most, however many it sends.</summary>
+    public const int MostListed = 1000;
+}
 
 public sealed partial class Git
 {
@@ -45,25 +50,40 @@ public sealed partial class Git
         RunAsync(Root, ["fetch", "--prune", "--end-of-options", remote], cancel: cancel, asker: asker);
 
     /// <summary>A local branch pushed as planned, whatever it tracks: to the remote's branch named, tracked from then on
-    /// only where the plan says. Canceled, as <see cref="FetchUpstreamAsync"/>.</summary>
+    /// only where the plan says, and forced only where it says (<see cref="Forcing"/>). Canceled, as
+    /// <see cref="FetchUpstreamAsync"/>.</summary>
     public Task<GitResult> PushToAsync(PushPlan plan, CancellationToken cancel = default, GitAsker? asker = null) =>
-        RunAsync(Root, ["push", .. plan.Track ? new[] { "-u" } : [], "--end-of-options", plan.Remote, $"refs/heads/{plan.Branch}:refs/heads/{plan.RemoteBranch}"], cancel: cancel, asker: asker);
+        RunAsync(Root, ["push", .. plan.Track ? new[] { "-u" } : [], .. Forcing(plan.Force), "--end-of-options", plan.Remote, $"refs/heads/{plan.Branch}:refs/heads/{plan.RemoteBranch}"],
+            cancel: cancel, asker: asker);
 
-    /// <summary>What pushing a local branch to a remote's branch would send, as the remote was last fetched.</summary>
-    public async Task<PushPreview> PushPreviewAsync(string branch, string remote, string remoteBranch, int most = 50)
+    /// <summary>What a force push adds to git's push: the remote's branch replaced only where it still stands where this
+    /// repository last fetched it (a lease on its remote-tracking branch, or on there being none), and only where the branch
+    /// has once held what that was (git 2.30), so a fetch nobody took in never lends the lease to commits nobody saw.</summary>
+    private static IReadOnlyList<string> Forcing(bool force) => force ? ["--force-with-lease", "--force-if-includes"] : [];
+
+    /// <summary>What pushing a local branch to a remote's branch would send, as the remote was last fetched, the commits
+    /// listed at most <paramref name="most"/>.</summary>
+    public async Task<PushPreview> PushPreviewAsync(string branch, string remote, string remoteBranch, int most = PushPreview.MostListed)
     {
         string local = $"refs/heads/{branch}";
         string there = $"refs/remotes/{remote}/{remoteBranch}";
         if (await CommitOfAsync(there) is null)
         {
             // Nothing of the name there yet: what no branch of the remote has goes.
-            using GitOutput fresh = await OutputOfAsync(Root, ["log", "--topo-order", $"--max-count={most}", CommitFormat, local, "--not", $"--remotes={remote}", "--"]);
-            return new PushPreview(fresh.Succeeded ? Commits(fresh.Bytes) : [], false, 0);
+            string[] fresh = [local, "--not", $"--remotes={remote}", "--"];
+            using GitOutput listed = await OutputOfAsync(Root, ["log", "--topo-order", $"--max-count={most}", CommitFormat, .. fresh]);
+            GitResult counted = await RunAsync(Root, ["rev-list", "--count", .. fresh]);
+            IReadOnlyList<CommitInfo> news = listed.Succeeded ? Commits(listed.Bytes) : [];
+            return new PushPreview(news, Count(counted.Output) ?? news.Count, false, 0);
         }
         IReadOnlyList<CommitInfo> sends = await LogAsync(most, [$"{there}..{local}"]);
-        GitResult ahead = await RunAsync(Root, ["rev-list", "--count", "--end-of-options", $"{local}..{there}", "--"], answers: [NotThere]);
-        return new PushPreview(sends, true, ahead.Succeeded && int.TryParse(ahead.Output.Trim(), System.Globalization.CultureInfo.InvariantCulture, out int count) ? count : 0);
+        // The commits only the branch has, then those only the remote's branch has.
+        GitResult apart = await RunAsync(Root, ["rev-list", "--left-right", "--count", "--end-of-options", $"{local}...{there}", "--"], answers: [NotThere]);
+        string[] counts = apart.Succeeded ? apart.Output.Split('\t', StringSplitOptions.TrimEntries) : [];
+        return new PushPreview(sends, counts.Length == 2 && Count(counts[0]) is { } ahead ? ahead : sends.Count, true, counts.Length == 2 ? Count(counts[1]) ?? 0 : 0);
     }
+
+    private static int? Count(string said) => int.TryParse(said.Trim(), System.Globalization.CultureInfo.InvariantCulture, out int count) ? count : null;
 }
 
 /// <summary>What git answers of remotes, read apart from any git.</summary>

@@ -1324,10 +1324,10 @@ public sealed partial class VcsTests : IDisposable
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         Ui.Settle();
 
-        PushAsked(window).Choose(force: false);
+        Ui.Press(PushAsked(window), "ENTER");
         Ui.ClickButton(LoginAsked(window, remote), "Cancel");
         Ui.Landed(() => window.Actions.Work.Of(AppActions.Push) is null, "the push's end once its login was cancelled");
-        Assert.Equal($"Push failed: the login to {remote.Place} was cancelled", window.Status);
+        Assert.Equal($"main was not pushed to origin/main: the login to {remote.Place} was cancelled", window.Status);
         Assert.Equal(0, remote.SignedIn);
 
         Ui.ClickButton(PushAsked(window), "Push");
@@ -1336,7 +1336,7 @@ public sealed partial class VcsTests : IDisposable
         Ui.Press(asked, "TAB");
         asked.KeyTextInput(StandInGitRemote.Password);
         Ui.Press(asked, "ENTER");
-        Ui.Landed(() => window.Status == "Pushed main", "the push once signed in");
+        Ui.Landed(() => window.Status == "Pushed main to origin/main, which it tracks from now on", "the push once signed in");
         Assert.Equal(Git("rev-parse", "HEAD").Trim(), TestGit.Run(remote.Repository, "rev-parse", "main").Trim());
         Assert.True(remote.SignedIn > 0, "The remote heard no request with the login typed");
         Assert.False(Ui.IdeLog().Contains(StandInGitRemote.Password, StringComparison.Ordinal), "The password typed for git is in the IDE's log");
@@ -1353,8 +1353,9 @@ public sealed partial class VcsTests : IDisposable
     }
 
     /// <summary>A branch rewritten since it was pushed (amended, as a rebase rewrites it) is refused a plain Push, the Push
-    /// dialog saying so; Force Push asks first, leaving the remote as it was when declined, and replaces the remote's branch
-    /// once agreed, with a lease: a commit someone else pushed there since it was last fetched is never replaced.</summary>
+    /// dialog listing what it sends and saying so; Force Push asks first, leaving the remote as it was when declined, and
+    /// replaces the remote's branch once agreed, with a lease: a commit someone else pushed there since it was last fetched
+    /// is never replaced. Where the remote's branch has nothing the branch lacks, Force Push is greyed saying so.</summary>
     private void Force_push_replaces_a_rewritten_branch_on_the_remote_once_agreed_but_never_what_someone_pushed_since()
     {
         string served = TestFolders.Create("git-served-");
@@ -1372,11 +1373,18 @@ public sealed partial class VcsTests : IDisposable
             return Task.FromResult(agree);
         };
 
-        PushCommitsDialog refused = PushAsked(window);
-        Assert.Equal(["Rewritten"], refused.Outgoing.Select(c => c.Subject));
-        Assert.StartsWith("origin/main has 1 commit main lacks", refused.Rejected, StringComparison.Ordinal);
+        PushDialog refused = PushAsked(window);
+        Assert.Equal(["Rewritten"], refused.Sends.Select(c => c.Subject));
+        Assert.Equal(
+            [
+                "Sends 1 commit to origin/main, as last fetched.",
+                "origin/main has 1 commit main lacks, as after a rebase or an amend: git refuses Push until it is brought in (merge or rebase onto origin/main), "
+                    + "and Force Push replaces it, only while origin/main stands as last fetched.",
+                "main keeps tracking origin/main.",
+            ], refused.WhatItDoes);
+        Assert.True(refused.ForceButton.IsEnabled, "Force Push is greyed where origin/main has a commit main lacks");
         Ui.ClickButton(refused, "Push");
-        Ui.Landed(() => window.Status?.StartsWith("Push failed", StringComparison.Ordinal) == true, "the plain push of a rewritten branch refused");
+        Ui.Landed(() => window.Status?.StartsWith("main was not pushed to origin/main", StringComparison.Ordinal) == true, "the plain push of a rewritten branch refused");
         Assert.Equal(pushed, TestGit.Run(served, "rev-parse", "main").Trim());
 
         Ui.ClickButton(PushAsked(window), "Force Push");
@@ -1386,8 +1394,12 @@ public sealed partial class VcsTests : IDisposable
 
         agree = true;
         Ui.ClickButton(PushAsked(window), "Force Push");
-        Ui.Landed(() => window.Status == "Force pushed main", "the force push once agreed");
+        Ui.Landed(() => window.Status == "Force pushed main to origin/main", "the force push once agreed");
         Assert.Equal(Git("rev-parse", "HEAD").Trim(), TestGit.Run(served, "rev-parse", "main").Trim());
+        PushDialog even = PushAsked(window);
+        Assert.False(even.ForceButton.IsEnabled, "Force Push is offered where origin/main has nothing main lacks");
+        Assert.Equal("origin/main has no commit main lacks, as last fetched: Push sends it", ToolTip.GetTip(even.ForceButton));
+        Ui.ClickButton(even, "Cancel");
 
         string elsewhere = TestFolders.Create("git-elsewhere-");
         TestGit.Run(elsewhere, "clone", "-q", "-b", "main", served, ".");
@@ -1398,18 +1410,18 @@ public sealed partial class VcsTests : IDisposable
         string theirs = TestGit.Run(elsewhere, "rev-parse", "HEAD").Trim();
         Git("commit", "-q", "--amend", "-m", "Rewritten again");
         Ui.ClickButton(PushAsked(window), "Force Push");
-        Ui.Landed(() => window.Status?.StartsWith("Force push failed", StringComparison.Ordinal) == true, "the force push refused by its lease");
+        Ui.Landed(() => window.Status?.StartsWith("main was not force pushed to origin/main", StringComparison.Ordinal) == true, "the force push refused by its lease");
         Assert.Equal(theirs, TestGit.Run(served, "rev-parse", "main").Trim());
         window.Close();
     }
 
     /// <summary>The Push dialog Push… opened, once it shows, held to the dialogs' rule.</summary>
-    private static PushCommitsDialog PushAsked(MainWindow window)
+    private static PushDialog PushAsked(MainWindow window)
     {
         Assert.True(window.Perform(AppActions.Push), window.Status);
-        Ui.PumpUntil(() => window.PushCommits is { IsVisible: true }, "the Push dialog to show");
-        PushCommitsDialog asked = DialogButtonsTests.Check(window.PushCommits!);
-        Assert.Equal("Push Commits", asked.Title);
+        Ui.PumpUntil(() => window.PushWindow is { IsVisible: true }, "the Push dialog to show");
+        PushDialog asked = DialogButtonsTests.Check(window.PushWindow!);
+        Assert.Equal($"Push {window.Vcs.Branch}", asked.Title);
         return asked;
     }
 
@@ -1426,22 +1438,27 @@ public sealed partial class VcsTests : IDisposable
         MainWindow window = Open();
         Assert.Equal("feature", window.Vcs.Branch);
 
-        PushCommitsDialog first = PushAsked(window);
-        Assert.Empty(first.Remotes);
-        Assert.Equal(Git("log", "--format=%s").Split('\n', StringSplitOptions.RemoveEmptyEntries), first.Outgoing.Select(c => c.Subject));
+        PushDialog first = PushAsked(window);
+        Assert.Equal("upstream", first.RemoteBox.SelectedItem);
+        Assert.Equal(Git("log", "--format=%s").Split('\n', StringSplitOptions.RemoveEmptyEntries), first.Sends.Select(c => c.Subject));
+        Assert.False(first.ForceButton.IsEnabled, "Force Push is offered where upstream has no branch feature to replace");
         Ui.ClickButton(first, "Push");
-        Ui.Landed(() => window.Status == "Pushed feature", "the push to the only remote, upstream");
+        Ui.Landed(() => window.Status == "Pushed feature to upstream/feature, which it tracks from now on", "the push to the only remote, upstream");
         Assert.Equal(Git("rev-parse", "feature").Trim(), TestGit.Run(upstream, "rev-parse", "feature").Trim());
         Assert.Equal("upstream/feature", Git("rev-parse", "--abbrev-ref", "feature@{upstream}").Trim());
 
         Git("remote", "add", "other", other);
         Git("switch", "-q", "-c", "second");
         Ui.WaitFor(() => window.Vcs.Branch == "second", "the window to follow the checkout of second");
-        PushCommitsDialog choosing = PushAsked(window);
-        Assert.Equal(["other", "upstream"], choosing.Remotes);
-        choosing.Remote = "other";
+        PushDialog choosing = PushAsked(window);
+        Assert.Equal(["other", "upstream"], choosing.RemoteBox.Items);
+        Assert.Equal("other", choosing.RemoteBox.SelectedItem);
+        choosing.RemoteBox.SelectedItem = "upstream";
+        Ui.Landed(() => choosing.WhatItDoes[0] == "Makes the branch second on upstream at second's commit, which upstream has already.", "what a push to upstream does");
+        choosing.RemoteBox.SelectedItem = "other";
+        Ui.Landed(() => choosing.Sends.Count > 0, "what a push to other sends");
         Ui.ClickButton(choosing, "Push");
-        Ui.Landed(() => window.Status == "Pushed second", "the push to the remote chosen, other");
+        Ui.Landed(() => window.Status == "Pushed second to other/second, which it tracks from now on", "the push to the remote chosen, other");
         Assert.Equal(Git("rev-parse", "second").Trim(), TestGit.Run(other, "rev-parse", "second").Trim());
         Assert.Equal("other/second", Git("rev-parse", "--abbrev-ref", "second@{upstream}").Trim());
         window.Close();
@@ -1502,9 +1519,11 @@ public sealed partial class VcsTests : IDisposable
         Ui.Landed(() => pushing.GitWords.Length > 0, "what a push to backup sends");
         Assert.Equal(
             [
-                $"Makes the branch main on backup, sending 2 commits ({twice} Twice, {first} First) it lacks, as last fetched.",
+                "Makes the branch main on backup, sending 2 commits it lacks, as last fetched.",
                 "main keeps tracking origin/main.",
             ], pushing.WhatItDoes);
+        Assert.Equal([$"{twice} Twice", $"{first} First"], pushing.Sends.Select(c => $"{c.Short} {c.Subject}"));
+        Assert.False(pushing.ForceButton.IsEnabled, "Force Push is offered where backup has no branch main to replace");
         Assert.Equal("git push backup main", pushing.GitWords);
         Ui.Click(pushing.PushButton);
         Ui.Landed(() => window.PushWindow is null && !window.Vcs.IsBusy, "the push to backup");
@@ -1977,7 +1996,11 @@ public sealed partial class VcsTests : IDisposable
         TestGit.Run(lib, "remote", "add", "origin", libOrigin);
         Ui.Click(view.RepositoryTabs[0]);
         Ui.ChooseFromMenu(view.RepositoryTabs[1], "Push…");
-        Ui.Landed(() => window.Status == "Pushed main", $"lib pushed from its tab's menu, where the status bar says \"{window.Status}\"");
+        Ui.PumpUntil(() => window.PushWindow is { IsVisible: true }, "the Push dialog of lib");
+        PushDialog pushing = DialogButtonsTests.Check(window.PushWindow!);
+        Assert.Equal(["Size"], pushing.Sends.Take(1).Select(c => c.Subject));
+        Ui.ClickButton(pushing, "Push");
+        Ui.Landed(() => window.Status == "Pushed main to origin/main, which it tracks from now on", $"lib pushed from its tab's menu, where the status bar says \"{window.Status}\"");
         Assert.Equal(TestGit.Run(lib, "rev-parse", "main").Trim(), TestGit.Run(libOrigin, "rev-parse", "main").Trim());
         window.Close();
     }
