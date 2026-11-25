@@ -382,7 +382,8 @@ internal static class Docker
         }
         Task<IReadOnlyList<string>> removing = Waiting.Apart(RemoveRunningAsync);
         TimeSpan limit = TimeSpan.FromMinutes(2).Scaled();
-        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        // A thread no window ran on (a class run alone, its tests windowless) has no window loop to keep running as it waits.
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess() && Avalonia.Application.Current is not null)
         {
             return Ui.AwaitPumped(removing, "the run's containers left running, removed", limit);
         }
