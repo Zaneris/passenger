@@ -133,7 +133,7 @@ public sealed class EditorGroup : DockPanel
             Orientation = Orientation.Horizontal, IsVisible = false, [DockProperty] = Dock.Right,
             Children = { markdownEditor, markdownSplit, markdownOnly },
         };
-        stripView = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = strip };
+        stripView = TabStrips.ScrollingAcross(strip);
         // A narrower strip may leave the active tab out of sight.
         stripView.SizeChanged += (_, _) => RevealActive();
         hiddenTabs = ToolButtons.Of(IconKeys.ChevronDown, "Hidden Tabs", () => area.HiddenTabsAsked(this));

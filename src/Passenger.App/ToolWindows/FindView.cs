@@ -194,7 +194,7 @@ public sealed class FindView : DockPanel
         tabBar = ToolBars.Top(new DockPanel
         {
             Margin = new Thickness(Gaps.Normal, 0),
-            Children = { sides, new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = tabs } },
+            Children = { sides, TabStrips.ScrollingAcross(tabs) },
         });
         tabBar.IsVisible = false;
         Children.Add(tabBar);
