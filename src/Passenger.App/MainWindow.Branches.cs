@@ -23,7 +23,7 @@ public partial class MainWindow
         panel.RenameRequested += (_, branch) => ShowRenameBranch(branch);
         panel.DeleteRequested += (_, branch) => IdeErrors.Observe(DeleteBranchAsync(branch));
         panel.CompareRequested += (_, branch) => CompareWithCurrent(branch);
-        panel.WorkingTreeDiffRequested += (_, branch) => ShowWorkingTreeDiff(branch);
+        panel.WorkingTreeDiffRequested += (_, branch) => ShowWorkingTreeDiff(WorkingTreeComparison.Of(branch));
         panel.FavoritesChanged += (_, favorites) => session.State?.GitBranches.Set(favorites);
     }
 
@@ -104,8 +104,9 @@ public partial class MainWindow
     }
 
     /// <summary>Show Diff with Working Tree: a tab of the Git window listing the files that differ between a branch and the
-    /// working tree, each opening as the branch has it beside the file, where Settings opens diffs.</summary>
-    public WorkingTreeDiffView? ShowWorkingTreeDiff(BranchInfo branch)
+    /// working tree, or those a stash holds (nothing applied), each opening as the branch or stash has it beside the file,
+    /// where Settings opens diffs.</summary>
+    public WorkingTreeDiffView? ShowWorkingTreeDiff(WorkingTreeComparison compared)
     {
         if (session.Vcs.Repository is null)
         {
@@ -113,6 +114,19 @@ public partial class MainWindow
             return null;
         }
         ShowToolWindow(ToolWindowIds.Git);
-        return GitWindow.ShowWorkingTreeDiff(branch);
+        return GitWindow.ShowWorkingTreeDiff(compared);
+    }
+
+    /// <summary>A file of a Show Diff with Working Tree tab beside the file now, as the branch or stash has it; an empty side
+    /// where it has none of the file (a branch's file added since, one a stash deleted). A file a stash renamed is beside
+    /// where the working tree still has it.</summary>
+    private Task<IDiffHost?> CompareWithWorkingTreeAsync(WorkingTreeComparison compared, FileChange file)
+    {
+        if (compared.Stash is null)
+        {
+            return CompareWithAsync(file.Path, compared.Revision, compared.Name, file.From ?? file.Path, added: file.Kind == ChangeKind.Added);
+        }
+        string local = file is { Kind: ChangeKind.Renamed, From: { } from } && !File.Exists(file.Path) ? from : file.Path;
+        return CompareWithAsync(local, compared.RevisionOf(file), compared.Name, file.Path, added: file.Kind == ChangeKind.Deleted);
     }
 }

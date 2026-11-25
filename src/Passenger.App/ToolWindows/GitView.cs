@@ -8,8 +8,9 @@ using Passenger.Vcs;
 namespace Passenger.App.ToolWindows;
 
 /// <summary>The Git tool window: the Log, and a tab beside it for each history Show History opens (a file's, a
-/// folder's, some lines'), each comparison Compare with Current opens and each branch's files Show Diff with Working Tree
-/// lists, its tabs in the window's header. Asked again for the same thing it goes back to its tab; a tab's × closes it.</summary>
+/// folder's, some lines'), each comparison Compare with Current opens and each branch's or stash's files Show Diff with
+/// Working Tree lists, its tabs in the window's header. Asked again for the same thing it goes back to its tab; a tab's
+/// × closes it.</summary>
 public sealed class GitView : DockPanel
 {
     private VcsController vcs;
@@ -33,7 +34,8 @@ public sealed class GitView : DockPanel
     /// <summary>The Log of every branch, the first tab.</summary>
     public GitLogView Log { get; }
 
-    /// <summary>The tab shown: the Log, a history, a comparison's upper list or a branch's files beside the working tree.</summary>
+    /// <summary>The tab shown: the Log, a history, a comparison's upper list or a branch's or stash's files beside the
+    /// working tree.</summary>
     public Control Shown { get; private set; }
 
     /// <summary>The tabs, for the tool window's header.</summary>
@@ -51,8 +53,9 @@ public sealed class GitView : DockPanel
     /// <summary>A file as a commit of its history had it, to compare with the file now (its path now first).</summary>
     public event EventHandler<(string Local, CommitInfo Commit, FileChange File)>? CompareRequested;
 
-    /// <summary>A branch's file to show beside the file as it is now, from its Show Diff with Working Tree tab.</summary>
-    public event EventHandler<(BranchInfo Branch, FileChange File)>? WorkingTreeDiffRequested;
+    /// <summary>A branch's or stash's file to show beside the file as it is now, from its Show Diff with Working Tree
+    /// tab.</summary>
+    public event EventHandler<(WorkingTreeComparison Compared, FileChange File)>? WorkingTreeDiffRequested;
 
     /// <summary>A commit's file to open as it is now, from any tab.</summary>
     public event EventHandler<string>? OpenRequested;
@@ -104,22 +107,22 @@ public sealed class GitView : DockPanel
         return top;
     }
 
-    /// <summary>Show Diff with Working Tree: a tab of the files that differ between a branch and the working tree, the one
-    /// open for the branch if any, read again.</summary>
-    public WorkingTreeDiffView ShowWorkingTreeDiff(BranchInfo branch)
+    /// <summary>Show Diff with Working Tree: a tab of the files that differ between a branch and the working tree, or
+    /// those a stash holds, the one open for the same if any, read again.</summary>
+    public WorkingTreeDiffView ShowWorkingTreeDiff(WorkingTreeComparison compared)
     {
-        string title = $"Compare {branch.Name} and Working Tree";
-        if (histories.FirstOrDefault(h => h.Scope is null && h.Title == title).View is WorkingTreeDiffView open)
+        string title = $"Compare {compared.Name} and Working Tree";
+        if (histories.Select(h => h.View).OfType<WorkingTreeDiffView>().FirstOrDefault(v => v.Compared == compared) is { } open)
         {
             Show(open);
             IdeErrors.Observe(open.LoadAsync());
             return open;
         }
-        WorkingTreeDiffView files = new(vcs, branch);
-        files.DiffRequested += (_, change) => WorkingTreeDiffRequested?.Invoke(this, (branch, change));
+        WorkingTreeDiffView files = new(vcs, compared);
+        files.DiffRequested += (_, change) => WorkingTreeDiffRequested?.Invoke(this, (compared, change));
         files.OpenRequested += (_, path) => OpenRequested?.Invoke(this, path);
         Grid body = new() { RowDefinitions = new RowDefinitions("Auto,*") };
-        body.Children.Add(Explanation($"Files that differ between {branch.Name} and the working tree", 0));
+        body.Children.Add(Explanation(compared.Explanation, 0));
         Grid.SetRow(files, 1);
         body.Children.Add(files);
         histories.Add((null, title, files, body));

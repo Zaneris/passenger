@@ -2566,6 +2566,26 @@ public sealed partial class Git
         return changes;
     }
 
+    /// <summary>The files a stash holds, in their paths' order: those it changed against the head it was made on, renames
+    /// found, each by its path in the stash, and the files git did not track that it put away, unversioned.</summary>
+    public async Task<IReadOnlyList<FileChange>> StashFilesAsync(StashInfo stash)
+    {
+        // A stash's commit holds the files as they were, its first parent the head it was made on, its third the new files.
+        GitResult files = await RunAsync(Root, ["diff", "--name-status", "-z", "-M", "--end-of-options", $"{stash.Commit}^1", stash.Commit, "--"]);
+        if (!files.Succeeded)
+        {
+            return [];
+        }
+        List<FileChange> changes = NameStatus(files.Output);
+        if (await CommitOfAsync($"{stash.Commit}^3") is { } untracked && await FilesOfAsync(untracked) is { } kept)
+        {
+            DiskNames names = new(Root);
+            changes.AddRange(kept.Select(path => new FileChange(names.Full(path), ChangeKind.Unversioned)));
+        }
+        changes.Sort((a, b) => PathNames.Comparer.Compare(a.Path, b.Path));
+        return changes;
+    }
+
     /// <summary>The stashes, the newest first.</summary>
     public async Task<IReadOnlyList<StashInfo>> StashesAsync()
     {

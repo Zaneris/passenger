@@ -147,9 +147,7 @@ public partial class MainWindow
         ToolWindows.GitView view = gitView = new ToolWindows.GitView(session.Vcs);
         view.DiffRequested += (_, chosen) => IdeErrors.Observe(ShowCommitDiffAsync(chosen.Commit, chosen.File));
         view.CompareRequested += (_, chosen) => IdeErrors.Observe(CompareWithAsync(chosen.Local, chosen.Commit.Hash, chosen.Commit.Short, chosen.File.Path));
-        view.WorkingTreeDiffRequested += (_, chosen) =>
-            IdeErrors.Observe(CompareWithAsync(chosen.File.Path, chosen.Branch.Ref.FullName, chosen.Branch.Name, chosen.File.From ?? chosen.File.Path,
-                added: chosen.File.Kind == ChangeKind.Added));
+        view.WorkingTreeDiffRequested += (_, chosen) => IdeErrors.Observe(CompareWithWorkingTreeAsync(chosen.Compared, chosen.File));
         view.OpenRequested += (_, path) => OpenFile(path);
         view.ActionRequested += (_, action) => Request(action);
         view.NewBranchRequested += (_, commit) =>
@@ -419,7 +417,8 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Unstash Changes: the stashes to pop, apply or drop (once the person agrees).</summary>
+    /// <summary>Unstash Changes: the stashes to pop, apply or drop (once the person agrees), or to look at beside the
+    /// working tree.</summary>
     public async Task<UnstashPopup?> ShowUnstashAsync()
     {
         if (session.Vcs.Repository is null)
@@ -433,7 +432,8 @@ public partial class MainWindow
             return null;
         }
         UnstashPopup popup = new(await session.Vcs.StashesAsync(), async (stash, pop) => (await session.Vcs.UnstashAsync(stash, pop)).Succeeded,
-            async stash => (await session.Vcs.DropStashAsync(stash)).Succeeded, (title, text, yes) => Confirm(title, text, yes));
+            async stash => (await session.Vcs.DropStashAsync(stash)).Succeeded, (title, text, yes) => Confirm(title, text, yes),
+            stash => ShowWorkingTreeDiff(WorkingTreeComparison.Of(stash)));
         popup.Done += (_, _) =>
         {
             // Escape may have closed it while a pop ran, and another popup taken its place since.
