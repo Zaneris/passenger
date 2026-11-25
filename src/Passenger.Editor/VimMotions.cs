@@ -633,6 +633,19 @@ public static class VimMotions
         return -1;
     }
 
+    /// <summary>Whether a line has only blanks from an offset to its end.</summary>
+    private static bool BlanksTo(TextSnapshot text, int from, int lineEnd)
+    {
+        for (int at = from; at < lineEnd; at++)
+        {
+            if (text[at] is not (' ' or '\t'))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /// <summary>is and as: <paramref name="n"/> of the sentences and the runs of white between them, from the one the
     /// caret is in; the outer one takes each sentence with the white after it, or before where none is after.</summary>
     public static VimSpan? SentenceObject(TextSnapshot text, int caret, int n, bool inner, bool breakEnds)
@@ -732,6 +745,7 @@ public static class VimMotions
         if (!inner && white)
         {
             // as from white: n times the white and the sentence after it.
+            bool toEmpty = false;
             for (int i = 0; i < n; i++)
             {
                 int sentence = next;
@@ -746,7 +760,7 @@ public static class VimMotions
                         return runEnd > sentenceLine.Line && from == LineOf(text, from).Start ? new VimSpan(from, text.GetLine(runEnd).Start, true)
                             : new VimSpan(from, runEnd > sentenceLine.Line ? text.GetLine(runEnd).Start : from, false, EndKept: true);
                     }
-                    (to, next, i) = (text.GetLine(runEnd).Start, textLine.Start, n - 2);
+                    (to, next, i, toEmpty) = (text.GetLine(runEnd).Start, textLine.Start, n - 2, true);
                     continue;
                 }
                 int textUntil = SentenceEnd(text, last, sentence);
@@ -754,7 +768,9 @@ public static class VimMotions
                 bool marked = EndsWithMark(text, sentence, textUntil);
                 LineSpan until = LineOf(text, textUntil);
                 int empty = until.Length == 0 ? until.Line : until.Line + 1;
-                if (i < n - 1 && (until.Length == 0 || textUntil == until.End) && sentenceLine.Line < empty && empty < last
+                bool blanksEnding = until.Length > 0 && textUntil < until.End && BlanksTo(text, textUntil, until.End);
+                if (i < n - 1 && (until.Length == 0 || textUntil == until.End || blanksEnding)
+                    && sentenceLine.Line < empty && empty < last
                     && text.GetLine(empty).Length == 0 && TextNavigation.IndentEnd(text, text.GetLine(empty - 1)) < text.GetLine(empty - 1).End)
                 {
                     // Counted past its paragraph: the sentence, the empty lines to the last one's start, the sentence after.
@@ -763,21 +779,24 @@ public static class VimMotions
                     to = text.GetLine(lastEmpty == last ? lastEmpty - 1 : lastEmpty).Start;
                     if (++i == n - 1 || lastEmpty == last)
                     {
-                        return new VimSpan(from, to, false, EndKept: true);
+                        // Past blanks ending the paragraph, one empty line before an unindented one ends the count at the sentence's mark.
+                        return blanksEnding && lastEmpty == empty && lastEmpty < last && text.GetLine(lastEmpty + 1) is var opening
+                            && TextNavigation.IndentEnd(text, opening) == opening.Start ? new VimSpan(from, textUntil, false) : new VimSpan(from, to, false, EndKept: true);
                     }
-                    next = text.GetLine(lastEmpty + 1).Start;
+                    next = FirstText(text, last, text.GetLine(lastEmpty + 1).Start);
+                    toEmpty = true;
                     continue;
                 }
                 bool closes = (textUntil == after && after >= textEnd) || (until.Length == 0 && until.Line > LineOf(text, sentence).Line)
                     || (textUntil == until.End && until.Line < text.LineCount - 1 && text.GetLine(until.Line + 1).Length == 0);
                 if (!(closes && !marked) && (textUntil < after || after < textEnd && marked))
                 {
-                    (to, next) = (textUntil, after);
+                    (to, next, toEmpty) = (textUntil, after, false);
                     continue;
                 }
                 if (!closes)
                 {
-                    return new VimSpan(from, i == 0 ? from : to, false);
+                    return new VimSpan(from, i == 0 ? from : to, false, EndKept: i > 0 && toEmpty);
                 }
                 // Ending the text or its paragraph with no mark: taken but for a last word after a blank.
                 int lastChar = Dec(text, textUntil);
@@ -787,13 +806,14 @@ public static class VimMotions
                 {
                     cut = Dec(text, cut);
                 }
-                // A word opening its line, unindented, is taken whole after another sentence.
-                int kept = blanks ? cut + 1 : lastChar > sentence || (i > 0 && sentence == sentenceLine.Start) ? lastChar + 1 : sentence;
+                // A word opening its line, unindented, is taken whole after another sentence, one character alone only below a line ending in none of blanks.
+                bool belowBlanks = sentenceLine.Line > 0 && text.GetLine(sentenceLine.Line - 1) is { Length: > 0 } prior && CharAt(text, prior.End - 1) is ' ' or '\t';
+                int kept = blanks ? cut + 1 : lastChar > sentence || (i > 0 && sentence == sentenceLine.Start && !belowBlanks) ? lastChar + 1 : sentence;
                 // Taken whole up to an empty line, it ends at that line, which takes whole lines from an indent.
                 LineSpan keptLine = LineOf(text, kept);
                 int keptTo = kept == keptLine.End && keptLine.Line < last && text.GetLine(keptLine.Line + 1).Length == 0
                     ? keptLine.EndIncludingBreak : kept;
-                return new VimSpan(from, kept > sentence ? keptTo : i == 0 ? from : to, false);
+                return kept > sentence ? new VimSpan(from, keptTo, false) : new VimSpan(from, i == 0 ? from : to, false, EndKept: i > 0 && toEmpty);
             }
             return new VimSpan(from, to, false);
         }
