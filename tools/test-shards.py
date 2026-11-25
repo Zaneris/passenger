@@ -16,10 +16,12 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import threading
+import time
 from collections import Counter
 from xml.sax.saxutils import escape
 
@@ -99,6 +101,9 @@ STARTS = "starts.json"
 RUNS = "shard-{}.runs.json"
 # How far the machine's free memory may fall while a job's tests run before the job says so (`test`).
 MEMORY_MARGIN = 2 << 30
+# How long the command a shard runs before its classes apart (`test --before-apart`) is given, in seconds, beyond the
+# limits it holds itself to.
+BEFORE_APART_LIMIT = 15 * 60
 # A test's result as the console logger writes it, with how long it took: "  Passed NAME [1 m 3 s]".
 RESULT_LINE = re.compile(r"^  (?P<outcome>Passed|Failed|Skipped) (?P<name>Passenger\.(?:Unit)?Tests\.\S.*?)"
                          r"(?: \[(?P<took>[^\]]*)\])?\s*$")
@@ -878,12 +883,17 @@ def tell_failed(results, lane, label):
 def run_tests(arguments):
     """A shard's tests: each step of its runs (RUNS) one after another, the runs of a step at once, each a dotnet test of
     its project with its settings; what each writes to its console goes to the log and, line by line as it comes, to its
-    CONSOLE_LOG beside the results, which a shard stopped before its .trx is written leaves. The last failing exit code,
-    else 0."""
+    CONSOLE_LOG beside the results, which a shard stopped before its .trx is written leaves; the command --before-apart
+    gives runs before the first step of its classes apart (run_before). The last failing exit code, else 0."""
     results = os.path.abspath(arguments.results)
     folder = os.path.join(results, "shards")
     code = 0
+    apart = set(load(os.path.join(folder, APART), {}).get("apart", ()))
+    before = arguments.before_apart
     for step in steps_of(folder, arguments.shard):
+        if before and all(run.get("classes") and set(run["classes"]) <= apart for run in step):
+            run_before(before)
+            before = None
         if len(step) > 1:
             write(f"Running {', '.join(run['name'] for run in step)} at once")
         printing = threading.Lock()
@@ -904,6 +914,20 @@ def run_tests(arguments):
             if process.wait() != 0:
                 code = process.returncode
     return code
+
+
+def run_before(command):
+    """The command --before-apart gives, run to its end or BEFORE_APART_LIMIT, printing into the log; what it comes to
+    fails nothing, its own words saying what it left undone."""
+    write(f"Before the classes apart: {command}")
+    began = time.monotonic()
+    try:
+        said = f"ended with {subprocess.run(shlex.split(command), cwd=ROOT, timeout=BEFORE_APART_LIMIT).returncode}"
+    except subprocess.TimeoutExpired:
+        said = f"was ended at its limit of {BEFORE_APART_LIMIT // 60} minutes"
+    except OSError as error:
+        said = f"could not start: {error}"
+    write(f"{command} {said}, {(time.monotonic() - began) / 60:.1f} minutes after it began")
 
 
 def copy_lines(stream, log, printing):
@@ -1508,6 +1532,8 @@ def main():
     command.add_argument("--lane", choices=LANES, default="all", help="the lane, whose failed tests are warnings in the "
                          "report lane and errors otherwise")
     command.add_argument("--label", help="which shard, for the summary: Report, macOS (arm64), shard 3 of 5")
+    command.add_argument("--before-apart", help="a command run once before the shard's classes apart (split's --apart), "
+                         "however it ends: test.yml's first boot of the iOS simulator in a macOS mobile shard")
     command.set_defaults(run=run_shard)
 
     command = commands.add_parser("ended", help="say which shard ran and how it ended, and name the classes of its hand "

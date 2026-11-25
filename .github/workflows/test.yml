@@ -491,9 +491,15 @@ jobs:
           SHARD: ${{ matrix.shard }}
           PASSENGER_TEST_TIME_SCALE: ${{ matrix.time_scale }}
           GODOT: ${{ matrix.lane == 'report' && steps.godot.outputs.path || '' }}
+          # On macOS a mobile shard boots the iOS tests' simulator once and shuts it down again, after its other classes
+          # and before its classes apart (tools/simulator-first-boot.sh): the runner's first boot of it and the minutes
+          # of setting up after that take no test's time, and no window class runs beside what a booted simulator leaves.
+          FIRST_BOOT: ${{ env.MOBILE == 'true' && runner.os == 'macOS' }}
         run: |
           $python = if ($IsWindows) { 'python' } else { 'python3' }
-          & $python -I tools/test-shards.py test $env:RESULTS --shard $env:SHARD --lane $env:LANE --label $env:LABEL
+          $before = @()
+          if ($env:FIRST_BOOT -eq 'true') { $before = '--before-apart', 'tools/simulator-first-boot.sh' }
+          & $python -I tools/test-shards.py test $env:RESULTS --shard $env:SHARD --lane $env:LANE --label $env:LABEL @before
           exit $LASTEXITCODE
 
       # Which shard this was and how its job ended, beside its results, for the summary jobs; and the classes of its hand
