@@ -781,23 +781,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.KeyTextInput("int[] numbers = [3, 1, 2];");
         Ui.Press(window, "ENTER");
         window.KeyTextInput("int largest = numbers");
-        // Roslyn lists the methods of namespaces not imported once it has indexed them, so the dot is typed again until it has.
-        Ui.WaitFor(() =>
-        {
-            if (window.Assist.CompletionLabels.Contains("Max"))
-            {
-                return true;
-            }
-            Ui.Press(window, "ESCAPE");
-            if (editor.Document.Snapshot.ToString().Contains("numbers.", StringComparison.Ordinal))
-            {
-                Ui.Press(window, "BACK_SPACE");
-            }
-            Ui.Hold(TimeSpan.FromMilliseconds(250), "a pause before the dot is typed again, as a person retries");
-            window.KeyTextInput(".");
-            Ui.Settle();
-            return false;
-        }, "LINQ's Max, of a namespace Program.cs does not import, among the array's members");
+        // One dot: the list's later part waits for Roslyn's index of the namespaces not imported, never answering without it.
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Max"), "LINQ's Max, of a namespace Program.cs does not import, among the array's members after one dot");
         for (int down = window.Assist.CompletionLabels.ToList().IndexOf("Max"); down > 0; down--)
         {
             Ui.Press(window, "DOWN");
@@ -818,7 +804,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>A method chosen by Enter is written with its call's brackets: the caret between them where an overload
-    /// takes arguments, its signature shown, and after them where none does, its name typed whole too; a method given where
+    /// takes arguments, its signature shown, and after them where none does, its name typed whole too, a '(' or ')' typed
+    /// straight after as a hand used to typing them does taken as typed already, never doubling them; a method given where
     /// a delegate is asked for (an Action, a System.Delegate) stays a method group, without them.</summary>
     private void A_method_chosen_from_the_list_is_written_called_the_caret_inside_its_brackets_when_it_takes_arguments()
     {
@@ -837,6 +824,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
         Assert.True(Line() == "        int doubled = Helper.Twice()" && editor.CaretPosition.Column == Line().Length - 1,
             $"Twice, which takes a value, was not written called with the caret between its brackets: '{Line()}', the caret at {editor.CaretPosition.Column}");
+        window.KeyTextInput("(");
+        Assert.True(Line() == "        int doubled = Helper.Twice()" && editor.CaretPosition.Column == Line().Length - 1,
+            $"A '(' typed straight after Twice's own was not taken as typed already: '{Line()}', the caret at {editor.CaretPosition.Column}");
         Ui.WaitFor(() => window.Assist.SignatureText?.Contains("int value", StringComparison.Ordinal) == true, "Twice's signature");
         window.KeyTextInput("3");
         window.KeyTextInput(")");
@@ -852,7 +842,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
         Assert.True(Line() == "        System.Console.Clear()" && editor.CaretPosition.Column == Line().Length,
             $"Clear, which takes nothing, was not written called with the caret after its brackets: '{Line()}', the caret at {editor.CaretPosition.Column}");
+        window.KeyTextInput("(");
+        window.KeyTextInput(")");
         window.KeyTextInput(";");
+        Assert.True(Line() == "        System.Console.Clear();", $"'()' typed straight after Clear's own were not taken as typed already: '{Line()}'");
 
         Ui.Press(window, "ENTER");
         window.KeyTextInput("System.Action clear = System.Console.");
@@ -886,6 +879,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
         Assert.True(Line() == "        System.Console.Clear()" && editor.CaretPosition.Column == Line().Length,
             $"Clear, typed whole and chosen, was not written called with the caret after its brackets: '{Line()}', the caret at {editor.CaretPosition.Column}");
+        window.KeyTextInput(")");
+        window.KeyTextInput(")");
+        Assert.True(Line() == "        System.Console.Clear())", $"A ')' typed straight after Clear's own was not taken as typed already, or the next one was too: '{Line()}'");
         window.Close();
     }
 

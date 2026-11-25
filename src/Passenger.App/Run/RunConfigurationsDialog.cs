@@ -1360,7 +1360,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             SharedBox.IsChecked = shown.Shared;
             if (shown.IsMultiple)
             {
-                StartsTable.Set(shown.Starts, [.. projects.Where(p => p.IsRunnable && p.GodotFolder is null && !p.IsAspireHost)], p => [.. LaunchProfile.Read(p).Select(l => l.Name)], Shown, Full,
+                StartsTable.Set(shown.Starts, [.. projects.Where(p => p.GodotFolder is null && LaunchProfile.Runs(p) && !p.IsAspireHost)], p => [.. LaunchProfile.Read(p).Select(l => l.Name)], Shown, Full,
                     part => RunsFile.NameOf(part, manifest => Packages.FirstOrDefault(p => Core.PathNames.Same(p.Manifest, manifest))?.Name));
             }
             DockerfileBox.Text = Shown(shown.Dockerfile);

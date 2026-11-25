@@ -339,7 +339,8 @@ public sealed partial class FolderPackages
         string name = $"Install {id} {version} in {project.Name}";
         return Kept(project, [id]) is { } kept
             ? WrittenChangeAsync(stage, name, project, within, () => [(id, Written(project, id, version))], kept, [],
-                left => left is [(string leftId, string leftVersion)] ? manager.InstallAsync(project.Path, leftId, leftVersion) : manager.RestoreAsync(project.Path))
+                left => left is [(string leftId, string leftVersion)] && !Unchanged(project, leftId, leftVersion) ? manager.InstallAsync(project.Path, leftId, leftVersion)
+                    : manager.RestoreAsync(project.Path, VersionRange.Parse(Written(project, id, version)) is { Floating: true }))
             : ChangeAsync(stage, name, project, within, () => manager.InstallAsync(project.Path, id, Written(project, id, version)));
     }
 
@@ -353,12 +354,23 @@ public sealed partial class FolderPackages
         string stage = $"Moving {Moves(packages)} in {project.Name}…";
         string name = $"Move {Moves(packages)} in {project.Name}";
         Func<IReadOnlyList<(string Id, string Version)>> written = () => [.. packages.Select(p => (p.Id, Written(project, p.Id, p.Version)))];
-        Func<IReadOnlyList<(string Id, string Version)>, Task<bool>> dotnet = left => left.Count == 0 ? manager.RestoreAsync(project.Path)
-            : manager.InstallSetAsync(project.Path, left, bulkStopping?.Token ?? CancellationToken.None);
+        Func<IReadOnlyList<(string Id, string Version)>, Task<bool>> dotnet = left =>
+        {
+            bool floats = written().Any(p => VersionRange.Parse(p.Version) is { Floating: true });
+            return left.Where(p => !Unchanged(project, p.Id, p.Version)).ToArray() is { Length: > 0 } moving
+                ? manager.InstallSetAsync(project.Path, moving, floats, bulkStopping?.Token ?? CancellationToken.None)
+                : manager.RestoreAsync(project.Path, floats);
+        };
         return Kept(project, [.. packages.Select(p => p.Id)]) is { } kept
             ? WrittenChangeAsync(stage, name, project, within, written, kept, alongside ?? [], dotnet)
             : ChangeAsync(stage, name, project, within, () => dotnet(written()), () => manager.RestoreAsync(project.Path));
     }
+
+    /// <summary>Whether a change writes what the project gives already in every framework (a floating version kept), which
+    /// only a restore resolving it again moves.</summary>
+    private static bool Unchanged(ProjectModel project, string id, string version) =>
+        References(project).Where(r => r.Id.Equals(id, StringComparison.OrdinalIgnoreCase)).Select(r => r.Version.Given).ToArray() is { Length: > 0 } given
+            && given.All(g => g == version);
 
     /// <summary>Whether Passenger writes a change of a project's packages itself, from where its evaluation keeps their
     /// versions: under central package management, its Directory.Packages.props; else, where it references one of them

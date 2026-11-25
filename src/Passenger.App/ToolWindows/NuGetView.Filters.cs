@@ -14,7 +14,8 @@ public enum PackageOrder
 }
 
 /// <summary>Which of the projects' packages the NuGet window lists: those they reference, those too that they get only
-/// through another package or project, or those alone.</summary>
+/// through another package or project, or those alone. A fix of a vulnerable version a project gets through others is
+/// listed in the Updates tab whichever is chosen.</summary>
 public enum PackageKinds
 {
     Referenced,
@@ -23,8 +24,8 @@ public enum PackageKinds
 }
 
 /// <summary>The package list's Sort and Filter: its order, the kinds of package it lists, the vulnerable alone, the
-/// deprecated alone, and one project's alone; each applied at once to the rows the list holds, never asking a feed again, and kept as the person
-/// moves between packages, tabs and searches.</summary>
+/// deprecated alone, and one project's alone; each applied at once to the rows the list holds, never asking a feed again,
+/// and kept as the person moves between packages, tabs and searches. Update All takes the updates they leave.</summary>
 public sealed partial class NuGetView
 {
     private readonly FilterMenu filters;
@@ -96,13 +97,15 @@ public sealed partial class NuGetView
         UsedBy = null;
     }
 
-    /// <summary>A filter changed: the rows the list holds narrowed again, the chosen one kept where it is still listed.</summary>
+    /// <summary>A filter changed: the rows the list holds narrowed again, the chosen one kept where it is still listed, and
+    /// Update All taking what they now show.</summary>
     private void Narrow(Action change)
     {
         change();
         filters.Narrowed = IsNarrowed;
         List(all, Selected?.Id);
         ShowStatus();
+        EnableActions();
     }
 
     /// <summary>The rows a list found as the filters show them: a project's alone (those it gets through another too while
@@ -122,9 +125,13 @@ public sealed partial class NuGetView
         {
             shown = shown.Where(r => r.IsDeprecated);
         }
-        if (kinds == PackageKinds.TransitiveOnly && !showsUpdates)
+        if (kinds == PackageKinds.TransitiveOnly)
         {
-            shown = shown.Where(r => r.IsTransitive);
+            shown = shown.Where(r => r.IsTransitive || r.Fixes.Count > 0);
+        }
+        else if (kinds == PackageKinds.Referenced && showsUpdates)
+        {
+            shown = shown.Where(r => r.IsInstalled || r.Fixes.Count > 0);
         }
         return order switch
         {
@@ -155,15 +162,19 @@ public sealed partial class NuGetView
         {
             by.Add("deprecated");
         }
-        if (kinds == PackageKinds.TransitiveOnly && !showsUpdates)
+        if (kinds == PackageKinds.TransitiveOnly)
         {
             by.Add("transitive");
+        }
+        else if (kinds == PackageKinds.Referenced && showsUpdates)
+        {
+            by.Add("referenced");
         }
         return $"{Numbers.Said(rows.Count)} of {Numbers.Said(all.Count)} shown{(by.Count > 0 ? $": {string.Join(", ", by)}" : string.Empty)}";
     }
 
-    /// <summary>The Sort and Filter menu as the list now stands: the order, the kinds (the Updates tab's being the
-    /// referenced packages alone), the vulnerable alone, the deprecated alone, a project's alone, and Clear Filters.</summary>
+    /// <summary>The Sort and Filter menu as the list now stands: the order, the kinds, the vulnerable alone, the deprecated
+    /// alone, a project's alone, and Clear Filters.</summary>
     private IReadOnlyList<Control> FilterItems()
     {
         List<Control> items =
@@ -176,12 +187,7 @@ public sealed partial class NuGetView
         foreach ((PackageKinds kind, string header) in (ReadOnlySpan<(PackageKinds, string)>)[(PackageKinds.Referenced, "Referenced Packages"),
             (PackageKinds.WithTransitive, "Referenced and Transitive Packages"), (PackageKinds.TransitiveOnly, "Transitive Packages Only")])
         {
-            MenuItem item = MenuChoice.Of(header, kinds == kind, () => Kinds = kind);
-            if (showsUpdates)
-            {
-                ListMenus.Grey(item, "Updates are of the packages the projects reference");
-            }
-            items.Add(item);
+            items.Add(MenuChoice.Of(header, kinds == kind, () => Kinds = kind));
         }
         items.Add(new Separator());
         items.Add(ListMenus.Toggle("Vulnerable Only", vulnerableOnly, on => VulnerableOnly = on));

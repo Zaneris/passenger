@@ -141,13 +141,15 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>Stash and Unstash as one flow, each step the check one test made in an instance of its own: nothing to
     /// stash refused saying so, Backspace in Unstash keeping every stash and Delete asking before dropping the one
-    /// chosen, Unstash taking the stash chosen though another program stashed or dropped since, and a stash leaving the
-    /// log as it was.</summary>
+    /// chosen, Enter and a double click showing a stash's files beside the working tree's and popping nothing, Unstash
+    /// taking the stash chosen though another program stashed or dropped since, and a stash leaving the log as it
+    /// was.</summary>
     [AvaloniaFact]
     public void Stash_and_Unstash_keep_every_stash_take_the_one_chosen_and_leave_the_log_as_it_was()
     {
         Flow.StepApart<VcsTests>("stash changes with nothing to stash is refused saying so", t => t.Stash_changes_with_nothing_to_stash_is_refused_saying_so());
         Flow.StepApart<VcsTests>("backspace in unstash changes keeps every stash and delete asks before dropping the chosen one once", t => t.Backspace_in_unstash_changes_keeps_every_stash_and_delete_asks_before_dropping_the_chosen_one_once());
+        Flow.StepApart<VcsTests>("enter or a double click on a stash shows its files beside the working tree and pops nothing", t => t.Enter_or_a_double_click_on_a_stash_shows_its_files_beside_the_working_tree_and_pops_nothing());
         Flow.StepApart<VcsTests>("unstash changes takes the stash chosen though another program stashed or dropped since the list was read", t => t.Unstash_changes_takes_the_stash_chosen_though_another_program_stashed_or_dropped_since_the_list_was_read());
         Flow.StepApart<VcsTests>("stashing a change and a new file leaves the git log as it was", t => t.Stashing_a_change_and_a_new_file_leaves_the_git_log_as_it_was());
         Flow.StepApart<VcsTests>("the commit windows stashes list each stashs files and diffs then apply pop and drop it as said and undo brings a dropped one back", t => t.The_commit_windows_stashes_list_each_stashs_files_and_diffs_then_apply_pop_and_drop_it_as_said_and_undo_brings_a_dropped_one_back());
@@ -1832,6 +1834,57 @@ public sealed partial class VcsTests : IDisposable
         Assert.Equal(2, asked.Count);
         Assert.Equal("On main: Older", Assert.Single(Stashes()));
         Assert.StartsWith("Dropped", window.Status, StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>Enter on a stash in Unstash Changes, and a double click, apply and drop nothing: the popup closes for a tab
+    /// of the Git window listing the files the stash holds, a change and a file git did not track, each opening as the stash
+    /// has it beside the working tree's, a second stash's in a tab of its own; Pop alone puts a stash back.</summary>
+    private void Enter_or_a_double_click_on_a_stash_shows_its_files_beside_the_working_tree_and_pops_nothing()
+    {
+        string shop = Path.Combine(folder, "Shop.cs");
+        string longer = Original.Replace("int count", "long count", StringComparison.Ordinal);
+        File.WriteAllText(shop, Original + "// older\n");
+        Git("stash", "push", "-m", "Older");
+        File.WriteAllText(shop, longer);
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "a new file\n");
+        Git("stash", "push", "--include-untracked", "-m", "Half-done count");
+        MainWindow window = Open();
+
+        UnstashPopup unstash = Ui.Landed(window.ShowUnstashAsync(), "the stashes")!;
+        Ui.Settle();
+        Ui.Press(window, "ENTER");
+        Assert.False(window.IsPopupOpen, "Enter on a stash left Unstash Changes open");
+        WorkingTreeDiffView files = Assert.IsType<WorkingTreeDiffView>(window.GitWindow.Shown);
+        Ui.Landed(() => files.Files.Count == 2, $"the stash's files, where the tab lists [{string.Join(", ", files.Files.Select(f => f.Name))}]");
+        Assert.Equal(["Log", "Compare stash@{0} and Working Tree"], window.GitWindow.Titles);
+        Assert.Equal(["Notes.txt Unversioned", "Shop.cs Modified"], files.Files.Select(f => $"{f.Name} {f.Kind}"));
+        Assert.True(Stashes() is ["On main: Half-done count", "On main: Older"] && File.ReadAllText(shop) == Original && !File.Exists(Path.Combine(folder, "Notes.txt")),
+            $"Enter on a stash applied or dropped one, leaving [{string.Join(", ", Stashes())}] and Shop.cs as [{File.ReadAllText(shop)}]");
+
+        foreach ((string name, string stashed, string now) in (ReadOnlySpan<(string, string, string)>)[("Shop.cs", longer, Original), ("Notes.txt", "a new file\n", "")])
+        {
+            Ui.Click(Ui.Row(files.List, files.Files.Single(f => f.Name == name)));
+            Ui.Press(window, "ENTER");
+            IDiffHost diff = OpenDiffs.Landed(window, $"{name} as the stash has it beside the working tree's");
+            DiffView view = OpenDiffs.ViewOf(diff);
+            Assert.True(view.Left.Document.Snapshot.ToString() == stashed && view.Right.Document.Snapshot.ToString() == now,
+                $"{name}'s diff with the stash showed [{view.Left.Document.Snapshot}] beside [{view.Right.Document.Snapshot}]; the status bar says \"{window.Status}\"");
+            Assert.Equal($"{name}: stash@{{0}} and your version", OpenDiffs.TitleOf(diff));
+            diff.Close();
+            Ui.Settle();
+        }
+
+        // A double click on the older stash: its own tab, and still nothing applied or dropped.
+        UnstashPopup again = Ui.Landed(window.ShowUnstashAsync(), "the stashes again")!;
+        Ui.Settle();
+        Ui.DoubleClick(Ui.Row(Find(again, again.Stashes), again.Stashes[1]));
+        Assert.False(window.IsPopupOpen, "A double click on a stash left Unstash Changes open");
+        WorkingTreeDiffView older = Assert.IsType<WorkingTreeDiffView>(window.GitWindow.Shown);
+        Ui.Landed(() => older.Files.Count == 1, $"the older stash's files, where its tab lists [{string.Join(", ", older.Files.Select(f => f.Name))}]");
+        Assert.Equal(["Log", "Compare stash@{0} and Working Tree", "Compare stash@{1} and Working Tree"], window.GitWindow.Titles);
+        Assert.Equal(2, Stashes().Length);
+        Assert.Equal(Original, File.ReadAllText(shop));
         window.Close();
     }
 

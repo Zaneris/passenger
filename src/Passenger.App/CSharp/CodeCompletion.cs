@@ -985,8 +985,9 @@ internal sealed partial class CodeCompletion
 
     /// <summary>The method just written, its name ending at <paramref name="named"/>, made a call where the code calls it:
     /// its parentheses after it, the caret between them where an overload takes arguments and its signature shown, else
-    /// after them. They come as the server answers, in the step of Undo that wrote the name (from <paramref name="place"/>),
-    /// and only while the text and the caret stand as the name left them.</summary>
+    /// after them, a '(' or ')' typed straight after taken as typed already. They come as the server answers, in the step
+    /// of Undo that wrote the name (from <paramref name="place"/>), and only while the text and the caret stand as the name
+    /// left them.</summary>
     private async Task CallAsync(LspDocument lsp, TextDocument document, long place, int named)
     {
         int version = document.Version;
@@ -1007,6 +1008,8 @@ internal sealed partial class CodeCompletion
         }
         Editor.ApplyEdits([new TextEdit(named, 0, "()")], SelectionSet.Single(named + (call.Arguments ? 1 : 2)));
         document.JoinUndoSince(place);
+        // A hand used to typing the call's bracket types it again; the ')' ahead of a caret between them it types over.
+        Editor.TakeTypedAgain(call.Arguments ? "(" : "()");
         if (call.Arguments)
         {
             // The call's bracket, as if typed: its signature shows.

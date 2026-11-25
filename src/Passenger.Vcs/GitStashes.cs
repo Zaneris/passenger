@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.Vcs;
 
 /// <summary>What a stash's reflog subject says: the branch it was made on (null where it was made on a detached head or
@@ -23,18 +25,24 @@ public sealed record StashSaid(string? Branch, string Message)
 
 public sealed partial class Git
 {
-    /// <summary>The files a stash holds: those it changed against the head it was made on, renames found, then the new files
-    /// it put away (its third parent's), each as unversioned.</summary>
+    /// <summary>The files a stash holds, in their paths' order: those it changed against the head it was made on, renames
+    /// found, each by its path in the stash, and the files git did not track that it put away, unversioned.</summary>
     public async Task<IReadOnlyList<FileChange>> StashFilesAsync(StashInfo stash)
     {
-        GitResult files = await RunAsync(Root, ["diff-tree", "--no-commit-id", "--name-status", "-r", "-z", "-M", "--end-of-options", $"{stash.Commit}^1", stash.Commit]);
-        List<FileChange> held = files.Succeeded ? NameStatus(files.Output) : [];
-        if (await CommitOfAsync($"{stash.Commit}^3") is { } untracked && await FilesOfAsync(untracked) is { } added)
+        // A stash's commit holds the files as they were, its first parent the head it was made on, its third the new files.
+        GitResult files = await RunAsync(Root, ["diff", "--name-status", "-z", "-M", "--end-of-options", $"{stash.Commit}^1", stash.Commit, "--"]);
+        if (!files.Succeeded)
+        {
+            return [];
+        }
+        List<FileChange> changes = NameStatus(files.Output);
+        if (await CommitOfAsync($"{stash.Commit}^3") is { } untracked && await FilesOfAsync(untracked) is { } kept)
         {
             DiskNames names = new(Root);
-            held.AddRange(added.Select(path => new FileChange(names.Full(path), ChangeKind.Unversioned)));
+            changes.AddRange(kept.Select(path => new FileChange(names.Full(path), ChangeKind.Unversioned)));
         }
-        return held;
+        changes.Sort((a, b) => PathNames.Comparer.Compare(a.Path, b.Path));
+        return changes;
     }
 
     /// <summary>Why files cannot be written out here as a revision has them: in a folder not trusted, one git stores through

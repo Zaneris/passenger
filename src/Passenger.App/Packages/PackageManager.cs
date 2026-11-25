@@ -83,8 +83,9 @@ public sealed class PackageManager
     public Task<bool> RemoveAsync(string project, string id) => Refused(id) ? Task.FromResult(false) : RunAsync(["remove", project, "package", id]);
 
     /// <summary>Moves several packages to their versions together (EF Core's packages and a provider): each written without a
-    /// restore, so none is refused for a downgrade the others take back, then one restore of the project.</summary>
-    public async Task<bool> InstallSetAsync(string project, IReadOnlyList<(string Id, string Version)> packages, CancellationToken cancel = default)
+    /// restore, so none is refused for a downgrade the others take back, then one restore of the project, resolving every
+    /// package <paramref name="again"/> where a floating version is to take a newer one.</summary>
+    public async Task<bool> InstallSetAsync(string project, IReadOnlyList<(string Id, string Version)> packages, bool again, CancellationToken cancel = default)
     {
         if (packages.Any(p => Refused(p.Id, p.Version)))
         {
@@ -97,11 +98,12 @@ public sealed class PackageManager
                 return false;
             }
         }
-        return !cancel.IsCancellationRequested && await RestoreAsync(project);
+        return !cancel.IsCancellationRequested && await RestoreAsync(project, again);
     }
 
-    /// <summary>Restores the project as it is.</summary>
-    public Task<bool> RestoreAsync(string project) => RunAsync(["restore", project]);
+    /// <summary>Restores the project as it is; <paramref name="again"/>, resolving every package again though nothing
+    /// changed, its feeds asked afresh, so a floating version takes the newest they now hold.</summary>
+    public Task<bool> RestoreAsync(string project, bool again = false) => RunAsync(["restore", project, .. again ? new[] { "--force", "--no-http-cache" } : []]);
 
     /// <summary>Whether the last change was stopped (<see cref="Stop"/>), as its folder was left.</summary>
     public bool Stopped => stopped;

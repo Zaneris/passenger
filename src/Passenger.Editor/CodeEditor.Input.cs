@@ -108,6 +108,10 @@ public sealed partial class CodeEditor
         }
         inputMethod?.Committed();
         e.Handled = true;
+        if (TakesTypedAgain(typed))
+        {
+            return;
+        }
         if (PassesEndTag(typed))
         {
             TypedOverEndTag?.Invoke(this, EventArgs.Empty);

@@ -2181,9 +2181,11 @@ public sealed class VcsController : IDisposable
             : Report(true, $"{(plan.Force ? "Force pushed" : "Pushed")} {plan.Branch} to {there}{(plan.Track ? $", which it tracks from now on" : string.Empty)}");
     }
 
-    /// <summary>The files that differ between a branch or tag and the working tree.</summary>
-    public async Task<IReadOnlyList<FileChange>> ChangesSinceAsync(BranchInfo branch) =>
-        git is { } repository ? await repository.ChangesSinceAsync(branch.Ref.FullName) : [];
+    /// <summary>The files a Show Diff with Working Tree tab lists: those that differ between a branch or tag and the
+    /// working tree, or those a stash holds.</summary>
+    public async Task<IReadOnlyList<FileChange>> ChangesSinceAsync(WorkingTreeComparison compared) => git is not { } repository ? []
+        : compared.Stash is { } stash ? await repository.StashFilesAsync(stash)
+        : await repository.ChangesSinceAsync(compared.Revision);
 
     /// <summary>The commits of one revision another lacks ("main..feature"), newest first.</summary>
     public async Task<IReadOnlyList<CommitInfo>> LogAsync(IReadOnlyList<string> revisions) =>

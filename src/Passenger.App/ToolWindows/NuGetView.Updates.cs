@@ -17,14 +17,22 @@ public sealed partial class NuGetView
 
     public bool ShowsUpdates => showsUpdates;
 
-    public bool CanUpdateAll => showsUpdates && !checkingUpdates && !updatingMany && !model.IsBusy && updateRows.Count > 0;
+    public bool CanUpdateAll => showsUpdates && !checkingUpdates && !updatingMany && !model.IsBusy && ToUpdate.Count > 0;
 
-    public string? UpdateAllWhyNot => CanUpdateAll ? null : UpdatesWhyNot ?? "No updates available";
+    public string? UpdateAllWhyNot => CanUpdateAll ? null
+        : UpdatesWhyNot ?? (updateRows.Any(r => r.MovesTo is not null) ? "The filters leave no update" : "No updates available");
 
     /// <summary>Why the Updates tab's rows can't be updated now: a package change under way, the tab not shown, or its
     /// check still running; null where they can.</summary>
     private string? UpdatesWhyNot => model.IsBusy || updatingMany ? Refusals.PackageChangeUnderWay
         : checkingUpdates ? "Checking for updates" : !showsUpdates ? Refusals.UpdatesNotShown : null;
+
+    /// <summary>The rows whose updates and fixes Update All makes: those the Sort and Filter leave, the search's words
+    /// hiding none.</summary>
+    private IReadOnlyList<PackageRow> ToUpdate => [.. Filtered(updateRows).Where(r => r.MovesTo is not null)];
+
+    /// <summary>Whether the Updates tab's runs move a project's references: every project's, else the one Used By names alone.</summary>
+    private bool UpdatesIn(string project) => usedBy is null || PathNames.Same(usedBy, project);
 
     /// <summary>The updates chosen in the Updates tab, in the list's order; none in another tab.</summary>
     public IReadOnlyList<PackageRow> ChosenUpdates => showsUpdates && list.SelectedItems is { } chosen ? [.. rows.Where(chosen.Contains)] : [];
@@ -99,9 +107,17 @@ public sealed partial class NuGetView
                         {
                             failed.Add($"{package.Key}: no versions available from {feed.Name}");
                         }
-                        PackageRow? row = latest is not null && at.Any(v => v.Version is { } version && VersionOrder.Instance.Compare(latest, version) > 0)
+                        Dictionary<string, string> moves = Moves(answer.Versions, package.Value);
+                        string? held = latest is null ? null : HeldBack(latest, package.Value);
+                        PackageRow? row = moves.Count > 0 || held is not null
                             ? new PackageRow(package.Key, string.Join(", ", at.Select(v => v.Shown ?? "unknown").Distinct(StringComparer.OrdinalIgnoreCase)),
-                                string.Empty, string.Empty, 0, package.Value) { UpdateVersion = latest, AvailableVersions = answer.Versions }
+                                string.Empty, string.Empty, 0, package.Value)
+                            {
+                                UpdateVersion = moves.Values.Max(VersionOrder.Instance),
+                                Moves = moves,
+                                HeldBack = held,
+                                AvailableVersions = answer.Versions,
+                            }
                             : null;
                         return (row, (IReadOnlyList<string>)failed);
                     }
@@ -119,7 +135,7 @@ public sealed partial class NuGetView
             Dictionary<string, Dictionary<string, IReadOnlyList<TransitiveUse>>> transitive = await folder.TransitiveAsync();
             VulnerabilityData known = await folder.VulnerabilitiesAsync();
             cancel.Token.ThrowIfCancellationRequested();
-            int updates = found.Count;
+            int updates = found.Count(r => r.UpdateVersion is not null);
             found = [.. found.Select(r => Brought(r, transitive))];
             int fixes = await FixesAsync(found, installed, transitive, known, feed, preview, problems, cancel.Token);
             cancel.Token.ThrowIfCancellationRequested();
@@ -148,6 +164,32 @@ public sealed partial class NuGetView
             }
         }
         await deprecating;
+    }
+
+    /// <summary>By project, the newest of a package's versions (newest first) that every framework's reference of it takes,
+    /// where that raises one of them: what the Updates tab moves each to.</summary>
+    private static Dictionary<string, string> Moves(IReadOnlyList<string> newestFirst, IReadOnlyDictionary<string, IReadOnlyList<InstalledVersion>> byProject)
+    {
+        Dictionary<string, string> moves = new(PathNames.Comparer);
+        foreach ((string path, IReadOnlyList<InstalledVersion> at) in byProject)
+        {
+            if (InstalledVersion.Newest(newestFirst, at) is { } taken && at.Any(v => v.Version is { } now && VersionOrder.Instance.Compare(taken, now) > 0))
+            {
+                moves[path] = taken;
+            }
+        }
+        return moves;
+    }
+
+    /// <summary>Why the newest version is offered to no project whose range or floating version keeps it out though it is
+    /// newer than what the project has ("15.0.0 is outside [14.0.0] in Api"); null where none does.</summary>
+    private string? HeldBack(string newest, IReadOnlyDictionary<string, IReadOnlyList<InstalledVersion>> byProject)
+    {
+        string[] held = [.. byProject
+            .SelectMany(p => p.Value.Where(v => v.Version is { } now && VersionOrder.Instance.Compare(newest, now) > 0 && !v.Takes(newest))
+                .Select(v => $"{v.Given} in {model.Projects.FirstOrDefault(m => PathNames.Same(m.Path, p.Key))?.Name ?? Path.GetFileNameWithoutExtension(p.Key)}"))
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+        return held.Length == 0 ? null : $"{newest} is outside {Plural.Listed(held)}";
     }
 
     /// <summary>The Updates tab's fixes of vulnerable versions projects get only through others, beside the updates: each
@@ -223,7 +265,7 @@ public sealed partial class NuGetView
             Hold(UpdateAllWhyNot);
             return;
         }
-        await UpdateAsync(Targets(updateRows), UpdateRun.All);
+        await UpdateAsync(Targets(ToUpdate), UpdateRun.All);
     }
 
     /// <summary>Update Selected: the updates chosen in the Updates tab, each in every project its row moves, and their
@@ -247,10 +289,12 @@ public sealed partial class NuGetView
     /// <summary>What Update Selected tells on hover while it can run: the packages it updates.</summary>
     private string SelectedTip() => $"Update {ChosenNamed(ChosenUpdates)} across their projects, as one step of Undo";
 
-    /// <summary>The Updates tab's rows as a run's moves: each row's update in the projects it moves, and its fixes.</summary>
-    private static PackageUpdate[] Targets(IReadOnlyList<PackageRow> rows) =>
-        [.. rows.Where(r => r.UpdateVersion is not null).Select(r => new PackageUpdate(r.Id, r.UpdateVersion!, [.. r.Installed.Keys])),
-            .. rows.SelectMany(r => r.Fixes.Select(f => new PackageUpdate(r.Id, f.Value.Version, [f.Key]) { Frameworks = f.Value.Frameworks }))];
+    /// <summary>The Updates tab's rows as a run's moves, in every project or the one Used By names: each row's update in the
+    /// projects it moves, each to the newest version its references take, and its fixes.</summary>
+    private PackageUpdate[] Targets(IReadOnlyList<PackageRow> rows) =>
+        [.. rows.SelectMany(r => r.Moves.Where(m => UpdatesIn(m.Key)).GroupBy(m => m.Value, StringComparer.OrdinalIgnoreCase)
+                .Select(g => new PackageUpdate(r.Id, g.Key, [.. g.Select(m => m.Key)]))),
+            .. rows.SelectMany(r => r.Fixes.Where(f => UpdatesIn(f.Key)).Select(f => new PackageUpdate(r.Id, f.Value.Version, [f.Key]) { Frameworks = f.Value.Frameworks }))];
 
     /// <summary>Why the chosen package can't be moved to the chosen version in every project referencing an older one
     /// (<see cref="UpdateEverywhereAsync"/>); null where it can.</summary>

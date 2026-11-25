@@ -140,6 +140,15 @@ public sealed record LaunchProfile(
     /// <summary>The project's profiles of every kind in the file's order; none when it has no settings or they do not read.</summary>
     public static IReadOnlyList<LaunchProfile> Read(ProjectModel project) => Read(SettingsPath(project));
 
+    /// <summary>Whether a project runs: an executable project, or one building no program (a library) whose launch profiles
+    /// start a program of their own (<see cref="ExecutableCommand"/>, a host that loads it).</summary>
+    public static bool Runs(ProjectModel project) => project.IsRunnable || OfLibrary(project).Count > 0;
+
+    /// <summary>A project's profiles that run it where it builds no program: those starting a program of their own, as
+    /// dotnet run runs no library; none for an executable project.</summary>
+    public static IReadOnlyList<LaunchProfile> OfLibrary(ProjectModel project) =>
+        project.IsRunnable || project.GodotFolder is not null ? [] : [.. Read(project).Where(p => p.Is(ExecutableCommand))];
+
     /// <summary>A settings file's profiles of every kind in its order (a launchSettings.json, a .run.json); none when it is
     /// not there or does not read.</summary>
     public static IReadOnlyList<LaunchProfile> Read(string path)

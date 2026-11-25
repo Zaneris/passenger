@@ -8,8 +8,9 @@ namespace Passenger.Tests;
 /// <summary>What Passenger looks for above a folder it opens (an .editorconfig, a project's own TypeScript in a
 /// node_modules) is read from the person's own parent folders, whatever their mode, every one from their home to its disk's
 /// root among them, and passed over in a parent another user owns, or where another user put it in the person's own: the
-/// log says where and why; an exFAT volume's folders are the person's. Another user's folder or file is the walk's stand-in
-/// for one (<see cref="FoldersUp.HeldByAnother"/>), as a test makes none of its own.</summary>
+/// log says where and why; an exFAT volume's folders are the person's; and a XAML file of the open folder's own project is
+/// read as that project's whoever owns its folder. Another user's folder or file is the walk's stand-in for one (<see
+/// cref="FoldersUp.HeldByAnother"/>), as a test makes none of its own.</summary>
 [AboutMacOS]
 public sealed class ParentFoldersTests : IDisposable
 {
@@ -29,8 +30,8 @@ public sealed class ParentFoldersTests : IDisposable
     /// <summary>What a folder's parents decide (an .editorconfig, a TypeScript) is taken from the person's own parents
     /// alone: a walk up from home reads every folder to the root of its disk, an .editorconfig in the person's own
     /// parent decides the indent whatever the folder's trust, one in a parent another user owns or put in the person's
-    /// own is passed over with the log saying where the walk ended, and a TypeScript in another user's parent never
-    /// runs.</summary>
+    /// own is passed over with the log saying where the walk ended, the open folder's own project gets its XAML in a folder
+    /// another user owns, and a TypeScript in another user's parent never runs (Node.js's step, last).</summary>
     [AvaloniaFact]
     public void What_a_parent_folder_decides_is_taken_only_from_the_persons_own()
     {
@@ -38,6 +39,7 @@ public sealed class ParentFoldersTests : IDisposable
         Flow.StepApart<ParentFoldersTests>("an editorconfig in the person's own parent folder decides the indent whatever the folder's mode", t => t.An_editorconfig_in_the_persons_own_parent_folder_decides_the_indent_whatever_the_folders_mode());
         Flow.StepApart<ParentFoldersTests>("an editorconfig in a parent folder another user owns is passed over and the log says where the walk ended", t => t.An_editorconfig_in_a_parent_folder_another_user_owns_is_passed_over_and_the_log_says_where_the_walk_ended());
         Flow.StepApart<ParentFoldersTests>("an editorconfig another user put in the person's own parent is passed over", t => t.An_editorconfig_another_user_put_in_the_persons_own_parent_is_passed_over());
+        Flow.StepApart<ParentFoldersTests>("a XAML file of the open folder's project another user owns is read as that project's, one made after the file opened too", t => t.A_xaml_file_of_the_open_folders_project_another_user_owns_is_read_as_that_projects());
         Flow.StepApart<ParentFoldersTests>("a TypeScript in a parent another user owns never runs and one in the person's own parent serves the folder", t => t.A_TypeScript_in_a_parent_another_user_owns_never_runs_and_one_in_the_persons_own_parent_serves_the_folder());
     }
 
@@ -181,6 +183,28 @@ public sealed class ParentFoldersTests : IDisposable
         TimeSpan limit = TimeSpan.FromMinutes(1);
         return Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tool, arguments), limit: limit.Scaled())),
             $"{tool} {string.Join(' ', arguments)}", limit.Scaled() + TestFolders.Spare);
+    }
+
+    private void A_xaml_file_of_the_open_folders_project_another_user_owns_is_read_as_that_projects()
+    {
+        string app = Path.Combine(parent, "xaml-app");
+        TestFolders.Write(app, Path.Combine("Views", "Card.axaml"), "<UserControl xmlns=\"https://github.com/avaloniaui\">\n    <Grid />\n</UserControl>\n");
+        using IDisposable another = FoldersUp.HeldByAnother(app);
+        MainWindow window = Open(app, Path.Combine("Views", "Card.axaml"));
+        try
+        {
+            Assert.NotNull(window.Actions.WhyNot(AppActions.XamlPreview, window.Actions.Context()));
+            // The project comes after its file is open, as a person makes one beside the XAML they have.
+            TestFolders.Write(app, "App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
+            Ui.WaitFor(() => window.Session.Projects.Any(p => Path.GetFileName(p.Path) == "App.csproj"), "the window to list App.csproj once it was written");
+            Ui.WaitFor(() => window.Actions.WhyNot(AppActions.XamlPreview, window.Actions.Context()) is null,
+                () => $"XAML Preview to be offered for Card.axaml of App.csproj, which the window lists in a folder another user owns, so the person's own "
+                    + $"project gets its XAML read and previewed; it says {window.Actions.WhyNot(AppActions.XamlPreview, window.Actions.Context())}");
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     /// <summary>A folder in the parent, its file indented by four spaces, under the parent's .editorconfig of tabs.</summary>

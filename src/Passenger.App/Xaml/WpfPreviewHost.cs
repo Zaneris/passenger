@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Passenger.App.Run;
 using Passenger.Core;
 using Passenger.Text;
 using Passenger.WpfPreview;
@@ -45,7 +46,12 @@ internal sealed class WpfPreviewHost : ChildPreviewHost
         WpfPreviewHost started = new(preview, builder, copied.Build, Path.Combine(copied.Shadow, Path.GetFileName(built)), copied.Shadow);
         try
         {
-            await started.RunAsync(inputs);
+            if (await started.RunAsync(inputs) is { } refused)
+            {
+                started.Dispose();
+                preview.Say($"The previewer could not start: {refused}");
+                return null;
+            }
             return started;
         }
         catch (Exception error) when (ChildFailures.Of(error))
@@ -56,8 +62,10 @@ internal sealed class WpfPreviewHost : ChildPreviewHost
         }
     }
 
-    /// <summary>The previewer started on the copy with the project's runtime configuration and dependencies.</summary>
-    private async Task RunAsync(ProjectInputs inputs)
+    /// <summary>The previewer started on the copy with the project's runtime configuration and dependencies, on the x86 .NET
+    /// for a build for 32-bit x86 (<see cref="X86Programs"/>), whose assembly no 64-bit process loads; null once started,
+    /// else why not.</summary>
+    private async Task<string?> RunAsync(ProjectInputs inputs)
     {
         string name = Path.GetFileNameWithoutExtension(Assembly);
         string configuration = Path.Combine(Shadow, name + ".runtimeconfig.json");
@@ -68,6 +76,17 @@ internal sealed class WpfPreviewHost : ChildPreviewHost
         if (own)
         {
             configuration = Path.ChangeExtension(Previewer, ".runtimeconfig.json");
+        }
+        string? x86 = null;
+        if (OperatingSystem.IsWindows() && await BackgroundWork.Run(() => X86Programs.Requires(assembly)))
+        {
+            x86 = X86Programs.Root(new Dictionary<string, string>());
+            string root = x86;
+            string configured = own ? Previewer : assembly;
+            if (await BackgroundWork.Run(() => X86Programs.Lacking(root, configured, new Dictionary<string, string>())) is { Count: > 0 } lacking)
+            {
+                return Refusals.X86RuntimeMissing(root, lacking);
+            }
         }
         List<string> arguments = ["exec", "--runtimeconfig", configuration];
         string dependencies = Path.Combine(Shadow, name + ".deps.json");
@@ -81,7 +100,8 @@ internal sealed class WpfPreviewHost : ChildPreviewHost
             arguments.AddRange(["--additionalprobingpath", cache]);
         }
         arguments.AddRange([Previewer, "--assembly", Assembly]);
-        ProcessStartInfo start = ChildProcesses.DotnetCommand(arguments, Shadow);
+        // The previewer, built for any processor, runs as the x86 dotnet runs it.
+        ProcessStartInfo start = x86 is null ? ChildProcesses.DotnetCommand(arguments, Shadow) : ChildProcesses.DotnetCommand(Path.Combine(x86, Dotnet.HostName), arguments, Shadow);
         start.Environment[RuntimeVariables.XamlDiagnosticsSourceInfo] = "1";
         if (own)
         {
@@ -89,6 +109,7 @@ internal sealed class WpfPreviewHost : ChildPreviewHost
             start.Environment[RuntimeVariables.RollForwardToPrerelease] = "1";
         }
         await StartAsync(start, $"Starting the previewer on {Path.GetFileName(Assembly)}…");
+        return null;
     }
 
     protected override Func<(string Path, string Xaml)?, string> Request(int sequence, TextSnapshot text)

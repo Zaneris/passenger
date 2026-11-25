@@ -84,8 +84,8 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
 
     /// <summary>An AppHost's configuration first, a launch profile run in its working directory, an agent's logs kept,
     /// a launch profile made without the watcher, a terminal program generated to run there, a web page opened in the
-    /// browser named, a plain project beside a Godot game, and several projects' profile written as Visual Studio
-    /// writes it, as one flow, each step the check one test made in an instance of its own.</summary>
+    /// browser named, a plain project beside a Godot game, several projects' profile written as Visual Studio writes it,
+    /// and a library's profile starting a host, as one flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
     public void Run_configurations_are_chosen_and_run_as_their_projects_and_launch_profiles_make_them()
     {
@@ -98,6 +98,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         Flow.StepApart("a plain dotnet project naming its godot games folder runs as itself and its configurations are dotnet ones", () => new RunConfigurationsTests(folders), t => t.A_plain_dotnet_project_naming_its_godot_games_folder_runs_as_itself_and_its_configurations_are_dotnet_ones());
         Flow.StepApart("a launch profile of several projects is changed made and removed in the dialog and written as Visual Studio writes it", () => new RunConfigurationsTests(folders), t => t.A_launch_profile_of_several_projects_is_changed_made_and_removed_in_the_dialog_and_written_as_Visual_Studio_writes_it());
         Flow.StepApart("a run given a command is kept whole in passenger runs json and goes back to slnLaunch once it holds projects alone", () => new RunConfigurationsTests(folders), t => t.A_run_given_a_command_is_kept_whole_in_passenger_runs_json_and_goes_back_to_slnLaunch_once_it_holds_projects_alone());
+        Flow.StepApart("a librarys launch profile starting a host is a configuration that builds the library and runs the host", () => new RunConfigurationsTests(folders), t => t.A_librarys_launch_profile_starting_a_host_is_a_configuration_that_builds_the_library_and_runs_the_host());
     }
 
     private void A_generated_Aspire_override_keeps_linked_AppHost_paths_relative_in_storage()
@@ -365,6 +366,49 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         static string Run(MainWindow window) => window.BottomPanel.Run.Document.Snapshot.ToString();
 
         static string[] Lines(MainWindow window) => Run(window).Split('\n', StringSplitOptions.TrimEntries);
+    }
+
+    /// <summary>A library's launch profile that starts a program of its own (Executable) is a configuration of the library's,
+    /// its Project profile none, as dotnet run runs no library: Run builds the library and starts the host the profile names
+    /// (Hello, built first) with the library's path as $(TargetPath) expands it, in the folder its profile gives.</summary>
+    private void A_librarys_launch_profile_starting_a_host_is_a_configuration_that_builds_the_library_and_runs_the_host()
+    {
+        Restored();
+        Write("Plugin/Plugin.csproj", TestProjects.Library());
+        Write("Plugin/Plugin.cs", "namespace Plugin;\n\npublic static class Entry\n{\n}\n");
+        Write("Plugin/Properties/launchSettings.json", $$"""
+            {
+              "profiles": {
+                "Host": {
+                  "commandName": "Executable",
+                  "executablePath": "dotnet",
+                  "commandLineArgs": "../Hello/bin/Debug/{{TestProjects.Framework}}/Hello.dll $(TargetPath)",
+                  "workingDirectory": "$(ProjectDir)"
+                },
+                "Itself": { "commandName": "Project" }
+              }
+            }
+            """);
+        string plugin = PathNames.Canonical(Path.Combine(folder, "Plugin"));
+        MainWindow window = Keeping();
+        try
+        {
+            Assert.Equal(["Hello", "Plugin: Host"], Names(window));
+            Assert.True(window.SelectConfiguration("Hello"));
+            Ui.Launched(window, window.RunAsync(), "Hello to start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "Hello to end");
+            Assert.True(window.SelectConfiguration("Plugin: Host"));
+            Ui.Launched(window, window.RunAsync(), "Plugin: Host to start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "Plugin: Host to end");
+            string run = window.BottomPanel.Run.Document.Snapshot.ToString();
+            string dll = Path.Combine(plugin, "bin", "Debug", TestProjects.Framework, "Plugin.dll");
+            Assert.True(File.Exists(dll) && run.Contains($" [{dll}] in {plugin}", StringComparison.Ordinal),
+                $"Plugin: Host did not build Plugin and run Hello given it in Plugin's folder ({(File.Exists(dll) ? "built" : "not built")}), its Run window saying:\n{run}");
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     /// <summary>A generated configuration's arguments changed in place, with no copy, are what Run gives the program, and are

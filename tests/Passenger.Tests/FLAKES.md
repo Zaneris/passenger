@@ -39,8 +39,10 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   about 3 minutes and 1 minute after the boot ended, the IDE logging nothing between; the runner has three processors
   and kept at least 0.8 GB of its 7 free. The Mac boots the simulator in 8 s and installs in 17. McpIosSimulatorTests,
   which boots and installs again after it, passed in 4:58 and 5:31. No change in the IDE shortens the simulator's boot or
-  install; booting it once before the shard's device classes, outside any test's minutes, is the deal's to weigh
-  (b98279487).
+  install. A macOS mobile shard now boots that simulator once, keeps it up two minutes and shuts it down again after its
+  other classes and before its device classes, outside any test's minutes and beside no window class
+  (tools/simulator-first-boot.sh, run by test-shards.py; 4dcc98ca2): its words in the shard's log say what the first
+  boot took there.
 - `EslintPrettierTests`' `Eslint_checks_and_fixes_as_its_server_says`, CI 45453743296 (Windows report shard 1), at
   329200ec7: "Waited 225 s for the problem from the ESLint the project's .pnp.cjs places". **A bug in the IDE, on
   Windows**: Yarn writes a Plug'n'Play package's location from the project's folder on its portable paths, which climb

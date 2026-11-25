@@ -9,25 +9,29 @@ using Passenger.Vcs;
 
 namespace Passenger.App.Vcs;
 
-/// <summary>Unstash Changes: the stashes, the newest first, each with when it was made; Pop (Enter) puts the
-/// chosen one's changes back and drops it, Apply keeps it, Drop (Delete) throws it away once the person agrees. One runs
-/// at a time, the buttons off meanwhile. Escape closes.</summary>
+/// <summary>Unstash Changes: the stashes, the newest first, each with when it was made; Pop puts the chosen one's changes
+/// back and drops it, Apply keeps it, Drop (Delete) throws it away once the person agrees. One runs at a time, the buttons
+/// off meanwhile. Enter or a double click shows the chosen one's files beside the working tree's, applying nothing, as the
+/// popup closes. Escape closes.</summary>
 public sealed class UnstashPopup : UserControl
 {
     private readonly ListBox list;
     private readonly Func<StashInfo, bool, Task<bool>> unstash;
     private readonly Func<StashInfo, Task<bool>> drop;
     private readonly Func<string, string, string, Task<bool>> confirm;
+    private readonly Action<StashInfo> show;
     private readonly Button[] actions;
     private bool running;
 
     /// <param name="confirm">Asks before a drop (its title, the question, the button that drops).</param>
+    /// <param name="show">Shows a stash's files beside the working tree's.</param>
     public UnstashPopup(IReadOnlyList<StashInfo> stashes, Func<StashInfo, bool, Task<bool>> unstash, Func<StashInfo, Task<bool>> drop,
-        Func<string, string, string, Task<bool>> confirm)
+        Func<string, string, string, Task<bool>> confirm, Action<StashInfo> show)
     {
         this.unstash = unstash;
         this.drop = drop;
         this.confirm = confirm;
+        this.show = show;
         Stashes = stashes;
         Width = PopupFrame.Medium;
         list = new ListBox
@@ -38,7 +42,7 @@ public sealed class UnstashPopup : UserControl
             SelectedIndex = stashes.Count > 0 ? 0 : -1,
         };
         ReusedRows.Use(list, Row);
-        ListKeys.Act(list, new ListActs { Open = () => IdeErrors.Observe(PopAsync()) });
+        ListKeys.Act(list, new ListActs { Open = ShowFiles });
         Button pop = Action("Pop", () => PopAsync(), primary: true);
         Button apply = Action("Apply", () => ApplyAsync());
         Button remove = Action("Drop", () => DropAsync());
@@ -79,6 +83,18 @@ public sealed class UnstashPopup : UserControl
     {
         get => list.SelectedItem as StashInfo;
         set => list.SelectedItem = value;
+    }
+
+    /// <summary>The chosen stash's files beside the working tree's, nothing applied; the popup closes for them, unless a
+    /// pop, apply or drop is running.</summary>
+    public void ShowFiles()
+    {
+        if (running || Selected is not { } stash)
+        {
+            return;
+        }
+        Done?.Invoke(this, EventArgs.Empty);
+        show(stash);
     }
 
     public Task PopAsync() => Use(stash => unstash(stash, true));
@@ -139,10 +155,6 @@ public sealed class UnstashPopup : UserControl
         {
             case Key.Escape:
                 Done?.Invoke(this, EventArgs.Empty);
-                e.Handled = true;
-                break;
-            case Key.Enter:
-                IdeErrors.Observe(PopAsync());
                 e.Handled = true;
                 break;
             case Key.Delete:

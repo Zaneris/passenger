@@ -114,6 +114,12 @@ public sealed partial class FolderPackages
                             remaining--;
                             continue;
                         }
+                        if (at.FirstOrDefault(v => !v.Takes(target.Version)) is { } keeping)
+                        {
+                            skipped.Add($"{project.Name}/{target.Id}: {target.Version} is outside {keeping.Given}, the version it gives");
+                            remaining--;
+                            continue;
+                        }
                         if (InstalledVersion.Move(target.Version, at) == PackageMove.None)
                         {
                             remaining--;

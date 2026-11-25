@@ -92,7 +92,7 @@ public partial class MainWindow
     public RunConfigurationsDialog ShowRunConfigurations()
     {
         RunConfigurations configurations = session.Configurations;
-        RunConfigurationsDialog dialog = new([.. configurations.All.Where(c => c.Generated)], [.. configurations.Own.Where(c => !c.IsMultiple)], [.. session.RunProjects.Where(p => p.Exists && (p.IsRunnable || p.GodotFolder is not null))],
+        RunConfigurationsDialog dialog = new([.. configurations.All.Where(c => c.Generated)], [.. configurations.Own.Where(c => !c.IsMultiple)], [.. session.RunProjects.Where(p => p.Exists && (p.GodotFolder is not null || LaunchProfile.Runs(p)))],
             configurations.Chosen?.Name, (mine, generated, chosen) => configurations.Set(mine, generated, chosen, Projects), buildRun.IsRunningConfiguration,
             configurations.Several, configurations.Solution, configurations.ProfileProblems, session.BuildChoices.Offered, session.BuildChoices.Chosen)
         {
@@ -299,7 +299,7 @@ public partial class MainWindow
         {
             return $"{shared.Name} runs a package.json script: a launch profile saved here runs a .NET project";
         }
-        if (Projects.FirstOrDefault(p => p.Exists && p.IsRunnable && PathNames.Same(p.Path, shared.Project)) is not { } project)
+        if (Projects.FirstOrDefault(p => p.Exists && PathNames.Same(p.Path, shared.Project) && LaunchProfile.Runs(p)) is not { } project)
         {
             return shared.Project.Length == 0 ? $"{shared.Name} has no project to run" : $"{shared.Name}'s project, {Path.GetFileNameWithoutExtension(shared.Project)}, is not loaded";
         }

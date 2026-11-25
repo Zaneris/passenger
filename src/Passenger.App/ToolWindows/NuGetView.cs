@@ -48,7 +48,16 @@ public sealed record PackageRow(string Id, string Version, string Description, s
 
     public bool IsDeprecated => Deprecated is not null;
 
+    /// <summary>The Updates tab's newest version for the projects: the newest any project's references take.</summary>
     public string? UpdateVersion { get; init; }
+
+    /// <summary>By project, the version the Updates tab moves its references to: the newest they all take, where it raises
+    /// one of them.</summary>
+    public IReadOnlyDictionary<string, string> Moves { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>Why the Updates tab offers a newer version to none of the projects whose ranges or floating versions keep it
+    /// out; null where nothing is held back.</summary>
+    public string? HeldBack { get; init; }
 
     /// <summary>By project, what fixes a vulnerable version it gets only through others, the Updates tab's: a reference at
     /// the fixed version in the frameworks that get one.</summary>
@@ -322,7 +331,7 @@ public sealed partial class NuGetView : DockPanel
     /// (<see cref="WhyNot"/>).</summary>
     private void EnableActions()
     {
-        ToolButtons.Grey(updateAll, UpdateAllWhyNot, $"Update all {Numbers.Said(updateRows.Count)} packages across their projects, including results hidden by search");
+        ToolButtons.Grey(updateAll, UpdateAllWhyNot, $"Update the {Plural.Of(ToUpdate.Count, "package")} the filters leave across their projects, including results hidden by search");
         ToolButtons.Grey(updateSelected, UpdateSelectedWhyNot, SelectedTip());
         foreach ((Button button, bool putsIn, string? tip) in lineActions)
         {
@@ -853,7 +862,7 @@ public sealed partial class NuGetView : DockPanel
         VulnerabilityData known = Known;
         string? vulnerable = row.AuditedVersions.Where(v => known.Of(row.Id, v).Count > 0).OrderByDescending(v => v, VersionOrder.Instance).FirstOrDefault();
         string? fix = vulnerable is null ? null : known.FixedVersion(row.Id, vulnerable, versions);
-        ChosenVersion = PickedOf(row) ?? row.UpdateVersion ?? fix ?? versions.FirstOrDefault() ?? row.Version;
+        ChosenVersion = PickedOf(row) ?? row.UpdateVersion ?? fix ?? Taken(row) ?? versions.FirstOrDefault() ?? row.Version;
         ComboBox picker = new ToolDropDown { Name = "Versions", ItemsSource = versions, SelectedItem = ChosenVersion, VerticalAlignment = VerticalAlignment.Center };
         AutomationProperties.SetName(picker, $"Version of {row.Id}");
         StackPanel vulnerabilities = new() { Spacing = Gaps.Normal };
@@ -912,6 +921,10 @@ public sealed partial class NuGetView : DockPanel
         ShowProjects(row);
         await chosen;
     }
+
+    /// <summary>The newest version a project referencing the package takes, every framework's range or floating version
+    /// allowing it; null where none does.</summary>
+    private string? Taken(PackageRow row) => row.Installed.Values.Select(at => InstalledVersion.Newest(versions, at)).OfType<string>().Max(VersionOrder.Instance);
 
     /// <summary>The version the person picked of a package, as its versions now offer it; null where they picked none of it,
     /// or its versions no longer offer what they picked.</summary>
@@ -1200,9 +1213,11 @@ public sealed partial class NuGetView : DockPanel
             {
                 if (ChosenVersion is { } chosen && InstalledVersion.Move(chosen, at) is PackageMove move and not PackageMove.None)
                 {
+                    string? outside = at.FirstOrDefault(v => !v.Takes(chosen))?.Given is { } given ? $"{chosen} is outside {given}, as {project.Name} gives it" : null;
                     line.Children.Add(Action(Moved(move, chosen, at), putsIn: true, () => InstallAsync(project), move == PackageMove.UpdateAndDowngrade
                         ? $"Moves every framework to {chosen}: " + string.Join(", ", at.Where(v => v.Version is not null).Select(v => $"{v.Framework} from {v.Version}"))
-                        : null));
+                            + (outside is null ? string.Empty : $"\n{outside}")
+                        : outside));
                 }
                 line.Children.Add(Action("Remove", putsIn: false, () => RemoveAsync(project)));
             }
@@ -1247,9 +1262,10 @@ public sealed partial class NuGetView : DockPanel
     }
 
     /// <summary>A package's row: its icon, its id (strong where a project references it), its version muted, a tag on one
-    /// projects get only through others and on one a project has a deprecated version of, its description or what brings
-    /// it in on hover, and a warning saying the gravest advisory where a version a project has is vulnerable. In a narrow
-    /// list the id is cut, its version and marks kept whole after it.</summary>
+    /// projects get only through others, on one a project has a deprecated version of, on one whose newer version a range
+    /// keeps out and on one the Updates tab fixes a vulnerable version of (each saying why on hover), its description or
+    /// what brings it in on hover, and a warning saying the gravest advisory where a version a project has is vulnerable.
+    /// In a narrow list the id is cut, its version and marks kept whole after it.</summary>
     private Control Row()
     {
         TextBlock version = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
@@ -1259,10 +1275,12 @@ public sealed partial class NuGetView : DockPanel
         TextBlock id = new() { VerticalAlignment = VerticalAlignment.Center };
         Border transitive = Tagged("transitive");
         Border deprecated = Tagged("deprecated");
+        Border held = Tagged("held back");
+        Border fix = Tagged("vulnerability fix");
         RowIcon warning = Warning(string.Empty);
         warning.Margin = new Thickness(Gaps.Small, 0, 0, 0);
-        ShrinkingRow line = new() { Height = ListRow.Height, Children = { icon, id, version, transitive, deprecated, warning } };
-        foreach (Control kept in (Control[])[version, transitive, deprecated])
+        ShrinkingRow line = new() { Height = ListRow.Height, Children = { icon, id, version, transitive, deprecated, held, fix, warning } };
+        foreach (Control kept in (Control[])[version, transitive, deprecated, held, fix])
         {
             ShrinkingRow.SetKeepsWidth(kept, true);
         }
@@ -1274,12 +1292,22 @@ public sealed partial class NuGetView : DockPanel
             transitive.IsVisible = row.IsTransitive;
             deprecated.IsVisible = row.IsDeprecated;
             ToolTip.SetTip(deprecated, row.Deprecated is { } said ? DeprecationTip(said.Version, said.Said) : null);
+            held.IsVisible = row.HeldBack is not null;
+            ToolTip.SetTip(held, row.HeldBack);
+            fix.IsVisible = row.Fixes.Count > 0;
+            ToolTip.SetTip(fix, row.Fixes.Count > 0 ? FixWords(row) : null);
             ToolTip.SetTip(line, row.IsTransitive ? $"Brought in by {BroughtBy(row.Transitive.Values.SelectMany(v => v))}"
                 : row.Description.Length > 0 ? row.Description : null);
             warning.IsVisible = row.IsVulnerable;
             ToolTip.SetTip(warning, row.IsVulnerable ? $"Known security vulnerability: {row.Advisories[0].Severity} severity ({row.Advisories[0].Address})" : null);
         });
     }
+
+    /// <summary>What a row's fixes of vulnerable versions its projects get through others do, a line per project: the
+    /// version referenced, where, in place of what, brought in by what.</summary>
+    private string FixWords(PackageRow row) => string.Join("\n", row.Fixes.Select(f =>
+        $"{model.Projects.FirstOrDefault(p => PathNames.Same(p.Path, f.Key))?.Name ?? Path.GetFileNameWithoutExtension(f.Key)}: references {f.Value.Version}{f.Value.Where}, "
+        + $"in place of the vulnerable {Plural.Listed([.. f.Value.Fixes.Select(u => u.Version).Distinct(StringComparer.OrdinalIgnoreCase)])} brought in by {BroughtBy(f.Value.Fixes)}"));
 
     /// <summary>A small tag after a row's words ("transitive").</summary>
     private static Border Tagged(string words)

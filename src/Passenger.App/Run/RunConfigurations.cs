@@ -225,7 +225,7 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         if (start.LaunchProfile.Length == 0)
         {
             return made.FirstOrDefault(c => c.Unsupported is null) is { } first ? (first, null)
-                : (null, project.IsRunnable ? $"none of {name}'s launch profiles runs here" : $"{name} is no executable project");
+                : (null, LaunchProfile.Runs(project) ? $"none of {name}'s launch profiles runs here" : $"{name} is no executable project");
         }
         if (made.FirstOrDefault(c => c.LaunchProfile == start.LaunchProfile) is { } named)
         {
