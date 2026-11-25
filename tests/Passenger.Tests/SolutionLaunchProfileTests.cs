@@ -17,8 +17,9 @@ namespace Passenger.Tests;
 /// it names, each in a tab of the Run window; Debug debugs the one set to Start, stopping at its breakpoint, and runs the
 /// one set to Start without debugging; Stop ends them all; a project whose own configuration collects its logs and traces
 /// collects them started by the profile too; and a run of several parts in the folder's passenger-runs.json starts a command
-/// as a step and each part once the one before it is ready, restarts one part alone and ends all on Stop. It debugs through
-/// the window, so run alone.</summary>
+/// as a step and each part once the one before it is ready, restarts one part alone and ends all on Stop, and debugs its
+/// .NET parts, a part waiting for a debugged one's line hearing it from its start. It debugs through the window, so run
+/// alone.</summary>
 [Collection(Alone.Name)]
 public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClassFixture<RestoredFolders>, IDisposable
 {
@@ -98,7 +99,8 @@ public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClass
     /// <summary>A run of several parts in the folder's passenger-runs.json: dotnet --version as a step, then Api, which the
     /// part after it waits for until it says its greeting, then Worker. Run starts the step and Api only once the step ended
     /// with exit code 0, and Worker only once Api said its line, each in a tab of the Run window; Worker's Rerun restarts it
-    /// alone while Api runs on in the same process, and Stop ends every part.</summary>
+    /// alone while Api runs on in the same process, and Stop ends every part. Debug of it debugs Api and Worker, each in a
+    /// Debug tab, Worker started once Api's greeting is heard though Api says it as it starts, before its launch returns.</summary>
     private void A_run_of_several_parts_starts_each_once_the_one_before_is_ready_restarts_one_alone_and_Stop_ends_them_all()
     {
         MainWindow window = Open();
@@ -142,6 +144,30 @@ public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClass
 
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => window.RunParts.All(r => !r.IsRunning) && !window.IsRunning, () => $"Stop to end every part ({Runs(window)})", TimeSpan.FromMinutes(1));
+
+            // Api's launch held once its program runs, until its greeting is in its console: Worker waits for that line all the same.
+            TaskCompletionSource greeted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            try
+            {
+                Task held = window.Builds.HoldNextLaunch(greeted.Task, opened: true);
+                Task<string?> debugging = window.DebugAsync();
+                // Not settled: the start holds the window's background work until it has started every part.
+                Ui.PumpUntil(() => held.IsCompleted || debugging.IsCompleted, "Api's launch to be held once its program runs", TimeSpan.FromMinutes(3));
+                Ui.PumpUntil(() => Console(window, "Api: second").Contains("Api says second", StringComparison.Ordinal) || debugging.IsCompleted,
+                    "Api to say its greeting under the debugger as its launch is held", TimeSpan.FromMinutes(1));
+                greeted.SetResult();
+                Ui.Launched(window, debugging, "Worker to start once Api's greeting, said before its launch returned, is heard", TimeSpan.FromMinutes(1));
+            }
+            finally
+            {
+                greeted.TrySetResult();
+            }
+            Ui.WaitFor(() => Console(window, "Api: second").Contains("Api says second", StringComparison.Ordinal) && Console(window, "Worker").Contains("Worker up", StringComparison.Ordinal),
+                () => $"Api and Worker to run under the debugger, each in its Debug tab ({Sessions(window)}; {Runs(window)}; {window.Status})", TimeSpan.FromMinutes(1));
+            Assert.True(window.RunParts.Select(r => r.Name).SequenceEqual(["version"]), $"A .NET part under the debugger also ran in a tab of the Run window: {Runs(window)}");
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.Tabs.Any(t => t.IsLive) && window.RunParts.All(r => !r.IsRunning) && !window.IsRunning,
+                () => $"Stop to end every part ({Sessions(window)}; {Runs(window)})", TimeSpan.FromMinutes(1));
         }
         finally
         {

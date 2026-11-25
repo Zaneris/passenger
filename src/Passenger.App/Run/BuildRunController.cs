@@ -2704,16 +2704,17 @@ public sealed partial class BuildRunController
             : null;
     }
 
-    /// <summary>The next Debug's launch held by a test once its build has ended (<see cref="HoldNextLaunch"/>): what it waits
-    /// for, and done once it waits.</summary>
-    private (Task Until, TaskCompletionSource Holding)? launchHeld;
+    /// <summary>The next Debug's launch held by a test once its build has ended, or once its session is open
+    /// (<see cref="HoldNextLaunch"/>): what it waits for, and done once it waits.</summary>
+    private (Task Until, TaskCompletionSource Holding, bool Opened)? launchHeld;
 
-    /// <summary>Holds the next Debug's launch, once its build has ended, until <paramref name="until"/> ends, for a test of
-    /// what goes on between them. Done once it is held.</summary>
-    public Task HoldNextLaunch(Task until)
+    /// <summary>Holds the next Debug's launch, once its build has ended (with <paramref name="opened"/>, once its session is
+    /// open and its program runs, before the launch returns), until <paramref name="until"/> ends, for a test of what goes on
+    /// between them. Done once it is held.</summary>
+    public Task HoldNextLaunch(Task until, bool opened = false)
     {
         TaskCompletionSource holding = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        launchHeld = (until, holding);
+        launchHeld = (until, holding, opened);
         return holding.Task;
     }
 
@@ -2725,7 +2726,7 @@ public sealed partial class BuildRunController
         {
             return why;
         }
-        if (launchHeld is { } hold)
+        if (launchHeld is { Opened: false } hold)
         {
             launchHeld = null;
             hold.Holding.TrySetResult();
@@ -2787,6 +2788,12 @@ public sealed partial class BuildRunController
         // Its tab, chosen as the start began, has the console its failed bindings are written to.
         WatchBindings(inspected, debug.Chosen?.Console);
         string? refused = await starting;
+        if (refused is null && launchHeld is { Opened: true } runs)
+        {
+            launchHeld = null;
+            runs.Holding.TrySetResult();
+            await runs.Until.Ended();
+        }
         if (game is not null && refused is null)
         {
             game.Debugged = debug.SessionNamed(launched.Name);

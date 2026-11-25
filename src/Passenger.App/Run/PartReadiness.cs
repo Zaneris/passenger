@@ -9,12 +9,14 @@ namespace Passenger.App.Run;
 /// <summary>Whether a part of a run of several parts is ready for the parts after it, as it says (<see cref="RunPart.Ready"/>):
 /// once it ends with exit code 0, once a line its program writes matches its pattern, or once something listens at its
 /// address (a .NET project naming none: once its host says it serves, <see cref="ListeningLines"/>). Its lines are heard
-/// from its console from the start (<see cref="Hear"/>), or read off its terminal's screen as it changes
-/// (<see cref="Watch"/>). A UI-thread object, disposed with its wait.</summary>
+/// from its console from the start (<see cref="Hear"/>), a debugged program's from its Debug tab's placing
+/// (<see cref="HearPlaced"/>), or read off its terminal's screen as it changes (<see cref="Watch"/>). A UI-thread object,
+/// disposed with its wait.</summary>
 public sealed class PartReadiness(RunPart part, string name, bool dotnet) : IDisposable
 {
     private readonly TaskCompletionSource<string?> ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly List<IDisposable> hearing = [];
+    private readonly HashSet<OutputView> heard = [];
     private readonly ListeningLines serving = new();
     private Regex? pattern;
     private string? unread;
@@ -27,19 +29,43 @@ public sealed class PartReadiness(RunPart part, string name, bool dotnet) : IDis
         _ => part.ReadyText.Length > 0 ? $"Waiting for {name} to listen at {part.ReadyText}…" : $"Waiting for {name}'s host to start…",
     };
 
-    /// <summary>Hears each line its program writes to a console from now.</summary>
+    /// <summary>Hears each line its program writes to a console from now, a console heard already passed over.</summary>
     public void Hear(OutputView console)
     {
-        if (part.Ready is ReadyWhen.Line or ReadyWhen.Listening && (part.Ready == ReadyWhen.Line || part.ReadyText.Length == 0))
+        if (HearsLines && heard.Add(console))
         {
             hearing.Add(new ConsoleLines(console, Heard, programs: true));
         }
     }
 
+    /// <summary>Hears the console of the Debug tab <paramref name="debug"/> places for its program (named
+    /// <paramref name="tab"/>) from the tab's placing, so what its program writes before its launch returns is heard too.</summary>
+    public void HearPlaced(Debugging.DebugController debug, string tab)
+    {
+        if (!HearsLines)
+        {
+            return;
+        }
+        HashSet<DebugTab> before = [.. debug.Tabs];
+        void Placed(object? sender, EventArgs e)
+        {
+            if (debug.Tabs.FirstOrDefault(t => t.Name == tab && !before.Contains(t)) is { } placed)
+            {
+                debug.TabsChanged -= Placed;
+                Hear(placed.Console);
+            }
+        }
+        debug.TabsChanged += Placed;
+        hearing.Add(new Unhook(() => debug.TabsChanged -= Placed));
+    }
+
+    /// <summary>Whether its wait reads its program's lines: a line's, or a .NET host's start.</summary>
+    private bool HearsLines => part.Ready == ReadyWhen.Line || part.Ready == ReadyWhen.Listening && part.ReadyText.Length == 0;
+
     /// <summary>Reads each line of a terminal's screen as it changes, the lines it held as it started among them.</summary>
     public void Watch(TerminalRun run)
     {
-        if (part.Ready is not (ReadyWhen.Line or ReadyWhen.Listening) || part.Ready == ReadyWhen.Listening && part.ReadyText.Length > 0)
+        if (!HearsLines)
         {
             return;
         }
@@ -165,6 +191,7 @@ public sealed class PartReadiness(RunPart part, string name, bool dotnet) : IDis
             each.Dispose();
         }
         hearing.Clear();
+        heard.Clear();
     }
 
     private sealed class Unhook(Action undo) : IDisposable

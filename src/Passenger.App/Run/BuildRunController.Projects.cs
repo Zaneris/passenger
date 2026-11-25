@@ -11,10 +11,10 @@ namespace Passenger.App.Run;
 /// <summary>Run and Debug of a run of several parts (<see cref="RunPart"/>): each .NET project it starts worked out as its own
 /// configuration would launch it (its launch profile's, with the person's changes), any other part as its kind runs (a
 /// script or install by its package's manager, a command), the projects built at once, then each part started in order once
-/// the one before it is ready (<see cref="PartReadiness"/>). Debug debugs the projects marked Start, each in a Debug tab of
-/// its own; every other part runs in a tab of the Run window of its own (<see cref="PartRun"/>), or of the Terminal window
-/// where its configuration says. Stop ends them together, a part's tab restarts or ends it alone, and a start of the run
-/// again ends its last.</summary>
+/// the one before it is ready (<see cref="PartReadiness"/>). Debug debugs the projects and a Compose part's .NET services
+/// marked Start, each in a Debug tab of its own; every other part runs in a tab of the Run window of its own
+/// (<see cref="PartRun"/>), or of the Terminal window where its configuration says. Stop ends them together, a part's tab
+/// restarts or ends it alone, and a start of the run again ends its last.</summary>
 public sealed partial class BuildRunController
 {
     /// <summary>The programs a multi-project configuration's Debug started under the debugger, by their tabs' names: the
@@ -83,7 +83,7 @@ public sealed partial class BuildRunController
                 // Its containers' start reads its files and builds its .NET services itself, as its own configuration's does.
                 string composed = RunConfiguration.UniqueName(session.Configurations.NameOf(part), named);
                 named.Add(composed);
-                starts.Add(new PartStart(part, composed, null, null, null, false, []));
+                starts.Add(new PartStart(part, composed, null, null, null, debug && part.Action == ProjectLaunchAction.Start, []));
                 continue;
             }
             if (part.Kind != RunPartKind.Project)
@@ -188,10 +188,10 @@ public sealed partial class BuildRunController
             {
                 return left;
             }
-            // Each part not debugged and not run in the terminal has a tab of its own in the Run window, waiting its turn.
+            // Each part not debugged nor run in the terminal has a Run window tab, waiting its turn; a Compose part's is its log.
             EndPartRuns(ended: true);
-            PartRun?[] tabs = [.. starts.Select((s, i) => s.Debugged || s.Configuration?.Console == ConsoleKind.Terminal ? null
-                : s.Part.Kind == RunPartKind.Compose ? ContainersPart(s.Name, chosen.Name, i + 1, s.Part)
+            PartRun?[] tabs = [.. starts.Select((s, i) => s.Part.Kind == RunPartKind.Compose ? ContainersPart(s.Name, chosen.Name, i + 1, s.Part)
+                : s.Debugged || s.Configuration?.Console == ConsoleKind.Terminal ? null
                 : new PartRun(s.Name, chosen.Name, i + 1, s.Part) { Project = s.Configuration })];
             foreach (PartRun tab in tabs.OfType<PartRun>())
             {
@@ -222,17 +222,19 @@ public sealed partial class BuildRunController
                 string? notStarted;
                 Task<int>? exit = null;
                 Task ended;
-                if (start.Debugged)
+                if (start.Debugged && start.Plan is not null)
                 {
-                    LaunchPlan plan = start.Plan!;
+                    LaunchPlan plan = start.Plan;
                     profileTabs[plan.Name] = (chosen, start.Configuration!, i + 1);
                     debugged.Remove(plan.Name);
                     inTabs.Add(plan.Name);
+                    readiness.HearPlaced(session.Debug, plan.Name);
                     notStarted = await LaunchDebuggedAsync(start.Configuration!, plan, work, its, copies: chosen.Name);
                     DebugTab? launched = session.Debug.Tabs.FirstOrDefault(t => t.Name == plan.Name);
                     ended = DebugEnded(session.Debug.SessionNamed(plan.Name));
                     if (notStarted is null && launched is not null)
                     {
+                        // Heard from its placing already, unless its launch went through a tab it did not place.
                         readiness.Hear(launched.Console);
                         if (launched.Plan?.Dashboard == dashboards[i])
                         {
@@ -258,8 +260,12 @@ public sealed partial class BuildRunController
                 {
                     tab.StartedBy = Mcp.AgentCall.Current?.Connection;
                     notStarted = start.Plan is { } plan ? await RunProjectInTabAsync(tab, plan, Reloaded(start, hotReload), work, its)
-                        : tab.IsContainers ? await StartContainersPartAsync(tab, work)
+                        : tab.IsContainers ? await StartContainersPartAsync(tab, work, start.Debugged ? RunStart.Debug : hotReload ? RunStart.HotReload : RunStart.Run)
                         : await tab.StartAsync(start.Start!, start.Part.Environment);
+                    if (notStarted is null && tab.IsContainers && start.Debugged && session.ContainerRun is { } containers)
+                    {
+                        inTabs.AddRange(containers.Held.Where(s => containers.HeldFor(s) == RunStart.Debug).Select(containers.SessionName));
+                    }
                     exit = tab.Ended;
                     ended = exit;
                     if (notStarted is null)
@@ -450,6 +456,8 @@ public sealed partial class BuildRunController
         using (work)
         using (BackgroundWork.Scope())
         {
+            // A Compose part comes up again as it last came, its .NET services debugged where they were.
+            RunStart how = session.ContainerRun is { } last && last.Name == part.Name ? last.How : RunStart.Run;
             if (part.IsRunning)
             {
                 part.Stop();
@@ -459,7 +467,7 @@ public sealed partial class BuildRunController
             string? refused;
             if (part.IsContainers)
             {
-                refused = await StartContainersPartAsync(part, work);
+                refused = await StartContainersPartAsync(part, work, how);
             }
             else if (part.Project is { } configuration)
             {
@@ -497,9 +505,10 @@ public sealed partial class BuildRunController
         () => session.ContainerRun is { IsStopped: false } containers && containers.Name == name, () => IdeErrors.Observe(session.StopContainersAsync()));
 
     /// <summary>Brings a Compose part's services up as the folder's container run, as its compose files' own configuration
-    /// runs them (the person's choices for it kept), its services those the part names, every one where it names none: null
-    /// once they are up, healthy where they check, else why not.</summary>
-    private async Task<string?> StartContainersPartAsync(PartRun part, Working work)
+    /// runs (or debugs, as <paramref name="how"/> says) them, the person's choices for it kept, its services those the part
+    /// names, every one where it names none: null once they are up, healthy where they check, else why not. Debugged, a part
+    /// starting no .NET service runs, as every part of a run's Debug but its .NET programs does.</summary>
+    private async Task<string?> StartContainersPartAsync(PartRun part, Working work, RunStart how)
     {
         RunConfiguration composed = session.Configurations.All.FirstOrDefault(c => c.Kind == RunKind.Compose && RunConfiguration.SameFiles(c.ComposeFiles, part.Part.ComposeFiles)) is { } own
             ? own.Copied() with { Name = part.Name }
@@ -514,7 +523,7 @@ public sealed partial class BuildRunController
             return AlreadyRunning();
         }
         part.Set(PartState.Starting);
-        string? refused = await RunContainersAsync(composed, work);
+        string? refused = await RunContainersAsync(composed, work, how, debugsOrRuns: true);
         part.Set(refused is null ? PartState.Running : PartState.Ended);
         return refused;
     }

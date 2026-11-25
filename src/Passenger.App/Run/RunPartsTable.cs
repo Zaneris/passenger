@@ -60,6 +60,9 @@ public sealed class RunPartsTable : EditableTable
         public Button? Remove { get; set; }
     }
 
+    /// <summary>Whether a part's Start debugs under Debug, taking each action: a .NET project's, a Compose part's .NET services.</summary>
+    private static bool Debuggable(RunPart part) => part.Kind is RunPartKind.Project or RunPartKind.Compose;
+
     /// <summary>Each action's words, as Visual Studio's own table says them, in <see cref="ProjectLaunchAction"/>'s order.</summary>
     public static readonly IReadOnlyList<string> ActionWords = ["Start", "Start without debugging", "None"];
 
@@ -127,7 +130,7 @@ public sealed class RunPartsTable : EditableTable
         {
             bool project = row.Part.Kind == RunPartKind.Project;
             int chosen = row.Action.SelectedIndex;
-            ProjectLaunchAction? action = project
+            ProjectLaunchAction? action = Debuggable(row.Part)
                 ? chosen is >= 0 and < 3 ? (ProjectLaunchAction)chosen : row.Was?.Action
                 : chosen switch { 0 => ProjectLaunchAction.Start, 1 => ProjectLaunchAction.None, _ => row.Was?.Action };
             string profile = row.Profile.SelectedIndex > 0 && row.Profile.SelectedIndex < row.Profiles.Count ? row.Profiles[row.Profile.SelectedIndex] : string.Empty;
@@ -168,15 +171,16 @@ public sealed class RunPartsTable : EditableTable
         ComboBox action = new() { Classes = { StyleClasses.Cell }, HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = known };
         // An action Passenger does not know is listed as written, so leaving it chosen keeps it.
         string? unknown = was is { Action: null } ? was.Launch?.ActionWritten ?? "?" : null;
-        string[] words = project ? [.. ActionWords] : [ActionWords[0], ActionWords[2]];
+        bool compose = part.Kind == RunPartKind.Compose;
+        string[] words = Debuggable(part) ? [.. ActionWords] : [ActionWords[0], ActionWords[2]];
         action.ItemsSource = unknown is null ? words : (string[])[.. words, $"{unknown} (not known)"];
         action.SelectedIndex = was is null && project ? (int)ProjectLaunchAction.None
-            : part.Action is { } given ? project ? (int)given : given == ProjectLaunchAction.None ? 1 : 0
+            : part.Action is { } given ? Debuggable(part) ? (int)given : given == ProjectLaunchAction.None ? 1 : 0
             : words.Length;
         ToolTip.SetTip(action, project
             ? "Start runs it, under the debugger when the run is debugged; Start without debugging runs it either way; None leaves it"
+            : compose ? "Start brings its services up, its .NET services under the debugger when the run is debugged; Start without debugging brings them up either way; None leaves it"
             : "Start runs it, Run and Debug alike; None leaves it");
-        bool compose = part.Kind == RunPartKind.Compose;
         ComboBox ready = new()
         {
             Classes = { StyleClasses.Cell },

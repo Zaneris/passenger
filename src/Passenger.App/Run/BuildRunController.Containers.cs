@@ -66,8 +66,9 @@ public sealed partial class BuildRunController
     public Task<string?> ProfileContainersAsync(RunConfiguration chosen, Working work) => RunContainersAsync(chosen, work, RunStart.Profile);
 
     /// <summary>One container start at a time, as one container run is up at a time (<see cref="TakeStartAsync"/>): one under
-    /// way (Run's, as Debug begins) is ended first, as Stop ends it, and this one goes on once it has.</summary>
-    private async Task<string?> RunContainersAsync(RunConfiguration chosen, Working work, RunStart how = RunStart.Run)
+    /// way (Run's, as Debug begins) is ended first, as Stop ends it, and this one goes on once it has. With
+    /// <paramref name="debugsOrRuns"/>, a Debug of services of which none is .NET runs them rather than refusing.</summary>
+    private async Task<string?> RunContainersAsync(RunConfiguration chosen, Working work, RunStart how = RunStart.Run, bool debugsOrRuns = false)
     {
         using IDisposable held = BackgroundWork.Scope();
         using StartTaken? taken = await TakeStartAsync([ContainerStarts], work);
@@ -81,7 +82,7 @@ public sealed partial class BuildRunController
         }
         try
         {
-            return await StartContainersAsync(chosen, work, how);
+            return await StartContainersAsync(chosen, work, how, debugsOrRuns);
         }
         finally
         {
@@ -123,7 +124,7 @@ public sealed partial class BuildRunController
     /// it started later is started again.</summary>
     private ContainerRun? rerun;
 
-    private async Task<string?> StartContainersAsync(RunConfiguration chosen, Working work, RunStart how)
+    private async Task<string?> StartContainersAsync(RunConfiguration chosen, Working work, RunStart how, bool debugsOrRuns)
     {
         if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
         {
@@ -227,7 +228,11 @@ public sealed partial class BuildRunController
             holding.AddRange(plan.Dotnet.Where(d => plan.Starts(d.Service) && choices.GetValueOrDefault(d.Service)).Select(d => (d, RunStart.Debug)));
         }
         IReadOnlyList<DotnetService> debugged = [.. holding.Select(h => h.Service)];
-        if (how is RunStart.Debug or RunStart.Profile && debugged.Count == 0)
+        if (how == RunStart.Debug && debugged.Count == 0 && debugsOrRuns)
+        {
+            how = RunStart.Run;
+        }
+        else if (how is RunStart.Debug or RunStart.Profile && debugged.Count == 0)
         {
             return Said($"Nothing to {(how == RunStart.Debug ? "debug" : "profile")}: {chosen.Name} starts no .NET service");
         }

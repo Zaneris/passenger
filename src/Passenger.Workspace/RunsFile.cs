@@ -31,8 +31,8 @@ public enum ReadyWhen
 }
 
 /// <summary>One part of a run of several parts, in the order they start: what it runs (<see cref="Kind"/>), what Run and
-/// Debug do with it (<see cref="Action"/>: a .NET project Start debugs under Debug, any other part runs either way; None
-/// leaves it), and for a .NET project the launch profile of its own it starts in, empty for its default. Paths are
+/// Debug do with it (<see cref="Action"/>: a .NET project Start debugs under Debug, as a Compose part's .NET services, any
+/// other part runs either way; None leaves it), and for a .NET project the launch profile of its own it starts in, empty for its default. Paths are
 /// canonical: a project's file, a script's or install's package.json, a command's folder.</summary>
 public sealed record RunPart(string Project, ProjectLaunchAction? Action, string LaunchProfile)
 {

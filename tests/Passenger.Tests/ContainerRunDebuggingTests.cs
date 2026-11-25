@@ -43,13 +43,14 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
 
     /// <summary>Debugging compose services as one flow, every step needing a Linux container engine and the container
     /// tools, each in an instance of its own: two services debugged at once and the Containers window's Restart, Stop
-    /// and Remove, Hot Reload reaching a paused service and a rude edit restarting its service, and an edit made while
-    /// they come up, after a restart's build, before a Restart without a build, or while images build applied once they
-    /// run.</summary>
+    /// and Remove, a run of several parts' Compose part debugged, Hot Reload reaching a paused service and a rude edit
+    /// restarting its service, and an edit made while they come up, after a restart's build, before a Restart without a
+    /// build, or while images build applied once they run.</summary>
     [AvaloniaFact]
     public void Container_services_are_debugged_and_hot_reloaded_each_edit_reaching_them_once_they_run()
     {
         Flow.StepApart("two services debugged at once stop in Main and in a request and the Containers windows Restart Stop and Remove go through the run", () => new ContainerRunDebuggingTests(tools), t => t.Two_services_debugged_at_once_stop_in_Main_and_in_a_request_and_the_Containers_windows_Restart_Stop_and_Remove_go_through_the_run());
+        Flow.StepApart("a runs Compose part debugs its dotnet service to a breakpoint under the runs Debug and Stop takes it down", () => new ContainerRunDebuggingTests(tools), t => t.A_runs_Compose_part_debugs_its_dotnet_service_to_a_breakpoint_under_the_runs_Debug_and_Stop_takes_it_down());
         Flow.StepApart("hot Reload reaches a paused service and Run with Hot Reload applies an edit and restarts a service for a rude one", () => new ContainerRunDebuggingTests(tools), t => t.Hot_Reload_reaches_a_paused_service_and_Run_with_Hot_Reload_applies_an_edit_and_restarts_a_service_for_a_rude_one());
         Flow.StepApart("an edit made while Run with Hot Reload brings its services up is applied once they run", () => new ContainerRunDebuggingTests(tools), t => t.An_edit_made_while_Run_with_Hot_Reload_brings_its_services_up_is_applied_once_they_run());
         Flow.StepApart("an edit made while Rerun or Hot Reloads restart is held after its build is applied once the services run again", () => new ContainerRunDebuggingTests(tools), t => t.An_edit_made_while_Rerun_or_Hot_Reloads_restart_is_held_after_its_build_is_applied_once_the_services_run_again());
@@ -195,6 +196,47 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
             Docker.Stopped(window, project, "Stop to take every container down");
         }
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "both sessions to end with the run");
+        window.Close();
+    }
+
+    /// <summary>A run of several parts in the folder's passenger-runs.json, a Compose part bringing up web (and cache, which it
+    /// depends on), then a command: Debug of the run debugs web as compose.yaml's own configuration's Debug does, in a Debug
+    /// tab of its own stopping at Main's breakpoint, the part's Run window tab following the containers' log and the command
+    /// after it run once they are up; Stop ends web's session and takes the containers down.</summary>
+    private void A_runs_Compose_part_debugs_its_dotnet_service_to_a_breakpoint_under_the_runs_Debug_and_Stop_takes_it_down()
+    {
+        Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
+        (string folder, string project) = Shop("parts");
+        string host = Dotnet.Host().Replace("\\", "/", StringComparison.Ordinal);
+        TestFolders.Write(folder, Passenger.Workspace.RunsFile.FileName, $$"""
+            { "passengerRuns": 1, "runs": [ { "name": "Stack", "parts": [
+              { "compose": ["compose.yaml"], "services": ["web"] },
+              { "command": "\"{{host}}\" --version", "name": "after" }
+            ] } ] }
+            """);
+        MainWindow window = ContainerRunsTests.Open(folder);
+        window.Debugger.Breakpoints.Toggle(Source(folder, "Web"), InMain);
+        try
+        {
+            Ui.WaitFor(() => window.SelectConfiguration("Stack"), () => $"the folder's run to be listed ({string.Join(", ", window.Configurations.Select(c => c.Name))})");
+            Debugged(window, "the run's Compose part to come up with web under the debugger");
+            DebugTab web = Tab(window, "web");
+            StoppedAt(window, web, Source(folder, "Web"), InMain, "web to stop in Main under the run's Debug");
+            Assert.False(web.Session!.IsLocal, "web's program was taken for one of this machine's");
+            Assert.DoesNotContain(window.Debugger.Tabs, t => t.Name == "api");
+            Assert.Contains("web", window.Builds.ProjectsOf("Stack").Debugged);
+            Ui.WaitFor(() => window.RunParts.Select(p => p.Name).SequenceEqual(["compose: web", "after"])
+                    && window.RunParts[1] is { State: PartState.Ended } after && after.Runner.Shown().ToString().Contains("Process finished with exit code 0", StringComparison.Ordinal),
+                () => $"the Compose part's tab and the command after it, run once its services were up ({string.Join("; ", window.RunParts.Select(p => $"{p.Name} {p.Said}"))}; {window.Status})");
+            Assert.True(window.RunParts[0].IsRunning && window.RunParts[0].Console == window.BottomPanel.Run,
+                $"The Compose part's tab is not the Run window's console following its log: {window.RunParts[0].Said}");
+            Resume(window, web);
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take the run's containers down");
+        }
+        Ui.WaitFor(() => !window.Debugger.IsDebugging && !window.IsRunning, "web's session to end with the run");
         window.Close();
     }
 

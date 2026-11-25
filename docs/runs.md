@@ -5,7 +5,8 @@ Several Parts) and started by one Run or Debug: .NET projects, a package.json sc
 package's dependencies installed by it, commands, and a Compose application's services. Each part starts once the one before it is ready, and Stop ends
 them all. Each part not debugged has a tab of its own in the Run window (or the Terminal window, where its .NET project's
 configuration runs in the terminal), saying where it stands; a tab's Rerun restarts its part alone, the others running
-on, and its Stop ends that part alone. Debug debugs each .NET project set to Start, each in a Debug tab of its own.
+on, and its Stop ends that part alone. Debug debugs each .NET project set to Start, and a Compose part's .NET services as
+its files' own configuration debugs them, each in a Debug tab of its own.
 
 Where a run holds only .NET projects of the solution, each with nothing but its action and launch profile, it is kept in
 the solution's `.slnLaunch` (the person's own in `.slnLaunch.user`), as Visual Studio writes and reads it. Any other run
@@ -49,7 +50,8 @@ change, and follows the files and folders its parts name as they move.
     named and what they depend on, every service where none is named. A run holds one, as the folder runs one Compose
     application at a time; its console is the Run window's own, where its log is followed, and Stop takes it down.
 - `action` is `start` (the default), `startWithoutDebugging` (a .NET project run, never debugged), or `none` (left out).
-  Debug debugs each .NET project set to `start` and runs every other part.
+  Debug debugs each .NET project set to `start` and a `start` Compose part's .NET services (those its configuration
+  debugs), and runs every other part.
 - `readyWhen` says when the parts after it start: `started` (the default, at once), `exited` (once it ends with exit code
   0; a part ending otherwise stops the run's start), `{ "line": "…" }` (once a line of its output matches the regular
   expression), or `{ "listening": "…" }` (once something takes a connection at the address); `listening` alone waits, for
