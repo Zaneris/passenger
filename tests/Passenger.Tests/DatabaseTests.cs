@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -702,6 +703,60 @@ public sealed class DatabaseTests
                 Assert.True(duckConsole.Results is [{ Error: null }], duckConsole.Said);
                 Assert.Equal(["bolt 120", "nut 60"], Enumerable.Range(0, 2).Select(r => $"{duckConsole.Results[0].Sets[0].Cell(r, 0)} {duckConsole.Results[0].Sets[0].Cell(r, 1)}"));
             });
+            Flow.Step("a release downloads DuckDB's engine as a DuckDB connection first opens, checked against its SHA256SUMS, a wrong one refused and Stop ending one, and keeps it", () =>
+            {
+                string carried = DuckDbNative.Default(Passenger.App.Updates.ReleaseFeed.Default).CarriedLibrary ?? throw new Xunit.Sdk.XunitException("This build carries no DuckDB engine for its stand-in release to serve");
+                using UpdatesTests.StandIn github = new();
+                string tag = $"v{Product.Version}";
+                byte[] engine = Packed(carried);
+                github.Serve(tag, DuckDbNative.Asset, engine);
+                github.Serve(tag, "SHA256SUMS", System.Text.Encoding.UTF8.GetBytes($"{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData((byte[])[1, 2, 3]))}  {DuckDbNative.Asset}\n"));
+                string cache = TestFolders.Create("duckdb-cache-");
+                DuckDbNative given = new(Path.Combine(cache, "carried-none"), new Passenger.App.Updates.ReleaseFeed(github.Listing, TimeSpan.FromSeconds(5)), cache);
+                DuckDbNative.Given = given;
+                try
+                {
+                    DatabaseSource stock = window.Database.Sources.Single(s => s.Kind == DatabaseKind.DuckDb);
+                    DatabaseNode row = Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == stock.Id);
+                    if (row.IsExpanded)
+                    {
+                        Ui.Await(Explorer(window).ToggleAsync(row), "stock.duckdb to close");
+                    }
+                    Explorer(window).Forget(stock);
+                    Ui.Await(Explorer(window).ToggleAsync(row), "stock.duckdb's open, its engine's download refused");
+                    Assert.Equal(Refusals.NoDuckDbEngine($"{DuckDbNative.Named} for {DuckDbNative.Rid} downloaded from the {tag} release did not match its SHA256SUMS, and nothing of it was used"),
+                        window.Database.Said);
+                    Assert.False(row.IsExpanded, "stock.duckdb opened on an engine whose download did not match its SHA256SUMS");
+                    Assert.False(File.Exists(Path.Combine(given.Downloaded, DuckDbNative.Library)), "An engine whose download did not match was kept");
+
+                    // The download held half sent: the work says what it is doing, and Stop ends it, keeping nothing.
+                    github.Serve(tag, "SHA256SUMS", System.Text.Encoding.UTF8.GetBytes($"{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(engine))}  {DuckDbNative.Asset}\n"));
+                    github.Hold(DuckDbNative.Asset);
+                    Task opening = Explorer(window).ToggleAsync(row);
+                    Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.DatabaseConnect)?.Stage.StartsWith($"Downloading {DuckDbNative.Named}", StringComparison.Ordinal) == true
+                        || opening.IsCompleted, "the open's work to say it is downloading DuckDB's engine", TimeSpan.FromMinutes(1));
+                    Assert.False(opening.IsCompleted, $"stock.duckdb's open ended before it downloaded its engine: {window.Database.Said}");
+                    Assert.True(window.Perform(AppActions.DatabaseCancel), "Stop Database Operation did not run");
+                    github.Let();
+                    Ui.Await(opening, "stock.duckdb's open to end at Stop as its engine downloaded");
+                    Assert.Equal("Database operation stopped.", window.Database.Said);
+                    Assert.False(File.Exists(Path.Combine(given.Downloaded, DuckDbNative.Library)), "A download Stop ended was kept");
+
+                    int asked = github.RequestsFor(DuckDbNative.Asset).Length;
+                    Ui.Await(Explorer(window).ToggleAsync(row), "stock.duckdb's open on its engine downloaded");
+                    Assert.True(row.IsExpanded, $"stock.duckdb did not open on its engine downloaded: {window.Database.Said}");
+                    Assert.True(File.Exists(Path.Combine(given.Downloaded, DuckDbNative.Library)), $"The engine downloaded was not kept in {given.Downloaded}");
+                    Assert.Equal(asked + 1, github.RequestsFor(DuckDbNative.Asset).Length);
+                    Ui.Await(Explorer(window).ToggleAsync(row), "stock.duckdb to close");
+                    Explorer(window).Forget(stock);
+                    Ui.Await(Explorer(window).ToggleAsync(row), "stock.duckdb's open on its engine kept");
+                    Assert.True(row.IsExpanded && github.RequestsFor(DuckDbNative.Asset).Length == asked + 1, "DuckDB's engine was downloaded again where the cache kept it");
+                }
+                finally
+                {
+                    DuckDbNative.Given = null;
+                }
+            });
         }
         finally
         {
@@ -821,6 +876,27 @@ public sealed class DatabaseTests
     {
         Ui.WaitFor(() => window.OwnedWindows.OfType<ChoiceDialog>().Any(d => d.IsVisible), () => window.Database.Said);
         return window.OwnedWindows.OfType<ChoiceDialog>().Single(d => d.IsVisible);
+    }
+
+    /// <summary>DuckDB's engine packed as its release file is for this system: its library alone, zipped for Windows, else in a
+    /// gzipped tar.</summary>
+    private static byte[] Packed(string library)
+    {
+        using MemoryStream packed = new();
+        if (OperatingSystem.IsWindows())
+        {
+            using (System.IO.Compression.ZipArchive zip = new(packed, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+            {
+                zip.CreateEntryFromFile(library, DuckDbNative.Library);
+            }
+            return packed.ToArray();
+        }
+        using (System.IO.Compression.GZipStream zipped = new(packed, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
+        using (System.Formats.Tar.TarWriter tar = new(zipped))
+        {
+            tar.WriteEntry(library, DuckDbNative.Library);
+        }
+        return packed.ToArray();
     }
 
     private static void Sql(string folder, string sql)

@@ -185,6 +185,9 @@ jobs:
           # The debugger's 32-bit host is a release file of its own, downloaded the first time a 32-bit program is debugged.
           if (Test-Path (Join-Path $root 'current\debugger\x86')) { throw "The install carries the debugger's 32-bit host, which it should download" }
           if (-not (Test-Path artifacts/package/Passenger-debugger-win-x86.zip)) { throw 'tools/package-win.sh made no Passenger-debugger-win-x86.zip' }
+          # DuckDB's engine too, downloaded the first time a DuckDB connection opens.
+          if (Test-Path (Join-Path $root 'current\duckdb.dll')) { throw "The install carries DuckDB's engine, which it should download" }
+          if (-not (Test-Path artifacts/package/Passenger-duckdb-win-x64.zip)) { throw 'tools/package-win.sh made no Passenger-duckdb-win-x64.zip' }
           $entry = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\PassengerIDE'
           if ($entry.DisplayName -ne 'Passenger') { throw "Settings > Apps lists the install as '$($entry.DisplayName)'" }
           # The runner's Visual Studio keeps these types' default, so Passenger is among the programs that open them.
@@ -303,6 +306,9 @@ jobs:
             [ -e "$path" ] || { echo "::error::The install has no $path"; exit 1; }
           done
           [ "$(readlink -f "$HOME/.local/bin/passenger-ide")" = "$opt/passenger" ] || { echo "::error::~/.local/bin/passenger-ide does not lead to the install"; exit 1; }
+          # DuckDB's engine is a release file of its own, downloaded the first time a DuckDB connection opens.
+          [ ! -e "$opt/app/libduckdb.so" ] || { echo "::error::The install carries DuckDB's engine, which it should download"; exit 1; }
+          [ -f artifacts/package/Passenger-duckdb-linux-x64.tar.gz ] || { echo "::error::tools/package-linux.sh made no Passenger-duckdb-linux-x64.tar.gz"; exit 1; }
           entry=$HOME/.local/share/applications/io.github.zaneris.passenger.desktop
           desktop-file-validate "$entry"
           grep -qx "Exec=\"$opt/passenger\" %f" "$entry" || { echo "::error::The menu entry does not start the install's launcher"; cat "$entry"; exit 1; }

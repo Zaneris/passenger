@@ -37,6 +37,23 @@ publish_project() {
         -p:Version="$publish_version" -p:RestoreLockedMode=true -nodeReuse:false "$@"
 }
 
+# DuckDB's engine's file for a system, as its driver's package names it: duckdb_engine=$(duckdb_engine_of RID).
+duckdb_engine_of() {
+    case $1 in
+        win-*) echo duckdb.dll ;;
+        osx-*) echo libduckdb.dylib ;;
+        *) echo libduckdb.so ;;
+    esac
+}
+
+# DuckDB's engine taken out of an app's folder of files (APP), which no release carries, into the folder TO, for a release
+# file of its own that Passenger downloads the first time a DuckDB connection opens: take_duckdb APP ENGINE TO.
+take_duckdb() {
+    [ -f "$1/$2" ] || fail "the app has no $2, DuckDB's engine, in $1"
+    mkdir -p "$3"
+    mv "$1/$2" "$3/$2"
+}
+
 # The App, ReadyToRun: publish_app ROOT RID VERSION [more of dotnet publish's arguments].
 publish_app() {
     publish_root=$1

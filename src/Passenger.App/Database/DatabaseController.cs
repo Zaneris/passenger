@@ -869,6 +869,14 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         running = started;
         using Working working = started;
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(working.Stopping, lifetime.Token);
+        // A DuckDB connection's first open may download its engine, whose stages the work says.
+        using IDisposable telling = DuckDbNative.Tell(stage => UiThread.Post(() =>
+        {
+            if (running == working)
+            {
+                working.Say(stage);
+            }
+        }));
         Changed?.Invoke(this, EventArgs.Empty);
         try
         {

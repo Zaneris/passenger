@@ -674,6 +674,9 @@ public static class Refusals
     /// <summary>A table's changes, or an import, on a database that writes no row by its key.</summary>
     public static string NoRowEdits(string kind) => $"{kind} changes rows by statements, not one by one: change them in a SQL console";
 
+    /// <summary>A DuckDB connection opened where its engine could not be had: a release's download that failed or did not match.</summary>
+    public static string NoDuckDbEngine(string why) => $"DuckDB could not be opened: {why}";
+
     /// <summary>Manual commit on a database whose statements each stand alone.</summary>
     public static string NoTransactions(string kind) => $"{kind} runs each statement alone, with no transaction to commit or roll back";
 

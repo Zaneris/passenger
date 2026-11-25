@@ -30,7 +30,7 @@ dbgshim's musl Linux natives are the container tools' (below), which the app nev
 | `MySqlConnector` | The Database window's MySQL and MariaDB provider | MIT | Copyright 2016–2026 Bradley Grainger |
 | `SSH.NET` | A database connection's SSH tunnel through a bastion | MIT | Copyright © Renci 2010-2026 |
 | `BouncyCastle.Cryptography` | SSH.NET's ciphers, keys and key exchange | MIT | Copyright © Legion of the Bouncy Castle Inc. 2000-2026 |
-| `DuckDB.NET.Data.Full`, `DuckDB.NET.Bindings.Full` | The Database window's DuckDB provider, with DuckDB's own native library for each system (libduckdb, MIT, Copyright 2018-2026 Stichting DuckDB Foundation) | MIT | Copyright © 2020 - 2026 Giorgi Dalakishvili |
+| `DuckDB.NET.Data.Full`, `DuckDB.NET.Bindings.Full` | The Database window's DuckDB provider, with DuckDB's own native library for each system (libduckdb, MIT, Copyright 2018-2026 Stichting DuckDB Foundation), which a release leaves out of its installers and portable builds as `Passenger-duckdb-<system>` of its own, downloaded into the state's cache the first time a DuckDB connection opens | MIT | Copyright © 2020 - 2026 Giorgi Dalakishvili |
 | `Apache.Arrow`, `Apache.Arrow.Scalars` | Arrow's columns, which the DuckDB and Snowflake providers read results through | Apache-2.0 | Copyright 2016-2025 The Apache Software Foundation |
 | `ClickHouse.Driver` | The Database window's ClickHouse provider | MIT | ClickHouse |
 | `NodaTime` | the ClickHouse provider's dates and times | Apache-2.0 | Jon Skeet |

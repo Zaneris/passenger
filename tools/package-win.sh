@@ -1,11 +1,10 @@
 #!/bin/sh
 # Passenger's Windows installer and portable build: `just package-win [win-x64|win-arm64]`, on Windows (Git's sh) or
-# macOS, makes artifacts/package/Passenger-windows-x64.exe and -x64-portable.zip (or -arm64), names each release keeps,
-# and for win-x64 Passenger-debugger-win-x86.zip, the debugger's 32-bit host, which neither carries:
-# the Release publish packed by Velopack's vpk into a Setup.exe that installs for the person alone, with no
-# administrator, into %LocalAppData%\PassengerIDE, adds Start menu and Settings > Apps entries, and runs Passenger.exe's
-# install hook, which puts current\bin, the passenger-ide command's folder, on the person's own Path; and the app as
-# vpk's full package carries it, in a Passenger folder with nothing of Velopack's, which runs wherever it is unpacked.
+# macOS, makes artifacts/package/Passenger-windows-x64.exe and -x64-portable.zip (or -arm64), with Passenger-duckdb-win-x64.zip
+# (DuckDB's engine) and for win-x64 Passenger-debugger-win-x86.zip, which neither carries, names each release keeps: the
+# Release publish packed by Velopack's vpk into a Setup.exe that installs for the person alone, with no administrator,
+# into %LocalAppData%\PassengerIDE, adds Start menu and Settings > Apps entries, and runs its install hook, which puts
+# current\bin on the person's own Path; and the app as vpk's full package carries it, in a Passenger folder, portable.
 # Velopack's release (the full package and its channel's feed) stays in artifacts/package/<rid>/velopack. Signed only on
 # Windows, by signtool, when one is set: PASSENGER_SIGNTOOL_PARAMS, signtool sign's parameters (/f or /sha1, /fd
 # sha256, /tr and /td sha256), or PASSENGER_ARTIFACT_SIGNING_METADATA, an Azure Artifact Signing account's
@@ -30,6 +29,7 @@ release="$work/velopack"
 installer="$out/Passenger-windows-${rid#win-}.exe"
 portable="$out/Passenger-windows-${rid#win-}-portable.zip"
 debugger_x86="$out/Passenger-debugger-win-x86.zip"
+duckdb="$out/Passenger-duckdb-$rid.zip"
 # bsdtar, which writes and reads a zip: Windows' own, as Git's tar is GNU tar.
 bsdtar=tar
 if [ -n "${SYSTEMROOT:-}" ]; then
@@ -54,15 +54,17 @@ fi
 
 version=$(release_version "$root")
 
-rm -rf "$work" "$installer" "$portable"
+rm -rf "$work" "$installer" "$portable" "$duckdb"
 [ "$rid" != win-x64 ] || rm -f "$debugger_x86"
 publish_app "$root" "$rid" "$version" -o "$publish" -nologo -v quiet
 
-# The debugger's 32-bit host (debugger\x86, which a build of one's own carries) is no part of a release's app: Passenger
-# downloads it the first time it debugs a 32-bit program, a release file of its own made below from win-x64's publish.
+# The debugger's 32-bit host (debugger\x86) is no part of a release's app, but a release file of its own made below.
 [ -f "$publish/debugger/x86/passenger-helper.exe" ] && [ -f "$publish/debugger/x86/dbgshim.dll" ] \
     || fail "the publish has no debugger/x86 holding passenger-helper.exe and dbgshim.dll, the debugger's 32-bit host"
 mv "$publish/debugger/x86" "$work/debugger-x86"
+# DuckDB's engine is a release file of its own too, downloaded the first time a DuckDB connection opens.
+duckdb_engine=$(duckdb_engine_of "$rid")
+take_duckdb "$publish" "$duckdb_engine" "$work/duckdb"
 
 # The passenger-ide command alone in bin\, so the folder on the person's Path offers no other program.
 [ "$(ls "$publish/bin")" = passenger-ide.exe ] || fail "the publish's bin folder holds $(ls "$publish/bin" | tr '\n' ' '), not the passenger-ide command alone"
@@ -132,8 +134,7 @@ case $(uname -s) in
 esac
 rm -rf "$work/full" "$work/check"
 
-# The debugger's 32-bit host as a release file, its files at the zip's root, signed wherever the app is: vpk signs only a
-# copy of what it packs, so the host is packed apart and its files taken back out of that package as the app's are above.
+# The 32-bit host as a release file, signed as the app is: packed apart, as vpk signs only a copy of what it packs.
 if [ "$rid" = win-x64 ]; then
     host="$work/debugger-x86"
     signed_pack --packId PassengerDebuggerX86 --packVersion "$version" --packTitle "Passenger 32-bit debugger" --packAuthors Passenger \
@@ -160,7 +161,27 @@ if [ "$rid" = win-x64 ]; then
     rm -rf "$work/debugger-x86-full" "$work/debugger-x86-velopack"
 fi
 
+# DuckDB's engine as a release file, signed as the app is: packed apart, the passenger-ide command lent as its program.
+engine="$work/duckdb"
+cp "$publish/bin/passenger-ide.exe" "$engine/passenger-ide.exe"
+signed_pack --packId PassengerDuckDb --packVersion "$version" --packTitle "DuckDB's engine for Passenger" --packAuthors Passenger \
+    --packDir "$engine" --mainExe passenger-ide.exe --runtime "$rid" --channel "duckdb-$rid" --noInst --skipVeloAppCheck \
+    --outputDir "$work/duckdb-velopack"
+engines=$(find "$work/duckdb-velopack" -maxdepth 1 -name '*-full.nupkg')
+[ "$(echo "$engines" | grep -c .)" = 1 ] || fail "vpk was to write one full package of DuckDB's engine, and wrote: ${engines:-none}"
+mkdir -p "$work/duckdb-full"
+"$bsdtar" -xf "$engines" -C "$work/duckdb-full"
+[ -f "$work/duckdb-full/lib/app/$duckdb_engine" ] || fail "the package of DuckDB's engine holds no $duckdb_engine"
+(cd "$work/duckdb-full/lib/app" && "$bsdtar" -a -cf "$duckdb" -- "$duckdb_engine")
+[ "$("$bsdtar" -tf "$duckdb")" = "$duckdb_engine" ] || fail "$duckdb holds more than DuckDB's engine"
+if [ -n "$signtool_params$signing_metadata" ]; then
+    status=$(powershell -NoProfile -Command "(Get-AuthenticodeSignature '$work/duckdb-full/lib/app/$duckdb_engine').Status" | tr -d '\r')
+    [ "$status" = Valid ] || fail "DuckDB's engine, $duckdb_engine, is not signed ($status)"
+fi
+rm -rf "$work/duckdb-full" "$work/duckdb-velopack"
+
 signed=$( [ -n "$signtool_params$signing_metadata" ] && echo "signed" || echo "unsigned: SmartScreen asks once, More info > Run anyway")
 echo "package: $installer ($signed)"
 echo "package: $portable (the same app, its portable build, $signed)"
 [ "$rid" != win-x64 ] || echo "package: $debugger_x86 (the debugger's 32-bit host, downloaded the first time a 32-bit program is debugged, $signed)"
+echo "package: $duckdb (DuckDB's engine, downloaded the first time a DuckDB connection opens, $signed)"

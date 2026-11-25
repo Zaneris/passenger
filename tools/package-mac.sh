@@ -1,14 +1,14 @@
 #!/bin/sh
 # Passenger's macOS disk image and portable build: `just package-mac [osx-arm64|osx-x64] [--dry-run]` makes
-# artifacts/package/Passenger-macos-arm64.dmg (Apple Silicon) or -x64.dmg (Intel), and beside it the same app zipped in
-# a Passenger folder, Passenger-macos-arm64.zip or -x64.zip, names each release keeps. The Release publish
-# (self-contained, ReadyToRun, the debugger and Roslyn's server beside it) becomes Passenger.app, signed under the
-# hardened runtime with the entitlements below: by PASSENGER_SIGN_IDENTITY (a Developer ID Application identity), else
-# ad hoc, which Apple Silicon needs to run it at all and which a person opens once through System Settings > Privacy &
-# Security > Open Anyway. With PASSENGER_NOTARY_PROFILE (a notarytool keychain profile) the app is notarized and stapled
-# before it is zipped, then the image signed, notarized and stapled too. --dry-run writes the Developer ID's and the
-# notary's commands to a file instead of running them, and signs ad hoc. The image is then mounted read-only and
-# checked, and the zip unpacked and run as a portable copy.
+# artifacts/package/Passenger-macos-arm64.dmg (Apple Silicon) or -x64.dmg, the app zipped in a Passenger folder,
+# Passenger-macos-arm64.zip, and DuckDB's engine, Passenger-duckdb-osx-arm64.tar.gz, names each release keeps. The
+# Release publish (self-contained, ReadyToRun) becomes Passenger.app, signed under the hardened runtime with the
+# entitlements below: by PASSENGER_SIGN_IDENTITY (a Developer ID Application identity), else ad hoc, which Apple Silicon
+# needs to run it at all and which a person opens once through System Settings > Privacy & Security > Open Anyway. With
+# PASSENGER_NOTARY_PROFILE (a notarytool keychain profile) the app is notarized and stapled before it is zipped, then the
+# image signed, notarized and stapled too. --dry-run writes the Developer ID's and the notary's commands to a file
+# instead of running them, and signs ad hoc. The image is then mounted read-only and checked, and the zip unpacked and
+# run as a portable copy.
 set -eu
 . "$(dirname "$0")/release-common.sh"
 rid=osx-arm64
@@ -47,6 +47,7 @@ mount="$work/mount"
 commands="$work/dry-run.txt"
 image="$out/Passenger-macos-$arch.dmg"
 portable="$out/Passenger-macos-$arch.zip"
+duckdb="$out/Passenger-duckdb-$rid.tar.gz"
 version=$(release_version "$root")
 # The build number counts the commits, so each rises.
 if [ "$(git -C "$root" rev-parse --is-shallow-repository)" = true ]; then
@@ -177,12 +178,15 @@ if [ -f "$image" ]; then
         echo "package-mac: ejected $disk, a mount of the image being replaced" >&2
     done
 fi
-rm -rf "$work" "$image" "$portable"
+rm -rf "$work" "$image" "$portable" "$duckdb"
 mkdir -p "$work"
 
 publish_app "$root" "$rid" "$version" -o "$publish" -nologo -v quiet
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp -R "$publish/." "$app/Contents/MacOS/"
+# DuckDB's engine is a release file of its own, downloaded the first time a DuckDB connection opens.
+duckdb_engine=$(duckdb_engine_of "$rid")
+take_duckdb "$app/Contents/MacOS" "$duckdb_engine" "$work/duckdb"
 # The web servers go in Resources, since codesign takes a dotted folder under Contents/MacOS for a nested bundle.
 mv "$app/Contents/MacOS/web" "$app/Contents/Resources/web"
 # The debug relays too, which Passenger copies out: Gatekeeper refuses a notarized app with an iOS simulator's code in it.
@@ -311,6 +315,15 @@ if [ -d "$relays" ]; then
 fi
 sign --entitlements "$entitlements" "$app"
 codesign --verify --deep --strict "$app"
+# DuckDB's engine for this processor alone (the driver's library holds both), signed as the app's code is.
+engine="$work/duckdb/$duckdb_engine"
+if [ "$(lipo -archs "$engine")" != "$machine" ]; then
+    lipo "$engine" -thin "$machine" -output "$engine.thin"
+    mv "$engine.thin" "$engine"
+fi
+sign "$engine"
+codesign --verify --strict "$engine"
+COPYFILE_DISABLE=1 tar -C "$work/duckdb" --no-xattrs --no-mac-metadata -czf "$duckdb" "$duckdb_engine"
 # Stapled, the app opens with no Gatekeeper warning offline too, once copied out of the image.
 if [ -n "$profile" ]; then
     ditto -c -k --keepParent "$app" "$work/Passenger.zip"
@@ -394,6 +407,8 @@ for part in web/passenger/prettier.cjs web/passenger/docker-hub.cjs web/passenge
 done
 [ -x "$shipped/Contents/Resources/bin/passenger-ide" ] || fail "the app has no passenger-ide command in its Resources"
 [ ! -e "$shipped/Contents/MacOS/bin" ] || fail "the app carries its passenger-ide command among its code"
+[ ! -e "$shipped/Contents/MacOS/libduckdb.dylib" ] || fail "the app carries DuckDB's engine, which a release downloads"
+[ "$(tar -tzf "$duckdb")" = libduckdb.dylib ] || fail "$duckdb holds $(tar -tzf "$duckdb" | tr '\n' ' '), not DuckDB's engine alone"
 # Every headless platform the inspector carries for an older Avalonia is the app's too.
 for part in $(cd "$publish/inspector" && find avalonia -type f); do
     [ -f "$shipped/Contents/MacOS/inspector/$part" ] || fail "the app has no inspector/$part"
@@ -497,3 +512,4 @@ else
 fi
 echo "package: $image ($size, Passenger $version build $build for $rid, $signed)"
 echo "package: $portable ($(du -h "$portable" | cut -f1 | tr -d ' '), the same app zipped, its portable build)"
+echo "package: $duckdb ($(du -h "$duckdb" | cut -f1 | tr -d ' '), DuckDB's engine, downloaded the first time a DuckDB connection opens)"

@@ -24,6 +24,17 @@ internal static partial class DatabaseClient
     /// transactions read-only.</summary>
     internal static async Task<DbConnection> OpenAsync(DatabaseSource source, CancellationToken cancel)
     {
+        if (source.Kind == DatabaseKind.DuckDb)
+        {
+            try
+            {
+                await DuckDbNative.Current.ReadyAsync(cancel);
+            }
+            catch (Updates.ReleaseAssetException failed)
+            {
+                throw new IOException(Refusals.NoDuckDbEngine(failed.Message), failed);
+            }
+        }
         string whole = source.ConnectionString;
         if (source.SecretKept && SystemCredentials.Read(DatabaseController.CredentialService, source.Account) is { Length: > 0 } secret)
         {
