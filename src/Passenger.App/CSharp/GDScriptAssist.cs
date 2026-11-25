@@ -161,6 +161,10 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
             back = 0;
         }
         context.Editor.ApplyEdits([new TextEdit(start, Math.Max(0, end - start), insert)], SelectionSet.Single(start + insert.Length - back));
+        if (insert.EndsWith("()", StringComparison.Ordinal))
+        {
+            context.Editor.TakeTypedAgain(back > 0 ? "(" : "()");
+        }
         if (back > 0)
         {
             // The call's parentheses put in hold the caret: its signature over them.
