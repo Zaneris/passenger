@@ -83,17 +83,19 @@ internal sealed class Designer(Assembly? project) : IDisposable
         origin.Offset(0, -bar);
         List<DesignerChange>? changes = null;
         List<string>? chosen = null;
+        string? handler = null;
         if (request.Edit is { } edit)
         {
             CodeText text = new(request.Qualified, types);
             Serialized before = Serialized.Of(host, text);
-            chosen = Editing.Apply(edit, host, root, origin, bar, types);
+            (chosen, handler) = Editing.Apply(edit, host, root, origin, bar, types, events, request.Nullable);
             Application.DoEvents();
             changes = Editing.Changes(request, before, Serialized.Of(host, text));
             origin = root.PointToScreen(Point.Empty);
             origin.Offset(0, -bar);
         }
         (byte[] png, List<DesignedBox> boxes) = Drawn(host, root, bar, origin);
+        IComponent? inspected = request.Inspect is { } field ? field.Length == 0 ? root : host.Container.Components[field] : null;
         return new FormDesignReply
         {
             Kind = PreviewKinds.Frame,
@@ -103,7 +105,10 @@ internal sealed class Designer(Assembly? project) : IDisposable
             Notes = notes,
             Changes = changes,
             Chosen = chosen,
+            Handler = handler,
             Toolbox = request.Toolbox ? Toolbox.Listed(project, based) : null,
+            Properties = inspected is null ? null : Inspecting.Properties(inspected, host),
+            Events = inspected is null ? null : Inspecting.Events(inspected, events),
         };
     }
 
@@ -227,11 +232,11 @@ internal sealed class Designer(Assembly? project) : IDisposable
         }
         using MemoryStream png = new();
         picture.Save(png, ImageFormat.Png);
-        List<DesignedBox> boxes = [new DesignedBox(string.Empty, root.GetType().Name, null, 0, 0, client.Width, bar + client.Height, true)];
+        List<DesignedBox> boxes = [new DesignedBox(string.Empty, root.GetType().Name, null, 0, 0, client.Width, bar + client.Height, true) { DefaultEvent = DefaultEvent(root) }];
         Walk(root, host, origin, boxes);
         foreach (IComponent tray in host.Container.Components.Cast<IComponent>().Where(c => c is not Control && c is not ToolStripItem && c != root))
         {
-            boxes.Add(new DesignedBox(tray.Site?.Name ?? string.Empty, tray.GetType().Name, null, 0, 0, 0, 0, false));
+            boxes.Add(new DesignedBox(tray.Site?.Name ?? string.Empty, tray.GetType().Name, null, 0, 0, 0, 0, false) { DefaultEvent = DefaultEvent(tray) });
         }
         return (png.ToArray(), boxes);
     }
@@ -245,7 +250,10 @@ internal sealed class Designer(Assembly? project) : IDisposable
             foreach (ToolStripItem item in strip.Items.Cast<ToolStripItem>().Where(i => i.Site is not null))
             {
                 Point at = strip.PointToScreen(item.Bounds.Location);
-                boxes.Add(new DesignedBox(item.Site!.Name ?? item.Name ?? string.Empty, item.GetType().Name, NameOf(strip, host), at.X - origin.X, at.Y - origin.Y, item.Width, item.Height, false));
+                boxes.Add(new DesignedBox(item.Site!.Name ?? item.Name ?? string.Empty, item.GetType().Name, NameOf(strip, host), at.X - origin.X, at.Y - origin.Y, item.Width, item.Height, false)
+                {
+                    DefaultEvent = DefaultEvent(item),
+                });
             }
         }
         foreach (Control control in holder.Controls)
@@ -258,11 +266,14 @@ internal sealed class Designer(Assembly? project) : IDisposable
             {
                 Point at = control.Parent!.PointToScreen(control.Location);
                 boxes.Add(new DesignedBox(control.Site.Name ?? control.Name, control.GetType().Name, NameOf(holder, host), at.X - origin.X, at.Y - origin.Y,
-                    control.Width, control.Height, host.GetDesigner(control) is ParentControlDesigner));
+                    control.Width, control.Height, host.GetDesigner(control) is ParentControlDesigner) { DefaultEvent = DefaultEvent(control) });
             }
             Walk(control, host, origin, boxes);
         }
     }
+
+    /// <summary>The event a double click on a component hooks, as its type's <c>[DefaultEvent]</c> says.</summary>
+    private static string? DefaultEvent(object component) => TypeDescriptor.GetDefaultEvent(component)?.Name;
 
     /// <summary>The field of the nearest component holding a control (empty for the root).</summary>
     private static string NameOf(Control control, IDesignerHost host)

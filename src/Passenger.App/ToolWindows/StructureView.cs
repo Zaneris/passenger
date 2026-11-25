@@ -11,7 +11,7 @@ using Passenger.Text;
 namespace Passenger.App.ToolWindows;
 
 /// <summary>The Structure window: the active file's outline (a C# file's types and members, a JSON file's keys, a Godot
-/// scene's nodes), indented, from where the file's outline comes (<see cref="FileOutline"/>), asked as it is shown and,
+/// scene's nodes, a form's components while its design is shown), indented, from where the file's outline comes (<see cref="FileOutline"/>), asked as it is shown and,
 /// while it is, following the editor (a moment after typing stops) and choosing the member the caret is in. A click or
 /// Enter goes to a member, and moving onto one with the keys goes there too unless it leads out of the file (a scene's
 /// script, its connection's handler). The rows are made off the window's thread, the list kept as it is where the outline
@@ -245,6 +245,19 @@ public sealed class StructureView : DockPanel
         unoutlined.Text = why;
         unoutlined.IsVisible = why is not null;
         placeholder.IsVisible = path is null && why is null;
+    }
+
+    /// <summary>Chooses the first row that is the one asked for, scrolled into view, going nowhere; none where none is.</summary>
+    public void ChooseRow(Func<SymbolRow, bool> which)
+    {
+        choosing = true;
+        int chosen = Rows.ToList().FindIndex(r => which(r));
+        list.SelectedIndex = chosen;
+        if (chosen >= 0)
+        {
+            list.ScrollIntoView(chosen);
+        }
+        choosing = false;
     }
 
     private void Choose(int line)

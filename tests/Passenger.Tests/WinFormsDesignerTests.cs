@@ -1,4 +1,6 @@
 using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.LogicalTree;
@@ -6,6 +8,7 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Editors;
 using Passenger.App.State;
+using Passenger.App.ToolWindows;
 using Passenger.App.WinForms;
 using Passenger.Core;
 using Passenger.Editor;
@@ -17,8 +20,9 @@ namespace Passenger.Tests;
 /// <summary>Windows Forms' designer through the window: tests/Debuggees/FormsTreeApp's form (a menu, a button, labels, a
 /// name box, a panel and a list) written into a folder of its own with a project file for the tests' own target. Its code
 /// file and its designer file show its design by the form layout, drawn on Windows by Windows Forms itself from the
-/// designer code as it is typed, and elsewhere saying why nothing draws it; its edits (the Toolbox, the arrows, Delete)
-/// written into the designer file as the designer writes them, Undo taking each back.</summary>
+/// designer code as it is typed, and elsewhere saying why nothing draws it; its edits (the Toolbox, the arrows, Delete,
+/// the Structure window's properties and events, (Name)) written into the code as the designer writes it, Undo taking each
+/// back.</summary>
 public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.Forms>
 {
     private const string OnlyOnWindows = "Windows Forms draws only on Windows, so its designer runs only there";
@@ -42,6 +46,110 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         Flow.StepApart("a click chooses the component under it and tab and escape go from one to another", () => new WinFormsDesignerTests(app), t => t.A_click_chooses_the_component_under_it_and_tab_and_escape_go_from_one_to_another());
         Flow.StepApart("a toolbox item added by enter is written where the designer writes it and undo takes it back", () => new WinFormsDesignerTests(app), t => t.A_toolbox_item_added_by_enter_is_written_where_the_designer_writes_it_and_undo_takes_it_back());
         Flow.StepApart("the arrows move and size the chosen control a unit a line and delete takes it with its lines", () => new WinFormsDesignerTests(app), t => t.The_arrows_move_and_size_the_chosen_control_a_unit_a_line_and_delete_takes_it_with_its_lines());
+        Flow.StepApart("the structure window lists the components and a property typed or reset there is written", () => new WinFormsDesignerTests(app), t => t.The_structure_window_lists_the_components_and_a_property_typed_or_reset_there_is_written());
+        Flow.StepApart("a double click goes to the default events handler and an event chosen is hooked and declared in the code", () => new WinFormsDesignerTests(app), t => t.A_double_click_goes_to_the_default_events_handler_and_an_event_chosen_is_hooked_and_declared_in_the_code());
+        Flow.StepApart("a name given as (Name) renames the components field its uses its Name and its section", () => new WinFormsDesignerTests(app), t => t.A_name_given_as_Name_renames_the_components_field_its_uses_its_Name_and_its_section());
+    }
+
+    private void The_structure_window_lists_the_components_and_a_property_typed_or_reset_there_is_written()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string file = app.PathOf("MainForm.Designer.cs");
+        string before = File.ReadAllText(file);
+        MainWindow window = app.Open(app.PathOf("MainForm.cs"), languageServer: false);
+        FormDesignPane pane = Drawn(window);
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        StructureView structure = window.StructureView;
+        Ui.WaitFor(() => structure.Rows.Any(r => r.Name == "Inside" && r.Depth == 2), () => $"the Structure window to outline the form's components, not [{string.Join(", ", structure.Rows.Select(r => $"{r.Name}{r.Detail}@{r.Depth}"))}]");
+        Assert.Equal(("MainForm", ": Form", 0), (structure.Rows[0].Name, structure.Rows[0].Detail, structure.Rows[0].Depth));
+        ListBox outline = structure.GetVisualDescendants().OfType<ListBox>().First();
+        Ui.Click((Control)outline.ContainerFromItem(structure.Rows.First(r => r.Name == "Count"))!);
+        Assert.Equal("Count", pane.Chosen?.Field);
+        FormProperties properties = window.FormProperties ?? throw new Xunit.Sdk.XunitException("The Structure window shows no properties under its outline");
+        Ui.WaitFor(() => properties.Rows.Any(r => r.Name == "Text"), () => $"Count's properties to be listed, not \"{properties.Said}\"");
+        Assert.Contains("(Name)", properties.Rows.TakeWhile(r => r.Property!.Parenthesized).Select(r => r.Shown));
+        Assert.True(properties.Rows.First(r => r.Name == "Text").Property is { Text: "Count", Set: true }, "Count's Text is not shown as the code sets it");
+        Assert.True(properties.Rows.First(r => r.Name == "Dock").Property is { Set: false, Exclusive: true, Choices.Count: > 1 }, "Count's Dock offers no choices at its default");
+        properties.Choose("Text");
+        ListBox rows = properties.GetVisualDescendants().OfType<ListBox>().First();
+        Keyed(rows, properties.Chosen!);
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => properties.Typing is not null, "Enter to open Text's value to type");
+        window.KeyTextInput("Add");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("Count.Text = \"Add\";", StringComparison.Ordinal), () => $"the typed Text to be written, where the status bar says {window.Status}");
+        Assert.Equal(before.Replace("Count.Text = \"Count\";", "Count.Text = \"Add\";", StringComparison.Ordinal), File.ReadAllText(file));
+        Ui.WaitFor(() => properties.Rows.Any(r => r.Property is { Name: "Text", Text: "Add" }), "the properties to show Count's new Text");
+        properties.Choose("Text");
+        Ui.ChooseFromMenu(rows, "Reset");
+        Ui.WaitFor(() => !File.ReadAllText(file).Contains("Count.Text", StringComparison.Ordinal), () => $"Reset to take Count's Text line out, where the status bar says {window.Status}");
+        Assert.Equal(before.Replace("        Count.Text = \"Count\";\n", string.Empty, StringComparison.Ordinal).ReplaceLineEndings("\n"), File.ReadAllText(file).ReplaceLineEndings("\n"));
+        window.Close();
+    }
+
+    private void A_double_click_goes_to_the_default_events_handler_and_an_event_chosen_is_hooked_and_declared_in_the_code()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string designer = app.PathOf("MainForm.Designer.cs");
+        string code = app.PathOf("MainForm.cs");
+        (string designed, string written) before = (File.ReadAllText(designer), File.ReadAllText(code));
+        MainWindow window = app.Open(code, languageServer: false);
+        FormDesignPane pane = Drawn(window);
+        DesignedBox count = Component(pane, "Count");
+        Ui.DoubleClick(pane.Frame, new Point(count.X + (count.Width / 2), count.Y + (count.Height / 2)));
+        Ui.WaitFor(() => window.EditorArea.FormLayout.View == PaneView.Editor, () => $"a double click on Count to show its handler's code, where the status bar says {window.Status}");
+        int onCount = Array.FindIndex(before.written.Split('\n'), l => l.Contains("void OnCount(", StringComparison.Ordinal));
+        Assert.Equal(onCount + 2, window.EditorArea.CodeEditor.CaretPosition.Line);
+        Assert.Equal(before, (File.ReadAllText(designer), File.ReadAllText(code)));
+        Ui.Press(window, "shift F7");
+        pane = Drawn(window);
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        Ui.Click(pane.Frame, new Point(count.X + (count.Width / 2), count.Y + (count.Height / 2)));
+        FormProperties properties = window.FormProperties ?? throw new Xunit.Sdk.XunitException("The Structure window shows no properties under its outline");
+        properties.ShowsEvents = true;
+        Ui.WaitFor(() => properties.Rows.Any(r => r.Name == "MouseEnter"), () => $"Count's events to be listed, not \"{properties.Said}\"");
+        Assert.Equal("OnCount", properties.Rows.First(r => r.Name == "Click").Event?.Handler);
+        properties.Choose("MouseEnter");
+        ListBox rows = properties.GetVisualDescendants().OfType<ListBox>().First();
+        Keyed(rows, properties.Chosen!);
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => File.ReadAllText(designer).Contains("Count.MouseEnter += Count_MouseEnter;", StringComparison.Ordinal), () => $"MouseEnter's handler to be hooked, where the status bar says {window.Status}");
+        Assert.Contains("        Count.Click += OnCount;\n        Count.MouseEnter += Count_MouseEnter;\n", File.ReadAllText(designer).ReplaceLineEndings("\n"));
+        string handled = window.EditorArea.TextOf(code)!.ToString().ReplaceLineEndings("\n");
+        Assert.True(handled.Contains("    private void Count_MouseEnter(object? sender, EventArgs e)\n    {\n\n    }\n}", StringComparison.Ordinal),
+            $"MouseEnter's handler is not declared at MainForm's end, which reads:\n{handled[Math.Max(0, handled.Length - 400)..]}");
+        Ui.WaitFor(() => window.EditorArea.FormLayout.View == PaneView.Editor, "the new handler's code to be shown");
+        window.Close();
+    }
+
+    private void A_name_given_as_Name_renames_the_components_field_its_uses_its_Name_and_its_section()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string designer = app.PathOf("MainForm.Designer.cs");
+        string code = app.PathOf("MainForm.cs");
+        MainWindow window = app.Open(code);
+        FormDesignPane pane = Drawn(window);
+        DesignedBox counter = Component(pane, "Counter");
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        Ui.Click(pane.Frame, new Point(counter.X + 2, counter.Y + 2));
+        FormProperties properties = window.FormProperties ?? throw new Xunit.Sdk.XunitException("The Structure window shows no properties under its outline");
+        Ui.WaitFor(() => properties.Rows.Any(r => r.Naming && r.Property!.Text == "Counter"), () => $"Counter's (Name) to be listed, not \"{properties.Said}\"");
+        properties.Choose("Name");
+        ListBox rows = properties.GetVisualDescendants().OfType<ListBox>().First();
+        Keyed(rows, properties.Chosen!);
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => properties.Typing is not null, "Enter to open (Name) to type");
+        window.KeyTextInput("Tally");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => window.EditorArea.TextOf(code)?.ToString().Contains("Tally.Text = clicks == 1", StringComparison.Ordinal) == true,
+            () => $"the rename to reach the form's code, where the status bar says {window.Status}", TimeSpan.FromMinutes(3));
+        string renamed = (window.EditorArea.TextOf(designer)?.ToString() ?? File.ReadAllText(designer)).ReplaceLineEndings("\n");
+        Assert.Contains("        // \n        // Tally\n        // \n        Tally.AutoSize = true;", renamed);
+        Assert.Contains("        Tally.Name = \"Tally\";\n", renamed);
+        Assert.Contains("        Controls.Add(Tally);\n", renamed);
+        Assert.DoesNotContain("Counter", renamed, StringComparison.Ordinal);
+        Ui.WaitFor(() => pane.Chosen?.Field == "Tally", () => $"the renamed component to stay chosen, not {pane.Chosen?.Field ?? "nothing"}");
+        window.Close();
     }
 
     private void A_toolbox_item_added_by_enter_is_written_where_the_designer_writes_it_and_undo_takes_it_back()
@@ -163,6 +271,14 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         Ui.Press(window, "TAB");
         Assert.Equal("Inside", pane.Chosen?.Field);
         window.Close();
+    }
+
+    /// <summary>A list given the keys with its row chosen, scrolled into view, as a click on it leaves them.</summary>
+    private static void Keyed(ListBox list, object row)
+    {
+        Assert.Same(row, list.SelectedItem);
+        Assert.True(ListKeys.Hold(list), $"The row of {row} could not take the keys ({(list.IsEffectivelyVisible ? $"its list shown at {list.Bounds}" : "its list not shown")})");
+        Ui.Settle();
     }
 
     /// <summary>A form layout's button on a group's tab strip, by the action it runs.</summary>

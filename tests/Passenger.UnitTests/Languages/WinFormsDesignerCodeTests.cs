@@ -20,7 +20,32 @@ public sealed class WinFormsDesignerCodeTests
             ("an added control's creation, section under its comment, Controls.Add and field go where the designer writes them, a moved one's line is written again, and the file's line breaks are kept",
                 Added),
             ("a deleted control takes its lines, its section's comment and its field with it, a statement first in a section goes under that section's comment, and a class declaring no component's field takes the first past its #endregion",
-                Deleted));
+                Deleted),
+            ("a renamed component's Name and section comment take its new name, and an event's handler is declared at its class's end after a blank line, once",
+                Named));
+    }
+
+    private static void Named()
+    {
+        DesignerSource read = DesignerCode.Read(Form, "Shop.MainForm") ?? throw new InvalidOperationException("MainForm's designer code was not read");
+        string renamed = Applied(Form, DesignerWriter.Renamed(Form, read, "ok", "accept"));
+        Assert.Equal(Form.Replace("            // ok\n", "            // accept\n").Replace("ok.Name = \"ok\";", "ok.Name = \"accept\";"), renamed);
+        const string Code = """
+            namespace Shop;
+
+            public partial class MainForm : Form
+            {
+                public MainForm()
+                {
+                    InitializeComponent();
+                }
+            }
+
+            """;
+        Assert.Null(DesignerCode.MethodOf(Code, "Shop.MainForm", "OnOk"));
+        string handled = Applied(Code, [DesignerWriter.Handler(Code, "Shop.MainForm", "private void OnOk(object? sender, EventArgs e)") ?? throw new InvalidOperationException("No handler was written")]);
+        Assert.Equal(Code.Replace("        InitializeComponent();\n    }\n", "        InitializeComponent();\n    }\n\n    private void OnOk(object? sender, EventArgs e)\n    {\n\n    }\n"), handled);
+        Assert.NotNull(DesignerCode.MethodOf(handled, "Shop.MainForm", "OnOk"));
     }
 
     /// <summary>A form of a button and a panel as .NET's designer writes it, with CRLF line breaks.</summary>

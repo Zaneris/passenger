@@ -15,11 +15,13 @@ namespace Passenger.WinFormsDesigner;
 /// file's own statements.</summary>
 internal static class Editing
 {
-    /// <summary>Makes an edit; the components to choose after it.</summary>
+    /// <summary>Makes an edit; the components to choose after it, and a hook's handler as the code is to declare it.</summary>
     /// <param name="origin">Where the frame's corner is on the screen the surface's window lies on.</param>
-    public static List<string> Apply(DesignEdit edit, IDesignerHost host, Control root, Point origin, int bar, Types types)
+    public static (List<string> Chosen, string? Handler) Apply(DesignEdit edit, IDesignerHost host, Control root, Point origin, int bar, Types types,
+        IEventBindingService events, bool nullable)
     {
         using DesignerTransaction transaction = host.CreateTransaction(edit.Kind);
+        string? handler = null;
         List<string> chosen = edit.Kind switch
         {
             DesignEditKinds.Add => Added(edit, host, root, origin, types),
@@ -27,10 +29,25 @@ internal static class Editing
             DesignEditKinds.Resize => Resized(edit, host, root, origin, bar),
             DesignEditKinds.Delete => Deleted(edit, host, root),
             DesignEditKinds.Front or DesignEditKinds.Back => Ordered(edit, host, root),
+            DesignEditKinds.Set => Each(edit, host, root, (component, member) => Inspecting.Set(component, member, edit.Text ?? string.Empty, host)),
+            DesignEditKinds.Reset => Each(edit, host, root, Inspecting.Reset),
+            DesignEditKinds.Hook => Each(edit, host, root, (component, member) => handler = Inspecting.Hook(component, member, edit.Text, events, types, nullable)),
+            DesignEditKinds.Unhook => Each(edit, host, root, (component, member) => Inspecting.Unhook(component, member, events)),
             _ => throw new DesignerException($"The designer makes no {edit.Kind}"),
         };
         transaction.Commit();
-        return chosen;
+        return (chosen, handler);
+    }
+
+    /// <summary>A property's or an event's edit made to each component named.</summary>
+    private static List<string> Each(DesignEdit edit, IDesignerHost host, Control root, Action<IComponent, string> made)
+    {
+        string member = edit.Member ?? throw new DesignerException("No property or event was named");
+        foreach (string name in edit.Components)
+        {
+            made(name.Length == 0 ? root : host.Container.Components[name] ?? throw new DesignerException($"The form has no component {name}"), member);
+        }
+        return [.. edit.Components];
     }
 
     private static List<string> Added(DesignEdit edit, IDesignerHost host, Control root, Point origin, Types types)

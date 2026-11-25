@@ -48,6 +48,50 @@ public static class DesignerWriter
         return Merged(made);
     }
 
+    /// <summary>A component renamed from <paramref name="old"/> to <paramref name="name"/> where no rename of its field reaches:
+    /// the string its Name is set to and the name its section's comment says, each where it says the old one.</summary>
+    public static IReadOnlyList<TextEdit> Renamed(string text, DesignerSource source, string old, string name)
+    {
+        List<TextEdit> edits = [];
+        string quoted = $"\"{old}\"";
+        for (int i = 0; i < source.Statements.Count; i++)
+        {
+            DesignerStatement statement = source.Statements[i];
+            (int start, int end) = source.Layout.Statements[i];
+            if (statement is { Act: DesignerAct.Assign, Member: "Name" } && statement.Target == old && text.LastIndexOf(quoted, end, end - start, StringComparison.Ordinal) is int literal and >= 0)
+            {
+                edits.Add(new TextEdit(literal + 1, old.Length, name));
+            }
+            if (statement.Target == old && (i == 0 || source.Statements[i - 1].Target != old) && Header(text, TextNavigation.LineStart(text, start)) is int header)
+            {
+                int named = TextNavigation.NextLineStart(text, header);
+                int mark = text.IndexOf("//", named, StringComparison.Ordinal);
+                string said = text[(mark + 2)..TextNavigation.LineEnd(text, named)];
+                if (said.Trim() == old)
+                {
+                    edits.Add(new TextEdit(mark + 2 + said.IndexOf(old, StringComparison.Ordinal), old.Length, name));
+                }
+            }
+        }
+        return edits;
+    }
+
+    /// <summary>An event's handler declared at the end of its class in the form's code file, as the designer writes one: a
+    /// blank line before it where a member stands there, its body's braces apart; none where the file declares no such class.</summary>
+    public static TextEdit? Handler(string text, string fullName, string declaration)
+    {
+        if (DesignerCode.ClassEnd(text, fullName) is not ((int brace, string indent)))
+        {
+            return null;
+        }
+        string eol = Eol(text, 0);
+        int line = TextNavigation.LineStart(text, brace);
+        int before = TextNavigation.LineStart(text, Math.Max(0, line - 1));
+        bool spaced = line == 0 || Blank(text, before, line) || text[before..line].TrimEnd().EndsWith('{');
+        string written = $"{(spaced ? string.Empty : eol)}{indent}{declaration}{eol}{indent}{{{eol}{eol}{indent}}}{eol}";
+        return Blank(text, line, brace) ? new TextEdit(line, 0, written) : new TextEdit(brace, 0, eol + written + TextNavigation.IndentOf(text, brace));
+    }
+
     /// <summary>The line break the method's lines end with.</summary>
     private static string Eol(string text, int from)
     {
@@ -87,7 +131,7 @@ public static class DesignerWriter
     {
         if (change.At >= 0)
         {
-            (int start, int end, _) = layout.Fields[change.At];
+            (int start, int end, _, _) = layout.Fields[change.At];
             int at = TextNavigation.NextLineStart(text, end);
             return (at, at, TextNavigation.IndentOf(text, start) + change.Text + eol);
         }
@@ -102,7 +146,7 @@ public static class DesignerWriter
 
     /// <summary>A field's line taken out, with the blank line before it where it stood alone between that and the class's
     /// closing brace.</summary>
-    private static (int, int, string) Undeclared(string text, (int Start, int End, bool Alone) field)
+    private static (int, int, string) Undeclared(string text, (int Start, int End, bool Alone, int Named) field)
     {
         int start = TextNavigation.LineStart(text, field.Start);
         int end = TextNavigation.NextLineStart(text, field.End);

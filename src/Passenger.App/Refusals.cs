@@ -58,6 +58,15 @@ public static class Refusals
     /// <summary>An edit of a design that the form's code says nothing of (a control moved to where it stood).</summary>
     public const string DesignChangesNothing = "That changes nothing the form's code says";
 
+    /// <summary>Reset asked of a property the form's code sets nothing of.</summary>
+    public const string PropertyAtDefault = "The form's code sets nothing of it: it stands at its default";
+
+    /// <summary>Remove Handler asked of an event no handler is hooked to.</summary>
+    public const string NoHandler = "No handler is hooked to it";
+
+    /// <summary>(Name) given to the form itself, whose name is its class's.</summary>
+    public const string FormNameIsItsClass = "The form's name is its class's: rename the class in its code";
+
     /// <summary>Undo or Redo in a form's design with nothing of its file's to take back or make again.</summary>
     public const string NothingToUndo = "Nothing of the form's code to undo";
 

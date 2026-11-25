@@ -5,6 +5,7 @@ using Passenger.App.Workspace;
 using Passenger.App.Xaml;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Languages.WinForms;
 using Passenger.Lsp;
 using Passenger.Roslyn.Extension;
 using Passenger.Text;
@@ -658,6 +659,27 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
     }
 
+    /// <summary>A component of a Windows Forms class's designer code renamed from <paramref name="old"/> to <paramref name="name"/>,
+    /// where its field is declared: the string its Name is set to and its section's comment (<see cref="DesignerWriter.Renamed"/>),
+    /// placed in the text they were read from; none for any other field.</summary>
+    private List<PlacedEdits> DesignedRenames(IReadOnlyList<LspLocation> definitions, string old, string name)
+    {
+        List<PlacedEdits> placed = [];
+        foreach (string path in definitions.Select(d => DocumentUris.ToPath(d.Uri)).Distinct(PathNames.Comparer))
+        {
+            string text = context.ReadOpenOrDisk(path);
+            foreach (string designed in DesignerCode.Designed(text))
+            {
+                if (DesignerCode.Read(text, designed) is { } source && source.MadeAt(old) is not null && source.Fields.Any(f => f.Name == old)
+                    && DesignerWriter.Renamed(text, source, old, name) is { Count: > 0 } edits)
+                {
+                    placed.Add(new PlacedEdits(path, ServerPlaces.EditsOf(TextSnapshot.From(text), edits), text));
+                }
+            }
+        }
+        return placed;
+    }
+
     /// <summary>Writes in the IDE's log a rename the server answered with nothing, none of its files known to be behind: where
     /// it says the name is declared, and each file of its solution written in the last minute, how long before the
     /// request, whether it holds the file as the disk has it, and when it was told the file changed.</summary>
@@ -806,6 +828,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             edit = TypeRename.With(edit, [.. toolkit.Uses.GroupBy(u => u.Path, PathNames.Comparer).Select(file => (file.Key, (IReadOnlyList<LspTextEdit>)[.. file.Select(u =>
                 new LspTextEdit(new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character)), u.Name))]))]);
+        }
+        // A Windows Forms component's field: the Name its designer code sets and its section's comment, which no rename of the field reaches.
+        if (symbol is not null && DesignedRenames(definitions, old, own) is { Count: > 0 } designed)
+        {
+            edit = TypeRename.With(edit, designed);
         }
         TakenAlong along = type is null ? new(edit, []) : await TakenAlongAsync(type, name, renameFiles, edit, asked);
         edit = along.Edit;

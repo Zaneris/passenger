@@ -1166,9 +1166,21 @@ public partial class MainWindow : IdeWindow
     {
         structure = new ToolWindows.StructureView();
         structure.Follow(() => Editors.Active is { } shown ? (shown.Path, shown.Name, Editors.CodeEditor.CaretPosition.Line) : null,
-            () => Editors.Active is { } shown ? session.OutlineOf(shown) : null);
-        structure.GoToRequested += (_, row) => navigator.GoTo(row);
-        structure.Chosen += (_, row) => IdeErrors.Observe(ShowSceneNodeAsync(row));
+            () => Editors.Active is { } shown ? DesignOutlineOf(shown) ?? session.OutlineOf(shown) : null);
+        structure.GoToRequested += (_, row) =>
+        {
+            if (!ComponentRowChosen(row))
+            {
+                navigator.GoTo(row);
+            }
+        };
+        structure.Chosen += (_, row) =>
+        {
+            if (!ComponentRowChosen(row) && !DesignOutlined())
+            {
+                IdeErrors.Observe(ShowSceneNodeAsync(row));
+            }
+        };
         structure.UsagesRequested += (_, row) =>
         {
             NavigateTo(row.Path, row.Position);

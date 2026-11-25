@@ -105,14 +105,25 @@ public sealed record FormDesignRequest
     public bool Qualified { get; init; }
 
     public bool Toolbox { get; init; }
+
+    /// <summary>The component whose properties and events to list with the frame (the root's empty); none for none.</summary>
+    public string? Inspect { get; init; }
+
+    /// <summary>The project's code annotates nullability, which a handler written for an event follows.</summary>
+    public bool Nullable { get; init; }
 }
 
 /// <summary>A change to a design, as a gesture or a key makes it (<see cref="DesignEditKinds"/>): the components it is made to
 /// (their fields, the root's empty), the type to add (its full name with its assembly's), the component to add into or move
 /// into (the root's empty; none: where the point is for an add, where they are for a move), and its numbers: an add's point
-/// in the frame, a move's distance, a resize's new box in the frame.</summary>
+/// in the frame, a move's distance, a resize's new box in the frame; a property's or an event's name (<see cref="Member"/>)
+/// and the text it is given, a value as typed or a handler's name (none: the one the designer names).</summary>
 public sealed record DesignEdit(string Kind)
 {
+    public string? Member { get; init; }
+
+    public string? Text { get; init; }
+
     public IReadOnlyList<string> Components { get; init; } = [];
 
     public string? Type { get; init; }
@@ -143,6 +154,45 @@ public static class DesignEditKinds
     public const string Front = "front";
 
     public const string Back = "back";
+
+    /// <summary>A property given a value from its text, as its type converter reads it.</summary>
+    public const string Set = "set";
+
+    /// <summary>A property put back to its default, which the code then leaves unset.</summary>
+    public const string Reset = "reset";
+
+    /// <summary>A handler hooked to an event: the one named, or the designer's own name for it, kept where one is hooked.</summary>
+    public const string Hook = "hook";
+
+    public const string Unhook = "unhook";
+}
+
+/// <summary>A property of the component inspected, as Windows Forms' property grid shows it: its name, category and type,
+/// its value as its type converter writes it, whether the code sets it, whether it takes no value typed, the values it
+/// offers to choose from (only those where <see cref="Exclusive"/>), and what it is for.</summary>
+public sealed record DesignProperty(string Name, string Category, string Type, string Text)
+{
+    public bool Set { get; init; }
+
+    public bool ReadOnly { get; init; }
+
+    public IReadOnlyList<string>? Choices { get; init; }
+
+    public bool Exclusive { get; init; }
+
+    public string? Description { get; init; }
+
+    /// <summary>Its name is shown in parentheses, as the component's own name, (Name), is: first, apart from the rest.</summary>
+    public bool Parenthesized { get; init; }
+}
+
+/// <summary>An event of the component inspected: its name and category, the handler hooked to it (none where none is), and
+/// what it is for.</summary>
+public sealed record DesignEvent(string Name, string Category)
+{
+    public string? Handler { get; init; }
+
+    public string? Description { get; init; }
 }
 
 /// <summary>A line of designer code a change writes, by the request's statements: a statement made after the one at
@@ -211,7 +261,8 @@ public static class DesignerKeys
 
 /// <summary>The designer's answer to the newest request it read: the form as a PNG at 96 DPI with its title bar (a form's) and
 /// each component's box in it (<see cref="DesignedBox"/>), what it could not make of statements (<see cref="DesignNote"/>),
-/// an edit's code and what to choose after it, the Toolbox's items where asked; or why it drew nothing.</summary>
+/// an edit's code and what to choose after it, the Toolbox's items and a component's properties and events where asked; or
+/// why it drew nothing.</summary>
 public sealed record FormDesignReply
 {
     public required string Kind { get; init; }
@@ -233,12 +284,25 @@ public sealed record FormDesignReply
     public IReadOnlyList<string>? Chosen { get; init; }
 
     public IReadOnlyList<ToolboxEntry>? Toolbox { get; init; }
+
+    /// <summary>The inspected component's properties and events (<see cref="FormDesignRequest.Inspect"/>).</summary>
+    public IReadOnlyList<DesignProperty>? Properties { get; init; }
+
+    public IReadOnlyList<DesignEvent>? Events { get; init; }
+
+    /// <summary>A hook's handler as the form's code is to declare it (<c>private void Count_Click(object? sender, EventArgs e)</c>),
+    /// its name the last before its parameters.</summary>
+    public string? Handler { get; init; }
 }
 
 /// <summary>A component as drawn: its field (empty for the root), its type's name, the component holding it (none for the root
 /// and for one in the tray), its box in the frame in pixels (empty for one in the tray, which draws nothing), and whether it
 /// holds controls.</summary>
-public sealed record DesignedBox(string Field, string Type, string? Parent, double X, double Y, double Width, double Height, bool Holds);
+public sealed record DesignedBox(string Field, string Type, string? Parent, double X, double Y, double Width, double Height, bool Holds)
+{
+    /// <summary>The event a double click on it hooks, as its type says; none where it says none.</summary>
+    public string? DefaultEvent { get; init; }
+}
 
 /// <summary>What the designer could not make of a statement (by its place in the list sent) or of the form as a whole.</summary>
 public sealed record DesignNote(string Message, int? Statement = null);

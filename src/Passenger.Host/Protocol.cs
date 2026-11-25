@@ -294,6 +294,10 @@ public static class CarriedProperties
     /// files set true unless the project says false; none for a project without Avalonia.</summary>
     public const string EnableAvaloniaXamlCompilation = "EnableAvaloniaXamlCompilation";
 
+    /// <summary>The project's nullable context (enable, annotations, warnings, disable), which a Windows Forms handler the
+    /// designer writes follows.</summary>
+    public const string Nullable = "Nullable";
+
     public static readonly IReadOnlyList<string> Names =
     [
         EnableSdkContainerSupport, ContainerRepository, ContainerImageName, ContainerBaseImage, DockerfileFile, DockerfileContext,
@@ -301,7 +305,7 @@ public static class CarriedProperties
         NuGetPackageRoot, NuGetPackageFolders, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
         DirectoryPackagesPropsPath, GodotProjectDir, GodotProjectDirBase64, UsingGodotNETSdk, StaticWebAssetBasePath, PackageId, AspireHostingSDKVersion,
         AndroidApplication, Configurations, Platforms, AzureFunctionsVersion, EnableAvaloniaXamlCompilation, MSBuildNames.UseMaui,
-        MSBuildNames.EnableMsixTooling, MSBuildNames.WindowsPackageType,
+        MSBuildNames.EnableMsixTooling, MSBuildNames.WindowsPackageType, Nullable,
     ];
 }
 

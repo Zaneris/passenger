@@ -1,15 +1,17 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.VisualTree;
-using System.Runtime.CompilerServices;
+using Passenger.App.CSharp;
 using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.App.State;
 using Passenger.App.WinForms;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Languages.WinForms;
 using Passenger.Text;
 using Passenger.Workspace;
 using A = Passenger.App.AppActions;
@@ -25,6 +27,11 @@ namespace Passenger.App;
 public partial class MainWindow
 {
     private ToolboxView? toolbox;
+    private FormProperties? formProperties;
+
+    /// <summary>The properties and events of the component chosen in a design, under the Structure window's outline of its
+    /// components, made as one is first outlined.</summary>
+    public FormProperties? FormProperties => formProperties;
 
     /// <summary>The Toolbox tool window, built as it is first shown or asked for.</summary>
     public ToolboxView ToolboxWindow => toolbox ?? (ToolboxView)Dock[ToolWindowIds.Toolbox].Content;
@@ -57,6 +64,7 @@ public partial class MainWindow
             FollowDesigners();
         };
         Editors.ActiveChanged += (_, _) => FollowDesigners();
+        Editors.FormLayoutChanged += (_, _) => structure?.FollowActive();
         AddDesignEdits();
         // Built as it is first shown, over the design shown then.
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Toolbox, "Toolbox", IconKeys.FormsApp, () =>
@@ -162,10 +170,13 @@ public partial class MainWindow
         {
             return null;
         }
-        IReadOnlyList<ProjectModel> projects = session.Projects;
-        FormDesign design = new(files, path => Editors.TextOf(path), form => BuiltFor(projects, form), form => GlobalUsingsOf(projects, form));
+        FormDesign design = new(files, path => Editors.TextOf(path), () =>
+        {
+            IReadOnlyList<ProjectModel> projects = session.Projects;
+            return new FormProject(form => BuiltFor(projects, form), form => GlobalUsingsOf(projects, form),
+                form => ProjectModel.Owning(projects, form.Designer)?.Property(Passenger.Host.CarriedProperties.Nullable) is "enable" or "annotations");
+        });
         FormDesignPane pane = new(design);
-        pane.ComponentChosen += (_, chosen) => announcer.Tell(Said(chosen), Urgency.Polite, pane);
         Debounce typing = new(DesignSettle, design.UpdateAsync);
         EventHandler<DocumentChangedEventArgs> changed = (_, _) => typing.Restart();
         foreach (OpenDocument open in Editors.Documents.Where(d => PathNames.Same(d.Path, files.Designer) || PathNames.Same(d.Path, files.Code)))
@@ -174,16 +185,160 @@ public partial class MainWindow
         }
         ShownDesign shown = new(design, pane, typing, changed);
         designs[document] = shown;
+        pane.ComponentChosen += (_, chosen) =>
+        {
+            announcer.Tell(Said(chosen), Urgency.Polite, pane);
+            design.Inspect(chosen.Field);
+            if (structure is { } view && Editors.ActiveGroup.Side == pane)
+            {
+                view.ChooseRow(row => DesignOutline.FieldOf(row) == chosen.Field);
+                view.Details = PropertiesOf(shown);
+            }
+        };
         pane.EditRequested += (_, edit) => IdeErrors.Observe(EditDesignAsync(shown, edit));
         pane.ContextRequested += (_, e) =>
         {
             e.Handled = true;
             ShowDesignMenu(pane);
         };
+        pane.DefaultEventRequested += (_, box) => IdeErrors.Observe(HookAsync(shown, box.Field, box.DefaultEvent!, null));
         design.ToolboxChanged += (_, _) => FollowToolbox();
-        design.Changed += (_, _) => FollowToolbox();
+        design.Changed += (_, _) =>
+        {
+            FollowToolbox();
+            if (Editors.ActiveGroup.Side == pane)
+            {
+                structure?.Invalidate();
+            }
+        };
         IdeErrors.Observe(design.StartAsync());
         return pane;
+    }
+
+    /// <summary>The Structure window's outline of a file while its design is shown in the active group: its components.</summary>
+    private Navigation.FileOutline? DesignOutlineOf(OpenDocument document) =>
+        designs.TryGetValue(document, out ShownDesign? shown) && Editors.ActiveGroup.Side == shown.Pane ? new DesignOutline(shown.Design) : null;
+
+    /// <summary>A row of the Structure window chosen: where it is a design's component, chosen in the design too, its properties
+    /// and events under the outline; false for a row of any other outline.</summary>
+    private bool ComponentRowChosen(Navigation.SymbolRow? row)
+    {
+        if (row is null || DesignOutline.FieldOf(row) is not { } field || structure is not { } view || Editors.ActiveGroup.Side is not FormDesignPane pane
+            || designs.Values.FirstOrDefault(d => d.Pane == pane) is not { } shown)
+        {
+            return false;
+        }
+        pane.Choose(field);
+        shown.Design.Inspect(field);
+        view.Details = PropertiesOf(shown);
+        return true;
+    }
+
+    /// <summary>The Structure window's rows read again over a design (none chosen as they come): its properties stay under
+    /// them, the inspected component's row chosen again; false where it outlines no design.</summary>
+    private bool DesignOutlined()
+    {
+        if (structure is not { } view || Editors.Active is not { } active || !designs.TryGetValue(active, out ShownDesign? shown) || Editors.ActiveGroup.Side != shown.Pane)
+        {
+            return false;
+        }
+        view.Details = PropertiesOf(shown);
+        if (shown.Design.Inspected is { } field)
+        {
+            UiThread.Post(() => view.ChooseRow(row => DesignOutline.FieldOf(row) == field));
+        }
+        return true;
+    }
+
+    /// <summary>The properties pane over a design, made once and wired to its edits.</summary>
+    private FormProperties PropertiesOf(ShownDesign shown)
+    {
+        if (formProperties is null)
+        {
+            formProperties = new FormProperties();
+            formProperties.SetRequested += (_, set) => DesignShown(shown => EditDesignAsync(shown, Edit(shown, DesignEditKinds.Set, set.Property, set.Text)));
+            formProperties.ResetRequested += (_, property) => DesignShown(shown => EditDesignAsync(shown, Edit(shown, DesignEditKinds.Reset, property, null)));
+            formProperties.UnhookRequested += (_, raised) => DesignShown(shown => EditDesignAsync(shown, Edit(shown, DesignEditKinds.Unhook, raised, null)));
+            formProperties.HookRequested += (_, hook) => DesignShown(shown => HookAsync(shown, shown.Design.Inspected ?? string.Empty, hook.Event, hook.Handler));
+            formProperties.RenameRequested += (_, name) => DesignShown(shown => RenameComponentAsync(shown, shown.Design.Inspected ?? string.Empty, name));
+        }
+        formProperties.Show(shown.Design);
+        return formProperties;
+
+        static DesignEdit Edit(ShownDesign shown, string kind, string member, string? text) =>
+            new(kind) { Components = [shown.Design.Inspected ?? string.Empty], Member = member, Text = text };
+
+        void DesignShown(Func<ShownDesign, Task> act)
+        {
+            if (formProperties?.Shown is { } design && designs.Values.FirstOrDefault(d => d.Design == design) is { } now)
+            {
+                IdeErrors.Observe(act(now));
+            }
+        }
+    }
+
+    /// <summary>A handler hooked to a component's event (the one named, else the one hooked or the designer's name for it),
+    /// declared in the form's code where it declares none, all one command of Undo; then gone to in the code, which the
+    /// form's file shows.</summary>
+    private async Task HookAsync(ShownDesign shown, string field, string raised, string? handler)
+    {
+        DesignEdited done = await EditDesignAsync(shown, new DesignEdit(DesignEditKinds.Hook) { Components = [field], Member = raised, Text = handler });
+        if (done.Refused is null && done.Handler is { } method)
+        {
+            GoToHandler(shown.Design.Files, method);
+        }
+    }
+
+    /// <summary>The form's code shown at a handler's body, the design giving way to it as View Code does.</summary>
+    private void GoToHandler(FormFiles files, string method)
+    {
+        if (Editors.TextOf(files.Code) is not { } text || DesignerCode.MethodOf(text.ToString(), files.Class, method) is not { } declared)
+        {
+            Refuse($"{Path.GetFileName(files.Code)} declares no {method}");
+            return;
+        }
+        if (Editors.FormLayout.View == PaneView.Preview)
+        {
+            Editors.FormLayout = Editors.FormLayout with { View = PaneView.Editor };
+        }
+        string written = text.ToString();
+        int body = Passenger.Text.TextNavigation.NextLineStart(written, declared.Body);
+        NavigateTo(files.Code, text.GetPosition(Passenger.Text.TextNavigation.LineEnd(written, body)));
+    }
+
+    /// <summary>A component renamed as (Name) asks: its field through a rename of the code, which takes its Name and its
+    /// section's comment along, one command of Undo; the form itself keeps its class's name.</summary>
+    private async Task RenameComponentAsync(ShownDesign shown, string field, string name)
+    {
+        if (field.Length == 0)
+        {
+            Refuse(Refusals.FormNameIsItsClass);
+            return;
+        }
+        FormFiles files = shown.Design.Files;
+        (OpenDocument document, IDisposable hold) = Editors.Lend(files.Designer);
+        try
+        {
+            if (DesignerCode.Read(document.Text.Snapshot.ToString(), files.Class) is not { } source
+                || source.Fields.ToList().FindIndex(f => f.Name == field) is not (>= 0 and var at))
+            {
+                Refuse($"{Path.GetFileName(files.Designer)} declares no field {field}");
+                return;
+            }
+            RefactorOutcome renamed = await Assist.Actions.RenameSymbolAsync(document, source.Layout.Fields[at].Named, name, renameFiles: false, patience: null);
+            if (renamed.Problem is { } why)
+            {
+                Refuse(why);
+                return;
+            }
+            shown.Design.Inspect(name);
+            shown.Pane.Choose(name);
+            announcer.Tell(renamed.Said, Urgency.Polite, shown.Pane);
+        }
+        finally
+        {
+            hold.Dispose();
+        }
     }
 
     /// <summary>Delete, Bring to Front and Send to Back of the components chosen in the design with the keys, in its menu and
@@ -239,7 +394,7 @@ public partial class MainWindow
 
     /// <summary>An edit of a design made and written as one command of global Undo, named as the Edit menu names it; said to
     /// a screen reader once made, the component it made or moved chosen; why not in the status bar.</summary>
-    private async Task EditDesignAsync(ShownDesign shown, DesignEdit edit)
+    private async Task<DesignEdited> EditDesignAsync(ShownDesign shown, DesignEdit edit)
     {
         string named = edit.Components is [var only] ? only.Length == 0 ? "the Form" : only : string.Join(", ", edit.Components);
         string title = edit.Kind switch
@@ -249,19 +404,25 @@ public partial class MainWindow
             DesignEditKinds.Resize => $"Resize {named}",
             DesignEditKinds.Delete => $"Delete {named}",
             DesignEditKinds.Front => $"Bring {named} to Front",
-            _ => $"Send {named} to Back",
+            DesignEditKinds.Back => $"Send {named} to Back",
+            DesignEditKinds.Set => $"Set {named}'s {edit.Member}",
+            DesignEditKinds.Reset => $"Reset {named}'s {edit.Member}",
+            DesignEditKinds.Hook => $"Handle {named}'s {edit.Member}",
+            _ => $"Remove {named}'s {edit.Member} Handler",
         };
         DesignEdited done = await shown.Design.EditAsync(edit, title, (name, changes) => Assist.ApplyFileChangesAsync(name, changes));
         if (done.Refused is { } why)
         {
             Refuse(why);
-            return;
+            return done;
         }
         if (done.Chosen is { } chosen)
         {
             shown.Pane.Choose(chosen);
+            shown.Design.Inspect(chosen);
         }
         announcer.Tell(shown.Pane.Chosen is { } now && edit.Kind != DesignEditKinds.Delete ? $"{title}: {Said(now)}" : title, Urgency.Polite, shown.Pane);
+        return done;
     }
 
     /// <summary>A Toolbox item added to the design shown: where it was dropped on one, else into the chosen container of the

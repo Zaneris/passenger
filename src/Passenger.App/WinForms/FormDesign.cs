@@ -20,9 +20,9 @@ public sealed class FormDesign : IDisposable
         ["System", "System.Collections.Generic", "System.Drawing", "System.IO", "System.Linq", "System.Net.Http", "System.Threading", "System.Threading.Tasks", "System.Windows.Forms"];
 
     private readonly Func<string, TextSnapshot?> texts;
-    private readonly Func<FormFiles, string?> built;
-    private readonly Func<FormFiles, IReadOnlyList<string>> usings;
+    private readonly Func<FormProject> project;
     private FormDesignHost? host;
+    private string? inspected;
     private int sequence;
     private int starts;
     private bool resting;
@@ -36,15 +36,36 @@ public sealed class FormDesign : IDisposable
     private readonly Dictionary<int, (TextSnapshot Text, DesignerSource Source)> sent = [];
 
     /// <param name="texts">A file's text as the editor has it, else as on disk; null for one not there.</param>
-    /// <param name="built">The project's assembly from its last build, null for none; read off the window's thread.</param>
-    /// <param name="usings">The namespaces the project's global usings bring, none where it has none written yet; read off
-    /// the window's thread.</param>
-    public FormDesign(FormFiles files, Func<string, TextSnapshot?> texts, Func<FormFiles, string?> built, Func<FormFiles, IReadOnlyList<string>> usings)
+    /// <param name="project">What the form's project says as the window holds it now, asked on the window's thread and read off it.</param>
+    public FormDesign(FormFiles files, Func<string, TextSnapshot?> texts, Func<FormProject> project)
     {
         Files = files;
         this.texts = texts;
-        this.built = built;
-        this.usings = usings;
+        this.project = project;
+    }
+
+    /// <summary>The component whose properties and events the designer lists with each frame (the root's empty); none for none.</summary>
+    public string? Inspected => inspected;
+
+    /// <summary>The inspected component's properties as the designer last listed them; none before it has.</summary>
+    public IReadOnlyList<DesignProperty> Properties { get; private set; } = [];
+
+    /// <summary>The inspected component's events as the designer last listed them.</summary>
+    public IReadOnlyList<DesignEvent> Events { get; private set; } = [];
+
+    /// <summary>Lists a component's properties and events from the next frame on (none: none's), asking for one now.</summary>
+    public void Inspect(string? field)
+    {
+        UiThread.Check();
+        if (field == inspected)
+        {
+            return;
+        }
+        inspected = field;
+        Properties = [];
+        Events = [];
+        Changed?.Invoke(this, EventArgs.Empty);
+        IdeErrors.Observe(UpdateAsync());
     }
 
     public FormFiles Files { get; }
@@ -92,7 +113,8 @@ public sealed class FormDesign : IDisposable
             return;
         }
         FormFiles files = Files;
-        string? assembly = await BackgroundWork.Run(() => built(files));
+        FormProject now = project();
+        string? assembly = await BackgroundWork.Run(() => now.Built(files));
         if (disposed || resting || start != starts)
         {
             return;
@@ -141,9 +163,12 @@ public sealed class FormDesign : IDisposable
         FormFiles files = Files;
         bool toolbox = !listed;
         listed = true;
+        string? inspect = inspected;
+        FormProject now = project();
         FormDesignRequest? request = await BackgroundWork.Run(() =>
         {
-            IReadOnlyList<string> global = usings(files);
+            IReadOnlyList<string> global = now.Usings(files);
+            bool annotated = now.Nullable(files);
             if (DesignerCode.Read(designer.ToString(), files.Class) is not { } source)
             {
                 return null;
@@ -164,6 +189,8 @@ public sealed class FormDesign : IDisposable
                 Edit = edit,
                 Qualified = source.Layout.Qualified,
                 Toolbox = toolbox,
+                Inspect = inspect,
+                Nullable = annotated,
             };
         });
         if (request is null)
@@ -216,13 +243,30 @@ public sealed class FormDesign : IDisposable
         {
             return new DesignEdited(Refusals.DesignChangedMeanwhile, null);
         }
-        if (reply.Kind == PreviewKinds.Error || reply.Changes is not { Count: > 0 } changes)
+        if (reply.Kind == PreviewKinds.Error)
         {
             return new DesignEdited(reply.Message ?? Refusals.DesignChangesNothing, null);
         }
-        string was = made.Text.ToString();
-        string? refused = await write(name, [new XamlFileChange(Files.Designer, now => now == was ? DesignerWriter.Edits(now, made.Source, changes) : [])]);
-        return new DesignEdited(refused, reply.Chosen is [var chosen, ..] ? chosen : null);
+        string? chosen = reply.Chosen is [var first, ..] ? first : null;
+        string? handler = reply.Handler is { } declared ? declared[(declared.LastIndexOf(' ', declared.IndexOf('(')) + 1)..declared.IndexOf('(')] : null;
+        List<XamlFileChange> changes = [];
+        if (reply.Changes is { Count: > 0 } lines)
+        {
+            string was = made.Text.ToString();
+            changes.Add(new XamlFileChange(Files.Designer, now => now == was ? DesignerWriter.Edits(now, made.Source, lines) : []));
+        }
+        // A handler hooked that the form's code does not declare yet is declared at the end of its class there.
+        if (reply.Handler is { } declaration && !PathNames.Same(Files.Code, Files.Designer) && texts(Files.Code)?.ToString() is { } code
+            && DesignerCode.MethodOf(code, Files.Class, handler!) is null)
+        {
+            string cls = Files.Class;
+            changes.Add(new XamlFileChange(Files.Code, now => DesignerCode.MethodOf(now, cls, handler!) is null && DesignerWriter.Handler(now, cls, declaration) is { } edit ? [edit] : []));
+        }
+        if (changes.Count == 0)
+        {
+            return handler is null ? new DesignEdited(Refusals.DesignChangesNothing, null) : new DesignEdited(null, chosen, handler);
+        }
+        return new DesignEdited(await write(name, changes), chosen, handler);
     }
 
     /// <summary>The designer started again on the project's newest build, the last frame shown until the new one comes.</summary>
@@ -305,6 +349,8 @@ public sealed class FormDesign : IDisposable
                     Frame = new Bitmap(bytes);
                 }
                 Components = answer.Components ?? [];
+                Properties = answer.Properties ?? [];
+                Events = answer.Events ?? [];
                 Notes = [.. (answer.Notes ?? []).Select(n => Placed(n, read))];
                 Status = Notes.Count == 0 ? "Live" : $"Live. {Notes.Count} statement{(Notes.Count == 1 ? string.Empty : "s")} not drawn";
                 break;
@@ -367,5 +413,11 @@ public sealed class FormDesign : IDisposable
     }
 }
 
-/// <summary>What an edit of a design came to: why it was not made (null once written), and the component to choose after it.</summary>
-public sealed record DesignEdited(string? Refused, string? Chosen);
+/// <summary>What an edit of a design came to: why it was not made (null once written), the component to choose after it, and
+/// the handler a hook hooked.</summary>
+public sealed record DesignEdited(string? Refused, string? Chosen, string? Handler = null);
+
+/// <summary>What a form's project says, from the projects the window held as it was asked, each read off the window's thread:
+/// the assembly its last build made (null for none), the namespaces its global usings bring (none where its build wrote none
+/// yet), and whether its code annotates nullability.</summary>
+public sealed record FormProject(Func<FormFiles, string?> Built, Func<FormFiles, IReadOnlyList<string>> Usings, Func<FormFiles, bool> Nullable);

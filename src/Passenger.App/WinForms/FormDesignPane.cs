@@ -14,8 +14,9 @@ namespace Passenger.App.WinForms;
 /// could not make of the code over the frame, and the frame as Windows Forms draws it, a pixel a unit of the code (at the
 /// window's scale, its pixels kept sharp). A click on the frame chooses the component under it, outlined with grab handles;
 /// a drag moves it (into the container it is dropped on), a handle's drag resizes it, each asked of the window as an edit
-/// (<see cref="EditRequested"/>), its outline drawn meanwhile. With the keys, Tab and Shift+Tab go from component to
-/// component and Escape to the one holding it, the arrows move it a unit and Shift with them sizes it.</summary>
+/// (<see cref="EditRequested"/>), its outline drawn meanwhile; a double click hooks its default event. With the keys, Tab
+/// and Shift+Tab go from component to component and Escape to the one holding it, the arrows move it a unit and Shift with
+/// them sizes it.</summary>
 public sealed class FormDesignPane : DockPanel
 {
     /// <summary>How far the outline stands outside the box it outlines.</summary>
@@ -85,6 +86,14 @@ public sealed class FormDesignPane : DockPanel
         view.PointerMoved += OnFrameMoved;
         view.PointerReleased += OnFrameReleased;
         view.PointerCaptureLost += (_, _) => EndDrag();
+        view.DoubleTapped += (_, e) =>
+        {
+            if (design.Frame is not null && ComponentAt(e.GetPosition(image)) is { DefaultEvent: not null } box)
+            {
+                e.Handled = true;
+                DefaultEventRequested?.Invoke(this, box);
+            }
+        };
         SetDock(header, Dock.Top);
         SetDock(notes, Dock.Top);
         Children.Add(header);
@@ -101,10 +110,16 @@ public sealed class FormDesignPane : DockPanel
     /// <summary>A gesture or a key asks for an edit of the design; raised on the UI thread.</summary>
     public event EventHandler<DesignEdit>? EditRequested;
 
+    /// <summary>A double click on a component asks for its default event's handler, hooked and gone to.</summary>
+    public event EventHandler<DesignedBox>? DefaultEventRequested;
+
     public FormDesign Design => design;
 
     /// <summary>The frame shown.</summary>
     public Image Frame => image;
+
+    /// <summary>The field of the component to choose, whether the frame draws it yet or not.</summary>
+    private string? wanted;
 
     /// <summary>The component chosen, outlined; null while none is.</summary>
     public DesignedBox? Chosen { get; private set; }
@@ -140,6 +155,8 @@ public sealed class FormDesignPane : DockPanel
     /// <summary>Chooses a component by its field (empty for the root), outlining it; none where the frame has no such one.</summary>
     public void Choose(string? field)
     {
+        // Kept by its field, so one the frame does not draw yet (made, renamed) is chosen as the next frame draws it.
+        wanted = field;
         Chosen = field is null ? null : design.Components.FirstOrDefault(c => c.Field == field && c.Width > 0);
         ShowOutline();
     }
@@ -338,6 +355,7 @@ public sealed class FormDesignPane : DockPanel
     private void Picked(DesignedBox chosen)
     {
         Chosen = chosen;
+        wanted = chosen.Field;
         ShowOutline();
         ComponentChosen?.Invoke(this, chosen);
     }
@@ -382,6 +400,6 @@ public sealed class FormDesignPane : DockPanel
         waiting.Text = design.Status;
         waiting.IsVisible = frame is null;
         notes.Say(design.Notes.Count == 0 ? null : string.Join("\n", design.Notes.Take(5)) + (design.Notes.Count > 5 ? $"\n… and {design.Notes.Count - 5} more" : string.Empty));
-        Choose(Chosen?.Field);
+        Choose(wanted);
     }
 }

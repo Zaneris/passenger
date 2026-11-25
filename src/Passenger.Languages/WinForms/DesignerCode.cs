@@ -26,10 +26,10 @@ public sealed record DesignerSource(string? Namespace, IReadOnlyList<string> Usi
 }
 
 /// <summary>Where a class's designer code lies in its file: each statement's span (its first character to past its last), each
-/// field's declaration's span with whether it declares that field alone, the method's body between its braces, where a new
+/// field's declaration's span with whether it declares that field alone and where its name is, the method's body between its braces, where a new
 /// component's field goes in a class declaring none (past an <c>#endregion</c> after the method, else before the class's
 /// closing brace), and whether the code qualifies the class's members with <c>this.</c>.</summary>
-public sealed record DesignerLayout(IReadOnlyList<(int Start, int End)> Statements, IReadOnlyList<(int Start, int End, bool Alone)> Fields, int BodyStart, int BodyEnd,
+public sealed record DesignerLayout(IReadOnlyList<(int Start, int End)> Statements, IReadOnlyList<(int Start, int End, bool Alone, int Named)> Fields, int BodyStart, int BodyEnd,
     int FieldsEnd, bool Qualified)
 {
     public static DesignerLayout None { get; } = new([], [], 0, 0, 0, false);
@@ -60,7 +60,7 @@ public static class DesignerCode
             int qualified = statements.Count(s => s is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax { Left: MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax } } });
             DesignerLayout layout = new(
                 [.. statements.Select(s => (s.SpanStart, s.Span.End))],
-                [.. declared.SelectMany(f => f.Declaration.Variables.Select(_ => (f.SpanStart, f.Span.End, f.Declaration.Variables.Count == 1)))],
+                [.. declared.SelectMany(f => f.Declaration.Variables.Select(v => (f.SpanStart, f.Span.End, f.Declaration.Variables.Count == 1, v.Identifier.SpanStart)))],
                 method.Body is { } body ? body.OpenBraceToken.Span.End : method.Span.End,
                 method.Body is { } closed ? closed.CloseBraceToken.SpanStart : method.Span.End,
                 FieldsEnd(type, method),
@@ -75,6 +75,35 @@ public static class DesignerCode
         [.. Classes((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot())
             .Where(type => type.Members.OfType<MethodDeclarationSyntax>().Any(m => m.Identifier.ValueText == "InitializeComponent" && m.ParameterList.Parameters.Count == 0))
             .Select(FullName)];
+
+    /// <summary>Where a file's text declares a method of a class (by its full name) of a name, any parameters: its name's offset
+    /// and where its body's first line starts; null where it declares none.</summary>
+    public static (int Named, int Body)? MethodOf(string text, string fullName, string method)
+    {
+        foreach (ClassDeclarationSyntax type in Classes((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).Where(t => FullName(t) == fullName))
+        {
+            if (type.Members.OfType<MethodDeclarationSyntax>().FirstOrDefault(m => m.Identifier.ValueText == method) is { } declared)
+            {
+                int body = declared.Body is { } block ? block.OpenBraceToken.Span.End : declared.Span.End;
+                return (declared.Identifier.SpanStart, body);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Where a file's text ends a class's last declaration there, by its full name: its closing brace's offset, and the
+    /// indentation of its members (its first member's, else its brace's and four spaces); null where it declares none.</summary>
+    public static (int Brace, string Indent)? ClassEnd(string text, string fullName)
+    {
+        if (Classes((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).LastOrDefault(t => FullName(t) == fullName) is not { CloseBraceToken.IsMissing: false } type)
+        {
+            return null;
+        }
+        int brace = type.CloseBraceToken.SpanStart;
+        string indent = type.Members.FirstOrDefault() is { } first ? Passenger.Text.TextNavigation.IndentOf(text, first.SpanStart)
+            : Passenger.Text.TextNavigation.IndentOf(text, brace) + "    ";
+        return (brace, indent);
+    }
 
     /// <summary>Whether a file's text declares a class, by its full name.</summary>
     public static bool Declares(string text, string fullName) => Classes((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).Any(type => FullName(type) == fullName);
