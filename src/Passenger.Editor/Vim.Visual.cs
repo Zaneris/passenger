@@ -1274,6 +1274,13 @@ public sealed partial class Vim
             to = to == lastLine ? to - 1 : to;
             return to >= runFirst ? found with { Cursor = text.GetLineStart(to) } : found;
         }
+        if (!inner && n >= 2 && VimMotions.LineOf(text, r.Cursor) is { Length: 0, Line: > 0 } emptyAt && found.Anchor == r.Cursor && found.Cursor > r.Cursor
+            && text[found.Cursor] is not (' ' or '\t') && text.GetLine(emptyAt.Line - 1) is var lineAbove
+            && WhiteEnding(text, lineAbove.Line) is var trailing && trailing > lineAbove.Start && trailing < lineAbove.End)
+        {
+            // From an empty line, as counted on to a sentence with no white after it takes the blanks ending the line above, as the white before it.
+            return found with { Anchor = trailing };
+        }
         if (!inner && n == 1 && found.Anchor == r.Cursor && found.Cursor == r.Cursor && VimMotions.LineOf(text, r.Cursor) is var alone
             && alone.Start == r.Cursor && CharEnd(text, r.Cursor) == alone.End && alone.Line < lastLine && VimMotions.Blank(text, alone.Line + 1))
         {
