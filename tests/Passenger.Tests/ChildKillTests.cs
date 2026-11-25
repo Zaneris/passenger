@@ -56,6 +56,43 @@ public sealed class ChildKillTests
         }
     }
 
+    /// <summary>Node.js keeps what it starts in a job that ends it as Node.js ends, so the cmd.exe it starts here is gone by
+    /// the time a walk that ends a level before listing the next would reach it, and the PING cmd.exe started, which
+    /// left that job, would run on with the port or files it holds (an npm script's ng serve, #2201).</summary>
+    internal async Task A_child_whose_end_ends_what_it_started_first_has_their_children_ended_too_on_Windows()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Elsewhere a child's process group holds all it started, whatever ends first");
+        string? node = Programs.Node();
+        Assert.SkipWhen(node is null, "No Node.js, whose job ends what it started with it, is on the PATH");
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        Process child = ChildProcesses.Start(ChildProcesses.Command(node,
+            ["-e", "require('child_process').spawn('cmd.exe', ['/d', '/s', '/c', 'ping -n 120 127.0.0.1 >nul'], { stdio: 'ignore' }); setInterval(() => {}, 1000);"]));
+        List<Process> shells = [];
+        List<Process> pings = [];
+        try
+        {
+            DateTime began = child.StartTime;
+            Assert.True(await Waiting.UntilAsync(() => Hold(child.Id, began, shells).Any(shell => Hold(shell.Id, Began(shell), pings).Any(p => DotnetProcesses.Describe(p.Id)?.Name == "PING.EXE")),
+                TimeSpan.FromSeconds(30), cancel), "Node.js's cmd.exe never started its PING");
+            ChildProcesses.Kill(child);
+            foreach (Process ping in pings)
+            {
+                Assert.True(await Waiting.UntilAsync(() => !DotnetProcesses.Runs(ping), TimeSpan.FromSeconds(15), cancel),
+                    $"PING {ping.Id}, which the cmd.exe Node.js started started, still ran once Node.js was ended: what an npm script runs outlives its Stop and Rerun on Windows, holding its port");
+            }
+        }
+        finally
+        {
+            ChildProcesses.Kill(child);
+            foreach (Process process in shells.Concat(pings))
+            {
+                ChildProcesses.Kill(process);
+                process.Dispose();
+            }
+            child.Dispose();
+        }
+    }
+
     /// <summary>The processes the child started, each held as it is found (by its handle on Windows, so its id stays its
     /// own) and kept only where, so held, it still names the child as its parent and began no earlier than the child.</summary>
     private static List<Process> Hold(int child, DateTime began, List<Process> held)
