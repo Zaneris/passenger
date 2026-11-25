@@ -161,6 +161,10 @@ public sealed class DatabaseRows(string[] columns, object?[][] rows, bool more =
     /// <summary>The table its rows are written into as SQL inserts: the table read, or the one table its statement reads.</summary>
     public InsertTarget? Into { get; init; }
 
+    /// <summary>What its database said of what was read beside its rows (a Redis key's type and time to live as read), which
+    /// its tab's header line shows; null for nothing.</summary>
+    public string? About { get; init; }
+
     /// <summary>Each row's whole document as JSON, for a document database's rows, whose cells are its top-level fields;
     /// empty for a table's.</summary>
     public string[] Documents { get; init; } = [];

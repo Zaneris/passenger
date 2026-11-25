@@ -63,6 +63,10 @@ public sealed class DatabaseTableTab : IDatabaseTab
     /// <summary>The page last read.</summary>
     public DatabaseRows? Rows => rows;
 
+    /// <summary>What its database said of the page last read beside its rows (a Redis key's type and time to live), which its
+    /// header line shows; null for nothing.</summary>
+    public string? Header => rows?.About;
+
     /// <summary>The page shown with the changes not yet written over it.</summary>
     public PendingTable? Shown => shown;
 
@@ -403,6 +407,9 @@ public sealed class DatabaseTableTab : IDatabaseTab
         status.Name = "DatabaseTabStatus";
         status.Margin = new Thickness(Gaps.Normal, Gaps.Tight);
         Banner marked = new() { Name = "DatabaseTabMark" };
+        TextBlock header = MutedText.Wrapped(string.Empty);
+        header.Name = "DatabaseTabHeader";
+        header.Margin = new Thickness(Gaps.Normal, Gaps.Tight);
         Button apply = ToolButtons.Of(IconKeys.Filter, "Apply Filter");
         apply.Name = "DatabaseApplyFilter";
         Button clear = ToolButtons.Of(IconKeys.Close, "Clear Filter");
@@ -463,7 +470,9 @@ public sealed class DatabaseTableTab : IDatabaseTab
         DockPanel page = new();
         DockPanel.SetDock(top, Dock.Top);
         DockPanel.SetDock(status, Dock.Bottom);
+        DockPanel.SetDock(header, Dock.Top);
         page.Children.Add(top);
+        page.Children.Add(header);
         page.Children.Add(marked);
         page.Children.Add(status);
         Border framed = new() { Classes = { StyleClasses.Framed }, Child = cells };
@@ -559,6 +568,8 @@ public sealed class DatabaseTableTab : IDatabaseTab
                 _ => null,
             });
             status.Text = Said + (edits.IsEmpty || operation is not null ? string.Empty : $" · {EditsSaid}");
+            header.Text = Header is { } read ? Containers.ContainerSecrets.InSaid(read) : string.Empty;
+            header.IsVisible = Header is not null;
         }
     }
 

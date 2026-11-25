@@ -328,6 +328,12 @@ public partial class MainWindow
             if (done)
             {
                 controller.Tell($"{key}: {RedisClient.LifeSaid(life)}.");
+                // The key's own tab reads it again, its header saying its time to live as it now stands.
+                foreach (DatabaseTableTab tab in Editors.TabDocuments.Select(d => d.DatabaseTable).OfType<DatabaseTableTab>()
+                    .Where(t => t.Connection == source.Id && t.Database == source.Database && t.Table.Name == key).ToList())
+                {
+                    await tab.ReadAgainAsync();
+                }
             }
             else
             {

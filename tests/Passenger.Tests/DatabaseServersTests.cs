@@ -1202,6 +1202,7 @@ public sealed class DatabaseServersTests
                 Assert.Equal(["a", "B", "d"], keys.ListRange("queue").Select(v => (string?)v));
 
                 DatabaseTableTab set = Open("tags", 2);
+                Assert.Equal("set · no expiry", set.Header);
                 Grid().Choose((RowOf(set, "blue"), 0), (RowOf(set, "blue"), 0));
                 Assert.True(window.Perform(AppActions.DatabaseDeleteRows), "Delete Rows did not run");
                 Write(window, Grid(), (set.Shown!.RowCount - 1, 0), "green");
@@ -1220,6 +1221,7 @@ public sealed class DatabaseServersTests
                 Assert.Equal(2, keys.StreamLength("events"));
 
                 DatabaseTableTab text = Open("greeting", 1);
+                Assert.StartsWith("string · expires in", text.Header, StringComparison.Ordinal);
                 Write(window, Grid(), (0, 1), "hi");
                 Submit(text);
                 Assert.True((string?)keys.StringGet("greeting") == "hi" && keys.KeyTimeToLive("greeting") is { } kept && kept > TimeSpan.Zero,
@@ -1234,6 +1236,7 @@ public sealed class DatabaseServersTests
                 Task given = life.SubmitAsync();
                 Ui.Landed(() => given.IsCompleted, "the time to live given");
                 Ui.WaitFor(() => keys.KeyTimeToLive("tags") is { TotalSeconds: > 500 }, () => window.Database.Said);
+                Ui.WaitFor(() => set.Header?.StartsWith("set · expires in", StringComparison.Ordinal) == true, () => $"the set's tab's header says {set.Header}");
 
                 // A console of Redis's commands, its replies as rows and completion of its commands and keys.
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Cache"));

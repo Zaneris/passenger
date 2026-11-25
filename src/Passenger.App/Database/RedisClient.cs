@@ -107,7 +107,9 @@ internal static class RedisClient
         IDatabase database = redis.GetDatabase(RedisNames.Number(source.Database));
         RedisKey key = schema.Table.Name;
         string[] columns = [.. schema.Columns.Select(c => c.Name)];
-        List<object?[]> rows = (await database.KeyTypeAsync(key)) switch
+        RedisType type = await database.KeyTypeAsync(key);
+        TimeSpan? life = await database.KeyTimeToLiveAsync(key);
+        List<object?[]> rows = type switch
         {
             RedisType.String => [[schema.Table.Name, (string?)await database.StringGetAsync(key)]],
             RedisType.Hash => [.. (await database.HashGetAllAsync(key)).Take(MostElements).Select(e => new object?[] { e.Name.ToString(), (string?)e.Value })],
@@ -148,6 +150,7 @@ internal static class RedisClient
             Offset = offset,
             Types = [.. schema.Columns.Select(c => c.Type)],
             OrderedBy = sort is { } ordered && Array.IndexOf(columns, ordered.Column) is >= 0 and int at ? (at, ordered.Descending) : null,
+            About = $"{TypeName(type)} · {LifeSaid(life)}",
         };
     });
 
