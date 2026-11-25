@@ -643,7 +643,7 @@ public sealed partial class FolderPackages
             finally
             {
                 IsBusy = bulkStopping is not null;
-                changing = bulkStopping is null ? null : "Updating all NuGet packages…";
+                changing = bulkRun?.Stage;
                 manager.Line -= heard;
             }
             if (within is not null && ReferenceEquals(within, bulkRecording))

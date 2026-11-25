@@ -87,6 +87,9 @@ public sealed partial class NuGetView : DockPanel
     private readonly Debounce typing;
     private CancellationTokenSource? asking;
     private CancellationTokenSource? showing;
+
+    /// <summary>The chosen package's Update in All Projects, beside its versions; null while none is chosen.</summary>
+    private Button? everywhere;
     private IReadOnlyList<PackageRow> rows = [];
     private IReadOnlyList<string> versions = [];
     private FolderPackages model;
@@ -168,6 +171,7 @@ public sealed partial class NuGetView : DockPanel
         };
         ReusedRows.Use(list, Row);
         list.SelectionChanged += (_, _) => IdeErrors.Observe(ShowAsync());
+        ListMenus.Attach(list, RowMenu);
         details = new StackPanel { Spacing = Gaps.Normal, Margin = new Thickness(ListRow.TextStart, Gaps.Wide) };
         log = new TextBox
         {
@@ -272,7 +276,7 @@ public sealed partial class NuGetView : DockPanel
     private void OnChanged(object? sender, PackageOutcome ended)
     {
         EnableActions();
-        if (updatingAll)
+        if (updatingMany)
         {
             return;
         }
@@ -318,7 +322,15 @@ public sealed partial class NuGetView : DockPanel
         {
             ToolButtons.Grey(button, WhyNot(putsIn), tip);
         }
+        if (everywhere is { } moves && Selected is { } row)
+        {
+            ToolButtons.Grey(moves, UpdateEverywhereWhyNot, EverywhereTip(row));
+        }
     }
+
+    /// <summary>A package row's own menu: Update in All Projects on one some project references.</summary>
+    private IReadOnlyList<Control> RowMenu() => Selected is { IsInstalled: true } ?
+        [ListMenus.Item("Update in All Projects", () => ActionRequested?.Invoke(this, AppActions.NuGetUpdateEverywhere), UpdateEverywhereWhyNot)] : [];
 
     /// <summary>Why a project's action can't run: another package change under way, or, for one that puts the chosen version
     /// in, the audit's feeds not having said yet whether it is vulnerable; null where it can.</summary>
@@ -466,7 +478,7 @@ public sealed partial class NuGetView : DockPanel
             await ReloadSourcesAsync();
             return;
         }
-        if (updatingAll)
+        if (updatingMany)
         {
             return;
         }
@@ -796,6 +808,7 @@ public sealed partial class NuGetView : DockPanel
         CancellationTokenSource cancel = showing = new();
         details.Children.Clear();
         lineActions.Clear();
+        everywhere = null;
         versions = [];
         if (Selected is not { } row)
         {
@@ -842,8 +855,8 @@ public sealed partial class NuGetView : DockPanel
             IdeErrors.Observe(ChosenVulnerabilityAsync(row, vulnerabilities, cancel));
             IdeErrors.Observe(ChosenDeprecationAsync(row, deprecated, cancel));
         };
-        // The versions go under the id where the pane is too narrow for both.
-        details.Children.Add(new WrapPanel
+        // The versions go under the id where the pane is too narrow for both, and the one move of every project after them.
+        WrapPanel title = new()
         {
             ItemSpacing = Gaps.Wide,
             LineSpacing = Gaps.Normal,
@@ -852,7 +865,14 @@ public sealed partial class NuGetView : DockPanel
                 new TextBlock { Classes = { StyleClasses.PageTitle }, Text = row.Id, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap },
                 picker,
             },
-        });
+        };
+        if (row.IsInstalled)
+        {
+            Button button = everywhere = new() { Content = "Update in All Projects", VerticalAlignment = VerticalAlignment.Center };
+            button.Click += (_, _) => ActionRequested?.Invoke(this, AppActions.NuGetUpdateEverywhere);
+            title.Children.Add(button);
+        }
+        details.Children.Add(title);
         if (row.Description.Length > 0)
         {
             details.Children.Add(new TextBlock { Text = row.Description, TextWrapping = TextWrapping.Wrap });
@@ -1109,6 +1129,10 @@ public sealed partial class NuGetView : DockPanel
         projectsOf = row;
         panel.Children.Clear();
         lineActions.Clear();
+        if (everywhere is { } button)
+        {
+            ToolButtons.Grey(button, UpdateEverywhereWhyNot, EverywhereTip(row));
+        }
         // The one header goes with the chosen package's projects, from the last package's.
         (projectsHeader.Parent as Panel)?.Children.Remove(projectsHeader);
         panel.Children.Add(projectsHeader);

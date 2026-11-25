@@ -1188,6 +1188,18 @@ public static class Refusals
     /// known vulnerabilities, so the version put in might be one they name.</summary>
     public const string VulnerabilitiesUnread = "The feeds have not yet said which versions have known vulnerabilities";
 
+    /// <summary>An action on the NuGet window's chosen package with none chosen.</summary>
+    public const string NoPackageChosen = "No package is chosen in the NuGet window";
+
+    /// <summary>Update in All Projects of a package no project references.</summary>
+    public static string ReferencedByNoProject(string id) => $"No project references {id}";
+
+    /// <summary>An action putting the chosen version of a package in, where its feeds offer none.</summary>
+    public static string NoVersionChosen(string id) => $"No version of {id} is chosen";
+
+    /// <summary>Update in All Projects where every project referencing the package has the chosen version or a newer one.</summary>
+    public static string UpdatedEverywhere(string id, string version) => $"Every project referencing {id} has {version} or a newer version";
+
     /// <summary>A changed file's Go to Source or Delete where the change deleted it.</summary>
     public const string FileDeleted = "The file is deleted";
 

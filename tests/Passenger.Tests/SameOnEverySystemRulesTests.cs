@@ -122,7 +122,7 @@ public sealed partial class SameOnEverySystemRulesTests
         .ToDictionary(field => (string)field.GetRawConstantValue()!, field => field.Name, StringComparer.Ordinal);
 
     /// <summary>The names of the actions <see cref="Starting"/> takes.</summary>
-    [GeneratedRegex(@"^(Build|Rebuild|Publish|Run|Debug|Profile|AttachProfiler|AttachToProcess|Reattach|Rerun|ApplyHotReload|ShowTerminal|NewTerminal|OpenInTerminal|OpenInBrowser|Commit$|Push$|Fetch$|Stash$|Unstash$|CloneRepository|UpdateProject|ContinueRebase|Abort|Service(Run|Debug|Attach|Profile)|Container(Start|Stop|Restart|Pause|Remove|Scale|Pull|Prune|Shell)|AddMigration|RemoveLastMigration|UpdateDatabase|ScriptMigrations|BundleMigrations|Install|CheckForUpdates|RestartToUpdate|TestEndpoint|NuGetUpdateAll|Godot|AspireCommand)")]
+    [GeneratedRegex(@"^(Build|Rebuild|Publish|Run|Debug|Profile|AttachProfiler|AttachToProcess|Reattach|Rerun|ApplyHotReload|ShowTerminal|NewTerminal|OpenInTerminal|OpenInBrowser|Commit$|Push$|Fetch$|Stash$|Unstash$|CloneRepository|UpdateProject|ContinueRebase|Abort|Service(Run|Debug|Attach|Profile)|Container(Start|Stop|Restart|Pause|Remove|Scale|Pull|Prune|Shell)|AddMigration|RemoveLastMigration|UpdateDatabase|ScriptMigrations|BundleMigrations|Install|CheckForUpdates|RestartToUpdate|TestEndpoint|NuGetUpdate|Godot|AspireCommand)")]
     private static partial Regex StartingAction();
 
     /// <summary>A class marked [SameOnEverySystem] starts no process, build, run, terminal, debugger, Git or container of its

@@ -96,6 +96,11 @@ public sealed class NuGetTests : IDisposable
             t.Update_all_updates_every_project_even_when_search_hides_results_and_one_undo_restores_them();
             OpenWindows.CloseAll();
         });
+        Flow.StepApart<NuGetTests>("update in all projects moves one package in every project referencing an older version and one undo restores them", t =>
+        {
+            t.Update_in_all_projects_moves_one_package_in_every_project_referencing_an_older_version_and_one_undo_restores_them();
+            OpenWindows.CloseAll();
+        });
         Flow.StepApart<NuGetTests>("updates reports partial feed failure instead of claiming every package is current", t =>
         {
             t.Updates_reports_partial_feed_failure_instead_of_claiming_every_package_is_current();
@@ -413,6 +418,46 @@ public sealed class NuGetTests : IDisposable
         MigrationsTests.UndoFromExplorer(window, lib);
         Assert.Equal(beforeLib, File.ReadAllText(lib));
         Assert.Equal(beforeApp, File.ReadAllText(app));
+        window.Close();
+    }
+
+    /// <summary>Update in All Projects, from a package's row menu in the Packages tab: the version picked put in Lib and
+    /// App, which reference older ones, Tools, which has it, and Lib's other package left as they were, one Undo taking
+    /// both back; its button then greyed, saying every project has it.</summary>
+    private void Update_in_all_projects_moves_one_package_in_every_project_referencing_an_older_version_and_one_undo_restores_them()
+    {
+        const string Other = "Passenger.Other";
+        feed.Add(Other, "1.0.0");
+        feed.Add(Other, "1.2.0");
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /><PackageReference Include=\"{Other}\" Version=\"1.0.0\" /></ItemGroup>");
+        string app = Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.1\" /></ItemGroup>");
+        string tools = Project("Tools", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.1.0\" /></ItemGroup>");
+        (string Lib, string App, string Tools) before = (File.ReadAllText(lib), File.ReadAllText(app), File.ReadAllText(tools));
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        ChoosePackage(nuget, Id);
+        Choose(nuget, "1.1.0");
+        Button everywhere = nuget.GetLogicalDescendants().OfType<Button>().SingleOrDefault(b => Equals(b.Content, "Update in All Projects"))
+            ?? throw new Xunit.Sdk.XunitException($"{Id}'s details have no Update in All Projects");
+        Assert.True(everywhere.IsEnabled && Equals(ToolTip.GetTip(everywhere), $"Moves {Id} to 1.1.0 in App and Lib, as one step of Undo; Tools has it or a newer version"),
+            $"Update in All Projects is {(everywhere.IsEnabled ? "enabled" : "greyed")}, saying {ToolTip.GetTip(everywhere)}");
+        Ui.RightClick(Ui.Row(nuget.PackageList, nuget.Selected!));
+        ContextMenu menu = nuget.PackageList.ContextMenu ?? throw new Xunit.Sdk.XunitException($"{Id}'s row has no menu");
+        Ui.WaitFor(() => menu.IsOpen, $"{Id}'s row menu to open");
+        Ui.Choose(menu, "Update in All Projects");
+        Ui.Landed(() => !nuget.IsBusy && nuget.Status.StartsWith("Updated", StringComparison.Ordinal), $"the update in every project: {nuget.Status}\n{nuget.Log}");
+        Assert.True(nuget.Status == "Updated 2 package references" && File.ReadAllText(lib).Contains($"\"{Id}\" Version=\"1.1.0\"", StringComparison.Ordinal)
+            && File.ReadAllText(app).Contains($"\"{Id}\" Version=\"1.1.0\"", StringComparison.Ordinal),
+            $"Update in All Projects left Lib and App as\n{File.ReadAllText(lib)}\n{File.ReadAllText(app)}\nsaying {nuget.Status}\n{nuget.Log}");
+        Assert.True(File.ReadAllText(lib).Contains($"\"{Other}\" Version=\"1.0.0\"", StringComparison.Ordinal) && File.ReadAllText(tools) == before.Tools,
+            $"Update in All Projects moved more than {Id} where it was older:\n{File.ReadAllText(lib)}\n{File.ReadAllText(tools)}");
+        ChoosePackage(nuget, Id);
+        Choose(nuget, "1.1.0");
+        everywhere = nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update in All Projects"));
+        Assert.True(!everywhere.IsEnabled && Equals(ToolTip.GetTip(everywhere), Refusals.UpdatedEverywhere(Id, "1.1.0")),
+            $"Update in All Projects with every project at 1.1.0 is {(everywhere.IsEnabled ? "enabled" : "greyed")}, saying {ToolTip.GetTip(everywhere)}");
+        MigrationsTests.UndoFromExplorer(window, lib);
+        Assert.Equal((before.Lib, before.App, before.Tools), (File.ReadAllText(lib), File.ReadAllText(app), File.ReadAllText(tools)));
         window.Close();
     }
 
