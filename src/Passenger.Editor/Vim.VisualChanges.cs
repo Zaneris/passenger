@@ -56,7 +56,7 @@ public sealed partial class Vim
             // Visual mode ends as it would with the change made, the carets at the stretches' starts.
             return Refused(why, block ? SelectionSet.Single(VimMotions.OffsetAtColumn(text, top, left, tab)) : RegionStretches(text, taken, lines).Item2);
         }
-        // Any operator keeps the columns its stretch spans for the next A to place itself by (keptBlockLeft).
+        // Any operator keeps the columns its stretch spans for the next A to place itself by (keptBlockLeft), as . makes a block's again.
         (int Left, int Right) kept = (keptBlockLeft, keptBlockRight);
         bool toEnd = visualAims.Length > 0 && visualAims[Math.Clamp(visualPrimary, 0, visualAims.Length - 1)] == int.MaxValue;
         Region stretch = regions[0];
@@ -65,7 +65,7 @@ public sealed partial class Vim
         // A block reaching each line's end over lines too short to reach keeps no width.
         bool reachesNothing = right == int.MaxValue && Enumerable.Range(top, bottom - top + 1).All(l => TextNavigation.VisualColumn(text, text.GetLine(l).End, tab) <= left);
         (keptBlockLeft, keptBlockRight) = block && !lines ? (left, reachesNothing ? left : right)
-            : toEnd ? (keptBlockLeft, keptBlockRight)
+            : toEnd || replaying ? (keptBlockLeft, keptBlockRight)
             : inserts && !lines ? (overLines ? keptBlockLeft : 0, stretch.Cursor < stretch.Anchor && overLines ? 0 : CaretColumn(text, stretch.Cursor, tab))
             : lines || overLines
                 ? (overLines ? keptBlockLeft : 0,
