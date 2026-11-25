@@ -482,6 +482,20 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `StuckEvaluationTests`' `An_evaluation_a_continue_leaves_waiting_on_a_lock_past_its_time_runs_to_its_end_once_the_lock_is_free`,
+  the Windows ARM64 VM in one round of two while #2001 was fixed: "waited 150 s for output". Its `Locks.Taken` evaluation,
+  the program's first use of Console, stood in native code under `Console.get_Out`, the lock's holder and an unnamed
+  background thread with no managed frame held, the tiering worker left running (it ended 4.8 s in). **A race in the
+  IDE, on Windows**: the engine's log counts three threads announced (the main thread, the holder, and that unnamed one
+  1 ms before the stop) and the tiering worker, which is never announced; so the thread held was announced in the go
+  before the stop and stood, at the stop, in the runtime's own code it had not yet left for managed code. An evaluation
+  let past a thread standing where it was announced only at its first instruction, so this one was held where the
+  runtime may count it as standing where no collection can run, and Console's first use, which allocates, waited on it.
+  An evaluation now also leaves running a thread announced in the go before the stop that has no managed frame yet,
+  holding it once it has run one or after 16 short goes (#2073). Not reproduced in about 140 sessions on the VM before
+  the fix; the order (an announcement in the go before a stop, the thread still in the runtime's code) can't be forced
+  from the debugger, which first sees a thread at its announcement.
+
 - `McpAspireStandInTests`' `An_agent_reads_a_services_request_duration_through_telemetry_metrics`, CI 44962354408
   (Windows, report shard 1, at 85366e457): "The agent was not told the web service's request duration", its last reading
   hearing web idle with no ASP.NET Core instrument, and "web answered 0 requests" though web's console showed its one
