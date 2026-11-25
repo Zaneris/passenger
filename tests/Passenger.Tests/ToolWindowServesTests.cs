@@ -46,6 +46,7 @@ public sealed class ToolWindowServesTests
         [ToolWindowIds.Aspire] = ToolWindowServes.AppHosts,
         [ToolWindowIds.Migrations] = ToolWindowServes.EfCore,
         [ToolWindowIds.StepLibrary] = ToolWindowServes.StepDefinitions,
+        [ToolWindowIds.Toolbox] = ToolWindowServes.FormsProjects,
     };
 
     /// <summary>The windows of one kind of project, each with why a plain console solution has none of it.</summary>
@@ -58,6 +59,7 @@ public sealed class ToolWindowServesTests
         (ToolWindowIds.Requests, Refusals.NoWebApp),
         (ToolWindowIds.Migrations, Refusals.NoEfCore),
         (ToolWindowIds.LiveTree, Refusals.NoInspectedApp),
+        (ToolWindowIds.Toolbox, Refusals.NoFormsProject),
     ];
 
     /// <summary>Each tool window declares what it serves, a console solution shows none it lacks and View greys each

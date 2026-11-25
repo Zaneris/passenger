@@ -1,4 +1,8 @@
 using System.Globalization;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.VisualTree;
 using System.Runtime.CompilerServices;
 using Passenger.App.Editors;
 using Passenger.App.Workspace;
@@ -16,9 +20,15 @@ namespace Passenger.App;
 /// file show its design beside their code or alone in the editor's place, as the form layout on the tab strip and under View
 /// says (View Code, Code and Design, View Designer), the choice kept in the store's previews.json; the design follows the
 /// designer code as it is typed, saved or changed on disk, and the project's builds; each file's design lasts while it is
-/// open, its designer running while the design is shown.</summary>
+/// open, its designer running while the design is shown. Its edits (a gesture, a key, the Toolbox, Delete, Bring to Front,
+/// Send to Back) are written into the designer file as one command of global Undo each, which Undo in the design takes back.</summary>
 public partial class MainWindow
 {
+    private ToolboxView? toolbox;
+
+    /// <summary>The Toolbox tool window, built as it is first shown or asked for.</summary>
+    public ToolboxView ToolboxWindow => toolbox ?? (ToolboxView)Dock[ToolWindowIds.Toolbox].Content;
+
     /// <summary>How long typing pauses before the designer is sent the code.</summary>
     private static readonly TimeSpan DesignSettle = TimeSpan.FromMilliseconds(400);
 
@@ -47,6 +57,32 @@ public partial class MainWindow
             FollowDesigners();
         };
         Editors.ActiveChanged += (_, _) => FollowDesigners();
+        AddDesignEdits();
+        // Built as it is first shown, over the design shown then.
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Toolbox, "Toolbox", IconKeys.FormsApp, () =>
+        {
+            ToolboxView view = new();
+            toolbox = view;
+            view.AddRequested += (_, entry) => AddFromToolbox(entry, null);
+            view.Dragging += (_, dragged) => DesignUnder(dragged.Pointer, out Point? at)?.ShowDrop(at);
+            view.Dropped += (_, dropped) =>
+            {
+                HideDrops();
+                if (DesignUnder(dropped.Pointer, out Point? at) is { } pane && at is { } point)
+                {
+                    AddFromToolbox(dropped.Entry, (pane, point));
+                }
+            };
+            view.DragLost += (_, _) => HideDrops();
+            FollowToolbox();
+            return view;
+        }, Docking.ToolAnchor.LeftBottom)
+        {
+            Serves = ToolWindowServes.FormsProjects,
+            Action = A.ShowToolbox,
+            ExpandAll = () => ToolboxWindow.ExpandAll(),
+            CollapseAll = () => ToolboxWindow.CollapseAll(),
+        });
         Editors.Closed += (_, document) => EndDesign(document);
         Closed += (_, _) =>
         {
@@ -136,9 +172,195 @@ public partial class MainWindow
         {
             open.Text.Changed += changed;
         }
-        designs[document] = new ShownDesign(design, pane, typing, changed);
+        ShownDesign shown = new(design, pane, typing, changed);
+        designs[document] = shown;
+        pane.EditRequested += (_, edit) => IdeErrors.Observe(EditDesignAsync(shown, edit));
+        pane.ContextRequested += (_, e) =>
+        {
+            e.Handled = true;
+            ShowDesignMenu(pane);
+        };
+        design.ToolboxChanged += (_, _) => FollowToolbox();
+        design.Changed += (_, _) => FollowToolbox();
         IdeErrors.Observe(design.StartAsync());
         return pane;
+    }
+
+    /// <summary>Delete, Bring to Front and Send to Back of the components chosen in the design with the keys, in its menu and
+    /// Find Action; Delete takes the Delete key there.</summary>
+    private void AddDesignEdits()
+    {
+        actions!.Add(new IdeAction(A.FormDelete, "Delete", "Design", context => Edit(context, DesignEditKinds.Delete))
+        {
+            WhyNot = context => DesignWhyNot(context),
+            Words = ["Delete Component", "Remove Control"],
+        });
+        actions.Add(new IdeAction(A.FormBringToFront, "Bring to Front", "Design", context => Edit(context, DesignEditKinds.Front))
+        {
+            WhyNot = context => DesignWhyNot(context),
+            Words = ["Order", "Z-order"],
+        });
+        actions.Add(new IdeAction(A.FormSendToBack, "Send to Back", "Design", context => Edit(context, DesignEditKinds.Back))
+        {
+            WhyNot = context => DesignWhyNot(context),
+            Words = ["Order", "Z-order"],
+        });
+
+        void Edit(ActionContext context, string kind)
+        {
+            if (DesignWith(context) is { } shown && shown.Pane.Chosen is { } chosen)
+            {
+                IdeErrors.Observe(EditDesignAsync(shown, new DesignEdit(kind) { Components = [chosen.Field] }));
+            }
+        }
+    }
+
+    /// <summary>The design with the keys, as an action is asked of it.</summary>
+    private ShownDesign? DesignWith(ActionContext context) =>
+        (context.Focused as Visual)?.FindAncestorOfType<FormDesignPane>(includeSelf: true) is { } pane ? designs.Values.FirstOrDefault(d => d.Pane == pane) : null;
+
+    /// <summary>Why an action on a design's chosen component greys: no design has the keys, none of its components is chosen,
+    /// the form itself is, or its designer does not run.</summary>
+    private string? DesignWhyNot(ActionContext context) => DesignWith(context) is not { } shown ? Refusals.NoFormDesign
+        : shown.Pane.Chosen is not { } chosen ? Refusals.NoComponentChosen
+        : chosen.Parent is null ? Refusals.FormItselfStays
+        : !shown.Design.Running ? shown.Design.Status
+        : null;
+
+    /// <summary>A design's menu: Delete, Bring to Front, Send to Back, then View Code.</summary>
+    private void ShowDesignMenu(FormDesignPane pane)
+    {
+        ActionContext context = actions!.Context();
+        MenuEntry separator = new(null);
+        List<Control> items = [.. new[] { new MenuEntry(A.FormDelete), separator, new MenuEntry(A.FormBringToFront), new MenuEntry(A.FormSendToBack), separator,
+            new MenuEntry(A.FormCodeOnly) }.Select(entry => FlyoutEntry(entry, context))];
+        Open(new ContextMenu { ItemsSource = items, PlacementTarget = pane }, pane);
+    }
+
+    /// <summary>An edit of a design made and written as one command of global Undo, named as the Edit menu names it; said to
+    /// a screen reader once made, the component it made or moved chosen; why not in the status bar.</summary>
+    private async Task EditDesignAsync(ShownDesign shown, DesignEdit edit)
+    {
+        string named = edit.Components is [var only] ? only.Length == 0 ? "the Form" : only : string.Join(", ", edit.Components);
+        string title = edit.Kind switch
+        {
+            DesignEditKinds.Add => $"Add {edit.Type?.Split(',')[0].Split('.')[^1]}",
+            DesignEditKinds.Move => edit.Parent is { } into ? $"Move {named} into {(into.Length == 0 ? "the Form" : into)}" : $"Move {named}",
+            DesignEditKinds.Resize => $"Resize {named}",
+            DesignEditKinds.Delete => $"Delete {named}",
+            DesignEditKinds.Front => $"Bring {named} to Front",
+            _ => $"Send {named} to Back",
+        };
+        DesignEdited done = await shown.Design.EditAsync(edit, title, (name, changes) => Assist.ApplyFileChangesAsync(name, changes));
+        if (done.Refused is { } why)
+        {
+            Refuse(why);
+            return;
+        }
+        if (done.Chosen is { } chosen)
+        {
+            shown.Pane.Choose(chosen);
+        }
+        announcer.Tell(shown.Pane.Chosen is { } now && edit.Kind != DesignEditKinds.Delete ? $"{title}: {Said(now)}" : title, Urgency.Polite, shown.Pane);
+    }
+
+    /// <summary>A Toolbox item added to the design shown: where it was dropped on one, else into the chosen container of the
+    /// active group's (the chosen component's holder where it holds none), where its container's designer places it.</summary>
+    private void AddFromToolbox(ToolboxEntry entry, (FormDesignPane Pane, Point At)? dropped)
+    {
+        FormDesignPane? pane = dropped?.Pane ?? Editors.ActiveGroup.Side as FormDesignPane;
+        if (pane is null || designs.Values.FirstOrDefault(d => d.Pane == pane) is not { } shown)
+        {
+            Refuse(Refusals.NoFormDesign);
+            return;
+        }
+        DesignEdit edit = dropped is { At: var at }
+            ? new DesignEdit(DesignEditKinds.Add) { Type = entry.Type, X = (int)at.X, Y = (int)at.Y }
+            : new DesignEdit(DesignEditKinds.Add) { Type = entry.Type, Parent = pane.Chosen is { Holds: true } holder ? holder.Field : pane.Chosen?.Parent ?? string.Empty };
+        IdeErrors.Observe(EditDesignAsync(shown, edit));
+    }
+
+    /// <summary>The design shown under a pointer, with the point of its frame there; none (and its drop mark hidden) elsewhere.</summary>
+    private FormDesignPane? DesignUnder(PointerEventArgs pointer, out Point? at)
+    {
+        at = null;
+        FormDesignPane? found = null;
+        foreach (ShownDesign shown in designs.Values)
+        {
+            if (found is null && shown.Pane.FrameAt(pointer) is { } point)
+            {
+                found = shown.Pane;
+                at = point;
+                continue;
+            }
+            shown.Pane.ShowDrop(null);
+        }
+        return found;
+    }
+
+    private void HideDrops()
+    {
+        foreach (ShownDesign shown in designs.Values)
+        {
+            shown.Pane.ShowDrop(null);
+        }
+    }
+
+    /// <summary>The Toolbox lists the items of the design the active group shows, or says why it lists none.</summary>
+    private void FollowToolbox()
+    {
+        if (toolbox is null)
+        {
+            return;
+        }
+        FormDesign? design = Editors.ActiveGroup.Side is FormDesignPane pane ? pane.Design : null;
+        toolbox.Show(design?.Toolbox ?? [], design is null ? Refusals.NoFormDesign : design.Status);
+    }
+
+    /// <summary>The keys a design with the keys takes from the editor's actions: Undo and Redo take back or make again its
+    /// file's changes, Delete deletes its chosen component.</summary>
+    private bool DesignTakes(FormDesignPane pane, string action)
+    {
+        switch (action)
+        {
+            case Passenger.Editor.EditorActions.Undo or Passenger.Editor.EditorActions.Redo:
+                return UndoDesign(pane, action == Passenger.Editor.EditorActions.Redo);
+            case Passenger.Editor.EditorActions.Delete:
+                Request(A.FormDelete);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>Undo or Redo asked in a design: the design's file's own step where it is open, else the last command, where
+    /// it changed that file, taken back unasked, as the design shows what it takes back; true once taken.</summary>
+    private bool UndoDesign(FormDesignPane pane, bool redo)
+    {
+        if (designs.Values.FirstOrDefault(d => d.Pane == pane) is not { } shown)
+        {
+            return false;
+        }
+        string file = shown.Design.Files.Designer;
+        if (Editors.Find(file) is { } open)
+        {
+            if (!UndoCommand(redo, open, asks: false))
+            {
+                if (!(redo ? open.Text.CanRedo : open.Text.CanUndo))
+                {
+                    Refuse(redo ? Refusals.NothingToRedo : Refusals.NothingToUndo);
+                }
+                Editors.Step(open, redo);
+            }
+            return true;
+        }
+        if ((redo ? Editors.Commands.ToRedo(null) : Editors.Commands.ToUndo(null)) is { } command && command.Texts.Any(t => PathNames.Same(t.Path, file)))
+        {
+            UndoCommand(redo, null, asks: false);
+            return true;
+        }
+        Refuse(redo ? Refusals.NothingToRedo : Refusals.NothingToUndo);
+        return true;
     }
 
     /// <summary>A component chosen in a design as a screen reader hears it: its field, its type and its box.</summary>
@@ -148,6 +370,7 @@ public partial class MainWindow
     /// <summary>The designers run for the designs shown; every other one rests, its last frame kept.</summary>
     private void FollowDesigners()
     {
+        FollowToolbox();
         foreach (ShownDesign shown in designs.Values)
         {
             if (Editors.Groups.Any(g => g.Side == shown.Pane))

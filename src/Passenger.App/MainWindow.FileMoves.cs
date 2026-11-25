@@ -528,8 +528,8 @@ public partial class MainWindow
     /// or makes all of it again, once the person agrees, said done once the files not open it wrote have landed; in an
     /// editor, only when that command is its file's next step. One pressed while another is under way, or while a command
     /// it would take is being made, waits for it and then takes what it reaches then. False when Undo there is the file's
-    /// own.</summary>
-    private bool UndoCommand(bool redo, OpenDocument? document)
+    /// own. Where what it takes back is shown as it is undone (a form's design), it is taken back unasked (<paramref name="asks"/>).</summary>
+    private bool UndoCommand(bool redo, OpenDocument? document, bool asks = true)
     {
         if (undoing.IsCompleted && Editors.Commands.Making(document) is null)
         {
@@ -537,11 +537,11 @@ public partial class MainWindow
             {
                 return false;
             }
-            undoing = UndoCommandAsync(command, redo);
+            undoing = UndoCommandAsync(command, redo, asks);
         }
         else
         {
-            undoing = UndoInTurnAsync(undoing, redo, document);
+            undoing = UndoInTurnAsync(undoing, redo, document, asks);
         }
         IdeErrors.Observe(undoing);
         return true;
@@ -552,7 +552,7 @@ public partial class MainWindow
 
     /// <summary>Undo or Redo pressed while another was under way (<paramref name="before"/>) or while a command it would take
     /// was being made: once those have ended, the command it reaches then, else the file's own step.</summary>
-    private async Task UndoInTurnAsync(Task before, bool redo, OpenDocument? document)
+    private async Task UndoInTurnAsync(Task before, bool redo, OpenDocument? document, bool asks)
     {
         string verb = redo ? "Redo" : "Undo";
         if (!before.IsCompleted)
@@ -571,7 +571,7 @@ public partial class MainWindow
         }
         if ((redo ? Editors.Commands.ToRedo(document) : Editors.Commands.ToUndo(document)) is { } command)
         {
-            await UndoCommandAsync(command, redo);
+            await UndoCommandAsync(command, redo, asks);
         }
         else if (document is not null)
         {
@@ -579,7 +579,7 @@ public partial class MainWindow
         }
     }
 
-    private async Task UndoCommandAsync(CommandHistory.Command command, bool redo)
+    private async Task UndoCommandAsync(CommandHistory.Command command, bool redo, bool asks = true)
     {
         string verb = redo ? "Redo" : "Undo";
         if (await Editors.Commands.BlockedAsync(command, redo) is { } changed)
@@ -593,7 +593,7 @@ public partial class MainWindow
             [.. (redo ? command.Created.Select(c => c.Path) : command.Deleted.Select(d => d.Path))],
             [.. (redo ? command.Deleted.Select(d => d.Path) : command.Created.Select(c => c.Path))], [.. command.Parts.Select(p => p.Name)],
             [.. command.Copied.Select(c => c.Path)]);
-        if (!await Confirm(verb, question, verb))
+        if (asks && !await Confirm(verb, question, verb))
         {
             return;
         }

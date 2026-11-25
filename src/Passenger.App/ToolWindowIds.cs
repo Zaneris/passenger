@@ -34,6 +34,7 @@ public static class ToolWindowIds
     public const string DependencyMap = "dependencyMap";
     public const string Database = "database";
     public const string Clones = "clones";
+    public const string Toolbox = "toolbox";
 
     /// <summary>Every id above, which a theme's layout names windows by.</summary>
     public static IReadOnlySet<string> All { get; } = typeof(ToolWindowIds).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)

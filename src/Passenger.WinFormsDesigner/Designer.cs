@@ -1,10 +1,13 @@
+using System.Collections;
 using System.ComponentModel;
 using System.ComponentModel.Design;
 using System.ComponentModel.Design.Serialization;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
+using System.Resources;
 using System.Windows.Forms;
 using System.Windows.Forms.Design;
 using Passenger.Core;
@@ -15,14 +18,27 @@ namespace Passenger.WinFormsDesigner;
 /// <summary>A form or user control made from its designer code on Windows Forms' own design surface: its base type the root,
 /// each component made through the surface's designer host (so it is in design mode, as its designer has it), and each
 /// statement of InitializeComponent run in order against them (properties through their descriptors, so the designers'
-/// shadowing holds; calls by reflection); then drawn, a form under a title bar like the system's, with each component's box.
-/// A statement that fails is noted by its place and the rest made. The surface lives in a window never shown.</summary>
+/// shadowing holds; calls by reflection; hooks through the event binding service); then edited where asked (<see
+/// cref="Editing"/>) and drawn, a form under a title bar like the system's, with each component's box. A statement that
+/// fails is noted by its place and the rest made. The surface lives in a window never shown.</summary>
 internal sealed class Designer(Assembly? project) : IDisposable
 {
     private DesignSurface? surface;
     private Form? holder;
 
     public FormDesignReply Draw(FormDesignRequest request)
+    {
+        try
+        {
+            return Drawn(request);
+        }
+        catch (DesignerException refused) when (request.Edit is not null)
+        {
+            return new FormDesignReply { Kind = PreviewKinds.Error, Sequence = request.Sequence, Message = refused.Message };
+        }
+    }
+
+    private FormDesignReply Drawn(FormDesignRequest request)
     {
         Close();
         List<DesignNote> notes = [];
@@ -35,7 +51,11 @@ internal sealed class Designer(Assembly? project) : IDisposable
             return new FormDesignReply { Kind = PreviewKinds.Nothing, Sequence = request.Sequence, Message = $"{name} derives from {based.Name}, no control: it has no surface to draw" };
         }
         surface = new DesignSurface();
-        ((IServiceContainer)surface.GetService(typeof(IServiceContainer))!).AddService(typeof(INameCreationService), new Names());
+        IServiceContainer services = (IServiceContainer)surface.GetService(typeof(IServiceContainer))!;
+        services.AddService(typeof(INameCreationService), new Names());
+        Events events = new(surface);
+        services.AddService(typeof(IEventBindingService), events);
+        services.AddService(typeof(IResourceService), new Resources());
         surface.BeginLoad(based);
         if (!surface.IsLoaded || surface.GetService(typeof(IDesignerHost)) is not IDesignerHost host || host.RootComponent is not Control root)
         {
@@ -49,7 +69,7 @@ internal sealed class Designer(Assembly? project) : IDisposable
         {
             try
             {
-                Run(request.Statements[i], host, root, made, values);
+                Run(request.Statements[i], host, root, made, values, events);
             }
             catch (Exception failed) when (failed is DesignerException or TargetInvocationException or ArgumentException or InvalidOperationException
                 or NotSupportedException or MissingMethodException or FormatException or InvalidCastException or OverflowException or NullReferenceException)
@@ -58,9 +78,37 @@ internal sealed class Designer(Assembly? project) : IDisposable
             }
         }
         Show(root);
-        (byte[] png, List<DesignedBox> boxes) = Drawn(host, root);
-        return new FormDesignReply { Kind = PreviewKinds.Frame, Sequence = request.Sequence, Png = png, Components = boxes, Notes = notes };
+        int bar = Bar(root);
+        Point origin = root.PointToScreen(Point.Empty);
+        origin.Offset(0, -bar);
+        List<DesignerChange>? changes = null;
+        List<string>? chosen = null;
+        if (request.Edit is { } edit)
+        {
+            CodeText text = new(request.Qualified, types);
+            Serialized before = Serialized.Of(host, text);
+            chosen = Editing.Apply(edit, host, root, origin, bar, types);
+            Application.DoEvents();
+            changes = Editing.Changes(request, before, Serialized.Of(host, text));
+            origin = root.PointToScreen(Point.Empty);
+            origin.Offset(0, -bar);
+        }
+        (byte[] png, List<DesignedBox> boxes) = Drawn(host, root, bar, origin);
+        return new FormDesignReply
+        {
+            Kind = PreviewKinds.Frame,
+            Sequence = request.Sequence,
+            Png = png,
+            Components = boxes,
+            Notes = notes,
+            Changes = changes,
+            Chosen = chosen,
+            Toolbox = request.Toolbox ? Toolbox.Listed(project, based) : null,
+        };
     }
+
+    /// <summary>How tall a form's title bar is drawn over its client area: none for a form without one or another control.</summary>
+    private static int Bar(Control root) => root is Form { FormBorderStyle: not FormBorderStyle.None } ? SystemInformation.CaptionHeight : 0;
 
     /// <summary>The type drawn for a base type not found (the project not built yet): a form, said in a note.</summary>
     private static Type Missing(string written, List<DesignNote> notes)
@@ -70,7 +118,7 @@ internal sealed class Designer(Assembly? project) : IDisposable
     }
 
     /// <summary>One statement run against what the surface holds.</summary>
-    private static void Run(DesignerStatement statement, IDesignerHost host, Control root, Dictionary<string, object> made, Values values)
+    private static void Run(DesignerStatement statement, IDesignerHost host, Control root, Dictionary<string, object> made, Values values, Events events)
     {
         switch (statement.Act)
         {
@@ -100,7 +148,16 @@ internal sealed class Designer(Assembly? project) : IDisposable
                 values.Call(on, method, statement.Arguments ?? []);
                 return;
             case DesignerAct.Hook:
-                // A handler runs in the app, never on the surface.
+                // A handler runs in the app, never on the surface: the binding service keeps its name, which the code is written with.
+                (object hooked, string name) = Walked(Owner(statement, root, made), statement.Member!);
+                EventDescriptor raised = TypeDescriptor.GetEvents(hooked)[name] ?? throw new DesignerException($"{hooked.GetType().Name} has no event {name}");
+                string handler = statement.Value switch
+                {
+                    { Kind: DesignerValueKinds.Name, Name: { } group } => group[(group.LastIndexOf('.') + 1)..],
+                    { Kind: DesignerValueKinds.New, Arguments: [{ Kind: DesignerValueKinds.Name, Name: { } group }] } => group[(group.LastIndexOf('.') + 1)..],
+                    _ => throw new DesignerException($"The designer hooks only a method of the class to {name}"),
+                };
+                ((IEventBindingService)events).GetEventProperty(raised).SetValue(hooked, handler);
                 return;
             default:
                 throw new DesignerException("The designer does not read this statement");
@@ -156,9 +213,8 @@ internal sealed class Designer(Assembly? project) : IDisposable
 
     /// <summary>The root drawn (a form's title bar over its client area) as a PNG, and each component's box in it, parents first,
     /// those in the tray last.</summary>
-    private static (byte[] Png, List<DesignedBox> Boxes) Drawn(IDesignerHost host, Control root)
+    private static (byte[] Png, List<DesignedBox> Boxes) Drawn(IDesignerHost host, Control root, int bar, Point origin)
     {
-        int bar = root is Form { FormBorderStyle: not FormBorderStyle.None } ? SystemInformation.CaptionHeight : 0;
         Size client = root.ClientSize;
         using Bitmap picture = new(Math.Max(1, client.Width), Math.Max(1, bar + client.Height), PixelFormat.Format32bppArgb);
         using (Graphics drawing = Graphics.FromImage(picture))
@@ -171,8 +227,6 @@ internal sealed class Designer(Assembly? project) : IDisposable
         }
         using MemoryStream png = new();
         picture.Save(png, ImageFormat.Png);
-        Point origin = root.PointToScreen(Point.Empty);
-        origin.Offset(0, -bar);
         List<DesignedBox> boxes = [new DesignedBox(string.Empty, root.GetType().Name, null, 0, 0, client.Width, bar + client.Height, true)];
         Walk(root, host, origin, boxes);
         foreach (IComponent tray in host.Container.Components.Cast<IComponent>().Where(c => c is not Control && c is not ToolStripItem && c != root))
@@ -247,6 +301,67 @@ internal sealed class Designer(Assembly? project) : IDisposable
     }
 
     public void Dispose() => Close();
+
+    /// <summary>The form's resources while its .resx is not read: none read, and what the serializers write of them (a tray
+    /// component's place, a value code cannot hold) kept apart from the code, which is all an edit writes.</summary>
+    private sealed class Resources : IResourceService
+    {
+        private readonly Dictionary<string, object?> written = new(StringComparer.Ordinal);
+
+        public IResourceReader GetResourceReader(CultureInfo info) => new Read(written);
+
+        public IResourceWriter GetResourceWriter(CultureInfo info) => new Written(written);
+
+        private sealed class Read(Dictionary<string, object?> entries) : IResourceReader
+        {
+            public IDictionaryEnumerator GetEnumerator() => new Dictionary<string, object?>(entries).GetEnumerator();
+
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+            public void Close()
+            {
+            }
+
+            public void Dispose()
+            {
+            }
+        }
+
+        private sealed class Written(Dictionary<string, object?> entries) : IResourceWriter
+        {
+            public void AddResource(string name, byte[]? value) => entries[name] = value;
+
+            public void AddResource(string name, object? value) => entries[name] = value;
+
+            public void AddResource(string name, string? value) => entries[name] = value;
+
+            public void Generate()
+            {
+            }
+
+            public void Close()
+            {
+            }
+
+            public void Dispose()
+            {
+            }
+        }
+    }
+
+    /// <summary>The handlers hooked to components' events, by their methods' names: the code names them, the surface runs none.</summary>
+    private sealed class Events(IServiceProvider services) : EventBindingService(services)
+    {
+        protected override string CreateUniqueMethodName(IComponent component, EventDescriptor e) => $"{component.Site?.Name}_{e.Name}";
+
+        protected override ICollection GetCompatibleMethods(EventDescriptor e) => Array.Empty<string>();
+
+        protected override bool ShowCode() => false;
+
+        protected override bool ShowCode(int lineNumber) => false;
+
+        protected override bool ShowCode(IComponent component, EventDescriptor e, string methodName) => false;
+    }
 
     /// <summary>Names for what the surface makes unnamed, as the designer names a new component: its type's, camel cased, and
     /// the first number free.</summary>

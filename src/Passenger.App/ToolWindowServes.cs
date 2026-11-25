@@ -31,6 +31,9 @@ public enum FolderHolds
 
     /// <summary>An app Passenger's inspector looks into (an Avalonia, WPF, Windows Forms or .NET MAUI app), or one it looks into now.</summary>
     InspectedApp = 64,
+
+    /// <summary>A project that builds with Windows Forms, whose forms the Toolbox adds to.</summary>
+    WindowsForms = 128,
 }
 
 /// <summary>What a tool window serves, declared as each is made (<see cref="Docking.ToolWindow.Serves"/>): every folder, or
@@ -73,6 +76,9 @@ public sealed class ToolWindowServes
 
     /// <summary>An app Live Visual Tree looks into: an Avalonia, WPF, Windows Forms or .NET MAUI app, a Godot game, or one inspected now.</summary>
     public static ToolWindowServes InspectedApps { get; } = new(FolderHolds.InspectedApp | FolderHolds.GodotProject, Refusals.NoInspectedApp);
+
+    /// <summary>A Windows Forms project, whose forms' designs the Toolbox adds to.</summary>
+    public static ToolWindowServes FormsProjects { get; } = new(FolderHolds.WindowsForms, Refusals.NoFormsProject);
 
     /// <summary>Why it serves nothing in a folder holding <paramref name="holds"/>, in Refusals' words; null where it serves
     /// it. With no folder open (null), only a window of every folder serves.</summary>
@@ -123,6 +129,10 @@ public static class FolderHolding
         if (projects.Any(p => p.IsRunnable && DesktopPrograms.Inspected(p, projects)))
         {
             holds |= FolderHolds.InspectedApp;
+        }
+        if (projects.Any(p => DesktopPrograms.TakesForms(p, projects)))
+        {
+            holds |= FolderHolds.WindowsForms;
         }
         return holds;
     }

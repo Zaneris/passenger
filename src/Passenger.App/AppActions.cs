@@ -682,6 +682,14 @@ public static class AppActions
     public const string FormCodeAndDesign = "app.editor.formCodeAndDesign";
     public const string FormDesignOnly = "app.editor.formDesignOnly";
 
+    // A form's design: its chosen components deleted (the Delete key's while the design has the keys), brought to the front
+    // of what holds them or sent to its back, and the Toolbox of what can be added to it. No keymap of Rider's gives the
+    // last three keys.
+    public const string FormDelete = "app.design.delete";
+    public const string FormBringToFront = "app.design.bringToFront";
+    public const string FormSendToBack = "app.design.sendToBack";
+    public const string ShowToolbox = "app.showToolbox";
+
     // An SVG file's picture beside its editor, under View and on the editor's tab strip: no keymap gives it keys.
     public const string SvgPreview = "app.editor.svgPreview";
 

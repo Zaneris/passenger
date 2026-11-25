@@ -82,7 +82,8 @@ public sealed record DesignerField(string Name, string Type);
 
 /// <summary>A form or user control to draw: its class's full name, the type it derives from as written, the namespaces its
 /// names are read in (its file's usings, its project's global ones, its own namespace's), its fields and its
-/// InitializeComponent's statements.</summary>
+/// InitializeComponent's statements; and a change to make of it (<see cref="Edit"/>), answered as the code it changes, written
+/// as the file writes its code (<see cref="Qualified"/>), and whether to list the Toolbox's items with the frame.</summary>
 public sealed record FormDesignRequest
 {
     public required int Sequence { get; init; }
@@ -96,11 +97,121 @@ public sealed record FormDesignRequest
     public IReadOnlyList<DesignerField> Fields { get; init; } = [];
 
     public IReadOnlyList<DesignerStatement> Statements { get; init; } = [];
+
+    public DesignEdit? Edit { get; init; }
+
+    /// <summary>The file writes its code as .NET Framework's designer did (<c>this.</c>, full type names, CodeDOM's
+    /// parentheses), rather than as .NET's does (short names in the file's scope, method groups).</summary>
+    public bool Qualified { get; init; }
+
+    public bool Toolbox { get; init; }
+}
+
+/// <summary>A change to a design, as a gesture or a key makes it (<see cref="DesignEditKinds"/>): the components it is made to
+/// (their fields, the root's empty), the type to add (its full name with its assembly's), the component to add into or move
+/// into (the root's empty; none: where the point is for an add, where they are for a move), and its numbers: an add's point
+/// in the frame, a move's distance, a resize's new box in the frame.</summary>
+public sealed record DesignEdit(string Kind)
+{
+    public IReadOnlyList<string> Components { get; init; } = [];
+
+    public string? Type { get; init; }
+
+    public string? Parent { get; init; }
+
+    public int X { get; init; }
+
+    public int Y { get; init; }
+
+    public int Width { get; init; }
+
+    public int Height { get; init; }
+}
+
+/// <summary>The kinds of <see cref="DesignEdit"/>.</summary>
+public static class DesignEditKinds
+{
+    /// <summary>A Toolbox item made at a point of the frame, or in the chosen container's place where it has none.</summary>
+    public const string Add = "add";
+
+    public const string Move = "move";
+
+    public const string Resize = "resize";
+
+    public const string Delete = "delete";
+
+    public const string Front = "front";
+
+    public const string Back = "back";
+}
+
+/// <summary>A line of designer code a change writes, by the request's statements: a statement made after the one at
+/// <c>At</c> (before the first where it is -1) or before it (<see cref="Before"/>), with its section's comment first where
+/// the file has none for its component (<see cref="Header"/>); the one at <c>At</c> taken out or written again; a field declared after the request's
+/// field at <c>At</c> (where the file declares the class's components, at the end of the class where it is -1), or taken out.
+/// <see cref="Text"/> is the code as the file writes it, its lines broken with '\n' and indented from the first.</summary>
+public sealed record DesignerChange(string Kind, int At)
+{
+    public string? Text { get; init; }
+
+    public string? Header { get; init; }
+
+    /// <summary>A statement made before the one at <c>At</c> (the first of its section the file writes) rather than after it.</summary>
+    public bool Before { get; init; }
+}
+
+/// <summary>The kinds of <see cref="DesignerChange"/>.</summary>
+public static class DesignerChangeKinds
+{
+    public const string Insert = "insert";
+
+    public const string Remove = "remove";
+
+    public const string Replace = "replace";
+
+    public const string Declare = "declare";
+
+    public const string Undeclare = "undeclare";
+}
+
+/// <summary>An item of the Toolbox: what it makes (its name, its type's full name with its assembly's), the group it is
+/// listed under, its picture (a PNG, 16 pixels square, none where its type gives none) and what it is for.</summary>
+public sealed record ToolboxEntry(string Name, string Type, string Group)
+{
+    public byte[]? Png { get; init; }
+
+    public string? Description { get; init; }
+}
+
+/// <summary>What a statement of designer code is to the designer, whoever reads it: the same key for the same act on the
+/// same member of the same component, whatever value it gives, so a change found by the designer's own code is placed
+/// at the line the file writes it on. None for what no change is placed by.</summary>
+public static class DesignerKeys
+{
+    public static string? Of(DesignerStatement statement) => statement.Act switch
+    {
+        DesignerAct.Create => $"new {statement.Target}",
+        DesignerAct.Assign => $"set {statement.Target}.{statement.Member}",
+        DesignerAct.Hook => $"hook {statement.Target}.{statement.Member} {Handler(statement.Value)}",
+        DesignerAct.Call => $"call {statement.Target}.{statement.Member}({string.Join(',', (statement.Arguments ?? []).Where(a => a.Kind == DesignerValueKinds.Name).Select(a => Last(a.Name!)))})",
+        DesignerAct.Other when statement.Target.Length > 0 => $"local {statement.Target}",
+        _ => null,
+    };
+
+    /// <summary>The method a hook hooks: a method group's, or the one a delegate is made of.</summary>
+    private static string? Handler(DesignerValue? value) => value switch
+    {
+        { Kind: DesignerValueKinds.Name, Name: { } name } => Last(name),
+        { Kind: DesignerValueKinds.New, Arguments: [{ Kind: DesignerValueKinds.Name, Name: { } made }] } => Last(made),
+        _ => null,
+    };
+
+    private static string Last(string dotted) => dotted[(dotted.LastIndexOf('.') + 1)..];
 }
 
 /// <summary>The designer's answer to the newest request it read: the form as a PNG at 96 DPI with its title bar (a form's) and
-/// each component's box in it (<see cref="DesignedBox"/>), what it could not make of statements (<see cref="DesignNote"/>);
-/// or why it drew nothing.</summary>
+/// each component's box in it (<see cref="DesignedBox"/>), what it could not make of statements (<see cref="DesignNote"/>),
+/// an edit's code and what to choose after it, the Toolbox's items where asked; or why it drew nothing.</summary>
 public sealed record FormDesignReply
 {
     public required string Kind { get; init; }
@@ -114,6 +225,14 @@ public sealed record FormDesignReply
     public IReadOnlyList<DesignNote>? Notes { get; init; }
 
     public string? Message { get; init; }
+
+    /// <summary>An edit's code (<see cref="DesignerChange"/>), none where it changed nothing the code says.</summary>
+    public IReadOnlyList<DesignerChange>? Changes { get; init; }
+
+    /// <summary>An edit's components to choose once it is made: those it made or moved, the holder of those it took out.</summary>
+    public IReadOnlyList<string>? Chosen { get; init; }
+
+    public IReadOnlyList<ToolboxEntry>? Toolbox { get; init; }
 }
 
 /// <summary>A component as drawn: its field (empty for the root), its type's name, the component holding it (none for the root

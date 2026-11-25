@@ -3,6 +3,7 @@ using Passenger.App.Xaml;
 using Passenger.Core;
 using Passenger.Languages.WinForms;
 using Passenger.Text;
+using Passenger.Xaml.Features;
 
 namespace Passenger.App.WinForms;
 
@@ -26,6 +27,10 @@ public sealed class FormDesign : IDisposable
     private int starts;
     private bool resting;
     private bool disposed;
+    private bool listed;
+
+    /// <summary>The edit the designer is making, by its request's sequence, answered when its reply or a later one comes.</summary>
+    private (int Sequence, TaskCompletionSource<FormDesignReply?> Answer)? editing;
 
     /// <summary>What each request sent read, by its sequence, so an answer's notes are placed at their lines.</summary>
     private readonly Dictionary<int, (TextSnapshot Text, DesignerSource Source)> sent = [];
@@ -62,6 +67,15 @@ public sealed class FormDesign : IDisposable
     /// <summary>Whether a designer runs for the form, rather than the pane saying why none does.</summary>
     public bool Running => host is not null;
 
+    /// <summary>The Toolbox's items as the designer listed them from the project's build; none until it has.</summary>
+    public IReadOnlyList<ToolboxEntry> Toolbox { get; private set; } = [];
+
+    /// <summary>The Toolbox's items changed; raised on the UI thread.</summary>
+    public event EventHandler? ToolboxChanged;
+
+    /// <summary>Whether an edit is being made, which the next waits for.</summary>
+    public bool Editing => editing is not null;
+
     /// <summary>The designer started on the project's newest build, once the folder is trusted, on Windows; or says why not.</summary>
     public async Task StartAsync()
     {
@@ -90,6 +104,7 @@ public sealed class FormDesign : IDisposable
             return;
         }
         host = started;
+        listed = false;
         IdeErrors.Observe(UpdateAsync());
     }
 
@@ -97,7 +112,8 @@ public sealed class FormDesign : IDisposable
     public async Task UpdateAsync()
     {
         UiThread.Check();
-        if (disposed || resting || host is null)
+        // An edit under way is answered first: a request sent meanwhile would take its place; the edit asks again as it ends.
+        if (disposed || resting || host is null || editing is not null)
         {
             return;
         }
@@ -106,8 +122,25 @@ public sealed class FormDesign : IDisposable
             Say($"{Path.GetFileName(Files.Designer)} or {Path.GetFileName(Files.Code)} can no longer be read");
             return;
         }
+        if (await RequestAsync(null) is { } request)
+        {
+            host?.Send(request);
+        }
+    }
+
+    /// <summary>A request of the designer code as it stands, read off the window's thread, with an edit to make of it; null,
+    /// said in the pane, where the files no longer give the class its code.</summary>
+    private async Task<FormDesignRequest?> RequestAsync(DesignEdit? edit)
+    {
+        if (texts(Files.Designer) is not { } designer || texts(Files.Code) is not { } code)
+        {
+            Say($"{Path.GetFileName(Files.Designer)} or {Path.GetFileName(Files.Code)} can no longer be read");
+            return null;
+        }
         int asked = ++sequence;
         FormFiles files = Files;
+        bool toolbox = !listed;
+        listed = true;
         FormDesignRequest? request = await BackgroundWork.Run(() =>
         {
             IReadOnlyList<string> global = usings(files);
@@ -128,14 +161,68 @@ public sealed class FormDesign : IDisposable
                 Usings = [.. source.Usings, .. based?.Usings ?? [], .. global.Count > 0 ? global : ImplicitUsings],
                 Fields = source.Fields,
                 Statements = source.Statements,
+                Edit = edit,
+                Qualified = source.Layout.Qualified,
+                Toolbox = toolbox,
             };
         });
         if (request is null)
         {
             Say($"{Path.GetFileName(Files.Designer)} no longer gives {Files.Class} an InitializeComponent");
-            return;
         }
-        host?.Send(request);
+        return request;
+    }
+
+    /// <summary>An edit made on the surface and written into the designer file as one command of global Undo, named
+    /// <paramref name="name"/>, through <paramref name="write"/> (null once written, else why not); what to choose after it, or
+    /// why it was not made: the designer not running, an edit under way, the file changed while the designer worked.</summary>
+    public async Task<DesignEdited> EditAsync(DesignEdit edit, string name, Func<string, IReadOnlyList<XamlFileChange>, Task<string?>> write)
+    {
+        UiThread.Check();
+        if (disposed || resting || host is null)
+        {
+            return new DesignEdited(Status, null);
+        }
+        if (editing is not null)
+        {
+            return new DesignEdited(Refusals.DesignerBusy, null);
+        }
+        if (await RequestAsync(edit) is not { } request || host is null)
+        {
+            return new DesignEdited(Status, null);
+        }
+        TaskCompletionSource<FormDesignReply?> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        editing = (request.Sequence, answer);
+        host.Send(request);
+        FormDesignReply? reply = await answer.Task;
+        editing = null;
+        DesignEdited made = await WrittenAsync(request, reply, name, write);
+        IdeErrors.Observe(UpdateAsync());
+        return made;
+    }
+
+    /// <summary>An edit's answer written into the designer file, where the file is still as the edit read it.</summary>
+    private async Task<DesignEdited> WrittenAsync(FormDesignRequest request, FormDesignReply? reply, string name, Func<string, IReadOnlyList<XamlFileChange>, Task<string?>> write)
+    {
+        (TextSnapshot Text, DesignerSource Source)? read = null;
+        lock (sent)
+        {
+            if (sent.Remove(request.Sequence, out (TextSnapshot, DesignerSource) asked))
+            {
+                read = asked;
+            }
+        }
+        if (reply is null || read is not { } made)
+        {
+            return new DesignEdited(Refusals.DesignChangedMeanwhile, null);
+        }
+        if (reply.Kind == PreviewKinds.Error || reply.Changes is not { Count: > 0 } changes)
+        {
+            return new DesignEdited(reply.Message ?? Refusals.DesignChangesNothing, null);
+        }
+        string was = made.Text.ToString();
+        string? refused = await write(name, [new XamlFileChange(Files.Designer, now => now == was ? DesignerWriter.Edits(now, made.Source, changes) : [])]);
+        return new DesignEdited(refused, reply.Chosen is [var chosen, ..] ? chosen : null);
     }
 
     /// <summary>The designer started again on the project's newest build, the last frame shown until the new one comes.</summary>
@@ -187,11 +274,25 @@ public sealed class FormDesign : IDisposable
         {
             return;
         }
+        if (answer.Toolbox is { } toolbox)
+        {
+            Toolbox = toolbox;
+            ToolboxChanged?.Invoke(this, EventArgs.Empty);
+        }
+        if (editing is { } edit && answer.Sequence >= edit.Sequence)
+        {
+            // The edit's own answer, or a later one that took its place: either ends the wait, a refusal drawing nothing.
+            edit.Answer.TrySetResult(answer.Sequence == edit.Sequence ? answer : null);
+            if (answer.Kind == PreviewKinds.Error && answer.Sequence == edit.Sequence)
+            {
+                return;
+            }
+        }
         (TextSnapshot Text, DesignerSource Source)? read;
         lock (sent)
         {
             read = sent.TryGetValue(answer.Sequence, out (TextSnapshot, DesignerSource) found) ? found : null;
-            foreach (int answered in sent.Keys.Where(k => k <= answer.Sequence).ToList())
+            foreach (int answered in sent.Keys.Where(k => k < answer.Sequence || k == answer.Sequence && editing?.Sequence != k).ToList())
             {
                 sent.Remove(answered);
             }
@@ -252,6 +353,7 @@ public sealed class FormDesign : IDisposable
     {
         host?.Dispose();
         host = null;
+        editing?.Answer.TrySetResult(null);
     }
 
     public void Dispose()
@@ -264,3 +366,6 @@ public sealed class FormDesign : IDisposable
         Stop();
     }
 }
+
+/// <summary>What an edit of a design came to: why it was not made (null once written), and the component to choose after it.</summary>
+public sealed record DesignEdited(string? Refused, string? Chosen);

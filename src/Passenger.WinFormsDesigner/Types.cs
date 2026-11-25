@@ -15,6 +15,8 @@ internal sealed class Types
     };
 
     private readonly IReadOnlyList<string> scopes;
+    private readonly IReadOnlyList<string> around;
+    private readonly IReadOnlyList<string> usings;
     private readonly Dictionary<string, Type?> found = new(StringComparer.Ordinal);
     private readonly Assembly? project;
 
@@ -23,12 +25,43 @@ internal sealed class Types
     public Types(string? space, IReadOnlyList<string> usings, Assembly? project)
     {
         this.project = project;
-        List<string> around = [];
+        List<string> outward = [];
         for (string? at = space; at is { Length: > 0 }; at = at.LastIndexOf('.') is var dot and > 0 ? at[..dot] : null)
         {
-            around.Add(at);
+            outward.Add(at);
         }
-        scopes = [.. around, .. usings, string.Empty];
+        around = outward;
+        this.usings = [.. usings.Distinct(StringComparer.Ordinal)];
+        scopes = [.. around, .. this.usings, string.Empty];
+    }
+
+    /// <summary>A type as the code is to name it: its keyword, else its name alone where the class's namespaces or its usings
+    /// bring that name to this type and no other (two usings bringing it make it ambiguous), else its full name.</summary>
+    public string Spelled(Type type)
+    {
+        if (Keywords.FirstOrDefault(k => k.Value == type).Key is { } keyword)
+        {
+            return keyword;
+        }
+        if (type.IsArray)
+        {
+            return $"{Spelled(type.GetElementType()!)}[]";
+        }
+        string full = (type.FullName ?? type.Name).Replace('+', '.');
+        if (type.IsGenericType || type.Namespace is not { Length: > 0 } space)
+        {
+            return full;
+        }
+        string local = full[(space.Length + 1)..];
+        foreach (string outer in around)
+        {
+            if (Full($"{outer}.{local}") is { } shadowing)
+            {
+                return shadowing == type ? local : full;
+            }
+        }
+        List<Type> brought = [.. usings.Select(u => Full($"{u}.{local}")).OfType<Type>().Distinct()];
+        return brought is [var only] && only == type || brought.Count == 0 && Full(local) == type ? local : full;
     }
 
     /// <summary>A type by its written name; null where none of that name is found.</summary>

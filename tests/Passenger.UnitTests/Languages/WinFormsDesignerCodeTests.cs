@@ -6,7 +6,8 @@ namespace Passenger.UnitTests.Languages;
 
 /// <summary>Windows Forms designer code read as its designer writes it, from the file's parse alone: where each component of
 /// a class's InitializeComponent is made and each of its properties set, which the Live Visual Tree links a running app's
-/// controls to, and each value as the code writes it, which the designer makes.</summary>
+/// controls to, and each value as the code writes it, which the designer makes; and a design's change written into it,
+/// touching nothing else.</summary>
 public sealed class WinFormsDesignerCodeTests
 {
     [Fact]
@@ -15,7 +16,112 @@ public sealed class WinFormsDesignerCodeTests
         Cases.All(
             ("each component's creation and property lines are found whether the code names them with this. or not, and a nested class's by its holder's name",
                 Places),
-            ("each value is read as the code writes it, its names left for the designer, and a form's fields, usings and base with it", Values));
+            ("each value is read as the code writes it, its names left for the designer, and a form's fields, usings and base with it", Values),
+            ("an added control's creation, section under its comment, Controls.Add and field go where the designer writes them, a moved one's line is written again, and the file's line breaks are kept",
+                Added),
+            ("a deleted control takes its lines, its section's comment and its field with it, a statement first in a section goes under that section's comment, and a class declaring no component's field takes the first past its #endregion",
+                Deleted));
+    }
+
+    /// <summary>A form of a button and a panel as .NET's designer writes it, with CRLF line breaks.</summary>
+    private const string Form = """
+        namespace Shop
+        {
+            partial class MainForm
+            {
+                #region Windows Form Designer generated code
+
+                private void InitializeComponent()
+                {
+                    ok = new Button();
+                    Side = new Panel();
+                    SuspendLayout();
+                    // 
+                    // ok
+                    // 
+                    ok.Location = new Point(12, 12);
+                    ok.Name = "ok";
+                    ok.Click += OnOk;
+                    // 
+                    // Side
+                    // 
+                    Side.Location = new Point(12, 48);
+                    Side.Name = "Side";
+                    // 
+                    // MainForm
+                    // 
+                    ClientSize = new Size(300, 200);
+                    Controls.Add(Side);
+                    Controls.Add(ok);
+                    Name = "MainForm";
+                    ResumeLayout(false);
+                }
+
+                #endregion
+
+                private Button ok;
+                private Panel Side;
+            }
+        }
+
+        """;
+
+    private static void Added()
+    {
+        string text = Form.ReplaceLineEndings("\r\n");
+        DesignerSource read = DesignerCode.Read(text, "Shop.MainForm") ?? throw new InvalidOperationException("MainForm's designer code was not read");
+        string made = Applied(text, DesignerWriter.Edits(text, read,
+        [
+            new DesignerChange(DesignerChangeKinds.Insert, 1) { Text = "label1 = new Label();" },
+            new DesignerChange(DesignerChangeKinds.Replace, 3) { Text = "ok.Location = new Point(20, 12);" },
+            new DesignerChange(DesignerChangeKinds.Insert, 7) { Text = "label1.AutoSize = true;", Header = "label1" },
+            new DesignerChange(DesignerChangeKinds.Insert, 7) { Text = "label1.Name = \"label1\";" },
+            new DesignerChange(DesignerChangeKinds.Insert, 8) { Text = "Controls.Add(label1);" },
+            new DesignerChange(DesignerChangeKinds.Declare, 1) { Text = "private Label label1;" },
+        ]));
+        string expected = Form.Replace("            Side = new Panel();\n", "            Side = new Panel();\n            label1 = new Label();\n")
+            .Replace("ok.Location = new Point(12, 12);", "ok.Location = new Point(20, 12);")
+            .Replace("            Side.Name = \"Side\";\n", "            Side.Name = \"Side\";\n            // \n            // label1\n            // \n            label1.AutoSize = true;\n            label1.Name = \"label1\";\n")
+            .Replace("            ClientSize = new Size(300, 200);\n", "            ClientSize = new Size(300, 200);\n            Controls.Add(label1);\n")
+            .Replace("        private Panel Side;\n", "        private Panel Side;\n        private Label label1;\n");
+        Assert.Equal(expected.ReplaceLineEndings("\r\n"), made);
+    }
+
+    private static void Deleted()
+    {
+        DesignerSource read = DesignerCode.Read(Form, "Shop.MainForm") ?? throw new InvalidOperationException("MainForm's designer code was not read");
+        string made = Applied(Form, DesignerWriter.Edits(Form, read,
+        [
+            new DesignerChange(DesignerChangeKinds.Remove, 0),
+            new DesignerChange(DesignerChangeKinds.Remove, 3),
+            new DesignerChange(DesignerChangeKinds.Remove, 4),
+            new DesignerChange(DesignerChangeKinds.Remove, 5),
+            new DesignerChange(DesignerChangeKinds.Remove, 10),
+            new DesignerChange(DesignerChangeKinds.Insert, 6) { Text = "Side.BackColor = Color.Red;", Before = true },
+            new DesignerChange(DesignerChangeKinds.Undeclare, 0),
+        ]));
+        string expected = Form.Replace("            ok = new Button();\n", string.Empty)
+            .Replace("            // \n            // ok\n            // \n            ok.Location = new Point(12, 12);\n            ok.Name = \"ok\";\n            ok.Click += OnOk;\n", string.Empty)
+            .Replace("            Side.Location", "            Side.BackColor = Color.Red;\n            Side.Location")
+            .Replace("            Controls.Add(ok);\n", string.Empty)
+            .Replace("        private Button ok;\n", string.Empty);
+        Assert.Equal(expected, made);
+        string bare = "namespace Shop;\n\npartial class Empty\n{\n    #region Windows Form Designer generated code\n\n    private void InitializeComponent()\n    {\n        SuspendLayout();\n        ResumeLayout(false);\n    }\n\n    #endregion\n}\n";
+        DesignerSource empty = DesignerCode.Read(bare, "Shop.Empty") ?? throw new InvalidOperationException("Empty's designer code was not read");
+        Assert.Equal(bare.Replace("    #endregion\n", "    #endregion\n\n    private Button button1;\n"),
+            Applied(bare, DesignerWriter.Edits(bare, empty, [new DesignerChange(DesignerChangeKinds.Declare, -1) { Text = "private Button button1;" }])));
+    }
+
+    /// <summary>A text with edits made to it, the last first.</summary>
+    private static string Applied(string text, IReadOnlyList<Passenger.Text.TextEdit> edits)
+    {
+        Assert.NotEmpty(edits);
+        string made = text;
+        foreach (Passenger.Text.TextEdit edit in edits.OrderByDescending(e => e.Start))
+        {
+            made = made[..edit.Start] + edit.Text + made[(edit.Start + edit.Length)..];
+        }
+        return made;
     }
 
     private static void Values()

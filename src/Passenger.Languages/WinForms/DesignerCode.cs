@@ -8,10 +8,13 @@ using Passenger.Languages.CSharp;
 namespace Passenger.Languages.WinForms;
 
 /// <summary>A Windows Forms class's designer code as read from one file: its namespace, the namespaces its usings bring, its
-/// fields with their types as written, where its InitializeComponent is named, and that method's statements in order.</summary>
+/// fields with their types as written, where its InitializeComponent is named, and that method's statements in order;
+/// with where each statement and each field's declaration lies (<see cref="DesignerLayout"/>), which a change is written by.</summary>
 public sealed record DesignerSource(string? Namespace, IReadOnlyList<string> Usings, IReadOnlyList<DesignerField> Fields, int Method,
     IReadOnlyList<DesignerStatement> Statements)
 {
+    public DesignerLayout Layout { get; init; } = DesignerLayout.None;
+
     /// <summary>Where a field is made; the method's name for the class's root (an empty field); null for a field it does not make.</summary>
     public int? MadeAt(string field) => field.Length == 0 ? Method
         : Statements.FirstOrDefault(s => s.Act == DesignerAct.Create && s.Target == field)?.At;
@@ -20,6 +23,16 @@ public sealed record DesignerSource(string? Namespace, IReadOnlyList<string> Usi
     /// for FlatAppearance); null where nothing sets it.</summary>
     public int? SetAt(string field, string property) => Statements.FirstOrDefault(s => s.Act == DesignerAct.Assign && s.Target == field && s.Member is { } member
         && (member == property || (member.StartsWith(property, StringComparison.Ordinal) && member.Length > property.Length && member[property.Length] == '.')))?.At;
+}
+
+/// <summary>Where a class's designer code lies in its file: each statement's span (its first character to past its last), each
+/// field's declaration's span with whether it declares that field alone, the method's body between its braces, where a new
+/// component's field goes in a class declaring none (past an <c>#endregion</c> after the method, else before the class's
+/// closing brace), and whether the code qualifies the class's members with <c>this.</c>.</summary>
+public sealed record DesignerLayout(IReadOnlyList<(int Start, int End)> Statements, IReadOnlyList<(int Start, int End, bool Alone)> Fields, int BodyStart, int BodyEnd,
+    int FieldsEnd, bool Qualified)
+{
+    public static DesignerLayout None { get; } = new([], [], 0, 0, 0, false);
 }
 
 /// <summary>Windows Forms designer code read as its designer writes it, from the file's parse (<see cref="CSharpParsing"/>):
@@ -39,11 +52,20 @@ public static class DesignerCode
             {
                 continue;
             }
-            List<DesignerField> fields = [.. type.Members.OfType<FieldDeclarationSyntax>()
-                .SelectMany(f => f.Declaration.Variables.Select(v => new DesignerField(v.Identifier.ValueText, Written(f.Declaration.Type))))];
+            List<FieldDeclarationSyntax> declared = [.. type.Members.OfType<FieldDeclarationSyntax>()];
+            List<DesignerField> fields = [.. declared.SelectMany(f => f.Declaration.Variables.Select(v => new DesignerField(v.Identifier.ValueText, Written(f.Declaration.Type))))];
             HashSet<string> named = [.. fields.Select(f => f.Name)];
-            IEnumerable<StatementSyntax> statements = method.Body?.Statements ?? [];
-            return new DesignerSource(NamespaceOf(type), UsingsOf(type), fields, method.Identifier.SpanStart, [.. statements.Select(s => Statement(s, named))]);
+            IReadOnlyList<StatementSyntax> statements = method.Body?.Statements ?? [];
+            List<DesignerStatement> read = [.. statements.Select(s => Statement(s, named))];
+            int qualified = statements.Count(s => s is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax { Left: MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax } } });
+            DesignerLayout layout = new(
+                [.. statements.Select(s => (s.SpanStart, s.Span.End))],
+                [.. declared.SelectMany(f => f.Declaration.Variables.Select(_ => (f.SpanStart, f.Span.End, f.Declaration.Variables.Count == 1)))],
+                method.Body is { } body ? body.OpenBraceToken.Span.End : method.Span.End,
+                method.Body is { } closed ? closed.CloseBraceToken.SpanStart : method.Span.End,
+                FieldsEnd(type, method),
+                qualified * 2 > read.Count(s => s.Act is DesignerAct.Create or DesignerAct.Assign));
+            return new DesignerSource(NamespaceOf(type), UsingsOf(type), fields, method.Identifier.SpanStart, read) { Layout = layout };
         }
         return null;
     }
@@ -65,6 +87,20 @@ public static class DesignerCode
         return Classes(root).FirstOrDefault(type => FullName(type) == fullName && type.BaseList is { Types.Count: > 0 }) is { BaseList: { } bases } declared
             ? (Written(bases.Types[0].Type), UsingsOf(declared))
             : null;
+    }
+
+    /// <summary>Where a new component's field goes in a class that declares none: past the end of the line of an
+    /// <c>#endregion</c> after the method, as the designer writes it there, else before the class's closing brace.</summary>
+    private static int FieldsEnd(ClassDeclarationSyntax type, MethodDeclarationSyntax method)
+    {
+        foreach (SyntaxTrivia trivia in type.DescendantTrivia(type.Span).Where(t => t.SpanStart > method.Span.End))
+        {
+            if (trivia.IsKind(SyntaxKind.EndRegionDirectiveTrivia))
+            {
+                return trivia.GetStructure() is EndRegionDirectiveTriviaSyntax region ? region.EndOfDirectiveToken.Span.End : trivia.Span.End;
+            }
+        }
+        return type.CloseBraceToken.SpanStart;
     }
 
     private static IEnumerable<ClassDeclarationSyntax> Classes(CompilationUnitSyntax root) =>
@@ -129,7 +165,9 @@ public static class DesignerCode
                     Arguments = [.. invoked.ArgumentList.Arguments.Select(a => Value(a.Expression))],
                 };
         }
-        return new DesignerStatement(DesignerAct.Other, string.Empty, null, statement.SpanStart);
+        // A local the code declares (a resource manager) is the designer's own: its name tells it from another.
+        return new DesignerStatement(DesignerAct.Other, statement is LocalDeclarationStatementSyntax { Declaration.Variables: [var local] } ? local.Identifier.ValueText : string.Empty, null,
+            statement.SpanStart);
     }
 
     /// <summary>An expression without the parentheses around it.</summary>

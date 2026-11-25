@@ -392,6 +392,8 @@ public partial class MainWindow
                 return;
             case Tables.CellGrid table when table.Execute(action):
                 return;
+            case Visual inDesign when inDesign.FindAncestorOfType<WinForms.FormDesignPane>(includeSelf: true) is { } design && DesignTakes(design, action):
+                return;
             case CodeEditor editor when editor != Editors.CodeEditor:
                 if (editor.FindAncestorOfType<ToolWindows.OutputView>()?.EditInput(editor, action) != true)
                 {

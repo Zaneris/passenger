@@ -547,6 +547,11 @@ public partial class MainWindow : IdeWindow
             e.Handled = true;
             return;
         }
+        if (!shifted && (focused as Visual)?.FindAncestorOfType<WinForms.FormDesignPane>(includeSelf: true) is { } design && DesignTakes(design, action))
+        {
+            e.Handled = true;
+            return;
+        }
         if (EditorWithKeys(window, focused) is not { } editor)
         {
             if (!shifted && (ExplorerTakes(action) || CommitTakes(action, focused) || (focused as Visual)?.FindAncestorOfType<ReleaseNotesView>(includeSelf: true)?.Move(action) == true))

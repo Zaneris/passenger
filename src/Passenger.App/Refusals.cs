@@ -40,6 +40,32 @@ public static class Refusals
     /// <summary>A form's design asked for off Windows, where Windows Forms draws nothing.</summary>
     public const string FormsDrawOnWindows = "Windows Forms draws only on Windows, where its designer runs";
 
+    /// <summary>A design's action asked for while no form's design has the keys, or the Toolbox while none is shown.</summary>
+    public const string NoFormDesign = "No form's design is shown: open a form's code or its .Designer.cs and show its design";
+
+    /// <summary>A design's action on its chosen components while none is chosen.</summary>
+    public const string NoComponentChosen = "No component of the form is chosen: click one in its design";
+
+    /// <summary>Delete, Bring to Front or Send to Back asked of the form itself.</summary>
+    public const string FormItselfStays = "The form itself is neither deleted nor put in front of or behind anything";
+
+    /// <summary>An edit of a design asked for while the designer makes the last one.</summary>
+    public const string DesignerBusy = "The designer is still making the last change";
+
+    /// <summary>The form's code changed (or the designer started again) while the designer made an edit, which it then wrote nowhere.</summary>
+    public const string DesignChangedMeanwhile = "The form's code changed while the designer worked: make the change again";
+
+    /// <summary>An edit of a design that the form's code says nothing of (a control moved to where it stood).</summary>
+    public const string DesignChangesNothing = "That changes nothing the form's code says";
+
+    /// <summary>Undo or Redo in a form's design with nothing of its file's to take back or make again.</summary>
+    public const string NothingToUndo = "Nothing of the form's code to undo";
+
+    public const string NothingToRedo = "Nothing of the form's code to redo";
+
+    /// <summary>The Toolbox asked for in a folder with no Windows Forms project.</summary>
+    public const string NoFormsProject = "No Windows Forms project is open";
+
     /// <summary>The folder open is not trusted, so Passenger runs none of its code (<see cref="WorkspaceTrust"/>): no build,
     /// run, debug, test, profile, restore, Hot Reload, C# language server or previewer of its.</summary>
     public const string Untrusted = WorkspaceTrust.Untrusted;
@@ -426,7 +452,7 @@ public static class Refusals
     public const string NoStepDefinitions = "The open folder holds no Reqnroll or SpecFlow project";
 
     /// <summary>Live Visual Tree, in a folder holding no app Passenger's inspector looks into, with none inspected now.</summary>
-    public const string NoInspectedApp = "The open folder holds no Avalonia, WPF, .NET MAUI or Godot app, and no app is inspected";
+    public const string NoInspectedApp = "The open folder holds no Avalonia, WPF, Windows Forms, .NET MAUI or Godot app, and no app is inspected";
 
     /// <summary>Set Next Statement asked of a program whose debugger cannot move where a paused thread goes on (a Godot game's
     /// GDScript).</summary>
