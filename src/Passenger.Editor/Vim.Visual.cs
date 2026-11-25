@@ -910,6 +910,14 @@ public sealed partial class Vim
                 return r with { Cursor = text.GetLineStart(runLast) };
             }
         }
+        if (!inner && n > 1 && VimMotions.LineOf(text, r.Cursor) is { Length: > 0 } passed && r.Cursor == passed.End
+            && passed.EndIncludingBreak < text.Length && text[passed.EndIncludingBreak] is ' ' or '\t'
+            && LastOpeningBlank(text, passed.EndIncludingBreak) is var opening && opening + 1 < text.Length && text[opening + 1] is not ('\n' or '\r')
+            && VimTextObjects.Of(text, opening + 1, "s", inner: true, 2 * n - 1, breakEnds) is { } counted && counted.End > opening + 1)
+        {
+            // Past its line's end before blanks opening the next, as counts sentences as is takes them, the white between in.
+            return r with { Cursor = VimMotions.StepBack(text, OwnLine(text, counted).End) };
+        }
         if ((inner || n == 1) && VimMotions.LineOf(text, r.Cursor) is { Length: > 0 } past && r.Cursor == past.End
             && past.EndIncludingBreak < text.Length && text[past.EndIncludingBreak] is ' ' or '\t')
         {
