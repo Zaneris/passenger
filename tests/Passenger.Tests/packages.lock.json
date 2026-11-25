@@ -311,11 +311,6 @@
         "resolved": "14.4.0.200",
         "contentHash": "lCY77jIIBi1nDne3V0OEDanbCTxxdDbeaR+cXD1/k9MuyfFXy7MLPGbi4iXvVhV1LBBAV/sWLR1wbqSNOedbiQ=="
       },
-      "K4os.Compression.LZ4": {
-        "type": "Transitive",
-        "resolved": "1.1.11",
-        "contentHash": "RNvJw0UGkedPhCqVBNIogtfQebY+bQt0PN7xDbVe5LWLra0ZEqPfjPSl7iStj3rgDnkqkkTTpm+vCX3hU1qKmA=="
-      },
       "MessagePack": {
         "type": "Transitive",
         "resolved": "2.5.307",
@@ -865,6 +860,7 @@
           "HarfBuzzSharp": "[14.4.0.200, )",
           "HarfBuzzSharp.NativeAssets.Linux": "[14.4.0.200, )",
           "ICSharpCode.Decompiler": "[11.2.0.10050, )",
+          "K4os.Compression.LZ4": "[1.3.8, )",
           "Microsoft.Azure.Cosmos": "[3.64.0, )",
           "Microsoft.Data.SqlClient": "[7.1.2, )",
           "Microsoft.Data.Sqlite": "[11.0.0, )",
@@ -1172,6 +1168,12 @@
         "requested": "[11.2.0.10050, )",
         "resolved": "11.2.0.10050",
         "contentHash": "H8cD1Sast2Zkex1RxdUiZvCmc1ZZ8Fkf+Mfs9WYzlPq74zW6xqMmZgip9l0rt5z9akh1fnSUg72hIGtClEI4zw=="
+      },
+      "K4os.Compression.LZ4": {
+        "type": "CentralTransitive",
+        "requested": "[1.3.8, )",
+        "resolved": "1.3.8",
+        "contentHash": "LhwlPa7c1zs1OV2XadMtAWdImjLIsqFJPoRcIWAadSRn0Ri1DepK65UbWLPmt4riLqx2d40xjXRk0ogpqNtK7g=="
       },
       "Microsoft.Azure.Cosmos": {
         "type": "CentralTransitive",

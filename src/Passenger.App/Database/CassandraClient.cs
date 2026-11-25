@@ -198,7 +198,9 @@ internal static class CassandraClient
             .WithSocketOptions(new SocketOptions().SetConnectTimeoutMillis(10000).SetReadTimeoutMillis(30000))
             .WithQueryTimeout(30000)
             // The explorer reads the schema's tables itself, so the driver needn't read every keyspace's at each connection.
-            .WithMetadataSyncOptions(new MetadataSyncOptions().SetMetadataSyncEnabled(false));
+            .WithMetadataSyncOptions(new MetadataSyncOptions().SetMetadataSyncEnabled(false))
+            // Rows come compressed, as every Cassandra since 2.0 sends them asked.
+            .WithCompression(CompressionType.LZ4);
         if (DatabaseKinds.Value(connection, "Username", "User") is { } user)
         {
             builder = builder.WithCredentials(user, DatabaseKinds.Value(connection, "Password") ?? string.Empty);

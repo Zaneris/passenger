@@ -67,6 +67,9 @@
     <PackageReference Include="StackExchange.Redis" />
     <PackageReference Include="AWSSDK.DynamoDBv2" />
     <PackageReference Include="CassandraCSharpDriver" />
+    <!-- The Cassandra driver's LZ4, taken at the version Directory.Packages.props gives, which would otherwise stay at the
+         older one the driver names. -->
+    <PackageReference Include="K4os.Compression.LZ4" />
     <PackageReference Include="SSH.NET" />
     <PackageReference Include="Avalonia.Desktop" />
     <!-- Avalonia.Headless names this package, though nothing of it is read: the window draws in Passenger's own Inter
