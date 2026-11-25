@@ -33,6 +33,16 @@ public class VersionRangeTests
             Assert.True(VersionRange.Parse("1.0.0-*") is { Floating: true, Min: "1.0.0-0" });
             Assert.True(VersionRange.Parse("1.0.0-beta.*")!.Contains("1.0.0-beta.3"));
         }),
+        ("restore takes for a floating version only what its star lets vary and for an interval what it holds", () =>
+        {
+            VersionRange major = VersionRange.Parse("10.*")!;
+            Assert.True(major.Takes("10.1.0") && major.Takes("10.0.0") && !major.Takes("11.0.0") && !major.Takes("10.2.0-beta.1"),
+                "10.* is taken to take 11.0.0 or a prerelease, or not 10.1.0");
+            Assert.True(VersionRange.Parse("1.2.*")!.Takes("1.2.9") && !VersionRange.Parse("1.2.*")!.Takes("1.3.0"));
+            Assert.True(VersionRange.Parse("1.0.0-rc.*")!.Takes("1.0.0-rc.2") && VersionRange.Parse("1.0.0-rc.*")!.Takes("1.0.0") && !VersionRange.Parse("1.0.0-rc.*")!.Takes("1.0.1"));
+            Assert.True(VersionRange.Parse("*-*")!.Takes("12.0.0-preview.1") && VersionRange.Parse("1.*-*")!.Takes("1.4.0-beta") && !VersionRange.Parse("1.*-*")!.Takes("2.0.0"));
+            Assert.True(!VersionRange.Parse("[14.0.0]")!.Takes("15.0.0") && VersionRange.Parse("[14.0.0]")!.Takes("14.0.0") && VersionRange.Parse("[1.0, 2.0)")!.Takes("1.5.0"));
+        }),
         ("text that is no range reads as none", () =>
         {
             Assert.Null(VersionRange.Parse(""));

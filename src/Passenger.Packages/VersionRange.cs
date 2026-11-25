@@ -14,6 +14,9 @@ public sealed record VersionRange(string? Min, bool MinIncluded, string? Max, bo
     /// <summary>Whether it floats: restore takes the newest version where its star stands.</summary>
     public bool Floating { get; init; }
 
+    /// <summary>A floating version as written ("8.*", "1.0.0-beta.*"); null for any other range.</summary>
+    public string? Float { get; init; }
+
     /// <summary>Whether it is one version alone, a pin ("[8.0.0]").</summary>
     public bool IsExact => !Floating && Min is not null && Max is not null && MinIncluded && MaxIncluded && VersionOrder.Instance.Compare(Min, Max) == 0;
 
@@ -44,9 +47,50 @@ public sealed record VersionRange(string? Min, bool MinIncluded, string? Max, bo
         {
             string least = range[..star].TrimEnd('.');
             least = least.Length == 0 ? "0" : least.EndsWith('-') ? $"{least}0" : least;
-            return new VersionRange(least, true, null, false) { Floating = true };
+            return new VersionRange(least, true, null, false) { Floating = true, Float = range };
         }
         return new VersionRange(range, true, null, false) { Bare = true };
+    }
+
+    /// <summary>Whether restore may resolve it to a version: one in the interval, or for a floating version one its star
+    /// lets vary, the numbers before it the same ("8.*" takes 8.1.0, never 9.0.0), and a prerelease only where it floats a
+    /// label ("8.*-*") or names its start ("1.0.0-rc.*" takes 1.0.0-rc.2 and 1.0.0).</summary>
+    public bool Takes(string version)
+    {
+        if (Float is not { } written)
+        {
+            return Contains(version);
+        }
+        (string release, string? label) = Parts(version);
+        (string floatRelease, string? floatLabel) = Parts(written);
+        string[] wanted = floatRelease.Split('.');
+        string[] has = release.Split('.');
+        for (int i = 0; i < Math.Max(wanted.Length, has.Length); i++)
+        {
+            string want = i < wanted.Length ? wanted[i] : "0";
+            string part = i < has.Length ? has[i] : "0";
+            if (want.IndexOf('*', StringComparison.Ordinal) is int star and >= 0)
+            {
+                if (!part.StartsWith(want[..star], StringComparison.Ordinal))
+                {
+                    return false;
+                }
+                break;
+            }
+            if (!(int.TryParse(want, out int a) && int.TryParse(part, out int b) ? a == b : want.Equals(part, StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+        }
+        return label is null || floatLabel is { } floated && label.StartsWith(floated.TrimEnd('*'), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>A version's release and its prerelease label (null where it has none), its build metadata left out.</summary>
+    private static (string Release, string? Label) Parts(string version)
+    {
+        string plain = version.Split('+')[0].Trim();
+        int dash = plain.IndexOf('-', StringComparison.Ordinal);
+        return dash < 0 ? (plain, null) : (plain[..dash], plain[(dash + 1)..]);
     }
 
     /// <summary>Whether a version is in it; a floating one holds every version from its least.</summary>

@@ -34,6 +34,13 @@ public sealed record InstalledVersion(string? Framework, string? Given, string? 
     /// <summary>Whether the project gives a range or a floating version, whose version in force its restore says.</summary>
     public bool IsRanged => Range is { Bare: false, IsExact: false };
 
+    /// <summary>Whether a move to <paramref name="version"/> keeps to what the project gives: any version where it gives a
+    /// bare one (that or later) or none, else only one its range or floating version takes.</summary>
+    public bool Takes(string version) => Range is not { Bare: false } range || range.Takes(version);
+
+    /// <summary>The newest of <paramref name="newestFirst"/> that every framework's reference takes; null where none is.</summary>
+    public static string? Newest(IEnumerable<string> newestFirst, IReadOnlyList<InstalledVersion> at) => newestFirst.FirstOrDefault(v => at.All(r => r.Takes(v)));
+
     /// <summary>What a change of every framework's reference to <paramref name="version"/> is: an update where it raises
     /// a version in force (a floating one's least before it is restored) and lowers none, a downgrade where it lowers one
     /// and raises none, both where it does each, else none.</summary>
@@ -56,8 +63,24 @@ public sealed record InstalledVersion(string? Framework, string? Given, string? 
     private static int? Order(string version, InstalledVersion at) =>
         (at.Version ?? at.Range?.Min) is { } now ? VersionOrder.Instance.Compare(version, now) : null;
 
-    /// <summary>The version a change to a bare <paramref name="version"/> writes: pinned alone ("[9.0.0]") where the
-    /// project pins every framework's reference, so a change never turns a pin into a minimum unasked; else as given.</summary>
-    public static string Written(string version, IReadOnlyList<InstalledVersion> at) =>
-        at.Count > 0 && at.All(v => v.IsPinned) && VersionRange.Parse(version) is { Bare: true, Min: { } bare } ? $"[{bare}]" : version;
+    /// <summary>The version a change to a bare <paramref name="version"/> writes, so a change never turns what the project
+    /// gives into a minimum unasked: pinned alone ("[9.0.0]") where it pins every framework's reference; where every one
+    /// gives the same range taking the version, a floating version as it is (its restore takes the version) and an interval
+    /// from the version on ("[1.0.0, 2.0.0)" moved to 1.1.0 is "[1.1.0, 2.0.0)"); else as given.</summary>
+    public static string Written(string version, IReadOnlyList<InstalledVersion> at)
+    {
+        if (at.Count == 0 || VersionRange.Parse(version) is not { Bare: true, Min: { } bare })
+        {
+            return version;
+        }
+        if (at.All(v => v.IsPinned))
+        {
+            return $"[{bare}]";
+        }
+        if (at.Select(v => v.Given).Distinct(StringComparer.Ordinal).Count() == 1 && at[0] is { Given: { } given, Range: { Bare: false } range } && range.Takes(bare))
+        {
+            return range.Floating ? given : $"[{bare}, {range.Max}{(range.Max is not null && range.MaxIncluded ? ']' : ')')}";
+        }
+        return version;
+    }
 }

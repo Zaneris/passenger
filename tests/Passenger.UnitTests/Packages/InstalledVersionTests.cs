@@ -62,12 +62,24 @@ public class InstalledVersionTests
             Assert.Equal(PackageMove.Update, InstalledVersion.Move("8.0.5", [new InstalledVersion(null, "8.*")]));
             Assert.Equal(PackageMove.None, InstalledVersion.Move("8.0.5", [new InstalledVersion(null, "8.*", "8.0.5")]));
         }),
-        ("a change of a project that pins every framework writes a pin and of any other the version as given", () =>
+        ("the newest version offered is the newest every framework's range or floating version takes and any for a bare one", () =>
+        {
+            string[] feed = ["15.0.0", "14.1.0", "14.0.0", "11.0.0", "10.2.0", "10.0.0"];
+            Assert.Equal("14.0.0", InstalledVersion.Newest(feed, [new InstalledVersion(null, "[14.0.0]")]));
+            Assert.Equal("10.2.0", InstalledVersion.Newest(feed, [new InstalledVersion(null, "10.*", "10.0.0")]));
+            Assert.Equal("14.1.0", InstalledVersion.Newest(feed, Of("[14.0.0, 15.0.0)", "14.0.0")));
+            Assert.Equal("15.0.0", InstalledVersion.Newest(feed, Of("10.0.0", null)));
+            Assert.Null(InstalledVersion.Newest(feed, Of("[12.0.0]")));
+        }),
+        ("a change keeps a pin a pin, a floating version that takes it as it is and an interval from it on, else writes it as given", () =>
         {
             Assert.Equal("[9.0.0]", InstalledVersion.Written("9.0.0", [new InstalledVersion(null, "[8.0.0]")]));
             Assert.Equal("[9.0.0]", InstalledVersion.Written("9.0.0", Of("[8.0.0]", "[8.0.1]")));
             Assert.Equal("9.0.0", InstalledVersion.Written("9.0.0", Of("[8.0.0]", "8.0.1")));
             Assert.Equal("[9.0.0, )", InstalledVersion.Written("[9.0.0, )", [new InstalledVersion(null, "[8.0.0]")]));
+            Assert.Equal("[1.1.0, 2.0.0)", InstalledVersion.Written("1.1.0", Of("[1.0.0, 2.0.0)", "[1.0.0, 2.0.0)")));
+            Assert.Equal("10.*", InstalledVersion.Written("10.2.0", [new InstalledVersion(null, "10.*", "10.0.0")]));
+            Assert.Equal("11.0.0", InstalledVersion.Written("11.0.0", [new InstalledVersion(null, "10.*", "10.0.0")]));
         }));
 
 }

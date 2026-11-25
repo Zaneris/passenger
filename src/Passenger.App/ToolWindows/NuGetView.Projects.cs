@@ -20,7 +20,7 @@ public enum ProjectOrder
 }
 
 /// <summary>Which of the chosen package's projects are listed: every one, those referencing it, those not (whether or not
-/// another brings it in), or those whose version a newer one offered would update.</summary>
+/// another brings it in), or those whose version a newer one offered, and taken by their ranges, would update.</summary>
 public enum ProjectsShown
 {
     All,
@@ -122,14 +122,14 @@ public sealed partial class NuGetView
             .Select(p => (p, row.Installed.GetValueOrDefault(p.Path) ?? [], row.Transitive.GetValueOrDefault(p.Path) ?? []))];
         all = each.Length;
         string typed = ProjectQuery.Trim();
-        string? newest = versions.FirstOrDefault();
         IEnumerable<(ProjectModel Project, IReadOnlyList<InstalledVersion> At, IReadOnlyList<TransitiveUse> Brought)> shown = each
             .Where(p => typed.Length == 0 || p.Project.Name.Contains(typed, StringComparison.OrdinalIgnoreCase))
             .Where(p => projectsShown switch
             {
                 ProjectsShown.Installed => p.At.Count > 0,
                 ProjectsShown.NotInstalled => p.At.Count == 0,
-                ProjectsShown.WithUpdate => p.At.Count > 0 && newest is not null && InstalledVersion.Move(newest, p.At) is PackageMove.Update or PackageMove.UpdateAndDowngrade,
+                ProjectsShown.WithUpdate => p.At.Count > 0 && InstalledVersion.Newest(versions, p.At) is { } newest
+                    && InstalledVersion.Move(newest, p.At) is PackageMove.Update or PackageMove.UpdateAndDowngrade,
                 _ => true,
             });
         IOrderedEnumerable<(ProjectModel Project, IReadOnlyList<InstalledVersion> At, IReadOnlyList<TransitiveUse> Brought)> ordered = projectOrder switch

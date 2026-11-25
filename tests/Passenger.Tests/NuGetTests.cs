@@ -76,6 +76,11 @@ public sealed class NuGetTests : IDisposable
             t.Updates_checks_on_entry_filters_locally_and_selects_the_latest_version();
             OpenWindows.CloseAll();
         });
+        Flow.StepApart<NuGetTests>("updates offers only what a references range or floating version takes and says what it holds back", t =>
+        {
+            t.Updates_offers_only_what_a_references_range_or_floating_version_takes_and_says_what_it_holds_back();
+            OpenWindows.CloseAll();
+        });
         Flow.StepApart<NuGetTests>("the solution rows menu manages the solution's packages across every project", t =>
         {
             t.The_solution_rows_menu_manages_the_solutions_packages_across_every_project();
@@ -290,6 +295,50 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The Updates tab reads a reference's version as NuGet does: a pin ("[1.0.0]") is offered nothing newer and a
+    /// floating version ("1.*", restored as 1.0.0) the newest its star lets vary, 1.2.0, never 2.0.0; each row says on its
+    /// "held back" tag which range keeps 2.0.0 out, the count and Update All take the floating one's update alone, and the
+    /// pinned package chosen offers its pin, nothing to update.</summary>
+    private void Updates_offers_only_what_a_references_range_or_floating_version_takes_and_says_what_it_holds_back()
+    {
+        const string Pinned = "Passenger.Pinned";
+        const string Floating = "Passenger.Floating";
+        feed.Add(Pinned, "1.0.0");
+        feed.Add(Pinned, "2.0.0");
+        feed.Add(Floating, "1.0.0");
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Pinned}\" Version=\"[1.0.0]\" /><PackageReference Include=\"{Floating}\" Version=\"1.*\" /></ItemGroup>");
+        Restore.Run(lib);
+        feed.Add(Floating, "1.2.0");
+        feed.Add(Floating, "2.0.0");
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().SingleOrDefault(b => Equals(b.Content, "Updates"))
+            ?? throw new Xunit.Sdk.XunitException("NuGet has no Updates tab"));
+        Ui.Landed(() => nuget.CanUpdateAll || nuget.Status.StartsWith("No updates", StringComparison.Ordinal), $"the check for updates: {nuget.Status}");
+        string Said(PackageRow row) => $"{row.Id} {row.Version} -> {row.MovesTo ?? "none"} ({row.HeldBack ?? "nothing held back"})";
+        Assert.Equal([$"{Floating} 1.0.0 -> 1.2.0 (2.0.0 is outside 1.* in Lib)", $"{Pinned} 1.0.0 -> none (2.0.0 is outside [1.0.0] in Lib)"],
+            nuget.Rows.Select(Said));
+        Assert.True(nuget.Status == "1 update available" && nuget.CanUpdateAll,
+            $"With 1.* able to move to 1.2.0 and [1.0.0] to nothing, the Updates tab says \"{nuget.Status}\" and Update All is {(nuget.CanUpdateAll ? "on" : "off")}");
+
+        PackageRow pinned = nuget.Rows.Single(r => r.Id == Pinned);
+        Border? held = Tag(Ui.Row(nuget.PackageList, pinned), "held back");
+        Assert.True(held is { IsVisible: true } && ToolTip.GetTip(held) as string == pinned.HeldBack,
+            $"{Pinned}'s row is {(held?.IsVisible == true ? $"tagged held back, telling \"{ToolTip.GetTip(held)}\"" : "not tagged held back")}");
+        ChoosePackage(nuget, pinned);
+        Assert.True(nuget.ChosenVersion == "1.0.0" && Labels(nuget, "Lib").SequenceEqual(["Remove"]),
+            $"The pinned package chosen offers {nuget.ChosenVersion} as [{string.Join(", ", Labels(nuget, "Lib"))}], not its pin with nothing to update");
+
+        // Update All keeps 1.* as written, its restore taking 1.2.0, and the pin as it was.
+        string before = File.ReadAllText(lib);
+        Ui.Click(nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update All")));
+        Ui.Landed(() => !nuget.IsBusy && nuget.Rows.Count == 2 && nuget.Rows.All(r => r.MovesTo is null), $"the floating version's update: {nuget.Status}\n{nuget.Log}");
+        Assert.True(File.ReadAllText(lib) == before, $"Update All rewrote 1.* or [1.0.0]:\n{File.ReadAllText(lib)}\n{nuget.Log}");
+        Assert.Equal([$"{Floating} 1.2.0 -> none (2.0.0 is outside 1.* in Lib)", $"{Pinned} 1.0.0 -> none (2.0.0 is outside [1.0.0] in Lib)"],
+            nuget.Rows.Select(Said));
+        window.Close();
+    }
+
     /// <summary>The solution's row offers Manage NuGet Packages for Solution, which a project's row does not: it shows the
     /// NuGet window over every project, a project it was narrowed to let go.</summary>
     private void The_solution_rows_menu_manages_the_solutions_packages_across_every_project()
@@ -393,7 +442,7 @@ public sealed class NuGetTests : IDisposable
         const string Other = "Passenger.Other";
         feed.Add(Other, "1.0.0");
         feed.Add(Other, "1.2.0");
-        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"[1.0.0]\" /></ItemGroup>");
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"[1.0.0, 2.0.0)\" /></ItemGroup>");
         string app = Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Other}\" Version=\"1.0.0\" /></ItemGroup>");
         string beforeLib = File.ReadAllText(lib);
         string beforeApp = File.ReadAllText(app);
@@ -408,7 +457,7 @@ public sealed class NuGetTests : IDisposable
         Ui.Click(nuget.GetLogicalDescendants().OfType<Button>().SingleOrDefault(b => Equals(b.Content, "Update All"))
             ?? throw new Xunit.Sdk.XunitException("Updates has no Update All button"));
         Ui.Landed(() => !nuget.IsBusy && nuget.Rows.Count == 0, $"all packages updated: {nuget.Status}\n{nuget.Log}");
-        Assert.True(File.ReadAllText(lib).Contains("[1.1.0]", StringComparison.Ordinal), $"Lib was not updated: {nuget.Status}\n{nuget.Log}");
+        Assert.True(File.ReadAllText(lib).Contains("Version=\"[1.1.0, 2.0.0)\"", StringComparison.Ordinal), $"Lib was not updated within its range: {nuget.Status}\n{nuget.Log}");
         Assert.Contains("1.2.0", File.ReadAllText(app), StringComparison.Ordinal);
         MigrationsTests.UndoFromExplorer(window, lib);
         Assert.Equal(beforeLib, File.ReadAllText(lib));
@@ -434,7 +483,7 @@ public sealed class NuGetTests : IDisposable
 
     private void Update_all_rechecks_shared_central_versions_and_preserves_one_undo()
     {
-        File.WriteAllText(Path.Combine(folder, "Directory.Packages.props"), $"<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup><ItemGroup><PackageVersion Include=\"{Id}\" Version=\"[1.0.0]\" /></ItemGroup></Project>");
+        File.WriteAllText(Path.Combine(folder, "Directory.Packages.props"), $"<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup><ItemGroup><PackageVersion Include=\"{Id}\" Version=\"[1.0.0, 2.0.0)\" /></ItemGroup></Project>");
         Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" /></ItemGroup>");
         Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" /></ItemGroup>");
         string props = Path.Combine(folder, "Directory.Packages.props");
@@ -443,7 +492,8 @@ public sealed class NuGetTests : IDisposable
         NuGetView nuget = window.NuGet;
         Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Updates")));
         Ui.Click(nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update All")));
-        Assert.True(File.ReadAllText(props).Contains("[1.1.0]", StringComparison.Ordinal), $"Central version was not updated: {nuget.Status}\n{nuget.Log}\n{File.ReadAllText(props)}");
+        Assert.True(File.ReadAllText(props).Contains("Version=\"[1.1.0, 2.0.0)\"", StringComparison.Ordinal),
+            $"Central version was not updated within its range: {nuget.Status}\n{nuget.Log}\n{File.ReadAllText(props)}");
         Assert.Empty(nuget.Rows);
         MigrationsTests.UndoFromExplorer(window, lib);
         Assert.Equal(original, File.ReadAllText(props));
