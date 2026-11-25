@@ -1200,6 +1200,12 @@ public static class Refusals
     /// <summary>Update in All Projects where every project referencing the package has the chosen version or a newer one.</summary>
     public static string UpdatedEverywhere(string id, string version) => $"Every project referencing {id} has {version} or a newer version";
 
+    /// <summary>An action on the NuGet window's updates while another of its tabs is shown, or it is not built yet.</summary>
+    public const string UpdatesNotShown = "Open the Updates tab first";
+
+    /// <summary>Update Selected with no row chosen in the NuGet window's Updates tab.</summary>
+    public const string NoUpdateChosen = "No update is chosen in the Updates tab";
+
     /// <summary>A changed file's Go to Source or Delete where the change deleted it.</summary>
     public const string FileDeleted = "The file is deleted";
 

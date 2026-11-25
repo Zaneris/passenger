@@ -148,6 +148,8 @@ public sealed partial class NuGetView : DockPanel
         refresh.Margin = new Thickness(Gaps.Small, 0, 0, 0);
         updateAll = new Button { Content = "Update All", Focusable = false, IsVisible = false, IsEnabled = false, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         updateAll.Click += (_, _) => ActionRequested?.Invoke(this, AppActions.NuGetUpdateAll);
+        updateSelected = new Button { Content = "Update Selected", Focusable = false, IsVisible = false, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
+        updateSelected.Click += (_, _) => ActionRequested?.Invoke(this, AppActions.NuGetUpdateSelected);
         typing = new Debounce(Pause, SearchAsync);
         search.TextChanged += (_, _) =>
         {
@@ -163,14 +165,18 @@ public sealed partial class NuGetView : DockPanel
         (projectSearch, projectFilters, projectsHeader) = MakeProjectsHeader();
         // Inside the search, so the bar's parts keep their room at the window's least width.
         filters.Inside(search);
-        Border top = ToolBars.Top(new ToolFlow { Margin = new Thickness(Gaps.Normal, Gaps.Hair), Children = { search, chooser, prerelease, refresh, updateAll, status } });
+        Border top = ToolBars.Top(new ToolFlow { Margin = new Thickness(Gaps.Normal, Gaps.Hair), Children = { search, chooser, prerelease, refresh, updateSelected, updateAll, status } });
 
         list = new ListBox
         {
             Classes = { StyleClasses.Tree },
         };
         ReusedRows.Use(list, Row);
-        list.SelectionChanged += (_, _) => IdeErrors.Observe(ShowAsync());
+        list.SelectionChanged += (_, _) =>
+        {
+            EnableActions();
+            IdeErrors.Observe(ShowAsync());
+        };
         ListMenus.Attach(list, RowMenu);
         details = new StackPanel { Spacing = Gaps.Normal, Margin = new Thickness(ListRow.TextStart, Gaps.Wide) };
         log = new TextBox
@@ -318,6 +324,7 @@ public sealed partial class NuGetView : DockPanel
     {
         updateAll.IsEnabled = CanUpdateAll;
         ToolTip.SetTip(updateAll, $"Update all {Numbers.Said(updateRows.Count)} packages across their projects, including results hidden by search");
+        ToolButtons.Grey(updateSelected, UpdateSelectedWhyNot, SelectedTip());
         foreach ((Button button, bool putsIn, string? tip) in lineActions)
         {
             ToolButtons.Grey(button, WhyNot(putsIn), tip);
@@ -328,9 +335,12 @@ public sealed partial class NuGetView : DockPanel
         }
     }
 
-    /// <summary>A package row's own menu: Update in All Projects on one some project references.</summary>
-    private IReadOnlyList<Control> RowMenu() => Selected is { IsInstalled: true } ?
-        [ListMenus.Item("Update in All Projects", () => ActionRequested?.Invoke(this, AppActions.NuGetUpdateEverywhere), UpdateEverywhereWhyNot)] : [];
+    /// <summary>A package row's own menu: in the Updates tab, Update Selected; in the Packages tab, Update in All Projects
+    /// on one some project references.</summary>
+    private IReadOnlyList<Control> RowMenu() =>
+        showsUpdates ? ChosenUpdates.Count > 0 ? [ListMenus.Item("Update Selected", () => ActionRequested?.Invoke(this, AppActions.NuGetUpdateSelected), UpdateSelectedWhyNot)] : []
+        : Selected is { IsInstalled: true } ? [ListMenus.Item("Update in All Projects", () => ActionRequested?.Invoke(this, AppActions.NuGetUpdateEverywhere), UpdateEverywhereWhyNot)]
+        : [];
 
     /// <summary>Why a project's action can't run: another package change under way, or, for one that puts the chosen version
     /// in, the audit's feeds not having said yet whether it is vulnerable; null where it can.</summary>
@@ -425,6 +435,8 @@ public sealed partial class NuGetView : DockPanel
         }
         showsUpdates = false;
         updateAll.IsVisible = false;
+        updateSelected.IsVisible = false;
+        list.SelectionMode = SelectionMode.Single;
         Show(packages);
         if (wasUpdates)
         {
@@ -440,6 +452,8 @@ public sealed partial class NuGetView : DockPanel
         showsUpdates = false;
         asking?.Cancel();
         updateAll.IsVisible = false;
+        updateSelected.IsVisible = false;
+        list.SelectionMode = SelectionMode.Single;
         Show(Sources);
         IdeErrors.Observe(ReloadSourcesAsync(list: false));
     }

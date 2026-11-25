@@ -42,6 +42,10 @@ public partial class MainWindow
             WhyNot = c => NeedsFolder(c) ?? (nuget is { } shown ? shown.UpdateEverywhereWhyNot : Refusals.NoPackageChosen),
             Words = ["Update Package Everywhere", "Update in Every Project"],
         });
+        actions.Add(new IdeAction(AppActions.NuGetUpdateSelected, "Update Selected NuGet Packages", "NuGet", _ => IdeErrors.Observe(NuGet.UpdateSelectedAsync()))
+        {
+            WhyNot = c => NeedsFolder(c) ?? (nuget is { } shown ? shown.UpdateSelectedWhyNot : Refusals.UpdatesNotShown),
+        });
     }
 
     /// <summary>Manage NuGet Packages for Solution: the NuGet window shown (behind, for an agent) on its Packages tab over

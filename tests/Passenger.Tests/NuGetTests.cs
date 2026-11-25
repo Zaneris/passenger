@@ -101,6 +101,11 @@ public sealed class NuGetTests : IDisposable
             t.Update_in_all_projects_moves_one_package_in_every_project_referencing_an_older_version_and_one_undo_restores_them();
             OpenWindows.CloseAll();
         });
+        Flow.StepApart<NuGetTests>("update selected moves the updates chosen alone in every project and one undo restores them", t =>
+        {
+            t.Update_selected_moves_the_updates_chosen_alone_in_every_project_and_one_undo_restores_them();
+            OpenWindows.CloseAll();
+        });
         Flow.StepApart<NuGetTests>("updates reports partial feed failure instead of claiming every package is current", t =>
         {
             t.Updates_reports_partial_feed_failure_instead_of_claiming_every_package_is_current();
@@ -458,6 +463,44 @@ public sealed class NuGetTests : IDisposable
             $"Update in All Projects with every project at 1.1.0 is {(everywhere.IsEnabled ? "enabled" : "greyed")}, saying {ToolTip.GetTip(everywhere)}");
         MigrationsTests.UndoFromExplorer(window, lib);
         Assert.Equal((before.Lib, before.App, before.Tools), (File.ReadAllText(lib), File.ReadAllText(app), File.ReadAllText(tools)));
+        window.Close();
+    }
+
+    /// <summary>Update Selected in the Updates tab: two of its three updates chosen by a click and a Shift-click, each moved
+    /// in every project referencing it, the third left in both, one Undo taking both projects back.</summary>
+    private void Update_selected_moves_the_updates_chosen_alone_in_every_project_and_one_undo_restores_them()
+    {
+        const string Other = "Passenger.Other";
+        const string Third = "Passenger.Third";
+        feed.Add(Other, "1.0.0");
+        feed.Add(Other, "1.2.0");
+        feed.Add(Third, "1.0.0");
+        feed.Add(Third, "1.5.0");
+        Project("Lib", TestProjects.Framework,
+            $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.1\" /><PackageReference Include=\"{Other}\" Version=\"1.0.0\" /><PackageReference Include=\"{Third}\" Version=\"1.0.0\" /></ItemGroup>");
+        string app = Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.1\" /><PackageReference Include=\"{Other}\" Version=\"1.0.0\" /></ItemGroup>");
+        (string Lib, string App) before = (File.ReadAllText(lib), File.ReadAllText(app));
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Updates")));
+        Assert.Equal([Other, Third, Id], nuget.Rows.Select(r => r.Id));
+        Ui.Click(Ui.Row(nuget.PackageList, nuget.Rows[0]));
+        Ui.Click(Ui.Row(nuget.PackageList, nuget.Rows[1]), modifiers: Avalonia.Input.RawInputModifiers.Shift);
+        Assert.Equal([Other, Third], nuget.ChosenUpdates.Select(r => r.Id));
+        Button selected = nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update Selected"));
+        Assert.True(selected.IsEnabled && Equals(ToolTip.GetTip(selected), $"Update {Other} and {Third} across their projects, as one step of Undo"),
+            $"Update Selected is {(selected.IsEnabled ? "enabled" : "greyed")}, saying {ToolTip.GetTip(selected)}");
+        Ui.Click(selected);
+        Ui.Landed(() => !nuget.IsBusy && nuget.Rows.Select(r => r.Id).SequenceEqual([Id]), $"the updates chosen made: {nuget.Status}\n{nuget.Log}");
+        string libNow = File.ReadAllText(lib);
+        string appNow = File.ReadAllText(app);
+        Assert.True(nuget.Status == "Updated 3 package references" && libNow.Contains($"\"{Other}\" Version=\"1.2.0\"", StringComparison.Ordinal)
+            && libNow.Contains($"\"{Third}\" Version=\"1.5.0\"", StringComparison.Ordinal) && appNow.Contains($"\"{Other}\" Version=\"1.2.0\"", StringComparison.Ordinal),
+            $"Update Selected left Lib and App as\n{libNow}\n{appNow}\nsaying {nuget.Status}\n{nuget.Log}");
+        Assert.True(libNow.Contains($"\"{Id}\" Version=\"1.0.1\"", StringComparison.Ordinal) && appNow.Contains($"\"{Id}\" Version=\"1.0.1\"", StringComparison.Ordinal),
+            $"Update Selected moved {Id}, which was not chosen:\n{libNow}\n{appNow}");
+        MigrationsTests.UndoFromExplorer(window, lib);
+        Assert.Equal((before.Lib, before.App), (File.ReadAllText(lib), File.ReadAllText(app)));
         window.Close();
     }
 

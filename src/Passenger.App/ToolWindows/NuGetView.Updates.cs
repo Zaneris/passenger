@@ -8,6 +8,7 @@ namespace Passenger.App.ToolWindows;
 public sealed partial class NuGetView
 {
     private readonly Button updateAll;
+    private readonly Button updateSelected;
     private bool showsUpdates;
     private bool checkingUpdates;
     /// <summary>Whether a run of updates (<see cref="UpdateAsync"/>) is under way, whose changes' own ends say nothing.</summary>
@@ -18,14 +19,27 @@ public sealed partial class NuGetView
 
     public bool CanUpdateAll => showsUpdates && !checkingUpdates && !updatingMany && !model.IsBusy && updateRows.Count > 0;
 
-    public string? UpdateAllWhyNot => CanUpdateAll ? null : model.IsBusy || updatingMany ? Refusals.PackageChangeUnderWay
-        : checkingUpdates ? "Checking for updates" : !showsUpdates ? "Open the Updates tab first" : "No updates available";
+    public string? UpdateAllWhyNot => CanUpdateAll ? null : UpdatesWhyNot ?? "No updates available";
+
+    /// <summary>Why the Updates tab's rows can't be updated now: a package change under way, the tab not shown, or its
+    /// check still running; null where they can.</summary>
+    private string? UpdatesWhyNot => model.IsBusy || updatingMany ? Refusals.PackageChangeUnderWay
+        : checkingUpdates ? "Checking for updates" : !showsUpdates ? Refusals.UpdatesNotShown : null;
+
+    /// <summary>The updates chosen in the Updates tab, in the list's order; none in another tab.</summary>
+    public IReadOnlyList<PackageRow> ChosenUpdates => showsUpdates && list.SelectedItems is { } chosen ? [.. rows.Where(chosen.Contains)] : [];
+
+    /// <summary>Why Update Selected can't run: as <see cref="UpdatesWhyNot"/> says, or no update chosen; null where it can.</summary>
+    public string? UpdateSelectedWhyNot => UpdatesWhyNot ?? (ChosenUpdates.Count == 0 ? Refusals.NoUpdateChosen : null);
 
     public void ShowUpdates()
     {
         showsUpdates = true;
         picked = null;
         updateAll.IsVisible = true;
+        updateSelected.IsVisible = true;
+        // Several updates are chosen together here alone, to install as one.
+        list.SelectionMode = SelectionMode.Multiple;
         Show(packages);
         Hold(null);
         IdeErrors.Observe(RefreshAsync());
@@ -209,10 +223,34 @@ public sealed partial class NuGetView
             Hold(UpdateAllWhyNot);
             return;
         }
-        PackageUpdate[] targets = [.. updateRows.Where(r => r.UpdateVersion is not null).Select(r => new PackageUpdate(r.Id, r.UpdateVersion!, [.. r.Installed.Keys])),
-            .. updateRows.SelectMany(r => r.Fixes.Select(f => new PackageUpdate(r.Id, f.Value.Version, [f.Key]) { Frameworks = f.Value.Frameworks }))];
-        await UpdateAsync(targets, UpdateRun.All);
+        await UpdateAsync(Targets(updateRows), UpdateRun.All);
     }
+
+    /// <summary>Update Selected: the updates chosen in the Updates tab, each in every project its row moves, and their
+    /// fixes, as one command of Undo; every update not chosen left as it is.</summary>
+    public async Task UpdateSelectedAsync()
+    {
+        if (UpdateSelectedWhyNot is { } why)
+        {
+            Hold(why);
+            return;
+        }
+        IReadOnlyList<PackageRow> chosen = ChosenUpdates;
+        string named = ChosenNamed(chosen);
+        await UpdateAsync(Targets(chosen), new UpdateRun($"Update {named}", $"Updating {named}…", AppActions.NuGetUpdateSelected));
+    }
+
+    /// <summary>The updates chosen, by their packages' ids where they are few, else counted.</summary>
+    private static string ChosenNamed(IReadOnlyList<PackageRow> chosen) =>
+        chosen.Count is > 0 and <= 3 ? Plural.Listed([.. chosen.Select(r => r.Id)]) : Plural.Of(chosen.Count, "NuGet package");
+
+    /// <summary>What Update Selected tells on hover while it can run: the packages it updates.</summary>
+    private string SelectedTip() => $"Update {ChosenNamed(ChosenUpdates)} across their projects, as one step of Undo";
+
+    /// <summary>The Updates tab's rows as a run's moves: each row's update in the projects it moves, and its fixes.</summary>
+    private static PackageUpdate[] Targets(IReadOnlyList<PackageRow> rows) =>
+        [.. rows.Where(r => r.UpdateVersion is not null).Select(r => new PackageUpdate(r.Id, r.UpdateVersion!, [.. r.Installed.Keys])),
+            .. rows.SelectMany(r => r.Fixes.Select(f => new PackageUpdate(r.Id, f.Value.Version, [f.Key]) { Frameworks = f.Value.Frameworks }))];
 
     /// <summary>Why the chosen package can't be moved to the chosen version in every project referencing an older one
     /// (<see cref="UpdateEverywhereAsync"/>); null where it can.</summary>

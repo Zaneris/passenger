@@ -709,6 +709,7 @@ public static class AppActions
     public const string NuGetRefresh = "app.nuget.refresh";
     public const string NuGetUpdateAll = "app.nuget.updateAll";
     public const string NuGetUpdateEverywhere = "app.nuget.updateEverywhere";
+    public const string NuGetUpdateSelected = "app.nuget.updateSelected";
     public const string LiveTreeRefresh = "app.liveTree.refresh";
 
     // The breakpoints' windows, the window's to show.
