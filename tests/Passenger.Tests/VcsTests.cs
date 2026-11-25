@@ -148,8 +148,8 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>Update Project and Push as one flow, each step the check one test made in an instance of its own: Stop
     /// ending an update whose remote stalls with a commit running after it, a diverged branch merged where git is not
     /// told how and rebased where pull.rebase says, an uncommitted edit kept through both, a push asking the person for
-    /// a login, a new branch pushed to the only remote or asking which of several, and a checkout refused as git busy
-    /// while an update pulls.</summary>
+    /// a login, a new branch pushed to the only remote or asking which of several, a rewritten branch force pushed under a
+    /// lease, and a checkout refused as git busy while an update pulls.</summary>
     [AvaloniaFact]
     public void Update_push_and_pull_bring_the_upstream_in_as_git_is_told_ask_for_a_login_and_stop_when_asked()
     {
@@ -158,6 +158,7 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("update project with pull rebase rebases onto the upstream keeping an unrelated uncommitted edit", t => t.Update_project_with_pull_rebase_rebases_onto_the_upstream_keeping_an_unrelated_uncommitted_edit());
         Flow.StepApart<VcsTests>("push to a remote that asks for a login asks the person and goes once they sign in", t => t.Push_to_a_remote_that_asks_for_a_login_asks_the_person_and_goes_once_they_sign_in());
         Flow.StepApart<VcsTests>("push of a new branch goes to the only remote whatever its name and asks which of several", t => t.Push_of_a_new_branch_goes_to_the_only_remote_whatever_its_name_and_asks_which_of_several());
+        Flow.StepApart<VcsTests>("force push replaces a rewritten branch on the remote once agreed but never what someone pushed since", t => t.Force_push_replaces_a_rewritten_branch_on_the_remote_once_agreed_but_never_what_someone_pushed_since());
         Flow.StepApart<VcsTests>("a checkout asked for while update project pulls is refused as git busy and the update lands", t => t.A_checkout_asked_for_while_update_project_pulls_is_refused_as_git_busy_and_the_update_lands());
     }
 
@@ -1313,13 +1314,13 @@ public sealed partial class VcsTests : IDisposable
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         Ui.Settle();
 
-        Assert.True(window.Perform(AppActions.Push), window.Status);
+        PushAsked(window).Choose(force: false);
         Ui.ClickButton(LoginAsked(window, remote), "Cancel");
         Ui.Landed(() => window.Actions.Work.Of(AppActions.Push) is null, "the push's end once its login was cancelled");
         Assert.Equal($"Push failed: the login to {remote.Place} was cancelled", window.Status);
         Assert.Equal(0, remote.SignedIn);
 
-        Assert.True(window.Perform(AppActions.Push), window.Status);
+        Ui.ClickButton(PushAsked(window), "Push");
         GitQuestionDialog asked = LoginAsked(window, remote);
         asked.KeyTextInput(StandInGitRemote.User);
         Ui.Press(asked, "TAB");
@@ -1341,8 +1342,69 @@ public sealed partial class VcsTests : IDisposable
         return asked;
     }
 
+    /// <summary>A branch rewritten since it was pushed (amended, as a rebase rewrites it) is refused a plain Push, the Push
+    /// dialog saying so; Force Push asks first, leaving the remote as it was when declined, and replaces the remote's branch
+    /// once agreed, with a lease: a commit someone else pushed there since it was last fetched is never replaced.</summary>
+    private void Force_push_replaces_a_rewritten_branch_on_the_remote_once_agreed_but_never_what_someone_pushed_since()
+    {
+        string served = TestFolders.Create("git-served-");
+        TestGit.Run(served, "init", "-q", "--bare");
+        Git("remote", "add", "origin", served);
+        Git("push", "-q", "-u", "origin", "main");
+        string pushed = Git("rev-parse", "HEAD").Trim();
+        Git("commit", "-q", "--amend", "-m", "Rewritten");
+        MainWindow window = Open();
+        List<string> asked = [];
+        bool agree = false;
+        window.Confirm = (title, _, yes) =>
+        {
+            asked.Add($"{title}: {yes}");
+            return Task.FromResult(agree);
+        };
+
+        PushDialog refused = PushAsked(window);
+        Assert.Equal(["Rewritten"], refused.Outgoing.Select(c => c.Subject));
+        Assert.StartsWith("origin/main has 1 commit main lacks", refused.Rejected, StringComparison.Ordinal);
+        Ui.ClickButton(refused, "Push");
+        Ui.Landed(() => window.Status?.StartsWith("Push failed", StringComparison.Ordinal) == true, "the plain push of a rewritten branch refused");
+        Assert.Equal(pushed, TestGit.Run(served, "rev-parse", "main").Trim());
+
+        Ui.ClickButton(PushAsked(window), "Force Push");
+        Ui.Settle();
+        Assert.Equal(["Force Push: Force Push"], asked);
+        Assert.Equal(pushed, TestGit.Run(served, "rev-parse", "main").Trim());
+
+        agree = true;
+        Ui.ClickButton(PushAsked(window), "Force Push");
+        Ui.Landed(() => window.Status == "Force pushed main", "the force push once agreed");
+        Assert.Equal(Git("rev-parse", "HEAD").Trim(), TestGit.Run(served, "rev-parse", "main").Trim());
+
+        string elsewhere = TestFolders.Create("git-elsewhere-");
+        TestGit.Run(elsewhere, "clone", "-q", "-b", "main", served, ".");
+        TestGit.Run(elsewhere, "config", GitConfigKeys.UserEmail, "tests@passenger.invalid");
+        TestGit.Run(elsewhere, "config", "user.name", "Passenger Tests");
+        TestGit.Run(elsewhere, "commit", "-q", "--allow-empty", "-m", "Theirs");
+        TestGit.Run(elsewhere, "push", "-q", "origin", "main");
+        string theirs = TestGit.Run(elsewhere, "rev-parse", "HEAD").Trim();
+        Git("commit", "-q", "--amend", "-m", "Rewritten again");
+        Ui.ClickButton(PushAsked(window), "Force Push");
+        Ui.Landed(() => window.Status?.StartsWith("Force push failed", StringComparison.Ordinal) == true, "the force push refused by its lease");
+        Assert.Equal(theirs, TestGit.Run(served, "rev-parse", "main").Trim());
+        window.Close();
+    }
+
+    /// <summary>The Push dialog Push… opened, once it shows, held to the dialogs' rule.</summary>
+    private static PushDialog PushAsked(MainWindow window)
+    {
+        Assert.True(window.Perform(AppActions.Push), window.Status);
+        Ui.PumpUntil(() => window.PushCommits is { IsVisible: true }, "the Push dialog to show");
+        PushDialog asked = DialogButtonsTests.Check(window.PushCommits!);
+        Assert.Equal("Push Commits", asked.Title);
+        return asked;
+    }
+
     /// <summary>Push of a branch that tracks none goes to the repository's only remote whatever its name, the branch tracking
-    /// it there from then on; with several remotes the window asks which, and pushes to the one chosen.</summary>
+    /// it there from then on; with several remotes the Push dialog asks which, and pushes to the one chosen.</summary>
     private void Push_of_a_new_branch_goes_to_the_only_remote_whatever_its_name_and_asks_which_of_several()
     {
         string upstream = TestFolders.Create("git-upstream-");
@@ -1354,7 +1416,10 @@ public sealed partial class VcsTests : IDisposable
         MainWindow window = Open();
         Assert.Equal("feature", window.Vcs.Branch);
 
-        Assert.True(window.Perform(AppActions.Push), window.Status);
+        PushDialog first = PushAsked(window);
+        Assert.Empty(first.Remotes);
+        Assert.Equal(Git("log", "--format=%s").Split('\n', StringSplitOptions.RemoveEmptyEntries), first.Outgoing.Select(c => c.Subject));
+        Ui.ClickButton(first, "Push");
         Ui.Landed(() => window.Status == "Pushed feature", "the push to the only remote, upstream");
         Assert.Equal(Git("rev-parse", "feature").Trim(), TestGit.Run(upstream, "rev-parse", "feature").Trim());
         Assert.Equal("upstream/feature", Git("rev-parse", "--abbrev-ref", "feature@{upstream}").Trim());
@@ -1362,13 +1427,10 @@ public sealed partial class VcsTests : IDisposable
         Git("remote", "add", "other", other);
         Git("switch", "-q", "-c", "second");
         Ui.WaitFor(() => window.Vcs.Branch == "second", "the window to follow the checkout of second");
-        Assert.True(window.Perform(AppActions.Push), window.Status);
-        Ui.Settle();
-        ChoicePopup choosing = Assert.IsType<ChoicePopup>(window.Popup);
-        Assert.Equal(["other", "upstream"], choosing.Rows.Select(r => r.Label));
-        window.KeyTextInput("other");
-        Ui.Settle();
-        Ui.Press(window, "ENTER");
+        PushDialog choosing = PushAsked(window);
+        Assert.Equal(["other", "upstream"], choosing.Remotes);
+        choosing.Remote = "other";
+        Ui.ClickButton(choosing, "Push");
         Ui.Landed(() => window.Status == "Pushed second", "the push to the remote chosen, other");
         Assert.Equal(Git("rev-parse", "second").Trim(), TestGit.Run(other, "rev-parse", "second").Trim());
         Assert.Equal("other/second", Git("rev-parse", "--abbrev-ref", "second@{upstream}").Trim());

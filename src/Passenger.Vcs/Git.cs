@@ -1875,9 +1875,15 @@ public sealed partial class Git
 
     /// <summary>How many commits the branch has that its upstream lacks, and the upstream has that it lacks; null where it
     /// tracks none.</summary>
-    public async Task<(int Ahead, int Behind)?> DivergenceAsync()
+    public Task<(int Ahead, int Behind)?> DivergenceAsync() => DivergenceOfAsync("HEAD...@{upstream}");
+
+    /// <summary>As <see cref="DivergenceAsync"/>, of a local branch, checked out or not, and its upstream (named by the
+    /// branch's short name: git reads no @{upstream} after a full ref).</summary>
+    public Task<(int Ahead, int Behind)?> DivergenceAsync(BranchInfo branch) => DivergenceOfAsync($"refs/heads/{branch.Name}...{branch.Name}@{{upstream}}");
+
+    private async Task<(int Ahead, int Behind)?> DivergenceOfAsync(string range)
     {
-        GitResult counted = await RunAsync(Root, ["rev-list", "--left-right", "--count", "HEAD...@{upstream}", "--"], answers: [NotThere]);
+        GitResult counted = await RunAsync(Root, ["rev-list", "--left-right", "--count", range, "--"], answers: [NotThere]);
         string[] counts = counted.Output.Split('\t', StringSplitOptions.TrimEntries);
         return counted.Succeeded && counts.Length == 2
             && int.TryParse(counts[0], System.Globalization.CultureInfo.InvariantCulture, out int ahead)
@@ -2464,6 +2470,11 @@ public sealed partial class Git
             : new GitResult(1, string.Empty, "A detached head has no branch to push");
     }
 
+    /// <summary>What a force push adds to git's push, as Rider's Force Push does: the remote's branch replaced only where
+    /// it still stands where this repository last saw it (a lease on its remote-tracking branch), and only where the branch
+    /// has taken in what that was (git 2.30), so a fetch nobody integrated never lends the lease to commits nobody saw.</summary>
+    private static string[] Forcing(bool force) => force ? ["--force-with-lease", "--force-if-includes"] : [];
+
     /// <summary>Checks a branch out. What follows --end-of-options (here and wherever a name or a hash comes from outside) is
     /// a name, never an option, whoever gave it: an agent's "--orphan=x" is a branch git does not have, not an order to
     /// empty the working tree.</summary>
@@ -2534,11 +2545,24 @@ public sealed partial class Git
         RunAsync(Root, ["fetch", "--end-of-options", remote, $"{remoteBranch}:refs/heads/{local}"], cancel: cancel, asker: asker);
 
     /// <summary>A local branch pushed to the branch it tracks; or, when it tracks none, to <paramref name="remote"/> under its
-    /// own name, then tracked. Canceled, as <see cref="FetchUpstreamAsync"/>.</summary>
-    public Task<GitResult> PushBranchAsync(BranchInfo branch, string? remote = null, CancellationToken cancel = default, GitAsker? asker = null) => branch.UpstreamRemote is { } tracked && branch.UpstreamBranch is { } target
-        ? RunAsync(Root, ["push", "--end-of-options", tracked, $"refs/heads/{branch.Name}:{target}"], cancel: cancel, asker: asker)
-        : RunAsync(Root, ["push", "-u", "--end-of-options", remote ?? throw new ArgumentNullException(nameof(remote), $"{branch.Name} tracks no branch: the remote to push it to is named"),
+    /// own name, then tracked; forced, as <see cref="Forcing"/> says. Canceled, as <see cref="FetchUpstreamAsync"/>.</summary>
+    public Task<GitResult> PushBranchAsync(BranchInfo branch, string? remote = null, bool force = false, CancellationToken cancel = default, GitAsker? asker = null) => branch.UpstreamRemote is { } tracked && branch.UpstreamBranch is { } target
+        ? RunAsync(Root, ["push", .. Forcing(force), "--end-of-options", tracked, $"refs/heads/{branch.Name}:{target}"], cancel: cancel, asker: asker)
+        : RunAsync(Root, ["push", "-u", .. Forcing(force), "--end-of-options", remote ?? throw new ArgumentNullException(nameof(remote), $"{branch.Name} tracks no branch: the remote to push it to is named"),
             $"refs/heads/{branch.Name}:refs/heads/{branch.Name}"], cancel: cancel, asker: asker);
+
+    /// <summary>The commits a push of a local branch sends, newest first, at most this many: those its upstream lacks, or
+    /// where it tracks none, those no remote's branch has. No branch's name starts with a dash (git refuses one), so none reads as an option.</summary>
+    public Task<IReadOnlyList<CommitInfo>> OutgoingAsync(BranchInfo branch, int most = LogLength)
+    {
+        string local = $"refs/heads/{branch.Name}";
+        string[] arguments = ["log", "--topo-order", $"--max-count={most}", CommitFormat, local, "--not", branch.Upstream is null ? "--remotes" : $"{branch.Name}@{{upstream}}", "--"];
+        return BackgroundWork.Run<IReadOnlyList<CommitInfo>>(async () =>
+        {
+            using GitOutput log = await OutputOfAsync(Root, arguments);
+            return log.Succeeded ? Commits(log.Bytes) : [];
+        });
+    }
 
     /// <summary>The files that differ between a revision and the working tree (Show Diff with Working Tree), renames
     /// found, each by its path now, in their paths' order: those git does not track too, ignored ones left out, each added,

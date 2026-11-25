@@ -188,6 +188,9 @@ public sealed class BranchesPanel : DockPanel
 
     public event EventHandler<BranchInfo>? RenameRequested;
 
+    /// <summary>Push… of a local branch, which the window asks of in its Push dialog.</summary>
+    public event EventHandler<BranchInfo>? PushRequested;
+
     public event EventHandler<BranchInfo>? DeleteRequested;
 
     public event EventHandler<BranchInfo>? CompareRequested;
@@ -244,7 +247,7 @@ public sealed class BranchesPanel : DockPanel
         {
             string? notUpdated = WhyNotUpdate(branch);
             Add("Update", () => IdeErrors.Observe(vcs.UpdateBranchAsync(branch)), notUpdated);
-            Add("Push…", () => IdeErrors.Observe(vcs.PushBranchAsync(branch)), vcs.WhyNotRemote);
+            Add("Push…", () => PushRequested?.Invoke(this, branch), vcs.WhyNotRemote);
             Separate();
             Add("Rename…", () => RenameRequested?.Invoke(this, branch));
         }
