@@ -367,6 +367,7 @@ public sealed partial class CodeEditor
         }
         DrawLinks(context, text, view, gaps, from, y);
         DrawMarkers(context, view, gaps, from, y, gutter, width);
+        DrawFaded(context, view, gaps, from, y);
         if (!span.IsLast)
         {
             if (caretLines.Contains(line))
@@ -562,6 +563,17 @@ public sealed partial class CodeEditor
         {
             key.Add(markers[i].Range, start, end);
             key.Add((int)markers[i].Kind);
+        }
+        foreach (TextRange faded in decorations.Faded)
+        {
+            if (faded.Start > end)
+            {
+                break;
+            }
+            if (faded.End > start)
+            {
+                key.Add(faded, start, end);
+            }
         }
         if (span.IsLast)
         {

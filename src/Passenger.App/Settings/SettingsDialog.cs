@@ -434,6 +434,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.RestartOnRudeEdit);
         Add(Declared.WhenDebuggerStops);
         Add(Declared.ShowElapsedAtStops);
+        Add(Declared.GreyCodeAhead);
         Add(Declared.AskBeforeRerun);
         Add(Declared.ConsoleBufferKb);
         Add(Declared.Browser);

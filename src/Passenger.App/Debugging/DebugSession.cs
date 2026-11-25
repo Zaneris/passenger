@@ -1061,6 +1061,10 @@ public sealed class DebugSession
     public Task<TimelineResponse> TimelineAsync(int? threadId) =>
         connection.RequestAsync<TimelineResponse>(DapCommands.Timeline, new TimelineArguments(threadId));
 
+    /// <summary>What a stopped frame's method will do from where it stands: the code it won't run and the values ahead.</summary>
+    public Task<AheadResponse> AheadAsync(int frameId) =>
+        connection.RequestAsync<AheadResponse>(DapCommands.Ahead, new AheadArguments(frameId));
+
     /// <summary>A recorded moment as a past stop, its frames' sources named as a stop's are; one let go throws why.</summary>
     public async Task<SnapshotEvent> MomentAsync(int index)
     {

@@ -3625,6 +3625,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 exception = error.Message;
             }
         }
+        // What the stop's values say of the code ahead of it, as its editor fades it.
+        AheadResponse? ahead = frames.Count > 0 && frames[0].Source?.Path is not null ? await debugger.AheadOfAsync(session, frames[0]) : null;
+        string? aheadIn = frames.Count > 0 && frames[0].Source?.Path is { } file ? Relative(file) : null;
         return new DebugSnapshot(
             DebugState.Paused,
             session.StopReason,
@@ -3635,10 +3638,30 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             summary,
             exception)
         {
+            WontRun = ahead is { WontRun.Count: > 0 } && aheadIn is not null ? LinesOf(aheadIn, ahead.WontRun) : null,
+            ValuesAhead = ahead is { Values.Count: > 0 } && aheadIn is not null ? [.. ahead.Values.Select(v => $"{aheadIn}:{v.Line}: {v.Name} = {v.Value}")] : null,
             Elapsed = session.Ran is { } ran ? DebugController.Elapsed(ran) : null,
             BindingValues = shown ? await BindingValuesShownAsync() : null,
             Unbound = Unbound(),
         };
+    }
+
+    /// <summary>The lines of code a stop won't run, path:line, a run of lines path:first-last.</summary>
+    private static IReadOnlyList<string> LinesOf(string path, IReadOnlyList<DapAheadSpan> spans)
+    {
+        List<int> lines = [.. spans.SelectMany(s => Enumerable.Range(s.Line, Math.Max(1, s.EndLine - s.Line + 1))).Distinct().Order()];
+        List<string> said = [];
+        for (int i = 0; i < lines.Count;)
+        {
+            int first = lines[i];
+            while (i + 1 < lines.Count && lines[i + 1] == lines[i] + 1)
+            {
+                i++;
+            }
+            said.Add(lines[i] == first ? $"{path}:{first}" : $"{path}:{first}-{lines[i]}");
+            i++;
+        }
+        return said;
     }
 
     /// <summary>The breakpoints the programs debugged will not stop at, path:line: why, as Problems' Breakpoints lists them;
@@ -4909,6 +4932,13 @@ public sealed record DebugSnapshot(
 
     /// <summary>At a stop, how long the program ran to it, as its line in the editor says.</summary>
     public string? Elapsed { get; init; }
+
+    /// <summary>At a stop, the lines ahead in its method that the values it stands with say won't run, as the editor fades
+    /// them (path:line, path:first-last); none told past a condition only running code could answer.</summary>
+    public IReadOnlyList<string>? WontRun { get; init; }
+
+    /// <summary>At a stop, the values its locals will take on the lines ahead (path:line: name = value).</summary>
+    public IReadOnlyList<string>? ValuesAhead { get; init; }
 
     /// <summary>At a stop in a debugged Avalonia app, the binding values after the lines of the .axaml files the editors show,
     /// as the editor shows them (path:line: Property: value).</summary>

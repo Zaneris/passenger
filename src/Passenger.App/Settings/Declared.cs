@@ -577,6 +577,14 @@ public static class Declared
             "A chip after the line the program stopped at says how long it ran since its last continue, step or start, as Passenger "
             + "timed it, the debugger's own few milliseconds in it. On at first."));
 
+    public static readonly ToggleSetting GreyCodeAhead = new(s => s.GreyCodeAhead, (s, v) => s with { GreyCodeAhead = v },
+        new(D.RunPage, "Grey the code a stop won't run",
+            "debugger stop branch branches ahead predict prediction dead unreachable grey gray fade faded if else switch condition values ahead inline",
+            "At a stop, the code ahead in its method that the values it stands with say won't run is faded (an if's other branch, a "
+            + "switch's other sections, a loop that won't turn, what an early return skips), and the values its locals will take are "
+            + "shown after the lines ahead. Nothing of the program runs for it: a condition only a call could answer leaves the rest as "
+            + "it is. On at first."));
+
     public static readonly ToggleSetting AskBeforeRerun = new(s => s.AskBeforeRerun, (s, v) => s with { AskBeforeRerun = v },
         new(D.RunPage, "Ask before stopping a running configuration to start it again",
             "run debug profile again rerun restart running already stop confirm ask prompt question one copy instance accidental",

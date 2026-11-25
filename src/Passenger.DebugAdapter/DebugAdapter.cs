@@ -169,6 +169,11 @@ public sealed class DebugAdapter
                 },
                 m.ThreadId, m.At, ToProtocol(m.Place), m.Depth, m.Said))], timeline.Dropped, timeline.Recorded, timeline.Held.TotalMilliseconds, timeline.MostMoments, timeline.MostBytes);
         });
+        connection.Handle<AheadArguments, AheadResponse>(DapCommands.Ahead, async arguments =>
+            await Read(() => debugger.Ahead(arguments.FrameId)) is { } read
+                ? new AheadResponse([.. read.WontRun.Select(s => new DapAheadSpan(s.Line, s.Column, s.EndLine, s.EndColumn))],
+                    [.. read.Values.Select(v => new DapAheadValue(v.Line, v.Name, v.Value))], read.UnsureFrom)
+                : new AheadResponse([], [], null));
         connection.Handle<MomentArguments, SnapshotEvent>(DapCommands.Moment, async arguments =>
             await Read(() => debugger.MomentAt(arguments.Index)) is { } moment ? ToProtocol(moment)
                 : throw new DapException(DapCommands.Moment, $"Moment {arguments.Index} is no longer kept: the recording let it go with the oldest"));

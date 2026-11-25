@@ -15,6 +15,7 @@ public enum DecorationKind
     Bookmarks,
     Links,
     RowsAbove,
+    Faded,
 }
 
 /// <summary>What is drawn on one document's text for whoever shows it: its markers, inlay hints, folds, rows above lines,
@@ -63,6 +64,21 @@ public sealed class DocumentDecorations
 
     /// <summary>Text after lines' code.</summary>
     public IReadOnlyList<LineAnnotation> LineAnnotations => AnnotationsByLine.Items;
+
+    /// <summary>The ranges drawn faded as the owner sets them, in order of their starts; none once the text changes, until
+    /// the owner sets them again.</summary>
+    public IReadOnlyList<TextRange> Faded { get; private set; } = [];
+
+    /// <summary>Sets the ranges drawn faded for the text as it stands.</summary>
+    public void SetFaded(IReadOnlyList<TextRange> ranges)
+    {
+        if (ReferenceEquals(ranges, Faded) || ranges.Count == 0 && Faded.Count == 0)
+        {
+            return;
+        }
+        Faded = InOrder(ranges, static r => r.Start) ? ranges : [.. ranges.OrderBy(r => r.Start)];
+        Changed?.Invoke(this, DecorationKind.Faded);
+    }
 
     public LineOrdered<LineAnnotation> AnnotationsByLine { get; private set; } = NoAnnotations;
 
@@ -203,6 +219,8 @@ public sealed class DocumentDecorations
             return;
         }
         carried = change.Version;
+        // What the owner faded stood for the text before; the owner sets it again for the text as it stands.
+        Faded = [];
         if (Markers.Count > 0)
         {
             Markers = Markers.Through(change.Edits);

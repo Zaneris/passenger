@@ -137,6 +137,7 @@ public partial class MainWindow
         session.CSharp?.Hints = (next.ParameterHints, next.TypeHints);
         signposts?.Follow(next);
         session.Debug.ShowsElapsed = next.ShowElapsedAtStops;
+        session.Debug.GreysAhead = next.GreyCodeAhead;
         visualSettings = next;
     }
 

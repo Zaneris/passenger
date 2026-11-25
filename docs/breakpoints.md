@@ -94,3 +94,14 @@ return) above the recorded calls it ran in, each where it made the next call wit
 call, its values as they were then, which the editor's lines show as a stop's show its own. Step Forward past the newest
 moment comes back to the live stop. The Debug window's Timeline tab lists the moments, each under the call it ran in;
 Enter shows one. An agent lists them with `debug_state` of `timeline`.
+
+## The code ahead of a stop
+
+At a stop, Passenger's .NET debugger reads its top frame's method on from where it stands with the values the frame
+holds (locals, arguments, fields, constants and operators, read as a snapshot reads them, running none of the program's
+code), each branch taken as those values decide, and the editor fades the code it won't run: an if's other branch, a
+switch's other sections, a loop that won't turn, what an early return or a throw skips. The values its locals will take
+on the lines ahead are shown after those lines, as inline values are. A condition only a call could answer (a method, a
+property with a body) leaves the rest of the method as it is, never guessed. It is read again at every stop and step and
+cleared once the program runs on; Settings › Run's Grey the code a stop won't run turns it off. An agent's `debug_state`
+names the lines in `wontRun` and the values in `valuesAhead`.

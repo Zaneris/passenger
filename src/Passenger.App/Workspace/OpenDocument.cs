@@ -575,6 +575,14 @@ public sealed class OpenDocument : Observable
         set => Set(ref lineMarks, value);
     }
 
+    /// <summary>The ranges drawn faded, as its owner (the debugger's code a stop won't run) sets them; none once the text
+    /// changes.</summary>
+    public IReadOnlyList<TextRange> Faded
+    {
+        get => Decorations.Faded;
+        set => Decorations.SetFaded(value);
+    }
+
     /// <summary>The tests' run icons beside the test methods and classes it declares.</summary>
     public IReadOnlyList<TestMark> TestMarks
     {

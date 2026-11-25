@@ -264,6 +264,27 @@ public sealed partial class CodeEditor
         DrawShape(context, null, palette.PenOf(palette.SoftWrapSign, 1), sign, left, top);
     }
 
+    /// <summary>The ranges the document's owner fades (<see cref="DocumentDecorations.Faded"/>), drawn as unnecessary code is:
+    /// the background laid over them, half see-through.</summary>
+    private void DrawFaded(DrawingContext context, LineView view, Gap[] gaps, double left, double y)
+    {
+        RowSpan span = view.Span;
+        foreach (TextRange range in decorations.Faded)
+        {
+            if (range.Start > span.End || (!span.IsLast && range.Start == span.End))
+            {
+                break;
+            }
+            if (range.End <= span.Start)
+            {
+                continue;
+            }
+            double x1 = left + XWith(view, gaps, Math.Max(range.Start, span.Start) - span.Start);
+            double x2 = left + XWith(view, gaps, Math.Min(range.End, span.End) - span.Start, afterHints: false);
+            context.FillRectangle(palette.Faded, new Rect(x1, y, Math.Max(0, x2 - x1), metrics.LineHeight));
+        }
+    }
+
     /// <summary>The line under an error, a warning or a suggestion, each its own shape as well as its colour
     /// (<see cref="Underlines"/>); unnecessary code is faded by laying the background over it, half see-through.</summary>
     private void DrawMarkers(DrawingContext context, LineView view, Gap[] gaps, double left, double y, double clipLeft, double clipRight)

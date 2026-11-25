@@ -214,6 +214,9 @@ public sealed partial class CodeEditor : Control
 
     public void SetLineAnnotations(IReadOnlyList<LineAnnotation> annotations) => decorations.SetLineAnnotations(annotations);
 
+    /// <summary>The ranges drawn faded (<see cref="DocumentDecorations.Faded"/>).</summary>
+    public IReadOnlyList<TextRange> Faded => decorations.Faded;
+
     /// <summary>Reads decorations other than the ones shown, letting go of those if they were this editor's alone, and draws
     /// what they hold.</summary>
     private void Decorate(DocumentDecorations shown, bool owned)

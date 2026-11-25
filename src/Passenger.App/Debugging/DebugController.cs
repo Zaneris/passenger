@@ -3305,9 +3305,14 @@ public sealed partial class DebugController : IDisposable
         {
             view.Tree.Show(rows);
             view.SayMoved(null);
+            if (aheadShown is { } ahead && ahead.Frame.Id != current.Id)
+            {
+                aheadShown = null;
+            }
             ShowInlineValues(current, values);
             LocalsShown();
             await ShowPinsAsync();
+            await ShowAheadAsync(session, current, stop);
         }
     }
 
@@ -3390,10 +3395,14 @@ public sealed partial class DebugController : IDisposable
             if (document.Path != path)
             {
                 document.LineAnnotations = tip;
+                document.Faded = [];
                 continue;
             }
             int line = Current(document.Path, current.Line - 1);
             IReadOnlyList<LineAnnotation> inline = document.Syntax is { } syntax ? InlineValues.For(syntax.Current, line, values) : [];
+            // The code ahead a live stop won't run is faded, and the values its locals will take shown after their lines.
+            document.Faded = past ? [] : FadedAhead(document, current);
+            inline = past ? inline : [.. inline, .. ValuesAhead(document, current, line)];
             document.LineAnnotations = stopException is { } thrown && thrown.FrameId == current.Id
                 ? [new LineAnnotation(line, thrown.Text, LineAnnotationLook.ErrorOnGround), .. tip, .. inline]
                 : bindingStop is { } failed && bindingFrame == current.Id
@@ -3547,9 +3556,11 @@ public sealed partial class DebugController : IDisposable
     private void ClearInlineValues()
     {
         inlineShown = null;
+        aheadShown = null;
         foreach (OpenDocument document in editors.Documents)
         {
             document.LineAnnotations = [];
+            document.Faded = [];
         }
     }
 

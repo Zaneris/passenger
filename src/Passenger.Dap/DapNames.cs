@@ -4,7 +4,7 @@ namespace Passenger.Dap;
 /// for both ends, so a name one end misspells is a build error rather than a request the other never answers. Passenger's
 /// own extend the protocol: <see cref="ResolveStackFrame"/>, <see cref="HotReloadState"/>, <see cref="ApplyChanges"/>,
 /// <see cref="HotReloadRelease"/>, <see cref="Input"/>, <see cref="MarkObject"/>, <see cref="UnmarkObject"/>, <see cref="Record"/>,
-/// <see cref="Timeline"/> and <see cref="Moment"/>.</summary>
+/// <see cref="Timeline"/>, <see cref="Moment"/> and <see cref="Ahead"/>.</summary>
 [IdentifierHome]
 public static class DapCommands
 {
@@ -67,6 +67,9 @@ public static class DapCommands
 
     /// <summary>Passenger's own: a recorded moment as a past stop, its frames and values (<see cref="SnapshotEvent"/>'s).</summary>
     public const string Moment = "moment";
+
+    /// <summary>Passenger's own: the code a stop's frame won't run and the values ahead, from its values (<see cref="AheadResponse"/>).</summary>
+    public const string Ahead = "ahead";
 }
 
 /// <summary>The events Passenger's debug adapter tells the IDE, by the protocol's names, each written once for both ends.</summary>

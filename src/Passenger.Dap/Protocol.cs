@@ -616,6 +616,18 @@ public sealed record DapMoment(int Index, [property: IdentifierOf(typeof(DapMome
 /// <summary>Passenger's own request: a recorded moment, by its number, as a past stop.</summary>
 public sealed record MomentArguments(int Index);
 
+/// <summary>Passenger's own request: what a stopped frame's method will do from where it stands.</summary>
+public sealed record AheadArguments(int FrameId);
+
+/// <summary>The code a stopped frame's method won't run, from the values it stands with, running none of the program's code
+/// (lines and columns from one); the values its locals will take on the lines ahead; and the line from which it could no
+/// longer tell, none where it read on to the method's end. Empty for a frame not read (not the top one, or without symbols).</summary>
+public sealed record AheadResponse(IReadOnlyList<DapAheadSpan> WontRun, IReadOnlyList<DapAheadValue> Values, int? UnsureFrom);
+
+public sealed record DapAheadSpan(int Line, int Column, int EndLine, int EndColumn);
+
+public sealed record DapAheadValue(int Line, string Name, string Value);
+
 /// <summary>A breakpoint changed (bound, or moved), new or removed.</summary>
 public sealed record BreakpointEvent
 {

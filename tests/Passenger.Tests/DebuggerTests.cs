@@ -71,16 +71,22 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         return made;
     });
 
-    /// <summary>A breakpoint set with F9 stops the program with its locals, keeps to its code as lines are added and
-    /// removed above it (while paused too, and below line breaks only the compiler counts), says in its hover and in
-    /// Problems whether it is bound, and on a line holding a lambda acts on the statement or inside the lambda as it
-    /// is set; a key near the top of a long debugged file costs what it does in a short one.</summary>
+    /// <summary>A breakpoint set with F9 stops the program with its locals, greys the code ahead it won't run, keeps to its
+    /// code as lines are added and removed above it (while paused too, and below line breaks only the compiler counts),
+    /// says in its hover and in Problems whether it is bound, and on a line holding a lambda acts on the statement or inside
+    /// the lambda as it is set; a key near the top of a long debugged file costs what it does in a short one.</summary>
     [AvaloniaFact]
     public async Task A_breakpoint_stops_at_its_statement_as_lines_come_and_go_above_it_and_in_a_lambda_where_it_is_set()
     {
         await Flow.StepApartLivedAsync<DebuggerTests>("a breakpoint set with F9 stops the program there with its locals and the variables and frames menus copy them", () => new DebuggerTests(sum, sleeper, folders), t =>
         {
             t.A_breakpoint_set_with_F9_stops_the_program_there_with_its_locals_and_the_variables_and_frames_menus_copy_them();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a stop greys the branches ahead its values say won't run and shows the values ahead", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_stop_greys_the_branches_ahead_its_values_say_wont_run_and_shows_the_values_ahead();
             OpenWindows.CloseAll();
             return Task.CompletedTask;
         });
@@ -904,6 +910,43 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             OpenWindows.CloseAll();
             return Task.CompletedTask;
         });
+    }
+
+    /// <summary>A stop above an if/else and a switch whose conditions read a local fades the else, and the switch's other
+    /// sections, shows the value a local ahead will take, and leaves both branches of an if whose condition calls a method as
+    /// they are; an agent's debug_state names the lines faded.</summary>
+    private void A_stop_greys_the_branches_ahead_its_values_say_wont_run_and_shows_the_values_ahead()
+    {
+        Write("Program.cs", "int mode = 2;\nstring name = \"tea\";\nif (mode > 1)\n{\n    name = \"coffee\";\n}\nelse\n{\n    name = \"water\";\n}\n"
+            + "switch (mode)\n{\n    case 1:\n        name += \" one\";\n        break;\n    case 2:\n        name += \" two\";\n        break;\n    default:\n"
+            + "        name += \" many\";\n        break;\n}\nint doubled = mode * 2;\nif (Check(mode))\n{\n    Console.WriteLine(\"checked\");\n}\nelse\n{\n"
+            + "    Console.WriteLine(\"not\");\n}\nConsole.WriteLine($\"{name} {doubled}\");\n\nstatic bool Check(int value) => value > 0;\n");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Assert.True(window.Settings.GreyCodeAhead, "A stop does not grey the code ahead it won't run by default");
+        window.Debugger.Breakpoints.Toggle(Program, 2);
+        StartDebugging(window);
+        WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Paused, "the stop above the if");
+        Ui.WaitFor(() => editor.Faded.Count > 0, "the code the stop won't run faded");
+        string text = editor.Document.Snapshot.ToString();
+        string faded = string.Join(" | ", editor.Faded.Select(r => text.Substring(r.Start, r.Length)));
+        Assert.True(faded.Contains("water", StringComparison.Ordinal) && faded.Contains("one", StringComparison.Ordinal) && faded.Contains("many", StringComparison.Ordinal)
+            && !faded.Contains("coffee", StringComparison.Ordinal) && !faded.Contains("two", StringComparison.Ordinal)
+            && !faded.Contains("checked", StringComparison.Ordinal) && !faded.Contains("not", StringComparison.Ordinal),
+            $"The stop faded {faded}, where with mode 2 it is the else's water and the switch's one and many, and not either side of Check's if");
+        Assert.Contains(new LineAnnotation(22, "doubled: 4", LineAnnotationLook.Muted), editor.LineAnnotations);
+        Passenger.App.Mcp.DebugSnapshot told = (Passenger.App.Mcp.DebugSnapshot)Ui.Await(new Passenger.App.Mcp.PassengerTools(window).GetDebugState(), "the stop as an agent is told it");
+        Assert.True(told.WontRun is { } lines && Covered(lines, 9) && Covered(lines, 14) && !Covered(lines, 26),
+            $"debug_state said the lines {string.Join(", ", told.WontRun ?? [])} won't run, where they hold line 9's water and line 14's one, not line 26's checked");
+        Ui.Run(window, AppActions.StepOver);
+        Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && editor.Faded.Count > 0, "the code ahead faded again after the step");
+        Ui.Run(window, AppActions.Resume);
+        Ui.WaitFor(() => window.Debugger.Session?.State != DebugState.Paused && editor.Faded.Count == 0, "the faded code cleared as the program runs on");
+        window.Close();
+
+        // Whether an agent's path:line or path:first-last names a line.
+        static bool Covered(IReadOnlyList<string> said, int line) => said.Any(entry => entry[(entry.LastIndexOf(':') + 1)..].Split('-') is var bounds
+            && int.Parse(bounds[0], System.Globalization.CultureInfo.InvariantCulture) <= line && line <= int.Parse(bounds[^1], System.Globalization.CultureInfo.InvariantCulture));
     }
 
     /// <summary>F9 and Debug stop the program at the line with its locals, in a Debug window that shares a side pane, its

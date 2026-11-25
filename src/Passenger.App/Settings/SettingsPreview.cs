@@ -84,6 +84,7 @@ public sealed class SettingsPreview : IDisposable
         SignpostInheriting = Shown(from.SignpostInheriting, to.SignpostInheriting, saved.SignpostInheriting),
         SignpostAuthors = Shown(from.SignpostAuthors, to.SignpostAuthors, saved.SignpostAuthors),
         ShowElapsedAtStops = Shown(from.ShowElapsedAtStops, to.ShowElapsedAtStops, saved.ShowElapsedAtStops),
+        GreyCodeAhead = Shown(from.GreyCodeAhead, to.GreyCodeAhead, saved.GreyCodeAhead),
         SoftWrap = Shown(from.SoftWrap, to.SoftWrap, saved.SoftWrap),
         SoftWrapFiles = Shown(from.SoftWrapFiles, to.SoftWrapFiles, saved.SoftWrapFiles),
         SoftWrapIndent = Shown(from.SoftWrapIndent, to.SoftWrapIndent, saved.SoftWrapIndent),

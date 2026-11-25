@@ -12,6 +12,9 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     private static readonly int AfterCount = Debuggees.Line("DebuggableConsoleApp", "HitConditionClass.cs", "// breakpoint here");
     private static readonly int TestEnd = AfterCount + 1;
     private static readonly int MyMethodOpens = Debuggees.Line("DebuggableConsoleApp", "MyClass.cs", "public void MyMethod(long myParam, int myIntParam)") + 1;
+    private static readonly int NoneReturns = Debuggees.Line("DebuggableConsoleApp", "Exceptions.cs", "if (exceptionToThrow is ExceptionToThrow.None)");
+    private static readonly int NormalThrows = Debuggees.Line("DebuggableConsoleApp", "Exceptions.cs", "throw new InvalidOperationException(\"Test exception\");");
+    private static readonly int CatchBody = Debuggees.Line("DebuggableConsoleApp", "Exceptions.cs", "catch (Exception e)") + 2;
     private static readonly int MyMethodAsyncEnds = Debuggees.Line("DebuggableConsoleApp", "MyAsyncClass.cs", "return result;") + 1;
     private static readonly int DoOperationCalled = Debuggees.Line("DebuggableConsoleApp", "MultilineSwitchInMethodCall.cs", "Result result = DoOperation();");
 
@@ -56,7 +59,8 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     /// <summary>A condition nested past what the parser reads is refused saying so and the adapter runs on, and a
     /// condition reading a pattern's variable stops only where it holds; which hits stop, by what a breakpoint asks beside
     /// its condition: one waiting for another passes its hits by until that one takes a hit, a temporary one stops once, and
-    /// a snapshot point never stops, capturing its hits' frames and values within its limit.</summary>
+    /// a snapshot point never stops, capturing its hits' frames and values within its limit; a recording's moments, and the
+    /// code ahead of a stop read from its values.</summary>
     [Fact]
     public async Task A_condition_the_parser_cannot_read_or_a_patterns_variable_reads_is_refused_or_held_where_it_holds()
     {
@@ -66,6 +70,26 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         await Flow.StepApartAsync<ConditionalBreakpointTests>("a temporary breakpoint stops once and the session is told it went", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_temporary_breakpoint_stops_once_and_the_session_is_told_it_went());
         await Flow.StepApartAsync<ConditionalBreakpointTests>("a snapshot point captures its hits frames and values within its limit and never stops", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_snapshot_point_captures_its_hits_frames_and_values_within_its_limit_and_never_stops());
         await Flow.StepApartAsync<ConditionalBreakpointTests>("a recording keeps each calls arguments and each returns value and shows either as a past stop", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_recording_keeps_each_calls_arguments_and_each_returns_value_and_shows_either_as_a_past_stop());
+        await Flow.StepApartAsync<ConditionalBreakpointTests>("the code ahead an early return skips is read as code that won't run", () => new ConditionalBreakpointTests(testOutputHelper), t => t.The_code_ahead_an_early_return_skips_is_read_as_code_that_wont_run());
+    }
+
+    /// <summary>A stop at Exceptions.Test's first line, its argument None, reads the code ahead from that value alone: the
+    /// early return is taken, so the try block's throw, its other branches and the catch block won't run, and it read on to
+    /// the method's end.</summary>
+    private async Task The_code_ahead_an_early_return_skips_is_read_as_code_that_wont_run()
+    {
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended: true, out Process program);
+        await host.InitializeAsync().AttachAsync(program.Id).WaitForInitializedEvent();
+        await host
+            .BreakpointsAsync(Debuggees.Source("DebuggableConsoleApp", "Exceptions.cs"), [new DapSourceBreakpoint(NoneReturns)])
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(program.Id, startSuspended: true);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        AheadResponse ahead = await host.RequestAsync<AheadResponse>(DapCommands.Ahead, new AheadArguments((await host.TopFrameAsync(stop.ThreadId!.Value)).Id));
+        int[] lines = [.. ahead.WontRun.SelectMany(s => Enumerable.Range(s.Line, s.EndLine - s.Line + 1))];
+        Assert.True(lines.Contains(NormalThrows) && lines.Contains(CatchBody) && !lines.Contains(NoneReturns + 2) && ahead.UnsureFrom is null,
+            $"The code ahead read the lines {string.Join(", ", lines)} as not to run, unsure from {ahead.UnsureFrom}, where the early return at line {NoneReturns + 2} "
+            + $"runs and the throw at line {NormalThrows} and the catch at line {CatchBody} won't, all of it told");
     }
 
     /// <summary>A recording asked for before the program starts keeps the calls of its own code with their arguments and the

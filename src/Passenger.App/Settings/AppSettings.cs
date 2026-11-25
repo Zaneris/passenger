@@ -235,6 +235,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// first; a look, previewed before Apply.</summary>
     public bool ShowElapsedAtStops { get; init; } = true;
 
+    /// <summary>Whether a stop fades the code ahead of it its values say won't run, and shows the values its locals will take
+    /// after the lines ahead, read with none of the program's code run. On at first; a look, previewed before Apply.</summary>
+    public bool GreyCodeAhead { get; init; } = true;
+
     /// <summary>Whether Run, Debug or Profile of a configuration that runs asks first, rather than stopping what runs of it
     /// and starting it again at once: Stop and Rerun, Stop alone, or Cancel. On at first; an agent's start, and one in a
     /// window nobody sees, never asks.</summary>
