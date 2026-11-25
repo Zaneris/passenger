@@ -49,7 +49,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>The Aspire window as one flow, each step one test's check in an instance of its own: the console
     /// dropping overlapping lines and following a new generation, a log landing at the cost of what it adds, a restart
     /// reading only its own console again, a resource's row, details, commands and merged console, an argument marked
-    /// sensitive shown as dots everywhere, a service marked Don't start, the graph's edges, a resource waiting for
+    /// sensitive shown as dots everywhere, a database an AppHost runs a connection while it runs, a service marked Don't start, the graph's edges, a resource waiting for
     /// another, a JavaScript resource's folder and restart, and a request duration charted while shown.</summary>
     [AvaloniaFact]
     public void The_Aspire_window_shows_each_resources_row_console_telemetry_and_graph_its_secrets_as_dots()
@@ -59,6 +59,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         Flow.StepApart("a resources restart reads only its own console again", () => new AspireStandInTests(project), t => t.A_resources_restart_reads_only_its_own_console_again());
         Flow.StepApart("the window shows a resources row details commands and merged console as Containers shows a services", () => new AspireStandInTests(project), t => t.The_window_shows_a_resources_row_details_commands_and_merged_console_as_Containers_shows_a_services());
         Flow.StepApart("an argument the AppHost marks sensitive shows as dots in the log the console and the list of programs", () => new AspireStandInTests(project), t => t.An_argument_the_AppHost_marks_sensitive_shows_as_dots_in_the_log_the_console_and_the_list_of_programs());
+        Flow.StepApart("a database an AppHost runs is a connection while it runs its string never shown", () => new AspireStandInTests(project), t => t.A_database_an_AppHost_runs_is_a_connection_while_it_runs_its_string_never_shown());
         Flow.StepApart("a service marked Dont start reads Not started in its row and Details", () => new AspireStandInTests(project), t => t.A_service_marked_Dont_start_reads_Not_started_in_its_row_and_Details());
         Flow.StepApart("the apphosts graph has an edge for each wait and a node chooses its row", () => new AspireStandInTests(project), t => t.The_apphosts_graph_has_an_edge_for_each_wait_and_a_node_chooses_its_row());
         Flow.StepApart("a resource waiting for another says what for in its details with links both ways", () => new AspireStandInTests(project), t => t.A_resource_waiting_for_another_says_what_for_in_its_details_with_links_both_ways());
@@ -804,6 +805,50 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         finally
         {
             window.ApplySettings(window.Settings with { LogEveryProgram = false });
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
+    /// <summary>A database an AppHost runs is one of the Database window's connections while it runs, whatever uses it, found
+    /// as it starts with no Refresh: by the name shown, from the connection string the AppHost told and marks sensitive, its
+    /// secret marked and never said; gone once the resource has ended.</summary>
+    private void A_database_an_AppHost_runs_is_a_connection_while_it_runs_its_string_never_shown()
+    {
+        const string Secret = "resource-never-shown";
+        project.Reset();
+        File.Delete(project.KeyFile);
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        try
+        {
+            Resource Database(string state) => new()
+            {
+                Name = "shopdb-x1", DisplayName = "shopdb", Uid = "shopdb", ResourceType = "PostgresDatabaseResource", State = state,
+                Properties =
+                {
+                    new ResourceProperty
+                    {
+                        Name = "resource.connectionString", IsSensitive = true,
+                        Value = Google.Protobuf.WellKnownTypes.Value.ForString($"Host=localhost;Port=5999;Database=shopdb;Username=postgres;Password={Secret}"),
+                    },
+                },
+            };
+            window.ShowToolWindow(ToolWindowIds.Database);
+            Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
+            backend.PushResource(Database("Running"));
+            Ui.WaitFor(() => !window.Database.Busy && window.Database.Sources.Any(s => s.Found?.Contains("running resource", StringComparison.Ordinal) == true),
+                () => $"the AppHost's database among the connections: {string.Join(", ", window.Database.Sources.Select(s => $"{s.Name} {s.Found}"))} ({window.Database.Said})");
+            Passenger.App.Database.DatabaseSource found = Assert.Single(window.Database.Sources, s => s.Found?.Contains("running resource", StringComparison.Ordinal) == true);
+            Assert.Equal((Passenger.App.Database.DatabaseKind.Postgres, "shopdb", "shopdb"), (found.Kind, found.Name, found.Database));
+            Assert.DoesNotContain(Secret, window.Database.Said, StringComparison.Ordinal);
+            Assert.Equal(Passenger.App.Containers.ContainerSecrets.Masked, Passenger.App.Containers.ContainerSecrets.InSaid(Secret));
+            backend.PushResource(Database("Finished"));
+            Ui.WaitFor(() => !window.Database.Busy && !window.Database.Sources.Any(s => s.Found?.Contains("running resource", StringComparison.Ordinal) == true),
+                () => $"the ended resource's database gone from the connections ({window.Database.Said})");
+        }
+        finally
+        {
             window.Close();
             Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
         }

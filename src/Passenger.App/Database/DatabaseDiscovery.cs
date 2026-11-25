@@ -60,6 +60,44 @@ internal static class DatabaseDiscovery
                 }
             }
         }
+        // Each database a compose run or an AppHost runs, whoever uses it, as this machine reaches it.
+        if (session.ContainerRun is { IsStopped: false } composed)
+        {
+            foreach ((string service, string value, string[] packages, _) in await EfDatabases.OfServicesAsync(composed, cancel))
+            {
+                Running(service, $"found in {composed.Name} · running service {service}", value, packages);
+            }
+        }
+        foreach (Aspire.AspireAppRun app in session.Aspire.Apps.Where(a => !a.Stopping))
+        {
+            foreach ((string resource, string shown) in app.Connections)
+            {
+                if (app.Interactions?.ConnectionStrings.GetValueOrDefault(resource) is { } value)
+                {
+                    Running(shown, $"found in {app.Name} · running resource {shown}", value, []);
+                }
+            }
+        }
+
+        // A running database a service's connection string names already is listed once, as that service names it.
+        void Running(string name, string from, string value, string[] packages)
+        {
+            DatabaseSource? source;
+            try
+            {
+                source = session.Folder is { } open ? Source(name, from, value, open, packages) : null;
+            }
+            catch (ArgumentException)
+            {
+                // A resource's string that is no connection string of keys and values (a cache's host and port) opens nothing.
+                return;
+            }
+            if (source is not null && !found.Any(s => Reaches(s, source)))
+            {
+                found.Add(source);
+            }
+        }
+
         // The folder's own DuckDB files, and its Parquet and CSV files, which a DuckDB in memory reads where none is there.
         if (session.Folder is { } open)
         {
@@ -74,6 +112,12 @@ internal static class DatabaseDiscovery
         cancel.ThrowIfCancellationRequested();
         return found;
     }
+
+    /// <summary>Whether two connections open one database of one server: of one kind, at one host and port, the same database.</summary>
+    private static bool Reaches(DatabaseSource one, DatabaseSource other) =>
+        one.Kind == other.Kind && (one.ConnectionString == other.ConnectionString || !DatabaseKinds.IsFile(one.Kind)
+            && DatabaseKinds.Endpoint(one.Kind, one.ConnectionString) is var at && DatabaseKinds.Endpoint(other.Kind, other.ConnectionString) is var there
+            && DatabaseKinds.SameHost(at.Host, there.Host) && at.Port == there.Port && one.Database.Equals(other.Database, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The connection strings a project reads running in an environment, by name: its appsettings.json's, then the
     /// environment's, then its user secrets' in Development.</summary>

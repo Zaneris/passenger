@@ -357,12 +357,13 @@ public sealed class DatabaseServersTests
                 Field<TextBox>("DatabaseSshUser").Text = "passenger";
                 if (kind == DatabaseKind.Postgres)
                 {
+                    // The key locked by a passphrase as ssh-keygen locks one, the agent holding it unlocked since before.
+                    ChildResult locked = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command("ssh-keygen", ["-p", "-q", "-P", string.Empty, "-N", SshPassword, "-f", keyFile]))),
+                        "ssh-keygen's lock of the test's key");
+                    Assert.True(locked.Succeeded, $"ssh-keygen did not lock the key: {locked.Error}");
                     Field<TextBox>("DatabaseSshKey").Text = keyFile;
                 }
-                else
-                {
-                    Field<TextBox>("DatabaseSshPassword").Text = SshPassword;
-                }
+                Field<TextBox>("DatabaseSshPassword").Text = SshPassword;
                 Ui.ClickButton(dialog, "Connect");
                 Ui.WaitFor(() => dialog.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible) || !dialog.IsVisible,
                     () => Field<TextBlock>("DatabaseConnectionError").Text ?? "the host key's question", TimeSpan.FromMinutes(1));
@@ -372,7 +373,7 @@ public sealed class DatabaseServersTests
                 Ui.WaitFor(() => !dialog.IsVisible && window.Database.Sources.Any(s => s.Name == "Direct"), () => window.Database.Said);
                 DatabaseSource direct = window.Database.Sources.Single(s => s.Name == "Direct");
                 Assert.StartsWith("SHA256:", Assert.Single(direct.Tunnel!.HostKeys).Fingerprint, StringComparison.Ordinal);
-                Assert.Equal(kind == DatabaseKind.Postgres ? null : SshPassword, SystemCredentials.Read(DatabaseController.CredentialService, direct.TunnelAccount));
+                Assert.Equal(SshPassword, SystemCredentials.Read(DatabaseController.CredentialService, direct.TunnelAccount));
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == direct.Id));
                 Assert.True(window.Perform(AppActions.DatabaseConsole), "Open SQL Console did not run");
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is { } opened && opened != console, "a console of the connection through the bastion");
@@ -388,6 +389,14 @@ public sealed class DatabaseServersTests
                 Assert.True(through.Results[0].Error is null, $"{through.Said}, running {through.Results[0].Statement}");
                 Assert.Equal("encrypted", through.Results[0].Sets[0].Cell(0, 0));
                 Assert.DoesNotContain(SshPassword, through.Said, StringComparison.Ordinal);
+
+                // Disconnected, an agent's read opens the tunnel again itself, the key's passphrase or the password from the system's store.
+                window.Database.Disconnect(direct);
+                object read = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).Database(connection: "Direct", sql: "SELECT name FROM products WHERE id = 2"),
+                    "an agent's query through the tunnel", TimeSpan.FromMinutes(1));
+                Passenger.App.Mcp.DatabaseQueryResult answer = Assert.Single(Assert.IsType<Passenger.App.Mcp.DatabaseQueryResult[]>(read));
+                Assert.True(answer.Error is null, $"An agent's query through the tunnel failed: {answer.Error}");
+                Assert.Equal("coffee", answer.Sets[0].Rows[0][0]);
 
                 // A found connection takes a client certificate and a tunnel to "inner", ~/.ssh/config's bastion behind its jump host, its files untouched.
                 string written = File.ReadAllText(Path.Combine(folder, "appsettings.json"));

@@ -563,6 +563,13 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             // Each health check's run is an update: the Containers window is regrouped only when the containers named change.
             bool moved = !ids.ToHashSet(StringComparer.Ordinal).SetEquals(app.KnownContainerIds);
             app.KnownContainerIds = ids;
+            (string, string)[] connections = [.. snapshot.Where(r => r.State == AspireStates.Running && connection.ConnectionStrings.ContainsKey(r.Name))
+                .Select(r => (r.Name, r.DisplayName)).OrderBy(r => r.Name, StringComparer.Ordinal)];
+            if (!connections.SequenceEqual(app.Connections))
+            {
+                app.Connections = connections;
+                ConnectionsChanged?.Invoke(this, app);
+            }
             app.Replicas(snapshot);
             BackgroundWork.Track(Reported(Containers.Observe(app.Configuration.Project, snapshot, app.ContainerRuntime)));
             if (moved)
@@ -578,6 +585,9 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         };
         app.Following = connection.Follow();
     }
+
+    /// <summary>The resources of a run that tell a connection string and run changed (<see cref="AspireAppRun.Connections"/>).</summary>
+    public event EventHandler<AspireAppRun>? ConnectionsChanged;
 
     /// <summary>The containers a run's resources name changed (<see cref="AspireAppRun.KnownContainerIds"/>).</summary>
     public event EventHandler<AspireAppRun>? ContainersChanged;
@@ -1604,6 +1614,10 @@ public sealed class AspireAppRun : ServiceRun
     internal TaskCompletionSource<string> ProfileAsked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public IReadOnlyList<string> KnownContainerIds { get; internal set; } = [];
     internal AspireInteractions? Interactions { get; set; }
+
+    /// <summary>The resources running now that told a connection string (<see cref="AspireInteractions.ConnectionStrings"/>),
+    /// by name and the name shown, in order of name.</summary>
+    public IReadOnlyList<(string Name, string Shown)> Connections { get; internal set; } = [];
 
     /// <summary>The container runtime its orchestrator was told (ASPIRE_CONTAINER_RUNTIME in its environment), else null.</summary>
     internal string? ContainerRuntime { get; set; }

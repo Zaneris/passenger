@@ -1097,10 +1097,12 @@ public partial class MainWindow
     /// <summary>Whether what runs changed since the connections were last found.</summary>
     private bool databasesMoved;
 
-    /// <summary>What of a folder's compose run and AppHosts runs: the run coming up or up, and each AppHost's service started.</summary>
+    /// <summary>What of a folder's compose run and AppHosts runs: the run coming up or up, each AppHost's service started, and
+    /// each resource it told a connection string of.</summary>
     private static string RunningDatabases(ProjectSession of) => string.Join('\n',
         (of.ContainerRun is { IsStopped: false } run ? [$"{run.Name}|{run.IsComingUp}"] : Array.Empty<string>())
-            .Concat(of.Aspire.Apps.Where(a => !a.Stopping).SelectMany(a => a.Services).Select(s => s.InstanceId)));
+            .Concat(of.Aspire.Apps.Where(a => !a.Stopping).SelectMany(a => a.Services).Select(s => s.InstanceId))
+            .Concat(of.Aspire.Apps.Where(a => !a.Stopping).SelectMany(a => a.Connections).Select(c => c.Name)));
 
     /// <summary>A compose run's and an AppHost's databases are connections while they run: what runs changed, the connections
     /// are found again once the window shows and is free.</summary>
@@ -1134,6 +1136,7 @@ public partial class MainWindow
         runningDatabases = RunningDatabases(next);
         databasesMoved = false;
         buildRun.RunningChanged += (_, _) => FollowRunningDatabases(next);
+        next.Aspire.ConnectionsChanged += (_, _) => FollowRunningDatabases(next);
         next.ProjectsEvaluated += (_, _) => Rediscover();
         next.WorkspaceChanged += (_, _) => Rediscover();
 

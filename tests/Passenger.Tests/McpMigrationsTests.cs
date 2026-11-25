@@ -108,6 +108,9 @@ public sealed class McpMigrationsTests : McpRig
         string folder = await ShopApp.MakeAsync(design: true, tool: ShopApp.Version);
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
 
+        // Open Context's Database asked before any listing lists the contexts first, so it knows the one it opens.
+        string opened = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.MigrationsDatabase }));
+        Assert.True(opened.Contains("ShopContext's migrations use Shop", StringComparison.Ordinal), $"Open Context's Database before any listing answered: {opened}");
         string environments = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.MigrationsEnvironment }));
         Assert.True(environments.Contains("Offered: Development;", StringComparison.Ordinal) && environments.Contains("started from Shop in Development (the default)", StringComparison.Ordinal),
             $"The environment action with no input answered: {environments}");

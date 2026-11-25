@@ -63,6 +63,58 @@ public static class EfDatabases
         return environment.Count == 0 ? null : new EfRunDatabase(environment, string.Join("; ", new[] { where }.Concat(kept).OfType<string>()));
     }
 
+    /// <summary>Each database a compose run's services run from their images (PostgreSQL, SQL Server, MySQL and MariaDB,
+    /// ClickHouse), whoever uses it: its connection string as this machine reaches it, at the port Compose published, signed in
+    /// as its image's own variables make its user, with the driver's package that names its kind, and where it is. None
+    /// where the run has stopped or its model cannot be read.</summary>
+    public static async Task<IReadOnlyList<(string Service, string Value, string[] Packages, string Where)>> OfServicesAsync(ContainerRun run, CancellationToken cancel)
+    {
+        if (run.IsStopped)
+        {
+            return [];
+        }
+        ComposeModel model;
+        try
+        {
+            model = await ComposeModel.ReadAsync(run.Engine, run.Plan.Compose, run.Plan.Folder, cancel);
+        }
+        catch (Exception failed) when (failed is ContainerCommandException or System.Text.Json.JsonException or TimeoutException or IOException)
+        {
+            return [];
+        }
+        string? endpoint = null;
+        List<(string, string, string[], string)> found = [];
+        foreach (ComposeService service in model.Services)
+        {
+            IReadOnlyDictionary<string, string> told = service.Environment;
+            string? Told(params string[] names) => names.Select(name => told.GetValueOrDefault(name)).FirstOrDefault(v => v is { Length: > 0 });
+            string image = service.Image ?? string.Empty;
+            (int Port, string[] Packages, Func<string, int, string> Write)? database = Kind(service) switch
+            {
+                "postgres" => (5432, [], (host, port) => $"Host={host};Port={port};Database={Told("POSTGRES_DB") ?? Told("POSTGRES_USER") ?? "postgres"};"
+                    + $"Username={Told("POSTGRES_USER") ?? "postgres"};Password={Told("POSTGRES_PASSWORD") ?? string.Empty}"),
+                "sqlserver" => (1433, ["Microsoft.Data.SqlClient"], (host, port) => $"Server={host},{port};Database=master;User Id=sa;"
+                    + $"Password={Told("MSSQL_SA_PASSWORD", "SA_PASSWORD") ?? string.Empty};TrustServerCertificate=True"),
+                _ when image.Contains("clickhouse", StringComparison.OrdinalIgnoreCase) => (8123, ["ClickHouse.Driver"], (host, port) =>
+                    $"Host={host};Port={port};Database={Told("CLICKHOUSE_DB") ?? "default"};Username={Told("CLICKHOUSE_USER") ?? "default"};"
+                    + $"Password={Told("CLICKHOUSE_PASSWORD") ?? string.Empty}"),
+                _ when Default(service) == 3306 => (3306, ["MySqlConnector"], (host, port) => $"Server={host};Port={port};"
+                    + $"Database={Told("MYSQL_DATABASE", "MARIADB_DATABASE") ?? string.Empty};"
+                    + (Told("MYSQL_ROOT_PASSWORD", "MARIADB_ROOT_PASSWORD") is { } root ? $"User ID=root;Password={root}"
+                        : $"User ID={Told("MYSQL_USER", "MARIADB_USER") ?? "root"};Password={Told("MYSQL_PASSWORD", "MARIADB_PASSWORD") ?? string.Empty}")),
+                _ => null,
+            };
+            if (database is not { } kind || await PublishedAsync(run, service, kind.Port, cancel) is not { } published)
+            {
+                continue;
+            }
+            endpoint ??= (await run.Engine.StateAsync(cancel: cancel)).Endpoint ?? string.Empty;
+            string host = Host(published.Link, endpoint.Length > 0 ? endpoint : null);
+            found.Add((service.Name, kind.Write(host, published.Port), kind.Packages, $"{service.Name} at {host}:{published.Port}"));
+        }
+        return found;
+    }
+
     /// <summary>The database an AppHost that runs now gives the startup project as one of its resources; null when none does.</summary>
     public static EfRunDatabase? OfAspire(AspireController aspire, ProjectModel startup)
     {

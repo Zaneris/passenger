@@ -73,7 +73,8 @@ public sealed class MigrationsPostgresTests
             window.ShowToolWindow(ToolWindowIds.Database);
             Ui.WaitFor(() => !window.Database.Busy && window.Database.Sources.Any(s => s.Found?.Contains("running service", StringComparison.Ordinal) == true),
                 () => $"the run's database among the connections: {string.Join(", ", window.Database.Sources.Select(s => $"{s.Name} {s.Found}"))} ({window.Database.Said})");
-            Passenger.App.Database.DatabaseSource found = Assert.Single(window.Database.Sources, s => s.Found?.Contains("running service", StringComparison.Ordinal) == true);
+            Passenger.App.Database.DatabaseSource found = Assert.Single(window.Database.Sources, s => s.Found?.Contains("running service", StringComparison.Ordinal) == true
+                && s.Database == "shop");
             Assert.False(window.Database.IsConnected(found));
             foreach (string row in (string[])[found.Name, "shop", "public", "Tables", "Products", "Columns"])
             {
@@ -81,6 +82,11 @@ public sealed class MigrationsPostgresTests
             }
             Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == Passenger.App.Database.DatabaseNodeKind.Column && r.Title == "Id"
                 && r.Detail.Contains("primary key", StringComparison.Ordinal));
+            // The run's other database, which no project uses, is listed too, by its service and as its image's variables make it.
+            Passenger.App.Database.DatabaseSource reports = Assert.Single(window.Database.Sources, s => s.Found?.EndsWith("running service reports", StringComparison.Ordinal) == true);
+            Assert.Equal(("reports", Passenger.App.Database.DatabaseKind.Postgres, "reports"), (reports.Name, reports.Kind, reports.Database));
+            DatabaseTests.Open(window, reports.Name);
+            Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == Passenger.App.Database.DatabaseNodeKind.Database && r.Title == "reports");
             Assert.DoesNotContain(Password, window.Database.Said, StringComparison.Ordinal);
 
             // The connection string goes to dotnet ef through the environment, never a command line any process can read.
@@ -100,7 +106,7 @@ public sealed class MigrationsPostgresTests
 
             // Stopped, the run's database is no connection any more, with no Refresh.
             Docker.Stopped(window, project, "Stop to take the shop down", "com.docker.compose.service=web");
-            Ui.WaitFor(() => !window.Database.Busy && !window.Database.Sources.Any(s => s.Id == found.Id), () => $"the run's database gone from the connections ({window.Database.Said})");
+            Ui.WaitFor(() => !window.Database.Busy && !window.Database.Sources.Any(s => s.Id == found.Id || s.Id == reports.Id), () => $"the run's databases gone from the connections ({window.Database.Said})");
         }
         finally
         {
@@ -189,6 +195,10 @@ public sealed class MigrationsPostgresTests
                 environment: { POSTGRES_PASSWORD: {{Password}}, POSTGRES_DB: shop }
                 ports: ["5432"]
                 healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres"], interval: 1s, retries: 60 }
+              reports:
+                image: {{Postgres}}
+                environment: { POSTGRES_PASSWORD: {{Password}}, POSTGRES_DB: reports }
+                ports: ["5432"]
 
             """);
         TestFolders.Write(folder, "dotnet-tools.json", $$"""

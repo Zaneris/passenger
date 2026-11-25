@@ -920,6 +920,15 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         {
             return (null, Said(new EfDone(false, Refusals.NoEfCore)).Said);
         }
+        // Asked before any listing, the project's contexts are listed first, as dotnet ef names them; asked as one runs, after it.
+        if (running is not null && listing is { IsCompleted: false } pending)
+        {
+            await pending;
+        }
+        if (Context is null && Contexts.Count == 0 && running is null && await ListAsync(AppActions.MigrationsRefresh) is { Done: false } unlisted)
+        {
+            return (null, unlisted.Said);
+        }
         if ((Context ?? (Contexts is [var only] ? only.Name : null)) is not { } context)
         {
             return (null, Said(new EfDone(false, Refusals.NoEfContext)).Said);

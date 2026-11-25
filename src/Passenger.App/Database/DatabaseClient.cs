@@ -21,7 +21,7 @@ internal static partial class DatabaseClient
     /// <summary>Opens a connection, its secret parts read from the system's store where they are kept there, through its SSH
     /// tunnel where it has one (its certificate still checked against its server's own name). A read-only connection is
     /// one the server holds read-only too where it can: SQLite's file opened read-only, PostgreSQL's and MySQL's sessions'
-    /// transactions read-only.</summary>
+    /// transactions read-only, SQL Server's asked for a read-only session.</summary>
     internal static async Task<DbConnection> OpenAsync(DatabaseSource source, CancellationToken cancel)
     {
         if (source.Kind == DatabaseKind.DuckDb)
@@ -64,7 +64,7 @@ internal static partial class DatabaseClient
         {
             DatabaseKind.Sqlite => new SqliteConnection(new SqliteConnectionStringBuilder(whole) { Mode = readOnly ? SqliteOpenMode.ReadOnly : SqliteOpenMode.ReadWrite, Pooling = false }.ConnectionString),
             DatabaseKind.Postgres => new NpgsqlConnection(postgres!.ConnectionString),
-            DatabaseKind.SqlServer => new SqlConnection(new SqlConnectionStringBuilder(whole) { Pooling = false }.ConnectionString),
+            DatabaseKind.SqlServer => new SqlConnection(SqlServer(whole, readOnly)),
             DatabaseKind.MySql => MySql(whole, through),
             DatabaseKind.DuckDb => DuckDb(whole, readOnly),
             DatabaseKind.ClickHouse => new ClickHouse.Driver.ADO.ClickHouseConnection(whole),
@@ -149,6 +149,18 @@ internal static partial class DatabaseClient
             };
         }
         return connection;
+    }
+
+    /// <summary>A SQL Server connection's string, a read-only one asking for a read-only session, which an availability
+    /// group's listener gives on a readable secondary that holds every change away (a server standing alone has none).</summary>
+    private static string SqlServer(string whole, bool readOnly)
+    {
+        SqlConnectionStringBuilder sql = new(whole) { Pooling = false };
+        if (readOnly)
+        {
+            sql.ApplicationIntent = ApplicationIntent.ReadOnly;
+        }
+        return sql.ConnectionString;
     }
 
     /// <summary>A DuckDB connection: its file opened as it is, never made where it is not there (as DuckDB would), read-only
