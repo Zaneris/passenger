@@ -883,6 +883,13 @@ public sealed partial class Vim
                 // Past the end of a line of blanks alone, is takes the line's blanks.
                 return r with { Cursor = on.Start };
             }
+            if ((inner || n == 1) && on.Length > 0 && r.Cursor == on.End && WhiteEnding(text, on.Line) is var ending && ending > on.Start && ending < on.End)
+            {
+                // Past the end of a line ending in blanks after its text, is takes those blanks first, then goes on back; as the sentence they end.
+                int to = !inner ? SentenceUnit(text, VimMotions.StepBack(text, ending)).Start
+                    : n == 1 ? ending : SentencesBack(text, ending, inner, n - 1, passesAtEmpty: true);
+                return to != r.Cursor ? r with { Cursor = to } : null;
+            }
             int back = SentencesBack(text, r.Cursor, inner, n);
             return back != r.Cursor ? r with { Cursor = back } : null;
         }
@@ -1056,7 +1063,7 @@ public sealed partial class Vim
     /// sentence with the white before where the cursor stood in or after it or on an empty line a step after the walk's
     /// first reached (<paramref name="reached"/> for the first, <paramref name="begun"/> where the walk stepped before);
     /// after is steps from the empty line it began on to a sentence, its next passes the white before it.</summary>
-    private int SentencesBack(TextSnapshot text, int at, bool inner, int n, bool reached = false, bool begun = false)
+    private int SentencesBack(TextSnapshot text, int at, bool inner, int n, bool reached = false, bool begun = false, bool passesAtEmpty = false)
     {
         int left = n;
         // A walk reaching an empty line on its way passes no white after it.
@@ -1077,7 +1084,7 @@ public sealed partial class Vim
             (int Start, bool White) here = SentenceUnit(text, at);
             bool inside = here.Start < at;
             (int start, bool white) = inside ? here : SentenceUnit(text, VimMotions.StepBack(text, at));
-            if (passWhite && white && start > 0)
+            if ((passWhite || (passesAtEmpty && fromEmpty)) && white && start > 0)
             {
                 (start, white) = SentenceUnit(text, VimMotions.StepBack(text, start));
             }
