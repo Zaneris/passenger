@@ -23,6 +23,9 @@ public static partial class Agent
     /// <param name="project">The launched project's folder (<see cref="Wire.ProjectVariable"/>), or null.</param>
     public static void Start(string socket, string? project) => Serving.Start(socket, new WinUIUi(project));
 
+    [LibraryImport("kernel32.dll", EntryPoint = "GetModuleHandleW", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial nint GetModuleHandle(string module);
+
     /// <summary>WinUI's own entry to its XAML diagnostics, in the app's Windows App SDK.</summary>
     [LibraryImport("Microsoft.Internal.FrameworkUdk.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int InitializeXamlDiagnosticsEx(string endPoint, uint pid, string xamlDll, string tap, Guid tapClass, string initialization);
@@ -62,7 +65,7 @@ public static partial class Agent
         public void Open(Connection connection)
         {
             using Looking looking = new(Look);
-            while (!HasApplication())
+            while (!XamlLoaded() || !HasApplication())
             {
                 looking.Wait();
             }
@@ -89,15 +92,18 @@ public static partial class Agent
             (queue, inspector) = (ui, made);
         }
 
-        /// <summary>Whether the app has made its Application; not yet while WinUI's classes can't be activated, as before the
-        /// app's own start registers them.</summary>
+        /// <summary>Whether WinUI's own XAML is loaded in the process, as the app's Application.Start loads it once its Main has set
+        /// up C#/WinRT: before then nothing of the projection is touched, as a call from this thread would set it up first.</summary>
+        private static bool XamlLoaded() => GetModuleHandle("Microsoft.ui.xaml.dll") != 0;
+
+        /// <summary>Whether the app has made its Application; not yet while WinUI's classes can't be activated.</summary>
         private static bool HasApplication()
         {
             try
             {
                 return Projected.Static("Microsoft.UI.Xaml.Application", "Current") is not null;
             }
-            catch (TargetInvocationException early) when (early.InnerException is COMException or TypeInitializationException or InvalidOperationException)
+            catch (TargetInvocationException early) when (early.InnerException is COMException or InvalidCastException or TypeInitializationException or InvalidOperationException)
             {
                 return false;
             }
