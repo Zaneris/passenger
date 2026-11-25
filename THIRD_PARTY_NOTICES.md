@@ -53,6 +53,8 @@ dbgshim's musl Linux natives are the container tools' (below), which the app nev
 | `RESPite` | the Redis provider's protocol reader | MIT | 2025 - 2026 Marc Gravell |
 | `AWSSDK.DynamoDBv2` | The Database window's DynamoDB provider | Apache-2.0 | Amazon Web Services |
 | `AWSSDK.Extensions.Numerics` | the AWS SDK's numbers carried whole | Apache-2.0 | Amazon Web Services |
+| `CassandraCSharpDriver` | The Database window's Cassandra provider | Apache-2.0 (the package's LICENSE.md) | Copyright © by DataStax |
+| `K4os.Compression.LZ4` | the Cassandra provider's compression | MIT (its nuspec names only its licence's URL, the MIT License there) | Copyright (c) 2017 Milosz Krajewski |
 | `Mono.Unix`, `System.Management`, `System.CodeDom`, `System.IO.Hashing` | the Snowflake and Google Cloud providers' file modes, machine details and hashes | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Data.SqlClient`, `Microsoft.Data.SqlClient.Extensions.Abstractions`, `Microsoft.Data.SqlClient.Internal.Logging`, `Microsoft.Data.SqlClient.SNI.runtime` | The Database window's SQL Server provider and its native transport | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Bcl.Cryptography`, `Microsoft.IdentityModel.JsonWebTokens`, `Microsoft.IdentityModel.Logging`, `Microsoft.IdentityModel.Protocols`, `Microsoft.IdentityModel.Protocols.OpenIdConnect`, `Microsoft.IdentityModel.Tokens`, `Microsoft.SqlServer.Server`, `System.IdentityModel.Tokens.Jwt`, `System.Threading.RateLimiting`, `System.Security.Cryptography.Pkcs` | SQL Server's authentication, cryptography and protocol dependencies | MIT | © Microsoft Corporation. All rights reserved. |

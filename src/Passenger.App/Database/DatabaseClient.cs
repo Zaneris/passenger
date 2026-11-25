@@ -218,6 +218,10 @@ internal static partial class DatabaseClient
 
     internal static async Task<DatabaseSchema> SchemaAsync(DatabaseSource source, DatabaseTable table, CancellationToken cancel)
     {
+        if (source.Kind == DatabaseKind.Cassandra)
+        {
+            return await CassandraClient.SchemaAsync(source, table, cancel);
+        }
         if (source.Kind == DatabaseKind.DynamoDb)
         {
             return await DynamoClient.SchemaAsync(source, table, cancel);
@@ -353,6 +357,10 @@ internal static partial class DatabaseClient
     internal static async Task<DatabaseRows> PageAsync(DatabaseSource source, DatabaseSchema schema, int offset, CancellationToken cancel, DatabaseFilter? filter = null,
         (string Column, bool Descending)? sort = null)
     {
+        if (source.Kind == DatabaseKind.Cassandra)
+        {
+            return await CassandraClient.PageAsync(source, schema, offset, cancel, filter, sort);
+        }
         if (source.Kind == DatabaseKind.DynamoDb)
         {
             return await DynamoClient.PageAsync(source, schema, offset, cancel, filter, sort);
@@ -427,6 +435,10 @@ internal static partial class DatabaseClient
         {
             return [source.Database];
         }
+        if (source.Kind == DatabaseKind.Cassandra)
+        {
+            return await CassandraClient.DatabasesAsync(source, cancel);
+        }
         if (source.Kind == DatabaseKind.DynamoDb)
         {
             return await DynamoClient.DatabasesAsync(source, cancel);
@@ -457,6 +469,10 @@ internal static partial class DatabaseClient
     /// its one schema, and SQLite's has none of a name.</summary>
     internal static async Task<IReadOnlyList<(string Schema, IReadOnlyList<DatabaseObject> Objects)>> ObjectsAsync(DatabaseSource source, CancellationToken cancel)
     {
+        if (source.Kind == DatabaseKind.Cassandra)
+        {
+            return await CassandraClient.TablesAsync(source, cancel);
+        }
         if (source.Kind == DatabaseKind.DynamoDb)
         {
             return await DynamoClient.TablesAsync(source, cancel);
@@ -530,6 +546,10 @@ internal static partial class DatabaseClient
     /// <summary>The tables and views of the connection's database with their columns, for completion.</summary>
     internal static async Task<SqlCatalog> CatalogAsync(DatabaseSource source, CancellationToken cancel)
     {
+        if (source.Kind == DatabaseKind.Cassandra)
+        {
+            return await CassandraClient.CatalogAsync(source, cancel);
+        }
         if (source.Kind == DatabaseKind.DynamoDb)
         {
             return await DynamoClient.CatalogAsync(source, cancel);
@@ -567,6 +587,11 @@ internal static partial class DatabaseClient
     internal static async Task RunAsync(DatabaseSource source, IReadOnlyList<string> runs, int limit, Action<SqlResult> told, CancellationToken cancel,
         IReadOnlyDictionary<string, string>? values = null)
     {
+        if (source.Kind == DatabaseKind.Cassandra)
+        {
+            await CassandraClient.RunAsync(source, runs, limit, told, cancel);
+            return;
+        }
         if (source.Kind == DatabaseKind.DynamoDb)
         {
             await DynamoClient.RunAsync(source, runs, limit, told, cancel);

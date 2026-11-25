@@ -31,15 +31,17 @@ public sealed class SqlConsole(string path)
 
     public bool Running => running is not null;
 
-    /// <summary>Whether a file of a language is run against a connection as a console is: SQL's, MongoDB's shell and Redis's commands.</summary>
+    /// <summary>Whether a file of a language is run against a connection as a console is: SQL's, CQL's, MongoDB's shell and
+    /// Redis's commands.</summary>
     public static bool Speaks(Languages.Language? language) => language is not null && (language == Languages.Language.Sql || language == LanguageOf(DatabaseKind.MongoDb)
-        || language == LanguageOf(DatabaseKind.Redis));
+        || language == LanguageOf(DatabaseKind.Redis) || language == LanguageOf(DatabaseKind.Cassandra));
 
     /// <summary>The language a console of a kind of database is written in, and the extension of its file.</summary>
     public static Languages.Language LanguageOf(DatabaseKind kind) => kind switch
     {
         DatabaseKind.MongoDb => Languages.Language.MongoDb,
         DatabaseKind.Redis => Languages.Language.Redis,
+        DatabaseKind.Cassandra => Languages.Language.Cql,
         _ => Languages.Language.Sql,
     };
 
@@ -47,6 +49,7 @@ public sealed class SqlConsole(string path)
     {
         DatabaseKind.MongoDb => ".mongodb",
         DatabaseKind.Redis => ".redis",
+        DatabaseKind.Cassandra => ".cql",
         _ => ".sql",
     };
 

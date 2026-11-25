@@ -67,7 +67,7 @@ public static class EfDatabases
     private const string CosmosEmulatorKey = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
 
     /// <summary>Each database a compose run's services run from their images (PostgreSQL, SQL Server, MySQL and MariaDB,
-    /// ClickHouse, MongoDB, Cosmos DB's emulator, Redis and Valkey, DynamoDB Local), whoever uses it: its connection string as this machine reaches it, at the port Compose published, signed in
+    /// ClickHouse, MongoDB, Cosmos DB's emulator, Redis and Valkey, DynamoDB Local, Cassandra), whoever uses it: its connection string as this machine reaches it, at the port Compose published, signed in
     /// as its image's own variables make its user, with the driver's package that names its kind, and where it is. None
     /// where the run has stopped or its model cannot be read.</summary>
     public static async Task<IReadOnlyList<(string Service, string Value, string[] Packages, string Where)>> OfServicesAsync(ContainerRun run, CancellationToken cancel)
@@ -105,6 +105,8 @@ public static class EfDatabases
                     + (Told("REDIS_PASSWORD", "VALKEY_PASSWORD") is { } secret ? $",password={secret}" : string.Empty)),
                 _ when image.Contains("valkey", StringComparison.OrdinalIgnoreCase) => (6379, ["StackExchange.Redis"], (host, port) => $"{host}:{port}"
                     + (Told("VALKEY_PASSWORD", "REDIS_PASSWORD") is { } secret ? $",password={secret}" : string.Empty)),
+                _ when image.Contains("cassandra", StringComparison.OrdinalIgnoreCase) => (9042, ["CassandraCSharpDriver"], (host, port) =>
+                    $"Contact Points={host};Port={port}" + (Told("CASSANDRA_USER") is { } user ? $";Username={user};Password={Told("CASSANDRA_PASSWORD") ?? string.Empty}" : string.Empty)),
                 // DynamoDB Local takes any key and secret.
                 _ when image.Contains("dynamodb-local", StringComparison.OrdinalIgnoreCase) => (8000, ["AWSSDK.DynamoDBv2"], (host, port) =>
                     $"ServiceURL=http://{host}:{port};Region=us-east-1;AccessKey=local;SecretKey=local"),

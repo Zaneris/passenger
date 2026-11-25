@@ -86,7 +86,7 @@ public static class SqlText
         }
         char c = sql[at];
         char next = at + 1 < sql.Length ? sql[at + 1] : '\0';
-        if (c == '-' && next == '-' || c == '#' && kind is DatabaseKind.MySql or DatabaseKind.ClickHouse || c == '/' && next == '/' && kind == DatabaseKind.Snowflake)
+        if (c == '-' && next == '-' || c == '#' && kind is DatabaseKind.MySql or DatabaseKind.ClickHouse || c == '/' && next == '/' && kind is DatabaseKind.Snowflake or DatabaseKind.Cassandra)
         {
             int end = sql.IndexOfAny(['\r', '\n'], at);
             return end < 0 ? sql.Length : end;
@@ -359,8 +359,8 @@ public static class SqlText
     /// FROM or an operator. EXPLAIN reads unless it ANALYZEs, which runs what it explains.</summary>
     public static SqlEffect EffectOf(string run, DatabaseKind kind)
     {
-        // Cosmos DB's SQL only reads; MongoDB's shell and Redis's commands say what each does; DynamoDB's PartiQL reads as SQL.
-        if (!DatabaseKinds.SpeaksSql(kind) && kind != DatabaseKind.DynamoDb)
+        // Cosmos DB's SQL only reads; MongoDB's shell and Redis's commands say what each does; PartiQL and CQL read as SQL.
+        if (!DatabaseKinds.QueriesAsSql(kind))
         {
             return kind switch { DatabaseKind.CosmosDb => SqlEffect.Reads, DatabaseKind.Redis => RedisCommands.EffectOf(run), _ => DocumentShell.EffectOf(run) };
         }

@@ -311,6 +311,11 @@
         "resolved": "14.4.0.200",
         "contentHash": "lCY77jIIBi1nDne3V0OEDanbCTxxdDbeaR+cXD1/k9MuyfFXy7MLPGbi4iXvVhV1LBBAV/sWLR1wbqSNOedbiQ=="
       },
+      "K4os.Compression.LZ4": {
+        "type": "Transitive",
+        "resolved": "1.1.11",
+        "contentHash": "RNvJw0UGkedPhCqVBNIogtfQebY+bQt0PN7xDbVe5LWLra0ZEqPfjPSl7iStj3rgDnkqkkTTpm+vCX3hU1qKmA=="
+      },
       "MessagePack": {
         "type": "Transitive",
         "resolved": "2.5.307",
@@ -852,6 +857,7 @@
           "Avalonia.Headless": "[12.2.0, )",
           "Avalonia.Skia": "[12.2.0, )",
           "Avalonia.Themes.Fluent": "[12.2.0, )",
+          "CassandraCSharpDriver": "[3.23.0, )",
           "ClickHouse.Driver": "[1.5.0, )",
           "DuckDB.NET.Data.Full": "[1.5.6.1, )",
           "Google.Protobuf": "[3.36.2, )",
@@ -1082,6 +1088,17 @@
         "contentHash": "E/HlGsFqZnGVbQ4mNDqc9tBehKZXJXFM76uYLkPpvbA0NTn41BSTJ10zrfYE4VjB4ujTmFqrGIjEvYLmZLf44Q==",
         "dependencies": {
           "AWSSDK.Core": "[4.1.1.2, 5.0.0)"
+        }
+      },
+      "CassandraCSharpDriver": {
+        "type": "CentralTransitive",
+        "requested": "[3.23.0, )",
+        "resolved": "3.23.0",
+        "contentHash": "MepI+aER6zkbDerQtixXATixc+3jh4Gqng+MbCLVIGQ4sLvyMqKRHhpeJl/aI8Wzqf9gHvBS2LWUgQRFKzqrHw==",
+        "dependencies": {
+          "K4os.Compression.LZ4": "1.1.11",
+          "Newtonsoft.Json": "13.0.1",
+          "System.Management": "4.7.0"
         }
       },
       "ClickHouse.Driver": {

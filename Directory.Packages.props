@@ -252,7 +252,7 @@
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.15" />
     <PackageVersion Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="$(EfCoreVersion)" />
-    <!-- The database tools' drivers: SQLite, PostgreSQL, SQL Server, MySQL and MariaDB, DuckDB, ClickHouse, Snowflake, MongoDB, Cosmos DB, Redis and DynamoDB. -->
+    <!-- The database tools' drivers: SQLite, PostgreSQL, SQL Server, MySQL and MariaDB, DuckDB, ClickHouse, Snowflake, MongoDB, Cosmos DB, Redis, DynamoDB and Cassandra. -->
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="11.0.0" />
     <PackageVersion Include="Npgsql" Version="11.0.0" />
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.1.2" />
@@ -264,6 +264,7 @@
     <PackageVersion Include="Microsoft.Azure.Cosmos" Version="3.64.0" />
     <PackageVersion Include="StackExchange.Redis" Version="3.4.35" />
     <PackageVersion Include="AWSSDK.DynamoDBv2" Version="4.1.0.3" />
+    <PackageVersion Include="CassandraCSharpDriver" Version="3.23.0" />
     <!-- A database connection's SSH tunnel through a bastion. -->
     <PackageVersion Include="SSH.NET" Version="2026.0.1" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="$(EfCoreVersion)" />

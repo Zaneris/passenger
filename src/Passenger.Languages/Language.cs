@@ -269,6 +269,11 @@ public sealed class Language
     public static readonly Language Redis = new("redis", "Redis", ["*.redis"], line: "#", indent: 2,
         grammar: new("source.shell", "shell-unix-bash.tmLanguage.json"));
 
+    /// <summary>Cassandra's CQL, as a console of a Cassandra connection is written, coloured by SQL's grammar, whose words,
+    /// strings, names and comments it shares, and served by no language server.</summary>
+    public static readonly Language Cql = new("cql", "CQL", ["*.cql"], line: "--", block: ("/*", "*/"),
+        grammar: new("source.sql", "sql.tmLanguage.json"));
+
     /// <summary>Languages with no grammar here, commented as C's are or as scripts are.</summary>
     public static readonly Language Code = new("code", "Code", ["*.rs", "*.go", "*.java", "*.kt", "*.swift", "*.c", "*.h", "*.cpp"],
         line: "//", block: ("/*", "*/"));

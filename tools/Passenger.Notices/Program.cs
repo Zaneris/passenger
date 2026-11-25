@@ -238,6 +238,7 @@ public static partial class NoticesFile
         List<string> problems = [];
         Dictionary<string, Entry> entries = new(StringComparer.OrdinalIgnoreCase);
         Licences licences = new(inputs.Licenses);
+        Dictionary<string, (string Licence, string Copyright)> rows = Rows(inputs.Notices);
 
         foreach (string package in inputs.AppPackages)
         {
@@ -458,9 +459,17 @@ public static partial class NoticesFile
                 entry.Licence = $"its package's {carried} (its nuspec names only {Field("licenseUrl") ?? "no licence"})";
                 entry.Text = Read(Path.Combine(folder, carried));
             }
+            else if (Field("licenseUrl") is { } url && rows.TryGetValue(id, out (string Licence, string Copyright) row) && licences.Leading(row.Licence) is { } read)
+            {
+                // A package naming only its licence's URL takes the licence its row here read at that URL.
+                entry.Licence = $"{read.Licence} (its nuspec names only {url}, read there)";
+                entry.Text = read.Text;
+                entry.Copyright = string.IsNullOrWhiteSpace(stated) ? row.Copyright : entry.Copyright;
+            }
             else
             {
-                problems.Add($"{id} {version} states no licence expression or file (its licence URL: {Field("licenseUrl") ?? "none"}): give the notices its licence's text");
+                problems.Add($"{id} {version} states no licence expression or file (its licence URL: {Field("licenseUrl") ?? "none"}): give its row in THIRD_PARTY_NOTICES.md "
+                    + "the licence read at that URL, its identifier first, with a text in the licences' folder");
                 return;
             }
             foreach (string file in Directory.EnumerateFiles(folder).Concat(Directory.Exists(Path.Combine(folder, "notices")) ? Directory.EnumerateFiles(Path.Combine(folder, "notices")) : [])
@@ -582,6 +591,26 @@ public static partial class NoticesFile
                 }
             }
         }
+    }
+
+    /// <summary>Every package THIRD_PARTY_NOTICES.md's tables name, with the licence and copyright its row gives (a row's last
+    /// two cells).</summary>
+    private static Dictionary<string, (string Licence, string Copyright)> Rows(string notices)
+    {
+        Dictionary<string, (string, string)> rows = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string line in File.ReadLines(notices).Where(l => l.StartsWith("| `", StringComparison.Ordinal)))
+        {
+            string[] cells = [.. line.Split('|').Skip(1).SkipLast(1).Select(c => c.Trim())];
+            if (cells.Length < 3)
+            {
+                continue;
+            }
+            foreach (Match id in Backticked().Matches(cells[0]))
+            {
+                rows.TryAdd(id.Groups[1].Value, (Plain(cells[^2]), Plain(cells[^1])));
+            }
+        }
+        return rows;
     }
 
     /// <summary>THIRD_PARTY_NOTICES.md's "Inside" table of a place (roslyn/, coverage/): each package it names, with the
@@ -712,14 +741,18 @@ public sealed partial class Licences(string folder)
     /// source), which are not copied.</summary>
     public (string Licence, string Text) Stated(string stated)
     {
-        Match id = Identifier().Match(stated);
-        if (id.Success && id.Index == 0 && Expression(id.Value, out _) is { } text)
+        if (Leading(stated) is { } text)
         {
             return text;
         }
         return (stated, "These terms are not an open-source licence and are not copied here. The package that carries this one, Roslyn's "
             + "language server (roslyn-language-server), states the MIT License for itself as a whole.");
     }
+
+    /// <summary>The licence a table's words start with, as its identifier and text; null where they start with none there is
+    /// a text for.</summary>
+    public (string Licence, string Text)? Leading(string stated) =>
+        Identifier().Match(stated) is { Success: true, Index: 0 } id && Expression(id.Value, out _) is { } text ? text : null;
 
     [GeneratedRegex(@"[A-Za-z0-9][A-Za-z0-9.+\-]*")]
     private static partial Regex Identifier();

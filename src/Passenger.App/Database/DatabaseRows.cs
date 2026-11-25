@@ -70,6 +70,7 @@ public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folde
             ?? (DatabaseKinds.Value(ConnectionString, "Uri") is { } uri ? new MongoDB.Driver.MongoUrl(uri).DatabaseName : null) ?? "test",
         DatabaseKind.CosmosDb => DatabaseKinds.Value(ConnectionString, "Database") ?? string.Empty,
         DatabaseKind.DynamoDb => DatabaseKinds.Value(ConnectionString, "Region") ?? "us-east-1",
+        DatabaseKind.Cassandra => DatabaseKinds.Value(ConnectionString, "Default Keyspace", "Keyspace") ?? string.Empty,
         DatabaseKind.Redis => DatabaseKinds.Value(ConnectionString, "Database") is { } numbered ? RedisNames.Database(RedisNames.Number(numbered)) : RedisNames.Database(0),
         _ => DatabaseKinds.Value(ConnectionString, "db") ?? string.Empty,
     };
@@ -84,6 +85,7 @@ public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folde
             DatabaseKind.MySql => new MySqlConnectionStringBuilder(ConnectionString) { Database = database }.ConnectionString,
             DatabaseKind.ClickHouse or DatabaseKind.MongoDb or DatabaseKind.CosmosDb or DatabaseKind.Redis => DatabaseKinds.With(ConnectionString, "Database", database),
             DatabaseKind.DynamoDb => DatabaseKinds.With(ConnectionString, "Region", database),
+            DatabaseKind.Cassandra => DatabaseKinds.With(ConnectionString, "Default Keyspace", database),
             _ => DatabaseKinds.With(ConnectionString, "db", database),
         },
     };

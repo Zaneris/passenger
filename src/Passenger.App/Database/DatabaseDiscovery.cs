@@ -277,7 +277,8 @@ internal static class DatabaseDiscovery
         bool clickHouse = references.Any(p => p.Contains("ClickHouse", StringComparison.OrdinalIgnoreCase));
         string? file = DatabaseKinds.Value(value, "Data Source", "DataSource");
         bool duck = references.Any(p => p.Contains("DuckDB", StringComparison.OrdinalIgnoreCase)) || file is not null && PathNames.HasExtension(file, [".duckdb", ".ddb"]);
-        DatabaseKind? kind = parsed.ContainsKey("account") ? DatabaseKind.Snowflake
+        DatabaseKind? kind = parsed.ContainsKey("Contact Points") || parsed.ContainsKey("ContactPoints") ? DatabaseKind.Cassandra
+            : parsed.ContainsKey("account") ? DatabaseKind.Snowflake
             : parsed.ContainsKey("Host") ? clickHouse ? DatabaseKind.ClickHouse : DatabaseKind.Postgres
             : parsed.ContainsKey("Server") ? parsed.ContainsKey("Port") || references.Any(p => p.Contains("MySql", StringComparison.OrdinalIgnoreCase)) ? DatabaseKind.MySql : DatabaseKind.SqlServer
             : parsed.ContainsKey("Data Source") || parsed.ContainsKey("DataSource") || parsed.ContainsKey("Filename")

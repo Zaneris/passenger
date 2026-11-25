@@ -54,6 +54,9 @@ public sealed class DatabaseServersTests
     /// <summary>DynamoDB Local, which runs on Arm as on x86-64, pinned.</summary>
     private const string DynamoImage = "amazon/dynamodb-local:3.3.2";
 
+    /// <summary>Cassandra, which runs on Arm as on x86-64, pinned.</summary>
+    private const string CassandraImage = "cassandra:5.0.8";
+
     /// <summary>The bastion's image, pinned to the one the test was written against.</summary>
     private const string SshImage = "lscr.io/linuxserver/openssh-server@sha256:c8431b8982e7eb3935ebf9c46607d19c6417e39c12ce884cc66945df2e9334e8";
 
@@ -68,6 +71,7 @@ public sealed class DatabaseServersTests
     [InlineData(DatabaseKind.Redis, RedisImage)]
     [InlineData(DatabaseKind.Redis, ValkeyImage)]
     [InlineData(DatabaseKind.DynamoDb, DynamoImage)]
+    [InlineData(DatabaseKind.Cassandra, CassandraImage)]
     public void A_server_is_found_explored_run_and_completed_through_its_driver(DatabaseKind kind, string image)
     {
         Assert.SkipWhen(kind == DatabaseKind.Snowflake, "Snowflake runs only as Snowflake's own service, which no container stands in for, and this run has no account of it");
@@ -96,6 +100,11 @@ public sealed class DatabaseServersTests
         if (kind == DatabaseKind.DynamoDb)
         {
             Dynamo();
+            return;
+        }
+        if (kind == DatabaseKind.Cassandra)
+        {
+            CassandraCluster();
             return;
         }
         Assert.SkipWhen(Docker.Said("image", "inspect", SshImage) is null, $"The engine lacks {SshImage}, which this test never pulls: pull it to run the test");
@@ -1418,6 +1427,118 @@ public sealed class DatabaseServersTests
         finally
         {
             Docker.Said("rm", "-f", name);
+        }
+    }
+
+    /// <summary>Cassandra in a container of the test's own, its heap held small: its connection found in the folder's settings
+    /// by the driver's keys, its explorer down to a table's partition and clustering keys and its index, its rows in the
+    /// grid in the table's order, edits refused as CQL's own; a console of CQL, completion of a table's columns, a
+    /// read-only mark refusing an UPDATE, and an agent's read.</summary>
+    private static void CassandraCluster()
+    {
+        string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}dbcassandra";
+        try
+        {
+            Docker.Run(["run", "-d", "--name", name, "--label", Docker.RunLabel, "--memory", "1.5g", "-e", "MAX_HEAP_SIZE=512M", "-e", "HEAP_NEWSIZE=128M",
+                "-p", "127.0.0.1::9042", CassandraImage]);
+            int port = Published(name, 9042);
+            Assert.True(Ui.Await(Waiting.Apart(() => Waiting.UntilAsync(() => CassandraMadeAsync(port), TimeSpan.FromMinutes(4))),
+                $"{CassandraImage} to answer a query and hold the shop's orders", TimeSpan.FromMinutes(5)), $"{CassandraImage} never answered a query");
+            string folder = TestFolders.Create("database-cassandra");
+            TestFolders.Write(folder, "Shop.csproj", TestProjects.Console().With("  <ItemGroup>\n    <PackageReference Include=\"CassandraCSharpDriver\" Version=\"3.23.0\" />\n  </ItemGroup>\n"));
+            TestFolders.Write(folder, "Program.cs", "System.Console.WriteLine(1);");
+            TestFolders.Write(folder, "appsettings.json", $$$"""{"ConnectionStrings":{"Orders":"Contact Points=127.0.0.1;Port={{{port}}};Default Keyspace=shop"}}""");
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            try
+            {
+                window.ShowToolWindow(ToolWindowIds.Database);
+                Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy && window.Database.Sources.Any(s => s.Name == "Orders"), () => window.Database.Said);
+                Assert.Equal(DatabaseKind.Cassandra, window.Database.Sources.Single(s => s.Name == "Orders").Kind);
+                foreach (string row in (string[])["Orders", "shop", "Tables", "orders", "Keys"])
+                {
+                    DatabaseTests.Open(window, row);
+                }
+                string[] keys = [.. window.DatabaseExplorer.Rows.Where(r => r.Kind == DatabaseNodeKind.Key).Select(r => r.Title)];
+                Assert.True(keys is ["partition key (customer)", "clustering key (at DESC)"], $"The table's keys read {string.Join(", ", keys)}");
+                DatabaseTests.Open(window, "Indexes");
+                string[] indexes = [.. window.DatabaseExplorer.Rows.Where(r => r.Kind == DatabaseNodeKind.Index).Select(r => r.Title)];
+                Assert.True(indexes is ["orders_name on name"], $"The table's indexes read {string.Join(", ", indexes)}");
+
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "orders"));
+                Assert.True(window.Perform(AppActions.DatabaseOpenTable), "Open Table Data did not run");
+                Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTable is { Reading: false, Rows.RowCount: 3 }, () => $"the orders as rows ({window.EditorArea.Active?.DatabaseTable?.Said})");
+                DatabaseTableTab data = window.EditorArea.Active!.DatabaseTable!;
+                Assert.Equal(["customer", "at", "name", "qty", "tags"], data.Rows!.Columns);
+                Assert.Equal(["ann 2 coffee", "ann 1 tea", "bob 1 milk"], Enumerable.Range(0, 3).Select(r => $"{data.Rows.Cell(r, 0)} {data.Rows.Cell(r, 1)} {data.Rows.Cell(r, 2)}")
+                    .OrderBy(r => r[..3], StringComparer.Ordinal));
+                Assert.Equal("[\"hot\"]", data.Rows.Cell(Enumerable.Range(0, 3).Single(r => data.Rows.Cell(r, 2) == "tea"), 4));
+                Assert.Equal(Refusals.NoRowEdits("Cassandra"), data.WhyNotEdited);
+
+                // A console of CQL, completion of a table's columns, a read-only mark and an agent's read.
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Orders"));
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console with its results under it");
+                Assert.Equal(Passenger.Languages.Language.Cql, window.EditorArea.Active!.Language);
+                SqlConsole console = window.EditorArea.ActiveGroup.Console!.Console!;
+                Run(window, "SELECT name, qty FROM orders WHERE customer = 'ann'");
+                Assert.True(console.Results is [{ Error: null }], console.Said);
+                DatabaseRows found = console.Results[0].Sets[0];
+                Assert.Equal(["coffee", "tea"], Enumerable.Range(0, found.RowCount).Select(r => found.Cell(r, 0)));
+                CodeEditor editor = window.EditorArea.CodeEditor;
+                Replace(window, "SELECT  FROM orders");
+                editor.Selections = SelectionSet.Single("SELECT ".Length);
+                window.KeyTextInput("q");
+                Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("qty"), () => $"the orders' columns, where the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+                Ui.Press(window, "ESCAPE");
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Orders"));
+                Assert.True(window.Perform(AppActions.DatabaseReadOnly), "Read-Only Connection did not run");
+                Replace(window, "UPDATE orders SET qty = 0 WHERE customer = 'ann' AND at = 1");
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                Ui.WaitFor(() => console.Said == Refusals.ReadOnlyConnection("Orders"), () => console.Said);
+                object read = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).Database(connection: "Orders", sql: "SELECT qty FROM orders WHERE customer = 'ann' AND at = 1"),
+                    "an agent's read of a row", TimeSpan.FromMinutes(1));
+                Assert.Equal("2", Assert.Single(Assert.IsType<Passenger.App.Mcp.DatabaseQueryResult[]>(read)).Sets[0].Rows[0][0]);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            Docker.Said("rm", "-f", name);
+        }
+    }
+
+    /// <summary>Whether Cassandra answers a query, not only takes a connection, the shop's orders made once it does.</summary>
+    private static async Task<bool> CassandraMadeAsync(int port)
+    {
+        global::Cassandra.Cluster cluster = global::Cassandra.Cluster.Builder().AddContactPoint("127.0.0.1").WithPort(port)
+            .WithMetadataSyncOptions(new global::Cassandra.MetadataSyncOptions().SetMetadataSyncEnabled(false)).Build();
+        try
+        {
+            global::Cassandra.ISession session = await cluster.ConnectAsync();
+            await session.ExecuteAsync(new global::Cassandra.SimpleStatement("SELECT release_version FROM system.local"));
+            foreach (string cql in (string[])[
+                "CREATE KEYSPACE IF NOT EXISTS shop WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}",
+                "CREATE TABLE IF NOT EXISTS shop.orders (customer text, at int, name text, qty int, tags list<text>, PRIMARY KEY (customer, at)) WITH CLUSTERING ORDER BY (at DESC)",
+                "CREATE INDEX IF NOT EXISTS orders_name ON shop.orders (name)",
+                "INSERT INTO shop.orders (customer, at, name, qty, tags) VALUES ('ann', 1, 'tea', 2, ['hot'])",
+                "INSERT INTO shop.orders (customer, at, name, qty) VALUES ('ann', 2, 'coffee', 5)",
+                "INSERT INTO shop.orders (customer, at, name, qty) VALUES ('bob', 1, 'milk', 1)",
+            ])
+            {
+                await session.ExecuteAsync(new global::Cassandra.SimpleStatement(cql));
+            }
+            return true;
+        }
+        catch (global::Cassandra.DriverException)
+        {
+            return false;
+        }
+        finally
+        {
+            await cluster.ShutdownAsync();
         }
     }
 

@@ -51,8 +51,18 @@ public static class SqlCompletions
         "MISSING", "NULL", "true", "false",
     ];
 
-    /// <summary>Each database's own words beyond those all of them read; Cosmos DB's and DynamoDB's their own alone.</summary>
-    public static IReadOnlyList<string> Keywords(DatabaseKind kind) => kind == DatabaseKind.CosmosDb ? Cosmos : kind == DatabaseKind.DynamoDb ? PartiQl : [.. Common, .. kind switch
+    /// <summary>Cassandra's CQL words and functions.</summary>
+    private static readonly string[] Cql =
+    [
+        "SELECT", "FROM", "WHERE", "AND", "IN", "CONTAINS", "CONTAINS KEY", "ORDER BY", "ASC", "DESC", "LIMIT", "PER PARTITION LIMIT", "ALLOW FILTERING",
+        "GROUP BY", "DISTINCT", "JSON", "INSERT INTO", "VALUES", "IF NOT EXISTS", "IF EXISTS", "USING TTL", "USING TIMESTAMP", "UPDATE", "SET", "DELETE",
+        "BEGIN BATCH", "APPLY BATCH", "CREATE TABLE", "CREATE KEYSPACE", "CREATE INDEX", "CREATE MATERIALIZED VIEW", "ALTER TABLE", "DROP TABLE",
+        "TRUNCATE", "PRIMARY KEY", "WITH CLUSTERING ORDER BY", "USE", "TOKEN", "TTL", "WRITETIME", "COUNT", "MIN", "MAX", "SUM", "AVG", "now()", "uuid()",
+        "toTimestamp", "text", "int", "bigint", "uuid", "timeuuid", "timestamp", "boolean", "double", "decimal", "list", "set", "map", "frozen",
+    ];
+
+    /// <summary>Each database's own words beyond those all of them read; Cosmos DB's, DynamoDB's and Cassandra's their own alone.</summary>
+    public static IReadOnlyList<string> Keywords(DatabaseKind kind) => kind switch { DatabaseKind.CosmosDb => Cosmos, DatabaseKind.DynamoDb => PartiQl, DatabaseKind.Cassandra => Cql, _ => null } ?? [.. Common, .. kind switch
     {
         DatabaseKind.SqlServer => (string[])["TOP", "OFFSET", "FETCH NEXT", "ROWS ONLY", "DECLARE", "EXEC", "OUTPUT", "MERGE", "IDENTITY", "NVARCHAR", "GO"],
         DatabaseKind.Postgres => ["LIMIT", "OFFSET", "RETURNING", "ILIKE", "ON CONFLICT", "DO NOTHING", "SERIAL", "JSONB", "EXPLAIN", "ANALYZE"],
@@ -116,7 +126,7 @@ public static class SqlCompletions
             return name;
         }
         bool plain = name.Length > 0 && (char.IsLetter(name[0]) || name[0] == '_') && name.All(c => char.IsLetterOrDigit(c) || c == '_')
-            && (kind != DatabaseKind.Postgres || !name.Any(char.IsUpper))
+            && (kind is not (DatabaseKind.Postgres or DatabaseKind.Cassandra) || !name.Any(char.IsUpper))
             && (kind != DatabaseKind.Snowflake || !name.Any(char.IsLower))
             && !Common.Contains(name, StringComparer.OrdinalIgnoreCase);
         return plain ? name : SqlText.QuotedName(kind, name);

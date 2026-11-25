@@ -77,6 +77,7 @@ public sealed class SqlTextTests
             ("runCommand reads only for a command known to", DatabaseKind.MongoDb, "db.runCommand({ ping: 1 })", SqlEffect.Reads),
             ("Cosmos DB's SQL only reads", DatabaseKind.CosmosDb, "SELECT * FROM c WHERE c.op = 'DELETE'", SqlEffect.Reads),
             ("DynamoDB's PartiQL reads as SQL does: its UPDATE changes data", DatabaseKind.DynamoDb, "UPDATE \"orders\" SET qty = 0 WHERE id = '1'", SqlEffect.ChangesData),
+            ("Cassandra's CQL reads as SQL does, a line after // a comment", DatabaseKind.Cassandra, "// DROP TABLE orders\nSELECT * FROM orders", SqlEffect.Reads),
             ("Redis's read of a key named as a command reads", DatabaseKind.Redis, "HGET DEL field", SqlEffect.Reads),
             ("Redis's write, and one it does not know, change data", DatabaseKind.Redis, "frobnicate x", SqlEffect.ChangesData),
             ("CONFIG GET reads and CONFIG SET or FLUSHDB change the server", DatabaseKind.Redis, "CONFIG SET maxmemory 1mb", SqlEffect.ChangesSchema),

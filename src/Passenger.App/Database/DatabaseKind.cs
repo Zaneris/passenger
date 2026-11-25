@@ -13,6 +13,7 @@ public enum DatabaseKind
     CosmosDb,
     Redis,
     DynamoDb,
+    Cassandra,
 }
 
 /// <summary>What a kind of database is, as code that reads its queries' words, without its drivers, asks it.</summary>
@@ -22,7 +23,11 @@ public static partial class DatabaseKinds
     /// them, read and written through its own client, a console of it run in its own queries.</summary>
     public static bool HoldsDocuments(DatabaseKind kind) => kind is DatabaseKind.MongoDb or DatabaseKind.CosmosDb or DatabaseKind.DynamoDb;
 
-    /// <summary>Whether the kind is read in SQL, through its ADO.NET driver: every kind but the document databases and
-    /// Redis's keys, each read through its own client in its own queries.</summary>
-    public static bool SpeaksSql(DatabaseKind kind) => !HoldsDocuments(kind) && kind != DatabaseKind.Redis;
+    /// <summary>Whether the kind is read in SQL, through its ADO.NET driver: every kind but the document databases, Redis's
+    /// keys and Cassandra, each read through its own client in its own queries.</summary>
+    public static bool SpeaksSql(DatabaseKind kind) => !HoldsDocuments(kind) && kind is not (DatabaseKind.Redis or DatabaseKind.Cassandra);
+
+    /// <summary>Whether the kind's own queries read as SQL does, their statements, strings, names and effects: DynamoDB's
+    /// PartiQL and Cassandra's CQL.</summary>
+    public static bool QueriesAsSql(DatabaseKind kind) => SpeaksSql(kind) || kind is DatabaseKind.DynamoDb or DatabaseKind.Cassandra;
 }

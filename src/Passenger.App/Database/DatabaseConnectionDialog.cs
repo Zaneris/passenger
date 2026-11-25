@@ -316,6 +316,12 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                     host.Text = DatabaseKinds.Value(initial.ConnectionString, "ServiceURL", "Endpoint"); database.Text = DatabaseKinds.Value(initial.ConnectionString, "Region");
                     user.Text = DatabaseKinds.Value(initial.ConnectionString, "AccessKey", "Profile"); password.Text = DatabaseKinds.Value(initial.ConnectionString, "SecretKey");
                     break;
+                case DatabaseKind.Cassandra:
+                    (string cassandraHost, int cassandraPort) = DatabaseKinds.Endpoint(initial.Kind, initial.ConnectionString);
+                    host.Text = DatabaseKinds.Value(initial.ConnectionString, "Contact Points", "ContactPoints") ?? cassandraHost; port.Value = cassandraPort;
+                    database.Text = DatabaseKinds.Value(initial.ConnectionString, "Default Keyspace", "Keyspace");
+                    user.Text = DatabaseKinds.Value(initial.ConnectionString, "Username", "User"); password.Text = DatabaseKinds.Value(initial.ConnectionString, "Password");
+                    break;
                 case DatabaseKind.Redis when DatabaseKinds.Value(initial.ConnectionString, "Configuration") is { } configuration:
                     connection.Text = configuration; database.Text = DatabaseKinds.Value(initial.ConnectionString, "Database");
                     break;
@@ -382,7 +388,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                 DatabaseKind.DynamoDb => "AWS's own, or http://localhost:8000",
                 _ => null,
             };
-            databaseLabel.Text = kind == DatabaseKind.DynamoDb ? "Region" : remote ? "Database" : "Database file";
+            databaseLabel.Text = kind switch { DatabaseKind.DynamoDb => "Region", DatabaseKind.Cassandra => "Keyspace", _ => remote ? "Database" : "Database file" };
             database.PlaceholderText = kind == DatabaseKind.Redis ? "0" : kind == DatabaseKind.DynamoDb ? "us-east-1" : remote ? "shop" : kind == DatabaseKind.DuckDb ? "A path from the open folder, or none for its files in memory"
                 : "Full path, or a path relative to the open folder";
             port.Value = DatabaseKinds.Port(kind);
@@ -439,7 +445,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         DatabaseKind.DuckDb => DatabaseKinds.FileOf(kind, written) is { Length: > 0 } file ? Path.GetFileName(file) : "DuckDB in memory",
         DatabaseKind.ClickHouse => $"{DatabaseKinds.Value(written, "Database") ?? "default"} at {DatabaseKinds.Endpoint(kind, written).Host}",
         DatabaseKind.DynamoDb => $"DynamoDB at {(DatabaseKinds.Value(written, "ServiceURL") is not null ? DatabaseKinds.Endpoint(kind, written).Host : DatabaseKinds.Value(written, "Region") ?? "us-east-1")}",
-        DatabaseKind.MongoDb or DatabaseKind.CosmosDb or DatabaseKind.Redis =>
+        DatabaseKind.MongoDb or DatabaseKind.CosmosDb or DatabaseKind.Redis or DatabaseKind.Cassandra =>
             $"{new DatabaseSource(string.Empty, kind, string.Empty) { ConnectionString = written }.Database} at {DatabaseKinds.Endpoint(kind, written).Host}",
         _ => $"{DatabaseKinds.Value(written, "db")} at {DatabaseKinds.Value(written, "account")}",
     };
@@ -504,6 +510,9 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                 ("Region", database.Text?.Trim() is { Length: > 0 } region ? region : "us-east-1"),
                 (string.IsNullOrEmpty(password.Text) ? "Profile" : "AccessKey", user.Text?.Trim() ?? string.Empty),
                 (string.IsNullOrEmpty(password.Text) ? "AccessKey" : "Profile", string.Empty), ("SecretKey", password.Text ?? string.Empty)),
+            // Cassandra's contact points are its nodes' hosts, any of which tells the driver of the rest.
+            DatabaseKind.Cassandra => Written(baseline, ("Contact Points", host.Text!.Trim()), ("Port", number.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                ("Default Keyspace", database.Text?.Trim() ?? string.Empty), ("Username", user.Text ?? string.Empty), ("Password", password.Text ?? string.Empty)),
             DatabaseKind.Redis => Written(baseline, ("Host", host.Text!.Trim()), ("Port", number.ToString(System.Globalization.CultureInfo.InvariantCulture)),
                 ("Database", RedisNames.Database(RedisNames.Number(database.Text?.Trim() ?? string.Empty))), ("Username", user.Text ?? string.Empty),
                 ("Password", password.Text ?? string.Empty)),

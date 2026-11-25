@@ -98,6 +98,18 @@
           "AWSSDK.Core": "[4.1.1.2, 5.0.0)"
         }
       },
+      "CassandraCSharpDriver": {
+        "type": "Direct",
+        "requested": "[3.23.0, )",
+        "resolved": "3.23.0",
+        "contentHash": "MepI+aER6zkbDerQtixXATixc+3jh4Gqng+MbCLVIGQ4sLvyMqKRHhpeJl/aI8Wzqf9gHvBS2LWUgQRFKzqrHw==",
+        "dependencies": {
+          "K4os.Compression.LZ4": "1.1.11",
+          "Microsoft.Extensions.Logging": "1.0.0",
+          "Newtonsoft.Json": "13.0.1",
+          "System.Management": "4.7.0"
+        }
+      },
       "ClickHouse.Driver": {
         "type": "Direct",
         "requested": "[1.5.0, )",
@@ -607,6 +619,11 @@
         "type": "Transitive",
         "resolved": "14.4.0.200",
         "contentHash": "lCY77jIIBi1nDne3V0OEDanbCTxxdDbeaR+cXD1/k9MuyfFXy7MLPGbi4iXvVhV1LBBAV/sWLR1wbqSNOedbiQ=="
+      },
+      "K4os.Compression.LZ4": {
+        "type": "Transitive",
+        "resolved": "1.1.11",
+        "contentHash": "RNvJw0UGkedPhCqVBNIogtfQebY+bQt0PN7xDbVe5LWLra0ZEqPfjPSl7iStj3rgDnkqkkTTpm+vCX3hU1qKmA=="
       },
       "MessagePack": {
         "type": "Transitive",

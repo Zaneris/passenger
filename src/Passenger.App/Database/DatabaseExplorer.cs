@@ -330,7 +330,7 @@ public sealed class DatabaseExplorer : DockPanel
                     parts.Add(Group("Keys", depth, node, [.. schema.Keys.Select(k => Part(DatabaseNodeKind.Key, k, string.Empty))]));
                     parts.Add(Group("Indexes", depth, node, [.. schema.Indexes.DistinctBy(i => i.Said).Select(i => Part(DatabaseNodeKind.Index, i.Said, i.Name))]));
                 }
-                if (node.Kind == DatabaseNodeKind.Table && !DatabaseKinds.HoldsDocuments(source.Kind) || schema.Triggers.Count > 0)
+                if (node.Kind == DatabaseNodeKind.Table && DatabaseKinds.SpeaksSql(source.Kind) || schema.Triggers.Count > 0)
                 {
                     parts.Add(Group("Triggers", depth, node, [.. schema.Triggers.Select(t => Part(DatabaseNodeKind.Trigger, t.Name, t.Name, t.Said))]));
                 }
