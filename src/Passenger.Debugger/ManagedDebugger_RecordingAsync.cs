@@ -14,8 +14,16 @@ public partial class ManagedDebugger
     /// <summary>How many async calls not yet completed a recording follows, the oldest let go past them.</summary>
     internal const int MostOpenAsync = 1_000;
 
-    /// <summary>A breakpoint of an async method's MoveNext: where a call's code begins, or where it completes.</summary>
-    private sealed record AsyncPoint(ModuleInfo Module, ModuleMetadataReader.AsyncMethod Method, bool Begins);
+    /// <summary>A breakpoint of an async method's MoveNext: where a call's code begins, where an async iterator's yield
+    /// passes, or where it completes.</summary>
+    private sealed record AsyncPoint(ModuleInfo Module, ModuleMetadataReader.AsyncMethod Method, AsyncPointKind Kind);
+
+    private enum AsyncPointKind
+    {
+        Begins,
+        Yields,
+        Completes,
+    }
 
     private readonly Dictionary<ICorDebugFunctionBreakpoint, AsyncPoint> _asyncBreakpoints = new(ReferenceEqualityComparer.Instance);
 
@@ -39,11 +47,15 @@ public partial class ManagedDebugger
             try
             {
                 ICorDebugCode code = module.Module.GetFunctionFromToken(method.MoveNext).ILCode;
-                foreach ((int offset, bool begins) in new[] { (method.Begins, true), (method.Ends, false) })
+                foreach ((int offset, AsyncPointKind kind) in new[] { (method.Begins, AsyncPointKind.Begins), (method.Yields ?? -1, AsyncPointKind.Yields), (method.Ends, AsyncPointKind.Completes) })
                 {
+                    if (offset < 0)
+                    {
+                        continue;
+                    }
                     ICorDebugFunctionBreakpoint breakpoint = code.CreateBreakpoint(offset);
                     breakpoint.Activate(true);
-                    _asyncBreakpoints[breakpoint] = new AsyncPoint(module, method, begins);
+                    _asyncBreakpoints[breakpoint] = new AsyncPoint(module, method, kind);
                 }
                 _asyncByMoveNext[(module, method.MoveNext)] = method;
                 bound++;
@@ -56,8 +68,9 @@ public partial class ManagedDebugger
         return bound;
     }
 
-    /// <summary>The recorded call a frame runs in and its run: the first frame above it that is one of the thread's open calls
-    /// or runs an open async call's code, whatever code lies between; none, the run the thread's own, where there is none.</summary>
+    /// <summary>The recorded call a frame runs in and its run: the first frame above it that is one of the thread's open calls,
+    /// runs an open async call's code or goes on a runtime-async call, whatever code lies between; none, the run the
+    /// thread's own, where there is none.</summary>
     private (int? Parent, int Flow, ICorDebugILFrame? Frame) ParentOf(int threadId, List<OpenCall> open, ICorDebugILFrame frame)
     {
         ICorDebugFrame? up = frame;
@@ -75,6 +88,10 @@ public partial class ManagedDebugger
             if (AsyncCallRunIn(code) is { } running)
             {
                 return (running.Moment, running.Flow, code);
+            }
+            if (RangeOf(code) is { } at && Resumed(threadId, open, code, at) is { } resumed)
+            {
+                return (resumed.Moment, resumed.Flow, code);
             }
         }
         return (null, threadId, null);
@@ -208,18 +225,60 @@ public partial class ManagedDebugger
             call.Machine?.TryDispose();
         }
         string label = call?.Label ?? LabelOf(point.Module.MetadataReader.DescribeCall(point.Method.Kickoff));
+        ICorDebugValue? value = point.Method.Result is int slot && frame.TryGetLocalVariable(checked((uint)slot), out ICorDebugValue? held) is Cor.S_OK ? held : null;
+        await KeepAsyncMomentAsync(thread, call, value, ReturnedRow(label), DescribeFrame(0, frame), came);
+    }
+
+    /// <summary>An async iterator's yield, on whatever thread its run goes on: the item read from its state machine's current
+    /// field, kept as a moment of the call its state machine began, which goes on until it completes.</summary>
+    private async Task RecordAsyncYieldAsync(ICorDebugThread thread, AsyncPoint point, long came)
+    {
+        if (TopFrame(thread) is ICorDebugILFrame frame && AsyncCallRunIn(frame) is { } call)
+        {
+            await KeepAsyncMomentAsync(thread, call, MachineField(frame, ModuleMetadataReader.YieldedField), $"{call.Label} yielded", YieldPlace(frame, point), came);
+        }
+    }
+
+    /// <summary>Where a yield stands, the statement whose state the state machine is left in; the frame's place where it is not told.</summary>
+    private StackFrameInfo YieldPlace(ICorDebugILFrame frame, AsyncPoint point)
+    {
+        StackFrameInfo place = DescribeFrame(0, frame);
+        if (MachineField(frame, ModuleMetadataReader.StateField) is ICorDebugGenericValue state && state.GetValueAsBytes() is { Length: 4 } bytes
+            && point.Method.YieldedAt?.GetValueOrDefault(BitConverter.ToInt32(bytes)) is int offset
+            && point.Module.MetadataReader.VisibleSequencePoints(point.Method.MoveNext).LastOrDefault(at => at.Offset <= offset) is { Document: { } document } yielded)
+        {
+            (place.Source, place.Line, place.Column, place.EndLine, place.EndColumn) = (document, yielded.StartLine, yielded.StartColumn, yielded.EndLine, yielded.EndColumn);
+        }
+        return place;
+    }
+
+    /// <summary>A field of the state machine a MoveNext frame runs, where it is an object; null otherwise.</summary>
+    private static ICorDebugValue? MachineField(ICorDebugILFrame frame, string name)
+    {
+        if (MachineAt(frame) is null || frame.Arguments[0] is not ICorDebugReferenceValue machine || machine.Dereference() is not ICorDebugObjectValue held)
+        {
+            return null;
+        }
+        ICorDebugClass declaring = held.ExactType.Class;
+        mdFieldDef field = declaring.Module.GetMetaDataInterface<IMetaDataImport>().EnumFieldsWithName(declaring.Token, name).FirstOrDefault();
+        return field.IsNil ? null : held.GetFieldValue(declaring, field);
+    }
+
+    /// <summary>A moment of an async call kept at a frame of its MoveNext, at <paramref name="place"/>: <paramref name="value"/>
+    /// named <paramref name="name"/>, beside its parameters as they were at its call, in the call's run.</summary>
+    private async Task KeepAsyncMomentAsync(ICorDebugThread thread, PendingAsync? call, ICorDebugValue? value, string name, StackFrameInfo place, long came)
+    {
         KeptMoment? called = call is null ? null : Find(call.Moment);
         Capture capture = NewRecordingCapture(called?.Values);
         List<VariableInfo> rows = [];
-        string name = ReturnedRow(label);
-        int returnedReference = point.Method.Result is int slot && frame.TryGetLocalVariable(checked((uint)slot), out ICorDebugValue? value) is Cor.S_OK && value is not null
+        int returnedReference = value is not null
             ? await ReadRecordedAsync(capture, rows, () => AddValueRow(rows, name, null, value, new ThreadId(thread.Id), new FrameStackDepth(0)))
             : capture.Add([]);
         IReadOnlyList<VariableInfo> returned = capture.Values[returnedReference];
         IReadOnlyList<VariableInfo> top = [.. returned, .. called?.TopRows ?? []];
         int topReference = capture.Add(top);
         string said = returned.Count > 0 ? $"{name} {Cut(returned[0].Value)}" : name;
-        Keep(new KeptMoment(new RecordedMoment(_momentsRecorded + 1, MomentKind.Return, thread.Id, DateTimeOffset.Now, DescribeFrame(0, frame), call?.Depth ?? 0, said),
+        Keep(new KeptMoment(new RecordedMoment(_momentsRecorded + 1, MomentKind.Return, thread.Id, DateTimeOffset.Now, place, call?.Depth ?? 0, said),
             ThreadNameOf(thread), call?.Callers ?? [], call?.Parent, capture.Values, topReference, top, Stopwatch.GetElapsedTime(came), BytesOf(capture.Values, called?.Values.Count ?? 0),
             capture.Said, call?.Flow ?? thread.Id));
     }
@@ -248,6 +307,10 @@ public partial class ManagedDebugger
                 if (AsyncCallRunIn(code) is { } running)
                 {
                     return running.Flow;
+                }
+                if (RangeOf(code) is { } at && Resumed(threadId, open, code, at) is { } resumed)
+                {
+                    return resumed.Flow;
                 }
             }
         }

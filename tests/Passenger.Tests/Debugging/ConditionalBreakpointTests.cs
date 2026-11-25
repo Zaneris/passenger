@@ -17,6 +17,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     private static readonly int CatchBody = Debuggees.Line("DebuggableConsoleApp", "Exceptions.cs", "catch (Exception e)") + 2;
     private static readonly int MyMethodAsyncEnds = Debuggees.Line("DebuggableConsoleApp", "MyAsyncClass.cs", "return result;") + 1;
     private static readonly int DoOperationCalled = Debuggees.Line("DebuggableConsoleApp", "MultilineSwitchInMethodCall.cs", "Result result = DoOperation();");
+    private static readonly int ItemYielded = Debuggees.Line("DebuggableConsoleApp", "RecordedReturnsClass.cs", "yield return i * 10;");
 
     /// <summary>The gate's conditions, hit counts and tracepoints as one flow: a breakpoint stopping where its
     /// condition holds, never where it fails, and saying why where it cannot be told or is refused, a hit count of each
@@ -94,8 +95,9 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A recording asked for before the program starts keeps the calls of its own code with their arguments and the
     /// returns with their values: at a stop in Test's second call, the timeline holds MyMethod's call with 13 and 6 (Main's
-    /// arguments below it), DoOperation's return with its Success, Selector's return to LINQ, and the async MyMethodAsync's
-    /// call with 4 and return of 5, each read as a past stop, and it says what recording held the program.</summary>
+    /// arguments below it), DoOperation's return with its Success, Selector's return to LINQ, the expression-bodied Named's
+    /// and Half's returns to LINQ, CountAsync's yields at its yield's line, and the async MyMethodAsync's call with 4 and
+    /// return of 5, each read as a past stop, and it says what recording held the program.</summary>
     private async Task A_recording_keeps_each_calls_arguments_and_each_returns_value_and_shows_either_as_a_past_stop()
     {
         await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended: true, out Process program);
@@ -123,6 +125,13 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         // A method the framework's code calls (LINQ's Select) has its return read at its own closing brace.
         Assert.True(timeline.Moments.Any(m => m.Kind == DapMomentKinds.Return && m.Said == "Selector() returned 2"),
             $"The timeline held {string.Join(" · ", timeline.Moments.Select(m => m.Said))}, where Selector's return of 2 to Select is among them");
+        // An expression body's return to LINQ is read from the register it returns in; an async iterator's yields as it gives each item.
+        string[] said = [.. timeline.Moments.Select(m => m.Said)];
+        DapMoment? yielded = timeline.Moments.LastOrDefault(m => m.Said == "CountAsync() yielded 20");
+        Assert.True(said.Contains("Named() returned \"n2\"") && said.Contains("Half() returned 0.5") && said.Contains("CountAsync(2)") && said.Contains("CountAsync() yielded 10")
+            && yielded?.Place.Line == ItemYielded && said.Contains("CountAsync() returned"),
+            $"The timeline held {string.Join(" · ", said)}, where Named's return of \"n2\" and Half's of 0.5 to LINQ, and CountAsync's call with 2, its yields of 10 and 20 "
+            + $"at line {ItemYielded} (20 at line {yielded?.Place.Line}) and its return, are among them");
         Assert.True(entered.Frame.Name.Contains("MyMethod", StringComparison.Ordinal) && entered.Frame.Line == MyMethodOpens
             && (Value(arguments, "myParam"), Value(arguments, "myIntParam")) == ("13", "6"),
             $"MyMethod's call shows {entered.Frame.Name} at line {entered.Frame.Line} with myParam {Value(arguments, "myParam")} and myIntParam {Value(arguments, "myIntParam")}, "

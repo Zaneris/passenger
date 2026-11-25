@@ -84,10 +84,20 @@ public partial class ModuleMetadataReader : IDisposable
     /// <summary>An async method a recording takes: the method the user wrote, which runs none of its code itself; the
     /// MoveNext its state machine runs that code in; the IL offsets there of its opening brace, which a call passes once as
     /// it begins, and its closing brace, which a call that completes passes; the local its result is in there, none for a
-    /// method returning no value; and its parameters' names, which the state machine keeps as its fields.</summary>
-    internal sealed record AsyncMethod(int Kickoff, int MoveNext, int Begins, int Ends, int? Result, IReadOnlyList<string> Parameters);
+    /// method returning no value; its parameters' names, which the state machine keeps as its fields; and for an async
+    /// iterator, where each yield passes, its item in the state machine's current field, and the IL offset of each yield by
+    /// the state it leaves the state machine in, none for any other.</summary>
+    internal sealed record AsyncMethod(int Kickoff, int MoveNext, int Begins, int Ends, int? Result, IReadOnlyList<string> Parameters, int? Yields = null,
+        IReadOnlyDictionary<int, int>? YieldedAt = null);
 
-    private static readonly string[] AsyncStateMachine = ["System.Runtime.CompilerServices.AsyncStateMachineAttribute"];
+    /// <summary>The field an async iterator's state machine holds the item it yields in.</summary>
+    internal const string YieldedField = "<>2__current";
+
+    /// <summary>The field a state machine holds its state in.</summary>
+    internal const string StateField = "<>1__state";
+
+    private static readonly string[] AsyncStateMachine =
+        ["System.Runtime.CompilerServices.AsyncStateMachineAttribute", "System.Runtime.CompilerServices.AsyncIteratorStateMachineAttribute"];
 
     /// <summary>The async methods of the user's code a recording takes, as <see cref="RecordedMethodTokens"/> takes methods.</summary>
     internal IEnumerable<AsyncMethod> RecordedAsyncMethods()
@@ -110,6 +120,26 @@ public partial class ModuleMetadataReader : IDisposable
             int ends = points[^1].Offset;
             IReadOnlyList<CilInstruction> instructions = CilInstructionDecoder.Decode(il);
             int? result = null;
+            int? yields = null;
+            for (int i = 3; i < instructions.Count; i++)
+            {
+                // An async iterator's yields all go on to the promise's SetResult(true), its item already in its current field.
+                if (instructions[i].Code is ILOpCode.Call && instructions[i - 1].Code is ILOpCode.Ldc_i4_1 && instructions[i - 2].Code is ILOpCode.Ldflda
+                    && instructions[i - 3].Code is ILOpCode.Ldarg_0 && DescribeCall(instructions[i].Token) is { Name: "SetResult", Parameters.Count: 1 })
+                {
+                    yields = instructions[i - 3].Offset;
+                }
+            }
+            Dictionary<int, int> yieldedAt = [];
+            for (int i = 0; yields is not null && i + 5 < instructions.Count; i++)
+            {
+                // A yield sets the current item, then the state the state machine goes on from.
+                if (instructions[i].Code is ILOpCode.Stfld && FieldName(instructions[i].Token) == YieldedField && instructions[i + 2].Code is ILOpCode.Ldc_i4_s or ILOpCode.Ldc_i4
+                    && instructions[i + 5].Code is ILOpCode.Stfld && FieldName(instructions[i + 5].Token) == StateField)
+                {
+                    yieldedAt[instructions[i + 2].Index] = instructions[i].Offset;
+                }
+            }
             for (int i = 1; i < instructions.Count; i++)
             {
                 // The builder's SetResult after the closing brace, given the local the method's value is in.
@@ -135,7 +165,7 @@ public partial class ModuleMetadataReader : IDisposable
                     parameters.Add(_peMetadataReader.GetString(named.Name));
                 }
             }
-            yield return new AsyncMethod(token, moveNext, points[0].Offset, ends, result, parameters);
+            yield return new AsyncMethod(token, moveNext, points[0].Offset, ends, result, parameters, yields, yields is null ? null : yieldedAt);
         }
     }
 

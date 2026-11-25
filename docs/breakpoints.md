@@ -79,10 +79,13 @@ debugger reads it (a few milliseconds a call, where a breakpoint that does not s
 Each call of a method the program's symbols place (none the compiler wrote, a lambda's or an auto-property's) is kept as
 it begins, its arguments and their members one level down read as a snapshot reads them, running none of the program's
 code, and a call returning a value again as it returns, that value read where the runtime keeps it: in the user's code
-that called it, or at its own closing brace for a call code that is not the user's made (LINQ calling a selector; an
-expression-bodied method's return keeps no value there and is kept without one). An async method's call is kept where
-the code its state machine runs begins and where it completes, with the value it completes with, on whichever thread it
-went on on after an await. An exception is kept where it is thrown in the user's code (or reaches it) and where the
+that called it, or at its own closing brace for a call code that is not the user's made (LINQ calling a selector), or,
+for an expression-bodied method there, from the register it returns its value in (a struct's or a generic parameter's is
+kept without a value). An async method's call is kept where the code its state machine runs begins and where it
+completes, with the value it completes with, on whichever thread it went on on after an await; an async iterator's too,
+and each item it yields at its `yield return`. A runtime-async method (.NET 11), which has no state machine, is kept
+where it completes with the value it completes with, wherever it went on after an await suspended it, never where an
+await left it. An exception is kept where it is thrown in the user's code (or reaches it) and where the
 user's code catches it, and a hit of one of the person's breakpoints that went on (its condition false, its hit count
 not reached, a tracepoint's message logged, a snapshot taken) with its frame's values. A recording keeps its newest
 10,000 moments and 32 MB of their values, letting the oldest go past them, which its timeline says.
