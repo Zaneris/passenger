@@ -551,25 +551,10 @@ public static partial class NoticesFile
         }
     }
 
-    /// <summary>The packages a .deps.json file names, with the folder of each under the package folder where it gives one,
-    /// and the runtime pack a self-contained program carries ("runtimepack.Microsoft.NETCore.App.Runtime.osx-arm64").</summary>
-    private static IEnumerable<(string Id, string Version, string? Path)> Dependencies(string deps)
-    {
-        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(deps));
-        foreach (JsonProperty library in JsonMembers.Properties(document.RootElement, "libraries"))
-        {
-            string[] name = library.Name.Split('/');
-            switch (JsonMembers.Text(library.Value, "type"))
-            {
-                case "package":
-                    yield return (name[0], name[1], JsonMembers.Text(library.Value, "path"));
-                    break;
-                case "runtimepack":
-                    yield return (name[0]["runtimepack.".Length..], name[1], null);
-                    break;
-            }
-        }
-    }
+    /// <summary>The packages a .deps.json file's program carries (<see cref="CarriedPackages"/>), with the folder of each
+    /// under the package folder where it gives one.</summary>
+    private static IEnumerable<(string Id, string Version, string? Path)> Dependencies(string deps) =>
+        CarriedPackages.In(deps).Select(p => (p.Id, p.Version, p.Path));
 
     /// <summary>Every npm package folder under a node_modules folder, nested ones (a package's own node_modules) and
     /// scoped ones (@vscode/l10n) included.</summary>

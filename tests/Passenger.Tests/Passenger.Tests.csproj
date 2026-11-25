@@ -38,6 +38,8 @@
     <Compile Include="../../src/Passenger.Inspector/FrameWire.cs" Link="FrameWire.cs" />
     <!-- What Passenger's Hot Reload hook says, and the name its thread goes by in a debugged program. -->
     <Compile Include="../../src/Passenger.UpdateHandlers/Wire.cs" Link="UpdateHandlersWire.cs" />
+    <!-- The notices' rule of which packages a program carries, which AboutTests counts the app's by. -->
+    <Compile Include="../../tools/Passenger.Notices/CarriedPackages.cs" Link="CarriedPackages.cs" />
     <!-- The ways one test holds many checks, a table of rows and a flow of steps (tests/Shared), linked into both test
          projects. -->
     <Compile Include="../Shared/*.cs" LinkBase="Shared" />
