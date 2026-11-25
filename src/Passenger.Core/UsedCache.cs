@@ -25,7 +25,7 @@ public sealed record UsedLimits(TimeSpan UnusedFor, TimeSpan InUse, long? MostBy
 public sealed class UsedCache(string folder, UsedEntries entries, UsedLimits limits, Action<string>? log = null)
 {
     /// <summary>What a folder entry renamed to be removed is called, until it is.</summary>
-    private const string Going = ".gone";
+    public const string Going = ".gone";
 
     public string Folder { get; } = Path.GetFullPath(folder);
 

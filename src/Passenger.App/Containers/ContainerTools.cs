@@ -160,7 +160,7 @@ public static class ContainerTools
         }
         try
         {
-            return await ReleaseAssets.FolderAsync(source.Releases, Asset(rid), Path.Combine(source.Cache, version, rid), Executable,
+            return await ReleaseAssets.FolderAsync(source.Releases, Asset(rid), source.Cache, rid, Executable,
                 $"Passenger's container tools for {rid}", say, cancel,
                 unreached: Product.Version.StartsWith("0.1.", StringComparison.Ordinal) || !File.Exists(Path.Combine(AppContext.BaseDirectory, "LICENSE.txt"))
                     ? $"a build of your own makes them with just container-tools {rid}" : null).ConfigureAwait(false);

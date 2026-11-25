@@ -25,7 +25,10 @@ public sealed record X86DebuggerSource(string Carried, ReleaseFeed Releases, str
         new(Path.Combine(AppContext.BaseDirectory, "debugger", "x86"), releases, Path.Combine(State.StateStore.DefaultRoot, "cache", "debugger"));
 
     /// <summary>The folder this version's host is downloaded into.</summary>
-    public string Downloaded => Path.Combine(Cache, Product.Version, "win-x86");
+    public string Downloaded => ReleaseAssets.FolderOf(Cache, Platform);
+
+    /// <summary>The system the host runs on, which names its folder in its version's.</summary>
+    private const string Platform = "win-x86";
 
     /// <summary>The host's folder as it stands: the one the build carries, else this version's downloaded; null with
     /// neither.</summary>
@@ -34,5 +37,5 @@ public sealed record X86DebuggerSource(string Carried, ReleaseFeed Releases, str
     /// <summary>The host's folder: <see cref="Here"/>, else downloaded now, <paramref name="say"/> telling its progress. Throws
     /// <see cref="ReleaseAssetException"/> saying why there is none.</summary>
     public async Task<string> FolderAsync(Action<string>? say, CancellationToken cancel) =>
-        Here ?? await ReleaseAssets.FolderAsync(Releases, Asset, Downloaded, Program, Named, say, cancel).ConfigureAwait(false);
+        Here ?? await ReleaseAssets.FolderAsync(Releases, Asset, Cache, Platform, Program, Named, say, cancel).ConfigureAwait(false);
 }

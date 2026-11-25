@@ -7,21 +7,30 @@ namespace Passenger.App.Updates;
 
 /// <summary>A file of this Passenger's own release that it downloads the first time it needs it rather than carries (the
 /// container tools, the debugger's 32-bit host): its version's release file, checked against that release's SHA256SUMS,
-/// unpacked (a .zip, else a .tar.gz) into a folder of the state's cache through a temporary folder renamed into place, so a
-/// folder there is whole or absent. One download a folder at a time in this process; another process's that lands first
-/// is kept. Any thread: nothing here touches the window.</summary>
+/// unpacked (a .zip, else a .tar.gz) into a folder of a cache of the state's, one a version (<see cref="FolderOf"/>), through
+/// a temporary folder renamed into place, so a folder there is whole or absent. One download a folder at a time in this
+/// process; another process's that lands first is kept. A cache keeps only the versions of the Passengers running: each
+/// holds its own (<see cref="Hold"/>), and every other is removed once a process (<see cref="PruneOnce"/>). Any thread:
+/// nothing here touches the window.</summary>
 public static class ReleaseAssets
 {
     /// <summary>The downloads under way, one a folder.</summary>
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> Downloads = new(StringComparer.Ordinal);
 
-    /// <summary>The folder holding a release file's contents, its <paramref name="marker"/> inside: there already, else
-    /// downloaded from <paramref name="releases"/>' release of this version, <paramref name="say"/> telling its progress in
-    /// words naming <paramref name="what"/> it is. Throws <see cref="ReleaseAssetException"/> saying why there is none, a
-    /// download that failed ending with <paramref name="unreached"/> where given.</summary>
-    public static async Task<string> FolderAsync(ReleaseFeed releases, string asset, string folder, string marker, string what, Action<string>? say,
+    /// <summary>The folder of a cache's holding a release file of this version: <paramref name="name"/> in its version's.</summary>
+    public static string FolderOf(string cache, string name) => Path.Combine(cache, Product.Version, name);
+
+    /// <summary>The folder holding a release file's contents (<see cref="FolderOf"/> <paramref name="cache"/> and
+    /// <paramref name="name"/>), its <paramref name="marker"/> inside: there already, else downloaded from
+    /// <paramref name="releases"/>' release of this version, <paramref name="say"/> telling its progress in words naming
+    /// <paramref name="what"/> it is. Throws <see cref="ReleaseAssetException"/> saying why there is none, a download that
+    /// failed ending with <paramref name="unreached"/> where given.</summary>
+    public static async Task<string> FolderAsync(ReleaseFeed releases, string asset, string cache, string name, string marker, string what, Action<string>? say,
         CancellationToken cancel, string? unreached = null)
     {
+        string folder = FolderOf(cache, name);
+        // Held before it is read or written, so another version's prune leaves it be; waited for off the window's thread.
+        await BackgroundWork.Run(() => Hold(cache)).ConfigureAwait(false);
         if (File.Exists(Path.Combine(folder, marker)))
         {
             return folder;
@@ -108,6 +117,130 @@ public static class ReleaseAssets
             }
         }
     }
+
+    /// <summary>Where a cache keeps its versions' holds, a file a version.</summary>
+    private const string Running = ".running";
+
+    /// <summary>How long a hold waits out another process's prune taking its version's file a moment.</summary>
+    private static readonly TimeSpan HoldWaits = TimeSpan.FromSeconds(5);
+
+    /// <summary>This process's holds on its version in each cache, open until it ends; null where none could be had.</summary>
+    private static readonly ConcurrentDictionary<string, Lazy<FileStream?>> Holds = new(PathNames.Comparer);
+
+    /// <summary>The caches this process has pruned.</summary>
+    private static readonly ConcurrentDictionary<string, bool> Pruned = new(PathNames.Comparer);
+
+    /// <summary>Holds this version's downloads in a cache against every other Passenger's prune until this process ends;
+    /// whether they are held.</summary>
+    public static bool Hold(string cache) => Holds.GetOrAdd(cache, each => new Lazy<FileStream?>(() => Held(each, Product.Version))).Value is not null;
+
+    /// <summary>A version's downloads in a cache held against a prune while the stream is open, as a running Passenger of that
+    /// version holds its own: its file under <see cref="Running"/> open sharing all, which a prune's open sharing nothing is
+    /// refused while any holds it (the system lets go of it with a process however it ends). Null where it could not be had,
+    /// the downloads then left to a prune.</summary>
+    public static FileStream? Held(string cache, string version)
+    {
+        string path = Path.Combine(cache, Running, version);
+        Deadline until = Deadline.In(HoldWaits);
+        while (true)
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                FileStream held = new(path, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                // A prune that took the file away as this opened it leaves this holding no file: it is had again.
+                if (File.Exists(path))
+                {
+                    return held;
+                }
+                held.Dispose();
+            }
+            catch (IOException refused) when (State.StateFile.HeldElsewhere(refused) && !until.Passed)
+            {
+                // A prune of another version's Passenger has it for a moment.
+            }
+            catch (Exception failed) when (failed is IOException or UnauthorizedAccessException)
+            {
+                IdeErrors.Write($"Release files: {version}'s in {cache} could not be held, so another Passenger may remove them: {failed.Message}");
+                return null;
+            }
+            Thread.Sleep(5);
+        }
+    }
+
+    /// <summary>Once a process for each cache, off the window's thread: this version's downloads held, then every other
+    /// version's that no running Passenger holds removed, with what an earlier removal left.</summary>
+    public static void PruneOnce(string cache)
+    {
+        if (Pruned.TryAdd(cache, true))
+        {
+            IdeErrors.Observe(BackgroundWork.Run(() => Prune(cache)));
+        }
+    }
+
+    private static void Prune(string cache)
+    {
+        if (!Directory.Exists(cache))
+        {
+            return;
+        }
+        Hold(cache);
+        UsedCache folders = new(cache, UsedEntries.Folders(1), new UsedLimits(TimeSpan.MaxValue, TimeSpan.Zero, null, TimeSpan.MaxValue));
+        try
+        {
+            string running = Path.Combine(cache, Running);
+            List<string> versions = [.. Directory.EnumerateDirectories(cache).Select(Path.GetFileName).OfType<string>()
+                .Concat(Directory.Exists(running) ? Directory.EnumerateFiles(running).Select(Path.GetFileName).OfType<string>() : [])
+                .Where(v => v != Product.Version && IsVersion(v)).Distinct(StringComparer.Ordinal)];
+            foreach (string version in versions)
+            {
+                (FileStream? unheld, string? kept) = Unheld(Path.Combine(running, version));
+                using FileStream? taken = unheld;
+                string folder = Path.Combine(cache, version);
+                if (kept is not null)
+                {
+                    IdeErrors.Write($"Release files: {version}'s in {cache} are kept, {kept}");
+                }
+                else if (Directory.Exists(folder))
+                {
+                    IdeErrors.Write(folders.Remove(folder) ? $"Release files: {version}'s removed from {cache}, no Passenger of that version running"
+                        : $"Release files: {version}'s in {cache} could not be removed now, and wait for the next start");
+                }
+            }
+            // What a removal cut short left.
+            foreach (string left in Directory.EnumerateDirectories(cache, "*" + UsedCache.Going))
+            {
+                folders.Remove(left);
+            }
+        }
+        catch (Exception failed) when (failed is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"Release files: {cache} could not be pruned: {failed.Message}");
+        }
+    }
+
+    /// <summary>A version's hold file had sharing nothing, gone once let go; else why its version is kept: a Passenger of it
+    /// holds it, or it could not be had at all.</summary>
+    private static (FileStream? Unheld, string? Kept) Unheld(string path)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            return (new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose), null);
+        }
+        catch (IOException held) when (State.StateFile.HeldElsewhere(held))
+        {
+            return (null, "held by a Passenger of that version still running");
+        }
+        catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
+        {
+            return (null, $"their hold could not be read: {refused.Message}");
+        }
+    }
+
+    /// <summary>Whether a cache's folder or hold is a version's, as Passenger's are named (0.5.0, 0.5.0-beta.1), never another
+    /// folder that may stand there.</summary>
+    private static bool IsVersion(string name) => System.Version.TryParse(name.Split('-', 2)[0], out System.Version? version) && version.Build >= 0;
 
     /// <summary>An archive's files into a folder, by its name's kind: a zip, else a gzipped tar. Neither writes outside the
     /// folder, whatever an entry's name says.</summary>

@@ -146,6 +146,9 @@ public sealed class ProjectSession : IAsyncDisposable
             Root = folder is null ? null : Path.Combine(setup.StateFolder, "cache", "continuous", FileNames.Hash(folder, 12)),
         };
         ContinuousTests.PruneOnce(Path.Combine(setup.StateFolder, "cache", "continuous"));
+        // What earlier versions downloaded from their releases, once no Passenger of theirs runs.
+        Updates.ReleaseAssets.PruneOnce(setup.ContainerTools().Cache);
+        Updates.ReleaseAssets.PruneOnce(setup.X86Debugger().Cache);
         Containers = new Containers.FolderContainers(folder, setup.Engine());
         Vcs.Work = setup.Work;
         Vcs.Watching = setup.Watching;
