@@ -38,8 +38,9 @@ internal static class WpfApp
     public static Task CreateWindowsFormsAsync(string folder, string name) => Make("winforms", folder, name, asMade: true);
 
     /// <summary>The project file of a WPF app of tests/Debuggees (WpfTreeApp), which has none of its own, written into its
-    /// folder: a Windows app for the test project's own target, restoring from the run's local feed alone. Its path.</summary>
-    public static string Project(string folder, string name)
+    /// folder: a Windows app for the test project's own target, restoring from the run's local feed alone; with
+    /// <paramref name="forms"/>, a Windows Forms app (FormsTreeApp). Its path.</summary>
+    public static string Project(string folder, string name, bool forms = false)
     {
         AddToFeed(Pinned());
         AvaloniaApp.UseFeed(folder);
@@ -49,7 +50,7 @@ internal static class WpfApp
               <PropertyGroup>
                 <OutputType>WinExe</OutputType>
                 <TargetFramework>{Framework}-windows</TargetFramework>
-                <UseWPF>true</UseWPF>
+                <{(forms ? "UseWindowsForms" : "UseWPF")}>true</{(forms ? "UseWindowsForms" : "UseWPF")}>
                 <Nullable>enable</Nullable>
                 <ImplicitUsings>enable</ImplicitUsings>
               </PropertyGroup>

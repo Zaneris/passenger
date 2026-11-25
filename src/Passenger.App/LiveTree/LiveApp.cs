@@ -39,12 +39,13 @@ public enum LiveAppKind
     Wpf,
     Maui,
     WinUI,
+    WinForms,
 }
 
 /// <summary>Passenger's end of its inspector inside an Avalonia app it runs or debugs (src/Passenger.Inspector), a WPF app
-/// (src/Passenger.Inspector.Wpf, also given ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO) or a .NET MAUI app on a device or a
-/// simulator (src/Passenger.Inspector.Maui), one protocol for all: a startup hook and a
-/// socket of the launch's own; from before Main it tells of failed bindings, and once the UI is up says hello and answers on
+/// (src/Passenger.Inspector.Wpf, also given ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO), a Windows Forms app
+/// (src/Passenger.Inspector.WinForms) or a .NET MAUI app on a device or a simulator (src/Passenger.Inspector.Maui), one
+/// protocol for all: a startup hook and a socket of the launch's own; from before Main it tells of failed bindings, and once the UI is up says hello and answers on
 /// the UI thread (paused under the debugger, once it runs again). One launch's alone, never in the app as built. A UI-thread
 /// object: its events come on the UI thread.</summary>
 public sealed class LiveApp : ILiveTreeSource, IDisposable
@@ -61,6 +62,9 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>What the app told unasked and the UI thread has yet to hear, which it hears all at once: an app saying
     /// thousands of things at once (its bindings failing as it opens) is one crossing, not one each.</summary>
     private readonly List<Reply> heard = [];
+
+    /// <summary>The designer code's files found of the app's classes, by each class's full name.</summary>
+    private readonly Dictionary<string, string> designerFiles = new(StringComparer.Ordinal);
     private NetworkStream? stream;
 
     private LiveApp(string name, string socket, Socket? listener, LaunchPlan? plan, IReadOnlyList<string> overlays, LiveAppKind kind = LiveAppKind.Avalonia,
@@ -83,6 +87,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             {
                 LiveAppKind.Wpf => WpfInspectorPath,
                 LiveAppKind.WinUI => WinUIInspectorPath(plan.DesktopApp()?.File) ?? InspectorPath,
+                LiveAppKind.WinForms => WinFormsInspectorPath,
                 _ => InspectorPath,
             };
             // An Avalonia app nobody is to see may be started by its inspector, after every other hook, in place of its Main.
@@ -135,6 +140,9 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>The WPF app's inspector, which only a Windows build carries.</summary>
     public static string WpfInspectorPath => Path.Combine(AppContext.BaseDirectory, "inspector", "wpf", "Passenger.Inspector.Wpf.dll");
 
+    /// <summary>A Windows Forms app's inspector, which only a Windows build carries.</summary>
+    public static string WinFormsInspectorPath => Path.Combine(AppContext.BaseDirectory, "inspector", "winforms", "Passenger.Inspector.WinForms.dll");
+
     /// <summary>A WinUI app's inspector, for the processor its program runs on (inspector/winui/x64/, arm64/, each with the COM
     /// host WinUI's diagnostics load it through), which only a Windows build carries; null for a program of another processor.</summary>
     public static string? WinUIInspectorPath(string? program) =>
@@ -162,10 +170,11 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// "WPF 10.0.1"; the framework alone before.</summary>
     public string Framework => Kind == LiveAppKind.Wpf ? FrameworkSaid ?? "WPF"
         : Kind == LiveAppKind.WinUI ? FrameworkSaid ?? "WinUI"
+        : Kind == LiveAppKind.WinForms ? FrameworkSaid ?? "Windows Forms"
         : Kind == LiveAppKind.Maui ? FrameworkSaid ?? "MAUI"
         : Avalonia is { } version ? $"Avalonia {(System.Version.TryParse(version, out Version? read) ? read.ToString(3) : version)}" : "Avalonia";
 
-    /// <summary>What a WPF, WinUI or MAUI app's inspector said it runs, from its hello.</summary>
+    /// <summary>What a WPF, WinUI, Windows Forms or MAUI app's inspector said it runs, from its hello.</summary>
     private string? FrameworkSaid { get; set; }
 
     /// <summary>The plan as it is launched: the inspector among its startup hooks, and the socket to connect to; none for
@@ -293,12 +302,14 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>The program a plan's start hands a startup hook to, as it runs (<see cref="LaunchPlan.DesktopApp"/>), where it is
     /// one this build of Passenger carries an inspector for: an Avalonia app (<see cref="DesktopPrograms.AvaloniaAssembly"/>
     /// beside it), or, with <paramref name="wpf"/>, on Windows a WPF app (a WindowsDesktop app's assembly that references
-    /// WPF's); null for any other program, one taking Avalonia.Base alone too, or one its start goes past hooks for.</summary>
+    /// WPF's), else on Windows a WinUI or Windows Forms app; null for any other program, one taking Avalonia.Base alone too,
+    /// or one its start goes past hooks for.</summary>
     public static (string File, LiveAppKind Kind)? Inspected(LaunchPlan plan, bool wpf = true) =>
         plan.DesktopApp() is not { PastHooks: null, File: var started } ? null
         : DesktopPrograms.BesideAvalonia(started) && File.Exists(InspectorPath) ? (started, LiveAppKind.Avalonia)
         : wpf && OperatingSystem.IsWindows() && File.Exists(WpfInspectorPath) && IsWpf(started) ? (started, LiveAppKind.Wpf)
         : OperatingSystem.IsWindows() && DesktopPrograms.BesideWinUI(started) && WinUIInspectorPath(started) is { } winui && File.Exists(winui) ? (started, LiveAppKind.WinUI)
+        : OperatingSystem.IsWindows() && File.Exists(WinFormsInspectorPath) && IsWinForms(started) ? (started, LiveAppKind.WinForms)
         : null;
 
     /// <summary>The live app for a plan that runs an app on a device whose build deployed Avalonia or .NET MAUI (its controls'
@@ -428,7 +439,15 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
 
     /// <summary>Whether an assembly is a WPF app's: it runs on the WindowsDesktop framework (its runtimeconfig.json names it)
     /// and references WPF's assemblies, as a Windows Forms app does not.</summary>
-    private static bool IsWpf(string built)
+    private static bool IsWpf(string built) => OnWindowsDesktopReferencing(built, "PresentationFramework", "PresentationCore");
+
+    /// <summary>Whether an assembly is a Windows Forms app's: on the WindowsDesktop framework, referencing Windows Forms (an app
+    /// of WPF too takes WPF's inspector, asked first).</summary>
+    private static bool IsWinForms(string built) => OnWindowsDesktopReferencing(built, "System.Windows.Forms");
+
+    /// <summary>Whether an assembly runs on the WindowsDesktop framework (its runtimeconfig.json names it) and references one of
+    /// the assemblies named.</summary>
+    private static bool OnWindowsDesktopReferencing(string built, params string[] names)
     {
         try
         {
@@ -436,7 +455,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             {
                 return false;
             }
-            return AssemblyFacts.Read(built)?.References.Any(r => r.Name is "PresentationFramework" or "PresentationCore") == true;
+            return AssemblyFacts.Read(built)?.References.Any(r => names.Contains(r.Name, StringComparer.Ordinal)) == true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -488,9 +507,26 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>The app's windows and their visual trees.</summary>
     public async Task<AppTree> TreeAsync() => (await AskAsync(new Request(0, Wire.Tree))).Tree ?? new AppTree([]);
 
-    /// <summary>An element looked at closely: its properties and their sources, its layout, its styles.</summary>
-    public async Task<ElementDetails> DetailsAsync(long element) =>
-        (await AskAsync(new Request(0, Wire.Details, element))).Details ?? throw new LiveAppException("The app said nothing of that element");
+    /// <summary>An element looked at closely: its properties and their sources, its layout, its styles; a Windows Forms one's
+    /// with the file of the designer code that makes it, found under its project's folder.</summary>
+    public async Task<ElementDetails> DetailsAsync(long element)
+    {
+        ElementDetails details = (await AskAsync(new Request(0, Wire.Details, element))).Details ?? throw new LiveAppException("The app said nothing of that element");
+        if (details.Designed is not { File: null } designed || Plan?.Project is not { } project)
+        {
+            return details;
+        }
+        if (!designerFiles.TryGetValue(designed.Class, out string? file))
+        {
+            string folder = Path.GetDirectoryName(project)!;
+            file = await BackgroundWork.Run(() => DesignerPlaces.FileOf(folder, designed.Class));
+            if (file is not null)
+            {
+                designerFiles[designed.Class] = file;
+            }
+        }
+        return details with { Designed = designed with { File = file } };
+    }
 
     /// <summary>Select Element on (the next click in the app chooses what it is on) or off.</summary>
     public Task PickAsync(bool on) => AskAsync(new Request(0, Wire.Pick, On: on));

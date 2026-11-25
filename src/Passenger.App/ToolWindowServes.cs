@@ -29,7 +29,7 @@ public enum FolderHolds
     /// <summary>A Reqnroll or SpecFlow project.</summary>
     StepDefinitions = 32,
 
-    /// <summary>An app Passenger's inspector looks into (an Avalonia, WPF or .NET MAUI app), or one it looks into now.</summary>
+    /// <summary>An app Passenger's inspector looks into (an Avalonia, WPF, Windows Forms or .NET MAUI app), or one it looks into now.</summary>
     InspectedApp = 64,
 }
 
@@ -71,7 +71,7 @@ public sealed class ToolWindowServes
     /// <summary>A Reqnroll or SpecFlow project, whose step definitions the Step Library lists.</summary>
     public static ToolWindowServes StepDefinitions { get; } = new(FolderHolds.StepDefinitions, Refusals.NoStepDefinitions);
 
-    /// <summary>An app Live Visual Tree looks into: an Avalonia, WPF or .NET MAUI app, a Godot game, or one inspected now.</summary>
+    /// <summary>An app Live Visual Tree looks into: an Avalonia, WPF, Windows Forms or .NET MAUI app, a Godot game, or one inspected now.</summary>
     public static ToolWindowServes InspectedApps { get; } = new(FolderHolds.InspectedApp | FolderHolds.GodotProject, Refusals.NoInspectedApp);
 
     /// <summary>Why it serves nothing in a folder holding <paramref name="holds"/>, in Refusals' words; null where it serves

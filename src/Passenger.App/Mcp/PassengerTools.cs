@@ -1673,7 +1673,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     });
 
     [McpServerTool(Name = McpTools.Run, Title = "Run a configuration", Destructive = true), Description(
-        "Runs a configuration as Run does, built first when it says so, and waits for it to end, an Avalonia, WPF or WinUI app's " +
+        "Runs a configuration as Run does, built first when it says so, and waits for it to end, an Avalonia, WPF, WinUI or Windows Forms app's " +
         "UI or an AppHost's resources to be up, its host's start (where it listens), or its app's start on a device. Returns its output so far and its exit code once it has one; a run refused (one " +
         "running, a failed build with its errors) is an error. A terminal configuration runs in a Terminal tab (terminal_run " +
         "types into it); a container configuration answers once its services are up, with each one's state. With resource, " +

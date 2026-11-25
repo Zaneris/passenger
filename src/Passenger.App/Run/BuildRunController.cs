@@ -1345,11 +1345,11 @@ public sealed partial class BuildRunController
             bool packaged = chosen.RunsPackage(session.Projects);
             // A game's errors, which Godot writes every frame they happen, folded in its console.
             parts.Views.Run.Fold = godot && !chosen.GodotEditor ? new Godot.GodotConsoleFold() : null;
-            // An Avalonia or WPF app's XAML edits reach it through the inspector, which the app dotnet watch starts never carries.
-            bool markup = wanted && !godot && await RunsXamlAppAsync(chosen);
-            bool watched = wanted && !godot && !markup && !elsewhere && !packaged;
+            // An Avalonia, WPF or Windows Forms app's inspector (its XAML's edits, its live tree) is in no app dotnet watch starts.
+            bool inspectedApp = wanted && !godot && await RunsInspectedAppAsync(chosen);
+            bool watched = wanted && !godot && !inspectedApp && !elsewhere && !packaged;
             // A Godot game and a XAML app take their edits through the debugger, attached quietly as each starts held; Godot's editor loads its builds itself.
-            bool reloaded = wanted && (godot && !chosen.GodotEditor || markup || elsewhere || packaged);
+            bool reloaded = wanted && (godot && !chosen.GodotEditor || inspectedApp || elsewhere || packaged);
             watching = watched;
             (LaunchPlan? plan, string? problem, _) = await PrepareAsync(chosen, arguments, work, build: !watched, reading: reloaded ? () =>
             {
@@ -1459,8 +1459,8 @@ public sealed partial class BuildRunController
                 {
                     variables[name] = value;
                 }
-                // A XAML app's update handlers run as each update lands, through Passenger's hook, as a debugged one's do.
-                if (markup && UpdateHandlerHook.For(launched with { Environment = variables }) is ({ } hook, { } hooked))
+                // An inspected app's update handlers run as each update lands, through Passenger's hook, as a debugged one's do.
+                if (inspectedApp && UpdateHandlerHook.For(launched with { Environment = variables }) is ({ } hook, { } hooked))
                 {
                     (handlers, variables) = (hook, new Dictionary<string, string>(hooked.Environment));
                 }
@@ -1986,17 +1986,18 @@ public sealed partial class BuildRunController
         return taken;
     }
 
-    /// <summary>Whether a configuration runs an Avalonia or WPF app of its project, whose XAML edits reach it through
-    /// Passenger's inspector, which the app dotnet watch starts never carries: Run's Hot Reload takes it through the debugger.
-    /// However it references Avalonia: its own packages, those of the projects it references, or what its restore resolved,
-    /// read off the window's thread only where they say nothing.</summary>
-    private async Task<bool> RunsXamlAppAsync(RunConfiguration chosen)
+    /// <summary>Whether a configuration runs an Avalonia, WPF or Windows Forms app of its project, whose Live Visual Tree and
+    /// XAML edits reach it through Passenger's inspector, which the app dotnet watch starts never carries: Run's Hot Reload takes
+    /// it through the debugger. However it references Avalonia: its own packages, those of the projects it references, or what
+    /// its restore resolved, read off the window's thread only where they say nothing.</summary>
+    private async Task<bool> RunsInspectedAppAsync(RunConfiguration chosen)
     {
         if (chosen.IsContainer || chosen.Program.Length > 0 || session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, chosen.Project)) is not { } project)
         {
             return false;
         }
-        return DesktopPrograms.TakesXaml(project, session.Projects) || await BackgroundWork.Run(() => DesktopPrograms.RestoredXaml(Packages.FolderPackages.Restored(project)));
+        return DesktopPrograms.TakesXaml(project, session.Projects) || DesktopPrograms.TakesForms(project, session.Projects)
+            || await BackgroundWork.Run(() => DesktopPrograms.RestoredXaml(Packages.FolderPackages.Restored(project)));
     }
 
     /// <summary>A Godot game or a XAML app (its inspector in <paramref name="app"/>, its update handlers' hook <paramref name="handlers"/>)

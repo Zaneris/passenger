@@ -155,6 +155,11 @@
          it is built for its own framework rather than this one's. -->
     <ProjectReference Include="../Passenger.Inspector.Wpf/Passenger.Inspector.Wpf.csproj" ReferenceOutputAssembly="false" Private="false"
                       SkipGetTargetFrameworkProperties="true" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" />
+    <!-- Built first on every system and carried under inspector/winforms/ by a Windows build alone, never linked: a Windows
+         Forms app Passenger runs or debugs loads it (LiveTree/LiveApp.cs). It is built for its own framework, as the WPF
+         one is. -->
+    <ProjectReference Include="../Passenger.Inspector.WinForms/Passenger.Inspector.WinForms.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SkipGetTargetFrameworkProperties="true" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" />
     <!-- Built first on every system and carried under inspector/winui/ by a Windows build alone, never linked: a WinUI app
          Passenger runs or debugs loads it (LiveTree/LiveApp.cs). It is built for its own framework and processor, its COM
          host being one processor's. -->
@@ -346,6 +351,21 @@
     <ItemGroup>
       <WpfInspectorFile Include="@(WpfInspectorAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(WpfInspectorAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />
       <None Include="@(WpfInspectorFile)" Link="inspector/wpf/%(WpfInspectorFile.Filename)%(WpfInspectorFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The Windows Forms inspector becomes this project's output under inspector/winforms/ where Passenger runs on Windows, as
+       the WPF one does: its own assembly alone, since the app it loads into brings the Windows Forms it uses. -->
+  <Target Name="IncludeWinFormsInspector" BeforeTargets="AssignTargetPaths"
+          Condition="('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows'))) Or $(RuntimeIdentifier.StartsWith('win'))">
+    <MSBuild Projects="../Passenger.Inspector.WinForms/Passenger.Inspector.WinForms.csproj" Targets="GetTargetPath"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="WinFormsInspectorAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <WinFormsInspectorFile Include="@(WinFormsInspectorAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(WinFormsInspectorAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />
+      <None Include="@(WinFormsInspectorFile)" Link="inspector/winforms/%(WinFormsInspectorFile.Filename)%(WinFormsInspectorFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
   </Target>

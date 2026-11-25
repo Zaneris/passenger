@@ -79,7 +79,7 @@ public static partial class McpHost
         "options to send back, changing nothing. Each change is one step of the IDE's Undo.\n\n" +
         "build, run, tests_list and tests_run build (and publish), run and test. To debug: breakpoint_set, then debug_start (or debug_attach), debug_step, " +
         "debug_evaluate, debug_state and debug_continue, each waiting for the program to stop and saying where, with the locals " +
-        "where it stopped. An Avalonia, WPF, WinUI or MAUI app that run or debug_start starts is looked at and used as a person tests it: app_windows, app_tree, " +
+        "where it stopped. An Avalonia, WPF, WinUI, Windows Forms or MAUI app that run or debug_start starts is looked at and used as a person tests it: app_windows, app_tree, " +
         "app_screenshot, app_click, app_type, app_key, app_scroll, app_binding_errors. A Godot game the same, Passenger its remote debugger: its " +
         "nodes are the elements, input reaching it through a helper node Passenger adds under its root; ide_action app.godot.pauseLoop " +
         "and app.godot.nextFrame pause its loop and step it a frame, and with app.liveTree.selectElement on, app_click picks the node at " +

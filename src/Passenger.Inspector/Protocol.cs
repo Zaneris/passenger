@@ -16,7 +16,7 @@ namespace Passenger.Inspector;
 public static class Wire
 {
     /// <summary>Bumped by a change either end must know of: a hello of another version is refused, saying so.</summary>
-    public const int Version = 10;
+    public const int Version = 11;
 
     /// <summary>The app's environment: the socket's path, where it connects.</summary>
     [IdentifierHome]
@@ -471,7 +471,19 @@ public sealed record ElementDetails(
     string? TemplatedParent,
     LayoutInfo Layout,
     IReadOnlyList<PropertyValue> Properties,
-    IReadOnlyList<StyleReport> Styles);
+    IReadOnlyList<StyleReport> Styles)
+{
+    /// <summary>A Windows Forms control's or item's place in designer code, which Passenger reads its places from; null for
+    /// every other framework's element.</summary>
+    public DesignedIn? Designed { get; init; }
+}
+
+/// <summary>Where Windows Forms designer code makes a component: the class (its full name) whose InitializeComponent makes it,
+/// and its field there, empty for the class's own root; with the file holding that code once Passenger has found it.</summary>
+public sealed record DesignedIn(string Class, string Field)
+{
+    public string? File { get; init; }
+}
 
 /// <summary>Where a visual is laid out: its bounds in its parent and in its window, its desired size, margin, border and
 /// padding (none when it has no such property), and its alignment.</summary>

@@ -18,10 +18,10 @@ namespace Passenger.Tests;
 
 /// <summary>A WPF app debugged from the window: tests/Debuggees/WpfTreeApp, written into a folder of its own with a
 /// project file for the tests' own target, restored from the run's own feed, built and launched by Debug as a person's app
-/// is, with Passenger's WPF inspector in it. Its window shows on the screen (WPF has no headless platform), and its
-/// standard input stands in for the person's pointer ("click X,Y", typed into the Debug window's console, which the app
-/// sends its window as Windows sends a mouse's messages). WPF runs on Windows alone, so elsewhere the tests skip. Debugged
-/// through the window, so run alone.</summary>
+/// is, with Passenger's WPF inspector in it; and a Windows Forms app, tests/Debuggees/FormsTreeApp, the same way with its
+/// own. Their windows show on the screen (neither has a headless platform), and their standard input stands in for the
+/// person's pointer ("click X,Y", typed into the Debug window's console, which the app sends its window as Windows sends a
+/// mouse's messages). Both run on Windows alone, so elsewhere the tests skip. Debugged through the window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposable
 {
@@ -69,7 +69,8 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
 
     /// <summary>A debugged WPF app's live tree: its elements with where each value comes from, going to their XAML; a
     /// misspelt binding in the debug console linked to its line and in Problems; XAML binding errors stopping the app
-    /// where its binding fails; and Select Element choosing the element clicked. On Windows only.</summary>
+    /// where its binding fails; and Select Element choosing the element clicked; then a Windows Forms app's controls, going
+    /// to their designer code. On Windows only.</summary>
     [AvaloniaFact]
     public void A_debugged_wpf_apps_elements_bindings_and_clicks_reach_their_xaml()
     {
@@ -77,6 +78,7 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
         Flow.StepApart("a debugged WPF app's misspelt binding shows in the debug console linked to its line and in Problems", () => new WpfLiveTreeTests(folders), t => t.A_debugged_wpf_apps_misspelt_binding_shows_in_the_debug_console_linked_to_its_line_and_in_problems());
         Flow.StepApart("XAML Binding Errors stops a debugged WPF app where its binding fails", () => new WpfLiveTreeTests(folders), t => t.Xaml_binding_errors_stops_a_debugged_wpf_app_where_its_binding_fails());
         Flow.StepApart("Select Element chooses the element clicked in a WPF app", () => new WpfLiveTreeTests(folders), t => t.Select_element_chooses_the_element_clicked_in_a_wpf_app());
+        Flow.StepApart("a debugged Windows Forms app shows its controls, where each value comes from in its designer code, and Select Element chooses the one clicked", () => new WpfLiveTreeTests(folders), t => t.A_debugged_windows_forms_app_shows_its_controls_where_each_value_comes_from_in_its_designer_code_and_select_element_chooses_the_one_clicked());
     }
 
     private void A_debugged_wpf_app_shows_its_elements_where_each_value_comes_from_and_goes_to_their_xaml()
@@ -247,6 +249,57 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
         // The click was Select Element's: the app never saw it, and its counter says so.
         Assert.Equal("\"Not clicked yet\"", Choose(window, "Counter").Properties.Single(p => p.Name == "Text").Value);
 
+        Stop(window);
+        window.Close();
+    }
+
+    private void A_debugged_windows_forms_app_shows_its_controls_where_each_value_comes_from_in_its_designer_code_and_select_element_chooses_the_one_clicked()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string forms = PathNames.Canonical(folders.Take("formstree-", made =>
+        {
+            foreach (string file in Directory.GetFiles(Debuggees.Source("FormsTreeApp")))
+            {
+                File.Copy(file, Path.Combine(made, Path.GetFileName(file)));
+            }
+            return WpfApp.Project(made, "FormsTreeApp", forms: true);
+        }));
+        string designer = Path.Combine(forms, "MainForm.Designer.cs");
+        MainWindow window = Ui.OpenFolder(forms, 1400, 900);
+        Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
+        LiveTreeView tree = window.LiveTree;
+        try
+        {
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Count"), "the Live Visual Tree to show the app's form", TimeSpan.FromMinutes(2));
+        }
+        catch (TimeoutException waited)
+        {
+            throw new TimeoutException($"{waited.Message}: {Said(window)}", waited);
+        }
+        Assert.True(window.LiveApp is { Kind: LiveAppKind.WinForms } && window.LiveApp.Framework.StartsWith("Windows Forms ", StringComparison.Ordinal),
+            $"The app was taken for {window.LiveApp?.Kind}, {window.LiveApp?.Framework}");
+        Assert.Equal("MainForm", tree.Rows[0].Element.Type);
+        Assert.Contains(tree.Rows, r => r.Element is { Type: "ToolStripMenuItem", Name: "HelpItem" });
+
+        ElementDetails count = Choose(window, "Count");
+        PropertyValue text = count.Properties.Single(p => p.Name == "Text");
+        Assert.True(text is { Source: ValueSources.Local, Value: "\"Count\"", Place: { } set } && PathNames.Same(set.File, designer) && set.Line == Line(designer, "Count.Text = "),
+            $"Count's Text {text.Value} came from {text.Source} at {text.Place?.File}:{text.Place?.Line}, not the designer code's line setting it");
+        ElementDetails inside = Choose(window, "Inside");
+        PropertyValue font = inside.Properties.Single(p => p.Name == "Font");
+        Assert.True(font is { Source: ValueSources.Inherited, Detail: "From Panel#Bold (its local value)" }, $"Inside's Font came from {font.Source} {font.Detail}, not its panel's");
+        Choose(window, "Count");
+        Assert.NotNull(tree.GoToSource);
+        Ui.Click(tree.GoToSource!);
+        Assert.Equal(designer, window.EditorArea.Active?.Path);
+        Assert.Equal(Line(designer, "Count = new Button();") - 1, window.EditorArea.CodeEditor.CaretPosition.Line);
+
+        // A click Select Element takes is the inspector's: the app never sees it, and its counter says so.
+        Box at = count.Layout.InWindow!;
+        Ui.Click(tree.SelectElement);
+        Ui.TypeToDebugged(window, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"click {at.X + 5},{at.Y + 5}"));
+        Ui.WaitFor(() => tree.SelectElement.IsChecked == false && tree.Details?.Name == "Count", "the control clicked in the app to be chosen in the tree", TimeSpan.FromSeconds(30));
+        Assert.Equal("\"Not clicked yet\"", Choose(window, "Counter").Properties.Single(p => p.Name == "Text").Value);
         Stop(window);
         window.Close();
     }

@@ -13,7 +13,7 @@ using Passenger.Inspector;
 
 namespace Passenger.App.Mcp;
 
-/// <summary>The Avalonia, WPF, WinUI or MAUI app Passenger runs or debugs, as an agent tests it: its windows, pictures the app draws
+/// <summary>The Avalonia, WPF, WinUI, Windows Forms or MAUI app Passenger runs or debugs, as an agent tests it: its windows, pictures the app draws
 /// of them, its visual tree, clicks, typing, keys and scrolling given as a person's are, and its failed bindings, all
 /// through the Live Visual Tree's inspector (<see cref="LiveApp"/>), loaded into Passenger too for its own
 /// windows.</summary>
@@ -32,7 +32,7 @@ public sealed partial class PassengerTools
     private static readonly TimeSpan AppUiLimit = TimeSpan.FromSeconds(60);
 
     [McpServerTool(Name = McpTools.AppWindows, Title = "The app's windows", ReadOnly = true), Description(
-        "The windows of the app (an Avalonia 12 app Run or Debug started, a WPF or WinUI one on Windows, a MAUI one on Android, a Godot game; one starting is waited for): " +
+        "The windows of the app (an Avalonia 12 app Run or Debug started, a WPF, WinUI or Windows Forms one on Windows, a MAUI one on Android, a Godot game; one starting is waited for): " +
         "each one's @N, type, title, size in units, pixels a unit, whether active and shown, and a popup's owner. Every app_ " +
         "tool's app is run, debug, profile, a debugged program's or an AppHost service's name, or ide for Passenger's own windows, by default the one running; " +
         "its window @N, type or \"title\", by default the first.")]
@@ -162,7 +162,7 @@ public sealed partial class PassengerTools
         }
         if (members)
         {
-            throw new ArgumentException("members reads a Godot game's script members: in an Avalonia, WPF or WinUI app, debug_evaluate reads an object's fields where it stops");
+            throw new ArgumentException("members reads a Godot game's script members: in an Avalonia, WPF, WinUI or Windows Forms app, debug_evaluate reads an object's fields where it stops");
         }
         LiveApp live = await InspectedAsync(app, cancel);
         (List<AppNode> nodes, AppNode chosenWindow) = await TreeOf(live, window, cancel);
@@ -268,7 +268,7 @@ public sealed partial class PassengerTools
         if (property is { Length: > 0 } named)
         {
             return game is not null ? await GameSetAsync(game, control, window, named, text)
-                : throw new ArgumentException("property sets a Godot game's node's property as it runs: an Avalonia, WPF or WinUI app's control is typed into instead");
+                : throw new ArgumentException("property sets a Godot game's node's property as it runs: an Avalonia, WPF, WinUI or Windows Forms app's control is typed into instead");
         }
         if (game is not null)
         {
@@ -376,8 +376,8 @@ public sealed partial class PassengerTools
         IEnumerable<LiveApp> apps = app switch
         {
             null => Session.InspectedApps,
-            "run" => [RunApp() ?? throw new InvalidOperationException("Run has started no Avalonia, WPF, WinUI or MAUI app in this folder")],
-            "debug" => [DebugApp() ?? throw new InvalidOperationException("Debug has started no Avalonia, WPF, WinUI or MAUI app in this folder")],
+            "run" => [RunApp() ?? throw new InvalidOperationException("Run has started no Avalonia, WPF, WinUI, Windows Forms or MAUI app in this folder")],
+            "debug" => [DebugApp() ?? throw new InvalidOperationException("Debug has started no Avalonia, WPF, WinUI, Windows Forms or MAUI app in this folder")],
             OwnWindows => [LiveApp.Own()],
             _ => [NamedApp(app)],
         };
@@ -385,7 +385,7 @@ public sealed partial class PassengerTools
         if (chosen.Count == 0)
         {
             throw new InvalidOperationException(Session.Game is { } game ? $"{game.Name} is a Godot game, which has no bindings: app_tree and app_details read its nodes"
-                : "No Avalonia, WPF, WinUI or MAUI app has been run or debugged in this folder; run or debug_start one");
+                : "No Avalonia, WPF, WinUI, Windows Forms or MAUI app has been run or debugged in this folder; run or debug_start one");
         }
         return Task.FromResult<IReadOnlyList<AppBindingError>>([.. chosen.SelectMany(live =>
         {
@@ -412,10 +412,10 @@ public sealed partial class PassengerTools
             null => Running(),
             "run" => RunApp() ?? throw new InvalidOperationException(Runs(RunningKind.Run)
                 ? $"What Run started is not {Inspectable}, or Hot Reload runs it"
-                : "Run has started no Avalonia, WPF, WinUI or MAUI app; run starts one"),
+                : "Run has started no Avalonia, WPF, WinUI, Windows Forms or MAUI app; run starts one"),
             "debug" => DebugApp() ?? throw new InvalidOperationException(Runs(RunningKind.Debug)
                 ? $"What is being debugged is not {Inspectable}"
-                : "Debug has started no Avalonia, WPF, WinUI or MAUI app; debug_start starts one"),
+                : "Debug has started no Avalonia, WPF, WinUI, Windows Forms or MAUI app; debug_start starts one"),
             OwnWindows => LiveApp.Own(),
             _ => NamedApp(app),
         };
@@ -548,7 +548,7 @@ public sealed partial class PassengerTools
         }
         return apps.FirstOrDefault() is { } ended
             ? Ended(ended.App)
-            : "No Avalonia, WPF, WinUI or MAUI app or Godot game is running: run or debug_start one (Avalonia 12, WPF or WinUI on Windows, MAUI on Android or an iOS simulator, a Godot 4 game in C# or GDScript), or name app ide for Passenger's own windows";
+            : "No Avalonia, WPF, WinUI, Windows Forms or MAUI app or Godot game is running: run or debug_start one (Avalonia 12, WPF, WinUI or Windows Forms on Windows, MAUI on Android or an iOS simulator, a Godot 4 game in C# or GDScript), or name app ide for Passenger's own windows";
 
         static string Ended(LiveApp app) => $"{app.Name} has ended: run or debug_start starts it again, or name app ide for Passenger's own windows";
     }
