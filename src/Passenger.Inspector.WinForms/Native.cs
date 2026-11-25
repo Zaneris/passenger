@@ -3,8 +3,8 @@ using System.Runtime.InteropServices;
 namespace Passenger.Inspector.WinForms;
 
 /// <summary>The Windows calls the inspector makes beside Windows Forms' own, and the messages it posts: a window's title, the
-/// app's windows on its UI thread, a picture of one window's own drawing, input posted into the app's queue as Windows posts a
-/// device's, and the thread's own key state for the modifiers that input holds.</summary>
+/// app's windows on its UI thread, input posted into the app's queue as Windows posts a device's, and the thread's own key
+/// state for the modifiers that input holds.</summary>
 internal static partial class Native
 {
     public const int MouseMove = 0x0200;
@@ -22,14 +22,6 @@ internal static partial class Native
     public const int Char = 0x0102;
     public const int SystemKeyDown = 0x0104;
     public const int SystemKeyUp = 0x0105;
-    public const int Print = 0x0317;
-    public const int PrintClientOnly = 0x0318;
-
-    /// <summary>WM_PRINT's parts: the frame, the client area, its background, and the child windows.</summary>
-    public const int PrintFrame = 0x02;
-    public const int PrintClient = 0x04;
-    public const int PrintBackground = 0x08;
-    public const int PrintChildren = 0x10;
 
     /// <summary>A mouse message's state of its buttons and modifiers.</summary>
     public const int LeftHeld = 0x0001;
@@ -55,9 +47,6 @@ internal static partial class Native
     [LibraryImport("user32.dll", EntryPoint = "PostMessageW")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool PostMessage(nint window, int message, nint wParam, nint lParam);
-
-    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
-    public static partial nint SendMessage(nint window, int message, nint wParam, nint lParam);
 
     [LibraryImport("user32.dll", EntryPoint = "GetWindowTextW", StringMarshalling = StringMarshalling.Utf16)]
     private static unsafe partial int GetWindowText(nint window, char* text, int most);

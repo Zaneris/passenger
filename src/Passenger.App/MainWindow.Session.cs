@@ -544,6 +544,7 @@ public partial class MainWindow
         agentSocket?.Describe(next.Folder);
         OnCSharpChanged(next.CSharp);
         BindPreviews(next);
+        BindDesigns(next);
         BindXamlWorkspace(next);
         BindTargetFrameworks(next);
         BindRunTargets(next);

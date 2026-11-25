@@ -21,10 +21,10 @@ public partial class MainWindow
             Menus = [new MenuPlace("View", 4, 1)],
             Words = ["Preview Markdown"],
         });
-        AddMarkdownLayout(A.MarkdownEditorOnly, "Editor Only", MarkdownView.Editor, ["Hide Markdown Preview"]);
-        AddMarkdownLayout(A.MarkdownEditorAndPreview, "Editor and Preview", MarkdownView.Split,
+        AddMarkdownLayout(A.MarkdownEditorOnly, "Editor Only", PaneView.Editor, ["Hide Markdown Preview"]);
+        AddMarkdownLayout(A.MarkdownEditorAndPreview, "Editor and Preview", PaneView.Split,
             ["Markdown Preview Beside the Editor", "Markdown Preview Under the Editor", "Turn Markdown Split"]);
-        AddMarkdownLayout(A.MarkdownPreviewOnly, "Preview Only", MarkdownView.Preview, ["Markdown Preview Alone"]);
+        AddMarkdownLayout(A.MarkdownPreviewOnly, "Preview Only", PaneView.Preview, ["Markdown Preview Alone"]);
         actions.Add(new IdeAction(A.SvgPreview, "SVG Preview", "Editor", _ => ToggleSvgPreview())
         {
             WhyNot = context => context.File is null ? Refusals.NoFile : !EditorArea.IsSvg(context.File) ? "The picture is for SVG files" : null,
@@ -57,11 +57,11 @@ public partial class MainWindow
 
     /// <summary>A Markdown file's layout as an action, checked while it is in force: Editor and Preview chosen while it is
     /// turns the split, the preview under the editor or beside it, back to as the group's shape stands it.</summary>
-    private void AddMarkdownLayout(string id, string title, MarkdownView view, IReadOnlyList<string> words) =>
+    private void AddMarkdownLayout(string id, string title, PaneView view, IReadOnlyList<string> words) =>
         actions!.Add(new IdeAction(id, title, "Editor", _ =>
         {
-            MarkdownLayout layout = Editors.MarkdownLayout;
-            Editors.MarkdownLayout = view == MarkdownView.Split && layout.View == view
+            PaneLayout layout = Editors.MarkdownLayout;
+            Editors.MarkdownLayout = view == PaneView.Split && layout.View == view
                 ? layout with { Stacked = Editors.ActiveGroup.TurnedSplit }
                 : layout with { View = view };
         })

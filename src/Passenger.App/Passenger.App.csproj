@@ -205,6 +205,11 @@
                       SkipGetTargetFrameworkProperties="true" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" />
     <!-- The previewer's messages, one definition for both ends. -->
     <Compile Include="../Passenger.WpfPreview/Protocol.cs" Link="Xaml/WpfPreviewProtocol.cs" />
+    <!-- Built first and carried under winformsdesigner/ on Windows, never linked: Windows Forms' designer runs in its own
+         process on a Windows Forms project's own runtime (WinForms/FormDesignHost.cs). Built everywhere, as Windows Forms
+         compiles anywhere (EnableWindowsTargeting), and for none of the systems the app is published for. -->
+    <ProjectReference Include="../Passenger.WinFormsDesigner/Passenger.WinFormsDesigner.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SkipGetTargetFrameworkProperties="true" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" />
     <!-- Built first and carried under mauipreview/, never linked: MAUI's previewer runs in its own process on Passenger's
          runtime (Xaml/MauiPreviewHost.cs), built for the publish's system or this machine's. -->
     <ProjectReference Include="../Passenger.MauiPreview/Passenger.MauiPreview.csproj" ReferenceOutputAssembly="false" Private="false"
@@ -501,6 +506,24 @@
     <ItemGroup>
       <WpfPreviewFile Include="$(WpfPreviewFolder)Passenger.WpfPreview.*" Exclude="$(WpfPreviewFolder)*.runtimeconfig.dev.json" />
       <None Include="@(WpfPreviewFile)" Link="wpfpreview/%(WpfPreviewFile.Filename)%(WpfPreviewFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Windows Forms' designer becomes this project's output under winformsdesigner/ when the app is built or published for
+       Windows, the one system Windows Forms draws on: its assembly and runtime configuration, as it carries no package. -->
+  <Target Name="IncludeWinFormsDesigner" BeforeTargets="AssignTargetPaths"
+          Condition="('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows'))) Or $(RuntimeIdentifier.StartsWith('win-'))">
+    <MSBuild Projects="../Passenger.WinFormsDesigner/Passenger.WinFormsDesigner.csproj" Targets="GetTargetPath"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="WinFormsDesignerAssembly" />
+    </MSBuild>
+    <PropertyGroup>
+      <WinFormsDesignerFolder>@(WinFormsDesignerAssembly->'%(RootDir)%(Directory)')</WinFormsDesignerFolder>
+    </PropertyGroup>
+    <ItemGroup>
+      <WinFormsDesignerFile Include="$(WinFormsDesignerFolder)Passenger.WinFormsDesigner.*" Exclude="$(WinFormsDesignerFolder)*.runtimeconfig.dev.json" />
+      <None Include="@(WinFormsDesignerFile)" Link="winformsdesigner/%(WinFormsDesignerFile.Filename)%(WinFormsDesignerFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
   </Target>

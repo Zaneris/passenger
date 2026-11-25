@@ -1,29 +1,16 @@
+using System.Globalization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Passenger.Core;
 using Passenger.Languages.CSharp;
 
 namespace Passenger.Languages.WinForms;
 
-/// <summary>What a statement of designer code does to a component: makes it, sets a property of it, hooks a handler to one of
-/// its events, or calls a method of it (adds a control to it, begins its layout); anything else the designer writes is other.</summary>
-public enum DesignerAct
-{
-    Create,
-    Assign,
-    Hook,
-    Call,
-    Other,
-}
-
-/// <summary>A statement of a Windows Forms class's InitializeComponent: what it does, to which component (the class's field,
-/// empty for the class's own root) and which of its members (a property's dotted path, an event, a method's), and where it
-/// starts in the text, as an offset (the editor's lines, never Roslyn's, are counted from it).</summary>
-public sealed record DesignerStatement(DesignerAct Act, string Target, string? Member, int At);
-
-/// <summary>A Windows Forms class's designer code as read from one file: where its InitializeComponent is named, and its
-/// statements in order.</summary>
-public sealed record DesignerSource(int Method, IReadOnlyList<DesignerStatement> Statements)
+/// <summary>A Windows Forms class's designer code as read from one file: its namespace, the namespaces its usings bring, its
+/// fields with their types as written, where its InitializeComponent is named, and that method's statements in order.</summary>
+public sealed record DesignerSource(string? Namespace, IReadOnlyList<string> Usings, IReadOnlyList<DesignerField> Fields, int Method,
+    IReadOnlyList<DesignerStatement> Statements)
 {
     /// <summary>Where a field is made; the method's name for the class's root (an empty field); null for a field it does not make.</summary>
     public int? MadeAt(string field) => field.Length == 0 ? Method
@@ -37,27 +24,51 @@ public sealed record DesignerSource(int Method, IReadOnlyList<DesignerStatement>
 
 /// <summary>Windows Forms designer code read as its designer writes it, from the file's parse (<see cref="CSharpParsing"/>):
 /// the class's fields, and each statement of its InitializeComponent by what it does to which of them, whether it qualifies
-/// them with <c>this.</c> or not.</summary>
+/// them with <c>this.</c> or not, with each value as the code writes it, its names left for the designer to resolve.</summary>
 public static class DesignerCode
 {
     /// <summary>The designer code of a class, by its full name (its namespace's and its own, a nested class's after a '+'),
     /// in a file's text; null where the file declares no InitializeComponent of that class.</summary>
     public static DesignerSource? Read(string text, string fullName)
     {
-        SyntaxNode root = CSharpParsing.Parse(text).GetRoot();
-        foreach (ClassDeclarationSyntax type in root.DescendantNodes(n => n is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax or ClassDeclarationSyntax).OfType<ClassDeclarationSyntax>())
+        CompilationUnitSyntax root = (CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot();
+        foreach (ClassDeclarationSyntax type in Classes(root))
         {
             if (FullName(type) != fullName
                 || type.Members.OfType<MethodDeclarationSyntax>().FirstOrDefault(m => m.Identifier.ValueText == "InitializeComponent" && m.ParameterList.Parameters.Count == 0) is not { } method)
             {
                 continue;
             }
-            HashSet<string> fields = [.. type.Members.OfType<FieldDeclarationSyntax>().SelectMany(f => f.Declaration.Variables).Select(v => v.Identifier.ValueText)];
+            List<DesignerField> fields = [.. type.Members.OfType<FieldDeclarationSyntax>()
+                .SelectMany(f => f.Declaration.Variables.Select(v => new DesignerField(v.Identifier.ValueText, Written(f.Declaration.Type))))];
+            HashSet<string> named = [.. fields.Select(f => f.Name)];
             IEnumerable<StatementSyntax> statements = method.Body?.Statements ?? [];
-            return new DesignerSource(method.Identifier.SpanStart, [.. statements.Select(s => Statement(s, fields))]);
+            return new DesignerSource(NamespaceOf(type), UsingsOf(type), fields, method.Identifier.SpanStart, [.. statements.Select(s => Statement(s, named))]);
         }
         return null;
     }
+
+    /// <summary>The classes a file's text gives an InitializeComponent of no parameters, by their full names.</summary>
+    public static IReadOnlyList<string> Designed(string text) =>
+        [.. Classes((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot())
+            .Where(type => type.Members.OfType<MethodDeclarationSyntax>().Any(m => m.Identifier.ValueText == "InitializeComponent" && m.ParameterList.Parameters.Count == 0))
+            .Select(FullName)];
+
+    /// <summary>Whether a file's text declares a class, by its full name.</summary>
+    public static bool Declares(string text, string fullName) => Classes((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).Any(type => FullName(type) == fullName);
+
+    /// <summary>The type a class derives from as one of its declarations in a file's text writes it, with the namespaces that
+    /// file's usings bring; null where none of its declarations there names one.</summary>
+    public static (string Base, IReadOnlyList<string> Usings)? BaseOf(string text, string fullName)
+    {
+        CompilationUnitSyntax root = (CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot();
+        return Classes(root).FirstOrDefault(type => FullName(type) == fullName && type.BaseList is { Types.Count: > 0 }) is { BaseList: { } bases } declared
+            ? (Written(bases.Types[0].Type), UsingsOf(declared))
+            : null;
+    }
+
+    private static IEnumerable<ClassDeclarationSyntax> Classes(CompilationUnitSyntax root) =>
+        root.DescendantNodes(n => n is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax or ClassDeclarationSyntax).OfType<ClassDeclarationSyntax>();
 
     /// <summary>A class's full name as the runtime writes it: its namespaces' names, then its own, a nested one's after its
     /// holder's and a '+'.</summary>
@@ -76,23 +87,142 @@ public static class DesignerCode
         return name;
     }
 
+    private static string? NamespaceOf(ClassDeclarationSyntax type)
+    {
+        List<string> names = [.. type.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Select(n => n.Name.ToString()).Reverse()];
+        return names.Count == 0 ? null : string.Join('.', names);
+    }
+
+    /// <summary>The namespaces the usings around a class bring, its file's and its namespaces', aliases and static ones left out.</summary>
+    private static IReadOnlyList<string> UsingsOf(ClassDeclarationSyntax type) =>
+        [.. type.Ancestors().SelectMany(n => n switch
+        {
+            CompilationUnitSyntax unit => unit.Usings,
+            BaseNamespaceDeclarationSyntax space => space.Usings,
+            _ => [],
+        }).Where(u => u.Alias is null && u.StaticKeyword.IsKind(SyntaxKind.None) && u.Name is not null).Select(u => Plain(u.Name!.ToString()))];
+
+    /// <summary>A type as the code writes it, a <c>global::</c> left out.</summary>
+    private static string Written(TypeSyntax type) => Plain(type.ToString());
+
+    private static string Plain(string written) => written.Replace("global::", string.Empty, StringComparison.Ordinal);
+
     private static DesignerStatement Statement(StatementSyntax statement, HashSet<string> fields)
     {
         switch (statement)
         {
             case ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax { RawKind: (int)SyntaxKind.SimpleAssignmentExpression } assigned }
                 when Path(assigned.Left) is { } set:
-                return set.Count == 1 && fields.Contains(set[0])
+                return (set.Count == 1 && fields.Contains(set[0])
                     ? new DesignerStatement(DesignerAct.Create, set[0], null, Start(assigned.Left))
-                    : Of(DesignerAct.Assign, set, fields, Start(assigned.Left));
+                    : Of(DesignerAct.Assign, set, fields, Start(assigned.Left))) with { Value = Value(assigned.Right) };
             case ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax { RawKind: (int)SyntaxKind.AddAssignmentExpression } hooked }
                 when Path(hooked.Left) is { } eventPath:
-                return Of(DesignerAct.Hook, eventPath, fields, Start(hooked.Left));
-            case ExpressionStatementSyntax { Expression: InvocationExpressionSyntax { Expression: var called } } when Path(called) is { } method:
-                return Of(DesignerAct.Call, method, fields, Start(called));
+                return Of(DesignerAct.Hook, eventPath, fields, Start(hooked.Left)) with { Value = Value(hooked.Right) };
+            case ExpressionStatementSyntax { Expression: InvocationExpressionSyntax { Expression: var called } invoked } when Path(called) is { } method:
+                return Of(DesignerAct.Call, method, fields, Start(called)) with { Arguments = [.. invoked.ArgumentList.Arguments.Select(a => Value(a.Expression))] };
+            case ExpressionStatementSyntax { Expression: InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Expression: var on, Name: var name } } invoked }
+                when Inside(on) is CastExpressionSyntax { Expression: var cast } && Path(Inside(cast)) is { } target:
+                // ((ISupportInitialize)(grid)).BeginInit(): the method of an interface the component implements.
+                return Of(DesignerAct.Call, [.. target, name.Identifier.ValueText], fields, Start(Inside(cast))) with
+                {
+                    Arguments = [.. invoked.ArgumentList.Arguments.Select(a => Value(a.Expression))],
+                };
         }
         return new DesignerStatement(DesignerAct.Other, string.Empty, null, statement.SpanStart);
     }
+
+    /// <summary>An expression without the parentheses around it.</summary>
+    private static ExpressionSyntax Inside(ExpressionSyntax expression)
+    {
+        ExpressionSyntax at = expression;
+        while (at is ParenthesizedExpressionSyntax { Expression: var inner })
+        {
+            at = inner;
+        }
+        return at;
+    }
+
+    /// <summary>A value as the code writes it; one the designer does not write (a lambda, an initializer) is unread, its text kept.</summary>
+    private static DesignerValue Value(ExpressionSyntax expression)
+    {
+        ExpressionSyntax at = Inside(expression);
+        switch (at)
+        {
+            case LiteralExpressionSyntax literal:
+                return Literal(literal);
+            case ThisExpressionSyntax:
+                return new DesignerValue(DesignerValueKinds.Name) { Name = "this" };
+            case IdentifierNameSyntax or MemberAccessExpressionSyntax or QualifiedNameSyntax or AliasQualifiedNameSyntax when Dotted(at) is { } name:
+                return new DesignerValue(DesignerValueKinds.Name) { Name = name };
+            case ObjectCreationExpressionSyntax { Initializer: null } made:
+                return new DesignerValue(DesignerValueKinds.New) { Type = Written(made.Type), Arguments = Values(made.ArgumentList) };
+            case ImplicitObjectCreationExpressionSyntax { Initializer: null } made:
+                return new DesignerValue(DesignerValueKinds.New) { Arguments = Values(made.ArgumentList) };
+            case InvocationExpressionSyntax { Expression: var method } called when Dotted(method) is { } name:
+                return new DesignerValue(DesignerValueKinds.Call) { Name = name, Arguments = Values(called.ArgumentList) };
+            case ArrayCreationExpressionSyntax { Initializer: { } items } array:
+                return new DesignerValue(DesignerValueKinds.Array) { Type = Written(array.Type.ElementType), Arguments = [.. items.Expressions.Select(Value)] };
+            case ImplicitArrayCreationExpressionSyntax { Initializer: var items }:
+                return new DesignerValue(DesignerValueKinds.Array) { Arguments = [.. items.Expressions.Select(Value)] };
+            case CollectionExpressionSyntax collection when collection.Elements.All(e => e is ExpressionElementSyntax):
+                return new DesignerValue(DesignerValueKinds.Array) { Arguments = [.. collection.Elements.Cast<ExpressionElementSyntax>().Select(e => Value(e.Expression))] };
+            case CastExpressionSyntax cast:
+                return new DesignerValue(DesignerValueKinds.Cast) { Type = Written(cast.Type), Arguments = [Value(cast.Expression)] };
+            case BinaryExpressionSyntax { RawKind: (int)SyntaxKind.BitwiseOrExpression } ored:
+                return new DesignerValue(DesignerValueKinds.Or) { Arguments = [Value(ored.Left), Value(ored.Right)] };
+            case PrefixUnaryExpressionSyntax { RawKind: (int)SyntaxKind.UnaryMinusExpression } negated:
+                return new DesignerValue(DesignerValueKinds.Negate) { Arguments = [Value(negated.Operand)] };
+            case PrefixUnaryExpressionSyntax { RawKind: (int)SyntaxKind.UnaryPlusExpression } plus:
+                return Value(plus.Operand);
+            case TypeOfExpressionSyntax typed:
+                return new DesignerValue(DesignerValueKinds.TypeOf) { Type = Written(typed.Type) };
+        }
+        return new DesignerValue(DesignerValueKinds.Unread) { Text = at.ToString() };
+    }
+
+    private static IReadOnlyList<DesignerValue> Values(ArgumentListSyntax? arguments) => [.. (arguments?.Arguments ?? []).Select(a => Value(a.Expression))];
+
+    private static DesignerValue Literal(LiteralExpressionSyntax literal)
+    {
+        object? value = literal.Token.Value;
+        string type = value switch
+        {
+            null => "null",
+            string => "string",
+            char => "char",
+            bool => "bool",
+            int => "int",
+            uint => "uint",
+            long => "long",
+            ulong => "ulong",
+            float => "float",
+            double => "double",
+            decimal => "decimal",
+            _ => "unknown",
+        };
+        string? text = value switch
+        {
+            null => null,
+            string s => s,
+            char c => c.ToString(),
+            bool b => b ? "true" : "false",
+            IFormattable number => number.ToString(null, CultureInfo.InvariantCulture),
+            _ => value.ToString(),
+        };
+        return new DesignerValue(DesignerValueKinds.Literal) { Type = type, Text = text };
+    }
+
+    /// <summary>A chain of names as one dotted name, <c>this.</c> and <c>global::</c> left out; null for anything else.</summary>
+    private static string? Dotted(ExpressionSyntax expression) => expression switch
+    {
+        IdentifierNameSyntax name => name.Identifier.ValueText,
+        MemberAccessExpressionSyntax { RawKind: (int)SyntaxKind.SimpleMemberAccessExpression, Expression: ThisExpressionSyntax, Name: var name } => name.Identifier.ValueText,
+        MemberAccessExpressionSyntax { RawKind: (int)SyntaxKind.SimpleMemberAccessExpression, Expression: var on, Name: var name } when Dotted(on) is { } before => $"{before}.{name.Identifier.ValueText}",
+        QualifiedNameSyntax { Left: var left, Right: var right } when Dotted(left) is { } before => $"{before}.{right.Identifier.ValueText}",
+        AliasQualifiedNameSyntax { Name: var name } => name.Identifier.ValueText,
+        _ => null,
+    };
 
     /// <summary>A statement on a path: the field it starts with, or the root where it starts with none, and the rest as its
     /// member.</summary>

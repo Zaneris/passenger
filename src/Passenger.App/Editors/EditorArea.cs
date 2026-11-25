@@ -147,18 +147,18 @@ public sealed partial class EditorArea : UserControl
         }
     }
 
-    private MarkdownLayout markdownLayout;
+    private PaneLayout markdownLayout;
 
     /// <summary>Whether a Markdown file shows its preview, beside its editor or alone, in every group showing one; turned on,
     /// the preview stands beside the editor.</summary>
     public bool ShowsMarkdownPreview
     {
-        get => MarkdownLayout.View != MarkdownView.Editor;
+        get => MarkdownLayout.View != PaneView.Editor;
         set
         {
             if (value != ShowsMarkdownPreview)
             {
-                MarkdownLayout = MarkdownLayout with { View = value ? MarkdownView.Split : MarkdownView.Editor };
+                MarkdownLayout = MarkdownLayout with { View = value ? PaneView.Split : PaneView.Editor };
             }
         }
     }
@@ -167,7 +167,7 @@ public sealed partial class EditorArea : UserControl
     internal event EventHandler? MarkdownLayoutChanged;
 
     /// <summary>What a Markdown file shows, its editor, its preview or both, and how both stand, in every group showing one.</summary>
-    internal MarkdownLayout MarkdownLayout
+    internal PaneLayout MarkdownLayout
     {
         get => markdownLayout;
         set
@@ -182,6 +182,31 @@ public sealed partial class EditorArea : UserControl
                 group.FollowSidePreview();
             }
             MarkdownLayoutChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private PaneLayout formLayout = new(OperatingSystem.IsWindows() ? PaneView.Preview : PaneView.Editor);
+
+    /// <summary>Another form's layout was chosen (<see cref="FormLayout"/>).</summary>
+    internal event EventHandler? FormLayoutChanged;
+
+    /// <summary>What a Windows Forms form's file shows, its code, its design or both, and how both stand, in every group showing
+    /// one.</summary>
+    public PaneLayout FormLayout
+    {
+        get => formLayout;
+        set
+        {
+            if (formLayout == value)
+            {
+                return;
+            }
+            formLayout = value;
+            foreach (EditorGroup group in AllGroups)
+            {
+                group.FollowSidePreview();
+            }
+            FormLayoutChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -313,6 +338,13 @@ public sealed partial class EditorArea : UserControl
 
     /// <summary>Makes a group's view of a console's results.</summary>
     public Func<Database.SqlConsoleView>? MakeConsoleView { get; set; }
+
+    /// <summary>The design of a file that is a Windows Forms form's (its code or designer file), made as it is first asked for;
+    /// null for any other file.</summary>
+    public Func<OpenDocument, WinForms.FormDesignPane?>? DesignOf { get; set; }
+
+    /// <summary>Whether a file is a Windows Forms form's, whose group shows its design by <see cref="FormLayout"/>.</summary>
+    public Func<OpenDocument, bool> Designs { get; set; } = _ => false;
 
     /// <summary>The mark of the database connection a tab works on (a table's data, a console), which its tab shows.</summary>
     public Func<OpenDocument, Database.DatabaseMark>? MarkOf { get; set; }

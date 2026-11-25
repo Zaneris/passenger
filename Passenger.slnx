@@ -31,6 +31,7 @@
     <Project Path="src/Passenger.Text/Passenger.Text.csproj" />
     <Project Path="src/Passenger.Vcs/Passenger.Vcs.csproj" />
     <Project Path="src/Passenger.Workspace/Passenger.Workspace.csproj" />
+    <Project Path="src/Passenger.WinFormsDesigner/Passenger.WinFormsDesigner.csproj" />
     <Project Path="src/Passenger.WpfPreview/Passenger.WpfPreview.csproj" />
     <Project Path="src/Passenger.Xaml/Passenger.Xaml.csproj" />
   </Folder>

@@ -125,9 +125,9 @@ public sealed class EditorGroup : DockPanel
             FollowPreviewToggle();
         };
         splitMark.Bind(PathIcon.DataProperty, splitMark.GetResourceObservable(IconKeys.Diff));
-        markdownEditor = MarkdownButton(ToolButtons.Toggle(IconKeys.DocumentText, EditorOnly), AppActions.MarkdownEditorOnly);
-        markdownSplit = MarkdownButton(ToolButtons.Give(new ToggleButton(), splitMark, EditorAndPreview), AppActions.MarkdownEditorAndPreview);
-        markdownOnly = MarkdownButton(ToolButtons.Toggle(IconKeys.Preview, PreviewOnly), AppActions.MarkdownPreviewOnly);
+        markdownEditor = MarkdownButton(ToolButtons.Toggle(IconKeys.DocumentText, EditorOnly), PaneView.Editor);
+        markdownSplit = MarkdownButton(ToolButtons.Give(new ToggleButton(), splitMark, EditorAndPreview), PaneView.Split);
+        markdownOnly = MarkdownButton(ToolButtons.Toggle(IconKeys.Preview, PreviewOnly), PaneView.Preview);
         markdownModes = new StackPanel
         {
             Orientation = Orientation.Horizontal, IsVisible = false, [DockProperty] = Dock.Right,
@@ -214,23 +214,52 @@ public sealed class EditorGroup : DockPanel
         AddHandler(PointerPressedEvent, (_, _) => area.SetActiveGroup(this), RoutingStrategies.Tunnel, handledEventsToo: true);
     }
 
-    /// <summary>A Markdown layout's button on the tab strip, asking for its action as its keys do, pressed while its layout
-    /// is in force.</summary>
-    private ToggleButton MarkdownButton(ToggleButton button, string action)
+    /// <summary>A layout's button on the tab strip of a file with a pane of its own (a Markdown file, a form's), asking for its
+    /// kind's action as its keys do, pressed while its layout is in force.</summary>
+    private ToggleButton MarkdownButton(ToggleButton button, PaneView view)
     {
         button.Classes.Add(StyleClasses.TabStripTool);
-        ActionTips.Set(button, action, AutomationProperties.GetName(button) ?? action);
         button.Click += (_, _) =>
         {
-            area.Ask(this, action);
+            area.Ask(this, PaneActions(view).Action);
             FollowPreviewToggle();
         };
         return button;
     }
 
-    /// <summary>Editor and Preview's words: what a press does, which with both shown is to turn them.</summary>
-    private void FollowSplitWords() => ActionTips.Set(markdownSplit, AppActions.MarkdownEditorAndPreview,
-        area.MarkdownLayout.View != MarkdownView.Split ? EditorAndPreview : SideUnder ? "Preview Beside the Editor" : "Preview Under the Editor");
+    /// <summary>Whether the file shown is a form's, whose layouts are its design's rather than a Markdown preview's.</summary>
+    private bool ShowsForm => active?.Document is { } shown && InEditor(shown) && area.Designs(shown);
+
+    /// <summary>A layout's action and title for the kind of file shown: a form's code and design, else a Markdown file's.</summary>
+    private (string Action, string Title) PaneActions(PaneView view) => (ShowsForm, view) switch
+    {
+        (true, PaneView.Editor) => (AppActions.FormCodeOnly, CodeOnly),
+        (true, PaneView.Split) => (AppActions.FormCodeAndDesign, CodeAndDesign),
+        (true, _) => (AppActions.FormDesignOnly, DesignOnly),
+        (false, PaneView.Editor) => (AppActions.MarkdownEditorOnly, EditorOnly),
+        (false, PaneView.Split) => (AppActions.MarkdownEditorAndPreview, EditorAndPreview),
+        _ => (AppActions.MarkdownPreviewOnly, PreviewOnly),
+    };
+
+    private const string CodeOnly = "Code Only";
+    private const string CodeAndDesign = "Code and Design";
+    private const string DesignOnly = "Design Only";
+
+    /// <summary>The layout buttons' words: what a press does, which for both shown is to turn them.</summary>
+    private void FollowSplitWords()
+    {
+        bool form = ShowsForm;
+        foreach ((ToggleButton button, PaneView view) in (ReadOnlySpan<(ToggleButton, PaneView)>)[(markdownEditor, PaneView.Editor), (markdownOnly, PaneView.Preview)])
+        {
+            (string action, string title) = PaneActions(view);
+            ActionTips.Set(button, action, title);
+        }
+        PaneView shown = form ? area.FormLayout.View : area.MarkdownLayout.View;
+        (string split, string both) = PaneActions(PaneView.Split);
+        ActionTips.Set(markdownSplit, split, shown != PaneView.Split ? both
+            : form ? SideUnder ? "Design Beside the Code" : "Design Under the Code"
+            : SideUnder ? "Preview Beside the Editor" : "Preview Under the Editor");
+    }
 
     /// <summary>The way Editor and Preview pressed again stands the preview: under the editor (true) or beside it (false),
     /// null as the group's shape stands it.</summary>
@@ -302,18 +331,21 @@ public sealed class EditorGroup : DockPanel
     public SvgPreview? Svg => Side as SvgPreview;
 
     /// <summary>A Markdown, SVG or HTML file shown in the editor has its preview beside it while the area shows that kind's
-    /// previews, and its toggle on the strip either way, and a SQL console its results under it; any other file neither.</summary>
+    /// previews, and its toggle on the strip either way, a Windows Forms form's file its design as the form layout says, and a
+    /// SQL console its results under it; any other file none.</summary>
     internal void FollowSidePreview()
     {
         OpenDocument? document = active?.Document is { } shown && InEditor(shown) ? shown : null;
         FollowPreviewToggle();
         bool isMarkdown = document?.Language == Languages.Language.Markdown;
-        MarkdownLayout layout = area.MarkdownLayout;
-        bool previewOnly = isMarkdown && layout.View == MarkdownView.Preview;
-        bool moveKeys = previewOnly ? Editor.IsKeyboardFocusWithin : Markdown?.IsKeyboardFocusWithin == true && layout.View == MarkdownView.Editor;
+        bool isForm = document is not null && area.Designs(document);
+        PaneLayout layout = isForm ? area.FormLayout : area.MarkdownLayout;
+        bool previewOnly = (isMarkdown || isForm) && layout.View == PaneView.Preview;
+        bool moveKeys = previewOnly ? Editor.IsKeyboardFocusWithin
+            : (Markdown?.IsKeyboardFocusWithin == true || Side is WinForms.FormDesignPane { IsKeyboardFocusWithin: true }) && layout.View == PaneView.Editor;
         Database.SqlConsole? console = document is not null && Database.SqlConsole.Speaks(document.Language) ? area.ConsoleOf?.Invoke(document) : null;
-        body.SetPresentation(isMarkdown ? layout.Stacked : console is not null ? true : null, previewOnly);
-        if (isMarkdown && layout.View != MarkdownView.Editor)
+        body.SetPresentation(isMarkdown || isForm ? layout.Stacked : console is not null ? true : null, previewOnly);
+        if (isMarkdown && layout.View != PaneView.Editor)
         {
             markdown ??= new MarkdownPreview(Editor, area);
             Side = markdown;
@@ -330,10 +362,18 @@ public sealed class EditorGroup : DockPanel
                 Side = null;
             }
             markdown?.Show(null);
-            if (layout.View == MarkdownView.Editor)
+            if (area.MarkdownLayout.View == PaneView.Editor)
             {
                 markdown?.Forget();
             }
+        }
+        if (isForm && layout.View != PaneView.Editor && area.DesignOf?.Invoke(document!) is { } design)
+        {
+            Side = design;
+        }
+        else if (Side is WinForms.FormDesignPane)
+        {
+            Side = null;
         }
         previewAlone = previewOnly;
         if (moveKeys)
@@ -396,11 +436,12 @@ public sealed class EditorGroup : DockPanel
     internal void FollowPreviewToggle()
     {
         OpenDocument? document = active is { } shown && InEditor(shown.Document) ? shown.Document : null;
-        MarkdownView view = area.MarkdownLayout.View;
-        markdownModes.IsVisible = document?.Language == Languages.Language.Markdown;
-        markdownEditor.IsChecked = view == MarkdownView.Editor;
-        markdownSplit.IsChecked = view == MarkdownView.Split;
-        markdownOnly.IsChecked = view == MarkdownView.Preview;
+        bool form = document is not null && area.Designs(document);
+        PaneView view = form ? area.FormLayout.View : area.MarkdownLayout.View;
+        markdownModes.IsVisible = form || document?.Language == Languages.Language.Markdown;
+        markdownEditor.IsChecked = view == PaneView.Editor;
+        markdownSplit.IsChecked = view == PaneView.Split;
+        markdownOnly.IsChecked = view == PaneView.Preview;
         FollowSplitWords();
         (string Action, string Title, bool On)? toggle = document is null ? null
             : EditorArea.IsSvg(document) ? (AppActions.SvgPreview, "SVG Preview", area.ShowsSvgPreview)
@@ -612,7 +653,8 @@ public sealed class EditorGroup : DockPanel
         Vcs.DiffView diff => diff.Right.Focus(method),
         ToolTabView tool => tool.Window.TakeKeys(method),
         not null => preview.Focus(method),
-        _ when Markdown is { } page && area.MarkdownLayout.View == MarkdownView.Preview => page.Focus(method),
+        _ when Markdown is { } page && area.MarkdownLayout.View == PaneView.Preview => page.Focus(method),
+        _ when Side is WinForms.FormDesignPane design && area.FormLayout.View == PaneView.Preview => design.Focus(method),
         _ => Editor.Focus(method),
     };
 

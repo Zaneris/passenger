@@ -54,11 +54,11 @@ internal abstract class ChildPreviewHost : IPreviewHost
     /// <summary>Where the builds previewed are copied, a folder per preview named for the IDE's process.</summary>
     private static string Copies => Path.Combine(StateStore.DefaultRoot, "previews");
 
-    /// <summary>A build's folder copied for a previewer to load from, and the build as it stood; null, having said why, when
-    /// it could not be copied.</summary>
-    protected static async Task<(PreviewedBuild Build, string Shadow)?> CopyAsync(XamlPreview preview, string built)
+    /// <summary>A build's folder copied for a previewer (Windows Forms' designer too) to load from, and the build as it stood;
+    /// null, having said why through <paramref name="say"/>, when it could not be copied.</summary>
+    internal static async Task<(PreviewedBuild Build, string Shadow)?> CopyAsync(Action<string> say, string built)
     {
-        preview.Say($"Copying {Path.GetFileName(built)}'s build for the previewer…");
+        say($"Copying {Path.GetFileName(built)}'s build for the previewer…");
         string shadow = Path.Combine(Copies, $"{Environment.ProcessId}-{Guid.NewGuid():N}");
         try
         {
@@ -73,7 +73,7 @@ internal abstract class ChildPreviewHost : IPreviewHost
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             Forget(shadow);
-            preview.Say($"The previewer could not copy the build: {error.Message}");
+            say($"The previewer could not copy the build: {error.Message}");
             return null;
         }
     }
@@ -277,7 +277,7 @@ internal abstract class ChildPreviewHost : IPreviewHost
     }
 
     /// <summary>A copy let go once its previewer has let go of its files, off the UI thread; nothing drawn waits for it.</summary>
-    private static void Forget(string folder, Process? ending = null) => IdeErrors.Observe(BackgroundWork.Unheld(async () =>
+    internal static void Forget(string folder, Process? ending = null) => IdeErrors.Observe(BackgroundWork.Unheld(async () =>
     {
         try
         {

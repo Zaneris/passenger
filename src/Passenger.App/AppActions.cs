@@ -674,6 +674,14 @@ public static class AppActions
     public const string MarkdownEditorAndPreview = "app.editor.markdownEditorAndPreview";
     public const string MarkdownPreviewOnly = "app.editor.markdownPreviewOnly";
 
+    // A Windows Forms form's layouts, on its file's tab strip, View Designer under View too: Rider's OpenWinFormsCodeAction
+    // and OpenWinFormsDesignerAction, F7 and Shift+F7 in its Visual Studio and Visual Studio OSX keymaps, where Shift+F7 is
+    // Smart Step Into's too: a form's file shown takes it while the debugger has not stopped (KeysIn). Code and Design has
+    // no key.
+    public const string FormCodeOnly = "app.editor.formCodeOnly";
+    public const string FormCodeAndDesign = "app.editor.formCodeAndDesign";
+    public const string FormDesignOnly = "app.editor.formDesignOnly";
+
     // An SVG file's picture beside its editor, under View and on the editor's tab strip: no keymap gives it keys.
     public const string SvgPreview = "app.editor.svgPreview";
 
@@ -846,6 +854,7 @@ public static class AppActions
         Rerun when Preset == KeymapPreset.IntelliJ && OperatingSystem.IsMacOS() => Replace,
         NextOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: true),
         PreviousOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: false),
+        FormDesignOnly when Preset == KeymapPreset.VisualStudio => SmartStepInto,
         _ => id,
     };
 
@@ -1005,6 +1014,7 @@ public static class AppActions
                 .Bind(StepOver, "F10")
                 .Bind(StepInto, "F11", "meta F11")
                 .Bind(SmartStepInto, "shift F7")
+                .Bind(FormCodeOnly, "F7")
                 .Bind(StepOut, "shift F11")
                 .Bind(RunToCursor, "meta F10")
                 .Bind(SetNextStatement, "meta shift F10")
@@ -1141,6 +1151,7 @@ public static class AppActions
             .Bind(StepOver, "F10")
             .Bind(StepInto, "F11")
             .Bind(SmartStepInto, "shift F7")
+            .Bind(FormCodeOnly, "F7")
             .Bind(StepOut, "shift F11")
             .Bind(RunToCursor, "control F10")
             .Bind(SetNextStatement, "control shift F10")

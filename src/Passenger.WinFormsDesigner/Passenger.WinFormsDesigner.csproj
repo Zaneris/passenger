@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Windows Forms' designer, Passenger's own: a small Windows Forms program that draws a form or user control of a project
+       from its designer code as it is typed, through Windows Forms' own design surface, on the project's runtime
+       configuration and dependencies from a copy of its last build, so it makes the project's controls and Windows Forms as
+       the app itself would. Built on every system (EnableWindowsTargeting) and carried under winformsdesigner/ by Passenger's
+       Windows builds alone, where Windows Forms draws. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- The oldest .NET a Windows Forms project is supported on, so it runs on any project's runtime from there on. -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>Passenger.WinFormsDesigner</RootNamespace>
+    <!-- Run through dotnet exec on the project's runtime configuration; its own (a class library has none, nor has a project
+         not built yet) rolls forward to the newest runtime the machine has. -->
+    <UseAppHost>false</UseAppHost>
+    <RollForward>LatestMajor</RollForward>
+    <!-- A pixel is a unit of the code: the form is drawn at the sizes it writes, whatever the screen's scale. -->
+    <ApplicationHighDpiMode>DpiUnaware</ApplicationHighDpiMode>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Windows Forms' implicit usings name a Point and a Timer beside the linked files' own: each file names its own. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Passenger's requests read as every JSON-lines peer reads them, the newest waiting, the wire's start every previewer
+         shares, and the designer code's model, one definition for both ends. -->
+    <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
+    <Compile Include="../Passenger.Core/PreviewWire.cs" Link="PreviewWire.cs" />
+    <Compile Include="../Passenger.Core/PreviewRequests.cs" Link="PreviewRequests.cs" />
+    <Compile Include="../Passenger.Core/FormDesign.cs" Link="FormDesign.cs" />
+    <!-- A window drawn as Windows Forms draws it, as the inspector draws a running app's. -->
+    <Compile Include="../Passenger.Inspector.WinForms/ControlDrawing.cs" Link="ControlDrawing.cs" />
+  </ItemGroup>
+</Project>

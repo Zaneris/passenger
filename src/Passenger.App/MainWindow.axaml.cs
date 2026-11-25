@@ -156,6 +156,7 @@ public partial class MainWindow : IdeWindow
         AddPreview();
         AddXamlWorkspace();
         AddMarkdownPreview();
+        AddFormDesigner();
         FollowThemeLayout();
         Explorer.FileOpened += (_, path) => OpenFile(path);
         Explorer.GeneratedOpened += (_, made) => IdeErrors.Observe(OpenGeneratedAsync(made));
@@ -956,6 +957,7 @@ public partial class MainWindow : IdeWindow
             find.Alone = findSettings.UsagesAlone;
         }
         Editors.MarkdownLayout = store.Previews.Value.MarkdownLayout;
+        Editors.FormLayout = store.Previews.Value.FormLayoutOrDefault;
         Editors.ShowsSvgPreview = store.Previews.Value.Svg;
         Editors.ShowsHtmlPreview = store.Previews.Value.Html;
         ShowPreviews(store.Previews.Value.Xaml);

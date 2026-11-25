@@ -51,7 +51,7 @@ internal sealed class MauiPreviewHost : ChildPreviewHost
             preview.Say("MAUI's previewer is missing from Passenger's folder (mauipreview/)");
             return null;
         }
-        if (await CopyAsync(preview, built) is not { } copied)
+        if (await CopyAsync(said => preview.Say(said), built) is not { } copied)
         {
             return null;
         }

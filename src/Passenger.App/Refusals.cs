@@ -34,6 +34,12 @@ public static class Refusals
     /// <summary>The file shown is no Godot scene, nor a script a scene runs, of a Godot project the folder builds a game of.</summary>
     public const string NoGodotScene = "No scene of a Godot game is open: open a .tscn, or a script one of its nodes runs";
 
+    /// <summary>A form's layout asked for of a file that is no Windows Forms form's.</summary>
+    public const string NoForm = "No form is open: open a Windows Forms form's or user control's code or its .Designer.cs";
+
+    /// <summary>A form's design asked for off Windows, where Windows Forms draws nothing.</summary>
+    public const string FormsDrawOnWindows = "Windows Forms draws only on Windows, where its designer runs";
+
     /// <summary>The folder open is not trusted, so Passenger runs none of its code (<see cref="WorkspaceTrust"/>): no build,
     /// run, debug, test, profile, restore, Hot Reload, C# language server or previewer of its.</summary>
     public const string Untrusted = WorkspaceTrust.Untrusted;
