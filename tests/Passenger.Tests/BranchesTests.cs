@@ -552,7 +552,7 @@ public sealed class BranchesTests : IDisposable
         Assert.Equal(
             [
                 "Checkout", "New Branch from 'feature'…", "New Tag at 'feature'…", "New Worktree from 'feature'…", "Checkout and Rebase onto 'main'", "Compare with 'main'", "Show Diff with Working Tree",
-                "Rebase 'main' onto 'feature'", "Merge 'feature' into 'main'", "Update", "Push…", "Rename…", "Delete",
+                "Rebase 'main' onto 'feature'", "Merge 'feature' into 'main'", "Update", "Push…", "Push to…", "Rename…", "Delete",
             ], feature.Items.OfType<MenuItem>().Select(i => i.Header as string));
 
         Reach(window, feature.Items.OfType<MenuItem>(), "Merge 'feature' into 'main'");
