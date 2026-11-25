@@ -191,6 +191,7 @@ public partial class MainWindow
         chordWait.Interval = TimeSpan.FromSeconds(next.ChordWaitSeconds);
         Explorer.NestFiles = next.NestFiles;
         Explorer.OpensOnClick = next.OpenFilesWithSingleClick;
+        Explorer.OpensProjectFiles = next.OpenProjectFileOnDoubleClick;
         if (next.AlwaysSelectOpenedFile && !before.AlwaysSelectOpenedFile && Editors.Active?.Path is { } shown)
         {
             Explorer.Reveal(shown);

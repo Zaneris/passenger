@@ -536,6 +536,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// row; off until its options turn it on.</summary>
     public bool OpenFilesWithSingleClick { get; init; }
 
+    /// <summary>The Explorer's double-click or Enter on a project's row opens its project file, its arrow expanding it;
+    /// on until turned off, when either expands or collapses the row.</summary>
+    public bool OpenProjectFileOnDoubleClick { get; init; } = true;
+
     /// <summary>The code style for XAML (the XML formatter's options, with an attribute order and empty-element style),
     /// which Reformat Code lays out Avalonia's and WPF's XAML by, a file's .editorconfig over it.</summary>
     public Passenger.Xaml.Features.XamlFormatSettings XamlFormat { get; init; } = new();

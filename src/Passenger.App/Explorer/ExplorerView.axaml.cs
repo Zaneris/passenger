@@ -125,16 +125,26 @@ public partial class ExplorerView : UserControl
     /// <summary>The row's right-click menu while it is open.</summary>
     public ContextMenu? OpenMenu { get; private set; }
 
-    /// <summary>A file chosen with a double-click or Enter.</summary>
+    /// <summary>A file chosen with a double-click or Enter, or a project's file where <see cref="OpensProjectFiles"/>.</summary>
     public event EventHandler<string>? FileOpened;
+
+    /// <summary>Whether a double-click or Enter on a project's row opens its project file, its arrow left to expand it;
+    /// otherwise either expands or collapses the row.</summary>
+    public bool OpensProjectFiles { get; set; } = true;
 
     /// <summary>A source generator's document chosen with a double-click or Enter, or clicked once while <see
     /// cref="OpensOnClick"/>, by the URI the C# language server names it by.</summary>
     public event EventHandler<string>? GeneratedOpened;
 
-    /// <summary>Opens a row that opens: a file on disk, or a document a source generator makes; false for any other.</summary>
+    /// <summary>Opens a row that opens: a file on disk, a document a source generator makes, or a project's file where
+    /// <see cref="OpensProjectFiles"/>; false for any other.</summary>
     private bool Open(ExplorerNode node)
     {
+        if (OpensProjectFiles && node is { Kind: NodeKind.Project, Path: { } project } && File.Exists(project))
+        {
+            FileOpened?.Invoke(this, project);
+            return true;
+        }
         if (node is { Kind: NodeKind.GeneratedFile, Referenced: { } made })
         {
             GeneratedOpened?.Invoke(this, made);

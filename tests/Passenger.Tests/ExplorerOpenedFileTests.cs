@@ -35,14 +35,16 @@ public sealed class ExplorerOpenedFileTests : IDisposable
     public void Dispose() => TestFolders.Delete(folder);
 
     /// <summary>Select Opened File chooses the file shown by its key or button, Always Select Opened File keeps or
-    /// follows the row, and a single click opens a file where asked, each keeping the keys where they were, as one
-    /// flow, each step the check one test made in an instance of its own.</summary>
+    /// follows the row, a single click opens a file where asked, each keeping the keys where they were, and a
+    /// double-click on a project opens its project file, as one flow, each step the check one test made in an instance of
+    /// its own.</summary>
     [AvaloniaFact]
     public void The_Explorer_chooses_the_file_shown_or_keeps_its_row_as_its_options_say()
     {
         Flow.StepApart<ExplorerOpenedFileTests>("Select opened file chooses the file shown again by its key with the keys and by its button leaving them", t => t.Select_opened_file_chooses_the_file_shown_again_by_its_key_with_the_keys_and_by_its_button_leaving_them());
         Flow.StepApart<ExplorerOpenedFileTests>("with always select opened file off the explorer keeps its row and turned on it chooses the file shown", t => t.With_always_select_opened_file_off_the_explorer_keeps_its_row_and_turned_on_it_chooses_the_file_shown());
         Flow.StepApart<ExplorerOpenedFileTests>("with open files with single click a plain click opens a file keeping the keys and no other click does", t => t.With_open_files_with_single_click_a_plain_click_opens_a_file_keeping_the_keys_and_no_other_click_does());
+        Flow.StepApart<ExplorerOpenedFileTests>("a double-click on a projects row opens its project file and with the setting off expands it", t => t.A_double_click_on_a_projects_row_opens_its_project_file_and_with_the_setting_off_expands_it());
     }
 
     private void Select_opened_file_chooses_the_file_shown_again_by_its_key_with_the_keys_and_by_its_button_leaving_them()
@@ -166,6 +168,31 @@ public sealed class ExplorerOpenedFileTests : IDisposable
 
         static void Shown(MainWindow window, string path, string what) => Assert.True(window.EditorArea.Active?.Path == path,
             $"{what} showed {window.EditorArea.Active?.Name}, where it opens nothing and {Path.GetFileName(path)} stays shown");
+    }
+
+    /// <summary>A double-click on Shop.Core's row opens Shop.Core.csproj, the row left as it was; with Open a Project's File
+    /// on Double-Click off, a double-click expands or collapses it.</summary>
+    private void A_double_click_on_a_projects_row_opens_its_project_file_and_with_the_setting_off_expands_it()
+    {
+        MainWindow window = Open();
+        try
+        {
+            string project = At("Shop.Core/Shop.Core.csproj");
+            ExplorerNode row = window.ExplorerView.Tree.Rows.First(r => r.Kind == NodeKind.Project && r.Path == project);
+            bool expanded = row.IsExpanded;
+            Ui.DoubleClick(Ui.Row(window.ExplorerView, row));
+            Assert.True(window.EditorArea.Active?.Path == project && row.IsExpanded == expanded,
+                $"A double-click on Shop.Core's row showed {window.EditorArea.Active?.Name} and left it {(row.IsExpanded ? "expanded" : "collapsed")}, "
+                + $"where it opens Shop.Core.csproj and leaves the row {(expanded ? "expanded" : "collapsed")}");
+            window.ApplySettings(window.Settings with { OpenProjectFileOnDoubleClick = false });
+            Ui.DoubleClick(Ui.Row(window.ExplorerView, row));
+            Assert.True(row.IsExpanded != expanded, $"With the setting off a double-click on Shop.Core's row left it {(row.IsExpanded ? "expanded" : "collapsed")}, where it toggles the row");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { OpenProjectFileOnDoubleClick = true });
+            window.Close();
+        }
     }
 
     /// <summary>An item of the Explorer's options in its header, chosen as a person chooses it.</summary>

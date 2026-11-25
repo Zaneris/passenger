@@ -345,6 +345,7 @@ public sealed partial class SettingsDialog : IdeWindow
 
         Add(Declared.AlwaysSelectOpenedFile);
         Add(Declared.OpenFilesWithSingleClick);
+        Add(Declared.OpenProjectFileOnDoubleClick);
         Add(Declared.NestFiles);
 
         Add(Declared.EditorFontFamily);

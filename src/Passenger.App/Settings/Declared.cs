@@ -177,6 +177,11 @@ public static class Declared
             $"A plain click on a file's row opens it, the keys staying in the Explorer. Off, a double-click or {KeyWords.Of(ListKeys.OpenKey)} opens it. "
             + "Its options menu turns this on and off too."));
 
+    public static readonly ToggleSetting OpenProjectFileOnDoubleClick = new(s => s.OpenProjectFileOnDoubleClick, (s, v) => s with { OpenProjectFileOnDoubleClick = v },
+        new(D.ExplorerPage, "Open a project's file on double-click", "explorer solution view project csproj fsproj vbproj double click enter expand collapse open project file",
+            $"A double-click or {KeyWords.Of(ListKeys.OpenKey)} on a project's row opens its project file, its arrow expanding it. "
+            + "Off, either expands or collapses the row."));
+
     public static readonly ToggleSetting NestFiles = new(s => s.NestFiles, (s, v) => s with { NestFiles = v },
         new(D.ExplorerPage, "Show files with the same names as nested", "explorer solution view file nesting nested dependent code-behind group appsettings razor",
             "A file whose name carries another's, as Counter.razor.cs carries Counter.razor, shows under it in the Solution view. "
