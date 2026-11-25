@@ -528,7 +528,7 @@ internal sealed class AspireContainerOwnership
             }
             if (removing.Count > 0)
             {
-                ChildResult result = await engine.RunAsync([.. identity.Arguments, "rm", "-f", .. removing.Select(entry => entry.Id)], ContainerEngine.AskLimit * 3, cancel)
+                ChildResult result = await engine.RunAsync([.. identity.Arguments, .. ContainerLabels.Removing(removing.Select(entry => entry.Id))], ContainerEngine.AskLimit * 3, cancel)
                     .ConfigureAwait(false);
                 if (!result.Succeeded)
                 {

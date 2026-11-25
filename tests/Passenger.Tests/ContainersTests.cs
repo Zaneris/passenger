@@ -108,7 +108,7 @@ internal static class Docker
         try
         {
             foreach ((string kind, string[] list, string[] remove) in ((string, string[], string[])[])[
-                ("container", ["ps", "-a"], ["rm", "-f"]), ("network", ["network", "ls"], ["network", "rm"]), ("volume", ["volume", "ls"], ["volume", "rm", "-f"])])
+                ("container", ["ps", "-a"], ContainerLabels.Removing([])), ("network", ["network", "ls"], ["network", "rm"]), ("volume", ["volume", "ls"], ["volume", "rm", "-f"])])
             {
                 string id = kind == "volume" ? "{{.Name}}" : "{{.ID}}";
                 string[] dead = [.. Lines((await AskAsync([.. list, "--filter", $"label={RunKey}", "--format", $"{id}|{{{{.Label \"{RunKey}\"}}}}"], limit)).Output)
@@ -269,8 +269,16 @@ internal static class Docker
         return (PathNames.Canonical(folder), project);
     }
 
-    /// <summary>Takes down what <see cref="ComposeUp"/> brought up in a folder, so no later test of the run lists it.</summary>
-    public static void ComposeDown(string folder) => Run("compose", "-f", Path.Combine(folder, "compose.yaml"), "down", "--timeout", "0");
+    /// <summary>Takes down what <see cref="ComposeUp"/> brought up in a folder, so no later test of the run lists it: its
+    /// containers removed with their anonymous volumes (<see cref="Remove"/>), which Compose's down leaves, then its network.</summary>
+    public static void ComposeDown(string folder, string project)
+    {
+        if (Run("ps", "-aq", "--filter", $"label={ComposeLabels.Project}={project}").Split('\n', StringSplitOptions.RemoveEmptyEntries) is { Length: > 0 } made)
+        {
+            Remove(made);
+        }
+        Run("compose", "-f", Path.Combine(folder, "compose.yaml"), "down", "--timeout", "0");
+    }
 
     /// <summary>A container of busybox running <paramref name="command"/>, named and labelled as the test's, with more labels.</summary>
     public static string Container(string name, string command, params string[] labels)
@@ -288,7 +296,15 @@ internal static class Docker
         return named;
     }
 
-    private static (string Named, string[] Words) Busybox(string name, string command, string[] labels)
+    /// <summary>A container as <see cref="Container"/> makes one, holding an anonymous volume at a path.</summary>
+    public static string ContainerHolding(string name, string command, string volume, params string[] labels)
+    {
+        (string named, string[] words) = Busybox(name, command, labels, ["-v", volume]);
+        Run(words);
+        return named;
+    }
+
+    private static (string Named, string[] Words) Busybox(string name, string command, string[] labels, string[]? more = null)
     {
         string named = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}{name}";
         List<string> words = ["run", "-d", .. AnyPids, "--name", named, "--label", RunLabel];
@@ -296,16 +312,26 @@ internal static class Docker
         {
             words.AddRange(["--label", label]);
         }
-        return (named, [.. words, Image, "sh", "-c", command]);
+        return (named, [.. words, .. more ?? [], Image, "sh", "-c", command]);
     }
 
-    /// <summary>Removes containers a test started, as its end does in its finally, whatever came of the test: what docker says
+    /// <summary>Removes containers a test started, with the anonymous volumes they hold, as Passenger removes its own
+    /// (<see cref="ContainerLabels.Removing"/>), as its end does in its finally, whatever came of the test: what docker says
     /// is passed over, the test's own failure being the one to tell, and one left running fails it all the same
     /// (<see cref="LeftBy"/>). From the UI thread, the window's loop running as it waits.</summary>
-    public static void Remove(params string[] containers) => Ask(["rm", "-f", .. containers]);
+    public static void Remove(params string[] containers) => Ask(ContainerLabels.Removing(containers));
 
     /// <inheritdoc cref="Remove"/>
-    public static Task RemoveAsync(params string[] containers) => AskAsync(["rm", "-f", .. containers]);
+    public static Task RemoveAsync(params string[] containers) => AskAsync(ContainerLabels.Removing(containers));
+
+    /// <summary>The anonymous volumes a container holds (its image's VOLUME, a <c>-v /path</c>), by name.</summary>
+    public static string[] AnonymousVolumes(string container) =>
+        Run("inspect", "-f", "{{range .Mounts}}{{if eq .Type \"volume\"}}{{.Name}} {{end}}{{end}}", container).Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>Those of the volumes named the engine still holds.</summary>
+    public static string[] Held(IReadOnlyCollection<string> volumes) => volumes.Count == 0 ? []
+        : [.. Ask(["volume", "ls", "-q"], TimeSpan.FromSeconds(30).Scaled()).Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Intersect(volumes, StringComparer.Ordinal)];
 
     /// <summary>A container's state as docker inspect says it (running, exited, paused), or null when there is none.</summary>
     public static string? State(string name) => Answer(Ask(["inspect", "-f", "{{.State.Status}}", name], TimeSpan.FromSeconds(30).Scaled()));
@@ -384,7 +410,7 @@ internal static class Docker
         }
         if (running.Count > 0)
         {
-            await AskAsync(["rm", "-f", .. running.Keys], TimeSpan.FromSeconds(60).Scaled());
+            await AskAsync(ContainerLabels.Removing(running.Keys), TimeSpan.FromSeconds(60).Scaled());
         }
         return [.. running.Values.Order(StringComparer.Ordinal)];
     }
@@ -406,7 +432,7 @@ internal static class Docker
                 string[] ids = containers.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                 if (ids.Length > 0)
                 {
-                    await AskAsync(["rm", "-f", .. ids], TimeSpan.FromSeconds(60).Scaled());
+                    await AskAsync(ContainerLabels.Removing(ids), TimeSpan.FromSeconds(60).Scaled());
                 }
                 ChildResult networks = await AskAsync(["network", "ls", "-q", "--filter", $"label={label}"], TimeSpan.FromSeconds(30).Scaled());
                 string[] made = networks.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -648,7 +674,7 @@ public sealed class ContainersTests
         }
         finally
         {
-            Docker.ComposeDown(folder);
+            Docker.ComposeDown(folder, project);
         }
 
         static int Ticks(OutputView console) => Text(console).Split('\n').Count(l => l.Contains("worker tick", StringComparison.Ordinal));
@@ -1591,7 +1617,7 @@ public sealed class ContainersTests
     /// <summary>The next start's clean-up of what a Passenger that is gone left passes over what the person chose to leave
     /// running as theirs, reading the record as it stands on disk the moment the choice is made, as a start after a Passenger
     /// that quit at once does: of two containers such a Passenger labelled, the one recorded as left runs on, the other is
-    /// removed.</summary>
+    /// removed with its anonymous volume.</summary>
     private void The_next_starts_clean_up_passes_over_what_the_person_chose_to_leave_running_just_before_Passenger_ended()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
@@ -1604,7 +1630,8 @@ public sealed class ContainersTests
         string machine = labels.Single(l => l.StartsWith(ContainerLabels.Machine, StringComparison.Ordinal));
         string gone = $"{ContainerLabels.Process}={ContainerLabels.Of(int.MaxValue - 9, 1)}";
         string kept = Docker.Container("leftkept", "sleep 600", state, machine, gone);
-        string removed = Docker.Container("leftremoved", "sleep 600", state, machine, gone);
+        string removed = Docker.ContainerHolding("leftremoved", "sleep 600", "/data", state, machine, gone);
+        string[] volumes = Docker.AnonymousVolumes(removed);
         try
         {
             Ui.Await(ContainerLabels.LeaveToPersonAsync(ContainerEngine.Shared, [Docker.Run("inspect", "-f", "{{.Id}}", kept)[..12]]), "the choice to leave a container running");
@@ -1613,10 +1640,12 @@ public sealed class ContainersTests
             Assert.True(Docker.State(kept) == "running",
                 $"The next start's clean-up removed {kept}, which the person chose to leave running just before Passenger ended: it removed [{string.Join(", ", cleaned)}]");
             Assert.True(Docker.State(removed) is null, $"The clean-up left {removed}, which nobody chose to leave running: it removed [{string.Join(", ", cleaned)}]");
+            string[] held = Docker.Held(volumes);
+            Assert.True(volumes.Length == 1 && held.Length == 0, $"The clean-up left {removed}'s anonymous volume ({string.Join(", ", held)} of {string.Join(", ", volumes)}), which nothing mounts again");
         }
         finally
         {
-            Docker.Ask(["rm", "-f", kept, removed]);
+            Docker.Remove(kept, removed);
             window.Close();
             TestFolders.Delete(next);
         }
@@ -1674,7 +1703,8 @@ public sealed class ContainersTests
     }
 
     /// <summary>Whether the stand-in was told to remove the project's container, as a take-down by its labels does.</summary>
-    private static bool TakenDown(string engineFolder) => File.ReadAllLines(Path.Combine(engineFolder, "calls")).Any(c => c == "rm -f c0ffee000001");
+    private static bool TakenDown(string engineFolder) =>
+        File.ReadAllLines(Path.Combine(engineFolder, "calls")).Any(c => c == string.Join(' ', ContainerLabels.Removing(["c0ffee000001"])));
 
     /// <summary>The question leaving the folder asks of runs Detach let go of, held to the dialogs' rules.</summary>
     internal static ChoiceDialog AskedOfLetGo(MainWindow window)

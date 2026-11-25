@@ -1247,7 +1247,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             window.Perform(AppActions.Stop);
             foreach (string left in Docker.Run("ps", "-aq", "--filter", $"label=com.docker.compose.project={project}").Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
-                Docker.Run("rm", "-f", left);
+                Docker.Remove(left);
             }
             window.Close();
         }
@@ -1455,7 +1455,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         {
             window.Close();
         }
-        Docker.Ask(["rm", "-f", .. Docker.Run("ps", "-aq", "--filter", $"label={ComposeLabels.Project}={project}").Split('\n', StringSplitOptions.RemoveEmptyEntries)]);
+        Docker.Remove([.. Docker.Run("ps", "-aq", "--filter", $"label={ComposeLabels.Project}={project}").Split('\n', StringSplitOptions.RemoveEmptyEntries)]);
     }
 
     private static void Press(Avalonia.Controls.Button button)

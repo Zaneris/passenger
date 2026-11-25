@@ -876,7 +876,7 @@ public sealed class DatabaseServersTests
         }
         finally
         {
-            Docker.Said("rm", "-f", name);
+            Docker.Remove(name);
         }
     }
 
@@ -1005,7 +1005,7 @@ public sealed class DatabaseServersTests
         }
         finally
         {
-            Docker.Said("rm", "-f", name);
+            Docker.Remove(name);
         }
     }
 
@@ -1111,7 +1111,7 @@ public sealed class DatabaseServersTests
         }
         finally
         {
-            Docker.Said("rm", "-f", name);
+            Docker.Remove(name);
         }
     }
 
@@ -1149,9 +1149,12 @@ public sealed class DatabaseServersTests
     private static void Redis(string image)
     {
         string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}db{(image == ValkeyImage ? "valkey" : "redis")}";
+        string[] volumes = [];
         try
         {
             Docker.Run(["run", "-d", "--name", name, "--label", Docker.RunLabel, "-p", "127.0.0.1::6379", image, "--requirepass", Password]);
+            volumes = Docker.AnonymousVolumes(name);
+            Assert.True(volumes.Length > 0 == (image != ValkeyImage), $"{image}'s container holds {volumes.Length} anonymous volumes, where Redis's image declares /data and Valkey's none");
             string configuration = $"127.0.0.1:{Published(name, 6379)},password={Password}";
             Assert.True(Ui.Await(Waiting.Apart(() => Waiting.UntilAsync(() => RedisMadeAsync(configuration), TimeSpan.FromMinutes(2))),
                 $"{image} to take connections and hold the shop's keys", TimeSpan.FromMinutes(3)), $"{image} never took connections");
@@ -1293,8 +1296,10 @@ public sealed class DatabaseServersTests
         }
         finally
         {
-            Docker.Said("rm", "-f", name);
+            Docker.Remove(name);
         }
+        string[] held = Docker.Held(volumes);
+        Assert.True(held.Length == 0, $"Removing {image}'s container left its anonymous volumes {string.Join(", ", held)}, which nothing mounts again");
     }
 
     /// <summary>Whether Redis takes connections, the shop's keys put back as the test begins with them once it does.</summary>
@@ -1426,7 +1431,7 @@ public sealed class DatabaseServersTests
         }
         finally
         {
-            Docker.Said("rm", "-f", name);
+            Docker.Remove(name);
         }
     }
 
@@ -1506,7 +1511,7 @@ public sealed class DatabaseServersTests
         }
         finally
         {
-            Docker.Said("rm", "-f", name);
+            Docker.Remove(name);
         }
     }
 

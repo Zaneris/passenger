@@ -72,7 +72,7 @@ public sealed class FolderContainers(string? folder, ContainerEngine engine)
             List<Task> ending = [.. downing.Select(project => TakeDownAsync(Engine, project, folder, "as the folder closed"))];
             if (removing.Length > 0)
             {
-                ending.Add(Quietly(Engine, ["rm", "-f", .. removing], "as the folder closed"));
+                ending.Add(Quietly(Engine, ContainerLabels.Removing(removing), "as the folder closed"));
             }
             await Task.WhenAll(ending);
         });
@@ -107,7 +107,7 @@ public sealed class FolderContainers(string? folder, ContainerEngine engine)
             if (await IdsAsync(["ps", "-aq", .. each]) is { Length: > 0 } made)
             {
                 IdeLog.Write(IdeLog.Ide, $"Containers: {Numbers.Said(made.Length)} of {compose[named + 1]}'s containers removed {when}");
-                await Quietly(engine, ["rm", "-f", .. made], when);
+                await Quietly(engine, ContainerLabels.Removing(made), when);
             }
         }
         if (services is not { Count: > 0 } && await IdsAsync(["network", "ls", "-q", .. filters]) is { Length: > 0 } networks)
@@ -133,7 +133,7 @@ public sealed class FolderContainers(string? folder, ContainerEngine engine)
     /// <summary>Removes containers by id, as the folder's end removes its own: what fails is the IDE's error, said with
     /// <paramref name="when"/>. Whether the engine removed them. Any thread.</summary>
     public static Task<bool> RemoveAsync(ContainerEngine engine, IReadOnlyList<string> ids, string when) =>
-        ids.Count == 0 ? Task.FromResult(true) : Quietly(engine, ["rm", "-f", .. ids], when);
+        ids.Count == 0 ? Task.FromResult(true) : Quietly(engine, ContainerLabels.Removing(ids), when);
 
     private static async Task<bool> Quietly(ContainerEngine engine, IReadOnlyList<string> words, string when)
     {

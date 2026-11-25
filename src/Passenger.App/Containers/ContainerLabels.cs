@@ -247,6 +247,10 @@ public static partial class ContainerLabels
         }
     }
 
+    /// <summary>The words that remove containers Passenger made, with the anonymous volumes they hold (an image's VOLUME, a
+    /// <c>-v /path</c>), which nothing mounts again once their container is gone; a named volume the engine keeps.</summary>
+    public static string[] Removing(IEnumerable<string> containers) => ["rm", "-f", "-v", .. containers];
+
     /// <summary>The shell command that removes this process's containers and networks, for the watchdog, which runs it with
     /// its own environment: the engine the IDE's commands reach is put in it, the CLIs' variables as the IDE has them and
     /// its context by name; what was made for it without its labels is named, its containers by id and then their networks
@@ -274,12 +278,12 @@ public static partial class ContainerLabels
             // What the person chose to leave running is listed with the rest and passed over by its id.
             string spared = Spared.Count == 0 ? string.Empty : $" | grep -v -x -F{string.Concat(Spared.Select(id => $" -e {Quoted(id)}"))}";
             command.Append(CultureInfo.InvariantCulture,
-                $"{docker} rm -f $({docker} ps -aq {labels}{spared}){Named(Unlabelled)}; {docker} network rm $({docker} network ls -q {labels}{spared}){Named(UnlabelledNetworks)}");
+                $"{docker} {string.Join(' ', Removing([]).Select(Quoted))} $({docker} ps -aq {labels}{spared}){Named(Unlabelled)}; {docker} network rm $({docker} network ls -q {labels}{spared}){Named(UnlabelledNetworks)}");
         }
         foreach (MadeOn made in Elsewhere.Values)
         {
             string other = string.Join(' ', [Quoted(made.Cli), .. made.Arguments.Select(Quoted)]);
-            command.Append(command.Length > begun ? "; " : string.Empty).Append(CultureInfo.InvariantCulture, $"{other} rm -f{Named(made.Containers)}");
+            command.Append(command.Length > begun ? "; " : string.Empty).Append(CultureInfo.InvariantCulture, $"{other}{Named(Removing(made.Containers))}");
             if (made.Networks.Count > 0)
             {
                 command.Append(CultureInfo.InvariantCulture, $"; {other} network rm{Named(made.Networks)}");
@@ -426,7 +430,7 @@ public static partial class ContainerLabels
                 c.Labels.GetValueOrDefault(Machine), c.Labels.GetValueOrDefault(Process), stateValue)).Select(c => c.Id)];
             if (gone.Length > 0)
             {
-                await engine.RunAsync(["rm", "-f", .. gone], ContainerEngine.AskLimit * 3, cancel);
+                await engine.RunAsync(Removing(gone), ContainerEngine.AskLimit * 3, cancel);
                 removed.AddRange(gone);
             }
             IReadOnlyList<JsonElement> networks = await engine.JsonLinesAsync(["network", "ls", .. filters, "--format", "json"], cancel);

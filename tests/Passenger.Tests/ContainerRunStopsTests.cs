@@ -114,7 +114,7 @@ public sealed class ContainerRunStopsTests(ContainerRunDebuggingTests.Tools tool
         {
             foreach (string left in Docker.Run("ps", "-aq", "--filter", $"label=com.docker.compose.project={project}").Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
-                Docker.Run("rm", "-f", left);
+                Docker.Remove(left);
             }
         }
         window.Close();
