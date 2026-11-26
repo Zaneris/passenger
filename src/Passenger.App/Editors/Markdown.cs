@@ -54,6 +54,8 @@ internal static partial class Markdown
 
     internal sealed record Emphasis(IReadOnlyList<Inline> Parts) : Inline;
 
+    internal sealed record Underline(IReadOnlyList<Inline> Parts) : Inline;
+
     /// <summary>A link's words and where it goes, as written: what it may open is the page's.</summary>
     internal sealed record Link(IReadOnlyList<Inline> Parts, string Target) : Inline;
 
@@ -594,6 +596,7 @@ internal static partial class Markdown
                 CodeSpan code => code.Text,
                 Strong strong => Plain(strong.Parts),
                 Emphasis emphasis => Plain(emphasis.Parts),
+                Underline underline => Plain(underline.Parts),
                 Link link => Plain(link.Parts),
                 Image image => image.Alt,
                 Break => " ",

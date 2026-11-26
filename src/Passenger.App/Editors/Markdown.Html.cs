@@ -47,13 +47,7 @@ internal static partial class Markdown
     /// <summary>The tags read inside words; every other is its words as written.</summary>
     private static readonly HashSet<string> WordTags = new(StringComparer.Ordinal)
     {
-        "a", "img", "picture", "br", "b", "strong", "i", "em", "code", "kbd",
-    };
-
-    private static readonly HashSet<string> DocumentationTags = new(StringComparer.Ordinal)
-    {
-        "a", "b", "strong", "i", "em", "see", "seealso", "c", "code", "para", "br",
-        "paramref", "typeparamref", "list", "listheader", "item", "term", "description",
+        "a", "img", "picture", "br", "b", "strong", "i", "em", "u", "code", "kbd",
     };
 
     /// <summary>The tags read as blocks; with those read in words, the tags whose end tag closing nothing open is left out.</summary>
@@ -99,8 +93,6 @@ internal static partial class Markdown
         public string Name => tag.Name;
 
         public IReadOnlyDictionary<string, string> Attributes => tag.Attributes;
-
-        public bool SelfClosing => tag.SelfClosing;
 
         /// <summary>Its start tag as written.</summary>
         public string Written { get; } = written;
@@ -247,7 +239,7 @@ internal static partial class Markdown
 
     /// <summary>A text's HTML as elements and the text between them, each end tag closing the last element of its name
     /// open and all opened inside it; a comment left out.</summary>
-    private static List<HtmlNode> HtmlNodes(string html, bool documentation = false)
+    private static List<HtmlNode> HtmlNodes(string html)
     {
         List<HtmlNode> roots = [];
         List<HtmlElement> open = [];
@@ -260,14 +252,14 @@ internal static partial class Markdown
             {
                 break;
             }
-            if (!documentation && html.AsSpan(lt).StartsWith("<!--"))
+            if (html.AsSpan(lt).StartsWith("<!--"))
             {
                 Add(new HtmlText(html[text..lt]));
                 int end = html.IndexOf("-->", lt + 4, StringComparison.Ordinal);
                 i = text = end < 0 ? html.Length : end + 3;
                 continue;
             }
-            if (TagAt(html, lt) is not { } tag || (documentation && !DocumentationTags.Contains(tag.Name)))
+            if (TagAt(html, lt) is not { } tag)
             {
                 i = lt + 1;
                 continue;
@@ -282,7 +274,7 @@ internal static partial class Markdown
                     open[at].Closed = written;
                     open.RemoveRange(at, open.Count - at);
                 }
-                else if (documentation || (!BlockTagsRead.Contains(tag.Name) && !WordTags.Contains(tag.Name)))
+                else if (!BlockTagsRead.Contains(tag.Name) && !WordTags.Contains(tag.Name))
                 {
                     Add(new HtmlStray(written));
                 }
@@ -295,13 +287,6 @@ internal static partial class Markdown
                 }
                 HtmlElement element = new(tag, written);
                 Add(element);
-                if (documentation && !tag.SelfClosing && tag.Name is "c" or "code" && EndTagAt(html, tag.End, tag.Name) is { } close)
-                {
-                    element.Children.Add(new HtmlText(html[tag.End..close.Start]));
-                    element.Closed = html[close.Start..close.End];
-                    i = text = close.End;
-                    continue;
-                }
                 if (!tag.SelfClosing && !VoidTags.Contains(tag.Name))
                 {
                     open.Add(element);
@@ -595,72 +580,14 @@ internal static partial class Markdown
         return parts;
     }
 
-    /// <summary>Some generators escape XML documentation tags into Roslyn's prose. Recover those tags in words
-    /// while leaving Markdown code spans intact.</summary>
-    internal static IReadOnlyList<Inline> DocumentationInlines(string text) =>
-        [.. Inlines(text).SelectMany(part => part is Words words && words.Text.Contains('<')
-            ? DocumentationWords(HtmlNodes(words.Text, documentation: true), 0)
-            : [part])];
-
-    private static IEnumerable<Inline> DocumentationWords(IEnumerable<HtmlNode> nodes, int depth) =>
-        nodes.SelectMany<HtmlNode, Inline>(node => node switch
-        {
-            HtmlText text => [new Words(text.Written)],
-            HtmlStray stray => [new Words(stray.Written)],
-            HtmlElement element when depth >= DeepestNesting => [new Words(element.Written)],
-            HtmlElement { Closed: null, SelfClosing: false, Name: not "br" } element =>
-                [new Words(element.Written), .. DocumentationWords(element.Children, depth + 1)],
-            HtmlElement element => DocumentationElement(element, depth + 1),
-            _ => [],
-        });
-
-    private static IReadOnlyList<Inline> DocumentationElement(HtmlElement element, int depth)
-    {
-        if (element.Name == "list")
-        {
-            return DocumentationList(element, depth);
-        }
-        IReadOnlyList<Inline> inner = [.. DocumentationWords(element.Children, depth)];
-        IReadOnlyDictionary<string, string> attributes = element.Attributes;
-        return element.Name switch
-        {
-            "a" or "see" or "seealso" when attributes.TryGetValue("href", out string? href) =>
-                [new Link(inner.Count == 0 ? [new Words(href)] : inner, href)],
-            "see" or "seealso" when inner.Count == 0 && (attributes.GetValueOrDefault("cref") ?? attributes.GetValueOrDefault("langword")) is { } reference =>
-                [new CodeSpan(reference is [_, ':', ..] ? reference[2..] : reference)],
-            "paramref" or "typeparamref" when attributes.TryGetValue("name", out string? name) => [new CodeSpan(name)],
-            "c" => [new CodeSpan(Plain(inner))],
-            "code" => [new Break(), new CodeSpan(Plain(inner)), new Break()],
-            "para" => [new Break(), new Break(), .. inner, new Break(), new Break()],
-            "term" => [new Strong(inner), new Words(" – ")],
-            _ => Element(element, inner),
-        };
-    }
-
-    private static IReadOnlyList<Inline> DocumentationList(HtmlElement list, int depth)
-    {
-        string? type = list.Attributes.GetValueOrDefault("type");
-        List<Inline> parts = [new Break()];
-        int number = 0;
-        foreach (HtmlElement entry in list.Children.OfType<HtmlElement>().Where(e => e.Name is "item" or "listheader"))
-        {
-            if (entry.Name == "item" && type is "bullet" or "number")
-            {
-                parts.Add(new Words(type == "number" ? $"{++number}. " : "• "));
-            }
-            parts.AddRange(DocumentationWords(entry.Children, depth + 1));
-            parts.Add(new Break());
-        }
-        return parts;
-    }
-
     /// <summary>A tag read in words around its words read: a link where an <c>a</c> has an <c>href</c> (its words alone
-    /// where it has none), strong, emphasis, or code.</summary>
+    /// where it has none), strong, emphasis, underline, or code.</summary>
     private static IReadOnlyList<Inline> Element(HtmlElement element, IReadOnlyList<Inline> inner) => element.Name switch
     {
         "a" when element.Attributes.TryGetValue("href", out string? href) => [new Link(inner, href)],
         "b" or "strong" => [new Strong(inner)],
         "i" or "em" => [new Emphasis(inner)],
+        "u" => [new Underline(inner)],
         "code" or "kbd" => [new CodeSpan(Plain(inner))],
         "img" => ImageOf(element, null, null) is { } image ? [image] : [],
         "br" => [new Break()],

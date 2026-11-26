@@ -325,7 +325,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
             }
             else if (rich)
             {
-                MarkdownText words = MarkdownText.Of(Markdown.DocumentationInlines(HoverMarkdown.Dataless(text)), documentationPage, StyleClasses.Caption);
+                MarkdownText words = MarkdownText.Of(Markdown.Inlines(HoverMarkdown.Dataless(text)), documentationPage, StyleClasses.Caption);
                 if (words.Shown.Length > 0)
                 {
                     words.Foreground = Brush(TokenKeys.TextMuted);

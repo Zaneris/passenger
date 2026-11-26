@@ -100,7 +100,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>What the window says of the code around the caret: the status bar's path, a hover card and File
     /// Structure, once the server has the file; the structure window following the editor; Go to Symbol's generated
-    /// declarations; and parameter info's overloads, those the arguments no longer fit set back.</summary>
+    /// declarations; parameter info's overloads, those the arguments no longer fit set back; and documentation as its
+    /// tags write it in every card.</summary>
     [AvaloniaFact]
     public void The_code_around_the_caret_is_named_and_its_overloads_shown_as_the_server_has_it()
     {
@@ -109,6 +110,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("the structure window shows the shown file's outline whenever it is shown, once the server has the file, and follows the editor", () => new CodeAssistTests(project), t => t.The_structure_window_shows_the_shown_files_outline_whenever_it_is_shown_and_once_the_server_has_the_file_and_follows_the_editor());
         Flow.StepApart("Go to Symbol lists a generated method's own declaration alone, and what only a generator wrote after", () => new CodeAssistTests(project), t => t.Go_to_Symbol_lists_a_generated_methods_own_declaration_alone_and_what_only_a_generator_wrote_after());
         Flow.StepApart("parameter info shows every overload, setting back those the arguments no longer fit", () => new CodeAssistTests(project), t => t.Parameter_info_shows_every_overload_setting_back_those_the_arguments_no_longer_fit());
+        Flow.StepApart("documentation shows bold, emphasis, underline, code and links in the hover, completion and parameter cards, tags written escaped too", () => new CodeAssistTests(project), t => t.Documentation_shows_its_tags_in_the_hover_completion_and_parameter_cards_tags_written_escaped_too());
     }
 
     /// <summary>Find Usages groups, previews and keeps each search, lists each place once and gives its results the
@@ -2501,8 +2503,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void CSharp_documentation_formats_XML_in_hover_completion_and_parameter_info()
+    private void Documentation_shows_its_tags_in_the_hover_completion_and_parameter_cards_tags_written_escaped_too()
     {
         MainWindow window = project.Open("Documented.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -2519,6 +2520,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Contains("• First step", window.Assist.HoverText, StringComparison.Ordinal);
         Assert.Contains("int value = 1;", window.Assist.HoverText, StringComparison.Ordinal);
         Assert.Contains(hover.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == "any value" && run.FontStyle == FontStyle.Italic);
+        Assert.Contains(hover.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == "unchanged" && run.TextDecorations == TextDecorations.Underline);
         Assert.Contains(hover.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == "<b>literal</b>");
         Ui.Click(hover, hover.PointOf(guide));
         Assert.Equal(guide, window.Browsed.LastOrDefault());
@@ -3570,7 +3572,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 {
                     /// <summary>
                     /// Use the &lt;b&gt;quantity&lt;/b&gt; in the &lt;see href=&quot;https://example.test/guide?x=1&amp;y=2&quot;&gt;guide&lt;/see&gt;.
-                    /// See <see cref="Related"/> or type <c>&lt;b&gt;literal&lt;/b&gt;</c>. Pass <i>any value</i> or <see langword="null"/>.
+                    /// See <see cref="Related"/> or type <c>&lt;b&gt;literal&lt;/b&gt;</c>. Pass <i>any value</i> or <see langword="null"/>. It comes back <u>unchanged</u>.
                     /// <para>Read more with <paramref name="value"/> of type <typeparamref name="T"/>.<br/>Second line.</para>
                     /// <list type="bullet"><item><description>First step</description></item></list>
                     /// <code>int value = 1;</code>

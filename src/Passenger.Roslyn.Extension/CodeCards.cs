@@ -192,7 +192,7 @@ internal sealed class CodedCompletionItem : LspCompletionItem
 /// <summary><see cref="ExtensionMethods.SignatureHelp"/>: textDocument/signatureHelp by the server's own, asked as for a
 /// client with Visual Studio's extensions so each label comes classified, answered as for one without them with each
 /// label's parts, whether the signature still fits the call's arguments and the parameter the caret's fills there
-/// (<see cref="SignatureFits"/>).</summary>
+/// (<see cref="SignatureFits"/>), and its documentation and each parameter's as Markdown where the client reads it.</summary>
 [Method(ExtensionMethods.SignatureHelp)]
 internal sealed class CodedSignatureHelpHandler(SignatureHelpService signatures) : ILspServiceDocumentRequestHandler<TextDocumentPositionParams, LspSignatureHelp?>
 {
