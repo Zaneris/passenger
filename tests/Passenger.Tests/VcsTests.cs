@@ -114,6 +114,7 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("a file git mv renamed elsewhere is compared with where the last commit has it", t => t.A_file_git_mv_renamed_elsewhere_is_compared_with_where_the_last_commit_has_it());
         Flow.StepApart<VcsTests>("amend with no file chosen rewords the last commit and leaves a rename out of it", t => t.Amend_with_no_file_chosen_rewords_the_last_commit_and_leaves_a_rename_out_of_it());
         Flow.StepApart<VcsTests>("a file renamed in the Explorer is committed as a rename", t => t.A_file_renamed_in_the_Explorer_is_committed_as_a_rename());
+        Flow.StepApart<VcsTests>("a copy made at the name an undone rename gave its file is new and compared with nothing", t => t.A_copy_made_at_the_name_an_undone_rename_gave_its_file_is_new_and_compared_with_nothing());
         Flow.StepApart<VcsTests>("amends last message read late keeps what was typed meanwhile and lands nowhere once amend is off", t => t.Amends_last_message_read_late_keeps_what_was_typed_meanwhile_and_lands_nowhere_once_amend_is_off());
         Flow.StepApart<VcsTests>("a commit whose message file another program holds is made and the file goes once let go", t => t.A_commit_whose_message_file_another_program_holds_is_made_and_the_file_goes_once_let_go());
         Flow.StepApart<VcsTests>("a commit whose hook leaves a job holding gits output is done within seconds", t => t.A_commit_whose_hook_leaves_a_job_holding_gits_output_is_done_within_seconds());
@@ -466,6 +467,32 @@ public sealed partial class VcsTests : IDisposable
 
         Assert.True(made.Commit.Succeeded, $"Committing the renamed file failed with: {made.Commit.Message}");
         Assert.Equal("R\tShop.cs\tStore.cs", Git("show", "--name-status", "--format=", "-M", "HEAD").Trim().Replace("R100", "R", StringComparison.Ordinal));
+        window.Close();
+    }
+
+    /// <summary>A copy of a file made at the name a rename gave it, once Undo took the rename back, is new: Git lists it
+    /// as unversioned, and its diff shows no file of the last commit's beside it, never the original's text (#2287).</summary>
+    private void A_copy_made_at_the_name_an_undone_rename_gave_its_file_is_new_and_compared_with_nothing()
+    {
+        MainWindow window = Open();
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        string shop = PathNames.Canonical(Path.Combine(folder, "Shop.cs"));
+        string store = Path.Combine(folder, "Store.cs");
+        Assert.Null(Ui.Await(window.RenameAsync(shop, "Store.cs"), "the rename"));
+        window.ShowToolWindow(ToolWindowIds.Explorer);
+        window.ExplorerView.Reveal(PathNames.Canonical(store));
+        Ui.Settle();
+        Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == PathNames.Canonical(store)));
+        Ui.Run(window, EditorActions.Undo);
+        Ui.WaitFor(() => File.Exists(shop) && !File.Exists(store), () => $"Undo to take the rename back: {window.Status}");
+
+        File.Copy(shop, store);
+        store = PathNames.Canonical(store);
+        Ui.WaitFor(() => window.Vcs.Changes.Any(c => c.Path == store && c.Kind == ChangeKind.Unversioned),
+            () => $"the copy listed as unversioned, where Git lists [{string.Join(", ", window.Vcs.Changes.Select(c => $"{c.Name} ({c.Kind})"))}]");
+        IDiffHost diff = Ui.Landed(window.ShowDiffAsync(store), "the copy's diff")!;
+        OpenDiffs.ShowsNoFile(OpenDiffs.ViewOf(diff), MergeSide.Left);
+        diff.Close();
         window.Close();
     }
 
