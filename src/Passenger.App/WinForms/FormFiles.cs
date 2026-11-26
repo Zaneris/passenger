@@ -6,6 +6,10 @@ namespace Passenger.App.WinForms;
 /// designer file beside it (MainForm.Designer.cs) that holds its InitializeComponent, and its class's full name.</summary>
 public sealed record FormFiles(string Code, string Designer, string Class)
 {
+    /// <summary>The .resx beside its code (MainForm.resx), which holds what its code cannot (a picture, a tray component's
+    /// place), there or not.</summary>
+    public string Resources => Path.ChangeExtension(Code, ".resx");
+
     /// <summary>The form a file is one of the files of: a code file with a designer file beside it, or that designer file,
     /// where the designer file gives InitializeComponent to a class the code file declares too; null for any other file.
     /// The texts are read as the editor has them, else from disk (<paramref name="text"/>, null for a file not there).</summary>

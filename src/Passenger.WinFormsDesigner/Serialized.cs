@@ -15,22 +15,28 @@ internal sealed record SerializedField(string Name, string Text);
 
 /// <summary>What the surface holds as code, as the classic designer would write its InitializeComponent: Windows Forms' own
 /// serializers (the root's type serializer, each component's, the designers' shadowed properties) asked for the class, each
-/// statement keyed as Passenger's reader keys the file's, so a change between two of these is placed where the file writes it.</summary>
-internal sealed record Serialized(IReadOnlyList<SerializedLine> Lines, IReadOnlyList<SerializedField> Fields)
+/// statement keyed as Passenger's reader keys the file's, so a change between two of these is placed where the file writes it;
+/// and the .resx they wrote with it (none where they wrote none), as the session's end writes it.</summary>
+internal sealed record Serialized(IReadOnlyList<SerializedLine> Lines, IReadOnlyList<SerializedField> Fields, string? Resources)
 {
-    public static Serialized Of(IDesignerHost host, CodeText text)
+    public static Serialized Of(IDesignerHost host, CodeText text, Designer.Resources resources)
     {
         DesignerSerializationManager manager = new(host);
-        using IDisposable session = manager.CreateSession();
-        if (manager.GetSerializer(host.RootComponent.GetType(), typeof(TypeCodeDomSerializer)) is not TypeCodeDomSerializer serializer)
+        CodeTypeDeclaration declared;
+        resources.Taken();
+        using (manager.CreateSession())
         {
-            throw new DesignerException($"Windows Forms has no serializer for {host.RootComponent.GetType().Name}");
+            if (manager.GetSerializer(host.RootComponent.GetType(), typeof(TypeCodeDomSerializer)) is not TypeCodeDomSerializer serializer)
+            {
+                throw new DesignerException($"Windows Forms has no serializer for {host.RootComponent.GetType().Name}");
+            }
+            declared = serializer.Serialize(manager, host.RootComponent, host.Container.Components);
+            if (manager.Errors.Count > 0)
+            {
+                throw new DesignerException($"Windows Forms could not write the form's code: {string.Join("; ", manager.Errors.Cast<object>().Select(e => e is Exception error ? error.Message : e.ToString()))}");
+            }
         }
-        CodeTypeDeclaration declared = serializer.Serialize(manager, host.RootComponent, host.Container.Components);
-        if (manager.Errors.Count > 0)
-        {
-            throw new DesignerException($"Windows Forms could not write the form's code: {string.Join("; ", manager.Errors.Cast<object>().Select(e => e is Exception error ? error.Message : e.ToString()))}");
-        }
+        string? written = resources.Taken();
         CodeMemberMethod method = declared.Members.OfType<CodeMemberMethod>().FirstOrDefault(m => m.Name == "InitializeComponent")
             ?? throw new DesignerException("Windows Forms wrote no InitializeComponent");
         HashSet<string> fields = [.. declared.Members.OfType<CodeMemberField>().Select(f => f.Name)];
@@ -62,7 +68,7 @@ internal sealed record Serialized(IReadOnlyList<SerializedLine> Lines, IReadOnly
             heading = null;
             lines.Add(new SerializedLine(DesignerKeys.Of(neutral), section, text.Statement(statement), text.Exact(statement)));
         }
-        return new Serialized(lines, [.. declared.Members.OfType<CodeMemberField>().Select(f => new SerializedField(f.Name, text.Field(f)))]);
+        return new Serialized(lines, [.. declared.Members.OfType<CodeMemberField>().Select(f => new SerializedField(f.Name, text.Field(f)))], written);
     }
 
     /// <summary>A statement as Passenger's reader reads the same code, as far as its key needs: what it does to which

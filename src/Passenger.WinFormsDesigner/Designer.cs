@@ -55,8 +55,10 @@ internal sealed class Designer(Assembly? project) : IDisposable
         services.AddService(typeof(INameCreationService), new Names());
         Events events = new(surface);
         services.AddService(typeof(IEventBindingService), events);
-        services.AddService(typeof(IResourceService), new Resources());
-        services.AddService(typeof(ITypeResolutionService), new Resolution(types));
+        Resolution resolution = new(types);
+        Resources resources = new(request.Resources, request.ResourcesPath, resolution);
+        services.AddService(typeof(IResourceService), resources);
+        services.AddService(typeof(ITypeResolutionService), resolution);
         surface.BeginLoad(based);
         if (!surface.IsLoaded || surface.GetService(typeof(IDesignerHost)) is not IDesignerHost host || host.RootComponent is not Control root)
         {
@@ -70,7 +72,7 @@ internal sealed class Designer(Assembly? project) : IDisposable
         {
             try
             {
-                Run(request.Statements[i], host, root, made, values, events);
+                Run(request.Statements[i], host, root, made, values, events, resources);
             }
             catch (Exception failed) when (failed is DesignerException or TargetInvocationException or ArgumentException or InvalidOperationException
                 or NotSupportedException or MissingMethodException or FormatException or InvalidCastException or OverflowException or NullReferenceException)
@@ -80,19 +82,25 @@ internal sealed class Designer(Assembly? project) : IDisposable
         }
         Components.Reveal(request.Inspect is { } shownField ? Components.Find(host, root, shownField) : null);
         Show(root);
+        Placed(resources, host, root, notes);
         int bar = Bar(root);
         Point origin = root.PointToScreen(Point.Empty);
         origin.Offset(0, -bar);
         List<DesignerChange>? changes = null;
+        List<DesignResourceChange>? resourceChanges = null;
+        string? resourcesMade = null;
         List<string>? chosen = null;
         string? handler = null;
         if (request.Edit is { } edit)
         {
             CodeText text = new(request.Qualified, types);
-            Serialized before = Serialized.Of(host, text);
+            Serialized before = Serialized.Of(host, text, resources);
             (chosen, handler) = Editing.Apply(edit, host, root, origin, bar, types, events, request.Nullable);
             Application.DoEvents();
-            changes = Editing.Changes(request, before, Serialized.Of(host, text));
+            Serialized after = Serialized.Of(host, text, resources);
+            changes = Editing.Changes(request, before, after);
+            resourceChanges = Editing.ResourceChanges(before, after);
+            resourcesMade = request.Resources is null && resourceChanges.Count > 0 ? after.Resources : null;
             origin = root.PointToScreen(Point.Empty);
             origin.Offset(0, -bar);
         }
@@ -106,6 +114,8 @@ internal sealed class Designer(Assembly? project) : IDisposable
             Components = boxes,
             Notes = notes,
             Changes = changes,
+            ResourceChanges = resourcesMade is null ? resourceChanges : null,
+            ResourcesMade = resourcesMade,
             Chosen = chosen,
             Handler = handler,
             Toolbox = request.Toolbox ? Toolbox.Listed(project, based) : null,
@@ -130,11 +140,32 @@ internal sealed class Designer(Assembly? project) : IDisposable
         return typeof(Form);
     }
 
+    /// <summary>What only the designer reads of the form's .resx put back: each tray component's place in the tray.</summary>
+    private static void Placed(Resources resources, IDesignerHost host, Control root, List<DesignNote> notes)
+    {
+        foreach ((string name, object? value) in resources.Metadata())
+        {
+            if (name.EndsWith(".TrayLocation", StringComparison.Ordinal) && value is Point place && Components.Find(host, root, name[..^".TrayLocation".Length]) is { } held)
+            {
+                TypeDescriptor.GetProperties(held)["TrayLocation"]?.SetValue(held, place);
+            }
+        }
+        if (resources.Unread is { } why)
+        {
+            notes.Add(new DesignNote(why));
+        }
+    }
+
     /// <summary>One statement run against what the surface holds.</summary>
-    private static void Run(DesignerStatement statement, IDesignerHost host, Control root, Dictionary<string, object> made, Values values, Events events)
+    private static void Run(DesignerStatement statement, IDesignerHost host, Control root, Dictionary<string, object> made, Values values, Events events, Resources resources)
     {
         switch (statement.Act)
         {
+            case DesignerAct.Other when statement.Target.Length > 0 && statement.Value is { Kind: DesignerValueKinds.New, Type: { } manager }
+                && typeof(System.Resources.ResourceManager).IsAssignableFrom(values.Type(manager)):
+                // The form's resource manager reads the .resx as it stands, where the build's reads it as it was built.
+                made[statement.Target] = resources.Manager();
+                return;
             case DesignerAct.Create when statement.Target == "components":
                 // The surface's own container stands for the class's.
                 return;
@@ -146,8 +177,7 @@ internal sealed class Designer(Assembly? project) : IDisposable
                     : Sited(values.Of(created) ?? throw new DesignerException($"{statement.Target} was made null"), host, statement.Target);
                 return;
             case DesignerAct.Assign:
-                object owner = Owner(statement, root, made);
-                (object at, string last) = Walked(owner, statement.Member!);
+                (object at, string last) = Reached(statement, root, made);
                 if (TypeDescriptor.GetProperties(at)[last] is { } property)
                 {
                     property.SetValue(at, values.Of(statement.Value!, property.PropertyType));
@@ -157,7 +187,7 @@ internal sealed class Designer(Assembly? project) : IDisposable
                 clr.SetValue(at, values.Of(statement.Value!, clr.PropertyType));
                 return;
             case DesignerAct.Call:
-                (object on, string method) = Walked(Owner(statement, root, made), statement.Member!);
+                (object on, string method) = Reached(statement, root, made);
                 values.Call(on, method, statement.Arguments ?? []);
                 return;
             case DesignerAct.Hook:
@@ -189,6 +219,13 @@ internal sealed class Designer(Assembly? project) : IDisposable
 
     private static object Owner(DesignerStatement statement, Control root, Dictionary<string, object> made) =>
         statement.Target.Length == 0 ? root : made.GetValueOrDefault(statement.Target) ?? throw new DesignerException($"{statement.Target} is used before it is made");
+
+    /// <summary>What a statement acts on and the member it names there: a component's, or the root's, or, for a path that
+    /// starts at a local the code made (its resource manager), that local's.</summary>
+    private static (object At, string Last) Reached(DesignerStatement statement, Control root, Dictionary<string, object> made) =>
+        statement.Target.Length == 0 && statement.Member!.IndexOf('.') is var dot and > 0 && made.TryGetValue(statement.Member[..dot], out object? local)
+            ? Walked(local, statement.Member[(dot + 1)..])
+            : Walked(Owner(statement, root, made), statement.Member!);
 
     /// <summary>An object's properties read along a dotted path but its last name, and that name.</summary>
     private static (object At, string Last) Walked(object owner, string path)
@@ -264,51 +301,103 @@ internal sealed class Designer(Assembly? project) : IDisposable
 
     public void Dispose() => Close();
 
-    /// <summary>The form's resources while its .resx is not read: none read, and what the serializers write of them (a tray
-    /// component's place, a value code cannot hold) kept apart from the code, which is all an edit writes.</summary>
-    private sealed class Resources : IResourceService
+    /// <summary>The form's resources: its .resx as the request gives it (none: a form with none yet), read for what its code takes
+    /// from it and what only the designer reads, and what Windows Forms' serializers write of them at each serialization, as
+    /// its resource writer writes a .resx. Another culture's are none until the form is localized.</summary>
+    internal sealed class Resources(string? text, string? path, ITypeResolutionService types) : IResourceService
     {
-        private readonly Dictionary<string, object?> written = new(StringComparer.Ordinal);
+        private StringWriter? writing;
+        private ResourceSet? read;
 
-        public IResourceReader GetResourceReader(CultureInfo info) => new Read(written);
+        /// <summary>Why the .resx could not be read, where it could not; it is read as empty then.</summary>
+        public string? Unread { get; private set; }
 
-        public IResourceWriter GetResourceWriter(CultureInfo info) => new Written(written);
+        public IResourceReader GetResourceReader(CultureInfo info) => info.Equals(CultureInfo.InvariantCulture) ? Reader() : Empty();
 
-        private sealed class Read(Dictionary<string, object?> entries) : IResourceReader
+        public IResourceWriter GetResourceWriter(CultureInfo info)
         {
-            public IDictionaryEnumerator GetEnumerator() => new Dictionary<string, object?>(entries).GetEnumerator();
-
-            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
-            public void Close()
-            {
-            }
-
-            public void Dispose()
-            {
-            }
+            writing = new Utf8();
+            return new ResXResourceWriter(writing, Framework);
         }
 
-        private sealed class Written(Dictionary<string, object?> entries) : IResourceWriter
+        /// <summary>A type's name as a .resx names it, the SDK's designer's way: a framework type by the .NET Framework
+        /// assembly it was first in (System.Drawing, not System.Drawing.Common or .Primitives), which every .NET reads by its
+        /// forwards, so the file reads the same whatever .NET it is built for.</summary>
+        private static string Framework(Type? type)
         {
-            public void AddResource(string name, byte[]? value) => entries[name] = value;
-
-            public void AddResource(string name, object? value) => entries[name] = value;
-
-            public void AddResource(string name, string? value) => entries[name] = value;
-
-            public void Generate()
+            if (type is null)
             {
+                return string.Empty;
             }
-
-            public void Close()
+            string? first = type.Assembly.GetName().Name switch
             {
-            }
-
-            public void Dispose()
-            {
-            }
+                "System.Drawing.Common" or "System.Drawing.Primitives" => "System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a",
+                "System.Windows.Forms" or "System.Windows.Forms.Primitives" => "System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089",
+                "System.Private.CoreLib" => "mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089",
+                _ => null,
+            };
+            return first is null || type.IsGenericType ? type.AssemblyQualifiedName ?? type.FullName ?? type.Name : $"{type.FullName}, {first}";
         }
+
+        /// <summary>What the last serialization wrote, a .resx whole; none where it wrote nothing.</summary>
+        public string? Taken()
+        {
+            string? written = writing?.ToString();
+            writing = null;
+            return written;
+        }
+
+        /// <summary>The form's resource manager as its code makes it, over the .resx as it stands.</summary>
+        public ComponentResourceManager Manager() => new Manager(() => read ??= new ResourceSet(Reader()));
+
+        /// <summary>The .resx's metadata, by name.</summary>
+        public IEnumerable<(string Name, object? Value)> Metadata()
+        {
+            using ResXResourceReader reader = Reader();
+            List<(string, object?)> found = [];
+            try
+            {
+                IDictionaryEnumerator each = reader.GetMetadataEnumerator();
+                while (each.MoveNext())
+                {
+                    found.Add(((string)each.Key, each.Value));
+                }
+            }
+            catch (Exception unread) when (unread is ArgumentException or System.Xml.XmlException or InvalidOperationException or TypeLoadException or FormatException)
+            {
+                Unread = $"{Path.GetFileName(path)} could not be read: {unread.Message}";
+            }
+            return found;
+        }
+
+        /// <summary>A reader of the .resx, which reads it at its first entry asked: a malformed file throws there.</summary>
+        private ResXResourceReader Reader() =>
+            text is null ? Empty() : new ResXResourceReader(new StringReader(text), types) { BasePath = Path.GetDirectoryName(path) };
+
+        private static ResXResourceReader Empty()
+        {
+            using StringWriter none = new(CultureInfo.InvariantCulture);
+            using (ResXResourceWriter writer = new(none))
+            {
+                writer.Generate();
+            }
+            return new ResXResourceReader(new StringReader(none.ToString()));
+        }
+    }
+
+    /// <summary>Text written as a file in UTF-8 holds it, so the XML declaration a .resx starts with says UTF-8, as the file is saved.</summary>
+    private sealed class Utf8() : StringWriter(CultureInfo.InvariantCulture)
+    {
+        public override System.Text.Encoding Encoding { get; } = new System.Text.UTF8Encoding(false);
+    }
+
+    /// <summary>A ComponentResourceManager over a resource set given, the neutral culture's, for every culture asked.</summary>
+    private sealed class Manager(Func<ResourceSet> neutral) : ComponentResourceManager
+    {
+        public override ResourceSet? GetResourceSet(CultureInfo culture, bool createIfNotExists, bool tryParents) =>
+            tryParents || culture.Equals(CultureInfo.InvariantCulture) ? neutral() : null;
+
+        protected override ResourceSet? InternalGetResourceSet(CultureInfo culture, bool createIfNotExists, bool tryParents) => GetResourceSet(culture, createIfNotExists, tryParents);
     }
 
     /// <summary>Types by their names for Windows Forms' serializers, which write what a type asks of its code (an

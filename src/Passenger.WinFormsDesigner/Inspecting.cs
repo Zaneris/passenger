@@ -60,6 +60,7 @@ internal static class Inspecting
             Parts = parts,
             Lines = lines,
             Adds = adds,
+            Picture = depth == 0 && !property.IsReadOnly && IsPicture(type),
         };
     }
 
@@ -181,10 +182,47 @@ internal static class Inspecting
         PropertyDescriptor property = Property(component, name);
         if (!property.CanResetValue(component))
         {
+            // A picture's default is none, though its type says no default.
+            if (!property.IsReadOnly && IsPicture(property.PropertyType) && property.GetValue(component) is not null)
+            {
+                property.SetValue(component, null);
+                return;
+            }
             throw new DesignerException($"{name} has no default to put back");
         }
         property.ResetValue(component);
     }
+
+    /// <summary>A picture's property given the picture a file holds, read whole into memory so the file is not held.</summary>
+    public static void Picture(IComponent component, string name, string file)
+    {
+        PropertyDescriptor property = Property(component, name);
+        if (property.IsReadOnly || !IsPicture(property.PropertyType))
+        {
+            throw new DesignerException($"{name} takes no picture");
+        }
+        byte[] bytes;
+        try
+        {
+            bytes = File.ReadAllBytes(file);
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            throw new DesignerException($"{Path.GetFileName(file)} could not be read: {unread.Message}");
+        }
+        try
+        {
+            // GDI+ reads a bitmap from its stream as long as it lives, so the stream is the picture's own.
+            object picture = typeof(System.Drawing.Icon).IsAssignableFrom(property.PropertyType) ? new System.Drawing.Icon(new MemoryStream(bytes)) : System.Drawing.Image.FromStream(new MemoryStream(bytes));
+            property.SetValue(component, picture);
+        }
+        catch (Exception unread) when (unread is ArgumentException or System.Runtime.InteropServices.ExternalException or OutOfMemoryException)
+        {
+            throw new DesignerException($"{Path.GetFileName(file)} holds no picture Windows Forms reads: {unread.Message}");
+        }
+    }
+
+    private static bool IsPicture(Type type) => typeof(System.Drawing.Image).IsAssignableFrom(type) || typeof(System.Drawing.Icon).IsAssignableFrom(type);
 
     /// <summary>A handler hooked to an event, the one named or the one hooked already, else the binding service's name for
     /// it; its declaration as the form's code is to write it.</summary>

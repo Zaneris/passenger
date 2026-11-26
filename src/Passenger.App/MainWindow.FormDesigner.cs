@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using Passenger.App.CSharp;
 using Passenger.App.Editors;
@@ -270,6 +271,7 @@ public partial class MainWindow
             formProperties.RenameRequested += (_, name) => DesignShown(shown => RenameComponentAsync(shown, shown.Design.Inspected ?? string.Empty, name));
             formProperties.ItemsRequested += (_, items) => DesignShown(shown => EditDesignAsync(shown, Edit(shown, DesignEditKinds.Items, items.Property, items.Lines)));
             formProperties.AddItemRequested += (_, item) => DesignShown(shown => EditDesignAsync(shown, Edit(shown, DesignEditKinds.AddItem, item.Property, null) with { Type = item.Type }));
+            formProperties.PictureRequested += (_, property) => DesignShown(shown => PictureAsync(shown, Edit(shown, DesignEditKinds.Picture, property, null)));
         }
         formProperties.Show(shown.Design);
         return formProperties;
@@ -283,6 +285,17 @@ public partial class MainWindow
             {
                 IdeErrors.Observe(act(now));
             }
+        }
+    }
+
+    /// <summary>A picture's property given the picture in a file the person picks, which the designer keeps in the form's .resx.</summary>
+    private async Task PictureAsync(ShownDesign shown, DesignEdit edit)
+    {
+        IReadOnlyList<string> picked = await PickFiles($"Choose a Picture for {edit.Member}",
+            [new FilePickerFileType("Pictures") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.gif", "*.ico", "*.tif", "*.tiff"] }], false);
+        if (picked is [var file])
+        {
+            await EditDesignAsync(shown, edit with { Text = file });
         }
     }
 
@@ -440,7 +453,7 @@ public partial class MainWindow
             DesignEditKinds.Set => $"Set {named}'s {edit.Member}",
             DesignEditKinds.Reset => $"Reset {named}'s {edit.Member}",
             DesignEditKinds.Hook => $"Handle {named}'s {edit.Member}",
-            DesignEditKinds.Items => $"Set {named}'s {edit.Member}",
+            DesignEditKinds.Items or DesignEditKinds.Picture => $"Set {named}'s {edit.Member}",
             DesignEditKinds.AddItem => $"Add {edit.Type?.Split(',')[0].Split('.')[^1]} to {named}'s {edit.Member}",
             DesignEditKinds.Order => edit.X < 0 ? $"Move {named} Up" : $"Move {named} Down",
             _ => $"Remove {named}'s {edit.Member} Handler",

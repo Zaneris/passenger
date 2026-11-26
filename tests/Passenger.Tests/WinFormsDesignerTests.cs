@@ -54,6 +54,9 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         Flow.StepApart("a lists items are written a line an item and a menu item is added under the help menu", () => new WinFormsDesignerTests(app), t => t.A_lists_items_are_written_a_line_an_item_and_a_menu_item_is_added_under_the_help_menu());
         Flow.StepApart("a split container from the toolbox takes a button into its second panel", () => new WinFormsDesignerTests(app), t => t.A_split_container_from_the_toolbox_takes_a_button_into_its_second_panel());
         Flow.StepApart("a tab page chosen in the outline is shown and takes a button", () => new WinFormsDesignerTests(app), t => t.A_tab_page_chosen_in_the_outline_is_shown_and_takes_a_button());
+        Flow.StepApart("a picture chosen for a picture box goes into a resx made for the form and a timers place in the tray goes there too", () => new WinFormsDesignerTests(app),
+            t => t.A_picture_chosen_for_a_picture_box_goes_into_a_resx_made_for_the_form_and_a_timers_place_in_the_tray_goes_there_too());
+        Flow.StepApart("a control dragged near another snaps to its edge", () => new WinFormsDesignerTests(app), t => t.A_control_dragged_near_another_snaps_to_its_edge());
     }
 
     private void A_lists_items_are_written_a_line_an_item_and_a_menu_item_is_added_under_the_help_menu()
@@ -144,6 +147,62 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         Ui.WaitFor(() => File.ReadAllText(file).Contains("splitContainer1.Panel2.Controls.Add(button1);", StringComparison.Ordinal),
             () => $"the Button to be written into the second panel, where the status bar says {window.Status}");
         Ui.WaitFor(() => pane.Design.Components.Any(c => c is { Field: "button1", Parent: "splitContainer1.Panel2" }), "the Button to be drawn in the second panel");
+        window.Close();
+    }
+
+    private void A_picture_chosen_for_a_picture_box_goes_into_a_resx_made_for_the_form_and_a_timers_place_in_the_tray_goes_there_too()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string file = app.PathOf("MainForm.Designer.cs");
+        string resx = app.PathOf("MainForm.resx");
+        string picture = app.PathOf("Dot.png");
+        // A PNG of one red pixel.
+        File.WriteAllBytes(picture, Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="));
+        MainWindow window = app.Open(app.PathOf("MainForm.cs"), languageServer: false);
+        FormDesignPane pane = Drawn(window);
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        AddFromToolbox(window, "PictureBox");
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("pictureBox1 = new PictureBox();", StringComparison.Ordinal), () => $"the PictureBox to be written, where the status bar says {window.Status}");
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        Ui.WaitFor(() => window.FormProperties is not null, "the Structure window to show the PictureBox's properties under its outline");
+        FormProperties properties = window.FormProperties!;
+        Ui.WaitFor(() => properties.EditorOf("Image") is Button, () => $"the PictureBox's Image to offer a picture to choose, not \"{properties.Said}\", {pane.Chosen?.Field} chosen");
+        window.PickFiles = (_, _, _) => Task.FromResult<IReadOnlyList<string>>([picture]);
+        Ui.Click(properties.EditorOf("Image")!);
+        Ui.WaitFor(() => File.Exists(resx) && File.ReadAllText(file).Contains("pictureBox1.Image = (Image)resources.GetObject(\"pictureBox1.Image\");", StringComparison.Ordinal),
+            () => $"the picture to be read from a .resx made for the form, where the status bar says {window.Status}");
+        string code = File.ReadAllText(file).ReplaceLineEndings("\n");
+        Assert.True(code.Contains("    {\n        System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainForm));\n", StringComparison.Ordinal),
+            $"The form's resource manager is not made first in InitializeComponent as the SDK's designer makes it: [{string.Join(" | ", code[code.IndexOf("InitializeComponent()", StringComparison.Ordinal)..].Split('\n').Take(6))}]");
+        string kept = File.ReadAllText(resx);
+        Assert.StartsWith("<?xml version=\"1.0\" encoding=\"utf-8\"?>", kept);
+        Assert.True(kept.Contains("<data name=\"pictureBox1.Image\" type=\"System.Drawing.Bitmap, System.Drawing\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\">", StringComparison.Ordinal),
+            $"The picture is not kept as the SDK's designer keeps it: [{string.Join(" | ", kept.Split('\n').Where(l => l.Contains("<data", StringComparison.Ordinal) || l.Contains("<assembly", StringComparison.Ordinal) || l.Contains("<metadata", StringComparison.Ordinal) || l.Contains("<resheader", StringComparison.Ordinal)))}]");
+        Ui.WaitFor(() => pane.Design.Notes.Count == 0 && pane.Design.Components.Any(c => c.Field == "pictureBox1"),
+            () => $"the design to draw the picture from the .resx, not \"{pane.Design.Status}\" ({string.Join(" | ", pane.Design.Notes)})");
+        AddFromToolbox(window, "Timer");
+        Ui.WaitFor(() => File.ReadAllText(resx).Contains("<metadata name=\"timer1.TrayLocation\"", StringComparison.Ordinal),
+            () => $"the Timer's place in the tray to be kept in the .resx, where the status bar says {window.Status}");
+        kept = File.ReadAllText(resx);
+        Assert.True(kept.IndexOf("<metadata name=\"timer1.TrayLocation\"", StringComparison.Ordinal) < kept.IndexOf("<data name=\"pictureBox1.Image\"", StringComparison.Ordinal),
+            "The Timer's place was written after the picture, where Windows Forms' resource writer puts metadata first");
+        window.Close();
+    }
+
+    private void A_control_dragged_near_another_snaps_to_its_edge()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string file = app.PathOf("MainForm.Designer.cs");
+        MainWindow window = app.Open(app.PathOf("MainForm.cs"), languageServer: false);
+        FormDesignPane pane = Drawn(window);
+        DesignedBox bold = Component(pane, "Bold");
+        Assert.True(bold.Snaps is { Count: > 0 }, "The designer gave Bold no snap lines");
+        // Bold's left edge dropped 5 pixels short of Counter's, at 119 where Counter's is at 124; taken by a corner its label leaves free.
+        Point from = new(bold.X + bold.Width - 20, bold.Y + bold.Height - 6);
+        Assert.Equal("Bold", pane.ComponentAt(from)?.Field);
+        Ui.Drag(window, pane.Frame.TranslatePoint(from, window)!.Value, pane.Frame.TranslatePoint(from + new Vector(107, 0), window)!.Value);
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("Bold.Location = new Point(124, ", StringComparison.Ordinal),
+            () => $"Bold's left edge to snap to Counter's, not [{string.Join(" | ", File.ReadAllLines(file).Where(l => l.Contains("Bold.Location", StringComparison.Ordinal)))}], where the status bar says {window.Status}");
         window.Close();
     }
 

@@ -4,6 +4,7 @@ using Passenger.Core;
 using Passenger.Languages.WinForms;
 using Passenger.Text;
 using Passenger.Xaml.Features;
+using Passenger.Xaml.Localization;
 
 namespace Passenger.App.WinForms;
 
@@ -161,6 +162,7 @@ public sealed class FormDesign : IDisposable
         }
         int asked = ++sequence;
         FormFiles files = Files;
+        string? resources = texts(files.Resources)?.ToString();
         bool toolbox = !listed;
         listed = true;
         string? inspect = inspected;
@@ -191,6 +193,8 @@ public sealed class FormDesign : IDisposable
                 Toolbox = toolbox,
                 Inspect = inspect,
                 Nullable = annotated,
+                ResourcesPath = files.Resources,
+                Resources = resources,
             };
         });
         if (request is null)
@@ -262,12 +266,34 @@ public sealed class FormDesign : IDisposable
             string cls = Files.Class;
             changes.Add(new XamlFileChange(Files.Code, now => DesignerCode.MethodOf(now, cls, handler!) is null && DesignerWriter.Handler(now, cls, declaration) is { } edit ? [edit] : []));
         }
+        // What the form's .resx holds goes with its code: a file made whole where it had none, else each element written alone.
+        if (reply.ResourcesMade is { } whole)
+        {
+            changes.Add(new XamlFileChange(Files.Resources, null, whole.ReplaceLineEndings(Newline(made.Text.ToString()))));
+        }
+        else if (reply.ResourceChanges is { Count: > 0 } elements && request.Resources is { } resx)
+        {
+            changes.Add(new XamlFileChange(Files.Resources, now => now == resx ? [TextEdit.Between(now, Written(now, elements))] : []));
+        }
         if (changes.Count == 0)
         {
             return handler is null ? new DesignEdited(Refusals.DesignChangesNothing, null) : new DesignEdited(null, chosen, handler);
         }
         return new DesignEdited(await write(name, changes), chosen, handler);
     }
+
+    /// <summary>A .resx's text with the elements an edit wrote put in and those it took out taken away.</summary>
+    private static string Written(string resx, IReadOnlyList<DesignResourceChange> elements)
+    {
+        foreach (DesignResourceChange element in elements)
+        {
+            resx = element.Xml is { } xml ? ResourceFiles.WithElement(resx, element.Kind, element.Name, xml) ?? resx : ResourceFiles.WithoutElement(resx, element.Kind, element.Name);
+        }
+        return resx;
+    }
+
+    /// <summary>The line break a text writes, CRLF where it has one, as a file made beside it takes it.</summary>
+    private static string Newline(string text) => text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
 
     /// <summary>The designer started again on the project's newest build, the last frame shown until the new one comes.</summary>
     public Task RestartAsync()

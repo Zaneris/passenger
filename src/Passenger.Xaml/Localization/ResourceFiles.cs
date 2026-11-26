@@ -495,6 +495,56 @@ public static class ResourceFiles
         return made.ToString();
     }
 
+    /// <summary>A .resx's text with an element a designer wrote (<paramref name="kind"/> <c>data</c>, <c>metadata</c> or
+    /// <c>assembly</c>, named by its name or an assembly's alias) given as <paramref name="element"/>: in place of the one there,
+    /// else after the last of its kind, else where the designer's resource writer puts that kind (metadata first, an assembly
+    /// before the data that names it, data last); its lines broken as the file breaks them; every other character kept. Null
+    /// where the text has no <c>&lt;root&gt;</c>.</summary>
+    public static string? WithElement(string text, string kind, string name, string element)
+    {
+        if (XmlTree.Parse(text).Root is not { Name: "root" } root || !root.IsStartTagClosed || root.EndTagStart is not { } rootEnd)
+        {
+            return null;
+        }
+        string newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        string written = element.ReplaceLineEndings(newline);
+        if (ElementNamed(root, kind, name) is { } held)
+        {
+            return text[..held.Start] + written + text[held.End..];
+        }
+        if (root.Children.LastOrDefault(c => c.Name == kind) is { } last)
+        {
+            return text[..last.End] + newline + IndentOf(text, last.Start, "  ") + written + text[last.End..];
+        }
+        string[] after = kind switch { "metadata" => ["assembly", "data"], "assembly" => ["data"], _ => [] };
+        if (root.Children.FirstOrDefault(c => after.Contains(c.Name)) is { } next)
+        {
+            return text[..next.Start] + written + newline + IndentOf(text, next.Start, "  ") + text[next.Start..];
+        }
+        int lineStart = TextNavigation.LineStart(text, rootEnd);
+        return text.AsSpan(lineStart, rootEnd - lineStart).IsWhiteSpace()
+            ? text[..lineStart] + "  " + written + newline + text[lineStart..]
+            : text[..rootEnd] + newline + "  " + written + newline + text[rootEnd..];
+    }
+
+    /// <summary>A .resx's text without an element a designer wrote, by its kind and name, taken away with its line where it has
+    /// the line to itself; the text as it is where it has none.</summary>
+    public static string WithoutElement(string text, string kind, string name)
+    {
+        if (XmlTree.Parse(text).Root is not { Name: "root" } root || ElementNamed(root, kind, name) is not { } held)
+        {
+            return text;
+        }
+        int lineStart = TextNavigation.LineStart(text, held.Start);
+        int lineEnd = TextNavigation.NextLineStart(text, held.End);
+        bool alone = text.AsSpan(lineStart, held.Start - lineStart).IsWhiteSpace() && text.AsSpan(held.End, lineEnd - held.End).IsWhiteSpace();
+        return alone ? text[..lineStart] + text[lineEnd..] : text[..held.Start] + text[held.End..];
+    }
+
+    /// <summary>The root's element of a kind by its name, an assembly's by its alias.</summary>
+    private static XmlElement? ElementNamed(XmlElement root, string kind, string name) =>
+        root.Children.FirstOrDefault(c => c.Name == kind && c.Attribute(kind == "assembly" ? "alias" : "name")?.Value == name);
+
     /// <summary>The <c>&lt;data&gt;</c> of a string entry <see cref="Parse"/> read from this text, by where it starts and its name.</summary>
     private static XmlElement? DataOf(string text, ResourceEntry entry) =>
         XmlTree.Parse(text).Root is { Name: "root" } root

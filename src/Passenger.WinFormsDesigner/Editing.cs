@@ -5,6 +5,7 @@ using System.Drawing.Design;
 using System.Reflection;
 using System.Windows.Forms;
 using System.Windows.Forms.Design;
+using System.Xml.Linq;
 using Passenger.Core;
 
 namespace Passenger.WinFormsDesigner;
@@ -49,6 +50,7 @@ internal static class Editing
             DesignEditKinds.Items => Each(edit, host, root, (component, member) => Inspecting.Lines(component, member, edit.Text ?? string.Empty, host)),
             DesignEditKinds.AddItem => ItemAdded(edit, host, root, types),
             DesignEditKinds.Order => Reordered(edit, host, root),
+            DesignEditKinds.Picture => Each(edit, host, root, (component, member) => Inspecting.Picture(component, member, edit.Text ?? string.Empty)),
             _ => throw new DesignerException($"The designer makes no {edit.Kind}"),
         };
     }
@@ -330,6 +332,33 @@ internal static class Editing
         }
         changes.AddRange(Fields(request, before, after));
         return changes;
+    }
+
+    /// <summary>What an edit changed in the form's .resx: each element it wrote anew or otherwise, and each it no longer writes,
+    /// as Windows Forms' resource writer wrote them before the edit and after it.</summary>
+    public static List<DesignResourceChange> ResourceChanges(Serialized before, Serialized after)
+    {
+        Dictionary<(string Kind, string Name), string> was = Elements(before.Resources);
+        Dictionary<(string Kind, string Name), string> now = Elements(after.Resources);
+        List<DesignResourceChange> changes = [.. now.Where(e => !was.TryGetValue(e.Key, out string? old) || old != e.Value).Select(e => new DesignResourceChange(e.Key.Kind, e.Key.Name, e.Value))];
+        changes.AddRange(was.Keys.Where(k => !now.ContainsKey(k)).Select(k => new DesignResourceChange(k.Kind, k.Name, null)));
+        return changes;
+    }
+
+    /// <summary>A .resx's values, metadata and assembly aliases, by kind and name, as their elements' text, its lines broken
+    /// with '\n', as written under the root.</summary>
+    private static Dictionary<(string Kind, string Name), string> Elements(string? resx)
+    {
+        Dictionary<(string Kind, string Name), string> elements = [];
+        foreach (XElement element in resx is null ? [] : XDocument.Parse(resx, LoadOptions.PreserveWhitespace).Root?.Elements() ?? [])
+        {
+            string kind = element.Name.LocalName;
+            if (kind is "data" or "metadata" or "assembly" && element.Attribute(kind == "assembly" ? "alias" : "name")?.Value is { } name)
+            {
+                elements[(kind, name)] = element.ToString(SaveOptions.DisableFormatting).ReplaceLineEndings("\n");
+            }
+        }
+        return elements;
     }
 
     /// <summary>The fields an edit declared, each after the last component's field before it the file declares (none: where a

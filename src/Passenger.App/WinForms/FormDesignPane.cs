@@ -46,6 +46,9 @@ public sealed class FormDesignPane : DockPanel
     private readonly WrapPanel tray = new() { IsVisible = false };
     private readonly Border[] handles = new Border[Places.Length];
 
+    /// <summary>The lines shown where a dragged box snapped, made as many as a drag has needed.</summary>
+    private readonly List<Border> guides = [];
+
     /// <summary>A press on the frame: what it took (a component, or one of its handles), where, and whether it has become a drag.</summary>
     private (DesignedBox Box, int Handle, Point Start, bool Dragging)? pressed;
 
@@ -239,7 +242,8 @@ public sealed class FormDesignPane : DockPanel
             return;
         }
         pressed = press with { Dragging = true };
-        Rect box = Dragged(press, at);
+        (Rect box, IReadOnlyList<DesignSnapping.Guide> met) = Held(press, at);
+        ShowGuides(met);
         Canvas.SetLeft(ghost, box.X);
         Canvas.SetTop(ghost, box.Y);
         ghost.Width = Math.Max(1, box.Width);
@@ -255,7 +259,7 @@ public sealed class FormDesignPane : DockPanel
             return;
         }
         Point at = e.GetPosition(image);
-        Rect box = Dragged(press, at);
+        Rect box = Held(press, at).Box;
         EndDrag();
         e.Handled = true;
         if (press.Handle >= 0)
@@ -274,6 +278,43 @@ public sealed class FormDesignPane : DockPanel
     {
         pressed = null;
         ghost.IsVisible = false;
+        ShowGuides([]);
+    }
+
+    /// <summary>A pressed box as the pointer has dragged it, held to the snap lines near it in the holder it would be dropped in
+    /// (a resize's, its own holder), and the lines it met.</summary>
+    private (Rect Box, IReadOnlyList<DesignSnapping.Guide> Guides) Held((DesignedBox Box, int Handle, Point Start, bool Dragging) press, Point at)
+    {
+        DesignedBox? own = design.Components.FirstOrDefault(c => c.Field == press.Box.Parent);
+        DesignedBox? holder = press.Handle < 0 ? ContainerAt(at, press.Box) ?? own : own;
+        DesignSnapping.Sides sides = press.Handle < 0 ? DesignSnapping.Sides.All
+            : Places[press.Handle] is var (x, y) ? new DesignSnapping.Sides(x == 0, y == 0, x == 1, y == 1) : DesignSnapping.Sides.All;
+        return DesignSnapping.Snapped(design.Components, press.Box, holder, Dragged(press, at), sides);
+    }
+
+    /// <summary>The snap lines a drag met drawn over the frame, a hairline each; the rest hidden.</summary>
+    private void ShowGuides(IReadOnlyList<DesignSnapping.Guide> met)
+    {
+        while (guides.Count < met.Count)
+        {
+            Border made = new() { IsHitTestVisible = false };
+            made.Bind(Border.BackgroundProperty, made.GetResourceObservable(TokenKeys.Accent));
+            guides.Add(made);
+            marks.Children.Add(made);
+        }
+        for (int i = 0; i < guides.Count; i++)
+        {
+            Border line = guides[i];
+            line.IsVisible = i < met.Count;
+            if (line.IsVisible)
+            {
+                DesignSnapping.Guide guide = met[i];
+                Canvas.SetLeft(line, guide.Down ? guide.At : guide.From);
+                Canvas.SetTop(line, guide.Down ? guide.From : guide.At);
+                line.Width = guide.Down ? Hairlines.Width : guide.To - guide.From;
+                line.Height = guide.Down ? guide.To - guide.From : Hairlines.Width;
+            }
+        }
     }
 
     /// <summary>A pressed box as the pointer has dragged it: moved whole, or by the handle taken, in whole units of the frame.</summary>
@@ -404,7 +445,8 @@ public sealed class FormDesignPane : DockPanel
     /// <summary>The tray's toggles, one a component drawn nowhere, by its field and type; pressed, it is chosen.</summary>
     private void ShowTray()
     {
-        List<DesignedBox> held = [.. design.Components.Where(InTray)];
+        // As the tray's places keep them, row by row.
+        List<DesignedBox> held = [.. design.Components.Where(InTray).OrderBy(c => c.Y).ThenBy(c => c.X)];
         while (tray.Children.Count < held.Count)
         {
             ToggleButton made = Segments.Toggle(string.Empty);

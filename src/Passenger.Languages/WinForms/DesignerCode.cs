@@ -203,9 +203,10 @@ public static class DesignerCode
                     Arguments = [.. invoked.ArgumentList.Arguments.Select(a => Value(a.Expression))],
                 };
         }
-        // A local the code declares (a resource manager) is the designer's own: its name tells it from another.
-        return new DesignerStatement(DesignerAct.Other, statement is LocalDeclarationStatementSyntax { Declaration.Variables: [var local] } ? local.Identifier.ValueText : string.Empty, null,
-            statement.SpanStart);
+        // A local the code declares (a resource manager) is the designer's own: its name tells it from another, its value what it is.
+        return statement is LocalDeclarationStatementSyntax { Declaration.Variables: [var local] }
+            ? new DesignerStatement(DesignerAct.Other, local.Identifier.ValueText, null, statement.SpanStart) { Value = local.Initializer is { } made ? Value(made.Value) : null }
+            : new DesignerStatement(DesignerAct.Other, string.Empty, null, statement.SpanStart);
     }
 
     /// <summary>An expression without the parentheses around it.</summary>

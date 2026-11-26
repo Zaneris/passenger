@@ -114,6 +114,11 @@ public sealed record FormDesignRequest
 
     /// <summary>The project's code annotates nullability, which a handler written for an event follows.</summary>
     public bool Nullable { get; init; }
+
+    /// <summary>The form's .resx beside its code: its path, and its text as the editor has it (none for a file not there).</summary>
+    public string? ResourcesPath { get; init; }
+
+    public string? Resources { get; init; }
 }
 
 /// <summary>A change to a design, as a gesture or a key makes it (<see cref="DesignEditKinds"/>): the components it is made to
@@ -177,6 +182,9 @@ public static class DesignEditKinds
 
     /// <summary>An item of a list moved up (X -1) or down (X 1) in it.</summary>
     public const string Order = "order";
+
+    /// <summary>A picture's property (an Image, an Icon) given the picture in the file at the edit's text.</summary>
+    public const string Picture = "picture";
 }
 
 /// <summary>A property of the component inspected, as Windows Forms' property grid shows it: its name, category and type,
@@ -216,6 +224,9 @@ public sealed record DesignProperty(string Name, string Category, string Type, s
     /// <summary>The parts of a value its type lists apart (a Point's X and Y, a Font's Bold, a button's FlatAppearance's
     /// BorderSize), each set by its dotted name; none for a value of no parts.</summary>
     public IReadOnlyList<DesignProperty>? Parts { get; init; }
+
+    /// <summary>A picture (an Image, an Icon), given from a file and kept in the form's .resx.</summary>
+    public bool Picture { get; init; }
 }
 
 /// <summary>An event of the component inspected: its name and category, the handler hooked to it (none where none is), and
@@ -325,7 +336,19 @@ public sealed record FormDesignReply
     /// <summary>A hook's handler as the form's code is to declare it (<c>private void Count_Click(object? sender, EventArgs e)</c>),
     /// its name the last before its parameters.</summary>
     public string? Handler { get; init; }
+
+    /// <summary>What an edit changed in the form's .resx (<see cref="DesignResourceChange"/>), where the request gave one.</summary>
+    public IReadOnlyList<DesignResourceChange>? ResourceChanges { get; init; }
+
+    /// <summary>The .resx an edit makes for a form that had none, whole, as Windows Forms' resource writer writes it.</summary>
+    public string? ResourcesMade { get; init; }
 }
+
+/// <summary>An element of a form's .resx an edit wrote, by its kind (a value's <c>data</c>, the <c>metadata</c> only the
+/// designer reads, such as a tray component's place, or the <c>assembly</c> a type's alias names) and its name or alias: the
+/// element as Windows Forms' resource writer writes it, its lines broken with '\n' and indented as at the file's second level;
+/// none for one the edit took out.</summary>
+public sealed record DesignResourceChange(string Kind, string Name, string? Xml);
 
 /// <summary>A component as drawn: its field (empty for the root), its type's name, the component holding it (none for the root
 /// and for one in the tray), its box in the frame in pixels (empty for one in the tray, which draws nothing), and whether it
@@ -344,7 +367,15 @@ public sealed record DesignedBox(string Field, string Type, string? Parent, doub
 
     /// <summary>Whether it is a control, which stands in front of or behind the others its holder holds.</summary>
     public bool Control { get; init; }
+
+    /// <summary>The lines its designer snaps others to and it to others (<see cref="DesignSnap"/>); none for one drawn nowhere.</summary>
+    public IReadOnlyList<DesignSnap>? Snaps { get; init; }
 }
+
+/// <summary>A line a control's designer snaps by, as Windows Forms' designers give it: its kind (an edge, Left, Right, Top or
+/// Bottom; its text's Baseline; a margin's or a padding's Vertical or Horizontal), where it lies in the frame (across for a
+/// line of Left, Right or Vertical, down for the rest), and which margin or padding it stands for (none for the rest).</summary>
+public sealed record DesignSnap(string Type, int At, string? Filter = null);
 
 /// <summary>What the designer could not make of a statement (by its place in the list sent) or of the form as a whole.</summary>
 public sealed record DesignNote(string Message, int? Statement = null);

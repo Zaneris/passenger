@@ -131,6 +131,9 @@ public sealed class FormProperties : DockPanel
     /// <summary>An item of a type (its full name with its assembly's) added to a collection.</summary>
     public event EventHandler<(string Property, string Type)>? AddItemRequested;
 
+    /// <summary>A picture asked for a picture's property (an Image, an Icon), by its name.</summary>
+    public event EventHandler<string>? PictureRequested;
+
     /// <summary>The popup a list of words' items are edited in, while it is open.</summary>
     public ItemsPopup? EditingItems { get; private set; }
 
@@ -381,7 +384,17 @@ public sealed class FormProperties : DockPanel
             }
         };
         grid.InValue(adds);
-        grid.Tag = new Control[] { choices, flags, colour, items, adds };
+        Button picture = new() { Content = "Choose a Picture…", HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false };
+        ToolTip.SetTip(picture, "A picture from a file, kept in the form's .resx");
+        picture.Click += (_, _) =>
+        {
+            if (grid.DataContext is FormPropertyRow { Property: { Picture: true } property })
+            {
+                PictureRequested?.Invoke(this, property.Name);
+            }
+        };
+        grid.InValue(picture);
+        grid.Tag = new Control[] { choices, flags, colour, items, adds, picture };
         TextBox box = grid.Box;
         box.KeyDown += (_, e) =>
         {
@@ -455,6 +468,8 @@ public sealed class FormProperties : DockPanel
                 adds.SelectedItem = null;
             }
             adds.IsVisible = adding;
+            bool pictured = !typed && row.Property is { Picture: true };
+            picture.IsVisible = pictured;
             if (typed && !box.IsVisible)
             {
                 box.Text = text;
@@ -465,8 +480,8 @@ public sealed class FormProperties : DockPanel
                 });
             }
             box.IsVisible = typed;
-            grid.Value.IsVisible = !typed && !listed && !flagged && !coloured && !lined && !adding;
-            grid.SplitFor(editor: listed || typed || flagged || coloured || lined || adding);
+            grid.Value.IsVisible = !typed && !listed && !flagged && !coloured && !lined && !adding && !pictured;
+            grid.SplitFor(editor: listed || typed || flagged || coloured || lined || adding || pictured);
             grid.Value.Classes.Set(StyleClasses.Muted, row.Property is { ReadOnly: true });
             showing = false;
         }

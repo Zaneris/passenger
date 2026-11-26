@@ -4,9 +4,10 @@ using Passenger.Core;
 
 namespace Passenger.WinFormsDesigner;
 
-/// <summary>Designer code's values made as the compiled code would make them: literals, the class's components by name, an
-/// enum's members ored together, static fields and properties, new objects and arrays, static methods' results, casts,
-/// typeof, each converted to the type it is given to as C# converts a constant (an int to a float, a number to an enum).</summary>
+/// <summary>Designer code's values made as the compiled code would make them: literals, the class's components and the code's
+/// locals by name, an enum's members ored together, static fields and properties, new objects and arrays, static methods'
+/// results and those of a component's or a local's (the resource manager's GetObject), casts, typeof, each converted to the
+/// type it is given to as C# converts a constant (an int to a float, a number to an enum).</summary>
 internal sealed class Values(Types types, Func<string, object?> component)
 {
     /// <summary>A value made, for a place of the type given where one is known (an argument's, a property's).</summary>
@@ -110,9 +111,9 @@ internal sealed class Values(Types types, Func<string, object?> component)
         }
         string on = name[..dot];
         string method = name[(dot + 1)..];
-        if (on.Split('.')[0] == "resources")
+        if (!on.Contains('.') && component(on) is { } local)
         {
-            throw new DesignerException("The form's resources (its .resx) are not read yet");
+            return Call(local, method, arguments);
         }
         Type type = Type(on);
         foreach (MethodInfo candidate in type.GetMethods(BindingFlags.Public | BindingFlags.Static).Where(m => m.Name == method && m.GetParameters().Length == arguments.Count))

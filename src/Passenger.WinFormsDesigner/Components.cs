@@ -3,6 +3,7 @@ using System.ComponentModel.Design;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Windows.Forms.Design;
+using System.Windows.Forms.Design.Behavior;
 using Passenger.Core;
 
 namespace Passenger.WinFormsDesigner;
@@ -78,7 +79,14 @@ internal static class Components
     /// their items), then the rest of the container's (the tray's, a list's columns).</summary>
     public static List<DesignedBox> Boxes(IDesignerHost host, Control root, Point origin, int bar)
     {
-        List<DesignedBox> boxes = [new DesignedBox(string.Empty, root.GetType().Name, null, 0, 0, root.ClientSize.Width, bar + root.ClientSize.Height, true) { DefaultEvent = DefaultEvent(root) }];
+        List<DesignedBox> boxes =
+        [
+            new DesignedBox(string.Empty, root.GetType().Name, null, 0, 0, root.ClientSize.Width, bar + root.ClientSize.Height, true)
+            {
+                DefaultEvent = DefaultEvent(root),
+                Snaps = Snaps(root, host, root.Parent is { } frame ? Framed(frame.RectangleToScreen(root.Bounds), origin) : Rectangle.Empty),
+            },
+        ];
         HashSet<IComponent> placed = [root];
         Walk(root, host, root, origin, boxes, placed, shown: true);
         foreach (IComponent rest in host.Container.Components.Cast<IComponent>().Where(c => !placed.Contains(c)))
@@ -88,7 +96,9 @@ internal static class Components
             {
                 continue;
             }
-            boxes.Add(Box(rest, root, owner, Rectangle.Empty, false));
+            // A tray component's box is drawn nowhere; its place says where it stands in the tray.
+            Point tray = TypeDescriptor.GetProperties(rest)["TrayLocation"]?.GetValue(rest) is Point kept ? kept : Point.Empty;
+            boxes.Add(Box(rest, root, owner, new Rectangle(tray, Size.Empty), false));
         }
         return boxes;
     }
@@ -129,7 +139,7 @@ internal static class Components
             {
                 placed.Add(control);
                 Rectangle at = drawn ? Framed(control.Parent!.RectangleToScreen(control.Bounds), origin) : Rectangle.Empty;
-                boxes.Add(Box(control, root, Named(holder, root), at, host.GetDesigner(control) is ParentControlDesigner));
+                boxes.Add(Box(control, root, Named(holder, root), at, host.GetDesigner(control) is ParentControlDesigner) with { Snaps = drawn ? Snaps(control, host, at) : null });
             }
             Walk(control, host, root, origin, boxes, placed, drawn);
         }
@@ -149,6 +159,26 @@ internal static class Components
             {
                 Items(menu.DropDownItems, menu, host, root, origin, boxes, placed, shown: false);
             }
+        }
+    }
+
+    /// <summary>The lines a control's designer snaps by, each placed in the frame from the control's window, which Windows
+    /// Forms measures them from; none where its designer gives none.</summary>
+    private static List<DesignSnap>? Snaps(Control control, IDesignerHost host, Rectangle window)
+    {
+        if (host.GetDesigner(control) is not ControlDesigner designer)
+        {
+            return null;
+        }
+        try
+        {
+            return [.. designer.SnapLines.Cast<SnapLine>().Select(l => new DesignSnap(l.SnapLineType.ToString(), (l.IsVertical ? window.X : window.Y) + l.Offset, l.Filter))];
+        }
+        catch (Exception unread) when (unread is InvalidOperationException or NullReferenceException or ArgumentException)
+        {
+            // A designer that cannot say its lines leaves the control to be placed freely.
+            Console.Error.WriteLine($"{control.Site?.Name}'s snap lines did not read: {unread.Message}");
+            return null;
         }
     }
 
