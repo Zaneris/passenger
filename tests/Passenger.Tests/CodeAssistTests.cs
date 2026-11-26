@@ -108,6 +108,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     public void The_code_around_the_caret_is_named_and_its_overloads_shown_as_the_server_has_it()
     {
         Flow.StepApart("the path, a hover card, File Structure and Go to Symbol name the code and go to it", () => new CodeAssistTests(project), t => t.The_path_a_hover_card_file_structure_and_go_to_symbol_name_the_code_and_go_to_it());
+        Flow.StepApart("the links in a wrapped hover signature go to their own declarations", () => new CodeAssistTests(project), t => t.Hover_signature_links_go_to_their_own_declarations());
         Flow.StepApart("a file shown before its folder's server has it names the member the caret is in once it does", () => new CodeAssistTests(project), t => t.A_file_shown_before_its_folders_server_has_it_names_the_member_the_caret_is_in_once_it_does());
         Flow.StepApart("the structure window shows the shown file's outline whenever it is shown, once the server has the file, and follows the editor", () => new CodeAssistTests(project), t => t.The_structure_window_shows_the_shown_files_outline_whenever_it_is_shown_and_once_the_server_has_the_file_and_follows_the_editor());
         Flow.StepApart("Go to Symbol lists a generated method's own declaration alone, and what only a generator wrote after", () => new CodeAssistTests(project), t => t.Go_to_Symbol_lists_a_generated_methods_own_declaration_alone_and_what_only_a_generator_wrote_after());
@@ -337,6 +338,88 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             Ui.WaitFor(() => window.Assist.HoverText is not null, $"the hover for {usage}");
             return window.Assist.HoverText!;
         }
+    }
+
+    private void Hover_signature_links_go_to_their_own_declarations()
+    {
+        project.Write("Order.cs", "sealed class Order { }");
+        project.Write("Customer.cs", "sealed class Customer { }");
+        project.Write("OrderService.cs", """
+            static class OrderService
+            {
+                public static Order GetOrder(int id) => new();
+                public static Order GetOrder(Customer customer, string noteForTheOrderConfirmation = "Thank you for your order") => new();
+            }
+            """);
+        project.Write("OrderCall.cs", """
+            static class OrderCall
+            {
+                public static void Run(Customer customer) => OrderService.GetOrder(customer);
+            }
+            """);
+        MainWindow window = WithoutNavigationBar(project.Open("OrderCall.cs"));
+        foreach ((string name, string file, TextPosition declaration) in new (string, string, TextPosition)[]
+        {
+            ("Order", "Order.cs", new TextPosition(0, 13)),
+            ("GetOrder", "OrderService.cs", new TextPosition(3, 24)),
+            ("Customer", "Customer.cs", new TextPosition(0, 13)),
+        })
+        {
+            window.OpenFile(project.PathOf("OrderCall.cs"));
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            int at = editor.Document.Snapshot.ToString().IndexOf("GetOrder", StringComparison.Ordinal) + 2;
+            Point word = editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value;
+            window.MouseMove(word, Avalonia.Input.RawInputModifiers.None);
+            Ui.WaitFor(() => window.Assist.HoverText?.Contains("GetOrder(Customer", StringComparison.Ordinal) == true, "the chosen overload in the hover card");
+
+            Border card = window.Assist.HoverCard!;
+            ColouredCode code = card.GetVisualDescendants().OfType<ColouredCode>().Single();
+            SelectableTextBlock text = code.GetVisualDescendants().OfType<SelectableTextBlock>().Single();
+            Assert.Contains('\n', code.Shown);
+            Assert.DoesNotContain(code.Runs, run => run.TextDecorations?.Count > 0);
+            Rect hit = BoundsOf(name);
+            Point link = hit.Center;
+            Point[] underline = InkBelow(hit);
+            Point[] neighbour = InkBelow(BoundsOf(name == "Order" ? "GetOrder" : "Order"));
+            Color[] resting = Ui.Pixels(window, underline);
+            Color[] neighbourResting = Ui.Pixels(window, neighbour);
+            window.MouseMove(new Point(word.X, card.TranslatePoint(default, window)!.Value.Y - 1), Avalonia.Input.RawInputModifiers.None);
+            window.MouseMove(text.TranslatePoint(link, window)!.Value, Avalonia.Input.RawInputModifiers.None);
+            Ui.Settle();
+            Assert.Same(card, window.Assist.HoverCard);
+            Assert.False(resting.SequenceEqual(Ui.Pixels(window, underline)), $"There was no underline while pointing at {name}");
+            Assert.Equal(neighbourResting, Ui.Pixels(window, neighbour));
+            window.MouseMove(text.TranslatePoint(BoundsOf("(").Center, window)!.Value, Avalonia.Input.RawInputModifiers.None);
+            Ui.Settle();
+            Assert.Equal(resting, Ui.Pixels(window, underline));
+
+            if (name == "Order")
+            {
+                Point from = text.TranslatePoint(new Point(hit.Left + 1, hit.Center.Y), window)!.Value;
+                Point to = text.TranslatePoint(new Point(hit.Right - 1, hit.Center.Y), window)!.Value;
+                Ui.Drag(window, from, to);
+                Assert.Same(card, window.Assist.HoverCard);
+                Assert.NotEmpty(text.SelectedText);
+                Assert.Contains(text.SelectedText, name, StringComparison.Ordinal);
+                Ui.Press(window, Ui.Command("C"));
+                Assert.Equal(text.SelectedText, Ui.Clipboard(window));
+            }
+
+            Ui.Click(text, link);
+            Ui.WaitFor(() => window.EditorArea.Active?.Path == PathNames.Canonical(project.PathOf(file)), $"the declaration of {name}");
+            Assert.Equal(declaration, window.EditorArea.CodeEditor.CaretPosition);
+
+            Rect BoundsOf(string label)
+            {
+                int start = code.Shown.IndexOf(label, StringComparison.Ordinal);
+                return text.TextLayout.HitTestTextRange(start, label.Length).First().Translate(new Vector(text.Padding.Left, text.Padding.Top));
+            }
+
+            Point[] InkBelow(Rect bounds) => [.. new double[] { 0.5, 1, 1.5 }.Select(inset =>
+                text.TranslatePoint(new Point(bounds.Center.X, bounds.Bottom - inset), window)!.Value)];
+        }
+        window.Close();
     }
 
     /// <summary>Where the status bar's path is drawn.</summary>

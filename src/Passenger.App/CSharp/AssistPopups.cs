@@ -58,6 +58,9 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     /// <summary>Plays a sound a preview offers; nothing without it.</summary>
     public Action<string>? Play { get; set; }
 
+    /// <summary>Opens a signature part by its displayed name and the symbol key Roslyn gave it.</summary>
+    public Action<string, string>? OpenDeclaration { get; set; }
+
     /// <summary>The largest a preview's picture is drawn, in logical units.</summary>
     private const double PictureSize = 128;
 
@@ -143,9 +146,10 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     /// for C# and Razor, whose server shows display text rather than code to parse.</summary>
     public void AddServed(string code, IReadOnlyList<Roslyn.Extension.CodePart>? given, Languages.Language? language)
     {
-        if (given is not null && Languages.CSharp.ServerCode.Of(given) is var (shown, spans) && Languages.CSharp.ServerCode.SameCode(shown, code))
+        Dictionary<int, string>? declarations = OpenDeclaration is not null && given?.Any(part => part.Declaration is not null) == true ? [] : null;
+        if (given is not null && Languages.CSharp.ServerCode.Of(given, declarations) is var (shown, spans) && Languages.CSharp.ServerCode.SameCode(shown, code))
         {
-            parts.Children.Add(Signed(ColouredCode.Of(shown, spans, language)));
+            parts.Children.Add(Signed(ColouredCode.Of(shown, spans, language, declarations, OpenDeclaration)));
             return;
         }
         AddCode(code, language == Languages.Language.CSharp || language == Languages.Language.Razor ? null : language);
