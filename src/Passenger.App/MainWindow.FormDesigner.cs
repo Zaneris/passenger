@@ -264,8 +264,12 @@ public partial class MainWindow
         if (formProperties is null)
         {
             formProperties = new FormProperties((popup, from) => popups.Show(popup, popups.PointIn(from, new Avalonia.Point(0, from.Bounds.Height + 4))), () => popups.Close());
-            formProperties.SetRequested += (_, set) => DesignShown(shown => EditDesignAsync(shown, Edit(shown, DesignEditKinds.Set, set.Property, set.Text)));
-            formProperties.ResetRequested += (_, property) => DesignShown(shown => EditDesignAsync(shown, Edit(shown, DesignEditKinds.Reset, property, null)));
+            formProperties.SetRequested += (_, set) => DesignShown(shown => Spoken(shown, set.Property)
+                ? Speak(shown, set.Text)
+                : EditDesignAsync(shown, Edit(shown, DesignEditKinds.Set, set.Property, set.Text)));
+            formProperties.ResetRequested += (_, property) => DesignShown(shown => Spoken(shown, property)
+                ? Speak(shown, null)
+                : EditDesignAsync(shown, Edit(shown, DesignEditKinds.Reset, property, null)));
             formProperties.UnhookRequested += (_, raised) => DesignShown(shown => EditDesignAsync(shown, Edit(shown, DesignEditKinds.Unhook, raised, null)));
             formProperties.HookRequested += (_, hook) => DesignShown(shown => HookAsync(shown, shown.Design.Inspected ?? string.Empty, hook.Event, hook.Handler));
             formProperties.RenameRequested += (_, name) => DesignShown(shown => RenameComponentAsync(shown, shown.Design.Inspected ?? string.Empty, name));
@@ -278,6 +282,15 @@ public partial class MainWindow
 
         static DesignEdit Edit(ShownDesign shown, string kind, string member, string? text) =>
             new(kind) { Components = [shown.Design.Inspected ?? string.Empty], Member = member, Text = text };
+
+        // A localizable form's Language is the language it is designed in, which no code writes: the design is drawn in it.
+        static bool Spoken(ShownDesign shown, string property) => shown.Design.Inspected == string.Empty && property == "Language";
+
+        static Task Speak(ShownDesign shown, string? language)
+        {
+            shown.Design.Speak(language);
+            return Task.CompletedTask;
+        }
 
         void DesignShown(Func<ShownDesign, Task> act)
         {

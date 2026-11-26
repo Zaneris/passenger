@@ -119,6 +119,12 @@ public sealed record FormDesignRequest
     public string? ResourcesPath { get; init; }
 
     public string? Resources { get; init; }
+
+    /// <summary>The texts of the form's .resx for other cultures beside it (MainForm.fr.resx), by culture name.</summary>
+    public IReadOnlyDictionary<string, string> Cultures { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>The language a localizable form is designed in, as its Language property shows it; none for its default.</summary>
+    public string? Language { get; init; }
 }
 
 /// <summary>A change to a design, as a gesture or a key makes it (<see cref="DesignEditKinds"/>): the components it is made to
@@ -340,15 +346,23 @@ public sealed record FormDesignReply
     /// <summary>What an edit changed in the form's .resx (<see cref="DesignResourceChange"/>), where the request gave one.</summary>
     public IReadOnlyList<DesignResourceChange>? ResourceChanges { get; init; }
 
-    /// <summary>The .resx an edit makes for a form that had none, whole, as Windows Forms' resource writer writes it.</summary>
-    public string? ResourcesMade { get; init; }
+    /// <summary>The .resx files an edit makes where the form had none (its own, a culture's), whole, as Windows Forms'
+    /// resource writer writes them.</summary>
+    public IReadOnlyList<DesignResourceFile>? ResourcesMade { get; init; }
 }
+
+/// <summary>A .resx of a form for a culture (empty for its own, the neutral one) and its text.</summary>
+public sealed record DesignResourceFile(string Culture, string Text);
 
 /// <summary>An element of a form's .resx an edit wrote, by its kind (a value's <c>data</c>, the <c>metadata</c> only the
 /// designer reads, such as a tray component's place, or the <c>assembly</c> a type's alias names) and its name or alias: the
 /// element as Windows Forms' resource writer writes it, its lines broken with '\n' and indented as at the file's second level;
 /// none for one the edit took out.</summary>
-public sealed record DesignResourceChange(string Kind, string Name, string? Xml);
+public sealed record DesignResourceChange(string Kind, string Name, string? Xml)
+{
+    /// <summary>The culture whose .resx it is in: empty for the form's own.</summary>
+    public string Culture { get; init; } = string.Empty;
+}
 
 /// <summary>A component as drawn: its field (empty for the root), its type's name, the component holding it (none for the root
 /// and for one in the tray), its box in the frame in pixels (empty for one in the tray, which draws nothing), and whether it

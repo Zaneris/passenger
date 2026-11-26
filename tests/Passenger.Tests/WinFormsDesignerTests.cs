@@ -57,6 +57,8 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         Flow.StepApart("a picture chosen for a picture box goes into a resx made for the form and a timers place in the tray goes there too", () => new WinFormsDesignerTests(app),
             t => t.A_picture_chosen_for_a_picture_box_goes_into_a_resx_made_for_the_form_and_a_timers_place_in_the_tray_goes_there_too());
         Flow.StepApart("a control dragged near another snaps to its edge", () => new WinFormsDesignerTests(app), t => t.A_control_dragged_near_another_snaps_to_its_edge());
+        Flow.StepApart("a form made localizable keeps its values in its resx and a text given in french goes to its french resx", () => new WinFormsDesignerTests(app),
+            t => t.A_form_made_localizable_keeps_its_values_in_its_resx_and_a_text_given_in_french_goes_to_its_french_resx());
     }
 
     private void A_lists_items_are_written_a_line_an_item_and_a_menu_item_is_added_under_the_help_menu()
@@ -116,10 +118,11 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         Pick((ComboBox)properties.EditorOf("DropDownItems")!, "System.Windows.Forms.ToolStripMenuItem,");
     }
 
-    /// <summary>A drop-down's item chosen by the start of its words, as a person's choice from its list sets it.</summary>
+    /// <summary>A drop-down's item chosen by its words, else by their start, as a person's choice from its list sets it.</summary>
     private static void Pick(ComboBox box, string start)
     {
-        object item = box.Items.Cast<object>().FirstOrDefault(i => i is string words && words.StartsWith(start, StringComparison.Ordinal))
+        object item = box.Items.Cast<object>().FirstOrDefault(i => i is string words && words == start)
+            ?? box.Items.Cast<object>().FirstOrDefault(i => i is string words && words.StartsWith(start, StringComparison.Ordinal))
             ?? throw new Xunit.Sdk.XunitException($"The list offers nothing of {start}: [{string.Join(", ", box.Items.Cast<object>())}]");
         box.SelectedItem = item;
         Ui.Settle();
@@ -203,6 +206,48 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         Ui.Drag(window, pane.Frame.TranslatePoint(from, window)!.Value, pane.Frame.TranslatePoint(from + new Vector(107, 0), window)!.Value);
         Ui.WaitFor(() => File.ReadAllText(file).Contains("Bold.Location = new Point(124, ", StringComparison.Ordinal),
             () => $"Bold's left edge to snap to Counter's, not [{string.Join(" | ", File.ReadAllLines(file).Where(l => l.Contains("Bold.Location", StringComparison.Ordinal)))}], where the status bar says {window.Status}");
+        window.Close();
+    }
+
+    private void A_form_made_localizable_keeps_its_values_in_its_resx_and_a_text_given_in_french_goes_to_its_french_resx()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string file = app.PathOf("MainForm.Designer.cs");
+        string resx = app.PathOf("MainForm.resx");
+        string french = app.PathOf("MainForm.fr.resx");
+        MainWindow window = app.Open(app.PathOf("MainForm.cs"), languageServer: false);
+        FormDesignPane pane = Drawn(window);
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        Ui.Click(pane.Frame, new Point(400, 200));
+        Ui.WaitFor(() => pane.Chosen?.Field == string.Empty && window.FormProperties?.EditorOf("Localizable") is ComboBox,
+            () => $"the form's Localizable to offer True and False, {(pane.Chosen is { } chosen ? $"'{chosen.Field}'" : "nothing")} chosen, its rows [{string.Join(", ", window.FormProperties?.Rows.Select(r => r.Name).Take(12) ?? [])} …]");
+        FormProperties properties = window.FormProperties!;
+        Pick((ComboBox)properties.EditorOf("Localizable")!, "True");
+        Ui.WaitFor(() => File.Exists(resx) && File.ReadAllText(file).Contains("resources.ApplyResources(Count, \"Count\");", StringComparison.Ordinal),
+            () => $"Count's values to be read from a .resx made for the form, where the status bar says {window.Status}");
+        string kept = File.ReadAllText(resx);
+        Assert.Contains("<metadata name=\"$this.Localizable\"", kept);
+        Assert.Contains("<data name=\"Count.Text\" xml:space=\"preserve\">", kept);
+        Assert.DoesNotContain("Count.Text = ", File.ReadAllText(file));
+        Ui.WaitFor(() => pane.Design.Notes.Count == 0 && pane.Design.Components.Any(c => c is { Field: "Count", Width: 100 }),
+            () => $"the form to be drawn from its .resx, not \"{pane.Design.Status}\" ({string.Join(" | ", pane.Design.Notes)})");
+        // Language takes any culture, its list but a help, so it is typed as a person types one.
+        Ui.WaitFor(() => properties.Rows.FirstOrDefault(r => r.Name == "Language")?.Property is { ReadOnly: false },
+            () => $"the form's Language to take a language, not {properties.Rows.FirstOrDefault(r => r.Name == "Language")?.Property?.ToString() ?? "missing"}");
+        Type(window, properties, "Language", "French");
+        Ui.WaitFor(() => pane.Design.Language == "French" && properties.Rows.FirstOrDefault(r => r.Name == "Language")?.Property?.Text == "French",
+            () => $"the form to be designed in French, its Language showing {properties.Rows.FirstOrDefault(r => r.Name == "Language")?.Property?.Text}");
+        DesignedBox count = Component(pane, "Count");
+        Ui.Click(pane.Frame, new Point(count.X + (count.Width / 2), count.Y + (count.Height / 2)));
+        Ui.WaitFor(() => pane.Chosen?.Field == "Count" && properties.Rows.Any(r => r.Name == "Text"), () => $"Count's properties to be listed, not \"{properties.Said}\"");
+        string? said = Type(window, properties, "Text", "Compter");
+        Ui.WaitFor(() => File.Exists(french) && File.ReadAllText(french).Contains("<value>Compter</value>", StringComparison.Ordinal),
+            () => $"Count's French text to be kept in a French .resx made for the form, where the status bar said \"{said}\", the design \"{pane.Design.Status}\" "
+                + $"({string.Join(" | ", pane.Design.Notes)}), [{string.Join(", ", Directory.GetFiles(app.Folder, "MainForm*"))}], Compter in the code "
+                + $"[{string.Join(" | ", File.ReadAllLines(file).Where(l => l.Contains("Compter", StringComparison.Ordinal)))}] and the .resx "
+                + $"[{string.Join(" | ", File.ReadAllLines(resx).Where(l => l.Contains("Compter", StringComparison.Ordinal)))}]");
+        Assert.DoesNotContain("Compter", File.ReadAllText(resx));
+        Assert.DoesNotContain("Compter", File.ReadAllText(file));
         window.Close();
     }
 

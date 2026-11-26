@@ -16,12 +16,16 @@ internal sealed record SerializedField(string Name, string Text);
 /// <summary>What the surface holds as code, as the classic designer would write its InitializeComponent: Windows Forms' own
 /// serializers (the root's type serializer, each component's, the designers' shadowed properties) asked for the class, each
 /// statement keyed as Passenger's reader keys the file's, so a change between two of these is placed where the file writes it;
-/// and the .resx they wrote with it (none where they wrote none), as the session's end writes it.</summary>
-internal sealed record Serialized(IReadOnlyList<SerializedLine> Lines, IReadOnlyList<SerializedField> Fields, string? Resources)
+/// and the .resx files they wrote with it by culture (the form's own empty), as the session's end writes them.</summary>
+internal sealed record Serialized(IReadOnlyList<SerializedLine> Lines, IReadOnlyList<SerializedField> Fields, IReadOnlyDictionary<string, string> Resources)
 {
-    public static Serialized Of(IDesignerHost host, CodeText text, Designer.Resources resources)
+    public static Serialized Of(IDesignerHost host, CodeText text, FormResources resources)
     {
         DesignerSerializationManager manager = new(host);
+        if (resources.Localizer is { } localizer)
+        {
+            ((IDesignerSerializationManager)manager).AddSerializationProvider(localizer);
+        }
         CodeTypeDeclaration declared;
         resources.Taken();
         using (manager.CreateSession())
@@ -36,7 +40,7 @@ internal sealed record Serialized(IReadOnlyList<SerializedLine> Lines, IReadOnly
                 throw new DesignerException($"Windows Forms could not write the form's code: {string.Join("; ", manager.Errors.Cast<object>().Select(e => e is Exception error ? error.Message : e.ToString()))}");
             }
         }
-        string? written = resources.Taken();
+        Dictionary<string, string> written = resources.Taken();
         CodeMemberMethod method = declared.Members.OfType<CodeMemberMethod>().FirstOrDefault(m => m.Name == "InitializeComponent")
             ?? throw new DesignerException("Windows Forms wrote no InitializeComponent");
         HashSet<string> fields = [.. declared.Members.OfType<CodeMemberField>().Select(f => f.Name)];
@@ -90,7 +94,8 @@ internal sealed record Serialized(IReadOnlyList<SerializedLine> Lines, IReadOnly
                 when (method.TargetObject is CodeCastExpression { Expression: var cast } ? Path(cast) : Path(method.TargetObject)) is { } target:
                 return Of(DesignerAct.Call, [.. target, method.MethodName], fields) with
                 {
-                    Arguments = [.. parameters.Cast<CodeExpression>().Select(p => Path(p) is [.., var last] ? new DesignerValue(DesignerValueKinds.Name) { Name = last }
+                    Arguments = [.. parameters.Cast<CodeExpression>().Select(p => p is CodeThisReferenceExpression ? new DesignerValue(DesignerValueKinds.Name) { Name = "this" }
+                        : Path(p) is [.., var last] ? new DesignerValue(DesignerValueKinds.Name) { Name = last }
                         : new DesignerValue(DesignerValueKinds.Unread))],
                 };
             case CodeVariableDeclarationStatement local:

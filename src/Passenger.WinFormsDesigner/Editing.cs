@@ -334,14 +334,18 @@ internal static class Editing
         return changes;
     }
 
-    /// <summary>What an edit changed in the form's .resx: each element it wrote anew or otherwise, and each it no longer writes,
-    /// as Windows Forms' resource writer wrote them before the edit and after it.</summary>
+    /// <summary>What an edit changed in the form's .resx files, culture by culture: each element it wrote anew or otherwise, and
+    /// each it no longer writes, as Windows Forms' resource writer wrote them before the edit and after it.</summary>
     public static List<DesignResourceChange> ResourceChanges(Serialized before, Serialized after)
     {
-        Dictionary<(string Kind, string Name), string> was = Elements(before.Resources);
-        Dictionary<(string Kind, string Name), string> now = Elements(after.Resources);
-        List<DesignResourceChange> changes = [.. now.Where(e => !was.TryGetValue(e.Key, out string? old) || old != e.Value).Select(e => new DesignResourceChange(e.Key.Kind, e.Key.Name, e.Value))];
-        changes.AddRange(was.Keys.Where(k => !now.ContainsKey(k)).Select(k => new DesignResourceChange(k.Kind, k.Name, null)));
+        List<DesignResourceChange> changes = [];
+        foreach (string culture in before.Resources.Keys.Union(after.Resources.Keys, StringComparer.OrdinalIgnoreCase))
+        {
+            Dictionary<(string Kind, string Name), string> was = Elements(before.Resources.GetValueOrDefault(culture));
+            Dictionary<(string Kind, string Name), string> now = Elements(after.Resources.GetValueOrDefault(culture));
+            changes.AddRange(now.Where(e => !was.TryGetValue(e.Key, out string? old) || old != e.Value).Select(e => new DesignResourceChange(e.Key.Kind, e.Key.Name, e.Value) { Culture = culture }));
+            changes.AddRange(was.Keys.Where(k => !now.ContainsKey(k)).Select(k => new DesignResourceChange(k.Kind, k.Name, null) { Culture = culture }));
+        }
         return changes;
     }
 

@@ -48,6 +48,23 @@ public sealed class FormDesign : IDisposable
     /// <summary>The component whose properties and events the designer lists with each frame (the root's empty); none for none.</summary>
     public string? Inspected => inspected;
 
+    /// <summary>The language a localizable form is designed in, as its Language property names it; none for its default.</summary>
+    public string? Language { get; private set; }
+
+    /// <summary>The form designed in a language from the next frame on (none: its default), its edits written to that
+    /// language's .resx; one frame asked now.</summary>
+    public void Speak(string? language)
+    {
+        UiThread.Check();
+        if (language == Language)
+        {
+            return;
+        }
+        Language = language;
+        Changed?.Invoke(this, EventArgs.Empty);
+        IdeErrors.Observe(UpdateAsync());
+    }
+
     /// <summary>The inspected component's properties as the designer last listed them; none before it has.</summary>
     public IReadOnlyList<DesignProperty> Properties { get; private set; } = [];
 
@@ -163,6 +180,15 @@ public sealed class FormDesign : IDisposable
         int asked = ++sequence;
         FormFiles files = Files;
         string? resources = texts(files.Resources)?.ToString();
+        Dictionary<string, string> cultures = [];
+        foreach (string culture in files.Cultures())
+        {
+            if (texts(files.ResourcesOf(culture))?.ToString() is { } text)
+            {
+                cultures[culture] = text;
+            }
+        }
+        string? language = Language;
         bool toolbox = !listed;
         listed = true;
         string? inspect = inspected;
@@ -195,6 +221,8 @@ public sealed class FormDesign : IDisposable
                 Nullable = annotated,
                 ResourcesPath = files.Resources,
                 Resources = resources,
+                Cultures = cultures,
+                Language = language,
             };
         });
         if (request is null)
@@ -267,13 +295,17 @@ public sealed class FormDesign : IDisposable
             changes.Add(new XamlFileChange(Files.Code, now => DesignerCode.MethodOf(now, cls, handler!) is null && DesignerWriter.Handler(now, cls, declaration) is { } edit ? [edit] : []));
         }
         // What the form's .resx holds goes with its code: a file made whole where it had none, else each element written alone.
-        if (reply.ResourcesMade is { } whole)
+        foreach (DesignResourceFile whole in reply.ResourcesMade ?? [])
         {
-            changes.Add(new XamlFileChange(Files.Resources, null, whole.ReplaceLineEndings(Newline(made.Text.ToString()))));
+            changes.Add(new XamlFileChange(Files.ResourcesOf(whole.Culture), null, whole.Text.ReplaceLineEndings(Newline(made.Text.ToString()))));
         }
-        else if (reply.ResourceChanges is { Count: > 0 } elements && request.Resources is { } resx)
+        foreach (IGrouping<string, DesignResourceChange> culture in (reply.ResourceChanges ?? []).GroupBy(c => c.Culture))
         {
-            changes.Add(new XamlFileChange(Files.Resources, now => now == resx ? [TextEdit.Between(now, Written(now, elements))] : []));
+            if ((culture.Key.Length == 0 ? request.Resources : request.Cultures.GetValueOrDefault(culture.Key)) is { } resx)
+            {
+                List<DesignResourceChange> elements = [.. culture];
+                changes.Add(new XamlFileChange(Files.ResourcesOf(culture.Key), now => now == resx ? [TextEdit.Between(now, Written(now, elements))] : []));
+            }
         }
         if (changes.Count == 0)
         {
