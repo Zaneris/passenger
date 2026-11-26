@@ -132,6 +132,9 @@ public static class CodeParts
     /// its label.</summary>
     public const string Member = "passengerCode";
 
+    /// <summary>The prefix of an XML documentation table carried in Roslyn's fenced text.</summary>
+    public const string DocumentationTable = "<!-- passenger:documentation-table -->";
+
     /// <summary>A signature's member saying whether it still fits the arguments its call has so far; missing where that
     /// can't be read.</summary>
     public const string Fits = "passengerFits";

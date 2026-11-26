@@ -2606,16 +2606,17 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         CodeEditor editor = window.EditorArea.CodeEditor;
         Uri guide = new("https://example.test/guide?x=1&y=2");
 
-        Ui.PlaceAfter(editor, "return Documented.Re");
+        Ui.PlaceAfter(editor, "return Documented.Ec");
         Ui.Run(window, AppActions.QuickDocumentation);
-        Ui.WaitFor(() => window.Assist.HoverText?.Contains("Use the", StringComparison.Ordinal) == true, "Read's documentation in hover");
+        Ui.WaitFor(() => window.Assist.HoverText?.Contains("Use the", StringComparison.Ordinal) == true, "Echo's documentation in hover");
         MarkdownText hover = AssertDocumentation(window.Assist.HoverCard!, "quantity", "guide", guide);
         string shown = hover.Shown.Replace('\u00A0', ' ');
         Assert.Contains("Related", hover.Shown, StringComparison.Ordinal);
         Assert.Contains("or null.", shown, StringComparison.Ordinal);
-        Assert.Matches(@"Read more with value of type (?:T|int)\.\nSecond line\.", shown);
+        Assert.Matches(@"Echo a value of type (?:T|int)\.\nSecond line\.", shown);
         Assert.Contains("• First step", window.Assist.HoverText, StringComparison.Ordinal);
-        Assert.Contains("int value = 1;", window.Assist.HoverText, StringComparison.Ordinal);
+        Assert.Contains("1. Return the input", window.Assist.HoverText, StringComparison.Ordinal);
+        AssertExamples(window.Assist.HoverCard!);
         Assert.Contains(hover.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == "any value" && run.FontStyle == FontStyle.Italic);
         Assert.Contains(hover.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == "unchanged" && run.TextDecorations == TextDecorations.Underline);
         Assert.Contains(hover.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == "<b>literal</b>");
@@ -2627,16 +2628,42 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.KeyTextInput("        Documented");
         window.KeyTextInput(".");
         Ui.WaitFor(() => window.Assist.IsCompletionOpen, "members of Documented");
-        window.KeyTextInput("Rea");
-        Ui.WaitFor(() => window.Assist.ItemDocumentation?.Contains("Use the", StringComparison.Ordinal) == true, "Read's documentation in completion");
+        window.KeyTextInput("Ech");
+        Ui.WaitFor(() => window.Assist.ItemDocumentation?.Contains("Use the", StringComparison.Ordinal) == true, "Echo's documentation in completion");
         AssertDocumentation(window.Assist.ItemCard!, "quantity", "guide", guide);
+        AssertExamples(window.Assist.ItemCard!);
         Ui.Press(window, "ESCAPE");
 
-        Ui.PlaceAfter(editor, "return Documented.Read(");
+        Ui.PlaceAfter(editor, "return Documented.Echo(");
         Ui.Run(window, AppActions.ParameterInfo);
-        Ui.WaitFor(() => window.Assist.SignatureText?.Contains("The value", StringComparison.Ordinal) == true, "Read's parameter documentation");
+        Ui.WaitFor(() => window.Assist.SignatureText?.Contains("The value", StringComparison.Ordinal) == true, "Echo's parameter documentation");
         AssertDocumentation(window.Assist.SignatureCard!, "value", "parameter guide", guide);
+        AssertTable(window.Assist.SignatureCard!, [], ["T", "The input type"]);
         window.Close();
+
+        static void AssertTable(Border card, string[] header, string[] rows)
+        {
+            Border table = Assert.Single(card.GetVisualDescendants().OfType<Border>(), control => control.Classes.Contains(StyleClasses.MdTable));
+            Grid grid = Assert.IsType<Grid>(table.Child);
+            Assert.Equal(2, grid.ColumnDefinitions.Count);
+            Assert.Equal(header, grid.Children.OfType<Border>().Where(cell => cell.Classes.Contains(StyleClasses.Head)).Select(cell => ((MarkdownText)cell.Child!).Shown));
+            Assert.Equal(rows, grid.Children.OfType<Border>().Where(cell => !cell.Classes.Contains(StyleClasses.Head)).Select(cell => ((MarkdownText)cell.Child!).Shown));
+        }
+
+        static void AssertExamples(Border card)
+        {
+            ColouredCode[] blocks = [.. card.GetVisualDescendants().OfType<ColouredCode>()];
+            ColouredCode example = Assert.Single(blocks, block => block.Code == "string text = Echo(\"hello\");");
+            IBrush keyword = Tokens.Brush(card, TokenKeys.Syntax_Keyword);
+            IBrush text = Tokens.Brush(card, TokenKeys.Syntax_String);
+            Ui.WaitFor(() => example.Runs.Any(run => run.Text == "string" && run.Foreground == keyword)
+                && example.Runs.Any(run => run.Text == "\"hello\"" && run.Foreground == text), "the example's C# keyword and string colours");
+
+            ColouredCode log = Assert.Single(blocks, block => block.Code == "[INFO] Worker ready");
+            Assert.Null(log.Language);
+            Assert.Empty(log.Runs);
+            AssertTable(card, ["Input", "Result"], ["hello", "The same string", "42", "The same integer"]);
+        }
 
         static MarkdownText AssertDocumentation(Border card, string bold, string label, Uri target)
         {
@@ -3735,12 +3762,21 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                     /// <summary>
                     /// Use the &lt;b&gt;quantity&lt;/b&gt; in the &lt;see href=&quot;https://example.test/guide?x=1&amp;y=2&quot;&gt;guide&lt;/see&gt;.
                     /// See <see cref="Related"/> or type <c>&lt;b&gt;literal&lt;/b&gt;</c>. Pass <i>any value</i> or <see langword="null"/>. It comes back <u>unchanged</u>.
-                    /// <para>Read more with <paramref name="value"/> of type <typeparamref name="T"/>.<br/>Second line.</para>
+                    /// <para>Echo a <paramref name="value"/> of type <typeparamref name="T"/>.<br/>Second line.</para>
                     /// <list type="bullet"><item><description>First step</description></item></list>
-                    /// <code>int value = 1;</code>
+                    /// <list type="number"><item><description>Return the input</description></item></list>
+                    /// <list type="table">
+                    /// <listheader><term>Input</term><description>Result</description></listheader>
+                    /// <item><term><c>hello</c></term><description>The same string</description></item>
+                    /// <item><term><c>42</c></term><description>The same integer</description></item>
+                    /// </list>
+                    /// <code>string text = Echo("hello");</code>
+                    /// <code>[INFO] Worker ready</code>
                     /// </summary>
-                    /// <param name="value">The <b>value</b> in the <see href="https://example.test/guide?x=1&amp;y=2">parameter guide</see>.</param>
-                    public static T Read<T>(T value) => value;
+                    /// <param name="value">The <b>value</b> in the <see href="https://example.test/guide?x=1&amp;y=2">parameter guide</see>.
+                    /// <list type="table"><item><term><c>T</c></term><description>The input type</description></item></list>
+                    /// </param>
+                    public static T Echo<T>(T value) => value;
                     public static int Related() => 0;
                 }
 
@@ -3749,7 +3785,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                     public static int Run()
                     {
 
-                        return Documented.Read(1);
+                        return Documented.Echo(1);
                     }
                 }
                 """);

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Passenger.App.Editors;
 using Passenger.Core;
 using Passenger.Text;
 
@@ -35,6 +36,13 @@ internal static partial class HoverMarkdown
         Func<string, string> read = words ? Words : Text;
         foreach ((IReadOnlyList<string> lines, bool code, string info) in Blocks(text))
         {
+            if (code && info == "text" && lines is [string carried] && Markdown.DocumentationTable(carried) is { } table)
+            {
+                string[] rows = [.. table.AllRows.Select(row => string.Join(" | ",
+                    row.Select(cell => Markdown.Plain(Markdown.Inlines(cell)))))];
+                yield return (rows, false, string.Empty);
+                continue;
+            }
             yield return (code ? lines : [.. lines.Select(read)], code, info);
         }
     }

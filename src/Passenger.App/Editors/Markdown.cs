@@ -37,8 +37,12 @@ internal static partial class Markdown
     /// <summary>Fenced code with its info string's first word (<c>csharp</c>), empty for none.</summary>
     internal sealed record Code(string Text, string Info = "") : Block;
 
-    /// <summary>GitHub's table: each column's alignment (null for none), the header's cells and each row's, as written.</summary>
-    internal sealed record Table(IReadOnlyList<Align?> Aligns, IReadOnlyList<string> Header, IReadOnlyList<IReadOnlyList<string>> Rows) : Block;
+    /// <summary>A table's columns, optional header and rows. Documentation cells can contain XML comment tags.</summary>
+    internal sealed record Table(IReadOnlyList<Align?> Aligns, IReadOnlyList<string> Header,
+        IReadOnlyList<IReadOnlyList<string>> Rows, bool Documentation = false) : Block
+    {
+        public IReadOnlyList<IReadOnlyList<string>> AllRows => Header.Count == 0 ? Rows : [Header, .. Rows];
+    }
 
     internal sealed record Quote(IReadOnlyList<Block> Blocks) : Block;
 
