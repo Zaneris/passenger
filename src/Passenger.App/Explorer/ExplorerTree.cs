@@ -371,6 +371,10 @@ public sealed class ExplorerTree
             {
                 reloaded.Add(node);
             }
+            else if (node.LoadedChildren is null)
+            {
+                node.ProbeAgain();
+            }
         }
         ShowAgain(reloaded);
     }
@@ -887,11 +891,17 @@ public sealed class ExplorerTree
 
     /// <summary>A folder of an evaluated project: what the project holds in it, by where each file shows (a linked file at
     /// its Link), whether or not the folder is on disk; dimmed, with all it holds, where the folder's walks pass over it.</summary>
-    private ExplorerNode HeldFolder(ProjectModel given, string path, string relative, int depth, bool dimmed) => Packaged(
+    private ExplorerNode HeldFolder(ProjectModel given, string path, string relative, int depth, bool dimmed, bool? holds = null) => Packaged(
         new(NodeKind.Folder, Path.GetFileName(relative), path, depth, dimmed || IgnoredFolders.Is(path), node => HeldIn(given, relative, node.Depth + 1, node.IsDimmed))
         {
             SdkFolder = SdkFolderOf(Current(given), relative),
+            Holds = holds,
         });
+
+    /// <summary>Whether an evaluated project holds anything shown at one place in it (<see cref="Held"/>): a folder, a file,
+    /// or one its shared items file leaves out.</summary>
+    private static bool HoldsAny(ProjectFiles files, string relative) =>
+        files.FoldersIn(relative).Any() || files.FilesIn(relative).Any(f => !FolderWalk.IsMomentary(f.Name)) || files.UnlistedIn(relative).Any();
 
     /// <summary>What an evaluated project holds at one place in it: its folders (the SDK's first), then its files, each by
     /// name, a file's dependents nested under it; a folder on disk with nothing in it at all shows too, as one just made does.</summary>
@@ -900,7 +910,7 @@ public sealed class ExplorerTree
         List<ExplorerNode> nodes = [.. files.FoldersIn(relative)
             .Order(StringComparer.OrdinalIgnoreCase)
             .Select(name => relative.Length == 0 ? name : $"{relative}/{name}")
-            .Select(inner => HeldFolder(given, files.PathOf(inner), inner, depth, dimmed))
+            .Select(inner => HeldFolder(given, files.PathOf(inner), inner, depth, dimmed, HoldsAny(files, inner)))
             .OrderBy(Listed)];
         List<(string Name, string Path)> held = [.. files.FilesIn(relative)
             .Where(f => !FolderWalk.IsMomentary(f.Name))
@@ -940,7 +950,7 @@ public sealed class ExplorerTree
         try
         {
             entries = [.. new DirectoryInfo(folder).EnumerateFileSystemInfos()
-                .Where(e => e.Name != GitStore && !(e is FileInfo && (FolderWalk.IsMomentary(e.Name) || PathNames.IsSystemFile(e.Name))))
+                .Where(ShownEntry)
                 .Where(e => skip is null || (e.FullName != skip && !(e is DirectoryInfo && e.Name is "bin" or "obj")))
                 .OrderBy(e => e is FileInfo)
                 .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)];
@@ -977,6 +987,24 @@ public sealed class ExplorerTree
             }
         }
         return nodes.Any(n => n.SdkFolder is not null) ? [.. nodes.OrderBy(Listed)] : nodes;
+    }
+
+    /// <summary>Whether a folder's listing shows an entry: all but Git's own folder and what is there for a moment alone.</summary>
+    private static bool ShownEntry(FileSystemInfo entry) =>
+        entry.Name != GitStore && !(entry is FileInfo && (FolderWalk.IsMomentary(entry.Name) || PathNames.IsSystemFile(entry.Name)));
+
+    /// <summary>Whether a folder on disk holds an entry its listing shows, read up to the first (<see cref="ShownEntry"/>); one
+    /// that cannot be read is taken to hold something, its chevron kept.</summary>
+    internal static bool HoldsListed(string folder)
+    {
+        try
+        {
+            return new DirectoryInfo(folder).EnumerateFileSystemInfos().Any(ShownEntry);
+        }
+        catch (Exception error) when (error is UnauthorizedAccessException or IOException)
+        {
+            return true;
+        }
     }
 
     /// <summary>The files nested under each of a folder's files, in the folder's order, grouped once for the folder
@@ -1151,12 +1179,85 @@ public sealed class ExplorerNode : Observable, ITreeRow
     /// solution folder, a file it lists, a project reference, a shared project's import.</summary>
     public bool LeavesFilesBehind => Kind is NodeKind.Project or NodeKind.SolutionFolder or NodeKind.ProjectReference or NodeKind.SharedProject || IsSolutionItem;
 
-    public bool HasChildren => load is not null;
+    /// <summary>Whether a folder holds anything its rows would show, found before its children are read: from its
+    /// project's files where it is an evaluated project's, else from the disk off the window's thread (<see cref="Probe"/>),
+    /// found again as the folder changes; null until found, a chevron shown meanwhile, and for every other row.</summary>
+    public bool? Holds
+    {
+        get => holds;
+        init => holds = value;
+    }
+
+    private bool? holds;
+
+    /// <summary>Whether <see cref="Holds"/> was found on the disk, so a change there finds it again.</summary>
+    private bool probed;
+
+    /// <summary>Whether the row has rows under it to open: those read, else a folder that holds anything shown, or may.</summary>
+    public bool HasChildren => load is not null && (children is { } read ? read.Count > 0 : holds != false);
+
+    /// <summary>Finds off the window's thread whether each folder on disk among the rows holds anything its listing shows,
+    /// one look at the first entry of each, so one holding nothing shows no chevron; those whose children are read, or whose
+    /// project's files said, are passed over.</summary>
+    internal static void Probe(IEnumerable<ExplorerNode> rows)
+    {
+        ExplorerNode[] folders = [.. rows.Where(r => r is { Kind: NodeKind.Folder, Path: not null, children: null, holds: null })];
+        if (folders.Length > 0)
+        {
+            IdeErrors.Observe(ProbeAsync(folders));
+        }
+    }
+
+    /// <summary>A folder on disk that changed found again, its chevron kept as it was until then.</summary>
+    internal void ProbeAgain()
+    {
+        if (Kind == NodeKind.Folder && Path is { } folder && children is null && (holds is null || probed))
+        {
+            IdeErrors.Observe(ProbeAsync([this], folder));
+        }
+    }
+
+    private static async Task ProbeAsync(ExplorerNode[] folders, string? only = null)
+    {
+        string[] paths = [.. folders.Select(f => only ?? f.Path!)];
+        bool[] found = await BackgroundWork.Run(() => paths.Select(ExplorerTree.HoldsListed).ToArray());
+        for (int i = 0; i < folders.Length; i++)
+        {
+            folders[i].probed = true;
+            folders[i].Found(found[i]);
+        }
+    }
+
+    /// <summary>What a look found the folder holds, its chevron following.</summary>
+    private void Found(bool holding)
+    {
+        bool had = HasChildren;
+        holds = holding;
+        if (HasChildren != had)
+        {
+            Raise(nameof(HasChildren));
+        }
+    }
 
     bool ITreeRow.Expands => HasChildren;
 
     public bool IsFile => Kind == NodeKind.File;
-    public List<ExplorerNode>? Children => load is null ? null : children ??= load(this);
+    public List<ExplorerNode>? Children
+    {
+        get
+        {
+            if (load is null)
+            {
+                return null;
+            }
+            if (children is null)
+            {
+                children = load(this);
+                Probe(children);
+            }
+            return children;
+        }
+    }
 
     /// <summary>The children once read, without reading them.</summary>
     internal List<ExplorerNode>? LoadedChildren => children;
@@ -1170,10 +1271,31 @@ public sealed class ExplorerNode : Observable, ITreeRow
             return false;
         }
         Dictionary<string, ExplorerNode> before = children.ToDictionary(Identity);
-        List<ExplorerNode> fresh = [.. load(this).Select(c => before.TryGetValue(Identity(c), out ExplorerNode? kept) && remade?.Invoke(kept) != true ? kept : c)];
+        bool had = HasChildren;
+        List<ExplorerNode> fresh = [.. load(this).Select(c => KeptOrFresh(before.TryGetValue(Identity(c), out ExplorerNode? kept) && remade?.Invoke(kept) != true ? kept : null, c))];
         bool same = fresh.Count == children.Count && fresh.SequenceEqual(children);
         children = fresh;
+        Probe(fresh);
+        if (HasChildren != had)
+        {
+            Raise(nameof(HasChildren));
+        }
         return !same;
+    }
+
+    /// <summary>A row kept as its parent is read again, taking what the fresh one's project files say it holds; else the
+    /// fresh row.</summary>
+    private static ExplorerNode KeptOrFresh(ExplorerNode? kept, ExplorerNode fresh)
+    {
+        if (kept is null)
+        {
+            return fresh;
+        }
+        if (fresh.holds is { } holding)
+        {
+            kept.Found(holding);
+        }
+        return kept;
     }
 
     /// <summary>What makes a row the same row when its parent is read again: its name is part of it, so a linked file

@@ -43,8 +43,8 @@ public sealed class ExplorerFilesTests : IDisposable
     }
 
     /// <summary>The Explorer's New, Rename, Delete, Paste and keys change the disk, the tabs and the tree as one
-    /// command of Undo, a delete the Trash refuses keeping the open file and its edit, as one flow, each step the check
-    /// one test made in an instance of its own.</summary>
+    /// command of Undo, a delete the Trash refuses keeping the open file and its edit, and a folder's chevron follows what
+    /// it holds, as one flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
     public void The_Explorers_new_rename_and_delete_change_the_disk_the_tabs_and_the_tree_as_one_command()
     {
@@ -60,6 +60,7 @@ public sealed class ExplorerFilesTests : IDisposable
         Flow.StepApart<ExplorerFilesTests>("a file or folder pasted where its name is the folder holding it is refused before any question and nothing moves", t => t.A_file_or_folder_pasted_where_its_name_is_the_folder_holding_it_is_refused_before_any_question_and_nothing_moves());
         Flow.StepApart<ExplorerFilesTests>("the explorers rename delete and reveal run from its menu and from each keymaps keys", t => t.The_explorers_rename_delete_and_reveal_run_from_its_menu_and_from_each_keymaps_keys());
         Flow.StepApart<ExplorerFilesTests>("the explorers keys open and close a folder go up from its file and open a file on enter", t => t.The_explorers_keys_open_and_close_a_folder_go_up_from_its_file_and_open_a_file_on_enter());
+        Flow.StepApart<ExplorerFilesTests>("a folder with nothing in it shows no chevron and gets one as a file comes and loses it as the file goes", t => t.A_folder_with_nothing_in_it_shows_no_chevron_and_gets_one_as_a_file_comes_and_loses_it_as_the_file_goes());
         Flow.StepApart<ExplorerFilesTests>("an HTML page opens in the browser from the explorer its editors menu and the keys", t => t.An_HTML_page_opens_in_the_browser_from_the_explorer_its_editors_menu_and_the_keys());
     }
 
@@ -1305,6 +1306,35 @@ public sealed class ExplorerFilesTests : IDisposable
         Assert.True(window.EditorArea.Active?.Path == order.Path, $"Enter on a file in the Explorer did not open it: the status bar says '{window.Status}'");
         window.Close();
     }
+
+    /// <summary>A folder with nothing in it shows no chevron in the Explorer, in a project's folder and outside any, gets one
+    /// as a file comes into it and loses it as the file goes, where every folder showed one that opened to nothing; a folder
+    /// holding a file shows one from the first (#2294).</summary>
+    private void A_folder_with_nothing_in_it_shows_no_chevron_and_gets_one_as_a_file_comes_and_loses_it_as_the_file_goes()
+    {
+        TestFolders.Write(folder, "Views/Main.cs", "class Main { }\n");
+        // In the project's folder, as its evaluation holds it; then in a folder of no project's, as the disk holds it.
+        foreach (bool project in (bool[])[true, false])
+        {
+            if (!project)
+            {
+                File.Delete(Path.Combine(folder, "Shop.csproj"));
+            }
+            MainWindow window = Open();
+            Ui.WaitFor(() => !Row(window, "Models").HasChildren && !Chevron(window, Row(window, "Models")), "the empty Models folder's chevron to go");
+            Assert.True(Row(window, "Views").HasChildren && Chevron(window, Row(window, "Views")), "Views, holding a file, shows no chevron");
+            string order = Path.Combine(folder, "Models", "Order.cs");
+            File.WriteAllText(order, "class Order { }\n");
+            Ui.WaitFor(() => Row(window, "Models").HasChildren && Chevron(window, Row(window, "Models")), "Models' chevron to come once Order.cs came into it");
+            File.Delete(order);
+            Ui.WaitFor(() => !Row(window, "Models").HasChildren && !Chevron(window, Row(window, "Models")), "Models' chevron to go once Order.cs went");
+            window.Close();
+        }
+    }
+
+    /// <summary>Whether a row of the Explorer draws its chevron.</summary>
+    private static bool Chevron(MainWindow window, ExplorerNode row) =>
+        window.ExplorerView.GetVisualDescendants().OfType<ListBoxItem>().FirstOrDefault(i => i.DataContext == row)?.GetVisualDescendants().OfType<RowGlyphs>().FirstOrDefault()?.HasChevron == true;
 
     /// <summary>A folder holding a web project and no solution opens in the File System view, where the project's
     /// Properties and, once MSBuild has evaluated the project as a web one, its wwwroot are listed before its other folders
