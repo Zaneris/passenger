@@ -17,7 +17,7 @@ public sealed class FormDesign : IDisposable
 {
     /// <summary>The namespaces a Windows Forms project's code reads names in when it says none of its own: the SDK's implicit
     /// usings for one.</summary>
-    private static readonly string[] ImplicitUsings =
+    public static readonly IReadOnlyList<string> ImplicitUsings =
         ["System", "System.Collections.Generic", "System.Drawing", "System.IO", "System.Linq", "System.Net.Http", "System.Threading", "System.Threading.Tasks", "System.Windows.Forms"];
 
     private readonly Func<string, TextSnapshot?> texts;

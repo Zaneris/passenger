@@ -47,5 +47,11 @@
     <Compile Include="../Passenger.Core/Deadline.cs" Link="Deadline.cs" />
     <!-- When a wait for the app to set itself up looks again, as every inspector looks. -->
     <Compile Include="../Passenger.Inspector/Looking.cs" Link="Looking.cs" />
+    <!-- Designer code read as the designer reads it and run as the designer runs it, so a form's designer edit reaches the app
+         as it reaches the design (Hot Reload). -->
+    <Compile Include="../Passenger.Core/FormDesign.cs" Link="FormDesign.cs" />
+    <Compile Include="../Passenger.WinFormsDesigner/Types.cs" Link="Types.cs" />
+    <Compile Include="../Passenger.WinFormsDesigner/Values.cs" Link="Values.cs" />
+    <Compile Include="../Passenger.WinFormsDesigner/Statements.cs" Link="Statements.cs" />
   </ItemGroup>
 </Project>

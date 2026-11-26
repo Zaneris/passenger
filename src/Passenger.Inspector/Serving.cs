@@ -135,6 +135,7 @@ internal abstract class Inspecting<T>(Connection connection) where T : class
                 Wire.Placed => new Reply { Id = request.Id, Placed = PlacedIn(request.Xaml?.File ?? throw new Refusal("No XAML file was named")) },
                 Wire.Overlays => new Reply { Id = request.Id, Windows = SetOverlays(request) },
                 Wire.Reload => new Reply { Id = request.Id, Reloaded = Reload(request.Change ?? throw new Refusal("No XAML file was given")) },
+                Wire.Designed => new Reply { Id = request.Id, Reloaded = Designed(request.Designed ?? throw new Refusal("No designer code was given")) },
                 _ => new Reply { Id = request.Id, Error = $"The inspector does not know '{request.Method}'" },
             };
         }
@@ -200,6 +201,9 @@ internal abstract class Inspecting<T>(Connection connection) where T : class
 
     /// <summary>A XAML file's text applied to what the app made from it, or why it could not be.</summary>
     protected abstract XamlReloaded Reload(XamlChange change);
+
+    /// <summary>A Windows Forms form's designer code run in its open forms; refused by a framework of no such code.</summary>
+    protected virtual XamlReloaded Designed(DesignedChange change) => throw new Refusal("This app's inspector runs no Windows Forms designer code");
 
     /// <summary>Whether an element is one the tree leaves out (the inspector's own), whose coming is no change in the app.</summary>
     protected abstract bool LeftOut(T element);

@@ -22,7 +22,21 @@ public sealed class WinFormsDesignerCodeTests
             ("a deleted control takes its lines, its section's comment and its field with it, a statement first in a section goes under that section's comment, and a class declaring no component's field takes the first past its #endregion",
                 Deleted),
             ("a renamed component's Name and section comment take its new name, and an event's handler is declared at its class's end after a blank line, once",
-                Named));
+                Named),
+            ("an edit gives a running form the statements it writes otherwise, each at its line, and the components it no longer makes", Changed));
+    }
+
+    private static void Changed()
+    {
+        string edited = Form.Replace("ok.Location = new Point(12, 12);", "ok.Location = new Point(20, 12);").Replace("            Side = new Panel();\n", string.Empty)
+            .Replace("            Side.Location = new Point(12, 48);\n            Side.Name = \"Side\";\n", string.Empty).Replace("            Controls.Add(Side);\n", string.Empty);
+        DesignerEdit edit = Assert.Single(DesignerCode.Changed(Form, edited));
+        Assert.Equal("Shop.MainForm", edit.Class);
+        DesignerStatement moved = Assert.Single(edit.Statements);
+        Assert.Equal(("ok", "Location"), (moved.Target, moved.Member));
+        Assert.Equal(Array.FindIndex(edited.Split('\n'), l => l.Contains("new Point(20, 12)", StringComparison.Ordinal)) + 1, Assert.Single(edit.Lines));
+        Assert.Equal(["Side"], edit.Gone);
+        Assert.Empty(DesignerCode.Changed(Form, Form));
     }
 
     private static void Named()

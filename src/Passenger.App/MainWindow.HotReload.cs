@@ -66,10 +66,10 @@ public partial class MainWindow
         Editors.Opened += (_, document) => document.Saved += (_, _) => UnfollowWatch();
         // A GDScript file saved reaches the Godot game that runs it with Hot Reload.
         Editors.Opened += (_, document) => document.Saved += (_, _) => IdeErrors.Observe(buildRun.ReloadScriptAsync(document.Path));
-        // A XAML file's edits are followed for each app run or debugged, and reach Run's on its save as Settings say.
+        // A XAML file's edits, and a Windows Forms form's designer code's, are followed for each app run or debugged, and reach Run's on its save as Settings say.
         Editors.Opened += (_, document) =>
         {
-            if (!Xaml.XamlService.IsXaml(document.Path))
+            if (!Passenger.App.LiveTree.XamlHotReload.Reaches(document.Path))
             {
                 return;
             }
@@ -94,7 +94,7 @@ public partial class MainWindow
     private async Task XamlWrittenAsync(IEnumerable<string> paths)
     {
         ProjectSession current = session;
-        List<string> closed = [.. paths.Where(p => Xaml.XamlService.IsXaml(p) && Editors.Find(p) is null).Distinct(PathNames.Comparer)];
+        List<string> closed = [.. paths.Where(p => Passenger.App.LiveTree.XamlHotReload.Reaches(p) && Editors.Find(p) is null).Distinct(PathNames.Comparer)];
         if (closed.Count == 0 || !current.Inspecting.Any(a => a.App.Xaml is not null))
         {
             return;

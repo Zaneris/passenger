@@ -10,6 +10,11 @@ namespace Passenger.Languages.WinForms;
 /// <summary>A Windows Forms class's designer code as read from one file: its namespace, the namespaces its usings bring, its
 /// fields with their types as written, where its InitializeComponent is named, and that method's statements in order;
 /// with where each statement and each field's declaration lies (<see cref="DesignerLayout"/>), which a change is written by.</summary>
+/// <summary>What an edit of a class's designer code changed: the class, the code after it, the statements it writes otherwise
+/// than before (new, or written anew) in order, each one's line in the text after it, from one, and the components it no
+/// longer makes.</summary>
+public sealed record DesignerEdit(string Class, DesignerSource Source, IReadOnlyList<DesignerStatement> Statements, IReadOnlyList<int> Lines, IReadOnlyList<string> Gone);
+
 public sealed record DesignerSource(string? Namespace, IReadOnlyList<string> Usings, IReadOnlyList<DesignerField> Fields, int Method,
     IReadOnlyList<DesignerStatement> Statements)
 {
@@ -77,6 +82,31 @@ public static class DesignerCode
     {
         List<string> comments = [.. statement.GetLeadingTrivia().Where(t => t.IsKind(SyntaxKind.SingleLineCommentTrivia)).Select(t => t.ToString()[2..].Trim())];
         return comments is [.., "", { Length: > 0 } name, ""] ? name : null;
+    }
+
+    /// <summary>What an edit of a designer file changed, class by class (<see cref="DesignerEdit"/>), from its text before to
+    /// its text after; a class whose code it left as it was has none.</summary>
+    public static IReadOnlyList<DesignerEdit> Changed(string before, string after)
+    {
+        List<DesignerEdit> edits = [];
+        foreach (string designed in Designed(after))
+        {
+            if (Read(after, designed) is not { } now)
+            {
+                continue;
+            }
+            DesignerSource? was = Read(before, designed);
+            HashSet<string> written = was is null ? [] : [.. was.Layout.Statements.Select(s => before[s.Start..s.End])];
+            List<int> changed = [.. Enumerable.Range(0, now.Statements.Count).Where(i => !written.Contains(after[now.Layout.Statements[i].Start..now.Layout.Statements[i].End]))];
+            HashSet<string> making = [.. now.Statements.Where(s => s.Act == DesignerAct.Create).Select(s => s.Target)];
+            List<string> gone = was is null ? [] : [.. was.Statements.Where(s => s.Act == DesignerAct.Create && !making.Contains(s.Target)).Select(s => s.Target).Distinct()];
+            if (changed.Count > 0 || gone.Count > 0)
+            {
+                edits.Add(new DesignerEdit(designed, now, [.. changed.Select(i => now.Statements[i])],
+                    [.. changed.Select(i => after.AsSpan(0, now.Statements[i].At).Count('\n') + 1)], gone));
+            }
+        }
+        return edits;
     }
 
     /// <summary>The classes a file's text gives an InitializeComponent of no parameters, by their full names.</summary>

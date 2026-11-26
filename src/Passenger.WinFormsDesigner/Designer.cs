@@ -67,12 +67,14 @@ internal sealed class Designer(Assembly? project) : IDisposable
         }
         root.Site!.Name = name;
         Dictionary<string, object> made = new(StringComparer.Ordinal);
-        Values values = new(types, field => field == "this" ? root : made.GetValueOrDefault(field) ?? (field == "components" ? host.Container : null));
+        Func<string, object?> named = field => field == "this" ? root : made.GetValueOrDefault(field) ?? (field == "components" ? host.Container : null);
+        Values values = new(types, named);
+        Statements statements = new(root, made, values, named, new Surface(host, values, events, resources));
         for (int i = 0; i < request.Statements.Count; i++)
         {
             try
             {
-                Run(request.Statements[i], host, root, made, values, events, resources);
+                statements.Run(request.Statements[i]);
             }
             catch (Exception failed) when (failed is DesignerException or TargetInvocationException or ArgumentException or InvalidOperationException
                 or NotSupportedException or MissingMethodException or FormatException or InvalidCastException or OverflowException or NullReferenceException)
@@ -208,88 +210,28 @@ internal sealed class Designer(Assembly? project) : IDisposable
         }
     }
 
-    /// <summary>One statement run against what the surface holds.</summary>
-    private static void Run(DesignerStatement statement, IDesignerHost host, Control root, Dictionary<string, object> made, Values values, Events events, FormResources resources)
+    /// <summary>The design surface as designer code runs there: a component made in the surface's container under its
+    /// field's name, a handler's name kept by the binding service (a handler runs in the app, never on the surface), the
+    /// resource manager the one over the form's .resx as it stands.</summary>
+    private sealed class Surface(IDesignerHost host, Values values, Events events, FormResources resources) : IStatementPlace
     {
-        switch (statement.Act)
+        public object Made(Type type, string field, DesignerValue made)
         {
-            case DesignerAct.Other when statement.Target.Length > 0 && statement.Value is { Kind: DesignerValueKinds.New, Type: { } manager }
-                && typeof(System.Resources.ResourceManager).IsAssignableFrom(values.Type(manager)):
-                // The form's resource manager reads the .resx as it stands, where the build's reads it as it was built.
-                made[statement.Target] = resources.Manager();
-                return;
-            case DesignerAct.Create when statement.Target == "components":
-                // The surface's own container stands for the class's.
-                return;
-            case DesignerAct.Create when statement.Value is { Kind: DesignerValueKinds.New, Type: { } written } created:
-                Type type = values.Type(written);
-                made[statement.Target] = created.Arguments is null or { Count: 0 } or [{ Kind: DesignerValueKinds.Name, Name: "components" }]
-                    && typeof(IComponent).IsAssignableFrom(type)
-                    ? host.CreateComponent(type, statement.Target)
-                    : Sited(values.Of(created) ?? throw new DesignerException($"{statement.Target} was made null"), host, statement.Target);
-                return;
-            case DesignerAct.Assign:
-                (object at, string last) = Reached(statement, root, made);
-                if (TypeDescriptor.GetProperties(at)[last] is { } property)
-                {
-                    property.SetValue(at, values.Of(statement.Value!, property.PropertyType));
-                    return;
-                }
-                PropertyInfo clr = at.GetType().GetProperty(last, BindingFlags.Public | BindingFlags.Instance) ?? throw new DesignerException($"{at.GetType().Name} has no {last}");
-                clr.SetValue(at, values.Of(statement.Value!, clr.PropertyType));
-                return;
-            case DesignerAct.Call:
-                (object on, string method) = Reached(statement, root, made);
-                values.Call(on, method, statement.Arguments ?? []);
-                return;
-            case DesignerAct.Hook:
-                // A handler runs in the app, never on the surface: the binding service keeps its name, which the code is written with.
-                (object hooked, string name) = Walked(Owner(statement, root, made), statement.Member!);
-                EventDescriptor raised = TypeDescriptor.GetEvents(hooked)[name] ?? throw new DesignerException($"{hooked.GetType().Name} has no event {name}");
-                string handler = statement.Value switch
-                {
-                    { Kind: DesignerValueKinds.Name, Name: { } group } => group[(group.LastIndexOf('.') + 1)..],
-                    { Kind: DesignerValueKinds.New, Arguments: [{ Kind: DesignerValueKinds.Name, Name: { } group }] } => group[(group.LastIndexOf('.') + 1)..],
-                    _ => throw new DesignerException($"The designer hooks only a method of the class to {name}"),
-                };
-                ((IEventBindingService)events).GetEventProperty(raised).SetValue(hooked, handler);
-                return;
-            default:
-                throw new DesignerException("The designer does not read this statement");
+            if (made.Arguments is null or { Count: 0 } or [{ Kind: DesignerValueKinds.Name, Name: "components" }] && typeof(IComponent).IsAssignableFrom(type))
+            {
+                return host.CreateComponent(type, field);
+            }
+            object component = values.Of(made) ?? throw new DesignerException($"{field} was made null");
+            if (component is IComponent sited)
+            {
+                host.Container.Add(sited, field);
+            }
+            return component;
         }
-    }
 
-    /// <summary>A component made with arguments, put in the surface's container under its field's name.</summary>
-    private static object Sited(object made, IDesignerHost host, string field)
-    {
-        if (made is IComponent component)
-        {
-            host.Container.Add(component, field);
-        }
-        return made;
-    }
+        public void Hook(object on, EventDescriptor raised, string handler) => ((IEventBindingService)events).GetEventProperty(raised).SetValue(on, handler);
 
-    private static object Owner(DesignerStatement statement, Control root, Dictionary<string, object> made) =>
-        statement.Target.Length == 0 ? root : made.GetValueOrDefault(statement.Target) ?? throw new DesignerException($"{statement.Target} is used before it is made");
-
-    /// <summary>What a statement acts on and the member it names there: a component's, or the root's, or, for a path that
-    /// starts at a local the code made (its resource manager), that local's.</summary>
-    private static (object At, string Last) Reached(DesignerStatement statement, Control root, Dictionary<string, object> made) =>
-        statement.Target.Length == 0 && statement.Member!.IndexOf('.') is var dot and > 0 && made.TryGetValue(statement.Member[..dot], out object? local)
-            ? Walked(local, statement.Member[(dot + 1)..])
-            : Walked(Owner(statement, root, made), statement.Member!);
-
-    /// <summary>An object's properties read along a dotted path but its last name, and that name.</summary>
-    private static (object At, string Last) Walked(object owner, string path)
-    {
-        string[] names = path.Split('.');
-        object at = owner;
-        foreach (string name in names[..^1])
-        {
-            at = (TypeDescriptor.GetProperties(at)[name] is { } property ? property.GetValue(at) : at.GetType().GetProperty(name)?.GetValue(at))
-                ?? throw new DesignerException($"{name} of {at.GetType().Name} is null");
-        }
-        return (at, names[^1]);
+        public object Resources() => resources.Manager();
     }
 
     /// <summary>The surface's view in a window of its own that is never shown, off every screen, every control's window made

@@ -575,6 +575,10 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     public async Task<XamlReloaded> ReloadAsync(XamlChange change) =>
         (await AskAsync(new Request(0, Wire.Reload) { Change = change }, limit: ReloadLimit)).Reloaded ?? throw new LiveAppException($"{Name} did not say what the XAML came to");
 
+    /// <summary>A Windows Forms form's designer code run in the forms of its class the app has open (its Hot Reload).</summary>
+    public async Task<XamlReloaded> DesignedAsync(DesignedChange change) =>
+        (await AskAsync(new Request(0, Wire.Designed) { Designed = change }, limit: ReloadLimit)).Reloaded ?? throw new LiveAppException($"{Name} did not say what the designer code came to");
+
     /// <summary>How long the app may take to apply a XAML file: its first compiles Avalonia's XAML compiler itself, slower
     /// again under the debugger.</summary>
     public static TimeSpan ReloadLimit => Waits.Of(TimeSpan.FromSeconds(30));

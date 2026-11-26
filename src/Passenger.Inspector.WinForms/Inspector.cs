@@ -157,6 +157,8 @@ internal sealed class Inspector : Inspecting<Component>
 
     protected override XamlReloaded Reload(XamlChange change) => new([], "A Windows Forms app has no XAML to reload", []);
 
+    protected override XamlReloaded Designed(DesignedChange change) => WinForms.Designed.Apply(change);
+
     protected override void Later(TimeSpan delay, Action action)
     {
         System.Windows.Forms.Timer timer = new() { Interval = Math.Max(1, (int)delay.TotalMilliseconds) };

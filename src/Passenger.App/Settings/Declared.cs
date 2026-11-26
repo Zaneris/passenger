@@ -558,8 +558,8 @@ public static class Declared
         new(D.HotReloadPage, "Apply changes when a file is saved", "hot reload save apply changes debug edit and continue"));
 
     public static readonly ToggleSetting XamlHotReloadOnSave = new(s => s.XamlHotReloadOnSave, (s, v) => s with { XamlHotReloadOnSave = v },
-        new(D.HotReloadPage, "Apply XAML changes to the running app when a XAML file is saved",
-            "hot reload xaml axaml save apply changes running app avalonia wpf run debug"));
+        new(D.HotReloadPage, "Apply XAML and form design changes to the running app when their file is saved",
+            "hot reload xaml axaml save apply changes running app avalonia wpf windows forms winforms designer design run debug"));
 
     public static readonly ToggleSetting RestartOnRudeEdit = new(s => s.RestartOnRudeEdit, (s, v) => s with { RestartOnRudeEdit = v },
         new(D.HotReloadPage, "Always restart for a change it cannot apply", "hot reload rude edit restart ask always never dotnet watch"));

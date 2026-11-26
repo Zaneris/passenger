@@ -399,6 +399,9 @@ public static class FormDesignWire
 {
     public static JsonTypeInfo<FormDesignReply> Reply { get; } = PeerJson.Of<FormDesignReply>();
 
+    /// <summary>Statements of designer code as Hot Reload hands them to a running app's inspector.</summary>
+    public static JsonTypeInfo<List<DesignerStatement>> Statements { get; } = PeerJson.Of<List<DesignerStatement>>();
+
     /// <summary>An answer written as its line, whole, whichever thread answers.</summary>
     public static void Answer(TextWriter protocol, FormDesignReply reply)
     {

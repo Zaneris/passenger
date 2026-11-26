@@ -477,6 +477,8 @@ public partial class MainWindow
             Refuse(why);
             return done;
         }
+        // The designer code as it landed reaches the apps running the form, as any written file of theirs does.
+        IdeErrors.Observe(XamlWrittenAsync([shown.Design.Files.Designer]));
         if (done.Chosen is { } chosen)
         {
             shown.Pane.Choose(chosen);

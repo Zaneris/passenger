@@ -360,7 +360,7 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
     }
 
     /// <summary>A property's row given the keys, its value typed and Enter pressed to write it; what the status bar says then.</summary>
-    private static string? Type(MainWindow window, FormProperties properties, string property, string text)
+    internal static string? Type(MainWindow window, FormProperties properties, string property, string text)
     {
         properties.Choose(property);
         ListBox rows = properties.GetVisualDescendants().OfType<ListBox>().First();
@@ -608,7 +608,7 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         group.TabStrip.GetLogicalDescendants().OfType<ToggleButton>().Single(b => ActionTips.ActionOf(b) == action);
 
     /// <summary>The design shown beside or in place of the active file, once the designer has drawn it.</summary>
-    private static FormDesignPane Drawn(MainWindow window)
+    internal static FormDesignPane Drawn(MainWindow window)
     {
         FormDesignPane pane = Assert.IsType<FormDesignPane>(window.EditorArea.ActiveGroup.Side);
         Ui.WaitFor(() => pane.Design.Frame is not null, () => $"the designer to draw the form, not \"{pane.Design.Status}\" ({string.Join(" | ", pane.Design.Notes)})", TimeSpan.FromMinutes(2));
@@ -616,7 +616,7 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         return pane;
     }
 
-    private static DesignedBox Component(FormDesignPane pane, string field) =>
+    internal static DesignedBox Component(FormDesignPane pane, string field) =>
         pane.Design.Components.FirstOrDefault(c => c.Field == field) ?? throw new Xunit.Sdk.XunitException($"The design has no {field}: {string.Join(", ", pane.Design.Components.Select(c => c.Field))}");
 
     /// <summary>FormsTreeApp, written into the class's folder and restored where Windows Forms draws it.</summary>

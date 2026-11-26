@@ -2435,7 +2435,7 @@ public sealed partial class DebugController : IDisposable
     private void OnSaved(object? sender, EventArgs e)
     {
         // A program run with Hot Reload takes a save's edits, whatever else is debugged.
-        bool xamlSaved = sender is OpenDocument saved && Xaml.XamlService.IsXaml(saved.Path) && XamlOnSave();
+        bool xamlSaved = sender is OpenDocument saved && LiveTree.XamlHotReload.Reaches(saved.Path) && XamlOnSave();
         bool run = running.Any(r => r.Reload.Changed || (xamlSaved && r.App?.Xaml is { Changed: true }));
         bool debugged = HotReload is { Changed: true } && HotReloadOnSave() && WhyNotApply() is null;
         bool xaml = xamlSaved && view.Sessions.Any(t => t.IsLive && t.App?.Xaml is { Changed: true });

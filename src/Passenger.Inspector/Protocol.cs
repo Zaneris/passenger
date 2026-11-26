@@ -75,6 +75,7 @@ public static class Wire
     public const string Values = "values";
     public const string Overlays = "overlays";
     public const string Reload = "reload";
+    public const string Designed = "designed";
     public const string Made = "made";
     public const string Placed = "placed";
 
@@ -148,7 +149,16 @@ public sealed record Request(int Id, string Method, long? Element = null, bool? 
 
     /// <summary>With Reload: the XAML file's text to apply to what the app made from it.</summary>
     public XamlChange? Change { get; init; }
+
+    /// <summary>With Designed: a Windows Forms form's designer code to run in the forms of its class the app has open.</summary>
+    public DesignedChange? Designed { get; init; }
 }
+
+/// <summary>A Windows Forms form's designer code as Hot Reload gives it to the app (its edit of InitializeComponent): its
+/// file, its class's full name, the usings its names are read in, the statements the edit changed (Passenger's
+/// DesignerStatement list as JSON, as its designer's peers write it), each one's line in the file, from one, and the
+/// components the code no longer makes.</summary>
+public sealed record DesignedChange(string File, string Class, IReadOnlyList<string> Usings, string Statements, IReadOnlyList<int> Lines, IReadOnlyList<string> Gone);
 
 /// <summary>A XAML file's text to apply to what the app made from it (XAML Hot Reload): the file's path as the disk names
 /// it, its text now and as the app has it (the build's, or the text last applied), the assembly its build compiled it

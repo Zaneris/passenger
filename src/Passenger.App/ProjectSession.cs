@@ -1192,7 +1192,7 @@ public sealed class ProjectSession : IAsyncDisposable
             app.Xaml = xaml;
             if (Index.Root is { } root)
             {
-                IdeErrors.Observe(xaml.KeepBuiltAsync([.. Index.Files.Where(Passenger.App.Xaml.XamlService.IsXaml).Select(f => Path.Combine(root, f))]));
+                IdeErrors.Observe(xaml.KeepBuiltAsync([.. Index.Files.Where(LiveTree.XamlHotReload.Reaches).Select(f => Path.Combine(root, f))]));
             }
         }
         return app;

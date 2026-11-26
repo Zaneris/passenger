@@ -8,6 +8,7 @@ using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.LiveTree;
 using Passenger.App.ToolWindows;
+using Passenger.App.WinForms;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Inspector;
@@ -79,6 +80,7 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
         Flow.StepApart("XAML Binding Errors stops a debugged WPF app where its binding fails", () => new WpfLiveTreeTests(folders), t => t.Xaml_binding_errors_stops_a_debugged_wpf_app_where_its_binding_fails());
         Flow.StepApart("Select Element chooses the element clicked in a WPF app", () => new WpfLiveTreeTests(folders), t => t.Select_element_chooses_the_element_clicked_in_a_wpf_app());
         Flow.StepApart("a debugged Windows Forms app shows its controls, where each value comes from in its designer code, and Select Element chooses the one clicked", () => new WpfLiveTreeTests(folders), t => t.A_debugged_windows_forms_app_shows_its_controls_where_each_value_comes_from_in_its_designer_code_and_select_element_chooses_the_one_clicked());
+        Flow.StepApart("a debugged Windows Forms app takes an edit of its form's design without being started again", () => new WpfLiveTreeTests(folders), t => t.A_debugged_windows_forms_app_takes_an_edit_of_its_forms_design_without_being_started_again());
     }
 
     private void A_debugged_wpf_app_shows_its_elements_where_each_value_comes_from_and_goes_to_their_xaml()
@@ -256,14 +258,7 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
     private void A_debugged_windows_forms_app_shows_its_controls_where_each_value_comes_from_in_its_designer_code_and_select_element_chooses_the_one_clicked()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
-        string forms = PathNames.Canonical(folders.Take("formstree-", made =>
-        {
-            foreach (string file in Directory.GetFiles(Debuggees.Source("FormsTreeApp")))
-            {
-                File.Copy(file, Path.Combine(made, Path.GetFileName(file)));
-            }
-            return WpfApp.Project(made, "FormsTreeApp", forms: true);
-        }));
+        string forms = FormsFolder();
         string designer = Path.Combine(forms, "MainForm.Designer.cs");
         MainWindow window = Ui.OpenFolder(forms, 1400, 900);
         Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
@@ -303,6 +298,45 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
         Stop(window);
         window.Close();
     }
+
+    /// <summary>Under Debug, Count's text typed in the form's design (MainForm.cs) is written to its designer code and taken by
+    /// the running form through its inspector, said as Hot Reload's design changes.</summary>
+    private void A_debugged_windows_forms_app_takes_an_edit_of_its_forms_design_without_being_started_again()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string forms = FormsFolder();
+        MainWindow window = Ui.OpenFolder(forms, 1400, 900);
+        Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
+        Ui.WaitFor(() => window.LiveTree.Rows.Any(r => r.Element.Name == "Count"), () => $"the Live Visual Tree to show the app's form: {Said(window)}", TimeSpan.FromMinutes(2));
+        window.OpenFile(Path.Combine(forms, "MainForm.cs"));
+        FormDesignPane pane = WinFormsDesignerTests.Drawn(window);
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        DesignedBox count = WinFormsDesignerTests.Component(pane, "Count");
+        Ui.Click(pane.Frame, new Point(count.X + (count.Width / 2), count.Y + (count.Height / 2)));
+        Ui.WaitFor(() => pane.Chosen?.Field == "Count" && window.FormProperties?.Rows.Any(r => r.Name == "Text") == true, "Count's properties to be listed");
+        HotReloadOutcome? before = window.Debugger.LastApplied;
+        string? said = WinFormsDesignerTests.Type(window, window.FormProperties!, "Text", "Counted");
+        string designer = Path.Combine(forms, "MainForm.Designer.cs");
+        Ui.WaitFor(() => window.Debugger.LastApplied is { } now && now != before && now.Said.Contains("Design changes", StringComparison.Ordinal),
+            () => $"Hot Reload to say what the design's edit came to in the app, not {window.Debugger.LastApplied?.Result} \"{window.Debugger.LastApplied?.Said}\" "
+                + $"(the edit said \"{said}\", its designer code {(File.ReadAllText(designer).Contains("\"Counted\"", StringComparison.Ordinal) ? "written" : "not written")}, "
+                + $"the app's edits {(window.LiveApp?.Xaml is { } xaml ? (xaml.Has(designer) ? "waiting" : "none") : "unfollowed")}; {window.Status})");
+        Assert.Contains("Design changes applied: MainForm.Designer.cs (MainForm)", window.Debugger.LastApplied!.Said, StringComparison.Ordinal);
+        Choose(window, "Counter");
+        Assert.Equal("\"Counted\"", Choose(window, "Count").Properties.Single(p => p.Name == "Text").Value);
+        Stop(window);
+        window.Close();
+    }
+
+    /// <summary>FormsTreeApp's project, written once for every step that runs it.</summary>
+    private string FormsFolder() => PathNames.Canonical(folders.Take("formstree-", made =>
+    {
+        foreach (string file in Directory.GetFiles(Debuggees.Source("FormsTreeApp")))
+        {
+            File.Copy(file, Path.Combine(made, Path.GetFileName(file)));
+        }
+        return WpfApp.Project(made, "FormsTreeApp", forms: true);
+    }));
 
     /// <summary>Whether a row of the tree is the element of a name or inside it, by the rows above it a level up each.</summary>
     private static bool Under(LiveTreeView tree, long id, string name)
