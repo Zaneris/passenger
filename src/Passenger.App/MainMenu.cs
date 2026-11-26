@@ -44,6 +44,7 @@ public static class MainMenu
     [
         new("View/" + ToolWindows, 0, 0),
         new("View/Active Editor", 3, 0),
+        new("View/Appearance", 5, 0),
         new("File/" + RecentSolutions, 0, 3),
         new("File/Line Separators", 2, 1),
         new("File/Local History", 2, 3),

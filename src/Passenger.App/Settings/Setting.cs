@@ -171,6 +171,18 @@ public sealed class SizeSetting(Func<AppSettings, double> get, Func<AppSettings,
     public override AppSettings Clamp(AppSettings settings) => set(settings, Math.Clamp(get(settings), sizes[0], sizes[^1]));
 
     public override AppSettings Other(AppSettings settings) => set(settings, get(settings) == sizes[0] ? sizes[^1] : sizes[0]);
+
+    /// <summary>The settings at the next size of the list above the one set (<paramref name="up"/>), or below it, a size off
+    /// the list stepping to the nearest on that side; null where none is.</summary>
+    public AppSettings? Stepped(AppSettings settings, bool up)
+    {
+        double now = get(settings);
+        double[] beyond = [.. sizes.Where(size => up ? size > now : size < now)];
+        return beyond.Length == 0 ? null : set(settings, up ? beyond.Min() : beyond.Max());
+    }
+
+    /// <summary>The settings at the size set by nobody.</summary>
+    public AppSettings Unset(AppSettings settings) => set(settings, get(new AppSettings()));
 }
 
 /// <summary>One of an enum's values, edited by a drop-down of the names Settings gives them, in <paramref name="choices"/>'

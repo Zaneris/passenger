@@ -624,6 +624,29 @@ public static class AppActions
     // The tool windows' frame, and a tree's Expand All and Collapse All in its header: no keys of Rider's there.
     public const string MaximizeToolWindow = "app.window.maximize";
     public const string HideAllToolWindows = "app.window.hideAll";
+
+    // Rider's HideSideWindows, the left and right tool windows hidden and brought back: Ctrl+B (Cmd+B on the Mac) in its VS
+    // Code keymaps alone. Its JumpToLastWindow, the tool window that last had the keys given them again: Ctrl+Alt+Backspace
+    // and Alt+Shift+F6 in its Visual Studio keymap, Alt+Shift+F6 in its macOS one, F12 in IntelliJ IDEA's, none in VS
+    // Code's. Its CloseActiveTab, the open tab of the tool window with the keys closed: Ctrl+Shift+F4 in every keymap but VS
+    // Code's macOS one.
+    public const string HideSideWindows = "app.window.hideSides";
+    public const string LastToolWindow = "app.window.last";
+    public const string CloseToolTab = "app.window.closeTab";
+
+    // Rider's ZoomInIdeAction, ZoomOutIdeAction and ResetIdeScaleAction, the whole window's scale stepped through Settings'
+    // Display scale: Alt+Shift+=, - and 0 in IntelliJ IDEA's and VS Code's keymaps, Ctrl+Alt on the Mac; its Visual
+    // Studio keymap gives Reset alone its keys, as Alt+Shift+= and - are Extend and Shrink Selection's there. Its
+    // ToggleFullScreen: Alt+Shift+Enter in its Visual Studio keymaps, Ctrl+Cmd+F in its other Mac ones.
+    public const string ZoomIn = "app.window.zoomIn";
+    public const string ZoomOut = "app.window.zoomOut";
+    public const string ResetZoom = "app.window.resetZoom";
+    public const string FullScreen = "app.window.fullScreen";
+
+    // Rider's NextSplitter and PrevSplitter, the keys to the next and previous split of the window's editors: Alt+Tab and
+    // Alt+Shift+Tab in its Mac keymaps, Ctrl+K and Ctrl+Right or Left in its VS Code keymap, none in its other ones.
+    public const string NextSplit = "app.editor.nextSplit";
+    public const string PreviousSplit = "app.editor.previousSplit";
     public const string ExpandAll = "app.window.expandAll";
     public const string CollapseAll = "app.window.collapseAll";
 
@@ -916,6 +939,14 @@ public static class AppActions
                 .Bind(ShowTests, "meta 8", "meta shift 8")
                 .Bind(ShowStructure, "control alt F")
                 .Bind(MaximizeToolWindow, "meta shift QUOTE")
+                .Bind(ZoomIn, "control alt EQUALS")
+                .Bind(ZoomOut, "control alt MINUS")
+                .Bind(ResetZoom, "control alt 0")
+                .Bind(FullScreen, "alt shift ENTER")
+                .Bind(NextSplit, "alt TAB")
+                .Bind(PreviousSplit, "alt shift TAB")
+                .Bind(LastToolWindow, "alt shift F6")
+                .Bind(CloseToolTab, "control shift F4")
                 .Bind(HideAllToolWindows, "meta shift F12")
                 .Bind(HideToolWindow, "shift ESCAPE")
                 .Bind(Commit, "meta alt shift K")
@@ -1060,6 +1091,10 @@ public static class AppActions
             .Bind(ShowTests, "alt 8", "alt shift 8")
             .Bind(ShowStructure, "control alt F")
             .Bind(MaximizeToolWindow, "control shift QUOTE")
+            .Bind(ResetZoom, "alt shift 0")
+            .Bind(FullScreen, "alt shift ENTER")
+            .Bind(LastToolWindow, "control alt BACK_SPACE", "alt shift F6")
+            .Bind(CloseToolTab, "control shift F4")
             .Bind(HideAllToolWindows, "control shift F12")
             .Bind(HideToolWindow, "shift ESCAPE")
             .Bind(Commit, "control alt K")
@@ -1239,6 +1274,13 @@ public static class AppActions
                 .Bind(CloseSolution, "meta K , F", "meta shift W")
                 .Bind(ShowTerminal, "control BACK_QUOTE")
                 .Bind(MaximizeToolWindow, "meta shift QUOTE")
+                .Bind(ZoomIn, "control alt EQUALS")
+                .Bind(ZoomOut, "control alt MINUS")
+                .Bind(ResetZoom, "control alt 0")
+                .Bind(FullScreen, "control meta F")
+                .Bind(NextSplit, "alt TAB")
+                .Bind(PreviousSplit, "alt shift TAB")
+                .Bind(HideSideWindows, "meta B")
                 .Bind(ViewBreakpoints, "meta shift F8")
                 .Bind(ShowCommit, "meta 0")
                 .Bind(NextChange, "alt F3", "alt F5")
@@ -1360,6 +1402,13 @@ public static class AppActions
             .Bind(CloseSolution, "control K , F", "control shift W")
             .Bind(ShowTerminal, "control BACK_QUOTE")
             .Bind(MaximizeToolWindow, "control shift QUOTE")
+            .Bind(ZoomIn, "alt shift EQUALS")
+            .Bind(ZoomOut, "alt shift MINUS")
+            .Bind(ResetZoom, "alt shift 0")
+            .Bind(NextSplit, "control K , control RIGHT")
+            .Bind(PreviousSplit, "control K , control LEFT")
+            .Bind(HideSideWindows, "control B")
+            .Bind(CloseToolTab, "control shift F4")
             .Bind(ViewBreakpoints, "control shift F8")
             .Bind(ShowCommit, "alt 0")
             .Bind(Branches, "control shift BACK_QUOTE")
@@ -1430,6 +1479,14 @@ public static class AppActions
                 .Bind(HideToolWindow, "shift ESCAPE")
                 .Bind(HideAllToolWindows, "meta shift F12")
                 .Bind(MaximizeToolWindow, "meta shift QUOTE")
+                .Bind(ZoomIn, "control alt EQUALS")
+                .Bind(ZoomOut, "control alt MINUS")
+                .Bind(ResetZoom, "control alt 0")
+                .Bind(FullScreen, "control meta F")
+                .Bind(NextSplit, "alt TAB")
+                .Bind(PreviousSplit, "alt shift TAB")
+                .Bind(LastToolWindow, "F12")
+                .Bind(CloseToolTab, "control shift F4")
                 .Bind(Back, "meta OPEN_BRACKET", "meta alt LEFT", "button4")
                 .Bind(Forward, "meta CLOSE_BRACKET", "meta alt RIGHT", "button5")
                 .Bind(Complete, "control SPACE")
@@ -1554,6 +1611,11 @@ public static class AppActions
             .Bind(HideToolWindow, "shift ESCAPE")
             .Bind(HideAllToolWindows, "control shift F12")
             .Bind(MaximizeToolWindow, "control shift QUOTE")
+            .Bind(ZoomIn, "alt shift EQUALS")
+            .Bind(ZoomOut, "alt shift MINUS")
+            .Bind(ResetZoom, "alt shift 0")
+            .Bind(LastToolWindow, "F12")
+            .Bind(CloseToolTab, "control shift F4")
             .Bind(Back, "control alt LEFT", "button4")
             .Bind(Forward, "control alt RIGHT", "button5")
             .Bind(Complete, "control SPACE")

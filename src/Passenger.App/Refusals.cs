@@ -15,6 +15,18 @@ public static class Refusals
     /// <summary>No tool window is open, for an action on the one open last.</summary>
     public const string NoToolWindowOpen = "No tool window is open";
 
+    /// <summary>No tool window's view has had the keys yet, for Jump to Last Tool Window.</summary>
+    public const string NoToolWindowHadKeys = "No tool window has had the keys yet";
+
+    /// <summary>What has the keys holds no tabs, for Close Tool Window Tab.</summary>
+    public const string NoToolTabs = "No tool window with tabs has the keys";
+
+    /// <summary>The tab shown has no ×, for Close Tool Window Tab.</summary>
+    public const string ToolTabStays = "The tab shown has no close: it stays open";
+
+    /// <summary>The window's scale is at the end of Settings' Display scale, for Zoom In and Zoom Out.</summary>
+    public static string ZoomedAsFarAsItGoes(bool up) => up ? "The window is as large as it goes" : "The window is as small as it goes";
+
     /// <summary>Closed tool windows keep their stripe icons or tabs, so Close is Hide.</summary>
     public static readonly string ClosedKeepIcons =
         $"Closed tool windows keep their icons or tabs: Hide closes them ({SettingsDialog.PlaceOfPage(SettingsDialog.Appearance)} | Closed tool windows)";

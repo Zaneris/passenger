@@ -42,6 +42,7 @@ public sealed class DockingTests
         Flow.StepApart<DockingTests>("a windowed tool window closes with its window alone and opens again where it stood", t => t.A_windowed_tool_window_closes_with_its_window_alone_and_opens_again_where_it_stood());
         Flow.StepApart<DockingTests>("a floating tool window closed by the applications quit opens again where it stood", t => t.A_floating_tool_window_closed_by_the_applications_quit_opens_again_where_it_stood());
         Flow.StepApart<DockingTests>("Maximize gives a tool window the frame and hide all clears it for the editor", t => t.Maximize_gives_a_tool_window_the_frame_and_hide_all_clears_it_for_the_editor());
+        Flow.StepApart<DockingTests>("the windows own keys zoom it fill the screen hide its sides go back to a tool window close its tab and step through the splits", t => t.The_windows_own_keys_zoom_it_fill_the_screen_hide_its_sides_go_back_to_a_tool_window_close_its_tab_and_step_through_the_splits());
         Flow.StepApart<DockingTests>("a tool window maximised when the window closes opens again at the size it had before", t => t.A_tool_window_maximised_when_the_window_closes_opens_again_at_the_size_it_had_before());
         Flow.StepApart<DockingTests>("a floating window closed is let go and not kept alive by its tool window", t => t.A_floating_window_closed_is_let_go_and_not_kept_alive_by_its_tool_window());
     }
@@ -328,6 +329,80 @@ public sealed class DockingTests
         Assert.True(dock.IsShown(ToolWindowIds.Debug));
         Assert.True(dock.IsShown(ToolWindowIds.Explorer));
         window.Close();
+    }
+
+    /// <summary>The window's own keys, as the keymap gives them, else the action (#2315): Zoom In and Zoom Out step Settings'
+    /// Display scale and Reset Zoom takes it back; Full Screen fills the screen and gives the window back as it was; Hide Side
+    /// Windows hides the left and right windows alone and brings them back; Jump to Last Tool Window gives the window that last
+    /// had the keys them again; Close Tool Window Tab closes the search the Find window shows; Next and Previous Split go
+    /// round the editor's splits.</summary>
+    private void The_windows_own_keys_zoom_it_fill_the_screen_hide_its_sides_go_back_to_a_tool_window_close_its_tab_and_step_through_the_splits()
+    {
+        string settings = TestFolders.Create("settings-");
+        string file = TestFolders.Write(TestFolders.Create("splits-"), "Notes.txt", "one\ntwo\n");
+        MainWindow window = Open(settings);
+        DockHost dock = window.DockHost;
+        void Press(string action)
+        {
+            if (AppActions.Keymap().ShortcutsFor(action).Count > 0)
+            {
+                Ui.Run(window, action);
+            }
+            else
+            {
+                Assert.True(window.Perform(action), $"{action} did not run");
+                Ui.Settle();
+            }
+        }
+        try
+        {
+            Press(AppActions.ZoomIn);
+            Press(AppActions.ZoomIn);
+            Press(AppActions.ZoomOut);
+            Assert.Equal(1.25, window.Settings.DisplayScale);
+            Press(AppActions.ResetZoom);
+            Assert.Equal(1, window.Settings.DisplayScale);
+            Assert.Equal(Refusals.ZoomedAsFarAsItGoes(up: false), window.Actions.WhyNot(AppActions.ZoomOut, window.Actions.Context()));
+
+            Press(AppActions.FullScreen);
+            Assert.Equal(WindowState.FullScreen, window.WindowState);
+            Press(AppActions.FullScreen);
+            Assert.Equal(WindowState.Normal, window.WindowState);
+
+            dock.Show(ToolWindowIds.Explorer);
+            dock.Show(ToolWindowIds.Structure);
+            dock.Show(ToolWindowIds.Debug);
+            Press(AppActions.HideSideWindows);
+            Assert.True(!dock.IsShown(ToolWindowIds.Explorer) && !dock.IsShown(ToolWindowIds.Structure) && dock.IsShown(ToolWindowIds.Debug),
+                $"Hide Side Windows left shown [{string.Join(", ", dock.Windows.Where(w => w.IsShown).Select(w => w.Title))}], where the Debug window below the editors stays alone");
+            Press(AppActions.HideSideWindows);
+            Assert.True(dock.IsShown(ToolWindowIds.Explorer) && dock.IsShown(ToolWindowIds.Structure), "Hide Side Windows again did not bring back the windows it hid");
+
+            window.Find.ShowMatches("first", []);
+            window.Find.ShowMatches("second", []);
+            dock.Activate(ToolWindowIds.Find);
+            window.OpenFile(file);
+            Ui.Settle();
+            Assert.True(window.EditorArea.CodeEditor.IsKeyboardFocusWithin, "The file opened did not take the keys from the Find window");
+            Press(AppActions.LastToolWindow);
+            Assert.True(dock[ToolWindowIds.Find].Content.IsKeyboardFocusWithin, "Jump to Last Tool Window did not give the Find window, the last to have them, the keys");
+            Press(AppActions.CloseToolTab);
+            Assert.Equal(new[] { "first" }, window.Find.Searches);
+
+            Assert.True(window.Perform(AppActions.SplitRight));
+            Ui.Settle();
+            Passenger.App.Editors.EditorGroup right = window.EditorArea.ActiveGroup;
+            Press(AppActions.NextSplit);
+            Assert.True(window.EditorArea.ActiveGroup != right && window.EditorArea.ActiveGroup.Editor.IsKeyboardFocusWithin,
+                "Next Split did not give the other split the keys");
+            Press(AppActions.PreviousSplit);
+            Assert.True(window.EditorArea.ActiveGroup == right && right.Editor.IsKeyboardFocusWithin, "Previous Split did not give the split it left the keys again");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { DisplayScale = 1 });
+            window.Close();
+        }
     }
 
     private void A_tool_window_maximised_when_the_window_closes_opens_again_at_the_size_it_had_before()

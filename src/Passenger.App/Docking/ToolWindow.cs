@@ -74,6 +74,7 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
         {
             hadKeys = e.Source as Control;
             hadRow = RowWithKeys.Of(hadKeys);
+            GotKeys?.Invoke(this, EventArgs.Empty);
         }, RoutingStrategies.Bubble, handledEventsToo: true);
 
     /// <summary>Gives its view the keys, as its action does once it shows: back to what in it had them last, still shown (a
@@ -137,6 +138,9 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
 
     /// <summary>Its view was built, as it was first shown or asked for.</summary>
     public event EventHandler? Built;
+
+    /// <summary>Something in its view took the keys.</summary>
+    public event EventHandler? GotKeys;
 
     /// <summary>Controls of its own for its header, after its title (the Explorer's view switch).</summary>
     public Control? HeaderTools
