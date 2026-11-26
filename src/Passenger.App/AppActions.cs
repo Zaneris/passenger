@@ -253,6 +253,14 @@ public static class AppActions
     public const string Replace = "app.replace";
     public const string FindNext = "app.findNext";
     public const string FindPrevious = "app.findPrevious";
+
+    // Rider's FindWordAtCaret and FindPrevWordAtCaret, the word at the caret looked for again forward and back (Ctrl+F3 and
+    // Ctrl+Shift+F3, Cmd on the Mac's Visual Studio keymap); ToggleFindInSelection, the find bar's In Selection (Ctrl+Alt+E
+    // outside the Visual Studio keymaps); and IncrementalSearch, the find bar opened empty (Ctrl+I, Cmd+I, in them).
+    public const string FindWordAtCaret = "app.findWordAtCaret";
+    public const string FindPreviousWordAtCaret = "app.findPreviousWordAtCaret";
+    public const string FindInSelection = "app.findInSelection";
+    public const string IncrementalSearch = "app.incrementalSearch";
     public const string FocusExplorer = "app.focusExplorer";
 
     // The file shown chosen in the Explorer: Rider's LocateInSolutionView in its Visual Studio keymaps (its own descriptor's
@@ -814,6 +822,9 @@ public static class AppActions
                 .Bind(Replace, "control H")
                 .Bind(FindNext, "F3", "meta alt PAGE_DOWN")
                 .Bind(FindPrevious, "shift F3", "meta alt PAGE_UP")
+                .Bind(FindWordAtCaret, "meta F3")
+                .Bind(FindPreviousWordAtCaret, "meta shift F3")
+                .Bind(IncrementalSearch, "meta I")
                 .Bind(FocusExplorer, "meta 1", "meta alt L")
                 .Bind(SelectOpenedFile, "alt shift L")
                 // CopyPaths: $default's Ctrl+Shift+C as Mac OS X 10.5+ takes it; RevealIn has none.
@@ -956,6 +967,9 @@ public static class AppActions
             .Bind(Replace, "control H")
             .Bind(FindNext, "F3", "control alt PAGE_DOWN", "alt shift SLASH")
             .Bind(FindPrevious, "shift F3", "control alt PAGE_UP")
+            .Bind(FindWordAtCaret, "control F3")
+            .Bind(FindPreviousWordAtCaret, "control shift F3")
+            .Bind(IncrementalSearch, "control I")
             .Bind(FocusExplorer, "alt 1", "control alt L")
             .Bind(SelectOpenedFile, "alt shift L")
             .Bind(CopyPath, "control shift C")
@@ -1100,6 +1114,7 @@ public static class AppActions
                 .Bind(FindNext, "meta G", "F3", "meta K , meta D")
                 // Its third, Cmd+Shift+F5, is VS Code's Restart, Rerun here.
                 .Bind(FindPrevious, "meta shift G", "shift F3")
+                .Bind(FindInSelection, "control alt E")
                 .Bind(FocusExplorer, "meta shift E")
                 .Bind(SelectOpenedFile, "meta K , E")
                 .Bind(NewFile, "meta N")
@@ -1220,6 +1235,7 @@ public static class AppActions
             .Bind(Replace, "control H")
             .Bind(FindNext, "F3", "control K , control D")
             .Bind(FindPrevious, "shift F3", "control shift F3")
+            .Bind(FindInSelection, "control alt E")
             .Bind(FocusExplorer, "control shift E")
             .Bind(SelectOpenedFile, "control K , E")
             .Bind(CopyPath, "shift alt C", "control K , P")
@@ -1353,6 +1369,7 @@ public static class AppActions
                 .Bind(Replace, "meta R")
                 .Bind(FindNext, "meta G")
                 .Bind(FindPrevious, "meta shift G")
+                .Bind(FindInSelection, "control alt E")
                 .Bind(FocusExplorer, "meta 1")
                 .Bind(CopyPath, "meta shift C")
                 .Bind(OpenInBrowser, "alt F2")
@@ -1473,6 +1490,9 @@ public static class AppActions
             .Bind(Replace, "control R")
             .Bind(FindNext, "F3", "control L")
             .Bind(FindPrevious, "shift F3", "control shift L")
+            .Bind(FindWordAtCaret, "control F3")
+            .Bind(FindPreviousWordAtCaret, "control shift F3")
+            .Bind(FindInSelection, "control alt E")
             .Bind(FocusExplorer, "alt 1")
             .Bind(CopyPath, "control shift C")
             .Bind(OpenInBrowser, "alt F2")

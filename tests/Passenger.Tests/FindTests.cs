@@ -39,14 +39,16 @@ public sealed class FindTests : IDisposable
     }
 
     /// <summary>Replace All says how many it replaced until the text or the search changes, a screen reader hearing it,
-    /// Shift+Enter puts a line break in the replacement written as the file's own, and a Replace All that would make
-    /// the text too long is refused before any of it is made.</summary>
+    /// Shift+Enter puts a line break in the replacement written as the file's own, a Replace All that would make the text
+    /// too long is refused before any of it is made, and Find Word at Caret, In Selection and Incremental Search do as Rider's
+    /// keys have them.</summary>
     [AvaloniaFact]
     public void Replace_all_says_what_it_did_and_never_makes_what_it_cannot_hold()
     {
         Flow.StepApart<FindTests>("Replace All says how many it replaced until the text or the search changes and a screen reader hears it", t => t.Replace_all_says_how_many_it_replaced_until_the_text_or_the_search_changes_and_a_screen_reader_hears_it());
         Flow.StepApart<FindTests>("Shift+Enter puts a line break in the replacement and a regex reads backslash n each written as the file's own", t => t.Shift_enter_puts_a_line_break_in_the_replacement_and_a_regex_reads_backslash_n_each_written_as_the_files_own());
         Flow.StepApart<FindTests>("Replace All that would make the text too long is refused before any of it is made", t => t.Replace_all_that_would_make_the_text_too_long_is_refused_before_any_of_it_is_made());
+        Flow.StepApart<FindTests>("Find Word at Caret walks the word's copies In Selection finds and replaces inside the selection alone and Incremental Search opens empty", t => t.Find_word_at_caret_walks_the_words_copies_in_selection_finds_and_replaces_inside_the_selection_alone_and_incremental_search_opens_empty());
     }
 
     private void Typing_a_query_selects_the_nearest_match_and_enter_and_shift_enter_walk_them()
@@ -68,6 +70,48 @@ public sealed class FindTests : IDisposable
         Ui.Press(window, "ESCAPE");
         Assert.False(window.EditorArea.FindBar.IsVisible);
         Assert.Empty(editor.Highlights);
+        window.Close();
+    }
+
+    /// <summary>Find Word at Caret's keys go to the next copy of the word at the caret and its previous's back, the editor
+    /// keeping the keys; Find in Selection keeps the search, and Replace All, inside the line chosen; Incremental Search's
+    /// keys open the bar with nothing in it, finding as the query is typed (#2318).</summary>
+    private void Find_word_at_caret_walks_the_words_copies_in_selection_finds_and_replaces_inside_the_selection_alone_and_incremental_search_opens_empty()
+    {
+        const string Text = "one beta two\nbeta three beta\nfour beta";
+        (MainWindow window, CodeEditor editor) = Open(Text);
+        FindBar bar = window.EditorArea.FindBar;
+        editor.Focus();
+        editor.Selections = SelectionSet.Single(5);
+        Ui.Press(window, Ui.Shortcut(AppActions.FindWordAtCaret));
+        Assert.True(editor.Selections.Primary == new Selection(13, 17) && bar.CountText == "2/4" && editor.IsKeyboardFocusWithin,
+            $"Find Word at Caret from inside the first beta chose {editor.Selections.Primary}, the bar counting '{bar.CountText}', the editor {(editor.IsKeyboardFocusWithin ? "keeping" : "losing")} the keys, where it goes to the next beta, 2/4, the editor keeping them");
+        Ui.Press(window, Ui.Shortcut(AppActions.FindPreviousWordAtCaret));
+        Assert.Equal(new Selection(4, 8), editor.Selections.Primary);
+
+        // Replace's keys over the beta chosen, for its row; then the second line chosen for In Selection.
+        Ui.Press(window, Ui.Shortcut(AppActions.Replace));
+        editor.Selections = SelectionSet.Single(new Selection(13, 28));
+        window.Perform(AppActions.FindInSelection);
+        Ui.Settle();
+        Assert.True(bar.CountText == "1/2" && editor.Selections.Primary == new Selection(13, 17),
+            $"In Selection over the second line left the bar counting '{bar.CountText}' and {editor.Selections.Primary} chosen, where it finds that line's two betas alone, the first chosen");
+        bar.FindControl<TextBox>("ReplaceWith")!.Text = "B";
+        Ui.Click(bar.FindControl<Button>("ReplaceAllButton")!);
+        Assert.Equal("one beta two\nB three B\nfour beta", editor.Document.Snapshot.ToString());
+        editor.TryExecute(EditorActions.Undo);
+        window.Perform(AppActions.FindInSelection);
+        Ui.Settle();
+        Assert.True(bar.CountText.EndsWith("/4", StringComparison.Ordinal), $"In Selection turned off left the bar counting '{bar.CountText}', where it finds every beta again");
+        Ui.Press(window, "ESCAPE");
+
+        editor.Focus();
+        Ui.Press(window, Ui.Shortcut(AppActions.IncrementalSearch));
+        TextBox query = bar.FindControl<TextBox>("Query")!;
+        Assert.True(bar.IsVisible && query.Text == string.Empty, $"Incremental Search left the bar {(bar.IsVisible ? "open" : "closed")} with '{query.Text}' in it, where it opens empty");
+        window.KeyTextInput("four");
+        Ui.Settle();
+        Assert.Equal(new Selection(29, 33), editor.Selections.Primary);
         window.Close();
     }
 

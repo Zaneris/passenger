@@ -224,6 +224,11 @@ public partial class MainWindow
             c => ConsoleFind(c) is not null || DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 2));
         Add(A.FindPrevious, "Find Previous", "IDE", c => (ConsoleFind(c) ?? DiffWindowOf(c)?.Find ?? Editors.FindBar).Previous(),
             c => ConsoleFind(c) is not null || DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 3));
+        Add(A.FindWordAtCaret, "Find Word at Caret", "IDE", _ => Editors.FindBar.FindAtCaret(forward: true), Refusals.NeedsFile, ("Edit/Find", 0, 4));
+        Add(A.FindPreviousWordAtCaret, "Find Previous Word at Caret", "IDE", _ => Editors.FindBar.FindAtCaret(forward: false), Refusals.NeedsFile,
+            ("Edit/Find", 0, 5));
+        Add(A.FindInSelection, "Find in Selection", "IDE", _ => Editors.FindBar.ToggleInSelection(), Refusals.NeedsFile, ("Edit/Find", 0, 6));
+        Add(A.IncrementalSearch, "Incremental Search", "IDE", _ => Editors.FindBar.OpenEmpty(), Refusals.NeedsFile, ("Edit/Find", 0, 7));
         Add(A.FindInFiles, "Find in Files…", "IDE", c => ShowFindInFiles(replace: false, ExplorerScope(c)), NeedsFolder, ("Edit/Find", 1, 0));
         Add(A.ReplaceInFiles, "Replace in Files…", "IDE", c => ShowFindInFiles(replace: true, ExplorerScope(c)), NeedsFolder, ("Edit/Find", 1, 1));
         Add(A.ExtendSelection, "Extend Selection", "Editor", _ => ExtendSelection(), Refusals.NeedsFile, ("Edit", 2, 1));

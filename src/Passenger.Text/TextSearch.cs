@@ -1279,6 +1279,20 @@ public sealed record SearchResult(IReadOnlyList<TextRange> Matches, bool Truncat
     /// <summary>The length of the text searched.</summary>
     public int TextLength { get; init; }
 
+    /// <summary>How many of the whole text's matches come before the first of these (<see cref="Within"/>), each replaced
+    /// as it is among them all.</summary>
+    private int Before { get; init; }
+
+    /// <summary>The matches wholly inside a stretch of the text searched (Find's In Selection), each replaced as it is
+    /// among the whole text's.</summary>
+    public SearchResult Within(TextRange scope)
+    {
+        // Matches never overlap, so their ends rise with their starts.
+        int first = Sorted.FirstAtOrAfter(Matches, static match => match.Start, scope.Start);
+        int past = Math.Max(first, Sorted.FirstAfter(Matches, static match => match.End, scope.End));
+        return this with { Matches = [.. Matches.Skip(first).Take(past - first)], Before = Before + first };
+    }
+
     /// <summary>The longest text, in characters, that replacing every match makes of a shorter one: past it a replacement
     /// is refused before any of it is made (a regex's $_ is the whole text again for each match).</summary>
     public const long MostReplaced = 100_000_000;
@@ -1286,7 +1300,7 @@ public sealed record SearchResult(IReadOnlyList<TextRange> Matches, bool Truncat
     /// <summary>What match <paramref name="index"/> is replaced with: the replacement as typed, or for a regex with its
     /// groups ($1, ${name}) filled in from that match where it stood, its lookarounds, anchors and \b as they held.</summary>
     public string Replacement(int index, string replacement) =>
-        Found is null ? Plain(replacement) : new ReplacementText(Found, replacement, Crlf).Make(index, Matches[index]);
+        Found is null ? Plain(replacement) : new ReplacementText(Found, replacement, Crlf).Make(Before + index, Matches[index]);
 
     /// <summary>A plain text's replacement as written, each line break in it the text's own.</summary>
     private string Plain(string replacement) => Crlf ? LineEndings.In(replacement, "\r\n") : replacement;
@@ -1301,7 +1315,7 @@ public sealed record SearchResult(IReadOnlyList<TextRange> Matches, bool Truncat
         for (int i = 0; i < Matches.Count; i++)
         {
             TextRange match = Matches[i];
-            length += (replacing?.Length(i, match) ?? plain.Length) - match.Length;
+            length += (replacing?.Length(Before + i, match) ?? plain.Length) - match.Length;
         }
         return length;
     }
@@ -1319,7 +1333,7 @@ public sealed record SearchResult(IReadOnlyList<TextRange> Matches, bool Truncat
         for (int i = 0; i < edits.Length; i++)
         {
             TextRange match = Matches[i];
-            edits[i] = new TextEdit(match.Start, match.Length, replacing?.Make(i, match) ?? plain);
+            edits[i] = new TextEdit(match.Start, match.Length, replacing?.Make(Before + i, match) ?? plain);
         }
         return edits;
     }
