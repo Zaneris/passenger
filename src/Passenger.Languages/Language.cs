@@ -8,7 +8,7 @@ using Passenger.Text;
 namespace Passenger.Languages;
 
 /// <summary>What answers for a language's files beyond the editor: the C# language server (C# and Razor), Passenger's
-/// XAML, an MSBuild evaluation, one of the web languages' servers, Godot's for GDScript, or nothing.</summary>
+/// XAML, an MSBuild evaluation, one of the web languages' servers, Godot's for GDScript, Buf's for Protobuf, or nothing.</summary>
 public enum LanguageService
 {
     None,
@@ -22,6 +22,7 @@ public enum LanguageService
     Dockerfile,
     Yaml,
     GDScript,
+    Protobuf,
 }
 
 /// <summary>A file name a language claims, matched without regard to case: a name, or one <c>*</c> standing for any run
@@ -195,6 +196,9 @@ public sealed class Language
 
     public static readonly Language Yaml = new("yaml", "YAML", ["*.yml", "*.yaml"], line: "#", indent: 2,
         grammar: new("source.yaml", "yaml.tmLanguage.json"), service: LanguageService.Yaml, spacesAlone: true);
+
+    public static readonly Language Protobuf = new("proto", "Protocol Buffers", ["*.proto"], line: "//", block: ("/*", "*/"), indent: 2,
+        grammar: new("source.proto", "proto3.tmLanguage.json"), service: LanguageService.Protobuf);
 
     public static readonly Language Markdown = new("markdown", "Markdown", ["*.md", "*.markdown"], block: ("<!--", "-->"), indent: 2,
         grammar: new("text.html.markdown", "markdown.tmLanguage.json"), reindentsPaste: false);

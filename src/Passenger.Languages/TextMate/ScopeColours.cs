@@ -28,6 +28,7 @@ internal static class ScopeColours
         ("entity.other.inherited-class", TokenKind.Class),
         ("support.class", TokenKind.Class),
         ("support.type.primitive", TokenKind.Keyword),
+        ("storage.type.proto", TokenKind.Class),
         ("variable.other.property", TokenKind.Field),
         ("variable.other.object.property", TokenKind.Field),
         ("meta.object-literal.key", TokenKind.Field),

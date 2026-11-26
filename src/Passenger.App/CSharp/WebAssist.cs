@@ -231,6 +231,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         WebServerKind.TypeScript => c == '$',
         WebServerKind.Yaml => c is '-' or '.',
         WebServerKind.GDScript => GDScriptTokenizer.MayContinueIdentifier(c),
+        WebServerKind.Protobuf => false,
         _ => c is '"' or '-' or '.' or '@' or '/',
     };
 

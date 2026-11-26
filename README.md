@@ -290,6 +290,9 @@ needs:
 - **Git**, for version control;
 - **Node.js**, or **Bun** for a folder that uses it, for JavaScript, TypeScript, HTML, CSS, JSON,
   Dockerfiles and YAML; C#, XAML, GDScript and shaders do without them;
+- **Buf CLI** on the PATH for completion, navigation and diagnostics in `.proto` files in trusted folders.
+  Syntax highlighting works without Buf. [Install Buf](https://buf.build/docs/cli/installation/).
+  Buf 1.75.0 treats `#` in a schema path as an input option separator, so those paths only get syntax highlighting.
 - for Godot games, **Godot 4** (its .NET build for C#), found from `GODOT`, the PATH or your applications, or named in
   Settings › Godot; Passenger is tested on Godot 4.7 and 4.8's betas;
 - for Blazor's WebAssembly debugging, **Chrome, Edge or another Chromium browser**;

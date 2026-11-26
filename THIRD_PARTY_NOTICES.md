@@ -1168,6 +1168,11 @@ Microsoft Corporation), unchanged, from the project its header names:
   (https://github.com/MagicStack/MagicPython) at commit 7d0f2b22, its 1.1.1, MIT, Copyright (c) 2015-present MagicStack
   Inc.
 
+The `proto3.tmLanguage.json` grammar comes unchanged from zxh0/vscode-proto3
+(https://github.com/zxh0/vscode-proto3/tree/5563d58bc5935213a41ab168f321cf9d99c34fcb), MIT, Copyright (c) 2016.
+Completion, navigation and diagnostics use the separately installed Buf CLI
+(https://github.com/bufbuild/buf), Apache-2.0, Copyright 2020-2026 Buf Technologies, Inc.
+
 And two that colour Razor's .razor and .cshtml files before the language server answers, files of Razor's tooling in
 dotnet/roslyn (https://github.com/dotnet/roslyn, where Razor's tooling moved from dotnet/razor; MIT, Copyright (c) .NET
 Foundation and Contributors) at the 5.11.0 server's commit (dc1db3e7), unchanged, under
