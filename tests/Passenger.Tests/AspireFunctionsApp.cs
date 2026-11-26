@@ -62,6 +62,10 @@ public sealed class AspireFunctionsApp : SharedProject
         WriteFunctions(version);
         WriteHost();
         File.WriteAllText(PathOf("Functions.slnx"), "<Solution>\n  <Project Path=\"Fn/Fn.csproj\" />\n  <Project Path=\"Host/Host.csproj\" />\n</Solution>\n");
+        if (!AspireApp.IsUnavailable)
+        {
+            await AspireCli.SetUpAsync();
+        }
         await PrepareAsync(byRealPath: true);
     }
 
@@ -142,7 +146,6 @@ public sealed class AspireFunctionsApp : SharedProject
                 <TargetFramework>{TestProjects.Framework}</TargetFramework>
                 <ImplicitUsings>enable</ImplicitUsings>
                 <Nullable>enable</Nullable>
-                <AspireUseCliBundle>false</AspireUseCliBundle>
               </PropertyGroup>
               <ItemGroup>
                 <PackageReference Include="Aspire.Hosting.Azure.Functions" Version="{AspireApp.TemplatesVersion}" />

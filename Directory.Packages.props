@@ -33,16 +33,11 @@
          reaches no feed. -->
     <ReactiveUiVersion>27.0.1</ReactiveUiVersion>
     <ReactiveUiGeneratorsVersion>5.1.0</ReactiveUiGeneratorsVersion>
-    <!-- Aspire's templates, AppHost SDK and package, dashboard, orchestrator and CLI at one version, downloaded for the
-         tests' local feed. -->
-    <AspireTemplatesVersion>13.6.5</AspireTemplatesVersion>
-    <!-- And Aspire's whose AppHost is a plain project or program with Aspire's AppHost package, no AppHost SDK, whose
-         dashboard and orchestrator come from the aspire CLI's bundle: its templates, AppHost and .NET project packages and
-         CLI, the AppHost's graph and its starter's restored at their own versions (tests/AspireGraphs/Package*). -->
-    <AspirePackageTemplatesVersion>17.0.0</AspirePackageTemplatesVersion>
-    <!-- What those templates write where it differs from what AspireTemplatesVersion's write (the tests' section below). -->
-    <AspirePackageOpenTelemetryVersion>1.18.0</AspirePackageOpenTelemetryVersion>
-    <AspirePackageOpenApiVersion>10.0.15</AspirePackageOpenApiVersion>
+    <!-- Aspire's templates, AppHost and .NET project packages, AppHost SDK and CLI at one version, downloaded for the
+         tests' local feed: its templates write an AppHost of the package alone, adding its services by path, and the SDK,
+         obsolete from 17, is the one the tests' AppHosts written with it name. Every C# AppHost of it takes its dashboard
+         and orchestrator from the CLI's bundle. -->
+    <AspireTemplatesVersion>17.0.0</AspireTemplatesVersion>
     <!-- The Azure Functions app (.NET isolated worker) the Aspire tests write: its MSBuild SDK, downloaded for the tests'
          local feed, and its worker and HTTP triggers, whose graph tests/AspireGraphs restores. -->
     <AzureFunctionsSdkVersion>1.1.0</AzureFunctionsSdkVersion>
@@ -219,7 +214,7 @@
   <ItemGroup>
     <PackageVersion Include="Aspire.Hosting.AppHost" Version="$(AspireTemplatesVersion)" />
     <PackageVersion Include="Aspire.Hosting.Azure.Functions" Version="$(AspireTemplatesVersion)" />
-    <PackageVersion Include="Aspire.Hosting.Dotnet" Version="$(AspirePackageTemplatesVersion)" />
+    <PackageVersion Include="Aspire.Hosting.Dotnet" Version="$(AspireTemplatesVersion)" />
     <!-- The analyzers and generators at the versions Azure.Functions.Sdk (AzureFunctionsSdkVersion) adds them. -->
     <PackageVersion Include="Microsoft.Azure.Functions.Worker" Version="$(AzureFunctionsWorkerVersion)" />
     <PackageVersion Include="Microsoft.Azure.Functions.Worker.Extensions.Http" Version="$(AzureFunctionsHttpVersion)" />
@@ -227,19 +222,18 @@
     <PackageVersion Include="Microsoft.Azure.Functions.Worker.Sdk.Generators" Version="1.4.0" />
     <!-- At the versions Aspire's templates at AspireTemplatesVersion write, not their newest, so the test folders made
          from those templates restore from the package cache tests/AspireGraphs fills. -->
-    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.15" />
     <!-- What writes a build's OpenAPI document, restored for the test of a document Passenger reads from the build: at
          Microsoft.AspNetCore.OpenApi's version above, not its newest, as its dotnet-getdocument loads the Microsoft.OpenApi
-         it is built against beside the app's own and fails where the app's is older (10.0.15's takes 2.13.0, where
-         OpenApi 10.0.14 brings 2.12.2). -->
-    <PackageVersion Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.14" />
+         it is built against beside the app's own and fails where the app's is older. -->
+    <PackageVersion Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.15" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.10.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.10.0" />
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.17.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.17.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.18.0" />
     <!-- At the version the SDK's Blazor WebAssembly and Blazor Web App templates write for the tests' own target, so the
          apps they make from them restore from the package cache tests/BlazorGraphs fills. -->
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.15" />

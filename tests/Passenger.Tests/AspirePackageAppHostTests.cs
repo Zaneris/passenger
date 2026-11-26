@@ -1,4 +1,3 @@
-using System.Reflection;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Aspire;
@@ -8,22 +7,12 @@ using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
-/// <summary>Aspire's starter and single-file AppHost as its templates at <see cref="AspireApp.PackageTemplatesVersion"/> make
-/// them, each an AppHost of Aspire's AppHost package alone, no AppHost SDK, adding its services by path: restored together
-/// from the run's feed (tests/AspireGraphs/Package*), shared by the window tests.</summary>
+/// <summary>Aspire's starter and single-file AppHost as its templates make them, each an AppHost of Aspire's AppHost package
+/// alone, no AppHost SDK, adding its services by path: restored together from the run's feed (tests/AspireGraphs), shared
+/// by the window tests.</summary>
 public sealed class AspirePackageApp : SharedProject
 {
     public const string Name = "PackageAspire";
-
-    /// <summary>Why a test that runs the starter skips (<see cref="CannotRun"/>): as a real AppHost of the SDK's does, or no CLI
-    /// of this Aspire's own, whose bundle holds the dashboard and orchestrator such an AppHost's build names.</summary>
-    public const string RunSkipped = "Runs a real AppHost of Aspire's package alone, which needs the aspire CLI of its version (PassengerAspireRuntime=true) on macOS or Linux, its bundle unpacked in the run's own folder";
-
-    /// <summary>The aspire CLI of <see cref="AspireApp.PackageTemplatesVersion"/> the build downloaded, null where it did not.</summary>
-    public static string? Cli { get; } = typeof(AspirePackageApp).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
-        .FirstOrDefault(attribute => attribute.Key == "AspirePackageCli")?.Value is { } path && File.Exists(path) ? path : null;
-
-    public static bool CannotRun => AspireApp.Unavailable is not null || Cli is null;
 
     public AspirePackageApp() : base("aspire-package-")
     {
@@ -32,36 +21,14 @@ public sealed class AspirePackageApp : SharedProject
     public override async ValueTask InitializeAsync()
     {
         AvaloniaApp.UseFeed(Folder);
-        await AspireApp.MakeAsync(AspireApp.PackageTemplatesVersion, "aspire-starter", PathOf("Starter"), Name, "--use-redis-cache", "false", "--skipRestore");
-        await AspireApp.MakeAsync(AspireApp.PackageTemplatesVersion, "aspire-apphost-singlefile", PathOf("Single"), "Single");
-        string project = File.ReadAllText(Host);
-        Assert.Contains("<Project Sdk=\"Microsoft.NET.Sdk\">", project, StringComparison.Ordinal);
-        Assert.Contains($"<PackageReference Include=\"{Passenger.Host.AspireHosts.Package}\" Version=\"{AspireApp.PackageTemplatesVersion}\" />", project, StringComparison.Ordinal);
-        Assert.DoesNotContain(Passenger.Host.AspireHosts.Sdk, project, StringComparison.Ordinal);
-        Assert.DoesNotContain(Passenger.Host.AspireHosts.Property, project, StringComparison.Ordinal);
-        Assert.Contains($"#:package {Passenger.Host.AspireHosts.Package}@{AspireApp.PackageTemplatesVersion}", File.ReadAllText(SingleHost), StringComparison.Ordinal);
+        await AspireApp.MakeStarterAsync(PathOf("Starter"), Name);
+        await AspireApp.MakeAsync("aspire-apphost-singlefile", PathOf("Single"), "Single");
+        Assert.Contains($"#:package {Passenger.Host.AspireHosts.Package}@{AspireApp.TemplatesVersion}", File.ReadAllText(SingleHost), StringComparison.Ordinal);
         File.WriteAllText(PathOf("PackageAspire.slnx"), "<Solution>\n" + string.Concat(new[] { "AppHost", "ApiService", "Web", "ServiceDefaults" }
             .Select(part => $"  <Project Path=\"Starter/{Name}.{part}/{Name}.{part}.csproj\" />\n")) + "</Solution>\n");
-        string hostFolder = Path.GetDirectoryName(Host)!;
-        string hostSource = Path.Combine(hostFolder, "AppHost.cs");
-        string hostText = File.ReadAllText(hostSource);
-        foreach (string service in new[] { "ApiService", "Web" })
+        if (!AspireApp.IsUnavailable)
         {
-            string added = $"\"../{Name}.{service}/{Name}.{service}.csproj\")";
-            Assert.Contains(added, hostText, StringComparison.Ordinal);
-            hostText = hostText.Replace(added, added[..^1] + ", options => options.LaunchProfileName = \"http\")", StringComparison.Ordinal);
-        }
-        File.WriteAllText(hostSource, hostText);
-        AspireApp.KeepToTheRun(hostFolder);
-        if (!CannotRun)
-        {
-            // In the run's Aspire home, as a person's CLI unpacks it in theirs, where the AppHost's build finds it.
-            string home = Environment.GetEnvironmentVariable("ASPIRE_HOME") ?? throw new InvalidOperationException("The run has no Aspire home of its own");
-            System.Diagnostics.ProcessStartInfo setup = ChildProcesses.Command(Cli!, ["setup", "--install-path", home], Folder);
-            setup.Environment["HOME"] = AspireCli.Home;
-            setup.Environment[AspireVariables.TelemetryOptOut] = "1";
-            ChildResult unpacked = await ChildProcesses.RunAsync(setup, limit: TimeSpan.FromMinutes(3).Scaled());
-            Assert.True(unpacked.Succeeded, $"The aspire CLI {AspireApp.PackageTemplatesVersion} did not unpack its bundle:\n{unpacked.Output}{unpacked.Error}");
+            await AspireCli.SetUpAsync();
         }
         await PrepareAsync(byRealPath: true);
     }
@@ -121,7 +88,7 @@ public sealed class AspirePackageAppHostTests(AspirePackageApp project) : IClass
     private void A_project_referencing_Aspires_AppHost_package_is_an_AppHost_before_its_first_restore_and_one_saying_otherwise_is_not()
     {
         string folder = TestFolders.Create("aspire-unrestored-");
-        string package = $"  <ItemGroup><PackageReference Include=\"{Passenger.Host.AspireHosts.Package}\" Version=\"{AspireApp.PackageTemplatesVersion}\" /></ItemGroup>\n";
+        string package = $"  <ItemGroup><PackageReference Include=\"{Passenger.Host.AspireHosts.Package}\" Version=\"{AspireApp.TemplatesVersion}\" /></ItemGroup>\n";
         TestFolders.Write(folder, "Host/Host.csproj", TestProjects.Console().With(package));
         TestFolders.Write(folder, "Tool/Tool.csproj", TestProjects.Console($"<{Passenger.Host.AspireHosts.Property}>false</{Passenger.Host.AspireHosts.Property}>").With(package));
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -140,7 +107,7 @@ public sealed class AspirePackageAppHostTests(AspirePackageApp project) : IClass
         }
     }
 
-    [AvaloniaFact(Skip = AspirePackageApp.RunSkipped, SkipType = typeof(AspirePackageApp), SkipWhen = nameof(AspirePackageApp.CannotRun))]
+    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
     public void Aspire_17s_starter_runs_through_the_window_its_services_started_by_the_IDE_as_their_AppHost_asks()
     {
         project.Reset();

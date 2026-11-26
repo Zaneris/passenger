@@ -16,7 +16,7 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class AspireExternalDataTests(AspireApp project) : IClassFixture<AspireApp>
 {
-    [AvaloniaFact(Skip = AspireApp.CliSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsCliUnavailable))]
+    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
     public void An_external_AppHost_is_found_and_its_environment_values_are_masked_in_the_window()
     {
         project.Reset();

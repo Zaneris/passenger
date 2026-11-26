@@ -48,7 +48,7 @@ public sealed class AspirePackageServicesTests : IClassFixture<AspirePackageApp>
     private void Orchestration_adds_a_service_to_Aspire_17s_AppHost_by_AddDotnetProject_referencing_none_and_takes_Aspire_Hosting_Dotnet()
     {
         string hostProject = File.ReadAllText(project.Host);
-        string dotnet = $"    <PackageReference Include=\"Aspire.Hosting.Dotnet\" Version=\"{AspireApp.PackageTemplatesVersion}\" />\n";
+        string dotnet = $"    <PackageReference Include=\"Aspire.Hosting.Dotnet\" Version=\"{AspireApp.TemplatesVersion}\" />\n";
         Assert.Contains(dotnet, hostProject.ReplaceLineEndings("\n"), StringComparison.Ordinal);
         project.Rewrite(HostProject, hostProject.ReplaceLineEndings("\n").Replace(dotnet, string.Empty, StringComparison.Ordinal));
         string solution = project.PathOf($"{AspirePackageApp.Name}.slnx");
@@ -70,7 +70,7 @@ public sealed class AspirePackageServicesTests : IClassFixture<AspirePackageApp>
                 $"The AppHost was changed beyond Extra's line: the API service it adds already added again, or a service by the obsolete AddProject:\n{host}");
             string written = File.ReadAllText(project.Host);
             Assert.False(written.Contains("ProjectReference", StringComparison.Ordinal), $"The AppHost was given a reference to a service it adds by path:\n{written}");
-            Assert.True(written.Contains($"<PackageReference Include=\"Aspire.Hosting.Dotnet\" Version=\"{AspireApp.PackageTemplatesVersion}\" />", StringComparison.Ordinal),
+            Assert.True(written.Contains($"<PackageReference Include=\"Aspire.Hosting.Dotnet\" Version=\"{AspireApp.TemplatesVersion}\" />", StringComparison.Ordinal),
                 $"The AppHost was not given Aspire.Hosting.Dotnet, which AddDotnetProject comes in, at its own Aspire version:\n{written}");
             Assert.Contains("AddServiceDefaults()", File.ReadAllText(project.PathOf("Starter/Extra/Program.cs")), StringComparison.Ordinal);
             Assert.Contains($"{AspirePackageApp.Name}.ServiceDefaults", File.ReadAllText(project.PathOf("Starter/Extra/Extra.csproj")), StringComparison.Ordinal);

@@ -132,11 +132,11 @@ TOGETHER = {
 # What only some shards' jobs give the machine (test.yml), by what a class's source names, so every class needing it is
 # dealt to those: .NET's mobile workloads, the debug relays, an Android emulator or Xcode's simulators and MAUI's packages
 # for a mobile platform, the shards --apart-shards names, which run its classes last, apart from the rest dealt to them
-# (--apart), as their devices' times are their own; Aspire's dashboard and orchestrator, with the run's own aspire CLI,
-# which the build downloads (PassengerAspireRuntime), the second shard's, beside the classes dealt there too (--second).
+# (--apart), as their devices' times are their own; the run's own aspire CLI, whose bundle holds Aspire's dashboard and
+# orchestrator, which the build downloads (PassengerAspireRuntime), the second shard's, beside the classes dealt there too
+# (--second).
 SET_UPS = {
-    "aspire": re.compile(r"\bAspire(?:Functions)?App\.(?:IsUnavailable|Unavailable|IsCliUnavailable|CliUnavailable"
-                         r"|AppHostSkipped|CliSkipped)\b|\bAspirePackageApp\.RunSkipped\b"),
+    "aspire": re.compile(r"\bAspire(?:Functions)?App\.(?:IsUnavailable|Unavailable|AppHostSkipped)\b"),
     "mobile": re.compile(r"\bAndroidDevices\.\w|\bAppleSimulators\.\w|\bSimulatorApp\b|\bMacCatalystApp\b"
                          r"|does not restore here from the package cache alone|lacks a workload of the app's heads"),
 }

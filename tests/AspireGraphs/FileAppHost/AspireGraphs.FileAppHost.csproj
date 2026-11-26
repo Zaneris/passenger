@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- A single-file AppHost's graph: a file-based program builds for its SDK's own framework, for which Aspire's AppHost
+       package names Microsoft.Extensions' packages of that framework's line; none of their assets. -->
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.AppHost" ExcludeAssets="all" />
+    <PackageReference Include="Aspire.Hosting.Dotnet" ExcludeAssets="all" />
+  </ItemGroup>
+</Project>

@@ -529,8 +529,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "Where the symbol at a position is declared, as Go to Declaration goes (a C# symbol of a package or the framework has " +
         "no source, and says so). Beyond the language servers': from XAML, the C# or XAML declaring a type, property, event, " +
         "resource or element, a library's type decompiled, a theme's XAML by Source Link; package.json's dependencies and npm " +
-        "run scripts; a compose file's build (Dockerfile, project), names, variables (.env) and env_files; Aspire's AddProject " +
-        "and AddDotnetProject and the resource names a service reads; an MSBuild file's properties (where set, the one in force first), item types, " +
+        "run scripts; a compose file's build (Dockerfile, project), names, variables (.env) and env_files; Aspire's AddProject, " +
+        "AddCSharpApp and AddDotnetProject and the resource names a service reads; an MSBuild file's properties (where set, the one in force first), item types, " +
         "targets, imports and SDKs.")]
     public Task<IReadOnlyList<Place>> Definition(string? path = null, int? line = null, int? column = null, string? symbol = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {

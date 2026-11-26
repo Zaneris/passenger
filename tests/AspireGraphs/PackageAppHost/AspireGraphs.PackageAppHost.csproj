@@ -1,8 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <!-- The graph of an AppHost of Aspire's package alone (no AppHost SDK), as Aspire's templates at
-       AspirePackageTemplatesVersion write it, with its .NET project resources' package; none of their assets. -->
-  <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.AppHost" VersionOverride="$(AspirePackageTemplatesVersion)" ExcludeAssets="all" />
-    <PackageReference Include="Aspire.Hosting.Dotnet" ExcludeAssets="all" />
-  </ItemGroup>
-</Project>
