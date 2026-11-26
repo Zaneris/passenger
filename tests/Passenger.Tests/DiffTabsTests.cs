@@ -334,7 +334,7 @@ public sealed class DiffTabsTests : IDisposable
         SettingsDialog dialog = window.ShowSettings();
         Ui.Settle();
         dialog.Page = SettingsDialog.VersionControlPage;
-        Assert.Equal(["Open diffs in", "Highlighting differences"], dialog.Shown);
+        Assert.Equal(["Open diffs in", "Highlighting differences", "Uncommitted changes at a checkout"], dialog.Shown);
         dialog.Change(s => s with { OpenDiffsIn = DiffPlace.Tab });
         dialog.Ok();
         Ui.Settle();
