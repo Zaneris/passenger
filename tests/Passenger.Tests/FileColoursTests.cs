@@ -113,6 +113,7 @@ public sealed class FileColoursTests : FileColoursFolder
         Flow.StepApart<FileColoursTests>("a project file settings a workflow a readme and a script each show their tokens in Riders colours", t => t.A_project_file_settings_a_workflow_a_readme_and_a_script_each_show_their_tokens_in_Riders_colours());
         Flow.StepApart<FileColoursTests>("a Markdown file's JSONC and tsx blocks and raw html are coloured as their own files are", t => t.A_markdown_files_jsonc_and_tsx_blocks_and_raw_html_are_coloured_as_their_own_files_are());
         Flow.StepApart<FileColoursTests>("a GDScript file a scene and a shader show their tokens as their kinds", t => t.A_GDScript_file_a_scene_and_a_shader_show_their_tokens_as_their_kinds());
+        Flow.StepApart<FileColoursTests>("a Protocol Buffers schema shows its keywords strings comments types and numbers as their kinds", t => t.A_protocol_buffers_schema_shows_its_keywords_strings_comments_types_and_numbers_as_their_kinds());
         Flow.StepApart<FileColoursTests>("each kind is drawn in its own colour in the dark theme and the light", t => t.Each_kind_is_drawn_in_its_own_colour_in_the_dark_theme_and_the_light());
         Flow.StepApart<FileColoursTests>("a code colour scheme from the repository draws the code in its colours on the theme's ground under either theme", t => t.A_code_colour_scheme_from_the_repository_draws_the_code_in_its_colours_on_the_themes_ground_under_either_theme());
         Flow.StepApart<FileColoursTests>("two JSON documents keep independent states when their tokenizer is shared", t => t.Two_JSON_documents_keep_independent_states_when_their_tokenizer_is_shared());
@@ -463,6 +464,28 @@ public sealed class FileColoursTests : FileColoursFolder
     /// <summary>Godot's files in their kinds' colours: a GDScript file's keywords, function, class, string, number and
     /// comment, a scene's sections, strings and paths, and a shader's comment and number; a script names itself GDScript, indents
     /// with a tab where its lines say nothing, and comments a line with '#'.</summary>
+    private void A_protocol_buffers_schema_shows_its_keywords_strings_comments_types_and_numbers_as_their_kinds()
+    {
+        MainWindow window = Window();
+        CodeEditor editor = Open(window, "request.proto", """
+            syntax = "proto3";
+            package example.v1;
+            import "types.proto";
+
+            // A request uses a type declared in another file.
+            message Request {
+              Shared value = 13;
+            }
+            """);
+        Assert.Same(Passenger.Languages.Language.Protobuf, window.EditorArea.Active!.Language);
+        Assert.Equal(TokenKind.Keyword, KindOf(editor, "message"));
+        Assert.Equal(TokenKind.String, KindOf(editor, "\"types.proto\""));
+        Assert.Equal(TokenKind.Comment, KindOf(editor, "// A request"));
+        Assert.Equal(TokenKind.Class, KindOf(editor, "Shared"));
+        Assert.Equal(TokenKind.Number, KindOf(editor, "13"));
+        window.Close();
+    }
+
     private void A_GDScript_file_a_scene_and_a_shader_show_their_tokens_as_their_kinds()
     {
         MainWindow window = Window();

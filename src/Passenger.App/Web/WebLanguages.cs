@@ -8,7 +8,7 @@ using Passenger.Workspace;
 
 namespace Passenger.App.Web;
 
-/// <summary>The web, GDScript and Protobuf language servers.</summary>
+/// <summary>The language servers of a web project's files.</summary>
 public enum WebServerKind
 {
     /// <summary>typescript-language-server over TypeScript's own tsserver: .ts, .tsx, .js, .jsx, .mjs, .cjs.</summary>
@@ -32,20 +32,17 @@ public enum WebServerKind
 
     /// <summary>Godot's own GDScript server, in its editor, reached over TCP (<see cref="Godot.GodotScripts"/>).</summary>
     GDScript,
-
-    /// <summary>Buf's language server for Protocol Buffers schemas.</summary>
-    Protobuf,
 }
 
 /// <summary>A web language server lost, as the status bar says it, with what starts it again when it was left stopped for
 /// ending too often; null when it was started again at once.</summary>
 public sealed record WebServerLost(string Said, Action? StartAgain);
 
-/// <summary>JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles, YAML, GDScript and Protobuf for the open folder: each kind's
+/// <summary>JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles, YAML and GDScript for the open folder: each kind's
 /// language server (the npm packages carried under <c>web/</c>, run through ChildProcesses on the runtime its lockfile
 /// says, Node.js, Bun or Deno, or the one Settings chooses; GDScript's in Godot's editor, one for each Godot project a
 /// script is open in, the person's joined, a headless one started only when asked, <see cref="AskGodot"/>, never in a
-/// folder not trusted, and Buf's on the CLI from the PATH in trusted folders) started as the first file that needs it opens, every open file of its languages kept in step with
+/// folder not trusted) started as the first file that needs it opens, every open file of its languages kept in step with
 /// it (a <see cref="WebDocument"/> each), and ended with the folder. Without a runtime to run them, each file says why in
 /// its banner and the status bar, keeping its colours. A server that ends or stops answering is started again with its
 /// files, a few times at most, then left stopped until a person starts it again. The project's own TypeScript serves
@@ -228,7 +225,6 @@ public sealed class WebLanguages : IAsyncDisposable
             LanguageService.Dockerfile => WebServerKind.Dockerfile,
             LanguageService.Yaml => WebServerKind.Yaml,
             LanguageService.GDScript => WebServerKind.GDScript,
-            LanguageService.Protobuf => WebServerKind.Protobuf,
             _ => null,
         };
         return kind is { } server ? (server, language.IdOf(path)) : null;
@@ -243,7 +239,6 @@ public sealed class WebLanguages : IAsyncDisposable
         WebServerKind.Dockerfile => "Dockerfile",
         WebServerKind.Yaml => "YAML",
         WebServerKind.GDScript => "GDScript",
-        WebServerKind.Protobuf => "Buf",
         _ => "JSON",
     };
 
@@ -649,8 +644,8 @@ public sealed class WebLanguages : IAsyncDisposable
         }
     }
 
-    /// <summary>The folder came to be trusted: TypeScript can use the project's own TypeScript, Buf can read its
-    /// configuration, and ESLint and Prettier check and format its files from now on.</summary>
+    /// <summary>The folder came to be trusted: TypeScript's server, running or starting, starts again on the project's own
+    /// TypeScript, and ESLint and Prettier check and format its files from now on.</summary>
     public void Trust()
     {
         UiThread.Check();
@@ -661,7 +656,8 @@ public sealed class WebLanguages : IAsyncDisposable
         trusted = true;
         Tools.Reset();
         IdeErrors.Observe(Prettier.ResetAsync());
-        foreach ((ServerPlace place, NodeServer server) in servers.Where(s => s.Key.Kind is WebServerKind.TypeScript or WebServerKind.Protobuf).ToList())
+        ServerPlace place = new(WebServerKind.TypeScript, null);
+        if (servers.TryGetValue(place, out NodeServer? server))
         {
             Replace(place, server);
         }
@@ -669,7 +665,7 @@ public sealed class WebLanguages : IAsyncDisposable
     }
 
     /// <summary>The folder's trust was taken back: ESLint and Prettier end, TypeScript's server starts again on Passenger's
-    /// own TypeScript, Buf stops, and a GDScript server on a headless Godot editor, which loads the project's native extensions, ends
+    /// own TypeScript, and a GDScript server on a headless Godot editor, which loads the project's native extensions, ends
     /// for one on the person's own editor where it runs.</summary>
     public void Untrust()
     {
@@ -681,7 +677,7 @@ public sealed class WebLanguages : IAsyncDisposable
         trusted = false;
         Tools.Reset();
         IdeErrors.Observe(Prettier.ResetAsync());
-        foreach ((ServerPlace place, NodeServer server) in servers.Where(s => s.Key.Kind is WebServerKind.TypeScript or WebServerKind.Protobuf
+        foreach ((ServerPlace place, NodeServer server) in servers.Where(s => s.Key.Kind == WebServerKind.TypeScript
             || s.Key.Kind == WebServerKind.GDScript && (godotAsked.Contains(s.Key) || GodotHeadlessAtOpen)).ToList())
         {
             godotAsked.Remove(place);
@@ -724,12 +720,7 @@ public sealed class WebLanguages : IAsyncDisposable
             Missing = () => Missing(kind),
             Command = node => Starting(kind, node),
             Refused = node => Refused(kind, node),
-            Elsewhere = kind switch
-            {
-                WebServerKind.GDScript => () => GodotStart(place),
-                WebServerKind.Protobuf => ProtobufStart,
-                _ => null,
-            },
+            Elsewhere = kind == WebServerKind.GDScript ? () => GodotStart(place) : null,
             Configure = language => ConfigureAsync(kind, language),
             Listen = started => started.Server.TypeScriptVersion += (_, _) => UiThread.Post(() => StateChanged?.Invoke(this, EventArgs.Empty)),
             Started = started => Started(place, started),
@@ -755,23 +746,6 @@ public sealed class WebLanguages : IAsyncDisposable
         (string? setting, IReadOnlyDictionary<string, string> environment) = (settings().GodotExecutable, GodotEnvironment);
         bool headless = (godotAsked.Contains(place) || GodotHeadlessAtOpen) && WorkspaceTrust.Trusts(place.Project ?? folder);
         return cancel => Godot.GodotScripts.StartAsync(place.Project, setting, environment, LogFolder, headless, cancel);
-    }
-
-    /// <summary>Buf reads the workspace's configuration, which can name check plugins, only in a trusted folder.</summary>
-    private Func<CancellationToken, Task<LanguageSession>> ProtobufStart()
-    {
-        bool allowed = trusted;
-        return cancel =>
-        {
-            if (!allowed)
-            {
-                throw new NodeServer.CannotStart("the folder must be trusted to start its Buf language server", "folder not trusted");
-            }
-            string program = Programs.OnPath(OperatingSystem.IsWindows() ? "buf.exe" : "buf")
-                ?? throw new NodeServer.CannotStart("install the Buf CLI and put it on the PATH for completion, navigation and diagnostics", "no Buf CLI");
-            ProcessStartInfo process = ChildProcesses.Command(program, ["lsp", "serve"], folder);
-            return LanguageSession.StartAsync(new ServerStart(process, folder, LogFolder, ClientCapabilities.Web), cancel);
-        };
     }
 
     /// <summary>Godot's server of a script's project asked for, for what Passenger's own reading of it has no answer for:
@@ -984,8 +958,8 @@ public sealed class WebLanguages : IAsyncDisposable
             hold.Holding.SetResult(server.ProcessId);
             await hold.Until;
         }
-        // These servers need no configuration notification from Passenger.
-        if (kind is not (WebServerKind.GDScript or WebServerKind.Protobuf))
+        // Godot's server reads no settings of the client's.
+        if (kind != WebServerKind.GDScript)
         {
             await Configure(kind, server);
         }

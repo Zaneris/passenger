@@ -28,7 +28,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// <summary>The file's checks held while its server starts: until it is connected, or cannot start.</summary>
     private OpenDocument.CheckHold? waiting;
 
-    /// <summary>The file's checks held for servers that push a file's diagnostics
+    /// <summary>The file's checks held, for the Dockerfile, YAML, TypeScript and GDScript servers, which push a file's diagnostics
     /// after each change of it, from the change until a push answering it lands or TypeScript finds the text clean
     /// (<see cref="QuietAsync"/>): what an agent's diagnostics and a screenshot wait for. Given up once its limit passes
     /// (<see cref="PushLimit"/>), the file is said to lack the server's answer until one lands.</summary>
@@ -208,7 +208,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// <summary>Holds the file's checks until its server's push for the text as it stands (<see cref="awaitingPush"/>).</summary>
     private void AwaitPush()
     {
-        if (Lsp is null || Kind is not (WebServerKind.Dockerfile or WebServerKind.Yaml or WebServerKind.TypeScript or WebServerKind.GDScript or WebServerKind.Protobuf))
+        if (Lsp is null || Kind is not (WebServerKind.Dockerfile or WebServerKind.Yaml or WebServerKind.TypeScript or WebServerKind.GDScript))
         {
             return;
         }

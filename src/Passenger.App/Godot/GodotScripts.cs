@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using Passenger.App.Run;
 using Passenger.App.Settings;
-using Passenger.App.Web;
 using Passenger.Core;
 using Passenger.Lsp;
 using Passenger.Text;
@@ -47,6 +46,12 @@ public static class GodotScripts
         return null;
     }
 
+    /// <summary>Why GDScript has no server: no project.godot above the file, or no Godot to run its editor.</summary>
+    public sealed class Unavailable(string problem, string label) : Exception(problem)
+    {
+        public string Label { get; } = label;
+    }
+
     /// <summary>No editor of the person's serves the project, and none was to be started: its scripts are Passenger's own
     /// reading's until something it has no answer for asks for Godot's.</summary>
     public sealed class Unstarted() : Exception("no Godot editor of the person's serves the project, and a headless one starts only once asked for");
@@ -60,10 +65,10 @@ public static class GodotScripts
     {
         if (project is null)
         {
-            throw new NodeServer.CannotStart($"it is in no Godot project (no {GodotProject.FileName} above it), whose editor answers for GDScript", "no Godot project");
+            throw new Unavailable($"it is in no Godot project (no {GodotProject.FileName} above it), whose editor answers for GDScript", "no Godot project");
         }
         GodotFound found = GodotLaunch.Found(setting) is { Exists: true } godot ? godot
-            : throw new NodeServer.CannotStart("no Godot was found to answer for it: install Godot, then choose its executable in "
+            : throw new Unavailable("no Godot was found to answer for it: install Godot, then choose its executable in "
                 + $"{SettingsDialog.PlaceOfPage(SettingsDialog.GodotPage)}, set {GodotExecutables.Variable} to it, or put it on the PATH", "no Godot");
         Directory.CreateDirectory(logFolder);
         if (GodotServerWords.EditorPort(found.Executable, found.Version ?? await GodotExecutables.VersionAsync(found, cancel), name => GodotUserFolders.Variable(environment, name),

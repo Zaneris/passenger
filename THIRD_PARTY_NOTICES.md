@@ -1169,9 +1169,8 @@ Microsoft Corporation), unchanged, from the project its header names:
   Inc.
 
 The `proto3.tmLanguage.json` grammar comes unchanged from zxh0/vscode-proto3
-(https://github.com/zxh0/vscode-proto3/tree/5563d58bc5935213a41ab168f321cf9d99c34fcb), MIT, Copyright (c) 2016.
-Completion, navigation and diagnostics use the separately installed Buf CLI
-(https://github.com/bufbuild/buf), Apache-2.0, Copyright 2020-2026 Buf Technologies, Inc.
+(https://github.com/zxh0/vscode-proto3/tree/5563d58bc5935213a41ab168f321cf9d99c34fcb), MIT, "Copyright (c) 2016" as its
+LICENSE.txt states it, naming no holder; the repository is zxh0's.
 
 And two that colour Razor's .razor and .cshtml files before the language server answers, files of Razor's tooling in
 dotnet/roslyn (https://github.com/dotnet/roslyn, where Razor's tooling moved from dotnet/razor; MIT, Copyright (c) .NET
