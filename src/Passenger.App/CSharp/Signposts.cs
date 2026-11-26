@@ -24,6 +24,9 @@ internal enum SignpostKind
 /// the newest commit among them.</summary>
 internal sealed record SignpostWord(SignpostKind Kind, string Name, BlameLine? Commit = null);
 
+/// <summary>A complexity word and the document version its line offsets belong to.</summary>
+internal sealed record ComplexityWord(FunctionComplexity Function, int Version);
+
 /// <summary>Signposts: a row above each C# type and member of a file shown, saying how many places use it, what implements,
 /// overrides or derives from it, and who changed it most (its file's one blame, <see cref="VcsController.BlameOf"/>), a word
 /// pressed to see them. Once anything is known of a file, a row stands for every declaration its parse finds, so the code
@@ -91,24 +94,43 @@ internal sealed class Signposts
         }
     }
 
+    private bool CountsOrAuthors => settings.SignpostUsages || settings.SignpostInheriting || settings.SignpostAuthors;
+
     /// <summary>Whether any part of a signpost shows.</summary>
-    private bool IsOn => settings.Signposts && (settings.SignpostUsages || settings.SignpostInheriting || settings.SignpostAuthors);
+    private bool IsOn => settings.Signposts && (CountsOrAuthors || settings.SignpostComplexity);
 
     /// <summary>Takes in the settings as they stand: shown again where the signposts' changed, every row gone when off.</summary>
     public void Follow(AppSettings next)
     {
         UiThread.Check();
         bool same = settings.Signposts == next.Signposts && settings.SignpostUsages == next.SignpostUsages
-            && settings.SignpostInheriting == next.SignpostInheriting && settings.SignpostAuthors == next.SignpostAuthors;
+            && settings.SignpostInheriting == next.SignpostInheriting && settings.SignpostAuthors == next.SignpostAuthors
+            && settings.SignpostComplexity == next.SignpostComplexity
+            && settings.SignpostComplexityMinimum == next.SignpostComplexityMinimum
+            && settings.SignpostComplexityYellowFrom == next.SignpostComplexityYellowFrom
+            && settings.SignpostComplexityRedFrom == next.SignpostComplexityRedFrom;
+        bool minimumChanged = settings.SignpostComplexityMinimum != next.SignpostComplexityMinimum;
         settings = next;
         if (same)
         {
             return;
         }
-        foreach (OpenDocument document in kept.Keys)
+        foreach ((OpenDocument document, Kept known) in kept)
         {
             vcs.WantBlame(document, IsOn && settings.SignpostAuthors);
-            if (!IsOn)
+            if (!settings.Signposts || !settings.SignpostComplexity)
+            {
+                HideComplexity(document, known);
+            }
+            else if (minimumChanged && known.Version == document.Text.Version)
+            {
+                RefreshComplexity(document, known);
+            }
+            if (IsOn)
+            {
+                Set(document, known);
+            }
+            else
             {
                 document.Decorations.SetRowsAbove([]);
             }
@@ -140,11 +162,65 @@ internal sealed class Signposts
         }
     }
 
-    /// <summary>The words a rest over a signpost's word shows: its authors' newest commit; none for a count.</summary>
-    public static string? HoverOf(RowAboveWord word) =>
-        word.Data is SignpostWord { Kind: SignpostKind.Authors, Commit: { IsCommitted: true } commit }
-            ? $"{commit.Short} {commit.Summary}\n{commit.Author}, {commit.Time.ToLocalTime():f}"
-            : null;
+    /// <summary>What a rest over a signpost's word shows.</summary>
+    public static string? HoverOf(RowAboveWord word) => word.Data switch
+    {
+        SignpostWord { Kind: SignpostKind.Authors, Commit: { IsCommitted: true } commit } =>
+            $"{commit.Short} {commit.Summary}\n{commit.Author}, {commit.Time.ToLocalTime():f}",
+        ComplexityWord complexity => $"Cognitive complexity of {complexity.Function.Name}: {complexity.Function.Score}\nClick to toggle the increments at the ends of lines",
+        _ => null,
+    };
+
+    /// <summary>Shows one function's increments at the ends of its lines, or hides them if it was already chosen.</summary>
+    public void ToggleComplexity(TextDocument text, ComplexityWord word)
+    {
+        UiThread.Check();
+        if (!settings.Signposts || !settings.SignpostComplexity || text.Version != word.Version
+            || word.Function.Score < settings.SignpostComplexityMinimum
+            || editors.Documents.FirstOrDefault(document => document.Text == text) is not { } document
+            || !kept.TryGetValue(document, out Kept? known))
+        {
+            return;
+        }
+        FunctionComplexity function = word.Function;
+        bool sameFunction = known.ExpandedComplexity is { } expanded
+            && expanded.Place.Offset == function.Offset && expanded.Name == function.Name;
+        HideComplexity(document, known);
+        if (!sameFunction)
+        {
+            known.ExpandedComplexity = (text.AnchorAt(function.Offset, AnchorGravity.After), function.Name);
+            SetComplexityLines(document, function);
+        }
+    }
+
+    private static void SetComplexityLines(OpenDocument document, FunctionComplexity function) =>
+        document.ComplexityAnnotations = [.. function.Lines.Select(line => new LineAnnotation(line.Line, $"+{line.Points}", LineAnnotationLook.Muted))];
+
+    private static void HideComplexity(OpenDocument document, Kept known)
+    {
+        known.ExpandedComplexity?.Place.Remove();
+        known.ExpandedComplexity = null;
+        document.ComplexityAnnotations = [];
+    }
+
+    /// <summary>Finds the chosen function in the new parse after its name's offset has moved with the text.</summary>
+    private void RefreshComplexity(OpenDocument document, Kept known)
+    {
+        if (known.ExpandedComplexity is not { } expanded)
+        {
+            return;
+        }
+        int offset = expanded.Place.Offset;
+        if (known.Complexity?.SelectMany(group => group).FirstOrDefault(f => f.Offset == offset && f.Name == expanded.Name) is { } function
+            && function.Score >= settings.SignpostComplexityMinimum)
+        {
+            SetComplexityLines(document, function);
+        }
+        else
+        {
+            HideComplexity(document, known);
+        }
+    }
 
     private void Track(OpenDocument document)
     {
@@ -152,7 +228,11 @@ internal sealed class Signposts
         {
             return;
         }
-        Kept known = new((_, _) => Recount());
+        Kept known = new((_, _) =>
+        {
+            document.ComplexityAnnotations = [];
+            Recount();
+        });
         kept[document] = known;
         document.Text.Changed += known.OnChanged;
         vcs.WantBlame(document, IsOn && settings.SignpostAuthors);
@@ -164,6 +244,7 @@ internal sealed class Signposts
         if (kept.Remove(document, out Kept? known))
         {
             document.Text.Changed -= known.OnChanged;
+            HideComplexity(document, known);
             vcs.WantBlame(document, false);
         }
     }
@@ -200,8 +281,31 @@ internal sealed class Signposts
         {
             return;
         }
-        known.Declarations = await BackgroundWork.Run(() => SignpostDeclarations.Of(parsed), cancel);
-        known.Version = version;
+        bool withComplexity = settings.SignpostComplexity;
+        if (!ReferenceEquals(known.Parsed, parsed) || (known.Complexity is not null) != withComplexity)
+        {
+            IReadOnlyList<SignpostDeclaration> declarations;
+            ILookup<int, FunctionComplexity>? complexity;
+            try
+            {
+                (declarations, complexity) = await BackgroundWork.Run(() =>
+                    (SignpostDeclarations.Of(parsed), withComplexity ? CognitiveComplexity.Of(parsed, cancel).ToLookup(f => f.RowOffset) : null), cancel);
+            }
+            catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+            {
+                return;
+            }
+            if (cancel.IsCancellationRequested || version != document.Text.Version || !kept.ContainsKey(document)
+                || !IsOn || withComplexity != settings.SignpostComplexity)
+            {
+                return;
+            }
+            known.Parsed = parsed;
+            known.Declarations = declarations;
+            known.Complexity = complexity;
+            known.Version = version;
+            RefreshComplexity(document, known);
+        }
         Set(document, known);
         if (!(settings.SignpostUsages || settings.SignpostInheriting) || csharp() is not { IsReady: true } service || service.For(document)?.Lsp is not { } lsp)
         {
@@ -240,7 +344,7 @@ internal sealed class Signposts
             }
             return;
         }
-        if (cancel.IsCancellationRequested || version != document.Text.Version || counts.Count != asked.Count)
+        if (cancel.IsCancellationRequested || version != document.Text.Version || !kept.ContainsKey(document) || counts.Count != asked.Count)
         {
             return;
         }
@@ -275,9 +379,9 @@ internal sealed class Signposts
             return;
         }
         IReadOnlyList<BlameLine>? blame = settings.SignpostAuthors ? vcs.BlameOf(document) : null;
-        List<RowAbove> rows = [];
+        Dictionary<int, List<RowAboveWord>> rows = [];
         bool said = blame is not null;
-        foreach ((SignpostDeclaration declaration, (string, int) key) in Keyed(known.Declarations))
+        foreach ((SignpostDeclaration declaration, (string, int) key) in Keyed(CountsOrAuthors ? known.Declarations : []))
         {
             List<RowAboveWord> words = [];
             known.Counts.TryGetValue(key, out Counted counted);
@@ -294,15 +398,38 @@ internal sealed class Signposts
                 words.Add(new RowAboveWord(authors.Label, new SignpostWord(SignpostKind.Authors, declaration.Name, authors.Latest)));
             }
             said |= words.Count > 0;
-            if (words.Count == 0)
-            {
-                // Held for the words to come, so the code stays where it stands as they do.
-                words.Add(new RowAboveWord("…"));
-            }
-            rows.Add(new RowAbove(declaration.LineCode, words));
+            rows.Add(declaration.LineCode, words);
         }
-        // Until something is known of the file (no server to count, no Git to blame) it has no rows to hold.
-        document.Decorations.SetRowsAbove(said ? rows : []);
+        if (settings.SignpostComplexity && known.Complexity is { } complexity)
+        {
+            foreach (IGrouping<int, FunctionComplexity> group in complexity)
+            {
+                bool shared = group.Skip(1).Any();
+                foreach (FunctionComplexity function in group.Where(f => f.Score >= settings.SignpostComplexityMinimum))
+                {
+                    if (!rows.TryGetValue(group.Key, out List<RowAboveWord>? words))
+                    {
+                        rows.Add(group.Key, words = []);
+                    }
+                    words.Add(ComplexityScore(function, known.Version, shared));
+                }
+            }
+        }
+        // Keep space for counts that have not arrived once there is something to show.
+        document.Decorations.SetRowsAbove([.. rows.Where(row => said || row.Value.Count > 0)
+            .Select(row => new RowAbove(row.Key, row.Value.Count > 0 ? row.Value : [new RowAboveWord("…")]))]);
+    }
+
+    private RowAboveWord ComplexityScore(FunctionComplexity function, int version, bool shared)
+    {
+        string dotBrush = function.Score switch
+        {
+            int score when score < settings.SignpostComplexityYellowFrom => TokenKeys.Vcs_File_Added,
+            int score when score < settings.SignpostComplexityRedFrom => TokenKeys.Warning,
+            _ => TokenKeys.Error,
+        };
+        string label = shared ? $"{function.Score} ({function.Name})" : $"{function.Score}";
+        return new RowAboveWord(label, new ComplexityWord(function, version), dotBrush);
     }
 
     /// <summary>The declarations with what their counts are kept by: their name, and which of the declarations of that name
@@ -324,6 +451,9 @@ internal sealed class Signposts
     {
         public EventHandler<DocumentChangedEventArgs> OnChanged { get; } = onChanged;
         public IReadOnlyList<SignpostDeclaration> Declarations { get; set; } = [];
+        public ILookup<int, FunctionComplexity>? Complexity { get; set; }
+        public (Anchor Place, string Name)? ExpandedComplexity { get; set; }
+        public ParsedText? Parsed { get; set; }
         public int Version { get; set; } = -1;
         public Dictionary<(string, int), Counted> Counts { get; } = [];
     }

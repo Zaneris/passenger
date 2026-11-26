@@ -1358,6 +1358,69 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         }
     }
 
+    [AvaloniaFact]
+    public void Complexity_signposts_toggle_the_increments_at_the_line_ends_and_follow_edits()
+    {
+        MainWindow window = project.Open("Complexity.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        AppSettings before = window.Settings;
+        try
+        {
+            AppSettings complexityOnly = before with
+            {
+                SignpostUsages = false, SignpostInheriting = false, SignpostAuthors = false,
+                SignpostComplexity = true, SignpostComplexityMinimum = 3, SignpostComplexityYellowFrom = 8, SignpostComplexityRedFrom = 16,
+            };
+            window.ApplySettings(complexityOnly);
+            IEnumerable<(string Text, string? DotBrush)> Scores() => editor.RowsAbove.SelectMany(r => r.Words).Select(w => (w.Text, w.DotBrush));
+            IEnumerable<(int Line, string Text)> Increments() => editor.LineAnnotations
+                .Where(a => a.Text.StartsWith('+')).Select(a => (a.Line, a.Text));
+            Ui.WaitFor(() => editor.RowsAbove.Count == 2, () => $"Complexity signposts: {string.Join(", ", Scores())}");
+            Assert.Equal([("8", TokenKeys.Warning), ("21", TokenKeys.Error)], Scores());
+            Assert.Empty(Increments());
+
+            window.ApplySettings(complexityOnly with { SignpostComplexityMinimum = 0, SignpostComplexityYellowFrom = 9, SignpostComplexityRedFrom = 22 });
+            Assert.Equal([("0", TokenKeys.Vcs_File_Added), ("8", TokenKeys.Vcs_File_Added), ("21", TokenKeys.Warning)], Scores());
+            window.ApplySettings(complexityOnly);
+
+            LineAnnotation debuggerValue = new(2, "value: 1", LineAnnotationLook.Muted);
+            window.EditorArea.Active!.LineAnnotations = [debuggerValue];
+            ClickScore(3);
+            Assert.Equal([(5, "+6"), (6, "+2")], Increments());
+            Assert.Contains(debuggerValue, editor.LineAnnotations);
+            Assert.Null(window.Popup);
+
+            // The chosen function keeps its show state as the contributing lines move.
+            editor.ApplyEdits([new TextEdit(editor.Document.Snapshot.GetLineStart(5), 0, "\n")]);
+            Ui.WaitFor(() => Increments().SequenceEqual([(6, "+6"), (7, "+2")]), () => "Complexity increments follow the edit");
+            ClickScore(3);
+            Assert.Empty(Increments());
+            Assert.Contains(debuggerValue, editor.LineAnnotations);
+
+            ClickScore(3);
+            ClickScore(10);
+            Assert.Equal([(12, "+21")], Increments());
+
+            window.ApplySettings(complexityOnly with { SignpostComplexityMinimum = 22 });
+            Assert.Empty(editor.RowsAbove);
+            Assert.Equal([debuggerValue], editor.LineAnnotations);
+
+            window.ApplySettings(complexityOnly);
+            Ui.WaitFor(() => editor.RowsAbove.Count == 2, () => "Complexity scores return when the minimum is restored");
+            ClickScore(10);
+            window.ApplySettings(complexityOnly with { SignpostComplexity = false });
+            Assert.Empty(editor.RowsAbove);
+            Assert.Equal([debuggerValue], editor.LineAnnotations);
+        }
+        finally
+        {
+            window.ApplySettings(before);
+            window.Close();
+        }
+
+        void ClickScore(int line) => Ui.Click(editor, editor.RowAbovePoint(line, 0, 0) ?? throw new InvalidOperationException("Complexity score is not drawn"));
+    }
+
     private void Show_usages_lists_them_in_a_popup_under_the_caret_goes_to_the_one_chosen_and_hands_them_to_the_find_window()
     {
         MainWindow window = project.Open("Loop.cs");
@@ -4039,6 +4102,23 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                     public string Name { get; } = name;
                     public int Priority { get; set; }
                     public int[]? Slots { get; set; }
+                }
+                """);
+            File.WriteAllText(PathOf("Complexity.cs"), """
+                class ComplexityFixture
+                {
+                    int Plain() => 0;
+                    int Medium(bool a)
+                    {
+                        if (a) { if (a) { if (a) { } } }
+                        if (a && a) { }
+                        return 0;
+                    }
+                    int High(bool a)
+                    {
+                        if (a) { if (a) { if (a) { if (a) { if (a) { if (a) { } } } } } }
+                        return 0;
+                    }
                 }
                 """);
             File.WriteAllText(PathOf("Shapes.cs"), "interface IShape\n{\n    int Sides { get; }\n}\n\nclass Square : IShape\n{\n    public int Sides => 4;\n}\n");

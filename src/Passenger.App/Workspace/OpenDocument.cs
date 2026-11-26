@@ -26,6 +26,7 @@ public sealed class OpenDocument : Observable
     private string? projectContext;
     private IReadOnlyList<LineMark> lineMarks = [];
     private IReadOnlyList<LineAnnotation> lineAnnotations = [];
+    private IReadOnlyList<LineAnnotation> complexityAnnotations = [];
     private IReadOnlyList<LineAnnotation> liveValues = [];
     private IReadOnlyList<LineAnnotation> pinnedValues = [];
 
@@ -827,6 +828,19 @@ public sealed class OpenDocument : Observable
         }
     }
 
+    /// <summary>The increments for the function selected in the current C# parse, recomputed as the source changes.</summary>
+    internal IReadOnlyList<LineAnnotation> ComplexityAnnotations
+    {
+        get => complexityAnnotations;
+        set
+        {
+            if (Set(ref complexityAnnotations, value))
+            {
+                Decorations.SetLineAnnotations(ShownAnnotations);
+            }
+        }
+    }
+
     /// <summary>The lines of annotations, anchored in the text, those of the ones they replace let go.</summary>
     private AnchoredLine[] Anchored(IReadOnlyList<LineAnnotation> annotations, AnchoredLine[] replaced)
     {
@@ -858,10 +872,11 @@ public sealed class OpenDocument : Observable
         return moved ?? annotations;
     }
 
-    /// <summary>What its editors show after its lines: the debugger's annotations and the values pinned, then the app's live
-    /// values, a run's errors and its failed steps' words.</summary>
-    public IReadOnlyList<LineAnnotation> ShownAnnotations => pinnedValues.Count == 0 && liveValues.Count == 0 && errorPins.Count == 0 && stepMarks.Count == 0 ? lineAnnotations
-        : [.. lineAnnotations, .. pinnedValues, .. liveValues, .. errorPins.Select(p => new LineAnnotation(p.Line, p.Last, p.Warnings ? LineAnnotationLook.Muted : LineAnnotationLook.Error)),
+    /// <summary>What its editors show after its lines: complexity increments, debugger annotations, pinned and live
+    /// values, and the errors of a run or failed step.</summary>
+    public IReadOnlyList<LineAnnotation> ShownAnnotations => complexityAnnotations.Count == 0 && pinnedValues.Count == 0
+        && liveValues.Count == 0 && errorPins.Count == 0 && stepMarks.Count == 0 ? lineAnnotations
+        : [.. complexityAnnotations, .. lineAnnotations, .. pinnedValues, .. liveValues, .. errorPins.Select(p => new LineAnnotation(p.Line, p.Last, p.Warnings ? LineAnnotationLook.Muted : LineAnnotationLook.Error)),
             .. stepMarks.Where(m => m.Failure is not null).Select(m => new LineAnnotation(m.Line, m.Failure!, LineAnnotationLook.Error))];
 
     private IReadOnlyList<Editors.ErrorPin> errorPins = [];
