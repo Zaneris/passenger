@@ -33,7 +33,7 @@ public sealed class WordPlacesTests : IDisposable
         Assert.Equal([2, 4, 7], editor.UsageHighlights.Select(u => Line(editor, u.Range.Start)));
         Assert.All(editor.UsageHighlights, u => Assert.True(Text(editor, u.Range) == "word" && u.ByText, $"Lit: [{Lit(editor)}]"));
         List<CodeEditor.StripeMark> marks = [.. editor.StripeMarks.Where(m => m.Kind is StripeMarkKind.Usage or StripeMarkKind.WriteUsage)];
-        Assert.Equal(editor.UsageHighlights.Select(u => RowOf(editor, u.Range.Start)), marks.Select(m => m.Row));
+        Assert.Equal(editor.UsageHighlights.Select(u => Ui.RowOf(editor, u.Range.Start)), marks.Select(m => m.Row));
         Assert.All(marks, m => Assert.Equal("Same word", m.Message));
 
         Ui.Click(editor, Middle(editor, Notes.IndexOf("list", StringComparison.Ordinal) + 1));
@@ -122,9 +122,6 @@ public sealed class WordPlacesTests : IDisposable
 
     private static int Line(CodeEditor editor, int offset) => editor.Document.Snapshot.GetLineFromOffset(offset);
 
-    /// <summary>The row an offset is drawn on, counted from the file's first.</summary>
-    private static int RowOf(CodeEditor editor, int offset) =>
-        (int)Math.Round((editor.PointOf(offset).Y + editor.ScrollOffset.Y) / editor.LineHeight);
 
     /// <summary>What is lit, each as its text and line.</summary>
     private static string Lit(CodeEditor editor) =>

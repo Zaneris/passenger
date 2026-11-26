@@ -2074,6 +2074,11 @@ public static class Ui
         return window;
     }
 
+    /// <summary>The row an offset is drawn on, counted from the file's first: its line's, below the rows above lines
+    /// (signposts) and past the wraps and folds before it.</summary>
+    public static int RowOf(CodeEditor editor, int offset) =>
+        (int)Math.Round((editor.PointOf(offset).Y + editor.ScrollOffset.Y) / editor.LineHeight);
+
     /// <summary>The caret put just after the first place some text is in an editor, failing when the text is not there.</summary>
     public static void PlaceAfter(CodeEditor editor, string text)
     {

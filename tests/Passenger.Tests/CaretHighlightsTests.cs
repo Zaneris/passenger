@@ -92,9 +92,10 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         Assert.Equal(Token(window, TokenKeys.Editor_UsageWrite), Ui.Pixel(window, InBox(window, editor, write.Range.Start)));
         Assert.Equal(Token(window, TokenKeys.Editor_UsageRead), Ui.Pixel(window, InBox(window, editor, read.Range.Start)));
 
-        CodeEditor.StripeMark writeMark = Assert.Single(editor.StripeMarks, m => m.Kind == StripeMarkKind.WriteUsage && m.Row == 7);
+        // Each use's mark stands at the row its use is drawn on, below any signposts' rows above the lines.
+        CodeEditor.StripeMark writeMark = Assert.Single(editor.StripeMarks, m => m.Kind == StripeMarkKind.WriteUsage && m.Item == 1);
         CodeEditor.StripeMark readMark = Assert.Single(editor.StripeMarks, m => m.Kind == StripeMarkKind.Usage);
-        Assert.Equal(9, readMark.Row);
+        Assert.Equal((Ui.RowOf(editor, write.Range.Start), Ui.RowOf(editor, read.Range.Start)), (writeMark.Row, readMark.Row));
         Assert.Equal(Token(window, TokenKeys.Editor_UsageWriteMark), Ui.Pixel(window, editor.TranslatePoint(editor.StripePoint(writeMark), window)!.Value));
         Assert.Equal(Token(window, TokenKeys.Editor_UsageReadMark), Ui.Pixel(window, editor.TranslatePoint(editor.StripePoint(readMark), window)!.Value));
         window.Close();

@@ -99,7 +99,7 @@ public sealed class GlobalUsingsTests : IClassFixture<GlobalUsingsTests.Project>
         Ui.DoubleClick(editor, editor.PointOf(type + 3) + new Point(1, editor.LineHeight / 2));
         Ui.WaitFor(() => editor.UsageHighlights.Count == 5, () => $"Process's five uses lit up, not {editor.UsageHighlights.Count}");
         Assert.All(editor.UsageHighlights, u => Assert.Equal("Process", editor.Document.Snapshot.GetText(u.Range)));
-        Assert.Equal(editor.UsageHighlights.Select(u => RowOf(editor, u.Range.Start)),
+        Assert.Equal(editor.UsageHighlights.Select(u => Ui.RowOf(editor, u.Range.Start)),
             editor.StripeMarks.Where(m => m.Kind is StripeMarkKind.Usage or StripeMarkKind.WriteUsage).Select(m => m.Row));
         window.Close();
     }
@@ -169,9 +169,6 @@ public sealed class GlobalUsingsTests : IClassFixture<GlobalUsingsTests.Project>
         return string.Join(" ", said);
     }
 
-    /// <summary>The row an offset is drawn on, counted from the file's first.</summary>
-    private static int RowOf(CodeEditor editor, int offset) =>
-        (int)Math.Round((editor.PointOf(offset).Y + editor.ScrollOffset.Y) / editor.LineHeight);
 
     /// <summary>A library taking System.Diagnostics from another file's global using, Regex's namespace from a Using item
     /// and List's and Exception's from the SDK's implicit usings, and a file taking System.Text with its own using.</summary>

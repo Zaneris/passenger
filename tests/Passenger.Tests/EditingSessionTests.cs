@@ -432,8 +432,7 @@ public sealed class EditingSessionTests
     }
 
     /// <summary>The row the caret is drawn on.</summary>
-    private static double CaretRow(EditorRig rig) =>
-        Math.Round((rig.Editor.PointOf(rig.Caret).Y + rig.Editor.ScrollOffset.Y) / rig.Editor.LineHeight);
+    private static double CaretRow(EditorRig rig) => Ui.RowOf(rig.Editor, rig.Caret);
 
     /// <summary>The rows a session's edits left are those a fresh editor makes of the same text at the same width: every
     /// wrap carried through every edit as if worked out anew.</summary>
