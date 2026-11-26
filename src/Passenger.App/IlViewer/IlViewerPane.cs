@@ -62,38 +62,34 @@ internal sealed class IlViewerPane : UserControl
 
     public CompiledView Mode => modes.Choice;
 
-    public void Say(string message, string? file = null)
-    {
-        source.Text = file;
-        ToolTip.SetTip(source, null);
-        source.IsVisible = file is not null;
-        empty.Text = message;
-        empty.IsVisible = true;
-        output.IsVisible = false;
-        compiled = null;
-        SetText(string.Empty, Language.PlainText);
-    }
+    public void Say(string message, string? file = null) => Render(file, message);
 
-    public void Show(CompiledRequest request, CompiledSource result)
+    public void Show(CompiledRequest request, CompiledSource result) =>
+        Render(Path.GetFileName(request.Source), result.Message, result, request);
+
+    private void Render(string? file, string? message, CompiledSource? result = null, CompiledRequest? request = null)
     {
-        string file = Path.GetFileName(request.Source);
-        if (result.Message is { } message)
-        {
-            Say(message, file);
-            return;
-        }
+        CloseOpcodeTip();
+        highlighted = null;
+        compiled = message is null ? result : null;
+        bool hasCode = compiled is not null;
         source.Text = file;
-        ToolTip.SetTip(source, $"{request.Source}\n{request.Assembly}");
-        source.IsVisible = true;
-        empty.IsVisible = false;
-        output.IsVisible = true;
-        compiled = result;
-        SetText(result.Text, request.View == CompiledView.LowLevelCSharp ? Language.CSharp : Language.PlainText, result.Colours);
+        source.IsVisible = file is not null;
+        ToolTip.SetTip(source, hasCode && request is not null ? $"{request.Source}\n{request.Assembly}" : null);
+        empty.Text = message;
+        empty.IsVisible = !hasCode;
+        output.IsVisible = hasCode;
+
+        (output.Highlighter as IDisposable)?.Dispose();
+        TextDocument document = new(compiled?.Text ?? string.Empty);
+        output.Document = document;
+        Language language = hasCode && request?.View == CompiledView.LowLevelCSharp ? Language.CSharp : Language.PlainText;
+        output.Highlighter = compiled?.Colours ?? Highlighters.For(language, document);
     }
 
     public void FollowCaret(TextPosition? caret)
     {
-        TextRange? found = caret is { } at ? HighlightAt(at) : null;
+        TextRange? found = caret is { } at ? compiled?.RangeAt(at) : null;
         if (found == highlighted)
         {
             return;
@@ -108,38 +104,6 @@ internal sealed class IlViewerPane : UserControl
         {
             output.SetHighlights([], -1);
         }
-    }
-
-    private TextRange? HighlightAt(TextPosition caret)
-    {
-        if (compiled is not { } data)
-        {
-            return null;
-        }
-        CompiledSequencePoint? nearest = null;
-        foreach (CompiledSequencePoint point in data.SequencePoints)
-        {
-            if (point.Start.CompareTo(caret) <= 0 && caret.CompareTo(point.End) < 0
-                && (nearest is null || point.Start.CompareTo(nearest.Value.Start) >= 0 && point.End.CompareTo(nearest.Value.End) <= 0))
-            {
-                nearest = point;
-            }
-        }
-        if (nearest is { } mapped)
-        {
-            return mapped.Instructions;
-        }
-
-        CompiledSection? found = null;
-        foreach (CompiledSection section in data.Sections)
-        {
-            if (section.FirstLine <= caret.Line && section.LastLine >= caret.Line
-                && (found is null || section.LastLine - section.FirstLine < found.Value.LastLine - found.Value.FirstLine))
-            {
-                found = section;
-            }
-        }
-        return found?.Heading;
     }
 
     private void ShowOpcodeTip(int offset)
@@ -175,15 +139,5 @@ internal sealed class IlViewerPane : UserControl
             ToolTip.SetIsOpen(output, false);
             ToolTip.SetTip(output, null);
         }
-    }
-
-    private void SetText(string text, Language language, IlColours? colours = null)
-    {
-        CloseOpcodeTip();
-        highlighted = null;
-        (output.Highlighter as IDisposable)?.Dispose();
-        TextDocument document = new(text);
-        output.Document = document;
-        output.Highlighter = colours ?? Highlighters.For(language, document);
     }
 }

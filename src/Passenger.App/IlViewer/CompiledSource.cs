@@ -33,6 +33,35 @@ internal sealed record CompiledSource(string Text, IReadOnlyList<CompiledSection
     private static readonly Guid Sha1 = new("ff1816ec-aa5e-4d10-87f7-6f4963833460");
     private static readonly Guid Sha256 = new("8829d00f-11b8-4213-878b-770e8597ac16");
 
+    /// <summary>The output for the most specific matching statement, or the enclosing method's heading.</summary>
+    public TextRange? RangeAt(TextPosition caret)
+    {
+        CompiledSequencePoint? nearest = null;
+        foreach (CompiledSequencePoint point in SequencePoints)
+        {
+            if (point.Start.CompareTo(caret) <= 0 && caret.CompareTo(point.End) < 0
+                && (nearest is null || point.Start.CompareTo(nearest.Value.Start) >= 0 && point.End.CompareTo(nearest.Value.End) <= 0))
+            {
+                nearest = point;
+            }
+        }
+        if (nearest is { } mapped)
+        {
+            return mapped.Instructions;
+        }
+
+        CompiledSection? found = null;
+        foreach (CompiledSection section in Sections)
+        {
+            if (section.FirstLine <= caret.Line && section.LastLine >= caret.Line
+                && (found is null || section.LastLine - section.FirstLine < found.Value.LastLine - found.Value.FirstLine))
+            {
+                found = section;
+            }
+        }
+        return found?.Heading;
+    }
+
     public static CompiledSource Read(CompiledRequest request, CancellationToken cancel)
     {
         if (!File.Exists(request.Assembly))
