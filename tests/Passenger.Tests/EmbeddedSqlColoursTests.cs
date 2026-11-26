@@ -67,22 +67,20 @@ public sealed class EmbeddedSqlColoursTests : FileColoursFolder
             Ui.WaitFor(() => KindOf(editor, "SELECT", settle: false) == keyword,
                 () => $"the named SQL argument's keyword to be coloured ({window.CSharpService?.State})", TimeSpan.FromMinutes(2));
 
-            Assert.Equal(identifier, KindOf(editor, "customer"));
-            Assert.Equal(keyword, KindOf(editor, "select"));
-            Assert.Equal(keyword, KindOf(editor, "FROM"));
+            foreach (string word in new[] { "select", "FROM", @"s\u0065lect", "UPDATE", "TRUNCATE", "order by", "DELETE", "INSERT INTO" })
+            {
+                Assert.True(KindOf(editor, word) == keyword, $"'{word}' should use the SQL keyword colour.");
+            }
+            foreach (string word in new[] { "customer", "purchases" })
+            {
+                Assert.True(KindOf(editor, word) == identifier, $"'{word}' should use the SQL identifier colour.");
+            }
             Assert.Equal(TokenKind.Number, KindOf(editor, "71"));
-            Assert.Equal(keyword, KindOf(editor, @"s\u0065lect"));
-            Assert.Equal(keyword, KindOf(editor, "UPDATE"));
-            Assert.Equal(keyword, KindOf(editor, "TRUNCATE"));
-            Assert.Equal(keyword, KindOf(editor, "order by"));
             Assert.Equal(TokenKind.Comment, KindOf(editor, "SQL comment"));
-            Assert.Equal(keyword, KindOf(editor, "DELETE"));
-            Assert.Equal(keyword, KindOf(editor, "INSERT INTO"));
-            Assert.Equal(identifier, KindOf(editor, "purchases"));
-            Assert.Equal(TokenKind.String, KindOf(editor, "select 86"));
-            Assert.Equal(TokenKind.String, KindOf(editor, "select 99"));
-            Assert.Equal(TokenKind.String, KindOf(editor, "select 91"));
-            Assert.Equal(TokenKind.String, KindOf(editor, "select 92"));
+            foreach (string text in new[] { "select 86", "select 99", "select 91", "select 92" })
+            {
+                Assert.True(KindOf(editor, text) == TokenKind.String, $"'{text}' should keep the C# string colour.");
+            }
 
             int at = Code.IndexOf("language=SQL", StringComparison.Ordinal) + "language=".Length;
             editor.Selections = SelectionSet.Single(new Selection(at, at + 3));

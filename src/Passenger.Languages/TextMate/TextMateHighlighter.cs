@@ -381,7 +381,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     /// found and ends in the state it began in (<see cref="Began"/>), so a rule it was stopped inside never reaches the
     /// lines after it.</summary>
     private static (StateStack End, bool Stopped) Read(Grammar grammar, Tokenizer rules, TimeSpan limit, TextSnapshot text,
-        LineSpan span, StateStack? state, List<SyntaxSpan> scratch, ref char[] buffer, bool includeText)
+        LineSpan span, StateStack? state, List<SyntaxSpan> scratch, ref char[] buffer, bool includeText, int origin = 0)
     {
         if (buffer.Length < span.Length)
         {
@@ -389,19 +389,13 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         }
         // Tint accepts the line without its break and appends it in a reusable buffer.
         text.CopyTo(span.Start, buffer.AsSpan(0, span.Length));
-        rules.TimeBudget = limit;
-        StateStack before = state ?? StateStack.Initial;
-        ReadOnlySpan<EncodedToken> tokens = rules.TokenizeLineEncoded(buffer.AsSpan(0, span.Length), before, out StateStack next);
-        if (rules.StoppedEarly)
-        {
-            tokens = rules.TokenizeLineEncoded(buffer.AsSpan(0, span.Length), before, out next);
-        }
+        ReadOnlySpan<EncodedToken> tokens = ReadTokens(rules, buffer.AsSpan(0, span.Length), state ?? StateStack.Initial, limit, out StateStack next);
         bool stopped = rules.StoppedEarly;
         scratch.Clear();
         for (int i = 0; i < tokens.Length; i++)
         {
-            int start = tokens[i].Start;
-            int end = Math.Min(i + 1 < tokens.Length ? tokens[i + 1].Start : span.Length, span.Length);
+            int start = origin + tokens[i].Start;
+            int end = origin + Math.Min(i + 1 < tokens.Length ? tokens[i + 1].Start : span.Length, span.Length);
             TokenKind kind = grammar.KindOf(EncodedTokenAttributes.GetForeground(tokens[i].Metadata));
             if (end <= start || (!includeText && kind == TokenKind.Text))
             {
@@ -441,19 +435,21 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
                 _ = rules.TokenizeLineEncoded(buffer.AsSpan(0, WarmingLength), before, out _);
                 grammar.LongRulesWarm = true;
             }
-            rules.TimeBudget = longLimit;
-            _ = rules.TokenizeLineEncoded(buffer.AsSpan(0, span.Length), before, out StateStack next);
-            if (rules.StoppedEarly)
-            {
-                // The first read may have paid for the scanners it reached.
-                _ = rules.TokenizeLineEncoded(buffer.AsSpan(0, span.Length), before, out next);
-            }
+            _ = ReadTokens(rules, buffer.AsSpan(0, span.Length), before, longLimit, out StateStack next);
             if (!rules.StoppedEarly)
             {
                 return (next, false);
             }
         }
         return (Began(grammar, state), true);
+    }
+
+    /// <summary>The first read may pay for parsing the scanners it reaches, so it gets one retry.</summary>
+    private static ReadOnlySpan<EncodedToken> ReadTokens(Tokenizer rules, ReadOnlySpan<char> line, StateStack before, TimeSpan limit, out StateStack next)
+    {
+        rules.TimeBudget = limit;
+        ReadOnlySpan<EncodedToken> tokens = rules.TokenizeLineEncoded(line, before, out next);
+        return rules.StoppedEarly ? rules.TokenizeLineEncoded(line, before, out next) : tokens;
     }
 
     /// <summary>The state a line run out of its time ends in, the one it began in: for a first line, the state an empty
@@ -484,12 +480,9 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             }
             lock (grammar.Gate)
             {
-                state = Read(grammar, grammar.Rules, limit, text, line, state, scratch, ref buffer, includeText: true).End;
+                state = Read(grammar, grammar.Rules, limit, text, line, state, scratch, ref buffer, includeText: true, origin: line.Start).End;
             }
-            foreach (SyntaxSpan span in scratch)
-            {
-                spans.Add(span with { Start = line.Start + span.Start });
-            }
+            spans.AddRange(scratch);
         }
         return spans;
     }

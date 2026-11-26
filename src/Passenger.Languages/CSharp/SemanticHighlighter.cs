@@ -1,5 +1,6 @@
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Languages.TextMate;
 using Passenger.Lsp;
 using Passenger.Text;
 
@@ -242,7 +243,7 @@ public sealed class SemanticHighlighter : CarriedColours
         {
             SyntaxSpan[] semantic = Decode(answer.Data, snapshot, types);
             return answer.SqlStrings is { Length: > 0 } sql
-                ? [.. Over(semantic, EmbeddedSqlColours.Of(sql, covered ?? new TextRange(0, snapshot.Length), cancel))]
+                ? [.. Over(semantic, DecodeSql(sql, covered ?? new TextRange(0, snapshot.Length), cancel))]
                 : semantic;
         }, cancel);
         if (request != asked || disposed)
@@ -311,6 +312,44 @@ public sealed class SemanticHighlighter : CarriedColours
             spans[placed++] = new SyntaxSpan(lineStart + Math.Min(column, lineLength), data[i + 2], kind);
         }
         return spans;
+    }
+
+    /// <summary>Projects SQL's token colours back onto the C# characters that produced them.</summary>
+    private static List<SyntaxSpan> DecodeSql(EmbeddedSql[] strings, TextRange range, CancellationToken cancel)
+    {
+        List<SyntaxSpan> result = [];
+        foreach (EmbeddedSql sql in strings)
+        {
+            List<SyntaxSpan> colours = TextMateHighlighter.Fragment(Language.Sql.Grammar!, sql.Text, cancel);
+            int token = 0;
+            int part = 0;
+            while (token < colours.Count && part < sql.Parts.Length)
+            {
+                SyntaxSpan colour = colours[token];
+                EmbeddedSqlPart source = sql.Parts[part];
+                int from = Math.Max(source.Offset, colour.Start);
+                int to = Math.Min(source.End, colour.End);
+                if (from < to)
+                {
+                    int start = Math.Max(range.Start, source.SourceOffset(from));
+                    int end = Math.Min(range.End, source.SourceOffset(to));
+                    if (start < end)
+                    {
+                        result.Add(new SyntaxSpan(start, end - start, colour.Kind));
+                    }
+                }
+                if (colour.End <= source.End)
+                {
+                    token++;
+                }
+                else
+                {
+                    part++;
+                }
+            }
+        }
+        result.Sort(static (a, b) => a.Start.CompareTo(b.Start));
+        return result;
     }
 
     /// <summary>The server's colours over a range of the current text: the screen's where they reach, the whole

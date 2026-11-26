@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.EmbeddedLanguages;
 using Microsoft.CodeAnalysis.EmbeddedLanguages.VirtualChars;
+using Microsoft.CodeAnalysis.LanguageService;
 using Microsoft.CodeAnalysis.Shared.Extensions;
 using Microsoft.CodeAnalysis.Text;
 using Passenger.Lsp;
@@ -34,7 +35,7 @@ internal static class SqlStrings
                 InterpolatedStringExpressionSyntax interpolation => interpolation.StringStartToken,
                 _ => default,
             };
-            if (anchor.RawKind == 0 || InConcatenation(node))
+            if (anchor.RawKind == 0 || info.SyntaxFacts.WalkUpParentheses(node).Parent.IsKind(SyntaxKind.AddExpression))
             {
                 continue;
             }
@@ -89,46 +90,25 @@ internal static class SqlStrings
         bool Matches(SyntaxTriviaList trivia) => detector.HasLanguageComment(trivia, info.SyntaxFacts, out _, out _);
     }
 
-    private static bool InConcatenation(SyntaxNode node)
-    {
-        while (node.Parent is ParenthesizedExpressionSyntax parenthesized)
-        {
-            node = parenthesized;
-        }
-        return node.Parent.IsKind(SyntaxKind.AddExpression);
-    }
-
     private static EmbeddedSql? Read(SyntaxToken anchor, IVirtualCharService characters, CancellationToken cancel)
     {
         StringBuilder text = new();
         List<EmbeddedSqlPart> parts = [];
-        if (anchor.Parent is InterpolatedStringExpressionSyntax interpolation)
+        IEnumerable<SyntaxToken?> pieces = anchor.Parent is InterpolatedStringExpressionSyntax interpolation
+            ? interpolation.Contents.Select(static piece => (piece as InterpolatedStringTextSyntax)?.TextToken)
+            : [anchor];
+        foreach (SyntaxToken? piece in pieces)
         {
-            foreach (InterpolatedStringContentSyntax content in interpolation.Contents)
+            if (piece is not { } token)
             {
-                if (content is InterpolatedStringTextSyntax words)
-                {
-                    Append(words.TextToken);
-                }
-                else
-                {
-                    // A placeholder preserves token and multiline state across a hole without colouring its C#.
-                    text.Append('?');
-                }
+                // A placeholder preserves the SQL state across a hole without giving it a C# range.
+                text.Append('?');
+                continue;
             }
-        }
-        else
-        {
-            Append(anchor);
-        }
-        return parts.Count == 0 ? null : new EmbeddedSql(text.ToString(), [.. parts]);
-
-        void Append(SyntaxToken token)
-        {
             VirtualCharSequence chars = characters.TryConvertToVirtualChars(token);
             if (chars.IsDefault)
             {
-                return;
+                continue;
             }
             for (int i = 0; i < chars.Length; i++)
             {
@@ -147,5 +127,6 @@ internal static class SqlStrings
                 text.Append(character.Value);
             }
         }
+        return parts.Count == 0 ? null : new EmbeddedSql(text.ToString(), [.. parts]);
     }
 }
