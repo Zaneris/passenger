@@ -90,7 +90,8 @@ public readonly record struct RowAbove(int Offset, IReadOnlyList<RowAboveWord> W
         }
         for (int i = 0; i < Words.Count; i++)
         {
-            if (!string.Equals(Words[i].Text, other.Words[i].Text, StringComparison.Ordinal))
+            if (!string.Equals(Words[i].Text, other.Words[i].Text, StringComparison.Ordinal)
+                || !string.Equals(Words[i].Foreground, other.Words[i].Foreground, StringComparison.Ordinal))
             {
                 return false;
             }
@@ -100,5 +101,6 @@ public readonly record struct RowAbove(int Offset, IReadOnlyList<RowAboveWord> W
 }
 
 /// <summary>A word of a row above a line; <see cref="Data"/> is what the host knows it by, given back by a press on the word
-/// (<see cref="CodeEditor.RowAbovePressed"/>) and a rest over it (<see cref="HoverEventArgs.Above"/>).</summary>
-public readonly record struct RowAboveWord(string Text, object? Data = null);
+/// (<see cref="CodeEditor.RowAbovePressed"/>) and a rest over it (<see cref="HoverEventArgs.Above"/>).
+/// <see cref="Foreground"/> is an optional theme brush key.</summary>
+public readonly record struct RowAboveWord(string Text, object? Data = null, string? Foreground = null);

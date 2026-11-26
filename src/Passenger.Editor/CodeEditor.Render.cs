@@ -17,7 +17,7 @@ namespace Passenger.Editor;
 /// placeholder, annotations) after its last.</summary>
 public sealed partial class CodeEditor
 {
-    private readonly FrameKept<(string Text, int Style), TextLine> labels = new();
+    private readonly FrameKept<(string Text, int Style, string? Foreground), TextLine> labels = new();
     private readonly FrameKept<(int Number, bool Current), TextLine> numbers = new();
     private readonly Dictionary<TokenKind, TextRunProperties> runProperties = [];
     private (TextRunProperties Current, TextRunProperties Other) numberRuns;
@@ -339,9 +339,9 @@ public sealed partial class CodeEditor
             bool error = ground || annotation.Look == LineAnnotationLook.Error;
             // A chip's label is a folded placeholder's, in its colour upright.
             int style = chip ? -8 : error ? -4 : -3;
-            if (!labels.TryGet((annotation.Text, style), out TextLine? text))
+            if (!labels.TryGet((annotation.Text, style, null), out TextLine? text))
             {
-                text = labels.Add((annotation.Text, style), Format(annotation.Text, [], chip ? RunWith(palette.Annotation) : error ? annotationRuns.Error : annotationRuns.Value));
+                text = labels.Add((annotation.Text, style, null), Format(annotation.Text, [], chip ? RunWith(palette.Annotation) : error ? annotationRuns.Error : annotationRuns.Value));
             }
             double top = y + (metrics.LineHeight - text.Height) / 2;
             if (ground)

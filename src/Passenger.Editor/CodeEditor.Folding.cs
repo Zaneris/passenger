@@ -294,9 +294,9 @@ public sealed partial class CodeEditor
     private Rect DrawPlaceholder(DrawingContext context, FoldRegion region, double x, double y)
     {
         x += metrics.CharWidth;
-        if (!labels.TryGet((region.Placeholder, -8), out TextLine? label))
+        if (!labels.TryGet((region.Placeholder, -8, null), out TextLine? label))
         {
-            label = labels.Add((region.Placeholder, -8), Format(region.Placeholder, [], RunWith(palette.Annotation)));
+            label = labels.Add((region.Placeholder, -8, null), Format(region.Placeholder, [], RunWith(palette.Annotation)));
         }
         Rect chip = new(x, y + 2, label.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight - 4);
         context.FillRectangle(palette.InlayHintBack, chip, 3);

@@ -279,6 +279,31 @@ public static class Declared
     public static readonly ToggleSetting SignpostAuthors = new(s => s.SignpostAuthors, (s, v) => s with { SignpostAuthors = v },
         new(D.EditorPage, "Signposts: authors", "signposts authors git blame last changed who") { When = new(s => s.Signposts, "Signposts are off") });
 
+    public static readonly ToggleSetting SignpostComplexity = new(s => s.SignpostComplexity, (s, v) => s with { SignpostComplexity = v },
+        new(D.EditorPage, "Signposts: cognitive complexity", "signposts cognitive complexity score control flow",
+            "Show a colored dot and score above C# functions. Click the score to toggle line-end increments.")
+        { When = new(s => s.Signposts, "Signposts are off") });
+
+    private static readonly SettingWhen ComplexitySignpostsOn = new(s => s.Signposts && s.SignpostComplexity, "Cognitive complexity signposts are off");
+
+    public static readonly NumberSetting SignpostComplexityMinimum = new(s => s.SignpostComplexityMinimum,
+        (s, v) => s with { SignpostComplexityMinimum = (int)v }, 0, int.MaxValue, 1,
+        new(D.EditorPage, "Cognitive complexity: minimum visible score", "signposts cognitive complexity minimum visible score hide",
+            "Hide scores below this value. Use 0 to show all scores.")
+        { When = ComplexitySignpostsOn });
+
+    public static readonly NumberSetting SignpostComplexityYellowFrom = new(s => s.SignpostComplexityYellowFrom,
+        (s, v) => s with { SignpostComplexityYellowFrom = (int)v }, 0, int.MaxValue, 1,
+        new(D.EditorPage, "Cognitive complexity: yellow starts at", "signposts cognitive complexity green yellow threshold score",
+            "Visible scores below this value are green.")
+        { When = ComplexitySignpostsOn });
+
+    public static readonly NumberSetting SignpostComplexityRedFrom = new(s => s.SignpostComplexityRedFrom,
+        (s, v) => s with { SignpostComplexityRedFrom = (int)v }, 0, int.MaxValue, 1,
+        new(D.EditorPage, "Cognitive complexity: red starts at", "signposts cognitive complexity yellow red threshold score",
+            "Scores at or above this value are red.")
+        { When = ComplexitySignpostsOn });
+
     public static readonly ToggleSetting SoftWrapIndent = new(s => s.SoftWrapIndent, (s, v) => s with { SoftWrapIndent = v },
         new(D.EditorPage, "Use the original line's indent for wrapped fragments", "soft wrap wrapped indent indentation fragments"));
 

@@ -136,7 +136,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     public bool TypeHints { get; init; } = true;
 
     /// <summary>Signposts: a row above each C# type and member saying how many places use it, what implements, overrides or
-    /// derives from it, and who changed it most, each pressed to see them; each part on or off below it.</summary>
+    /// derives from it, who changed it most, and how complex its control flow is. Each word can be pressed for details.</summary>
     public bool Signposts { get; init; } = true;
 
     public bool SignpostUsages { get; init; } = true;
@@ -144,6 +144,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     public bool SignpostInheriting { get; init; } = true;
 
     public bool SignpostAuthors { get; init; } = true;
+    public bool SignpostComplexity { get; init; } = true;
+    public int SignpostComplexityMinimum { get; init; } = 3;
+    public int SignpostComplexityYellowFrom { get; init; } = 8;
+    public int SignpostComplexityRedFrom { get; init; } = 16;
 
     /// <summary>"Soft-wrap these files": a file whose name matches <see cref="SoftWrapFiles"/> opens with its lines
     /// wrapped at the editor's width (View, Active Editor, Soft-Wrap turns it on and off for one file).</summary>
@@ -719,6 +723,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
         foreach (Setting setting in Declared.All)
         {
             clamped = setting.Clamp(clamped);
+        }
+        if (clamped.SignpostComplexityRedFrom < clamped.SignpostComplexityYellowFrom)
+        {
+            clamped = clamped with { SignpostComplexityRedFrom = clamped.SignpostComplexityYellowFrom };
         }
         return clamped;
 

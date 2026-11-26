@@ -632,6 +632,7 @@
     <Compile Include="../../src/Passenger.App/CSharp/GeneratedCopies.cs" Link="App/GeneratedCopies.cs" />
     <Compile Include="../../src/Passenger.App/CSharp/Declarations.cs" Link="App/Declarations.cs" />
     <Compile Include="../../src/Passenger.Languages/CSharp/SignpostDeclarations.cs" Link="Languages/SignpostDeclarations.cs" />
+    <Compile Include="../../src/Passenger.Languages/CSharp/CognitiveComplexity.cs" Link="Languages/CognitiveComplexity.cs" />
     <Compile Include="../../src/Passenger.App/Vcs/CarriedBlame.cs" Link="App/CarriedBlame.cs" />
   </ItemGroup>
 

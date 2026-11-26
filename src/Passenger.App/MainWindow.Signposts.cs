@@ -24,10 +24,19 @@ public partial class MainWindow
 
     /// <summary>A press on a signpost's word: its usages, the places its count counts, in Show Usages' popup under its
     /// declaration's name; what implements, overrides or derives from it, as Go to Implementation shows them from that name;
-    /// or its authors' newest commit, chosen in the Git window's log.</summary>
+    /// its authors' newest commit, chosen in the Git window's log, or its complexity increments at the ends of lines.</summary>
     private async Task PressSignpostAsync(CodeEditor editor, RowAbovePress press)
     {
-        if (press.Context || press.Word.Data is not SignpostWord word)
+        if (press.Context)
+        {
+            return;
+        }
+        if (press.Word.Data is ComplexityWord complexity)
+        {
+            signposts?.ToggleComplexity(editor.Document, complexity);
+            return;
+        }
+        if (press.Word.Data is not SignpostWord word)
         {
             return;
         }

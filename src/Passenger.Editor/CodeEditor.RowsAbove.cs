@@ -35,9 +35,9 @@ public sealed partial class CodeEditor
     {
         foreach (AboveSlot slot in aboveSlots)
         {
-            if (slot.Span is { } span && span.Line == line && span.Nth == nth && word < slot.Words.Count)
+            if (slot.Span is { } span && span.Line == line && span.Nth == nth && word < slot.WordBoxes.Count)
             {
-                Rect box = slot.Words[word].Box;
+                Rect box = slot.WordBoxes[word];
                 return new Point(box.Center.X, (span.Row * metrics.LineHeight) + box.Center.Y - scroll.Y);
             }
         }
@@ -108,7 +108,7 @@ public sealed partial class CodeEditor
             slot.X = AboveX(text, span.Line, row.Offset);
             slot.Key = AboveKey(span, row, slot.X);
             slot.Drawn = now;
-            slot.Words.Clear();
+            slot.WordBoxes.Clear();
             slot.Place(span.Row, frameSize.Width, metrics.LineHeight);
             slot.Visual.Redraw();
         }
@@ -140,6 +140,7 @@ public sealed partial class CodeEditor
         foreach (RowAboveWord word in row.Words)
         {
             key.Add(word.Text);
+            key.Add(word.Foreground);
         }
         key.Add(aboveHovered is { } hovered && hovered.Line == span.Line && hovered.Nth == span.Nth ? hovered.Word : -1);
         return key.Value;
@@ -155,7 +156,7 @@ public sealed partial class CodeEditor
         }
         RowsAboveDrawn++;
         slot.Drawn = frameNumber;
-        slot.Words.Clear();
+        slot.WordBoxes.Clear();
         double lineHeight = metrics.LineHeight;
         double gutter = frameGutter;
         DrawGutterRow(context, span.Row, span.Line, firstRow: false);
@@ -165,9 +166,12 @@ public sealed partial class CodeEditor
             IReadOnlyList<RowAboveWord> words = slot.Above.Words;
             for (int i = 0; i < words.Count; i++)
             {
-                if (!labels.TryGet((words[i].Text, -10), out TextLine? label))
+                RowAboveWord word = words[i];
+                (string Text, int Style, string? Foreground) key = (word.Text, -10, word.Foreground);
+                if (!labels.TryGet(key, out TextLine? label))
                 {
-                    label = labels.Add((words[i].Text, -10), Format(words[i].Text, [], hintRun ??= HintRun()));
+                    IBrush? foreground = word.Foreground is { } resource ? Tokens.Find(this, resource) : null;
+                    label = labels.Add(key, Format(word.Text, [], foreground is null ? hintRun ??= HintRun() : HintRun(foreground)));
                 }
                 double width = label.WidthIncludingTrailingWhitespace;
                 double top = (lineHeight - label.Height) / 2;
@@ -176,7 +180,7 @@ public sealed partial class CodeEditor
                 {
                     context.FillRectangle(palette.LinkUnderline, new Rect(x, top + label.Baseline + 1, width, 1));
                 }
-                slot.Words.Add((words[i], new Rect(x, 0, width, lineHeight)));
+                slot.WordBoxes.Add(new Rect(x, 0, width, lineHeight));
                 x += width + (metrics.CharWidth * 2);
             }
         }
@@ -191,18 +195,21 @@ public sealed partial class CodeEditor
             return null;
         }
         int row = RowAtY(point.Y);
+        RowAboveList rows = decorations.RowsAbove;
         foreach (AboveSlot slot in aboveSlots)
         {
-            if (slot.Span is not { } span || span.Row != row)
+            if (slot.Span is not { } span || span.Row != row || span.Index >= rows.Count || !slot.Above.DrawnAlike(rows[span.Index]))
             {
                 continue;
             }
+            // A row with the same text and look may have new data without drawing again.
+            RowAbove current = rows[span.Index];
             double y = point.Y + scroll.Y - (row * metrics.LineHeight);
-            for (int i = 0; i < slot.Words.Count; i++)
+            for (int i = 0; i < slot.WordBoxes.Count; i++)
             {
-                if (slot.Words[i].Box.Contains(new Point(point.X, y)))
+                if (slot.WordBoxes[i].Contains(new Point(point.X, y)))
                 {
-                    return (span.Line, span.Nth, i, slot.Words[i].Word);
+                    return (span.Line, span.Nth, i, current.Words[i]);
                 }
             }
         }
@@ -289,7 +296,7 @@ public sealed partial class CodeEditor
         public long Drawn { get; set; }
         public bool Showing { get; set; }
         public ulong Key { get; set; }
-        public List<(RowAboveWord Word, Rect Box)> Words { get; } = [];
+        public List<Rect> WordBoxes { get; } = [];
 
         public void Place(int row, double width, double lineHeight)
         {
@@ -304,7 +311,7 @@ public sealed partial class CodeEditor
         public void LetGo()
         {
             Span = null;
-            Words.Clear();
+            WordBoxes.Clear();
             Visual.Redraw();
         }
     }
