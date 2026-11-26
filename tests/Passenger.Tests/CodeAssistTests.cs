@@ -2217,9 +2217,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>On a library type's decompiled source, every action of the Code and Refactor menus that would change the file
-    /// greys saying it is read-only (those of another language's files saying that instead), and those that only fold it
-    /// or act on the language server stay enabled, as do Go to Declaration and Find Usages, which only read it; Code
-    /// Cleanup's and Rename's keys there say so and change nothing.</summary>
+    /// greys saying it is read-only (those of another language's files saying that instead), those that only fold it, find
+    /// its code's clones or act on the language server stay enabled, as do Go to Declaration and Find Usages, which only
+    /// read it, and Create Fake, which writes a test project's file, greys only for its own reasons; Code Cleanup's and
+    /// Rename's keys there say so and change nothing.</summary>
     private void Every_action_of_the_code_and_refactor_menus_that_would_change_a_decompiled_file_greys_saying_it_is_read_only()
     {
         MainWindow window = project.Open("Program.cs");
@@ -2227,7 +2228,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         string before = decompiled.Text.Snapshot.ToString();
         string readOnly = $"{decompiled.Name} is read-only";
         HashSet<string> reading = [EditorActions.Unfold, EditorActions.UnfoldAll, EditorActions.Fold, EditorActions.FoldToDefinitions, EditorActions.FoldAll,
-            EditorActions.UnfoldDocComments, EditorActions.FoldDocComments, EditorActions.ToggleFold, AppActions.ToggleSolutionAnalysis, AppActions.RestartCSharpServer];
+            EditorActions.UnfoldDocComments, EditorActions.FoldDocComments, EditorActions.ToggleFold, AppActions.ToggleSolutionAnalysis, AppActions.RestartCSharpServer,
+            AppActions.FindClones, AppActions.FindClonesOfSelection];
+        HashSet<string> elsewhere = [AppActions.CreateFake];
         HashSet<string> otherLanguage = [AppActions.OrderScriptParts, AppActions.ExtractResource, AppActions.ExtractStyle];
 
         ActionContext context = window.Actions.Context();
@@ -2236,7 +2239,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         foreach (string id in MainMenu.Build(window.Actions.All).Where(m => m.Title is "Code" or "Refactor").SelectMany(ActionsIn))
         {
             string? why = window.Actions.WhyNot(id, context);
-            if (reading.Contains(id) ? why is not null : otherLanguage.Contains(id) ? why is null : why != readOnly)
+            if (reading.Contains(id) ? why is not null : otherLanguage.Contains(id) ? why is null : elsewhere.Contains(id) ? why == readOnly : why != readOnly)
             {
                 (reading.Contains(id) ? greyed : offered).Add($"{id} ({why ?? "enabled"})");
             }
