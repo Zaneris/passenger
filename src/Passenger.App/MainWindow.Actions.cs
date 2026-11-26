@@ -342,7 +342,14 @@ public partial class MainWindow
             [E.UnfoldDocComments] = [new("Code/Folding", 2, 0)],
             [E.FoldDocComments] = [new("Code/Folding", 2, 1)],
             [E.ToggleFold] = [new("Code/Folding", 3, 0)],
+            [E.UnfoldRecursively] = [new("Code/Folding", 0, 2)],
+            [E.FoldRecursively] = [new("Code/Folding", 1, 3)],
         };
+        for (int level = 0; level < E.UnfoldToLevels.Count; level++)
+        {
+            menus[E.UnfoldToLevels[level]] = [new("Code/Folding/Expand to Level", 0, level)];
+            menus[E.UnfoldAllToLevels[level]] = [new("Code/Folding/Expand All to Level", 0, level)];
+        }
         foreach ((string id, string title) in E.All)
         {
             actions!.Add(new IdeAction(id, title, "Editor", context => Edit(id, context))

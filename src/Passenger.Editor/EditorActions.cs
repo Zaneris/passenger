@@ -61,6 +61,27 @@ public static class EditorActions
     public const string FoldToDefinitions = "editor.foldToDefinitions";
     public const string UnfoldDocComments = "editor.unfoldDocComments";
     public const string FoldDocComments = "editor.foldDocComments";
+
+    // The region at the caret and every region inside it unfolded or folded, and the levels of nesting left open: inside
+    // the region at the caret (Expand to Level, the region itself level 1), or the whole file's (Expand All to Level).
+    public const string UnfoldRecursively = "editor.unfoldRecursively";
+    public const string FoldRecursively = "editor.foldRecursively";
+    public const string UnfoldToLevel1 = "editor.unfoldToLevel1";
+    public const string UnfoldToLevel2 = "editor.unfoldToLevel2";
+    public const string UnfoldToLevel3 = "editor.unfoldToLevel3";
+    public const string UnfoldToLevel4 = "editor.unfoldToLevel4";
+    public const string UnfoldToLevel5 = "editor.unfoldToLevel5";
+    public const string UnfoldAllToLevel1 = "editor.unfoldAllToLevel1";
+    public const string UnfoldAllToLevel2 = "editor.unfoldAllToLevel2";
+    public const string UnfoldAllToLevel3 = "editor.unfoldAllToLevel3";
+    public const string UnfoldAllToLevel4 = "editor.unfoldAllToLevel4";
+    public const string UnfoldAllToLevel5 = "editor.unfoldAllToLevel5";
+
+    /// <summary>Expand to Level 1 to 5, each at its level's place.</summary>
+    public static IReadOnlyList<string> UnfoldToLevels { get; } = [UnfoldToLevel1, UnfoldToLevel2, UnfoldToLevel3, UnfoldToLevel4, UnfoldToLevel5];
+
+    /// <summary>Expand All to Level 1 to 5, each at its level's place.</summary>
+    public static IReadOnlyList<string> UnfoldAllToLevels { get; } = [UnfoldAllToLevel1, UnfoldAllToLevel2, UnfoldAllToLevel3, UnfoldAllToLevel4, UnfoldAllToLevel5];
     public const string MatchBrace = "editor.matchBrace";
 
     // The mouse's alone, pressed at a place in the text, so never listed or run by name: Rider's EditorAddOrRemoveCaret,
@@ -87,6 +108,11 @@ public static class EditorActions
         (CloneCaretAbove, "Clone Caret Above"), (CloneCaretBelow, "Clone Caret Below"), (Escape, "Escape"),
         (ToggleFold, "Toggle Folding"), (Fold, "Collapse"), (Unfold, "Expand"), (FoldAll, "Collapse All"), (UnfoldAll, "Expand All"),
         (FoldToDefinitions, "Collapse to Definitions"), (UnfoldDocComments, "Expand Doc Comments"), (FoldDocComments, "Collapse Doc Comments"),
+        (UnfoldRecursively, "Expand Recursively"), (FoldRecursively, "Collapse Recursively"),
+        (UnfoldToLevel1, "Expand to Level 1"), (UnfoldToLevel2, "Expand to Level 2"), (UnfoldToLevel3, "Expand to Level 3"),
+        (UnfoldToLevel4, "Expand to Level 4"), (UnfoldToLevel5, "Expand to Level 5"),
+        (UnfoldAllToLevel1, "Expand All to Level 1"), (UnfoldAllToLevel2, "Expand All to Level 2"), (UnfoldAllToLevel3, "Expand All to Level 3"),
+        (UnfoldAllToLevel4, "Expand All to Level 4"), (UnfoldAllToLevel5, "Expand All to Level 5"),
         (MatchBrace, "Move Caret to Matching Brace"),
     ];
 
@@ -220,6 +246,18 @@ public static class DefaultKeymaps
         .Bind(EditorActions.FoldAll, "control M , A", "control M , control A")
         .Bind(EditorActions.UnfoldAll, "control M , X", "control M , control X")
         .Bind(EditorActions.FoldToDefinitions, "control M , O", "control M , control O")
+        .Bind(EditorActions.UnfoldRecursively, "meta alt ADD", "meta alt EQUALS")
+        .Bind(EditorActions.FoldRecursively, "meta alt SUBTRACT", "meta alt MINUS")
+        .Bind(EditorActions.UnfoldToLevel1, "meta MULTIPLY , 1", "meta MULTIPLY , NUMPAD1")
+        .Bind(EditorActions.UnfoldToLevel2, "meta MULTIPLY , 2", "meta MULTIPLY , NUMPAD2")
+        .Bind(EditorActions.UnfoldToLevel3, "meta MULTIPLY , 3", "meta MULTIPLY , NUMPAD3")
+        .Bind(EditorActions.UnfoldToLevel4, "meta MULTIPLY , 4", "meta MULTIPLY , NUMPAD4")
+        .Bind(EditorActions.UnfoldToLevel5, "meta MULTIPLY , 5", "meta MULTIPLY , NUMPAD5")
+        .Bind(EditorActions.UnfoldAllToLevel1, "meta alt MULTIPLY , 1", "meta alt MULTIPLY , NUMPAD1")
+        .Bind(EditorActions.UnfoldAllToLevel2, "meta alt MULTIPLY , 2", "meta alt MULTIPLY , NUMPAD2")
+        .Bind(EditorActions.UnfoldAllToLevel3, "meta alt MULTIPLY , 3", "meta alt MULTIPLY , NUMPAD3")
+        .Bind(EditorActions.UnfoldAllToLevel4, "meta alt MULTIPLY , 4", "meta alt MULTIPLY , NUMPAD4")
+        .Bind(EditorActions.UnfoldAllToLevel5, "meta alt MULTIPLY , 5", "meta alt MULTIPLY , NUMPAD5")
         .Bind(EditorActions.MatchBrace, "meta CLOSE_BRACKET")
         .Bind(EditorActions.Escape, "ESCAPE")
         .Bind(EditorActions.AddOrRemoveCaret, "alt shift button1")
@@ -279,6 +317,18 @@ public static class DefaultKeymaps
         .Bind(EditorActions.FoldAll, "control M , A", "control M , control A")
         .Bind(EditorActions.UnfoldAll, "control M , X", "control M , control X")
         .Bind(EditorActions.FoldToDefinitions, "control M , O", "control M , control O")
+        .Bind(EditorActions.UnfoldRecursively, "control alt ADD", "control alt EQUALS")
+        .Bind(EditorActions.FoldRecursively, "control alt SUBTRACT", "control alt MINUS")
+        .Bind(EditorActions.UnfoldToLevel1, "control MULTIPLY , 1", "control MULTIPLY , NUMPAD1")
+        .Bind(EditorActions.UnfoldToLevel2, "control MULTIPLY , 2", "control MULTIPLY , NUMPAD2")
+        .Bind(EditorActions.UnfoldToLevel3, "control MULTIPLY , 3", "control MULTIPLY , NUMPAD3")
+        .Bind(EditorActions.UnfoldToLevel4, "control MULTIPLY , 4", "control MULTIPLY , NUMPAD4")
+        .Bind(EditorActions.UnfoldToLevel5, "control MULTIPLY , 5", "control MULTIPLY , NUMPAD5")
+        .Bind(EditorActions.UnfoldAllToLevel1, "control shift MULTIPLY , 1", "control shift MULTIPLY , NUMPAD1")
+        .Bind(EditorActions.UnfoldAllToLevel2, "control shift MULTIPLY , 2", "control shift MULTIPLY , NUMPAD2")
+        .Bind(EditorActions.UnfoldAllToLevel3, "control shift MULTIPLY , 3", "control shift MULTIPLY , NUMPAD3")
+        .Bind(EditorActions.UnfoldAllToLevel4, "control shift MULTIPLY , 4", "control shift MULTIPLY , NUMPAD4")
+        .Bind(EditorActions.UnfoldAllToLevel5, "control shift MULTIPLY , 5", "control shift MULTIPLY , NUMPAD5")
         .Bind(EditorActions.MatchBrace, "control CLOSE_BRACKET")
         .Bind(EditorActions.Escape, "ESCAPE")
         .Bind(EditorActions.AddOrRemoveCaret, "control alt button1")
@@ -339,6 +389,18 @@ public static class DefaultKeymaps
         .Bind(EditorActions.FoldAll, "meta K , meta 0")
         .Bind(EditorActions.UnfoldAll, "meta K , meta J")
         .Bind(EditorActions.FoldDocComments, "meta K , meta SLASH")
+        .Bind(EditorActions.UnfoldRecursively, "meta K , meta CLOSE_BRACKET")
+        .Bind(EditorActions.FoldRecursively, "meta K , meta OPEN_BRACKET")
+        .Bind(EditorActions.UnfoldToLevel1, "meta MULTIPLY , 1", "meta MULTIPLY , NUMPAD1")
+        .Bind(EditorActions.UnfoldToLevel2, "meta MULTIPLY , 2", "meta MULTIPLY , NUMPAD2")
+        .Bind(EditorActions.UnfoldToLevel3, "meta MULTIPLY , 3", "meta MULTIPLY , NUMPAD3")
+        .Bind(EditorActions.UnfoldToLevel4, "meta MULTIPLY , 4", "meta MULTIPLY , NUMPAD4")
+        .Bind(EditorActions.UnfoldToLevel5, "meta MULTIPLY , 5", "meta MULTIPLY , NUMPAD5")
+        .Bind(EditorActions.UnfoldAllToLevel1, "meta alt MULTIPLY , 1", "meta alt MULTIPLY , NUMPAD1")
+        .Bind(EditorActions.UnfoldAllToLevel2, "meta alt MULTIPLY , 2", "meta alt MULTIPLY , NUMPAD2")
+        .Bind(EditorActions.UnfoldAllToLevel3, "meta alt MULTIPLY , 3", "meta alt MULTIPLY , NUMPAD3")
+        .Bind(EditorActions.UnfoldAllToLevel4, "meta alt MULTIPLY , 4", "meta alt MULTIPLY , NUMPAD4")
+        .Bind(EditorActions.UnfoldAllToLevel5, "meta alt MULTIPLY , 5", "meta alt MULTIPLY , NUMPAD5")
         .Bind(EditorActions.MatchBrace, "meta shift BACK_SLASH")
         .Bind(EditorActions.Escape, "ESCAPE")
         .Bind(EditorActions.AddOrRemoveCaret, "alt button1")
@@ -394,6 +456,18 @@ public static class DefaultKeymaps
         .Bind(EditorActions.FoldAll, "control K , control 0")
         .Bind(EditorActions.UnfoldAll, "control K , control J")
         .Bind(EditorActions.FoldDocComments, "control K , control SLASH")
+        .Bind(EditorActions.UnfoldRecursively, "control K , control CLOSE_BRACKET")
+        .Bind(EditorActions.FoldRecursively, "control K , control OPEN_BRACKET")
+        .Bind(EditorActions.UnfoldToLevel1, "control MULTIPLY , 1", "control MULTIPLY , NUMPAD1")
+        .Bind(EditorActions.UnfoldToLevel2, "control MULTIPLY , 2", "control MULTIPLY , NUMPAD2")
+        .Bind(EditorActions.UnfoldToLevel3, "control MULTIPLY , 3", "control MULTIPLY , NUMPAD3")
+        .Bind(EditorActions.UnfoldToLevel4, "control MULTIPLY , 4", "control MULTIPLY , NUMPAD4")
+        .Bind(EditorActions.UnfoldToLevel5, "control MULTIPLY , 5", "control MULTIPLY , NUMPAD5")
+        .Bind(EditorActions.UnfoldAllToLevel1, "control shift MULTIPLY , 1", "control shift MULTIPLY , NUMPAD1")
+        .Bind(EditorActions.UnfoldAllToLevel2, "control shift MULTIPLY , 2", "control shift MULTIPLY , NUMPAD2")
+        .Bind(EditorActions.UnfoldAllToLevel3, "control shift MULTIPLY , 3", "control shift MULTIPLY , NUMPAD3")
+        .Bind(EditorActions.UnfoldAllToLevel4, "control shift MULTIPLY , 4", "control shift MULTIPLY , NUMPAD4")
+        .Bind(EditorActions.UnfoldAllToLevel5, "control shift MULTIPLY , 5", "control shift MULTIPLY , NUMPAD5")
         .Bind(EditorActions.MatchBrace, "control shift BACK_SLASH")
         .Bind(EditorActions.Escape, "ESCAPE")
         .Bind(EditorActions.AddOrRemoveCaret, "alt button1")
@@ -448,6 +522,18 @@ public static class DefaultKeymaps
         .Bind(EditorActions.Unfold, "meta EQUALS", "meta ADD")
         .Bind(EditorActions.FoldAll, "meta shift MINUS", "meta shift SUBTRACT")
         .Bind(EditorActions.UnfoldAll, "meta shift EQUALS", "meta shift ADD")
+        .Bind(EditorActions.UnfoldRecursively, "meta alt ADD", "meta alt EQUALS")
+        .Bind(EditorActions.FoldRecursively, "meta alt SUBTRACT", "meta alt MINUS")
+        .Bind(EditorActions.UnfoldToLevel1, "meta MULTIPLY , 1", "meta MULTIPLY , NUMPAD1")
+        .Bind(EditorActions.UnfoldToLevel2, "meta MULTIPLY , 2", "meta MULTIPLY , NUMPAD2")
+        .Bind(EditorActions.UnfoldToLevel3, "meta MULTIPLY , 3", "meta MULTIPLY , NUMPAD3")
+        .Bind(EditorActions.UnfoldToLevel4, "meta MULTIPLY , 4", "meta MULTIPLY , NUMPAD4")
+        .Bind(EditorActions.UnfoldToLevel5, "meta MULTIPLY , 5", "meta MULTIPLY , NUMPAD5")
+        .Bind(EditorActions.UnfoldAllToLevel1, "meta alt MULTIPLY , 1", "meta alt MULTIPLY , NUMPAD1")
+        .Bind(EditorActions.UnfoldAllToLevel2, "meta alt MULTIPLY , 2", "meta alt MULTIPLY , NUMPAD2")
+        .Bind(EditorActions.UnfoldAllToLevel3, "meta alt MULTIPLY , 3", "meta alt MULTIPLY , NUMPAD3")
+        .Bind(EditorActions.UnfoldAllToLevel4, "meta alt MULTIPLY , 4", "meta alt MULTIPLY , NUMPAD4")
+        .Bind(EditorActions.UnfoldAllToLevel5, "meta alt MULTIPLY , 5", "meta alt MULTIPLY , NUMPAD5")
         .Bind(EditorActions.MatchBrace, "control M")
         .Bind(EditorActions.Escape, "ESCAPE")
         .Bind(EditorActions.AddOrRemoveCaret, "alt shift button1")
@@ -503,6 +589,18 @@ public static class DefaultKeymaps
         .Bind(EditorActions.Unfold, "control EQUALS", "control ADD")
         .Bind(EditorActions.FoldAll, "control shift MINUS", "control shift SUBTRACT")
         .Bind(EditorActions.UnfoldAll, "control shift EQUALS", "control shift ADD")
+        .Bind(EditorActions.UnfoldRecursively, "control alt ADD", "control alt EQUALS")
+        .Bind(EditorActions.FoldRecursively, "control alt SUBTRACT", "control alt MINUS")
+        .Bind(EditorActions.UnfoldToLevel1, "control MULTIPLY , 1", "control MULTIPLY , NUMPAD1")
+        .Bind(EditorActions.UnfoldToLevel2, "control MULTIPLY , 2", "control MULTIPLY , NUMPAD2")
+        .Bind(EditorActions.UnfoldToLevel3, "control MULTIPLY , 3", "control MULTIPLY , NUMPAD3")
+        .Bind(EditorActions.UnfoldToLevel4, "control MULTIPLY , 4", "control MULTIPLY , NUMPAD4")
+        .Bind(EditorActions.UnfoldToLevel5, "control MULTIPLY , 5", "control MULTIPLY , NUMPAD5")
+        .Bind(EditorActions.UnfoldAllToLevel1, "control shift MULTIPLY , 1", "control shift MULTIPLY , NUMPAD1")
+        .Bind(EditorActions.UnfoldAllToLevel2, "control shift MULTIPLY , 2", "control shift MULTIPLY , NUMPAD2")
+        .Bind(EditorActions.UnfoldAllToLevel3, "control shift MULTIPLY , 3", "control shift MULTIPLY , NUMPAD3")
+        .Bind(EditorActions.UnfoldAllToLevel4, "control shift MULTIPLY , 4", "control shift MULTIPLY , NUMPAD4")
+        .Bind(EditorActions.UnfoldAllToLevel5, "control shift MULTIPLY , 5", "control shift MULTIPLY , NUMPAD5")
         .Bind(EditorActions.MatchBrace, "control shift M")
         .Bind(EditorActions.Escape, "ESCAPE")
         .Bind(EditorActions.AddOrRemoveCaret, "alt shift button1")

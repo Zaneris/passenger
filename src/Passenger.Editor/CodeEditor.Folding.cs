@@ -112,8 +112,68 @@ public sealed partial class CodeEditor
             case EditorActions.UnfoldDocComments:
                 SetFolded(i => FoldRegions[i].Folded && FoldRegions[i].Kind != FoldKind.DocComment);
                 return true;
+            case EditorActions.UnfoldRecursively or EditorActions.FoldRecursively:
+                int at = RegionAround(line, _ => true);
+                if (at >= 0)
+                {
+                    bool fold = action == EditorActions.FoldRecursively;
+                    SetFolded(i => Holds(FoldRegions[at], FoldRegions[i]) ? fold : FoldRegions[i].Folded);
+                }
+                return true;
+        }
+        if (Level(EditorActions.UnfoldToLevels, action) is int level)
+        {
+            int within = RegionAround(line, _ => true);
+            if (within >= 0)
+            {
+                int[] depths = Depths();
+                // The region at the caret is level 1, what it holds a level deeper at each step in.
+                SetFolded(i => Holds(FoldRegions[within], FoldRegions[i]) ? depths[i] - depths[within] + 1 > level : FoldRegions[i].Folded);
+            }
+            return true;
+        }
+        if (Level(EditorActions.UnfoldAllToLevels, action) is int deepest)
+        {
+            int[] depths = Depths();
+            SetFolded(i => depths[i] > deepest);
+            return true;
         }
         return false;
+    }
+
+    /// <summary>The level, from 1, an Expand to Level action of a list of them opens to; null for any other action.</summary>
+    private static int? Level(IReadOnlyList<string> levels, string action)
+    {
+        for (int i = 0; i < levels.Count; i++)
+        {
+            if (levels[i] == action)
+            {
+                return i + 1;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Whether a region lies wholly inside another, or is it.</summary>
+    private static bool Holds(FoldRegion outer, FoldRegion inner) => outer.Start <= inner.Start && inner.End <= outer.End;
+
+    /// <summary>Each region's depth among the regions holding it, the outermost's 1: the regions run in the order they start,
+    /// each holder before what it holds.</summary>
+    private int[] Depths()
+    {
+        int[] depths = new int[FoldRegions.Count];
+        List<FoldRegion> holding = [];
+        for (int i = 0; i < FoldRegions.Count; i++)
+        {
+            FoldRegion region = FoldRegions[i];
+            while (holding.Count > 0 && !Holds(holding[^1], region))
+            {
+                holding.RemoveAt(holding.Count - 1);
+            }
+            holding.Add(region);
+            depths[i] = holding.Count;
+        }
+        return depths;
     }
 
     /// <summary>Sets which regions are folded, carets in newly folded lines moved to their fold's first line.</summary>
