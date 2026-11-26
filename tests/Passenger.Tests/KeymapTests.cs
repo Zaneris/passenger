@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Navigation;
 using Passenger.App.Settings;
 using Passenger.Editor;
 
@@ -91,26 +92,48 @@ public sealed class KeymapTests : IDisposable
     }
 
     /// <summary>A modifier tapped twice in the Keyboard Shortcut dialog is recorded as its double tap, shown as one, and runs
-    /// its action from the editor once kept.</summary>
-    internal void A_double_Shift_recorded_in_the_Keyboard_Shortcut_dialog_runs_its_action_from_the_editor()
+    /// its action from the editor once kept; the keymap's own double Shift opens Go to Everything, which its tip names, and
+    /// two capitals typed, Shift held for each, open nothing.</summary>
+    internal void A_double_tap_recorded_runs_its_action_and_a_double_Shift_opens_Go_to_Everything_but_two_capitals_typed_do_not()
     {
         MainWindow window = Open();
         try
         {
             SettingsDialog dialog = Settings(window, "split right");
             KeyboardShortcutDialog keys = AddKeyboardShortcut(dialog, AppActions.SplitRight);
-            Ui.Press(keys, "shift , shift");
-            string doubleShift = Shortcut.Parse("shift , shift").Display();
-            Assert.True(keys.Keys.First.Text == doubleShift && keys.OkButton.IsEnabled,
-                $"Shift tapped twice in the dialog left \"{keys.Keys.First.Text}\" in its field and OK {(keys.OkButton.IsEnabled ? "enabled" : "disabled")}, where it records {doubleShift}");
+            Ui.Press(keys, "alt , alt");
+            string doubleAlt = Shortcut.Parse("alt , alt").Display();
+            Assert.True(keys.Keys.First.Text == doubleAlt && keys.OkButton.IsEnabled,
+                $"Alt tapped twice in the dialog left \"{keys.Keys.First.Text}\" in its field and OK {(keys.OkButton.IsEnabled ? "enabled" : "disabled")}, where it records {doubleAlt}");
             Ui.Click(keys.OkButton);
             Ui.WaitFor(() => !keys.IsVisible, "the Keyboard Shortcut dialog to close");
-            Assert.Equal([doubleShift], dialog.ShortcutsShown(AppActions.SplitRight));
+            Assert.Equal([doubleAlt], dialog.ShortcutsShown(AppActions.SplitRight));
             Ui.Click(Button(dialog, "OK"));
 
             window.EditorArea.CodeEditor.Focus();
+            Ui.Press(window, "alt , alt");
+            Assert.True(window.EditorArea.Groups.Count == 2, $"{doubleAlt}, recorded for Split Right, split nothing");
+            window.Perform(AppActions.Unsplit);
+            Ui.Settle();
+
+            string doubleShift = Shortcut.Parse("shift , shift").Display();
+            Assert.True(window.Actions.Shortcut(AppActions.GoToEverything) == doubleShift,
+                $"Go to Everything's tip names {window.Actions.Shortcut(AppActions.GoToEverything)}, where the keymap's first key for it is {doubleShift}");
+            window.EditorArea.CodeEditor.Focus();
             Ui.Press(window, "shift , shift");
-            Assert.True(window.EditorArea.Groups.Count == 2, $"{doubleShift}, recorded for Split Right, split nothing");
+            Assert.True(window.Popup is SymbolPopup { Title: "Go to Everything" }, $"{doubleShift} in the Visual Studio keymap opened no Go to Everything");
+            Ui.Press(window, "ESCAPE");
+            window.EditorArea.CodeEditor.Focus();
+            foreach ((Key letter, string text) in new[] { (Key.A, "A"), (Key.B, "B") })
+            {
+                // Typed as a keyboard types a capital: Shift held down for the letter, then let go.
+                window.KeyPress(Key.LeftShift, RawInputModifiers.Shift, PhysicalKey.None, null);
+                Ui.Type(window, $"shift {letter}", text, settle: false);
+                window.KeyRelease(Key.LeftShift, RawInputModifiers.None, PhysicalKey.None, null);
+            }
+            Ui.Settle();
+            Assert.True(window.Popup is null && Text(window).Contains("AB", StringComparison.Ordinal),
+                $"Two capitals typed with Shift held for each left {window.Popup?.GetType().Name ?? "no popup"} open and the text \"{Text(window)}\", where they type AB and open nothing");
         }
         finally
         {

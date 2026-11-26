@@ -13,7 +13,7 @@ internal sealed record SyntheticAsyncCallerFrame(
 
 public partial class ManagedDebugger
 {
-    private const int SyntheticAsyncCallerDepthLimit = 100;
+    internal const int SyntheticAsyncCallerDepthLimit = 100;
     private const int MaxStateMachineSearchDepth = 100;
 
     private IEnumerable<SyntheticAsyncCallerFrame> GetSyntheticAsyncCallerFrames(ICorDebugILFrame physicalFrame)

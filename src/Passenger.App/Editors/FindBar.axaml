@@ -17,6 +17,7 @@
                         <ToggleButton Name="MatchCase" />
                         <ToggleButton Name="WholeWords" />
                         <ToggleButton Name="UseRegex" />
+                        <ToggleButton Name="InSelection" />
                     </StackPanel>
                 </Panel>
                 <StackPanel Name="CountRow" Orientation="Horizontal" Spacing="{x:Static app:Gaps.Hair}" VerticalAlignment="Center">

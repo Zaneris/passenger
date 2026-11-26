@@ -122,6 +122,7 @@ public sealed partial class BuildRunController
                 {
                     return (null, $"{request.Shown} cannot be published into the engine: {state.Problem}");
                 }
+                request = request with { LocalRegistry = state.LocalRegistry };
             }
         }
         catch (OperationCanceledException) when (work.IsStopped)

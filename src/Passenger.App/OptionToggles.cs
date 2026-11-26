@@ -6,9 +6,9 @@ using Passenger.Editor;
 namespace Passenger.App;
 
 /// <summary>A search's options, each an icon's toggle in its field or beside it, in the one look (Shell.axaml's
-/// <c>ToggleButton.option</c>: the accent's ground while on): Match case, Words, Regex and Recursively, each with its key,
-/// which its tip names as this system shows keys and whatever holds the field hears (<see cref="Hear"/>), so the editor's
-/// find bar and Find in Files share the toggles and their keys.</summary>
+/// <c>ToggleButton.option</c>: the accent's ground while on): Match case, Words, Regex, In selection and Recursively, each
+/// with its key, which its tip names as this system shows keys and whatever holds the field hears (<see cref="Hear"/>), so
+/// the editor's find bar and Find in Files share the toggles and their keys.</summary>
 public static class OptionToggles
 {
     /// <summary>An option: its name, its icon (none for Regex, whose mark is <c>.*</c> in the code font) and its key.</summary>
@@ -19,6 +19,9 @@ public static class OptionToggles
     public static Option Words { get; } = new("Words", IconKeys.WholeWord, new Keystroke(Key.O, KeyModifiers.Alt));
 
     public static Option Regex { get; } = new("Regex", null, new Keystroke(Key.X, KeyModifiers.Alt));
+
+    /// <summary>The find bar's search kept inside the stretch chosen as it was turned on.</summary>
+    public static Option InSelection { get; } = new("In selection", IconKeys.Selection, new Keystroke(Key.L, KeyModifiers.Alt));
 
     /// <summary>A directory's subdirectories searched too.</summary>
     public static Option Recursively { get; } = new("Recursively", IconKeys.Structure, new Keystroke(Key.Y, KeyModifiers.Alt));

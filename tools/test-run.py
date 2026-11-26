@@ -117,7 +117,7 @@ class Process:
         settings_path = os.path.join(folder, "hand.runsettings")
         with open(settings_path, "w", encoding="utf-8") as file:
             file.write(shards.run_settings(classes, chosen))
-        environment = dict(os.environ)
+        environment = shards.hang_environment(folder)
         if scale is not None:
             environment[TIME_SCALE] = scale
         built = [UNIT_ASSEMBLY if project == shards.UNIT_PROJECT else ASSEMBLY for project in shards.hand_projects(classes)]
@@ -506,6 +506,7 @@ def main():
         print("\ntest-run: stopped", file=sys.stderr)
         return 130
 
+    shards.drop_whole_dumps()
     counts = tally(RESULTS)
     failed = failures(RESULTS)
     print(f"\n{plural(sum(counts.values()), 'test')}: " + ", ".join(f"{n} {said}" for said, n in sorted(counts.items()))
@@ -513,6 +514,11 @@ def main():
           f"{(time.monotonic() - first) / 60:.1f}, {(time.monotonic() - began) / 60:.1f} in all.")
     for name, outcome, message in failed:
         print(f"  {name} ({outcome})" + (f"\n      {message}" if message else ""))
+    for process in processes:
+        hangs = os.path.join(process.folder, shards.HANGS)
+        if os.path.isdir(hangs) and os.listdir(hangs):
+            print(f"{process.label} hung: what it left (the hung tests' report, and blame's dumps but on macOS) is in "
+                  f"{os.path.relpath(hangs, ROOT)}")
     if failed_any and not failed:
         print("A process ended with a failure and no failed test in its results: its log says what crashed or hung")
     return 1 if failed_any or failed else 0

@@ -102,13 +102,12 @@ public sealed partial class NuGetView
                         {
                             failed.Add($"{package.Key}: installed version unknown");
                         }
-                        string? latest = answer.Versions.FirstOrDefault();
-                        if (latest is null)
+                        if (answer.Versions.Count == 0)
                         {
                             failed.Add($"{package.Key}: no versions available from {feed.Name}");
                         }
-                        Dictionary<string, string> moves = Moves(answer.Versions, package.Value);
-                        string? held = latest is null ? null : HeldBack(latest, package.Value);
+                        Dictionary<string, string> moves = Moves(answer.Chosen, package.Value);
+                        string? held = Held(answer, package.Value);
                         PackageRow? row = moves.Count > 0 || held is not null
                             ? new PackageRow(package.Key, string.Join(", ", at.Select(v => v.Shown ?? "unknown").Distinct(StringComparer.OrdinalIgnoreCase)),
                                 string.Empty, string.Empty, 0, package.Value)
@@ -116,6 +115,7 @@ public sealed partial class NuGetView
                                 UpdateVersion = moves.Values.Max(VersionOrder.Instance),
                                 Moves = moves,
                                 HeldBack = held,
+                                TooNew = answer.TooNew,
                                 AvailableVersions = answer.Versions,
                             }
                             : null;
@@ -181,6 +181,18 @@ public sealed partial class NuGetView
         return moves;
     }
 
+    /// <summary>Why a version newer than a project has is offered to none: the newest too new for the feeds' minimum publish
+    /// age ("2.0.0 was published 2 hours ago, within nuget.org's minimum publish age of 72 hours"), and the newest of the rest
+    /// a range keeps out (<see cref="HeldBack"/>); null where neither is.</summary>
+    private string? Held(FeedVersions answer, IReadOnlyDictionary<string, IReadOnlyList<InstalledVersion>> byProject)
+    {
+        string? young = answer.Versions.FirstOrDefault(v => answer.TooNew.ContainsKey(v)
+            && byProject.Values.Any(at => at.Any(r => r.Version is { } now && VersionOrder.Instance.Compare(v, now) > 0)));
+        string[] said = [.. new[] { young is null ? null : $"{young} {answer.TooNew[young]}", answer.Chosen.FirstOrDefault() is { } newest ? HeldBack(newest, byProject) : null }
+            .OfType<string>()];
+        return said.Length == 0 ? null : string.Join("; ", said);
+    }
+
     /// <summary>Why the newest version is offered to no project whose range or floating version keeps it out though it is
     /// newer than what the project has ("15.0.0 is outside [14.0.0] in Api"); null where none does.</summary>
     private string? HeldBack(string newest, IReadOnlyDictionary<string, IReadOnlyList<InstalledVersion>> byProject)
@@ -210,6 +222,7 @@ public sealed partial class NuGetView
                 continue;
             }
             IReadOnlyList<string> offered = row.AvailableVersions;
+            IReadOnlyDictionary<string, string> tooNew = row.TooNew;
             try
             {
                 if (offered.Count == 0)
@@ -217,6 +230,7 @@ public sealed partial class NuGetView
                     FeedVersions answer = feed is FeedSet set ? await set.VersionsEachAsync(id, preview, cancel) : new FeedVersions(await feed.VersionsAsync(id, preview, cancel), []);
                     problems.AddRange(answer.Failed.Select(f => $"{id}: {f.Feed}: {f.Problem}"));
                     offered = answer.Versions;
+                    tooNew = answer.TooNew;
                 }
             }
             catch (Exception failed) when (!cancel.IsCancellationRequested && FeedSet.IsFeedFailure(failed))
@@ -228,7 +242,7 @@ public sealed partial class NuGetView
             foreach ((string path, IReadOnlyList<TransitiveUse> uses) in row.Transitive)
             {
                 if (model.Projects.FirstOrDefault(p => PathNames.Same(p.Path, path)) is { } project
-                    && TransitiveFix.Of(id, uses, at.GetValueOrDefault(path) ?? [], project.TargetFrameworks, known, offered) is { } fix)
+                    && TransitiveFix.Of(id, uses, at.GetValueOrDefault(path) ?? [], project.TargetFrameworks, known, [.. offered.Where(v => !tooNew.ContainsKey(v))]) is { } fix)
                 {
                     each[path] = fix;
                 }
@@ -245,6 +259,7 @@ public sealed partial class NuGetView
                     : string.Join(", ", each.Values.SelectMany(f => f.Fixes).Select(u => u.Version).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(v => v, VersionOrder.Instance)),
                 Fixes = each,
                 AvailableVersions = offered,
+                TooNew = tooNew,
             };
             if (i >= 0)
             {

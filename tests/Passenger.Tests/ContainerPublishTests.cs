@@ -45,10 +45,13 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
     [AvaloniaFact]
     public void A_projects_image_and_an_AppHosts_compose_files_are_published_into_the_engine_as_one_step_of_Undo()
     {
-        Flow.StepApart("a projects container image is published into the engine through a container profile", () => new ContainerPublishTests(appHost), t => t.A_projects_container_image_is_published_into_the_engine_through_a_container_profile());
+        Flow.StepApart("a projects container image is published into the engine through a container profile never into another the SDK finds first", () => new ContainerPublishTests(appHost), t => t.A_projects_container_image_is_published_into_the_engine_through_a_container_profile());
         Flow.StepApart("an AppHost publishes Docker Compose files that docker compose config reads as one step of Undo", () => new ContainerPublishTests(appHost), t => t.An_AppHost_publishes_Docker_Compose_files_that_docker_compose_config_reads_as_one_step_of_Undo());
     }
 
+    /// <summary>Apple's own engine stands on the PATH (a <c>container</c> that answers every command), which the SDK on
+    /// macOS loads an image into before Docker unless told the engine: the image goes into the test's engine, the other never
+    /// asked.</summary>
     private void A_projects_container_image_is_published_into_the_engine_through_a_container_profile()
     {
         string? noEngine = Docker.WhyNot;
@@ -56,6 +59,11 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
         using StandInRegistry registry = new();
         string project = WriteApp(registry.BaseImage);
         string image = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}publish";
+        string engines = TestFolders.Create("other-engine-");
+        string asked = Path.Combine(engines, "asked.txt");
+        TestFolders.StandIn(engines, "container", $"echo %* >> \"{asked}\"", $"echo \"$*\" >> '{asked}'");
+        string? path = Environment.GetEnvironmentVariable("PATH");
+        Environment.SetEnvironmentVariable("PATH", engines + Path.PathSeparator + path);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
         {
@@ -80,11 +88,14 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
                 && profile.Contains("<ContainerImageTag>t1</ContainerImageTag>", StringComparison.Ordinal) && !profile.Contains("ContainerRegistry", StringComparison.Ordinal),
                 $"The container profile says:\n{profile}");
             Assert.Contains(registry.Requests, request => request.EndsWith("/manifests/1", StringComparison.Ordinal));
+            Assert.False(File.Exists(asked), $"The SDK asked another engine than the test's, as it would load the image into it: {(File.Exists(asked) ? File.ReadAllText(asked) : string.Empty)}");
         }
         finally
         {
+            Environment.SetEnvironmentVariable("PATH", path);
             window.Close();
             RemoveImages();
+            TestFolders.Delete(engines);
         }
     }
 

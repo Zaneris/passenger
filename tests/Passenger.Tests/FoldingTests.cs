@@ -39,6 +39,7 @@ public sealed class FoldingTests : IDisposable
         Flow.StepApart<FoldingTests>("a file opens folded as it last closed and so does its folder after a restart", t => t.A_file_opens_folded_as_it_last_closed_and_so_does_its_folder_after_a_restart());
         Flow.StepApart<FoldingTests>("a file opens with its header usings and regions folded and Collapse to Definitions folds every member and doc comment", t => t.A_file_opens_with_its_header_usings_and_regions_folded_and_Collapse_to_Definitions_folds_every_member_and_doc_comment());
         Flow.StepApart<FoldingTests>("collapsing with the view wheeled down past where the folded rows end draws them", t => t.Collapsing_with_the_view_wheeled_down_past_where_the_folded_rows_end_draws_them());
+        Flow.StepApart<FoldingTests>("Expand and Collapse Recursively and Expand to Level fold by how deep each region is nested", t => t.Expand_and_collapse_recursively_and_expand_to_level_fold_by_how_deep_each_region_is_nested());
         Flow.StepApart<FoldingTests>("a project file folds by its elements and a JSON file by its braces and typing keeps their folds", t => t.A_project_file_folds_by_its_elements_and_a_JSON_file_by_its_braces_and_typing_keeps_their_folds());
     }
 
@@ -425,6 +426,38 @@ public sealed class FoldingTests : IDisposable
         {
             TestFolders.Delete(settings);
         }
+    }
+
+    /// <summary>Rider's keys for the folds by nesting: Expand All to Level 3 leaves the three outer levels open, Expand
+    /// Recursively opens the property at the caret and its accessor, Collapse Recursively folds the class and all it holds,
+    /// and Expand to Level 2 opens the class and its #region alone (#2312).</summary>
+    private void Expand_and_collapse_recursively_and_expand_to_level_fold_by_how_deep_each_region_is_nested()
+    {
+        string path = Path.Combine(folder, "Nested.cs");
+        File.WriteAllText(path, Defined);
+        MainWindow window = Ui.OpenFolder(folder, width: 1000);
+        window.OpenFile(path);
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.WaitFor(() => window.EditorArea.Active!.FoldsFound, "the file's regions");
+        editor.Focus();
+        TextSnapshot text = editor.Document.Snapshot;
+        int[] FoldedLines() => [.. Folded(editor).Select(r => text.GetLineFromOffset(r.Start))];
+        // Levels: header, usings and namespace 1; class (10) 2; #region (13) 3; members (14, 17, 26) 4; lambda, getter 5.
+        Ui.Run(window, EditorActions.UnfoldAllToLevel3);
+        Assert.Equal([14, 17, 19, 26, 28], FoldedLines());
+        editor.Selections = SelectionSet.Single(text.GetLineStart(26));
+        Ui.Run(window, EditorActions.UnfoldRecursively);
+        Assert.Equal([14, 17, 19], FoldedLines());
+        editor.Selections = SelectionSet.Single(text.GetLineStart(10));
+        Ui.Run(window, EditorActions.FoldRecursively);
+        Assert.Equal([10, 13, 14, 17, 19, 26, 28], FoldedLines());
+        Ui.Run(window, EditorActions.UnfoldToLevel2);
+        Assert.Equal([14, 17, 19, 26, 28], FoldedLines());
+        Ui.Run(window, EditorActions.UnfoldAllToLevel5);
+        Assert.Empty(FoldedLines());
+        Assert.Equal("Expand All to Level 5", window.Actions[EditorActions.UnfoldAllToLevel5]!.Title);
+        window.Close();
     }
 
     private void A_file_opens_with_its_header_usings_and_regions_folded_and_Collapse_to_Definitions_folds_every_member_and_doc_comment()

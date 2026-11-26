@@ -480,8 +480,11 @@ jobs:
       # The hand's runs of dotnet test as the deal wrote them (with several processes, the window and Beside classes in
       # them at once, then the Alone classes in one), what each prints kept beside the results as it comes, so a shard stopped
       # partway leaves what it ran. A test hung for 10 minutes is stopped and named, rather than holding the job to its
-      # timeout. Each class's time and how low the free memory fell go in the job's summary; the failed tests are listed
-      # last, as annotations (warnings in the report lane) and in the job's summary.
+      # timeout, and what it left is kept in the results' hangs/: the report the test host writes a minute before (the
+      # tests running, what the IDE stood on, its log's end, the threads of each .NET program under it), and blame's mini
+      # dumps of the test host and the programs under it, but on macOS, where blame dumps each whole (about 7 GB) and the
+      # host ends itself once its report is written. Each class's time and how low the free memory fell go in the job's
+      # summary; the failed tests are listed last, as annotations (warnings in the report lane) and in the job's summary.
       - name: Test
         shell: pwsh
         timeout-minutes: ${{ fromJSON(env.TEST_MINUTES) }}
@@ -502,8 +505,9 @@ jobs:
           & $python -I tools/test-shards.py test $env:RESULTS --shard $env:SHARD --lane $env:LANE --label $env:LABEL @before
           exit $LASTEXITCODE
 
-      # Which shard this was and how its job ended, beside its results, for the summary jobs; and the classes of its hand
-      # it did not run whole (its Test step ran out of time, or a test host ended), each a line "  Unreached CLASS" in the
+      # Which shard this was and how its job ended, beside its results, for the summary jobs; what a hang left in hangs/,
+      # its report printed whole and the tests it was running named in the job's summary; and the classes of its hand it
+      # did not run whole (its Test step ran out of time, or a test host ended), each a line "  Unreached CLASS" in the
       # log, in the job's summary and in unreached.txt.
       - name: Say how the shard ended
         if: ${{ !cancelled() }}

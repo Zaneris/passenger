@@ -5,10 +5,10 @@
     <PackageDownload Include="MSTest.TestAdapter" Version="[$(MSTestOnVSTestVersion)];[$(MSTestRunnerVersion)]" />
     <PackageDownload Include="MSTest.TestFramework" Version="[$(MSTestOnVSTestVersion)];[$(MSTestRunnerVersion)]" />
     <PackageDownload Include="MSTest.Analyzers" Version="[$(MSTestOnVSTestVersion)];[$(MSTestRunnerVersion)]" />
-    <PackageDownload Include="Microsoft.Testing.Platform" Version="[$(MSTestOnVSTestPlatformVersion)];[$(TestingPlatformTwoVersion)]" />
-    <PackageDownload Include="Microsoft.Testing.Platform.MSBuild" Version="[$(MSTestOnVSTestPlatformVersion)];[$(TestingPlatformTwoVersion)]" />
-    <PackageDownload Include="Microsoft.Testing.Extensions.Telemetry" Version="[$(MSTestOnVSTestPlatformVersion)];[$(TestingPlatformTwoVersion)]" />
-    <PackageDownload Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[$(MSTestOnVSTestPlatformVersion)];[$(TestingPlatformTwoVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Platform" Version="[$(MSTestOnVSTestPlatformVersion)];[$(MSTestRunnerPlatformVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Platform.MSBuild" Version="[$(MSTestOnVSTestPlatformVersion)];[$(MSTestRunnerPlatformVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Extensions.Telemetry" Version="[$(MSTestOnVSTestPlatformVersion)];[$(MSTestRunnerPlatformVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[$(MSTestOnVSTestPlatformVersion)];[$(MSTestRunnerPlatformVersion)]" />
     <PackageDownload Include="Microsoft.Testing.Extensions.VSTestBridge" Version="[$(MSTestOnVSTestPlatformVersion)]" />
     <PackageDownload Include="Microsoft.TestPlatform.AdapterUtilities" Version="[$(TestAdapterUtilitiesVersion)]" />
     <PackageDownload Include="Microsoft.TestPlatform.ObjectModel" Version="[$(MSTestRunnerObjectModelVersion)]" />

@@ -1,293 +1,349 @@
-using Avalonia.Input;
+using System.Text.Json;
+using Passenger.App;
 using Passenger.Editor;
 
 namespace Passenger.Tests;
 
-/// <summary>Rider's keymaps as the files in Rider's jars write them, for the actions the keymap tests check: each
-/// keymap's parent and its own list of an action's keys and mouse shortcuts, empty where it takes the parent's away, and
-/// the keys plugins' descriptors add to a keymap. An action's keys resolve as IntelliJ resolves them: the keymap's own
-/// list, else its parent's, Mac OS X 10.5+ taking $default's with Ctrl and Cmd swapped; then what the descriptors add to
-/// that keymap, or put in place of it all, which a keymap below it takes as its parent's.</summary>
+/// <summary>Rider's keymaps as Passenger's presets follow them: each action's keys, double taps and mouse shortcuts in
+/// Rider's seven keymaps, resolved as IntelliJ resolves them (the keymap's own list, the action it takes its shortcuts from,
+/// its parent, and plugins' descriptors) by tools/rider-keymaps.py into RiderKeymaps.json; which of Rider's actions each
+/// of Passenger's takes the shortcuts of; and where a keymap here differs from Rider's on purpose, with why.</summary>
 internal static class RiderKeymaps
 {
-    private const string Default = "$default";
-    private const string MacOS = "Mac OS X 10.5+";
-    private const string Emacs = "Emacs";
+    public const string Default = "$default";
+    public const string MacOS = "Mac OS X 10.5+";
+    public const string VisualStudio = "Visual Studio";
+    public const string VisualStudioMac = "Visual Studio OSX";
+    public const string VSCode = "VSCode";
+    public const string VSCodeMac = "VSCode OSX";
+    public const string Emacs = "Emacs";
 
-    /// <summary>Rider's Emacs keymap (keymaps/Emacs.xml), over $default on every system: its own list of each action the
-    /// keymap tests check, and of those whose keys it takes from them.</summary>
-    private static readonly Dictionary<string, string[]> EmacsOwn = new()
-    {
-        ["EditorDuplicate"] = ["meta D"],
-        ["$Delete"] = ["DELETE", "control D"],
-        ["ParameterInfo"] = ["shift alt P"],
-        ["EditorUp"] = ["UP", "control P"],
-        ["EditorDown"] = ["DOWN", "control N"],
-        ["EditorLeft"] = ["LEFT", "control B"],
-        ["EditorRight"] = ["RIGHT", "control F"],
-        ["EditorTextStart"] = ["control HOME", "shift alt COMMA", "ESCAPE , COMMA"],
-        ["EditorTextEnd"] = ["control END", "shift alt PERIOD"],
-        ["EditorForwardParagraph"] = ["control DOWN"],
-        ["EditorBackwardParagraph"] = ["control UP"],
-        ["EditorScrollUp"] = [],
-        ["EditorScrollDown"] = [],
-        ["Switcher"] = ["control X , B"],
-        ["GotoAction"] = ["ESCAPE , X", "alt X"],
-        ["SaveAll"] = ["control X , control S"],
-        ["GotoDeclaration"] = ["control alt G", "ESCAPE , PERIOD", "alt PERIOD", "ctrl button1"],
-        ["GotoImplementation"] = [],
-        ["Vcs.ShowMessageHistory"] = [],
-    };
+    private static readonly Dictionary<string, Dictionary<string, string[]>> Resolved = Read();
 
-    private static readonly Dictionary<string, (string? Parent, Dictionary<string, string[]> Own)> Files = new()
-    {
-        [Default] = (null, new()
-        {
-            ["EditorDuplicate"] = ["control D"],
-            ["CompareTwoFiles"] = ["control D"],
-            ["Diff.ShowDiff"] = ["control D"],
-            ["ParameterInfo"] = ["control P"],
-            ["EditorToggleCase"] = ["control shift U"],
-            ["Generate"] = ["alt INSERT"],
-            ["NewElement"] = ["alt INSERT"],
-            ["EditorUp"] = ["UP"],
-            ["EditorDown"] = ["DOWN"],
-            ["EditorLeft"] = ["LEFT"],
-            ["EditorRight"] = ["RIGHT"],
-            ["EditorTextStart"] = ["control HOME"],
-            ["EditorTextEnd"] = ["control END"],
-            ["ContextHelp"] = ["F1"],
-            ["ExternalJavaDoc"] = ["shift F1"],
-            ["ShowUsages"] = ["control alt F7"],
-            ["QuickEvaluateExpression"] = ["control alt F8", "alt button1"],
-            ["Switcher"] = ["ctrl TAB", "ctrl shift TAB"],
-            ["MethodOverloadSwitchUp"] = ["control UP"],
-            ["MethodOverloadSwitchDown"] = ["control DOWN"],
-            ["ToggleTemporaryLineBreakpoint"] = ["control shift alt F8"],
-            ["Console.History.Browse"] = ["control alt E"],
-            ["Vcs.ShowMessageHistory"] = ["control M"],
-            ["MethodUp"] = ["alt UP"],
-            ["MethodDown"] = ["alt DOWN"],
-            ["EditorCodeBlockStart"] = ["control OPEN_BRACKET"],
-            ["EditorCodeBlockEnd"] = ["control CLOSE_BRACKET"],
-            ["EditorCodeBlockStartWithSelection"] = ["control shift OPEN_BRACKET"],
-            ["EditorCodeBlockEndWithSelection"] = ["control shift CLOSE_BRACKET"],
-            ["GotoCustomRegion"] = ["control alt PERIOD"],
-            ["QuickImplementations"] = ["control shift I"],
-            ["ShowErrorDescription"] = ["control F1"],
-            ["ExpressionTypeInfo"] = ["control shift P"],
-            ["ShowFilePath"] = ["control alt F12"],
-            ["CollapseSelection"] = ["control PERIOD"],
-            ["CollapseBlock"] = ["control shift PERIOD"],
-        }),
-        [MacOS] = (Default, new()
-        {
-            ["MethodUp"] = ["control shift UP"],
-            ["MethodDown"] = ["control shift DOWN"],
-            ["GotoNextElementUnderCaretUsage"] = ["control alt DOWN"],
-            ["GotoPrevElementUnderCaretUsage"] = ["control alt UP"],
-            ["EditorCodeBlockStart"] = ["meta alt OPEN_BRACKET"],
-            ["EditorCodeBlockEnd"] = ["meta alt CLOSE_BRACKET"],
-            ["EditorCodeBlockStartWithSelection"] = ["meta alt shift OPEN_BRACKET"],
-            ["EditorCodeBlockEndWithSelection"] = ["meta alt shift CLOSE_BRACKET"],
-            ["QuickImplementations"] = ["alt SPACE", "meta Y"],
-            ["ExpressionTypeInfo"] = ["control shift P"],
-            ["ToggleTemporaryLineBreakpoint"] = ["shift meta alt BACK_SLASH", "meta shift alt F8"],
-            ["MethodOverloadSwitchUp"] = ["alt UP"],
-            ["MethodOverloadSwitchDown"] = ["alt DOWN"],
-            ["Switcher"] = ["ctrl TAB", "ctrl shift TAB"],
-            ["Generate"] = ["meta N", "control ENTER"],
-            ["NewElement"] = ["meta N", "control ENTER"],
-            ["EditorUp"] = ["UP", "control P"],
-            ["EditorDown"] = ["DOWN", "control N"],
-            ["EditorLeft"] = ["LEFT", "control B"],
-            ["EditorRight"] = ["RIGHT", "control F"],
-            ["ContextHelp"] = ["meta shift F1"],
-            ["ExternalJavaDoc"] = ["shift F1"],
-            ["Vcs.ShowMessageHistory"] = ["control M"],
-        }),
-        ["Visual Studio"] = (Default, new()
-        {
-            ["OpenFile"] = ["control O"],
-            ["ParameterInfo"] = ["shift control SPACE"],
-            ["NewElement"] = ["control N", "alt INSERT"],
-            ["ExternalJavaDoc"] = ["shift F1"],
-            ["ShowUsages"] = ["shift alt F12"],
-            ["Vcs.ShowMessageHistory"] = ["control H"],
-            ["GotoNextElementUnderCaretUsage"] = ["control shift DOWN"],
-            ["GotoPrevElementUnderCaretUsage"] = ["control shift UP"],
-            ["EditorCodeBlockStart"] = ["alt shift OPEN_BRACKET"],
-            ["EditorCodeBlockEnd"] = [],
-            ["EditorCodeBlockStartWithSelection"] = ["control alt shift OPEN_BRACKET"],
-            ["EditorCodeBlockEndWithSelection"] = ["control alt shift CLOSE_BRACKET"],
-            ["QuickImplementations"] = ["alt F12"],
-            ["ShowErrorDescription"] = [],
-            ["ExpressionTypeInfo"] = [],
-            ["ShowFilePath"] = [],
-            ["CollapseSelection"] = ["control M , H", "control M , control H"],
-        }),
-        ["Visual Studio OSX"] = (MacOS, new()
-        {
-            ["ShowErrorDescription"] = [],
-            ["ExpressionTypeInfo"] = [],
-            ["ShowFilePath"] = [],
-            ["OpenFile"] = ["meta O"],
-            ["Generate"] = ["control meta N"],
-            ["NewElement"] = ["meta N", "alt INSERT"],
-            ["ContextHelp"] = ["F1"],
-            ["ExternalJavaDoc"] = ["shift F1", "meta F1"],
-            ["ShowUsages"] = ["shift alt F12"],
-            ["Vcs.ShowMessageHistory"] = ["control H"],
-        }),
-        ["VSCode"] = (Default, new()
-        {
-            ["OpenFile"] = ["ctrl o"],
-            ["EditorDuplicate"] = [],
-            ["EditorDuplicateLines"] = ["shift alt down"],
-            ["CompareTwoFiles"] = [],
-            ["Diff.ShowDiff"] = [],
-            ["ParameterInfo"] = ["shift ctrl space"],
-            ["EditorToggleCase"] = [],
-            ["EditorCloneCaretAbove"] = ["ctrl alt up", "shift ctrl alt up"],
-            ["EditorCloneCaretBelow"] = ["ctrl alt down", "shift ctrl alt down"],
-            ["ContextHelp"] = [],
-            ["ShowUsages"] = ["shift f12"],
-            ["QuickEvaluateExpression"] = ["ctrl alt f8"],
-            ["MethodOverloadSwitchDown"] = [],
-            ["MethodOverloadSwitchUp"] = [],
-            ["MethodUp"] = [],
-            ["MethodDown"] = [],
-            ["EditorCodeBlockStart"] = [],
-            ["EditorCodeBlockEnd"] = [],
-            ["EditorCodeBlockStartWithSelection"] = [],
-            ["EditorCodeBlockEndWithSelection"] = [],
-            ["QuickImplementations"] = ["alt F12"],
-            ["ExpressionTypeInfo"] = [],
-            ["CollapseSelection"] = [],
-            ["CollapseBlock"] = ["control alt OPEN_BRACKET", "control K , control L"],
-        }),
-        [Emacs] = (Default, EmacsOwn),
-        ["VSCode OSX"] = (MacOS, new()
-        {
-            ["OpenFile"] = ["meta o"],
-            ["EditorDuplicate"] = [],
-            ["EditorDuplicateLines"] = ["shift alt down"],
-            ["CompareTwoFiles"] = [],
-            ["Diff.ShowDiff"] = [],
-            ["ParameterInfo"] = ["shift meta space"],
-            ["EditorToggleCase"] = [],
-            ["Generate"] = ["ctrl enter"],
-            ["NewElement"] = ["ctrl enter"],
-            ["EditorTextStart"] = ["meta up"],
-            ["EditorTextEnd"] = ["meta down"],
-            ["EditorCloneCaretAbove"] = ["shift meta alt up", "meta alt up"],
-            ["EditorCloneCaretBelow"] = ["shift meta alt down", "meta alt down"],
-            ["ShowUsages"] = ["shift f12"],
-            ["QuickEvaluateExpression"] = ["meta alt f8"],
-            ["MethodOverloadSwitchDown"] = [],
-            ["MethodOverloadSwitchUp"] = [],
-            ["EditorCodeBlockStart"] = [],
-            ["EditorCodeBlockEnd"] = [],
-            ["QuickImplementations"] = ["alt SPACE", "alt F12"],
-            ["CollapseBlock"] = ["meta alt OPEN_BRACKET", "meta K , meta L"],
-        }),
-    };
-
-    /// <summary>The keys plugins' descriptors add, by keymap and action, or put in place of all the keymap had for it
-    /// (replace-all): Rider's own (intellij.rider.xml), dotCover's and the database tools'.</summary>
-    private static readonly (string Keymap, string Action, string Keys, bool ReplaceAll)[] Descriptors =
+    /// <summary>Each of Passenger's actions Rider has, with the actions of Rider's whose keys and mouse shortcuts it takes in
+    /// every keymap, a key Rider gives several of them by place running Passenger's one (<see cref="AppActions.KeysIn"/>).
+    /// Rider's actions with shortcuts of their own place alone (its terminal's New Tab, a tree's Expand All and Collapse All,
+    /// a list of changes' Group By Directory and Unstage) are left out: Passenger's places take their own keys there.</summary>
+    public static readonly (string[] Ours, string[] Riders)[] Actions =
     [
-        ("Visual Studio", "CloneCaretAboveWithVirtualSpace", "alt shift UP", false),
-        ("Visual Studio OSX", "CloneCaretAboveWithVirtualSpace", "control shift UP", false),
-        ("Visual Studio", "CloneCaretBelowWithVirtualSpace", "alt shift DOWN", false),
-        ("Visual Studio OSX", "CloneCaretBelowWithVirtualSpace", "control shift DOWN", false),
-        (Default, "RiderOpenSolution", "control shift O", false),
-        (MacOS, "RiderOpenSolution", "control shift O", true),
-        ("VSCode", "RiderOpenSolution", "control K , control O", true),
-        (Default, CoverAll, "control SEMICOLON , K", true),
-        (Default, CoverAll, "control SEMICOLON , control K", false),
-        (MacOS, CoverAll, "meta SEMICOLON , K", true),
-        (MacOS, CoverAll, "meta SEMICOLON , meta K", false),
-        ("Visual Studio", CoverAll, "control U , K", true),
-        ("Visual Studio", CoverAll, "control U , control K", false),
-        ("Visual Studio OSX", CoverAll, "meta U , K", true),
-        ("Visual Studio OSX", CoverAll, "meta U , meta K", false),
-        (Default, "Console.Transaction.Commit", "control alt shift ENTER", false),
-        (Default, "ReSharperGotoContainingDeclaration", "alt shift OPEN_BRACKET", true),
-        (MacOS, "ReSharperGotoContainingDeclaration", "control OPEN_BRACKET", true),
-        ("Visual Studio", "ReSharperGotoContainingDeclaration", "control OPEN_BRACKET", true),
-        ("Visual Studio OSX", "ReSharperGotoContainingDeclaration", "meta OPEN_BRACKET", true),
-        (Default, "ReSharperSelectContainingDeclaration", "control alt shift OPEN_BRACKET", true),
-        (MacOS, "ReSharperSelectContainingDeclaration", "control shift OPEN_BRACKET", true),
-        ("Visual Studio", "ReSharperSelectContainingDeclaration", "control shift OPEN_BRACKET", true),
-        ("Visual Studio OSX", "ReSharperSelectContainingDeclaration", "meta alt OPEN_BRACKET", true),
+        ([EditorActions.Left], ["EditorLeft"]), ([EditorActions.Right], ["EditorRight"]),
+        ([EditorActions.Up], ["EditorUp"]), ([EditorActions.Down], ["EditorDown"]),
+        ([EditorActions.WordLeft], ["EditorPreviousWord"]), ([EditorActions.WordRight], ["EditorNextWord"]),
+        ([EditorActions.LineStart], ["EditorLineStart"]), ([EditorActions.LineEnd], ["EditorLineEnd"]),
+        ([EditorActions.TextStart], ["EditorTextStart"]), ([EditorActions.TextEnd], ["EditorTextEnd"]),
+        ([EditorActions.PageUp], ["EditorPageUp"]), ([EditorActions.PageDown], ["EditorPageDown"]),
+        ([EditorActions.ScrollUp], ["EditorScrollUp"]), ([EditorActions.ScrollDown], ["EditorScrollDown"]),
+        ([EditorActions.Backspace], ["EditorBackSpace"]), ([EditorActions.Delete], ["$Delete", "EditorDelete"]),
+        ([EditorActions.DeleteWordLeft], ["EditorDeleteToWordStart", "EditorKillToWordStart"]),
+        ([EditorActions.DeleteWordRight], ["EditorDeleteToWordEnd", "EditorKillToWordEnd"]), ([EditorActions.NewLine], ["EditorEnter"]),
+        ([EditorActions.StartNewLine], ["EditorStartNewLine"]),
+        ([EditorActions.StartNewLineBefore], ["EditorStartNewLineBefore"]),
+        ([EditorActions.Indent], ["EditorIndentSelection"]), ([EditorActions.Outdent], ["EditorUnindentSelection"]),
+        ([EditorActions.Duplicate], ["EditorDuplicate", "EditorDuplicateLines"]),
+        ([EditorActions.DeleteLine], ["EditorDeleteLine"]), ([EditorActions.MoveLineUp], ["MoveLineUp"]),
+        ([EditorActions.MoveLineDown], ["MoveLineDown"]),
+        ([EditorActions.ToggleLineComment, EditorActions.Comment, EditorActions.Uncomment], ["CommentByLineComment"]),
+        ([EditorActions.ToggleBlockComment], ["CommentByBlockComment"]),
+        ([EditorActions.JoinLines], ["EditorJoinLines"]), ([EditorActions.ToggleCase], ["EditorToggleCase"]),
+        ([EditorActions.CutToLineEnd], ["EditorCutLineEnd"]), ([EditorActions.Undo], ["$Undo"]),
+        ([EditorActions.Redo], ["$Redo"]), ([EditorActions.Cut], ["$Cut", "EditorKillRegion"]), ([EditorActions.Copy], ["$Copy", "EditorKillRingSave"]),
+        ([EditorActions.Paste], ["$Paste"]), ([EditorActions.SelectAll], ["$SelectAll"]),
+        ([EditorActions.SelectNextOccurrence], ["SelectNextOccurrence"]),
+        ([EditorActions.UnselectOccurrence], ["UnselectPreviousOccurrence"]),
+        ([EditorActions.SelectAllOccurrences], ["SelectAllOccurrences"]),
+        ([EditorActions.CaretPerLine], ["EditorAddCaretPerSelectedLine"]),
+        ([EditorActions.CloneCaretAbove], ["EditorCloneCaretAbove", "CloneCaretAboveWithVirtualSpace"]),
+        ([EditorActions.CloneCaretBelow], ["EditorCloneCaretBelow", "CloneCaretBelowWithVirtualSpace"]),
+        ([EditorActions.Escape], ["EditorEscape"]), ([EditorActions.ToggleFold], ["ExpandCollapseToggleAction"]),
+        ([EditorActions.Fold], ["CollapseRegion"]), ([EditorActions.Unfold], ["ExpandRegion"]),
+        ([EditorActions.FoldAll], ["CollapseAllRegions"]), ([EditorActions.UnfoldAll], ["ExpandAllRegions"]),
+        ([EditorActions.FoldToDefinitions], ["RiderCollapseToDefinitions"]),
+        ([EditorActions.UnfoldDocComments], ["ExpandDocComments"]),
+        ([EditorActions.FoldDocComments], ["CollapseDocComments"]),
+        ([EditorActions.UnfoldRecursively], ["ExpandRegionRecursively"]), ([EditorActions.FoldRecursively], ["CollapseRegionRecursively"]),
+        ([EditorActions.UnfoldToLevel1], ["ExpandToLevel1"]), ([EditorActions.UnfoldToLevel2], ["ExpandToLevel2"]),
+        ([EditorActions.UnfoldToLevel3], ["ExpandToLevel3"]), ([EditorActions.UnfoldToLevel4], ["ExpandToLevel4"]),
+        ([EditorActions.UnfoldToLevel5], ["ExpandToLevel5"]), ([EditorActions.UnfoldAllToLevel1], ["ExpandAllToLevel1"]),
+        ([EditorActions.UnfoldAllToLevel2], ["ExpandAllToLevel2"]), ([EditorActions.UnfoldAllToLevel3], ["ExpandAllToLevel3"]),
+        ([EditorActions.UnfoldAllToLevel4], ["ExpandAllToLevel4"]), ([EditorActions.UnfoldAllToLevel5], ["ExpandAllToLevel5"]),
+        ([EditorActions.MatchBrace], ["EditorMatchBrace"]),
+        ([EditorActions.AddOrRemoveCaret], ["EditorAddOrRemoveCaret"]),
+        ([EditorActions.ColumnSelectionFromCaret], ["EditorCreateRectangularSelection"]),
+        ([EditorActions.ColumnSelectionDrag], ["EditorCreateRectangularSelectionOnMouseDrag"]),
+        ([EditorActions.AddColumnSelectionDrag], ["EditorAddRectangularSelectionOnMouseDrag"]),
+        ([AppActions.OpenSolution], ["RiderOpenSolution"]), ([AppActions.OpenFile], ["OpenFile"]),
+        ([AppActions.NewSolution], ["RiderNewSolution"]), ([AppActions.NewProject], ["NewRiderProject"]),
+        ([AppActions.Exit], ["Exit"]), ([AppActions.NextProjectWindow], ["NextProjectWindow"]),
+        ([AppActions.PreviousProjectWindow], ["PreviousProjectWindow"]),
+        ([AppActions.FileEncoding], ["ChangeFileEncodingAction"]),
+        ([AppActions.TargetFramework], ["ChangeTargetFramework"]), ([AppActions.Save], ["SaveDocument"]),
+        ([AppActions.SaveAll], ["SaveAll"]), ([AppActions.CloseTab], ["CloseContent"]),
+        ([AppActions.NextTab], ["NextTab"]), ([AppActions.PreviousTab], ["PreviousTab"]),
+        ([AppActions.Switcher, AppActions.SwitcherBackward], ["Switcher"]), ([AppActions.GoToFile], ["GotoFile"]),
+        ([AppActions.GoToLine], ["GotoLine"]), ([AppActions.GoToSymbol], ["GotoSymbol", "GotoClass"]),
+        ([AppActions.GoToEverything], ["SearchEverywhere"]), ([AppActions.FileStructure], ["FileStructurePopup"]),
+        ([AppActions.JumpToNavigationBar], ["ShowNavBar"]), ([AppActions.GoToRelated], ["GotoRelated"]),
+        ([AppActions.FindAction], ["GotoAction"]), ([AppActions.FindInFiles], ["FindInPath"]),
+        ([AppActions.RecentFiles], ["RecentFiles"]), ([AppActions.RecentChangedFiles], ["RecentChangedFiles"]),
+        ([AppActions.RecentLocations], ["RecentLocations"]), ([AppActions.LastEditLocation], ["JumpToLastChange"]),
+        ([AppActions.NextEditLocation], ["JumpToNextChange"]), ([AppActions.ToggleBookmark], ["ToggleBookmark"]),
+        ([AppActions.NextBookmark], ["GotoNextBookmark"]),
+        ([AppActions.ToggleBookmark0], ["ToggleBookmark0"]), ([AppActions.GoToBookmark0], ["GotoBookmark0"]),
+        ([AppActions.ToggleBookmark1], ["ToggleBookmark1"]), ([AppActions.GoToBookmark1], ["GotoBookmark1"]),
+        ([AppActions.ToggleBookmark2], ["ToggleBookmark2"]), ([AppActions.GoToBookmark2], ["GotoBookmark2"]),
+        ([AppActions.ToggleBookmark3], ["ToggleBookmark3"]), ([AppActions.GoToBookmark3], ["GotoBookmark3"]),
+        ([AppActions.ToggleBookmark4], ["ToggleBookmark4"]), ([AppActions.GoToBookmark4], ["GotoBookmark4"]),
+        ([AppActions.ToggleBookmark5], ["ToggleBookmark5"]), ([AppActions.GoToBookmark5], ["GotoBookmark5"]),
+        ([AppActions.ToggleBookmark6], ["ToggleBookmark6"]), ([AppActions.GoToBookmark6], ["GotoBookmark6"]),
+        ([AppActions.ToggleBookmark7], ["ToggleBookmark7"]), ([AppActions.GoToBookmark7], ["GotoBookmark7"]),
+        ([AppActions.ToggleBookmark8], ["ToggleBookmark8"]), ([AppActions.GoToBookmark8], ["GotoBookmark8"]),
+        ([AppActions.ToggleBookmark9], ["ToggleBookmark9"]), ([AppActions.GoToBookmark9], ["GotoBookmark9"]), ([AppActions.PreviousBookmark], ["GotoPreviousBookmark"]),
+        ([AppActions.ShowBookmarks], ["ShowBookmarks", "ActivateBookmarksToolWindow"]),
+        ([AppActions.ReplaceInFiles], ["ReplaceInPath"]), ([AppActions.ShowSettings], ["ShowSettings"]),
+        ([AppActions.About], ["About"]), ([AppActions.CheckForUpdates], ["CheckForUpdate"]),
+        ([AppActions.ShowNuGet], ["ActivateNuGetToolWindow"]), ([AppActions.Find], ["Find"]),
+        ([AppActions.Replace], ["Replace"]), ([AppActions.FindNext], ["FindNext"]),
+        ([AppActions.FindPrevious], ["FindPrevious"]),
+        ([AppActions.FindWordAtCaret], ["FindWordAtCaret"]), ([AppActions.FindPreviousWordAtCaret], ["FindPrevWordAtCaret"]),
+        ([AppActions.FindInSelection], ["ToggleFindInSelection"]), ([AppActions.IncrementalSearch], ["IncrementalSearch"]), ([AppActions.FocusExplorer], ["ActivateProjectToolWindow"]),
+        ([AppActions.SelectOpenedFile], ["LocateInSolutionView", "SelectInProjectView"]),
+        ([AppActions.NewFile], ["NewFile"]), ([AppActions.NewFolder], ["NewDir"]),
+        ([AppActions.NewItem], ["NewElement"]), ([AppActions.CompareFiles], ["CompareTwoFiles"]),
+        ([AppActions.CopyPath], ["CopyPaths"]), ([AppActions.RevealInFileManager], ["RevealIn"]),
+        ([AppActions.OpenInTerminal], ["Terminal.OpenInTerminal"]), ([AppActions.OpenInBrowser], ["WebOpenInAction"]),
+        ([AppActions.Build], ["BuildSolutionAction"]), ([AppActions.RebuildSolution], ["RebuildSolutionAction"]),
+        ([AppActions.CleanSolution], ["CleanSolutionAction"]), ([AppActions.BuildSelected], ["BuildCurrentProject"]),
+        ([AppActions.RunProgram], ["Run"]), ([AppActions.Debug], ["Debug"]), ([AppActions.Stop], ["Stop"]),
+        ([AppActions.Rerun], ["Rerun"]), ([AppActions.EditConfigurations], ["editRunConfigurations"]),
+        ([AppActions.RunHere], ["RunClass"]), ([AppActions.DebugHere], ["DebugClass"]),
+        ([AppActions.ShowBuild], ["ActivateBuildToolWindow"]), ([AppActions.ShowRun], ["ActivateRunToolWindow"]),
+        ([AppActions.ShowProblems], ["ActivateProblemsViewToolWindow"]),
+        ([AppActions.ShowFind], ["ActivateFindToolWindow"]), ([AppActions.ShowDebug], ["ActivateDebugToolWindow"]),
+        ([AppActions.ShowContainers], ["ActivateServicesToolWindow"]),
+        ([AppActions.ShowTests], ["ActivateUnitTestsToolWindow"]),
+        ([AppActions.ShowStructure], ["ActivateStructureToolWindow"]),
+        ([AppActions.ShowTerminal], ["ActivateTerminalToolWindow"]),
+        ([AppActions.ShowGit], ["ActivateVersionControlToolWindow"]),
+        ([AppActions.ShowCommit], ["ActivateCommitToolWindow"]),
+        ([AppActions.ShowEndpoints], ["ActivateEndpointsToolWindow"]),
+        ([AppActions.HideToolWindow], ["HideActiveWindow"]), ([AppActions.MaximizeToolWindow], ["MaximizeToolWindow"]),
+        ([AppActions.HideAllToolWindows], ["HideAllWindows"]), ([AppActions.HideSideWindows], ["HideSideWindows"]),
+        ([AppActions.LastToolWindow], ["JumpToLastWindow"]), ([AppActions.CloseToolTab], ["CloseActiveTab"]),
+        ([AppActions.ZoomIn], ["ZoomInIdeAction"]), ([AppActions.ZoomOut], ["ZoomOutIdeAction"]),
+        ([AppActions.ResetZoom], ["ResetIdeScaleAction"]), ([AppActions.FullScreen], ["ToggleFullScreen"]),
+        ([AppActions.NextSplit], ["NextSplitter"]), ([AppActions.PreviousSplit], ["PrevSplitter"]), ([AppActions.Back], ["Back"]),
+        ([AppActions.Forward], ["Forward"]), ([AppActions.Complete], ["CodeCompletion"]),
+        ([AppActions.QuickFix], ["ShowIntentionActions"]), ([AppActions.Rename], ["RenameElement"]),
+        ([AppActions.GoToDeclaration], ["GotoDeclaration"]),
+        ([AppActions.GoToImplementation], ["ReSharperGotoImplementation"]),
+        ([AppActions.GoToTypeDeclaration], ["GotoTypeDeclaration"]), ([AppActions.BaseSymbols], ["GotoSuperMethod"]),
+        ([AppActions.DerivedSymbols], ["GotoImplementation"]), ([AppActions.FindUsages], ["FindUsages"]),
+        ([AppActions.ShowUsages], ["ShowUsages"]), ([AppActions.HighlightUsages], ["HighlightUsagesInFile"]),
+        ([AppActions.Reformat], ["ReformatCode"]), ([AppActions.CodeCleanup], ["CodeCleanup", "SilentCodeCleanup"]),
+        ([AppActions.ReformatWithPrettier], ["ReformatWithPrettierAction"]),
+        ([AppActions.FixEslintProblems], ["Javascript.Linters.EsLint.Fix"]),
+        ([AppActions.RefactorThis], ["Refactorings.QuickListPopupAction"]), ([AppActions.Generate], ["Generate"]),
+        ([AppActions.ExtractMethod], ["ExtractMethod"]), ([AppActions.IntroduceVariable], ["IntroduceVariable"]),
+        ([AppActions.Inline], ["Inline"]), ([AppActions.ParameterInfo], ["ParameterInfo"]),
+        ([AppActions.NextOverload], ["MethodOverloadSwitchDown"]),
+        ([AppActions.PreviousOverload], ["MethodOverloadSwitchUp"]),
+        ([AppActions.SurroundWith], ["SurroundWith", "SurroundWithLiveTemplate"]),
+        ([AppActions.CompleteStatement], ["EditorCompleteStatement"]),
+        ([AppActions.OptimizeUsings], ["OptimizeImports"]), ([AppActions.SafeDelete], ["SafeDelete"]),
+        ([AppActions.IntroduceField], ["IntroduceField"]), ([AppActions.IntroduceParameter], ["IntroduceParameter"]),
+        ([AppActions.EncapsulateField], ["RiderBackendAction-EncapsulateField"]),
+        ([AppActions.ChangeSignature], ["ChangeSignature"]), ([AppActions.ExtractInterface], ["ExtractInterface"]),
+        ([AppActions.Move], ["Move"]), ([AppActions.PullMembersUp], ["MembersPullUp"]),
+        ([AppActions.PushMembersDown], ["MemberPushDown"]), ([AppActions.ExtractResource], ["XamlExtractResource"]),
+        ([AppActions.ExtractStyle], ["XamlExtractStyle"]), ([AppActions.QuickDocumentation], ["QuickJavaDoc"]),
+        ([AppActions.ContextHelp], ["ContextHelp", "ExternalJavaDoc"]), ([AppActions.NextError], ["GotoNextError"]),
+        ([AppActions.PreviousError], ["GotoPreviousError"]), ([AppActions.ToggleBreakpoint], ["ToggleLineBreakpoint"]),
+        ([AppActions.ToggleBreakpointEnabled], ["ToggleBreakpointEnabled"]),
+        ([AppActions.MuteBreakpoints], ["XDebugger.MuteBreakpoints"]), ([AppActions.Resume], ["Resume"]),
+        ([AppActions.Pause], ["Pause"]), ([AppActions.StepOver], ["StepOver"]), ([AppActions.StepInto], ["StepInto"]),
+        ([AppActions.SmartStepInto], ["SmartStepInto"]), ([AppActions.StepOut], ["StepOut"]),
+        ([AppActions.RunToCursor], ["RunToCursor"]), ([AppActions.SetNextStatement], ["JumpToStatement"]),
+        ([AppActions.ExtendSelection], ["EditorSelectWord"]), ([AppActions.ShrinkSelection], ["EditorUnSelectWord"]),
+        ([AppActions.CallHierarchy], ["CallHierarchy"]), ([AppActions.TypeHierarchy], ["TypeHierarchy"]),
+        ([AppActions.ShowExecutionPoint], ["ShowExecutionPoint"]),
+        ([AppActions.AttachToProcess], ["XDebugger.AttachToProcess"]),
+        ([AppActions.ReattachToProcess], ["RiderReattach"]), ([AppActions.Detach], ["RiderDetachDebuggerAction"]),
+        ([AppActions.ApplyHotReloadChanges], ["RiderDebuggerApplyEncChagnes"]),
+        ([AppActions.Evaluate], ["EvaluateExpression"]), ([AppActions.QuickEvaluate], ["QuickEvaluateExpression"]),
+        ([AppActions.ShowContextMenu], ["ShowPopupMenu"]), ([AppActions.RunTests], ["RiderUnitTestRunContextAction"]),
+        ([AppActions.DebugTests], ["RiderUnitTestDebugContextAction"]),
+        ([AppActions.RunAllTests], ["RiderUnitTestRunSolutionAction"]),
+        ([AppActions.RunTestsUntilFailure], ["RiderUnitTestRunContextUntilFailAction"]),
+        ([AppActions.RerunTests], ["RiderUnitTestRepeatPreviousRunAction"]),
+        ([AppActions.RerunFailedTests], ["RiderUnitTestSessionRerunFailedTestsAction"]),
+        ([AppActions.StopTests], ["RiderUnitTestSessionAbortAction"]), ([AppActions.SplitRight], ["SplitVertically"]),
+        ([AppActions.SplitDown], ["SplitHorizontally"]),
+        ([AppActions.MoveToOppositeGroup], ["MoveEditorToOppositeTabGroup"]),
+        ([AppActions.OpenInNewWindow], ["EditSourceInNewWindow"]), ([AppActions.ReopenClosedTab], ["ReopenClosedTab"]),
+        ([AppActions.PinTab], ["PinActiveTabAction", "PinActiveEditorTab"]),
+        ([AppActions.CloseOtherTabs], ["CloseAllEditorsButActive"]), ([AppActions.CloseAllTabs], ["CloseAllEditors"]),
+        ([AppActions.CloseUnpinned], ["CloseAllUnpinnedEditors"]), ([AppActions.CloseTabsLeft], ["CloseAllToTheLeft"]),
+        ([AppActions.CloseTabsRight], ["CloseAllToTheRight"]), ([AppActions.Unsplit], ["Unsplit"]),
+        ([AppActions.UnsplitAll], ["UnsplitAll"]), ([AppActions.SoftWrap], ["EditorToggleUseSoftWraps"]),
+        ([AppActions.ShowWhitespaces], ["EditorToggleShowWhitespaces"]),
+        ([AppActions.IncreaseFontSize], ["EditorIncreaseFontSize", "EditorIncreaseFontSizeGlobal"]),
+        ([AppActions.DecreaseFontSize], ["EditorDecreaseFontSize", "EditorDecreaseFontSizeGlobal"]),
+        ([AppActions.ResetFontSize], ["EditorResetFontSize"]),
+        ([AppActions.MarkdownPreview], ["TextEditorWithPreview.Layout.EditorAndPreview"]),
+        ([AppActions.CloseSolution], ["CloseProject"]),
+        ([AppActions.RestoreDefaultLayout], ["RestoreDefaultLayout", "RiderRestoreDefaultLayout"]),
+        ([AppActions.EditBreakpoint], ["EditBreakpoint"]), ([AppActions.ViewBreakpoints], ["ViewBreakpoints"]),
+        ([AppActions.Commit], ["CheckinProject"]), ([AppActions.Push], ["Vcs.Push"]),
+        ([AppActions.Branches], ["Git.Branches"]), ([AppActions.NextChange], ["VcsShowNextChangeMarker"]),
+        ([AppActions.PreviousChange], ["VcsShowPrevChangeMarker"]),
+        ([AppActions.RollbackLines], ["Vcs.RollbackChangedLines"]),
+        ([AppActions.Stage], ["Git.Stage.Add", "ChangesView.AddUnversioned"]),
+        ([AppActions.ShowDiff], ["Diff.ShowDiff"]), ([AppActions.DiffSettings], ["Diff.ShowSettingsPopup"]),
+        ([AppActions.Annotate], ["Annotate"]), ([AppActions.UpdateProject], ["Vcs.UpdateProject"]),
+        ([AppActions.Fetch], ["Git.Fetch"]), ([AppActions.Stash], ["Git.Stash"]),
+        ([AppActions.Unstash], ["Git.Unstash"]), ([AppActions.CreateRepository], ["Git.Init"]),
+        ([AppActions.ResolveConflicts], ["Git.ResolveConflicts"]),
+        ([AppActions.ContinueRebase], ["Git.Rebase.Continue"]), ([AppActions.AbortRebase], ["Git.Rebase.Abort"]),
+        ([AppActions.AbortMerge], ["Git.Merge.Abort"]), ([AppActions.AbortCherryPick], ["Git.CherryPick.Abort"]),
+        ([AppActions.AbortRevert], ["Git.Revert.Abort"]), ([AppActions.ShowHistory], ["Vcs.ShowTabbedFileHistory"]),
+        ([AppActions.ShowHistoryForSelection], ["Vcs.ShowHistoryForBlock"]),
+        ([AppActions.CompareWithBranch], ["Git.CompareWithBranch"]),
+        ([AppActions.ShowLocalHistory], ["LocalHistory.ShowHistory"]),
+        ([AppActions.ShowProjectHistory], ["LocalHistory.ShowProjectHistory"]),
+        ([AppActions.RecentChanges], ["RecentChanges"]), ([AppActions.PutLabel], ["LocalHistory.PutLabel"]),
+        ([AppActions.CommitMessageHistory], ["Vcs.ShowMessageHistory"]),
+        ([AppActions.CoverAllTests], ["RiderDotCoverUnitTestCoverSolutionAction"]),
+        ([AppActions.ToggleTemporaryBreakpoint], ["ToggleTemporaryLineBreakpoint"]),
+        ([AppActions.DatabaseRun], ["Console.Jdbc.Execute"]), ([AppActions.DatabaseHistory], ["Console.History.Browse"]),
+        ([AppActions.DatabaseCommit], ["Console.Transaction.Commit"]),
+        ([AppActions.MarkdownPreview], ["TextEditorWithPreview.Layout.EditorAndPreview"]),
+        ([AppActions.MarkdownPreviewOnly], ["TextEditorWithPreview.Layout.PreviewOnly"]),
+        ([AppActions.FormCodeOnly], ["SwitchDesignerToCode"]), ([AppActions.FormDesignOnly], ["SwitchCodeToDesigner", "OpenWinFormsDesignerAction"]),
+        ([AppActions.MethodUp], ["MethodUp"]), ([AppActions.MethodDown], ["MethodDown"]),
+        ([AppActions.NextUsage], ["GotoNextElementUnderCaretUsage"]), ([AppActions.PreviousUsage], ["GotoPrevElementUnderCaretUsage"]),
+        ([AppActions.GoToContainingDeclaration], ["ReSharperGotoContainingDeclaration"]),
+        ([AppActions.SelectContainingDeclaration], ["ReSharperSelectContainingDeclaration"]),
+        ([AppActions.CodeBlockStart], ["EditorCodeBlockStart"]), ([AppActions.CodeBlockEnd], ["EditorCodeBlockEnd"]),
+        ([AppActions.CodeBlockStartWithSelection], ["EditorCodeBlockStartWithSelection"]),
+        ([AppActions.CodeBlockEndWithSelection], ["EditorCodeBlockEndWithSelection"]), ([AppActions.GoToRegion], ["GotoCustomRegion"]),
+        ([AppActions.QuickImplementations], ["QuickImplementations"]), ([AppActions.ErrorDescription], ["ShowErrorDescription"]),
+        ([AppActions.ExpressionTypeInfo], ["ExpressionTypeInfo"]), ([AppActions.ShowFilePath], ["ShowFilePath"]),
+        ([AppActions.CollapseSelection], ["CollapseSelection"]), ([AppActions.CollapseBlock], ["CollapseBlock"])
     ];
 
-    /// <summary>dotCover's Cover All Tests from Solution.</summary>
-    public const string CoverAll = "RiderDotCoverUnitTestCoverSolutionAction";
+    /// <summary>Where a keymap here differs from Rider's on purpose: a shortcut it keeps that Rider's lacks, or one of Rider's
+    /// it leaves to another action (or to the system), each by the first of its row's actions and why.</summary>
+    public static readonly (string Keymap, string Action, string Shortcut, bool Kept, string Why)[] Differences =
+    [
+        (VisualStudioMac, EditorActions.WordRight, "control alt F", false, "Structure's, which the keymap gives it too"),
+        (VisualStudioMac, EditorActions.TextStart, "meta UP", true, "macOS's own key to the text's start"),
+        (VisualStudioMac, EditorActions.TextEnd, "meta DOWN", true, "macOS's own key to the text's end"),
+        (VisualStudioMac, EditorActions.Delete, "BACK_SPACE", false, "Backspace's, which Rider gives Delete in a list alone"),
+        (VisualStudioMac, EditorActions.MoveLineUp, "alt UP", true, "Visual Studio's own Move Line Up, Parameter Info's overloads taking it while it shows"),
+        (VisualStudioMac, EditorActions.MoveLineDown, "alt DOWN", true, "Visual Studio's own Move Line Down, Parameter Info's overloads taking it while it shows"),
+        (VisualStudioMac, EditorActions.ToggleLineComment, "meta SLASH", true, "the comment key every other keymap has"),
+        (VisualStudioMac, EditorActions.ToggleLineComment, "meta DIVIDE", true, "the keypad's / beside the comment key"),
+        (VisualStudioMac, EditorActions.ToggleLineComment, "meta K , U", true, "Uncomment's chord with its second key alone, as Comment's is"),
+        (VisualStudioMac, AppActions.Exit, "meta Q", false, "the application menu's Quit, which macOS gives the key"),
+        (VisualStudioMac, AppActions.CloseTab, "meta W", true, "macOS's own Close"),
+        (VisualStudioMac, AppActions.BuildSelected, "meta shift F7", false, "Related Symbol's, which the keymap gives it too"),
+        (VisualStudioMac, AppActions.ReformatWithPrettier, "meta alt shift P", false, "Previous Change's, which the keymap gives it too"),
+        (VisualStudioMac, AppActions.SafeDelete, "alt DELETE", false, "Delete Word Right's in the editor, which the keymap gives it too"),
+        (VisualStudioMac, AppActions.ShowContextMenu, "shift F10", true, "the keymap's one key to a place's menu, as VS Code's for macOS has it"),
+        (VisualStudioMac, AppActions.MethodUp, "control shift UP", false, "Clone Caret Above's, which the keymap gives it too"),
+        (VisualStudioMac, AppActions.MethodDown, "control shift DOWN", false, "Clone Caret Below's, which the keymap gives it too"),
+        (VisualStudioMac, AppActions.CodeBlockStart, "meta alt OPEN_BRACKET", false, "Select Containing Declaration's, which Rider's own descriptor gives it"),
+        (VisualStudioMac, AppActions.QuickImplementations, "meta Y", false, "Redo's, Visual Studio's own"),
+        (VisualStudio, EditorActions.MoveLineUp, "alt UP", true, "Visual Studio's own Move Line Up, over Rider's Method Up"),
+        (VisualStudio, EditorActions.MoveLineDown, "alt DOWN", true, "Visual Studio's own Move Line Down, over Rider's Method Down"),
+        (VisualStudio, AppActions.MethodUp, "alt UP", false, "Move Line Up's, Visual Studio's own"),
+        (VisualStudio, AppActions.MethodDown, "alt DOWN", false, "Move Line Down's, Visual Studio's own"),
+        (VisualStudio, EditorActions.ToggleLineComment, "control SLASH", true, "the comment key every other keymap has"),
+        (VisualStudio, EditorActions.ToggleLineComment, "control DIVIDE", true, "the keypad's / beside the comment key"),
+        (VisualStudio, EditorActions.ToggleLineComment, "control K , U", true, "Uncomment's chord with its second key alone, as Comment's is"),
+        (VisualStudio, EditorActions.ColumnSelectionDrag, "alt shift button1", false, "Column Selection from Caret's click, a drag going on with it"),
+        (VisualStudio, AppActions.NewItem, "alt INSERT", false, "Generate's in the editor, which Rider gives it too"),
+        (VisualStudio, AppActions.ReformatWithPrettier, "control alt shift P", false, "Previous Change's, which the keymap gives it too"),
+        (VSCodeMac, EditorActions.Delete, "BACK_SPACE", false, "Backspace's, which Rider gives Delete in a list alone"),
+        (VSCodeMac, EditorActions.ColumnSelectionDrag, "alt shift button1", false, "Column Selection from Caret's click, a drag going on with it"),
+        (VSCodeMac, AppActions.Exit, "meta Q", false, "the application menu's Quit, which macOS gives the key"),
+        (VSCodeMac, AppActions.FindPrevious, "meta shift F5", false, "Rerun's, as VS Code's Restart"),
+        (VSCodeMac, AppActions.Debug, "F5", false, "Resume's, which starts debugging when nothing is debugged"),
+        (VSCodeMac, AppActions.DebugHere, "control shift D", false, "Debug Tests', which Rider gives it at a test"),
+        (VSCodeMac, AppActions.SurroundWith, "meta alt T", false, "Close Other Tabs', the keymap's own over the one it inherits"),
+        (VSCodeMac, AppActions.AttachToProcess, "alt shift F5", false, "Previous Change's, the keymap's own over the one it inherits"),
+        (VSCodeMac, AppActions.RunTests, "control shift R", false, "Refactor This', the keymap's own over the one it inherits"),
+        (VSCodeMac, AppActions.RunAllTests, "meta SEMICOLON , L", false, "Rerun's, the keymap's own over the one it inherits"),
+        (VSCodeMac, AppActions.CollapseSelection, "meta PERIOD", false, "Quick Fix's, as VS Code's"),
+        (VSCodeMac, AppActions.CollapseBlock, "meta alt OPEN_BRACKET", false, "Collapse's, the keymap's own"),
+        (VSCode, EditorActions.ColumnSelectionDrag, "alt shift button1", false, "Column Selection from Caret's click, a drag going on with it"),
+        (VSCode, AppActions.NextProjectWindow, "control W", false, "Close's, as VS Code's Ctrl+W"),
+        (VSCode, AppActions.Debug, "F5", false, "Resume's, which starts debugging when nothing is debugged"),
+        (VSCode, AppActions.RunHere, "control shift F10", false, "Run Tests', which Rider gives it at a test"),
+        (VSCode, AppActions.ShrinkSelection, "control shift W", false, "Close Solution's, the keymap's own over the one it inherits"),
+        (VSCode, AppActions.RunAllTests, "control SEMICOLON , L", false, "Rerun's, the keymap's own over the one it inherits"),
+        (VSCode, AppActions.FindPreviousWordAtCaret, "control shift F3", false, "Find Previous', the keymap's own over the one it inherits"),
+        (MacOS, EditorActions.TextStart, "meta UP", true, "macOS's own key to the text's start"),
+        (MacOS, EditorActions.TextEnd, "meta DOWN", true, "macOS's own key to the text's end"),
+        (MacOS, EditorActions.Delete, "BACK_SPACE", false, "Backspace's, which Rider gives Delete in a list alone"),
+        (MacOS, EditorActions.Delete, "meta BACK_SPACE", false, "Delete Line's in the editor, which the keymap gives it too"),
+        (MacOS, EditorActions.ColumnSelectionDrag, "button2", false, "Go to Declaration's, which the keymap gives it over the drag it inherits"),
+        (MacOS, AppActions.Exit, "meta Q", false, "the application menu's Quit, which macOS gives the key"),
+        (MacOS, AppActions.JumpToNavigationBar, "meta UP", false, "Text Start's, macOS's own"),
+        (MacOS, AppActions.RunHere, "control shift R", false, "Run Tests', which Rider gives it at a test"),
+        (MacOS, AppActions.DebugHere, "control shift D", false, "Debug Tests', which Rider gives it at a test"),
+        (Default, AppActions.RunHere, "control shift F10", false, "Run Tests', which Rider gives it at a test"),
+        (VSCode, AppActions.DatabaseRun, "control ENTER", true, "Start New Line's, which a console takes to run its statement"),
+        (VSCodeMac, AppActions.DatabaseRun, "meta ENTER", true, "Start New Line's, which a console takes to run its statement"),
+        (Emacs, AppActions.RunHere, "control shift F10", false, "Run Tests', which Rider gives it at a test"),
+        (Emacs, AppActions.FindInSelection, "control alt E", false, "Method Down's, the keymap's own over the one it inherits"),
+        (Emacs, AppActions.DatabaseHistory, "control alt E", false, "Method Down's, the keymap's own over the one it inherits"),
+        (Emacs, AppActions.Stage, "control alt A", false, "Method Up's, the keymap's own over the one it inherits"),
+        (Emacs, AppActions.CompareFiles, "control D", false, "Delete's, the keymap's own over the one it inherits"),
+        (Emacs, AppActions.ShowDiff, "control D", false, "Delete's, the keymap's own over the one it inherits"),
+        (Emacs, AppActions.Commit, "control K", false, "Cut to Line End's, the keymap's own over the one it inherits"),
+        (Emacs, AppActions.ShowSettings, "control alt S", false, "Find's, the keymap's own over the one it inherits"),
+        (Emacs, AppActions.NextOverload, "control DOWN", false, "the paragraph move's, the keymap's own over the one it inherits"),
+        (Emacs, AppActions.PreviousOverload, "control UP", false, "the paragraph move's, the keymap's own over the one it inherits"),
+        .. (OperatingSystem.IsMacOS() ? MacEmacs : []),
+    ];
+
+    /// <summary>The Mac's own keys Emacs's keymap keeps there, which Rider's Emacs keymap leaves out, as Visual Studio OSX's.</summary>
+    private static (string Keymap, string Action, string Shortcut, bool Kept, string Why)[] MacEmacs =>
+    [
+        (Emacs, EditorActions.Copy, "meta C", true, "macOS's own Copy"), (Emacs, EditorActions.Paste, "meta V", true, "macOS's own Paste"),
+        (Emacs, EditorActions.Cut, "meta X", true, "macOS's own Cut"), (Emacs, EditorActions.Undo, "meta Z", true, "macOS's own Undo"),
+        (Emacs, EditorActions.Redo, "meta shift Z", true, "macOS's own Redo"), (Emacs, EditorActions.SelectAll, "meta A", true, "macOS's own Select All"),
+        (Emacs, AppActions.Save, "meta S", true, "macOS's own Save"), (Emacs, AppActions.CloseTab, "meta W", true, "macOS's own Close"),
+        (Emacs, AppActions.ShowSettings, "meta COMMA", true, "macOS's own Settings"),
+    ];
 
     /// <summary>The keymap of Rider's that a preset is on this platform.</summary>
     public static string Of(KeymapPreset preset) => (preset, OperatingSystem.IsMacOS()) switch
     {
-        (KeymapPreset.VSCode, true) => "VSCode OSX",
-        (KeymapPreset.VSCode, false) => "VSCode",
+        (KeymapPreset.VSCode, true) => VSCodeMac,
+        (KeymapPreset.VSCode, false) => VSCode,
         (KeymapPreset.IntelliJ, true) => MacOS,
         (KeymapPreset.IntelliJ, false) => Default,
         (KeymapPreset.Emacs, _) => Emacs,
-        (_, true) => "Visual Studio OSX",
-        _ => "Visual Studio",
+        (_, true) => VisualStudioMac,
+        _ => VisualStudio,
     };
 
-    /// <summary>An action's keys in one of Rider's keymaps.</summary>
-    public static IReadOnlyList<Shortcut> Resolve(string keymap, string action) =>
-        [.. Listed(keymap, action).Where(t => !MouseShortcut.IsMouse(t)).Select(Shortcut.Parse).Distinct()];
+    /// <summary>An action's keys and double taps in one of Rider's keymaps, in the keymap notation.</summary>
+    public static IReadOnlyList<string> Resolve(string keymap, string action) =>
+        [.. Listed(keymap, action).Where(t => !MouseShortcut.IsMouse(t)).Select(t => Shortcut.Parse(t).Notation())];
 
-    /// <summary>An action's keys in Rider's Emacs keymap as Passenger gives a key one action: one it takes from $default
-    /// is passed over where Emacs's own list gives it another action (Compare Files' Ctrl+D, Delete's there).</summary>
-    public static IReadOnlyList<Shortcut> ResolveOwnFirst(string keymap, string action)
+    /// <summary>An action's mouse shortcuts in one of Rider's keymaps, in the keymap notation.</summary>
+    public static IReadOnlyList<string> ResolveMouse(string keymap, string action) =>
+        [.. Listed(keymap, action).Where(MouseShortcut.IsMouse).Select(t => MouseShortcut.Parse(t).Notation())];
+
+    private static string[] Listed(string keymap, string action) =>
+        Resolved.TryGetValue(action, out Dictionary<string, string[]>? keymaps) && keymaps.TryGetValue(keymap, out string[]? listed) ? listed : [];
+
+    private static Dictionary<string, Dictionary<string, string[]>> Read()
     {
-        IReadOnlyList<Shortcut> keys = Resolve(keymap, action);
-        if (keymap != Emacs || EmacsOwn.ContainsKey(action))
-        {
-            return keys;
-        }
-        HashSet<Shortcut> taken = [.. EmacsOwn.Where(o => o.Key != action).SelectMany(o => o.Value).Where(t => !MouseShortcut.IsMouse(t)).Select(Shortcut.Parse)];
-        return [.. keys.Where(k => !taken.Contains(k))];
-    }
-
-    /// <summary>An action's mouse shortcuts in one of Rider's keymaps.</summary>
-    public static IReadOnlyList<MouseShortcut> ResolveMouse(string keymap, string action) =>
-        [.. Listed(keymap, action).Where(MouseShortcut.IsMouse).Select(MouseShortcut.Parse).Distinct()];
-
-    /// <summary>What a keymap's own list, else its parent's, has for an action, keys and gestures alike (an action's
-    /// element lists both, so a list of keys alone takes the parent's gestures away too), with what descriptors add to the
-    /// keymap.</summary>
-    private static IEnumerable<string> Listed(string keymap, string action)
-    {
-        (string? parent, Dictionary<string, string[]> own) = Files[keymap];
-        IEnumerable<string> listed = own.TryGetValue(action, out string[]? written) ? written
-            : parent is null ? []
-            : keymap == MacOS && parent == Default ? Listed(parent, action).Select(Swapped)
-            : Listed(parent, action);
-        foreach ((string _, string _, string keys, bool replaceAll) in Descriptors.Where(d => d.Keymap == keymap && d.Action == action))
-        {
-            listed = replaceAll ? [keys] : listed.Append(keys);
-        }
-        return listed;
-    }
-
-    /// <summary>A key's or gesture's text with Ctrl and Cmd swapped, as Mac OS X 10.5+ takes $default's.</summary>
-    private static string Swapped(string text) => MouseShortcut.IsMouse(text) ? Swapped(MouseShortcut.Parse(text)).Notation() : Swapped(Shortcut.Parse(text)).Notation();
-
-    private static MouseShortcut Swapped(MouseShortcut gesture) => gesture with { Modifiers = Swapped(new Keystroke(Key.A, gesture.Modifiers)).Modifiers };
-
-    private static Shortcut Swapped(Shortcut shortcut) => new(Swapped(shortcut.First), shortcut.Second is { } second ? Swapped(second) : null);
-
-    private static Keystroke Swapped(Keystroke stroke)
-    {
-        KeyModifiers others = stroke.Modifiers & ~(KeyModifiers.Control | KeyModifiers.Meta);
-        KeyModifiers swapped = (stroke.Modifiers.HasFlag(KeyModifiers.Control) ? KeyModifiers.Meta : KeyModifiers.None)
-            | (stroke.Modifiers.HasFlag(KeyModifiers.Meta) ? KeyModifiers.Control : KeyModifiers.None);
-        return stroke with { Modifiers = others | swapped };
+        using JsonDocument file = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "RiderKeymaps.json")));
+        return file.RootElement.GetProperty("actions").Deserialize<Dictionary<string, Dictionary<string, string[]>>>()!;
     }
 }

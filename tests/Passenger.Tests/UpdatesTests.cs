@@ -190,17 +190,29 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         });
     }
 
-    /// <summary>On Windows another Passenger running from the install holds the update back, and an Update.exe that
-    /// does not start leaves it ready, each said at the next start, as one flow, each step in an instance of its
-    /// own.</summary>
+    /// <summary>An update Update.exe did not apply is said at the next start in its words, and on Windows another
+    /// Passenger running from the install holds the update back and an Update.exe that does not start leaves it ready,
+    /// each said at the next start, as one flow, each step in an instance of its own.</summary>
     [AvaloniaFact]
     public void A_Windows_update_is_held_back_by_another_Passenger_or_left_ready_and_said()
     {
+        Flow.StepApart("an update Update exe did not apply is said at the next start in its words from Velopacks log", () => new UpdatesTests(images), t => t.An_update_Update_exe_did_not_apply_is_said_at_the_next_start_in_its_words_from_Velopacks_log());
         Flow.StepApart("on Windows another Passenger running from the install holds the update back and the next start names it", () => new UpdatesTests(images), t =>
         {
             if (OperatingSystem.IsWindows())
             {
                 t.On_Windows_another_Passenger_running_from_the_install_holds_the_update_back_and_the_next_start_names_it();
+            }
+            else
+            {
+                Assert.Skip("This step runs on Windows alone");
+            }
+        });
+        Flow.StepApart("on Windows an apply Update exe refuses is tried again and the version installed started", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                t.On_Windows_an_apply_Update_exe_refuses_is_tried_again_and_the_version_installed_started();
             }
             else
             {
@@ -1306,6 +1318,45 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         }
     }
 
+    /// <summary>An update Update.exe started on but did not apply (another program held current\, #2300) is said at the
+    /// next start in Update.exe's words, which only Velopack's log keeps, where it said only that the log says why.</summary>
+    private void An_update_Update_exe_did_not_apply_is_said_at_the_next_start_in_its_words_from_Velopacks_log()
+    {
+        using IDisposable theme = TestsTheme();
+        VelopackInstall copy = new(TestFolders.Create("installed-"));
+        string newer = Bumped(1, 0);
+        github.Answer = Release($"v{newer}", files: copy.Update(newer));
+        MainWindow window = Started(copy.Updater());
+        window.WatchForUpdates();
+        Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", $"the status bar to offer Restart to Update to v{newer}");
+        // Closed with the update ready, as Update.exe starts on it and Passenger ends.
+        window.Close();
+        Ended(window);
+
+        // What Velopack's log holds of an apply refused as the issue's was, another apply's lines before it.
+        string package = Path.Combine(copy.Root, "packages", copy.Package(newer));
+        string log = Path.Combine(TestFolders.Create("velopack-"), "velopack_PassengerIDE.log");
+        File.WriteAllLines(log,
+        [
+            "[lib-csharp:8000] [16:20:01] [Debug] Running: C:\\PassengerIDE\\Update.exe apply --package C:\\PassengerIDE\\packages\\PassengerIDE-0.0.1-win-x64-full.nupkg --waitPid 8000",
+            "[update:9000] [16:20:30] [ERROR] Apply error: Error applying package: An older apply's error.",
+            $"[lib-csharp:8344] [16:31:24] [Debug] Running: {copy.Root}\\Update.exe apply --package {package} --waitPid 8344 --rootDir {copy.Root}",
+            "[lib-csharp:8344] [16:31:24] [INFO] Process started with ID: 15696",
+            "[update:15696] [16:31:25] [INFO] Waiting 60000ms for process handle to exit.",
+            "[update:15696] [16:31:42] [WARN] Retrying operation in 1000ms... (error was: Some(Os { code: 5, kind: PermissionDenied, message: \"Access is denied.\" }))",
+            "[lib-csharp:15800] [16:31:50] [ERROR] Another program's error, which is not Update.exe's.",
+            "[update:15696] [16:31:55] [ERROR] Apply error: Error applying package: Unable to start the update, because one or more running processes prevented it. Try again later, or if the issue persists, restart your computer.",
+        ]);
+
+        window = Started(copy.Updater(log));
+        window.WatchForUpdates();
+        string said = $"Passenger {newer} did not install: Update.exe could not apply it: Unable to start the update, because one or more running processes prevented it. "
+            + "Try again later, or if the issue persists, restart your computer.";
+        Ui.WaitFor(() => window.Status == said, () => $"the next start to say Update.exe's reason, where the status bar says '{window.Status}'");
+        Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", "the update that did not install to be offered again");
+        window.Close();
+    }
+
     /// <summary>On Windows a Passenger running from the install's current\ holds the update back as Passenger closes, as
     /// Update.exe would find its files in use: the update stays ready, and the next start names what held it back.</summary>
     [SupportedOSPlatform("windows")]
@@ -1347,6 +1398,45 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         {
             ChildProcesses.Kill(other);
         }
+    }
+
+    /// <summary>On Windows an apply Update.exe refuses, as it refuses one whose current\ something holds through its own
+    /// retries, is tried again by the hand-off Passenger starts apart as it ends, with Velopack's own
+    /// words, waiting for Passenger's process first; and for Restart to Update the version installed is then started, as
+    /// Update.exe's own restart would (#2300). A batch file stands in for Update.exe, refusing its first apply.</summary>
+    [SupportedOSPlatform("windows")]
+    private void On_Windows_an_apply_Update_exe_refuses_is_tried_again_and_the_version_installed_started()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Velopack's install is Windows'");
+        using IDisposable theme = TestsTheme();
+        VelopackInstall copy = new(TestFolders.Create("installed-"));
+        string asked = Path.Combine(copy.Root, "asked.txt");
+        string refused = Path.Combine(copy.Root, "refused");
+        string update = TestFolders.Write(copy.Root, "Update.cmd",
+            $"@echo off\r\necho %*>>\"{asked}\"\r\nif \"%~1\"==\"start\" exit /b 0\r\nif exist \"{refused}\" exit /b 0\r\necho refused>\"{refused}\"\r\nexit /b 1\r\n");
+        string newer = Bumped(1, 0);
+        github.Answer = Release($"v{newer}", files: copy.Update(newer));
+        Updater updater = copy.Updater(null, update);
+        MainWindow window = Started(updater);
+        window.WatchForUpdates();
+        Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", $"the status bar to offer Restart to Update to v{newer}");
+        window.Close();
+        Ended(window);
+        updater.Install(restart: true);
+        Assert.True(updater.NotInstalled is null, $"The hand-off to Update.exe did not start: {updater.NotInstalled}");
+        string[] calls = [];
+        Ui.WaitFor(() => (calls = File.Exists(asked) ? Ui.Shared(asked).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : []).Length == 3,
+            () => $"the refused apply to be tried again and the installed version started, where Update.exe was asked [{string.Join("; ", calls)}]");
+        string package = Path.Combine(copy.Root, "packages", copy.Package(newer));
+        // As the batch file stand-in echoes them, a word cmd.exe reads as its own in quotes.
+        foreach (string apply in calls[..2].Select(c => c.Replace("\"", string.Empty, StringComparison.Ordinal)))
+        {
+            Assert.True(apply.StartsWith("apply --package ", StringComparison.Ordinal) && apply.Contains(package, StringComparison.OrdinalIgnoreCase)
+                && apply.Contains($"--waitPid {Environment.ProcessId} --norestart", StringComparison.Ordinal) && apply.Contains($"--rootDir {copy.Root}", StringComparison.OrdinalIgnoreCase),
+                $"Update.exe was asked '{apply}', not Velopack's words for applying {package}, waiting for Passenger and starting nothing itself");
+        }
+        Assert.Equal("start", calls[2]);
+        Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: Update.exe installs Passenger {newer} in {copy.Root} once Passenger has ended, up to 3 times while refused, and starts it", StringComparison.Ordinal));
     }
 
     /// <summary>On Windows an Update.exe that does not start as Passenger closes (the test's install has none) leaves the
@@ -2270,8 +2360,15 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         /// <summary>The install's current\ folder, which the installed version runs from.</summary>
         public string Current => current;
 
-        public override Updater Updater() =>
-            new VelopackUpdater(new TestVelopackLocator("PassengerIDE", Product.Version, packages, current, root, Path.Combine(root, "Update.exe"), channel));
+        /// <summary>The install's folder, which holds Update.exe, current\ and packages\.</summary>
+        public string Root => root;
+
+        public override Updater Updater() => Updater(null);
+
+        /// <summary>The install's updater, reading Velopack's log at <paramref name="log"/> where one is given, its Update.exe
+        /// <paramref name="update"/> where one stands in for it.</summary>
+        public Updater Updater(string? log, string? update = null) =>
+            new VelopackUpdater(new TestVelopackLocator("PassengerIDE", Product.Version, packages, current, root, update ?? Path.Combine(root, "Update.exe"), channel), log);
 
         public override string Package(string version) => $"PassengerIDE-{version}-{channel}-full.nupkg";
 

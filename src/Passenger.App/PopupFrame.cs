@@ -1,5 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Layout;
+using Avalonia.Media;
 
 namespace Passenger.App;
 
@@ -66,6 +69,100 @@ public static class PopupFrame
         : null;
 
     private static bool IsFrame(Control control) => control is Border && control.Classes.Contains(StyleClasses.Popup);
+
+    /// <summary>A popup's content with a grip at its frame's lower right corner (<see cref="ResizeGrip"/>), from which a drag
+    /// resizes the popup as a window is resized: <paramref name="popup"/> wider, and <paramref name="grows"/>, the part that
+    /// takes the height it gains (its details, its list), taller.</summary>
+    public static Control Resizable(Control content, Control popup, Control grows) => new Panel { Children = { content, new ResizeGrip(popup, grows) } };
+}
+
+/// <summary>A popup's lower right corner, in its frame's room there (<see cref="PopupFrame.Resizable"/>): a drag from it
+/// moves the popup's width and the height of the part that grows with the pointer, never below what they first had nor
+/// past the room its host fits it to in the window. Drawn as three short strokes in the icons' colour.</summary>
+public sealed class ResizeGrip : Control
+{
+    private readonly Control popup;
+    private readonly Control grows;
+
+    /// <summary>Where the drag began, the sizes then and the most the part that grows may take, while one goes on.</summary>
+    private (Point At, double Width, double Height, double Tallest)? from;
+
+    /// <summary>The sizes the popup first had, below which a drag never takes it.</summary>
+    private (double Width, double Height)? least;
+
+    public ResizeGrip(Control popup, Control grows)
+    {
+        this.popup = popup;
+        this.grows = grows;
+        Width = Gaps.Wide;
+        Height = Gaps.Wide;
+        HorizontalAlignment = HorizontalAlignment.Right;
+        VerticalAlignment = VerticalAlignment.Bottom;
+        Margin = new Thickness(0, 0, -PopupFrame.Inset.Right, -PopupFrame.Inset.Bottom);
+        Cursor = new Cursor(StandardCursorType.BottomRightCorner);
+    }
+
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || TopLevel.GetTopLevel(this) is not { } top)
+        {
+            return;
+        }
+        least ??= (popup.Bounds.Width, grows.Bounds.Height);
+        // The height the popup's host leaves it, past which its foot (Close, this corner) would leave the window.
+        double spare = double.IsFinite(popup.MaxHeight) ? Math.Max(0, popup.MaxHeight - popup.Bounds.Height) : double.PositiveInfinity;
+        from = (e.GetPosition(top), popup.Bounds.Width, grows.Bounds.Height, grows.Bounds.Height + spare);
+        e.Pointer.Capture(this);
+        e.Handled = true;
+    }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        if (from is not { } start || least is not { } smallest || TopLevel.GetTopLevel(this) is not { } top)
+        {
+            return;
+        }
+        Point at = e.GetPosition(top);
+        // A popup centred over the window grows on both sides, so its corner keeps up with the pointer at twice the move.
+        double across = popup.Parent is Layoutable { HorizontalAlignment: HorizontalAlignment.Center } ? 2 : 1;
+        popup.Width = Math.Max(smallest.Width, start.Width + ((at.X - start.At.X) * across));
+        grows.Height = Math.Max(smallest.Height, Math.Min(start.Tallest, start.Height + at.Y - start.At.Y));
+        e.Handled = true;
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        if (from is not null)
+        {
+            from = null;
+            e.Pointer.Capture(null);
+            e.Handled = true;
+        }
+    }
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        from = null;
+    }
+
+    public override void Render(DrawingContext context)
+    {
+        // As hit as it is drawn, its whole square taking the press.
+        context.FillRectangle(Brushes.Transparent, new Rect(Bounds.Size));
+        if (this.TryFindResource(TokenKeys.Icon, ActualThemeVariant, out object? found) && found is IBrush brush)
+        {
+            Pen pen = new(brush, 1);
+            double size = Bounds.Width;
+            for (double inset = Gaps.Hair; inset < size; inset += Gaps.Tight)
+            {
+                context.DrawLine(pen, new Point(inset, size), new Point(size, inset));
+            }
+        }
+    }
 }
 
 /// <summary>A popup's frame sized by what it holds (a list of choices, a change's lines): the narrowest of the popups'

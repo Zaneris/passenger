@@ -1378,6 +1378,21 @@ public sealed partial class EditorArea : UserControl
     /// <summary>Whether a group's window of editors is split, so Unsplit has something to join.</summary>
     public bool IsSplit(EditorGroup group) => (FrameOf(group)?.Groups.Count() ?? 0) > 1;
 
+    /// <summary>Next Split (1) or Previous Split (-1): the group <paramref name="step"/> places on from the active one among
+    /// its window's splits, round at the ends, made the one worked in, with the keys; false where that window is not split.</summary>
+    public bool StepSplit(int step)
+    {
+        List<EditorGroup> splits = [.. FrameOf(activeGroup)?.Groups ?? []];
+        if (splits.Count < 2)
+        {
+            return false;
+        }
+        EditorGroup next = splits[(((splits.IndexOf(activeGroup) + step) % splits.Count) + splits.Count) % splits.Count];
+        SetActiveGroup(next);
+        next.FocusShown();
+        return true;
+    }
+
     /// <summary>Unsplit: the split a group is in goes, the tabs of the other side joining the group's after its own,
     /// each with its carets and pin; with <paramref name="all"/> (Unsplit All) every split of its window goes
     /// so.</summary>

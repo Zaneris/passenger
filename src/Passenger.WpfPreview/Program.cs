@@ -10,7 +10,8 @@ using Passenger.Core;
 namespace Passenger.WpfPreview;
 
 /// <summary>The previewer's start: the project's assembly loaded (its runtime configuration and dependencies are the
-/// ones the previewer runs with), an application of its own that never shows a window, and requests read from standard
+/// ones the previewer runs with) with what it references (<see cref="ProjectAssemblies"/>), an application of its own that
+/// never shows a window, and requests read from standard
 /// input on a thread of their own until it closes, which is Passenger letting go, all of it in design mode. Standard
 /// output is the protocol's alone: whatever else writes to the console (the project's own code included) goes to
 /// standard error.</summary>
@@ -38,6 +39,7 @@ public static class Program
             Console.Error.WriteLine($"The project's assembly {path} did not load: {error.Message}");
             return 3;
         }
+        ProjectAssemblies.Take(project, Path.GetDirectoryName(Path.GetFullPath(path))!);
         Application app = new() { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         TakeResources(project);
         PreviewRequests<WpfPreviewRequest> requests = new();

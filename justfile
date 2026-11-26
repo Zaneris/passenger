@@ -152,6 +152,11 @@ godot-theme:
 godot-renames:
     python3 -I tools/godot-renames.py
 
+# Rewrite tests/Passenger.Tests/RiderKeymaps.json, the keys Rider's keymaps give the actions RiderKeymaps.cs names, from
+# an installed Rider (tools/rider-keymaps.py): just rider-keymaps [RIDER.app]
+rider-keymaps rider="":
+    python3 -I tools/rider-keymaps.py {{ quote(rider) }}
+
 # Rewrite Theme/Icons.axaml from the list in tools/icons.py (fetches any icon not yet cached).
 icons:
     python3 -I tools/icons.py

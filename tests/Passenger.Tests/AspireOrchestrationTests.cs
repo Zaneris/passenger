@@ -72,11 +72,16 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         string defaultsProject = project.PathOf("Shop.ServiceDefaults/Shop.ServiceDefaults.csproj");
         Assert.True(File.Exists(hostProject), "Add Aspire Orchestration did not create an AppHost project");
         Assert.True(File.Exists(defaultsProject), "Add Aspire Orchestration did not create ServiceDefaults");
-        Assert.Contains("../Api/Api.csproj", File.ReadAllText(hostProject).Replace('\\', '/'), StringComparison.Ordinal);
+        string hostText = File.ReadAllText(hostProject);
+        Assert.True(hostText.StartsWith("<Project Sdk=\"Microsoft.NET.Sdk\">", StringComparison.Ordinal) && !hostText.Contains(Passenger.Host.AspireHosts.Sdk, StringComparison.Ordinal)
+            && !hostText.Contains("<ProjectReference", StringComparison.Ordinal)
+            && hostText.Contains($"<PackageReference Include=\"Aspire.Hosting.Dotnet\" Version=\"{AspireApp.TemplatesVersion}\" />", StringComparison.Ordinal),
+            $"The AppHost made is not Aspire {AspireApp.TemplatesVersion}'s, of its AppHost and .NET project packages alone, referencing no service:\n{hostText}");
         Assert.Contains("Shop.ServiceDefaults", File.ReadAllText(project.PathOf("Api/Api.csproj")), StringComparison.Ordinal);
         string hostSource = Assert.Single(Directory.EnumerateFiles(Path.GetDirectoryName(hostProject)!, "*.cs")
-            .Select(File.ReadAllText), text => text.Contains("AddProject", StringComparison.Ordinal));
-        Assert.Contains("AddProject(\"api\", \"../Api/Api.csproj\")", hostSource, StringComparison.Ordinal);
+            .Select(File.ReadAllText), text => text.Contains("AddDotnetProject", StringComparison.Ordinal));
+        Assert.True(hostSource.Contains("AddDotnetProject(\"api\", \"../Api/Api.csproj\")", StringComparison.Ordinal) && !hostSource.Contains("AddProject", StringComparison.Ordinal),
+            $"The AppHost made does not add Api by its path with AddDotnetProject, or adds a service by the obsolete AddProject:\n{hostSource}");
         Assert.Contains("AddServiceDefaults()", File.ReadAllText(project.PathOf("Api/Program.cs")), StringComparison.Ordinal);
         Assert.Contains("MapDefaultEndpoints()", File.ReadAllText(project.PathOf("Api/Program.cs")), StringComparison.Ordinal);
         Assert.Contains("Shop.AppHost", File.ReadAllText(project.PathOf("Shop.slnx")), StringComparison.Ordinal);
@@ -111,7 +116,7 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         MainWindow window = Open();
         Assert.Equal("Added Aspire orchestration", Add(window, "Api", existing: false));
         string host = Assert.Single(Directory.EnumerateFiles(project.PathOf("Shop.AppHost"), "*.cs"),
-            path => File.ReadAllText(path).Contains("AddProject", StringComparison.Ordinal));
+            path => File.ReadAllText(path).Contains("AddDotnetProject", StringComparison.Ordinal));
         Known(window, host, "Shop.AppHost", "DistributedApplication.CreateBuilder", "T:Aspire.Hosting.DistributedApplication");
         Known(window, project.PathOf("Shop.ServiceDefaults/Extensions.cs"), "Shop.ServiceDefaults", "AddServiceDiscovery();",
             "M:Microsoft.Extensions.DependencyInjection.ServiceDiscoveryServiceCollectionExtensions.AddServiceDiscovery");
@@ -138,7 +143,7 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
             "var postgres = builder.AddPostgres(\"postgres\");",
             "var shopdb = postgres.AddDatabase(\"shopdb\", \"shop\");",
             "var cache = builder.AddRedis(\"cache\");",
-            "var plain = builder.AddProject(\"plain\", \"../Plain/Plain.csproj\").WithReference(shopdb).WaitFor(shopdb).WithReference(cache).WaitFor(cache);",
+            "var plain = builder.AddDotnetProject(\"plain\", \"../Plain/Plain.csproj\").WithReference(shopdb).WaitFor(shopdb).WithReference(cache).WaitFor(cache);",
         })
         {
             Assert.True(host.Contains(line, StringComparison.Ordinal), $"The AppHost lacks {line}:\n{host}");
@@ -172,9 +177,10 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         Assert.Equal("Added Aspire orchestration", Add(window, "Plain", existing: true));
         string hostProject = File.ReadAllText(project.PathOf("Host/Host.csproj"));
         string expected = $"    <PackageReference Include=\"Aspire.Hosting.AppHost\" Version=\"{AspireApp.TemplatesVersion}\" />\n"
+            + $"    <PackageReference Include=\"Aspire.Hosting.Dotnet\" Version=\"{AspireApp.TemplatesVersion}\" />\n"
             + $"    <PackageReference Include=\"Aspire.Hosting.PostgreSQL\" Version=\"{AspireApp.TemplatesVersion}\" />\n{commented}";
         Assert.True(hostProject.Contains(expected, StringComparison.Ordinal),
-            $"The AppHost was not given Aspire.Hosting.PostgreSQL on a line of its own after its last reference, beside the one commented out:\n{hostProject}");
+            $"The AppHost was not given Aspire.Hosting.Dotnet and Aspire.Hosting.PostgreSQL each on a line of its own after its last reference, beside the one commented out:\n{hostProject}");
         window.Close();
     }
 
@@ -265,8 +271,8 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
             NewServiceSetupTests.Created(dialog, "the web project");
 
             Assert.Null(NewServiceSetupTests.SetUp(window));
-            Assert.Contains("../Orders/Orders.csproj", File.ReadAllText(project.PathOf("Host/Host.csproj")).Replace('\\', '/'), StringComparison.Ordinal);
-            Assert.Contains("\"../Orders/Orders.csproj\"", File.ReadAllText(project.PathOf("Host/Program.cs")), StringComparison.Ordinal);
+            Assert.DoesNotContain("../Orders/Orders.csproj", File.ReadAllText(project.PathOf("Host/Host.csproj")).Replace('\\', '/'), StringComparison.Ordinal);
+            Assert.Contains("AddDotnetProject(\"orders\", \"../Orders/Orders.csproj\")", File.ReadAllText(project.PathOf("Host/Program.cs")), StringComparison.Ordinal);
             Assert.Contains("../Defaults/Defaults.csproj", File.ReadAllText(project.PathOf("Orders/Orders.csproj")).Replace('\\', '/'), StringComparison.Ordinal);
             Assert.Contains("AddServiceDefaults()", File.ReadAllText(project.PathOf("Orders/Program.cs")), StringComparison.Ordinal);
             Assert.False(Directory.Exists(project.PathOf("Shop.ServiceDefaults")) || Directory.Exists(project.PathOf("Shop.AppHost")),
@@ -287,7 +293,6 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
     {
         string place = TestFolders.Create("aspire-new-");
         string settings = TestFolders.Create("settings-");
-        TestFolders.Write(place, "Directory.Build.props", "<Project><PropertyGroup><AspireUseCliBundle>false</AspireUseCliBundle></PropertyGroup></Project>");
         AspireApp.UseFeed(place);
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
         window.Show();
@@ -309,7 +314,7 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
             Assert.Null(NewServiceSetupTests.SetUp(window));
             string folder = PathNames.Canonical(Path.Combine(place, "Mall"));
             string host = Path.Combine(folder, "Mall.AppHost", "Mall.AppHost.csproj");
-            Assert.Contains("../Api/Api.csproj", File.ReadAllText(host).Replace('\\', '/'), StringComparison.Ordinal);
+            Assert.Contains("AddDotnetProject(\"api\", \"../Api/Api.csproj\")", File.ReadAllText(Path.Combine(folder, "Mall.AppHost", "AppHost.cs")), StringComparison.Ordinal);
             Assert.True(File.Exists(Path.Combine(folder, "Mall.ServiceDefaults", "Mall.ServiceDefaults.csproj")), "No ServiceDefaults was made");
             Assert.Contains("AddServiceDefaults()", File.ReadAllText(Path.Combine(folder, "Api", "Program.cs")), StringComparison.Ordinal);
             Assert.True(window.Configuration is { Aspire: true } chosen && PathNames.Same(chosen.Project, host),
@@ -334,7 +339,6 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
     {
         string place = TestFolders.Create("aspire-unset-");
         string settings = TestFolders.Create("settings-");
-        TestFolders.Write(place, "Directory.Build.props", "<Project><PropertyGroup><AspireUseCliBundle>false</AspireUseCliBundle></PropertyGroup></Project>");
         AspireApp.UseFeed(place);
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
         window.Show();
@@ -449,7 +453,6 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
     {
         const string Filter = "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [\n      \"Api\\\\Api.csproj\"\n    ]\n  }\n}\n";
         string folder = PathNames.Canonical(TestFolders.Create("aspire-filter-"));
-        TestFolders.Write(folder, "Directory.Build.props", "<Project><PropertyGroup><AspireUseCliBundle>false</AspireUseCliBundle></PropertyGroup></Project>");
         TestFolders.Write(folder, "Shop.slnx", "<Solution><Project Path=\"Api/Api.csproj\" /><Project Path=\"Tools/Tools.csproj\" /></Solution>");
         TestFolders.Write(folder, "Shop.Api.slnf", Filter);
         TestFolders.Write(folder, "Api/Api.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk.Web\"><PropertyGroup><TargetFramework>{TestProjects.Framework}</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup></Project>");
@@ -502,7 +505,10 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
     {
         string folder = PathNames.Canonical(TestFolders.Create("aspire-central-"));
         string turnedOn = "<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>";
-        TestFolders.Write(folder, "Directory.Build.props", $"<Project><PropertyGroup><AspireUseCliBundle>false</AspireUseCliBundle>{(inBuildProps ? turnedOn : string.Empty)}</PropertyGroup></Project>");
+        if (inBuildProps)
+        {
+            TestFolders.Write(folder, "Directory.Build.props", $"<Project><PropertyGroup>{turnedOn}</PropertyGroup></Project>");
+        }
         TestFolders.Write(folder, "Directory.Packages.props", "<Project>\n" + (inBuildProps ? string.Empty : $"  <PropertyGroup>\n    {turnedOn}\n  </PropertyGroup>\n")
             + (versions.Length > 0 ? $"  <ItemGroup>\n{versions}  </ItemGroup>\n" : string.Empty) + "</Project>\n");
         TestFolders.Write(folder, "Shop.slnx", "<Solution><Project Path=\"Api/Api.csproj\" /></Solution>");
@@ -642,7 +648,6 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
     {
         public Project() : base("aspire-orchestration-")
         {
-            Put("Directory.Build.props", "<Project><PropertyGroup><AspireUseCliBundle>false</AspireUseCliBundle></PropertyGroup></Project>");
             Put("Shop.slnx", "<Solution><Project Path=\"Api/Api.csproj\" /><Project Path=\"Plain/Plain.csproj\" /><Project Path=\"Host/Host.csproj\" /><Project Path=\"Defaults/Defaults.csproj\" /><Project Path=\"WindowsDefaults/WindowsDefaults.csproj\" /></Solution>");
             foreach (string name in (string[])["Api", "Plain"])
             {
@@ -674,6 +679,8 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
                 File.WriteAllText(path, text.Replace($">{TestProjects.Framework}<", $">{framework}<", StringComparison.Ordinal));
             }
             AspireApp.UseFeed(Folder);
+            // New Solution's set-up builds the AppHost it makes, which takes the bundle from the run's Aspire home.
+            await AspireCli.SetUpAsync();
             await PrepareAsync(byRealPath: true);
         }
 

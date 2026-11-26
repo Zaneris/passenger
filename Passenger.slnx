@@ -48,11 +48,9 @@
   <Folder Name="/tests/AspireGraphs/">
     <Project Path="tests/AspireGraphs/ApiService/AspireGraphs.ApiService.csproj" />
     <Project Path="tests/AspireGraphs/AppHost/AspireGraphs.AppHost.csproj" />
+    <Project Path="tests/AspireGraphs/FileAppHost/AspireGraphs.FileAppHost.csproj" />
     <Project Path="tests/AspireGraphs/Functions/AspireGraphs.Functions.csproj" />
     <Project Path="tests/AspireGraphs/FunctionsHost/AspireGraphs.FunctionsHost.csproj" />
-    <Project Path="tests/AspireGraphs/PackageApiService/AspireGraphs.PackageApiService.csproj" />
-    <Project Path="tests/AspireGraphs/PackageAppHost/AspireGraphs.PackageAppHost.csproj" />
-    <Project Path="tests/AspireGraphs/PackageServiceDefaults/AspireGraphs.PackageServiceDefaults.csproj" />
     <Project Path="tests/AspireGraphs/ServiceDefaults/AspireGraphs.ServiceDefaults.csproj" />
   </Folder>
   <Folder Name="/tests/BlazorGraphs/">

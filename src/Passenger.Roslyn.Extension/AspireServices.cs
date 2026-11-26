@@ -15,13 +15,17 @@ public static class AspireServices
     /// the parameter it takes the project's path by, and the package that brings it.</summary>
     public sealed record Adding(string Method, string Type, string Assembly, string PathParameter, string Package);
 
-    /// <summary>AddProject, by a path or by the Projects type an AppHost SDK makes of a project it references.</summary>
+    /// <summary>AddProject, by a path or by the Projects type an AppHost SDK makes of a project it references; obsolete from
+    /// Aspire 17, which writes <see cref="Dotnet"/>.</summary>
     public static readonly Adding Project = new("AddProject", "Aspire.Hosting.ProjectResourceBuilderExtensions", "Aspire.Hosting", "projectPath", "Aspire.Hosting.AppHost");
+
+    /// <summary>AddCSharpApp, by a path alone as <see cref="Dotnet"/> takes one; obsolete from Aspire 17, which writes that call.</summary>
+    public static readonly Adding CSharpApp = new("AddCSharpApp", "Aspire.Hosting.ProjectResourceBuilderExtensions", "Aspire.Hosting", "path", "Aspire.Hosting.AppHost");
 
     /// <summary>AddDotnetProject, Aspire 17's, by a path alone: a project file, a folder holding one, or a file-based program.</summary>
     public static readonly Adding Dotnet = new("AddDotnetProject", "Aspire.Hosting.DotnetProjectHostingExtensions", "Aspire.Hosting.Dotnet", "path", "Aspire.Hosting.Dotnet");
 
-    public static IReadOnlyList<Adding> Calls { get; } = [Project, Dotnet];
+    public static IReadOnlyList<Adding> Calls { get; } = [Project, CSharpApp, Dotnet];
 
     /// <summary>The parameter each call takes the resource's name by.</summary>
     public const string NameParameter = "name";

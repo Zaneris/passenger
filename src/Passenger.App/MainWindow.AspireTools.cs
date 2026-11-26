@@ -93,7 +93,7 @@ public partial class MainWindow
         AspireRunResource[] matches = resources.Where(resource => resource.Name == name).ToArray();
         if (matches.Length != 1 || resources.GroupBy(resource => resource.Name, StringComparer.Ordinal).Any(group => group.Count() != 1))
         {
-            throw new InvalidOperationException("The resource must identify one project proven by the AppHost's AddProject or AddDotnetProject declarations");
+            throw new InvalidOperationException("The resource must identify one project proven by the AppHost's AddProject, AddCSharpApp or AddDotnetProject declarations");
         }
         RunConfiguration selected = Targeting(configuration, resources.Select(resource => (resource.Name, resource.Project)), name, debug: mode != RunStart.Run);
         // The target marked Debug alone keeps unproven, dynamically added projects out of the debugger, under Debug's work too.

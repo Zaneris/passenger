@@ -201,6 +201,8 @@ COMPOSED = [
 CODICONS = [
     # A XAML or Markdown file's preview beside its editor, shown or hidden from the editor's tab strip.
     ("Preview", "open-preview"),
+    # Find's In Selection, the find bar's option looking only inside the stretch it was turned on over.
+    ("Selection", "list-selection"),
 ]
 
 

@@ -34,18 +34,13 @@
     <!-- ReactiveUI and its source generators, whose [Reactive] and [ReactiveCommand] members the XAML tests bind to:
          restored for the tests' package cache (tests/AvaloniaGraphs), so an app of theirs restores with its generators and
          reaches no feed. -->
-    <ReactiveUiVersion>27.0.1</ReactiveUiVersion>
-    <ReactiveUiGeneratorsVersion>5.1.0</ReactiveUiGeneratorsVersion>
-    <!-- Aspire's templates, AppHost SDK and package, dashboard, orchestrator and CLI at one version, downloaded for the
-         tests' local feed. -->
-    <AspireTemplatesVersion>13.6.5</AspireTemplatesVersion>
-    <!-- And Aspire's whose AppHost is a plain project or program with Aspire's AppHost package, no AppHost SDK, whose
-         dashboard and orchestrator come from the aspire CLI's bundle: its templates, AppHost and .NET project packages and
-         CLI, the AppHost's graph and its starter's restored at their own versions (tests/AspireGraphs/Package*). -->
-    <AspirePackageTemplatesVersion>17.0.0</AspirePackageTemplatesVersion>
-    <!-- What those templates write where it differs from what AspireTemplatesVersion's write (the tests' section below). -->
-    <AspirePackageOpenTelemetryVersion>1.18.0</AspirePackageOpenTelemetryVersion>
-    <AspirePackageOpenApiVersion>10.0.15</AspirePackageOpenApiVersion>
+    <ReactiveUiVersion>28.0.0</ReactiveUiVersion>
+    <ReactiveUiGeneratorsVersion>7.1.0</ReactiveUiGeneratorsVersion>
+    <!-- Aspire's templates, AppHost and .NET project packages, AppHost SDK and CLI at one version, downloaded for the
+         tests' local feed: its templates write an AppHost of the package alone, adding its services by path, and the SDK,
+         obsolete from 17, is the one the tests' AppHosts written with it name. Every C# AppHost of it takes its dashboard
+         and orchestrator from the CLI's bundle. -->
+    <AspireTemplatesVersion>17.0.0</AspireTemplatesVersion>
     <!-- The Azure Functions app (.NET isolated worker) the Aspire tests write: its MSBuild SDK, downloaded for the tests'
          local feed, and its worker and HTTP triggers, whose graph tests/AspireGraphs restores. -->
     <AzureFunctionsSdkVersion>1.1.0</AzureFunctionsSdkVersion>
@@ -68,7 +63,7 @@
     <EfCore11Version>11.0.0</EfCore11Version>
     <!-- Npgsql's provider of EF Core, at a version whose range holds EfCoreVersion, for the test of a compose run's
          Postgres. -->
-    <NpgsqlEfVersion>10.0.3</NpgsqlEfVersion>
+    <NpgsqlEfVersion>10.0.4</NpgsqlEfVersion>
     <!-- GoDotTest at its release for Godot 4.7.2, and what it depends on but Godot's own GodotSharp, downloaded for the
          Godot tests' GoDotTest tests (tests/GodotGraphs): restored as a graph, nuget.org's GodotSharp would go into the
          package cache under the version a Godot's own packages give a game, and fail the next locked restore of either. -->
@@ -79,7 +74,7 @@
     <!-- GdUnit4's VSTest adapter at its release for Godot 4.7, the API release it needs, and what they depend on but
          Godot's own GodotSharp, at the versions they name, downloaded for the Godot tests' GdUnit4 tests (tests/GodotGraphs)
          as GoDotTest's are. -->
-    <GdUnit4ApiVersion>5.1.0-rc6</GdUnit4ApiVersion>
+    <GdUnit4ApiVersion>5.1.0-rc7</GdUnit4ApiVersion>
     <GdUnit4AdapterVersion>3.2.0</GdUnit4AdapterVersion>
     <GdUnit4RoslynVersion>5.0.0</GdUnit4RoslynVersion>
     <GdUnit4RoslynAnalyzersVersion>3.11.0</GdUnit4RoslynAnalyzersVersion>
@@ -92,14 +87,16 @@
     <!-- The test frameworks the tests' own test projects take beside VSTest's SDK at its version below, and what each
          depends on that no other restore brings, downloaded for the tests' package cache (tests/UnitTestGraphs), so their
          restores reach no feed: xunit v2 and its VSTest adapter; MSTest on VSTest; NUnit and its adapter, on VSTest and on
-         the Testing Platform alone, and NUnit 4 with the adapter of its day on VSTest; MSTest on its own runner and xunit v3
-         on the Testing Platform's second line, where the tests' own xunit v3 is on its first. -->
+         the Testing Platform alone, and NUnit 4 with the adapter of its day on VSTest (4.4.0 and adapter 5.2.0, the last
+         line before adapter 6, so the 5.x adapter's reports stay held); MSTest on its own runner and xunit v3 on the Testing
+         Platform's second line (each at the Testing Platform its packages name, MSTest's MSTestRunnerPlatformVersion,
+         xunit's TestingPlatformTwoVersion), where the tests' own xunit v3 is on its first. -->
     <XunitTwoVersion>2.9.3</XunitTwoVersion>
     <XunitTwoAbstractionsVersion>2.0.3</XunitTwoAbstractionsVersion>
     <XunitTwoAnalyzersVersion>1.18.0</XunitTwoAnalyzersVersion>
     <XunitTwoRunnerVersion>3.1.5</XunitTwoRunnerVersion>
-    <MSTestOnVSTestVersion>3.10.0</MSTestOnVSTestVersion>
-    <MSTestOnVSTestPlatformVersion>1.8.0</MSTestOnVSTestPlatformVersion>
+    <MSTestOnVSTestVersion>3.11.1</MSTestOnVSTestVersion>
+    <MSTestOnVSTestPlatformVersion>1.9.1</MSTestOnVSTestPlatformVersion>
     <NUnitVersion>5.0.0</NUnitVersion>
     <NUnitAdapterVersion>6.3.1</NUnitAdapterVersion>
     <NUnitPlatformVersion>2.4.1</NUnitPlatformVersion>
@@ -110,12 +107,13 @@
     <NUnitFourAdapterVersion>5.2.0</NUnitFourAdapterVersion>
     <NUnitFourPlatformVersion>1.9.0</NUnitFourPlatformVersion>
     <TestAdapterUtilitiesVersion>17.13.0</TestAdapterUtilitiesVersion>
-    <MSTestRunnerVersion>4.5.1</MSTestRunnerVersion>
-    <MSTestRunnerObjectModelVersion>18.10.1</MSTestRunnerObjectModelVersion>
-    <XunitAppVersion>4.0.2</XunitAppVersion>
-    <XunitAppAnalyzersVersion>2.2.0</XunitAppAnalyzersVersion>
+    <MSTestRunnerVersion>4.5.3</MSTestRunnerVersion>
+    <MSTestRunnerPlatformVersion>2.5.3</MSTestRunnerPlatformVersion>
+    <MSTestRunnerObjectModelVersion>18.10.2</MSTestRunnerObjectModelVersion>
+    <XunitAppVersion>4.0.3</XunitAppVersion>
+    <XunitAppAnalyzersVersion>2.3.0</XunitAppAnalyzersVersion>
     <XunitAppAccessControlVersion>6.0.1</XunitAppAccessControlVersion>
-    <TestingPlatformTwoVersion>2.5.1</TestingPlatformTwoVersion>
+    <TestingPlatformTwoVersion>2.5.2</TestingPlatformTwoVersion>
     <!-- Reqnroll on xunit v3 for the BDD tests' Reqnroll projects (tests/UnitTestGraphs/Reqnroll), with what it depends on
          that the tests' own xunit v3, VSTest adapter and test SDK do not bring, at the versions its restore resolves. -->
     <ReqnrollVersion>3.3.4</ReqnrollVersion>
@@ -177,7 +175,7 @@
     <PackageVersion Include="NVorbis" Version="0.10.5" />
     <PackageVersion Include="NLayer" Version="3.0.1" />
     <!-- An SVG file's picture. -->
-    <PackageVersion Include="Svg.Skia" Version="5.2.3" />
+    <PackageVersion Include="Svg.Skia" Version="5.2.4" />
     <!-- TextMate grammars' tokenizer, with GregsEx's managed regular expressions: colour for every
          language but C#. -->
     <PackageVersion Include="Tint" Version="0.3.0" />
@@ -215,7 +213,7 @@
     <PackageVersion Include="Krafs.Publicizer" Version="2.3.2" />
     <PackageVersion Include="Microsoft.Diagnostics.DbgShim" Version="10.0.750501" />
     <PackageVersion Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.750501" />
-    <PackageVersion Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="4.0.0" />
+    <PackageVersion Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="4.0.2" />
     <PackageVersion Include="Microsoft.Diagnostics.Runtime" Version="4.2.751201" />
     <PackageVersion Include="MP.Microsoft.CodeAnalysis.CSharp.ExpressionEvaluator.ExpressionCompiler" Version="5.12.0" />
     <PackageVersion Include="ZLinq" Version="1.6.1" />
@@ -224,7 +222,7 @@
   <ItemGroup>
     <PackageVersion Include="Aspire.Hosting.AppHost" Version="$(AspireTemplatesVersion)" />
     <PackageVersion Include="Aspire.Hosting.Azure.Functions" Version="$(AspireTemplatesVersion)" />
-    <PackageVersion Include="Aspire.Hosting.Dotnet" Version="$(AspirePackageTemplatesVersion)" />
+    <PackageVersion Include="Aspire.Hosting.Dotnet" Version="$(AspireTemplatesVersion)" />
     <!-- The analyzers and generators at the versions Azure.Functions.Sdk (AzureFunctionsSdkVersion) adds them. -->
     <PackageVersion Include="Microsoft.Azure.Functions.Worker" Version="$(AzureFunctionsWorkerVersion)" />
     <PackageVersion Include="Microsoft.Azure.Functions.Worker.Extensions.Http" Version="$(AzureFunctionsHttpVersion)" />
@@ -232,19 +230,18 @@
     <PackageVersion Include="Microsoft.Azure.Functions.Worker.Sdk.Generators" Version="1.4.0" />
     <!-- At the versions Aspire's templates at AspireTemplatesVersion write, not their newest, so the test folders made
          from those templates restore from the package cache tests/AspireGraphs fills. -->
-    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.15" />
     <!-- What writes a build's OpenAPI document, restored for the test of a document Passenger reads from the build: at
          Microsoft.AspNetCore.OpenApi's version above, not its newest, as its dotnet-getdocument loads the Microsoft.OpenApi
-         it is built against beside the app's own and fails where the app's is older (10.0.15's takes 2.13.0, where
-         OpenApi 10.0.14 brings 2.12.2). -->
-    <PackageVersion Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.14" />
+         it is built against beside the app's own and fails where the app's is older. -->
+    <PackageVersion Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.15" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.10.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.10.0" />
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.17.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.17.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.18.0" />
     <!-- At the version the SDK's Blazor WebAssembly and Blazor Web App templates write for the tests' own target, so the
          apps they make from them restore from the package cache tests/BlazorGraphs fills. -->
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.15" />

@@ -376,22 +376,210 @@ public static class ProgramFiles
         return true;
     }
 
-    /// <summary>A directive's kind and its value, as the SDK splits them: <c>#:include "my file.cs"</c> is ("include",
-    /// "my file.cs"), a quoted value read as a C# string's; null for the <c>#!</c> line.</summary>
-    public static (string Kind, string Value)? Parse(string directive)
+    /// <summary>A directive's kind and its value, as the SDK reads them (<see cref="Read"/>): <c>#:include "my file.cs"</c> is
+    /// ("include", "my file.cs"), <c>#:ref lib.cs Aliases=Lib</c> ("ref", "lib.cs"), <c>#:package Humanizer@2.14.1</c>
+    /// ("package", "Humanizer@2.14.1"); null for the <c>#!</c> line.</summary>
+    public static (string Kind, string Value)? Parse(string directive) => Read(directive) is { } read ? (read.Kind, read.Value) : null;
+
+    /// <summary>A directive's kind, its value and where that value is written in it, as the SDK reads them: the rest after
+    /// the kind is split at white space, a part wrapped in double quotes read as a C# string's (white space and escapes in
+    /// it), and the parts after the first are its item metadata (<c>Name=Value</c>) where its kind takes them and every one
+    /// is that; else, with no quote in it, the rest is one value, white space and all. A value whose quotes the SDK refuses
+    /// is empty, written nowhere. Null for the <c>#!</c> line.</summary>
+    public static Directive? Read(string directive)
     {
         if (!directive.StartsWith("#:", StringComparison.Ordinal))
         {
             return null;
         }
-        string rest = directive[2..];
-        int space = rest.IndexOfAny([' ', '\t']);
-        string kind = space < 0 ? rest : rest[..space];
-        string value = space < 0 ? string.Empty : rest[(space + 1)..].Trim();
-        if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
+        int end = directive.Length;
+        while (end > 2 && char.IsWhiteSpace(directive[end - 1]))
         {
-            value = value[1..^1].Replace("\\\"", "\"", StringComparison.Ordinal).Replace("\\\\", "\\", StringComparison.Ordinal);
+            end--;
         }
-        return (kind, value);
+        int at = 2;
+        while (at < end && !char.IsWhiteSpace(directive[at]))
+        {
+            at++;
+        }
+        string kind = directive[2..at];
+        while (at < end && char.IsWhiteSpace(directive[at]))
+        {
+            at++;
+        }
+        if (at == end)
+        {
+            return new Directive(kind, string.Empty, at, 0);
+        }
+        bool metadata = kind is "package" or "project" or "ref" or "include";
+        string rest = directive[at..end];
+        if (!rest.Contains('"', StringComparison.Ordinal))
+        {
+            int space = 0;
+            while (space < rest.Length && !char.IsWhiteSpace(rest[space]))
+            {
+                space++;
+            }
+            bool split = space < rest.Length && metadata && rest[space..].Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).All(IsMetadata);
+            return split ? new Directive(kind, rest[..space], at, space) : new Directive(kind, rest, at, rest.Length);
+        }
+        char? separator = kind switch { "sdk" or "package" => '@', "property" => '=', _ => null };
+        return FirstToken(rest, separator, metadata) is ({ } value, int length) ? new Directive(kind, value, at, length) : new Directive(kind, string.Empty, at, 0);
+    }
+
+    /// <summary>A directive's kind and its value as <see cref="Read"/> reads them, with where its value is written in the
+    /// directive's text (its quotes included).</summary>
+    public sealed record Directive(string Kind, string Value, int Start, int Length);
+
+    /// <summary>Whether a part of a directive is item metadata, <c>Name=Value</c>, its name one MSBuild takes for an element.</summary>
+    private static bool IsMetadata(string part)
+    {
+        int equals = part.IndexOf('=', StringComparison.Ordinal);
+        if (equals <= 0 || !System.Xml.XmlConvert.IsStartNCNameChar(part[0]))
+        {
+            return false;
+        }
+        for (int i = 1; i < equals; i++)
+        {
+            if (!System.Xml.XmlConvert.IsNCNameChar(part[i]))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>The first part of a directive's rest that holds a quote, decoded, and how many of its characters it spans:
+    /// a value, or a name and a value either side of the kind's <paramref name="separator"/>, each bare or quoted, white
+    /// space allowed around the separator but before a value only where no metadata (<c>Name=</c>) follows instead; null
+    /// where a quote is out of place, left open or holds an escape C# refuses.</summary>
+    private static (string Value, int Length)? FirstToken(string rest, char? separator, bool metadata)
+    {
+        System.Text.StringBuilder value = new();
+        int at = 0;
+        if (!Part(rest, ref at, separator, value))
+        {
+            return null;
+        }
+        int after = Skip(rest, at);
+        if (separator is not { } between || after >= rest.Length || rest[after] != between)
+        {
+            return (value.ToString(), at);
+        }
+        value.Append(between);
+        at = after + 1;
+        int next = Skip(rest, at);
+        if (next > at && metadata && StartsMetadata(rest, next) || next >= rest.Length)
+        {
+            return (value.ToString(), at);
+        }
+        at = next;
+        return Part(rest, ref at, null, value) ? (value.ToString(), at) : null;
+
+        static int Skip(string text, int at)
+        {
+            while (at < text.Length && char.IsWhiteSpace(text[at]))
+            {
+                at++;
+            }
+            return at;
+        }
+
+        static bool StartsMetadata(string text, int at)
+        {
+            int end = at;
+            while (end < text.Length && !char.IsWhiteSpace(text[end]) && text[end] != '=')
+            {
+                end++;
+            }
+            int equals = Skip(text, end);
+            return end > at && equals < text.Length && text[equals] == '=' && IsMetadata(text[at..end] + "=");
+        }
+    }
+
+    /// <summary>Reads one side of a directive's part from <paramref name="at"/> into <paramref name="value"/>: a C# string
+    /// wrapped in double quotes, else the characters up to white space or the <paramref name="separator"/>. False where a
+    /// quote stands inside a bare side, a quoted one is followed by anything but white space or the separator, or a quoted
+    /// one is left open or holds an escape C# refuses.</summary>
+    private static bool Part(string text, ref int at, char? separator, System.Text.StringBuilder value)
+    {
+        if (at < text.Length && text[at] == '"')
+        {
+            at++;
+            while (true)
+            {
+                if (at >= text.Length || text[at] is '\r' or '\n')
+                {
+                    return false;
+                }
+                char c = text[at++];
+                if (c == '"')
+                {
+                    break;
+                }
+                if (c != '\\')
+                {
+                    value.Append(c);
+                    continue;
+                }
+                if (!Escape(text, ref at, value))
+                {
+                    return false;
+                }
+            }
+            return at >= text.Length || char.IsWhiteSpace(text[at]) || text[at] == separator;
+        }
+        while (at < text.Length && !char.IsWhiteSpace(text[at]) && text[at] != separator)
+        {
+            if (text[at] == '"')
+            {
+                return false;
+            }
+            value.Append(text[at++]);
+        }
+        return true;
+    }
+
+    /// <summary>Decodes the escape after a backslash in a C# string, as the compiler reads it: a simple escape, <c>\x</c>
+    /// with one to four hex digits, <c>\u</c> with four or <c>\U</c> with eight; false for any other.</summary>
+    private static bool Escape(string text, ref int at, System.Text.StringBuilder value)
+    {
+        if (at >= text.Length)
+        {
+            return false;
+        }
+        char kind = text[at++];
+        char? simple = kind switch
+        {
+            '\'' => '\'', '"' => '"', '\\' => '\\', '0' => '\0', 'a' => '\a', 'b' => '\b', 'e' => '\e', 'f' => '\f', 'n' => '\n', 'r' => '\r',
+            't' => '\t', 'v' => '\v', _ => null,
+        };
+        if (simple is { } plain)
+        {
+            value.Append(plain);
+            return true;
+        }
+        (int least, int most) = kind switch { 'x' => (1, 4), 'u' => (4, 4), 'U' => (8, 8), _ => (0, 0) };
+        int digits = 0;
+        while (digits < most && at + digits < text.Length && char.IsAsciiHexDigit(text[at + digits]))
+        {
+            digits++;
+        }
+        if (most == 0 || digits < least
+            || !uint.TryParse(text.AsSpan(at, digits), System.Globalization.NumberStyles.AllowHexSpecifier, System.Globalization.CultureInfo.InvariantCulture, out uint code)
+            || code > 0x10FFFF)
+        {
+            return false;
+        }
+        at += digits;
+        if (code <= char.MaxValue)
+        {
+            value.Append((char)code);
+        }
+        else
+        {
+            value.Append(char.ConvertFromUtf32((int)code));
+        }
+        return true;
     }
 }

@@ -19,6 +19,12 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        // Velopack's Update.exe runs the version it is about to replace with this as current\ is renamed: ended first.
+        if (Installation.Obsolete(args))
+        {
+            LeaveStartingFolder();
+            return 0;
+        }
         StartedAt = Stopwatch.GetTimestamp();
         // Run by git as an interactive rebase's sequence editor, first, as git's other helpers share its environment.
         if (Passenger.Vcs.RebaseTodo.Write(args) is int written)

@@ -91,22 +91,22 @@
       },
       "ReactiveUI": {
         "type": "Direct",
-        "requested": "[27.0.1, )",
-        "resolved": "27.0.1",
-        "contentHash": "cyZ8q03NReKzlmFQMMqOn+/Kzzhor7SooUa/BeSQGWB5DerAn4J2OBveje/mhsxg63oHu2hX3prSMP75CpHcOA==",
+        "requested": "[28.0.0, )",
+        "resolved": "28.0.0",
+        "contentHash": "o/QVPtyQk0Wbsruvt1xRNCK6Vt9fq3dA3A0RVsmHG7SIEnTs3IuU9vHcMwYvTziDcvqL6c8nZb6K/SQ48T9jnA==",
         "dependencies": {
-          "ReactiveUI.Binding": "10.0.0",
-          "ReactiveUI.Core": "27.0.1",
-          "ReactiveUI.Primitives": "10.0.0",
-          "ReactiveUI.SourceGenerators": "5.0.0",
+          "ReactiveUI.Binding": "12.1.0",
+          "ReactiveUI.Core": "28.0.0",
+          "ReactiveUI.Primitives": "10.2.3",
+          "ReactiveUI.SourceGenerators": "7.1.0",
           "Splat": "22.0.1"
         }
       },
       "ReactiveUI.SourceGenerators": {
         "type": "Direct",
-        "requested": "[5.1.0, )",
-        "resolved": "5.1.0",
-        "contentHash": "MykLAu9V5EP7BWbEe2Xb3bzm2b41n1t6Eif2FlsjweqQoRzkoiiLcfuRrCxHs3OabE2FcnoKU6gnGzE5E97+mg=="
+        "requested": "[7.1.0, )",
+        "resolved": "7.1.0",
+        "contentHash": "zcL3bjFUohBwQ2gkN7LHulHr/fRsph4lGwRlJOiiq8LIGuI6JNVNa/q8jGtgCW2mrrDvWsC6dujQjmW2J2qeUw=="
       },
       "Avalonia.Angle.Windows.Natives": {
         "type": "Transitive",
@@ -190,43 +190,43 @@
       },
       "ReactiveUI.Binding": {
         "type": "Transitive",
-        "resolved": "10.0.0",
-        "contentHash": "3K+uxn/rdlPBpcVPXjJhm9qfiVnOKLiMYTzYvmLkN8PmJwY9iTy8IC7Uma3PzMtwYnQbg/iTfyoXxillj1EmEQ==",
+        "resolved": "12.1.0",
+        "contentHash": "0XWo+Q5xaQa5y2/qroG3RGdOsDF/p92s8S2H6vMVm9VD+86IL03fv2caQ2tZhmHuU+5h+Ou6FwKQvub5V0F3bw==",
         "dependencies": {
-          "ReactiveUI.Primitives": "10.0.0",
+          "ReactiveUI.Primitives": "10.2.3",
           "Splat": "22.0.1"
         }
       },
       "ReactiveUI.Core": {
         "type": "Transitive",
-        "resolved": "27.0.1",
-        "contentHash": "Mn14HpOe9sFbD7fBX1OFNuyYjuKR2Jyda1kPV9Z6qI0zEIpr8QktqX/xofbZcNFz9tFbTCB/t89P2XQh0PzwJA==",
+        "resolved": "28.0.0",
+        "contentHash": "VOxr4Rkzi/t5AzmAad1I6TGOSEIodLfEARFFAf57GTVHgAQqT3xO6UScD4tyvpwJMVqFH92e0cB4mhbPvv2fjQ==",
         "dependencies": {
-          "ReactiveUI.Primitives": "10.0.0",
-          "ReactiveUI.SourceGenerators": "5.0.0",
+          "ReactiveUI.Primitives": "10.2.3",
+          "ReactiveUI.SourceGenerators": "7.1.0",
           "Splat": "22.0.1"
         }
       },
       "ReactiveUI.Disposables": {
         "type": "Transitive",
-        "resolved": "10.0.0",
-        "contentHash": "Pxl07TtCvI+KLdOXhNA0q1OJs3os9mnXEIEeZL9VWMiVnVQ4jUXb8/YAtvuZfWqmnI90ri8JMVT8pzY0sENODw=="
+        "resolved": "10.2.3",
+        "contentHash": "Jc7Naxmg1a6raeVFw6vZcmuKZVShYo5NvpLBXVWswgwGQ2frbTcX447p4Hm1MmfMPVJ3vaIJmNzTcQZncUf50A=="
       },
       "ReactiveUI.Primitives": {
         "type": "Transitive",
-        "resolved": "10.0.0",
-        "contentHash": "8q/xWmbL6dTbNyc0BlqhKbt0XM0ekat8n4E2VF7IHPCVHnUUn6HbIC3FENS2b/+q4T7frq1OfIwTzD9Rg6WPSQ==",
+        "resolved": "10.2.3",
+        "contentHash": "9SOkSnCRgGczbbxvHcI3398j5lu/tzb9R7bLEI7XI8KmCfthZGgiOlABUx/YpxLbyXN9ZrWRKVJilXgKJjVnmQ==",
         "dependencies": {
-          "ReactiveUI.Disposables": "10.0.0",
-          "ReactiveUI.Primitives.Core": "10.0.0"
+          "ReactiveUI.Disposables": "10.2.3",
+          "ReactiveUI.Primitives.Core": "10.2.3"
         }
       },
       "ReactiveUI.Primitives.Core": {
         "type": "Transitive",
-        "resolved": "10.0.0",
-        "contentHash": "hx+N2FuqokmTDFdO6+jHnX9tt3BI+aNRWiQcxv8ADn4m4ls8KUuZRF0hLJGbHF0Vzz+QltcKc7URsKbgLL1mpA==",
+        "resolved": "10.2.3",
+        "contentHash": "CHAzW+vj+cbT5qbajS0zNwjMWIZHWhZ4HL4mOe90olAsy0y48CWkGAHtamUGSobw9CdqAVadCQhY4xbBo+h9BQ==",
         "dependencies": {
-          "ReactiveUI.Disposables": "10.0.0"
+          "ReactiveUI.Disposables": "10.2.3"
         }
       },
       "SkiaSharp.NativeAssets.macOS": {

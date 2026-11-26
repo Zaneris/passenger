@@ -1442,6 +1442,11 @@ public static class Ui
         static string Cut(string line) => line.Length <= 300 ? line : $"{line[..300]}…";
     }
 
+    /// <summary>What the IDE stood on as a wait that gives up says it, a part at a time for a hang's report to write each as
+    /// it reads it (<see cref="HangReportsAttribute"/>), those that read files before those that read the IDE's state.</summary>
+    internal static IEnumerable<Func<string>> StoodParts() =>
+        [ProgramsRunning, IdeLogTail, ServerLogTail, () => $"\nStill busy:\n{Busy()}", HostsAsked, ServerConversations];
+
     /// <summary>The end of the IDE's own log, which names an exception that left background work waiting for good.</summary>
     internal static string IdeLogTail()
     {
@@ -2484,8 +2489,10 @@ public static class Ui
         Press(window, shortcut.Notation(), settle);
     }
 
-    /// <summary>The first shortcut the platform's keymap gives an IDE action, in keymap notation.</summary>
-    public static string Shortcut(string action) => Passenger.App.AppActions.Keymap().ShortcutsFor(action)[0].First.Notation();
+    /// <summary>The first shortcut the platform's keymap gives an IDE action, in keymap notation: its first keystroke, or a
+    /// double tap whole.</summary>
+    public static string Shortcut(string action) => Passenger.App.AppActions.Keymap().ShortcutsFor(action)[0] is { IsDoubleTap: true } tap
+        ? tap.Notation() : Passenger.App.AppActions.Keymap().ShortcutsFor(action)[0].First.Notation();
 
     public static RawInputModifiers Raw(KeyModifiers modifiers)
     {
@@ -4042,6 +4049,10 @@ public static class ManagedStacks
         {
             using Microsoft.Diagnostics.Runtime.DataTarget target = Microsoft.Diagnostics.Runtime.DataTarget.AttachToProcess(processId, suspend: true,
                 new Microsoft.Diagnostics.Runtime.DataTargetOptions { FileLocator = NothingFound.Locator });
+            if (target.ClrVersions is [])
+            {
+                return $"\n{what}: no .NET runtime in it";
+            }
             using Microsoft.Diagnostics.Runtime.ClrRuntime runtime = Passenger.Profiler.ProgramRuntimes.Open(target.ClrVersions[0]);
             List<string> threads = [];
             foreach (Microsoft.Diagnostics.Runtime.ClrThread thread in runtime.Threads.Where(t => t.IsAlive))

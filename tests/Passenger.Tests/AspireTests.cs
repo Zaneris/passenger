@@ -554,7 +554,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         Directory.CreateDirectory(project.PathOf("Loose"));
         string loose = PathNames.Canonical(project.Write("Loose/apphost.cs", $"#:sdk Aspire.AppHost.Sdk@{AspireApp.TemplatesVersion}\nvar builder = DistributedApplication.CreateBuilder(args);\nbuilder.Build().Run();\n"));
         project.Write("Loose/Sibling.csproj", TestProjects.Library());
-        string file = PathNames.Canonical(project.Write("apphost.cs", $"#:sdk Aspire.AppHost.Sdk@{AspireApp.TemplatesVersion}\n#:property AspireUseCliBundle=false\nusing Aspire.Hosting;\nusing Microsoft.Extensions.Hosting;\nSystem.Console.WriteLine(\"passenger-profile-port: \" + System.Environment.GetEnvironmentVariable(\"PASSENGER_PROFILE_PORT\"));\nvar builder = DistributedApplication.CreateBuilder(args);\nbuilder.Build().Run();\n"));
+        string file = PathNames.Canonical(project.Write("apphost.cs", $"#:sdk Aspire.AppHost.Sdk@{AspireApp.TemplatesVersion}\nusing Aspire.Hosting;\nusing Microsoft.Extensions.Hosting;\nSystem.Console.WriteLine(\"passenger-profile-port: \" + System.Environment.GetEnvironmentVariable(\"PASSENGER_PROFILE_PORT\"));\nvar builder = DistributedApplication.CreateBuilder(args);\nbuilder.Build().Run();\n"));
         project.Write("apphost.run.json", JsonSerializer.Serialize(new Dictionary<string, object>
         {
             ["$schema"] = "https://json.schemastore.org/launchsettings.json",
@@ -1033,8 +1033,8 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
     {
         Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
         int line = Array.FindIndex(document.Text.Snapshot.ToString().Split('\n'), text => text.Contains($"\"{resource}\"", StringComparison.Ordinal)
-            && text.Contains("AddProject", StringComparison.Ordinal));
-        Assert.True(line >= 0, $"No AddProject declaration for {resource}");
+            && text.Contains("AddDotnetProject", StringComparison.Ordinal));
+        Assert.True(line >= 0, $"No AddDotnetProject declaration for {resource}");
         Ui.WaitFor(() => document.RunMarks.Any(mark => mark.Line == line), $"the {resource} run gutter mark");
         Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
         editor.ScrollTo(new Vector(0, Math.Max(0, editor.ScrollOffset.Y + editor.PointOf(document.Text.Snapshot.GetLineStart(line)).Y - editor.Bounds.Height / 3)));

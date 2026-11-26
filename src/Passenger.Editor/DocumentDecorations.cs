@@ -31,6 +31,8 @@ public sealed class DocumentDecorations
     private static readonly LineOrdered<ChangeMark> NoChanges = new([], static c => c.Line, LastOf);
     private static readonly LineOrdered<int> NoBookmarks = new([], static l => l, static l => l);
 
+    private static readonly IReadOnlyDictionary<int, char> NoMnemonics = new Dictionary<int, char>();
+
     /// <summary>The document's version the hints and folds were last carried to.</summary>
     private int carried;
 
@@ -91,6 +93,9 @@ public sealed class DocumentDecorations
     public IReadOnlyList<int> Bookmarks => BookmarksByLine.Items;
 
     public LineOrdered<int> BookmarksByLine { get; private set; } = NoBookmarks;
+
+    /// <summary>The digit of each bookmarked line that has one, by line, drawn in its ribbon's place.</summary>
+    public IReadOnlyDictionary<int, char> BookmarkMnemonics { get; private set; } = NoMnemonics;
 
     /// <summary>The links on a line (from zero) of a text, in its offsets, as the owner finds them (a console's); null for a
     /// text with none. Asked for each line drawn and the line under the pointer as it moves, so the owner keeps what it found.</summary>
@@ -177,13 +182,14 @@ public sealed class DocumentDecorations
         Changed?.Invoke(this, DecorationKind.ChangeMarks);
     }
 
-    public void SetBookmarks(IReadOnlyList<int> lines)
+    public void SetBookmarks(IReadOnlyList<int> lines, IReadOnlyDictionary<int, char>? mnemonics = null)
     {
-        if (ReferenceEquals(lines, Bookmarks))
+        if (ReferenceEquals(lines, Bookmarks) && ReferenceEquals(mnemonics ?? NoMnemonics, BookmarkMnemonics))
         {
             return;
         }
         BookmarksByLine = lines.Count == 0 ? NoBookmarks : new LineOrdered<int>(lines, static l => l, static l => l);
+        BookmarkMnemonics = mnemonics ?? NoMnemonics;
         Changed?.Invoke(this, DecorationKind.Bookmarks);
     }
 

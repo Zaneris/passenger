@@ -11,14 +11,44 @@ namespace Passenger.App.Updates;
 
 /// <summary>Windows' update, through Velopack as the installer is: the full package the release's feed names for this
 /// install's channel (<c>releases.win-x64.json</c> or <c>-arm64</c>), downloaded into <c>packages\</c> and checked
-/// against its size and SHA-256. As Passenger ends, Velopack's Update.exe replaces the install and, for Restart to
-/// Update, starts the new version; it outlives Passenger, so it is not ChildProcesses' to start.</summary>
-public sealed class VelopackUpdater(IVelopackLocator locator) : Updater
+/// against its size and SHA-256. As Passenger ends, Velopack's Update.exe replaces the install, tried again while it is
+/// refused (<see cref="UpdateHandOff"/>), and, for Restart to Update, starts the new version; it outlives Passenger. What it said of an
+/// update it did not apply is read from Velopack's log (<paramref name="log"/>, by default where Update.exe writes it on
+/// Windows: <c>%LocalAppData%\velopack\velopack_PassengerIDE.log</c>).</summary>
+public sealed class VelopackUpdater(IVelopackLocator locator, string? log = null) : Updater
 {
+    /// <summary>The most of Velopack's log's end read for why an update was not applied: a few applies' lines.</summary>
+    private const int LogRead = 1 << 20;
+
     private UpdateManager? manager;
     private VelopackAsset? package;
 
     public override string Installed => locator.RootAppDir ?? AppContext.BaseDirectory;
+
+    public override string? WhyNotInstalled(string version)
+    {
+        if (locator.AppId is not { } app)
+        {
+            return null;
+        }
+        string path = log ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "velopack", $"velopack_{app}.log");
+        string text;
+        try
+        {
+            // Velopack's writers may hold it open still.
+            using FileStream read = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            read.Seek(Math.Max(0, read.Length - LogRead), SeekOrigin.Begin);
+            using StreamReader reader = new(read);
+            text = reader.ReadToEnd();
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"Updates: Velopack's log {path} could not be read: {unread.Message}");
+            return null;
+        }
+        return VelopackLog.WhyNotApplied(text.Split('\n', StringSplitOptions.TrimEntries), app, version) is { } said
+            ? $"Update.exe could not apply it: {said}" : null;
+    }
 
     protected override async Task<UpdateOutcome> PrepareAsync(LatestRelease release, Action<int> progress, CancellationToken cancel)
     {
@@ -78,9 +108,17 @@ public sealed class VelopackUpdater(IVelopackLocator locator) : Updater
         EndRelays(others, version);
         try
         {
-            // Quietly when Passenger is only closing; with Velopack's progress while a person waits for it to start again.
-            manager.WaitExitThenApplyUpdates(package, silent: !restart, restart: restart);
-            IdeErrors.Write($"Updates: Update.exe installs Passenger {version} in {Installed} once Passenger has ended{(restart ? ", and starts it" : string.Empty)}");
+            if (locator.UpdateExePath is not { } update || !File.Exists(update))
+            {
+                throw new FileNotFoundException("Cannot find Update.exe to apply updates.", locator.UpdateExePath);
+            }
+            // Velopack's own words for it: quiet when only closing, its progress shown while a person waits for the restart.
+            List<string> apply = restart ? [] : ["--silent"];
+            apply.AddRange(["apply", "--package", Path.Combine(locator.PackagesDir!, package.FileName),
+                "--waitPid", Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "--norestart", "--rootDir", locator.RootAppDir!, "--packageDir", locator.PackagesDir!]);
+            UpdateHandOff.Start(update, apply, restart);
+            IdeErrors.Write($"Updates: Update.exe installs Passenger {version} in {Installed} once Passenger has ended, up to {Numbers.Said(UpdateHandOff.Tries)} times while refused{(restart ? ", and starts it" : string.Empty)}");
         }
         catch (Exception error) when (error is IOException or Win32Exception or InvalidOperationException)
         {

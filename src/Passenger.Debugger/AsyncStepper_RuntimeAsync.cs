@@ -178,6 +178,39 @@ internal sealed partial class AsyncStepper
         }
     }
 
+    /// <summary>The methods awaiting the run a thread's dispatcher of continuations goes on with (runtime async), innermost
+    /// first, each an IL frame at the await it waits at, as the runtime walks their chain: what the thread's own stack
+    /// lacks once a method went on after an await. None on a thread no dispatcher runs.</summary>
+    internal List<ICorDebugILFrame> AwaitingRun(ICorDebugThread thread)
+    {
+        List<ICorDebugILFrame> awaiting = [];
+        try
+        {
+            if (thread.Process is not ICorDebugProcess12 asyncStacks || _debugger.EnumerateFramesForThread(thread).FirstOrDefault(IsDispatcher) is not { } dispatcher
+                || Dispatching(dispatcher, "NextContinuation") is not { } continuation
+                || asyncStacks.TryGetAsyncStack(continuation.Value, out ICorDebugStackWalk? walk) is not Cor.S_OK || walk is null)
+            {
+                return awaiting;
+            }
+            for (int read = 0; read < ManagedDebugger.SyntheticAsyncCallerDepthLimit && walk.TryGetFrame(out ICorDebugFrame? frame) is Cor.S_OK; read++)
+            {
+                if (frame is ICorDebugILFrame method)
+                {
+                    awaiting.Add(method);
+                }
+                if (walk.TryNext() is not Cor.S_OK)
+                {
+                    break;
+                }
+            }
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            _debugger.Log($"The methods awaiting the run on thread {thread.Id} could not be read: {error.Message}");
+        }
+        return awaiting;
+    }
+
     /// <summary>The task whose chain of continuations a frame's run is in, by a strong handle: the one the dispatcher below
     /// it on the stack runs, when only runtime-async frames awaiting the call above them lie between. None below any
     /// other, which started the chain on this run (a chain is given its task when it first suspends).</summary>

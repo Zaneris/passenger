@@ -47,6 +47,7 @@ public static class MainMenu
     [
         new("View/" + ToolWindows, 0, 0),
         new("View/Active Editor", 3, 0),
+        new("View/Appearance", 5, 0),
         new("File/" + RecentSolutions, 0, 3),
         new("File/Line Separators", 2, 1),
         new("File/Local History", 2, 3),
@@ -56,6 +57,8 @@ public static class MainMenu
         new("Tools/Migrations", 1, 0),
         new("Code/Code Completion", 0, 0),
         new("Code/Folding", 3, 0),
+        new("Code/Folding/Expand to Level", 0, 3),
+        new("Code/Folding/Expand All to Level", 0, 4),
         new("Window/Layout Settings", 0, 0),
         new("Window/Editor Tabs", 1, 0),
         new("Window/" + OpenSolutionWindows, 5, 0),

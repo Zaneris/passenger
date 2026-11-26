@@ -355,6 +355,23 @@ public sealed class TerminalPanel : DockPanel, ToolTabs.ITabbed
     /// <summary>The keys to the shell, once the view is laid out (a control not yet arranged cannot take the focus).</summary>
     public void FocusView() => Avalonia.Threading.Dispatcher.UIThread.Post(() => view.Focus(), Avalonia.Threading.DispatcherPriority.Loaded);
 
+    public bool CloseTab()
+    {
+        if (ActiveTab is not { } shown)
+        {
+            return false;
+        }
+        CloseByPerson(shown);
+        return true;
+    }
+
+    /// <summary>A shell's tab closed as its × closes it, what runs in it stopped.</summary>
+    private void CloseByPerson(TerminalTab tab)
+    {
+        tab.Run?.Stop();
+        Close(tab);
+    }
+
     private void Close(TerminalTab tab)
     {
         int index = tabs.IndexOf(tab);
@@ -388,8 +405,7 @@ public sealed class TerminalPanel : DockPanel, ToolTabs.ITabbed
             {
                 return;
             }
-            tab.Run?.Stop();
-            Close(tab);
+            CloseByPerson(tab);
         }, "Close Session");
         button.Click += (_, _) =>
         {

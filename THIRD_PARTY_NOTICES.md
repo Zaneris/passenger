@@ -825,9 +825,9 @@ SOFTWARE.
 
 ## Codicons
 
-`src/Passenger.App/Theme/Icons.axaml`'s `Icon.Preview` is the path data of the `open-preview` icon from Visual Studio
-Code's Codicons (https://github.com/microsoft/vscode-codicons, `src/icons/open-preview.svg` at commit 5a6ad495),
-unchanged, written by `tools/icons.py`. Copyright (c) Microsoft Corporation. It is licensed under the Creative Commons
+`src/Passenger.App/Theme/Icons.axaml`'s `Icon.Preview` and `Icon.Selection` are the path data of the `open-preview` and
+`list-selection` icons from Visual Studio Code's Codicons (https://github.com/microsoft/vscode-codicons, `src/icons/` at
+commit 8d1826a9), unchanged, written by `tools/icons.py`. Copyright (c) Microsoft Corporation. It is licensed under the Creative Commons
 Attribution 4.0 International License (CC BY 4.0, https://creativecommons.org/licenses/by/4.0/).
 
 ## File Icons
@@ -1125,46 +1125,46 @@ SOFTWARE.
 file of Visual Studio Code's own extensions (https://github.com/microsoft/vscode, MIT, Copyright (c) 2015 - present
 Microsoft Corporation), unchanged, from the project its header names:
 
-- `xml.tmLanguage.json` (VS Code 1.144.0, `extensions/xml`): from atom/language-xml
+- `xml.tmLanguage.json` (VS Code 1.148.0, `extensions/xml`): from atom/language-xml
   (https://github.com/atom/language-xml), MIT, Copyright (c) 2014 GitHub Inc., which was converted from the TextMate
   bundle textmate/xml.tmbundle, under the TextMate bundle licence below.
-- `JSON.tmLanguage.json` (VS Code 1.144.0, `extensions/json`): from microsoft/vscode-JSON.tmLanguage
+- `JSON.tmLanguage.json` (VS Code 1.148.0, `extensions/json`): from microsoft/vscode-JSON.tmLanguage
   (https://github.com/microsoft/vscode-JSON.tmLanguage), MIT, Copyright (c) 2015 simonzack, zertosh, benvie.
 - `yaml.tmLanguage.json`, with `yaml-1.0.tmLanguage.json`, `yaml-1.1.tmLanguage.json`, `yaml-1.2.tmLanguage.json`,
-  `yaml-1.3.tmLanguage.json` and `yaml-embedded.tmLanguage.json`, which it reads by (VS Code 1.144.0,
+  `yaml-1.3.tmLanguage.json` and `yaml-embedded.tmLanguage.json`, which it reads by (VS Code 1.148.0,
   `extensions/yaml`): from RedCMD/YAML-Syntax-Highlighter (https://github.com/RedCMD/YAML-Syntax-Highlighter) at
   commit 53d38bbc, its 1.3.2, MIT, Copyright 2024 RedCMD: a grammar for each version of YAML, a file read by the one
   its `%YAML` directive names and by 1.2's where it names none.
-- `markdown.tmLanguage.json` (VS Code 1.144.0, `extensions/markdown-basics`): from microsoft/vscode-markdown-tm-grammar
+- `markdown.tmLanguage.json` (VS Code 1.148.0, `extensions/markdown-basics`): from microsoft/vscode-markdown-tm-grammar
   (https://github.com/microsoft/vscode-markdown-tm-grammar), MIT, Copyright (c) Microsoft 2018, derived from
   textmate/markdown.tmbundle, under the TextMate bundle licence below.
-- `html.tmLanguage.json` (VS Code 1.144.0, `extensions/html`): converted from textmate/html.tmbundle
+- `html.tmLanguage.json` (VS Code 1.148.0, `extensions/html`): converted from textmate/html.tmbundle
   (https://github.com/textmate/html.tmbundle), under the TextMate bundle licence below.
-- `css.tmLanguage.json` (VS Code 1.144.0, `extensions/css`): from microsoft/vscode-css
+- `css.tmLanguage.json` (VS Code 1.148.0, `extensions/css`): from microsoft/vscode-css
   (https://github.com/microsoft/vscode-css), MIT, Copyright (c) Microsoft Corporation, derived from atom/language-css
   and the TextMate bundle textmate/css.tmbundle, under the TextMate bundle licence below.
-- `scss.tmLanguage.json` (VS Code 1.144.0, `extensions/scss`): from atom/language-sass
+- `scss.tmLanguage.json` (VS Code 1.148.0, `extensions/scss`): from atom/language-sass
   (https://github.com/atom/language-sass), MIT, Copyright (c) 2014 GitHub Inc., derived from the TextMate bundle
   alexsancho/Sass.tmbundle (https://github.com/alexsancho/Sass.tmbundle), MIT, Copyright (c) 2012 Alex Sancho, as
   atom/language-sass's `LICENSE.md` says.
-- `less.tmLanguage.json` (VS Code 1.144.0, `extensions/less`): from radium-v/Better-Less
+- `less.tmLanguage.json` (VS Code 1.148.0, `extensions/less`): from radium-v/Better-Less
   (https://github.com/radium-v/Better-Less), MIT, Copyright (c) 2017 John Kreitlow.
-- `JavaScript.tmLanguage.json` (VS Code 1.144.0, `extensions/javascript`), and `TypeScript.tmLanguage.json` and
-  `TypeScriptReact.tmLanguage.json` (VS Code 1.144.0, `extensions/typescript-basics`): from
+- `JavaScript.tmLanguage.json` (VS Code 1.148.0, `extensions/javascript`), and `TypeScript.tmLanguage.json` and
+  `TypeScriptReact.tmLanguage.json` (VS Code 1.148.0, `extensions/typescript-basics`): from
   microsoft/TypeScript-TmLanguage (https://github.com/microsoft/TypeScript-TmLanguage), MIT, Copyright (c) Microsoft
   Corporation; VS Code names textmate/javascript.tmbundle, under the TextMate bundle licence below, among the JavaScript
   grammar's sources too.
-- `shell-unix-bash.tmLanguage.json` (VS Code 1.144.0, `extensions/shellscript`): from jeff-hykin/better-shell-syntax
+- `shell-unix-bash.tmLanguage.json` (VS Code 1.148.0, `extensions/shellscript`): from jeff-hykin/better-shell-syntax
   (https://github.com/jeff-hykin/better-shell-syntax), MIT, Copyright (c) 2019 Jeff Hykin.
-- `docker.tmLanguage.json` (VS Code 1.144.0, `extensions/docker`): from moby/moby's
+- `docker.tmLanguage.json` (VS Code 1.148.0, `extensions/docker`): from moby/moby's
   `contrib/syntax/textmate/Docker.tmbundle` (https://github.com/moby/moby), under the Apache License 2.0 below, with
   Docker's NOTICE.
-- `ini.tmLanguage.json` (VS Code 1.144.0, `extensions/ini`): converted from textmate/ini.tmbundle
+- `ini.tmLanguage.json` (VS Code 1.148.0, `extensions/ini`): converted from textmate/ini.tmbundle
   (https://github.com/textmate/ini.tmbundle), under the TextMate bundle licence below; it colours .editorconfig files.
 - `sql.tmLanguage.json` (VS Code 1.144.0, `extensions/sql`): converted from microsoft/vscode-mssql's
   `extensions/mssql/syntaxes/SQL.plist` (https://github.com/microsoft/vscode-mssql) at commit 684648ee, MIT,
   Copyright (c) Microsoft Corporation; it colours .sql files and the database tools' consoles.
-- `MagicPython.tmLanguage.json` (VS Code 1.144.0, `extensions/python`): converted from MagicStack/MagicPython
+- `MagicPython.tmLanguage.json` (VS Code 1.148.0, `extensions/python`): converted from MagicStack/MagicPython
   (https://github.com/MagicStack/MagicPython) at commit 7d0f2b22, its 1.1.1, MIT, Copyright (c) 2015-present MagicStack
   Inc.
 
@@ -1174,7 +1174,7 @@ LICENSE.txt states it, naming no holder; the repository is zxh0's.
 
 And two that colour Razor's .razor and .cshtml files before the language server answers, files of Razor's tooling in
 dotnet/roslyn (https://github.com/dotnet/roslyn, where Razor's tooling moved from dotnet/razor; MIT, Copyright (c) .NET
-Foundation and Contributors) at the 5.11.0 server's commit (dc1db3e7), unchanged, under
+Foundation and Contributors) at the 5.13.0-1.26514.10 server's commit (d82b7f7d), unchanged, under
 `src/Razor/src/Razor/src/Microsoft.VisualStudio.RazorExtension/EmbeddedGrammars/`:
 
 - `aspnetcorerazor.tmLanguage.json`: Razor's own grammar, which embeds HTML's and C#'s.

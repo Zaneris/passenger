@@ -585,7 +585,7 @@ public sealed partial class PassengerTools
     }
 
     [McpServerTool(Name = McpTools.NugetInstall, Title = "Install or remove a package", Destructive = true), Description(
-        "Adds a package to a project (its name or .csproj) at a version (else the newest on the folder's enabled feeds), or " +
+        "Adds a package to a project (its name or .csproj) at a version (else the newest on the folder's enabled feeds their minimum publish age lets be chosen), or " +
         "moves it to that version, through dotnet add package as the NuGet window does, restoring from the folder's " +
         "nuget.config feeds; with remove, takes it out through dotnet remove package. Answers the version installed, the " +
         "files it changed (the project, its packages.lock.json, and Directory.Packages.props under central package management), " +
@@ -609,8 +609,17 @@ public sealed partial class PassengerTools
         }
         AgentCall.Say($"Finding {id} on the folder's feeds");
         IPackageFeed feeds = await Session.Packages.FeedAsync(null);
-        IReadOnlyList<string>? offered = version is null ? await feeds.VersionsAsync(id, prerelease: false, cancel) : null;
-        string at = version ?? offered?.FirstOrDefault() ?? throw new ArgumentException($"{feeds.Name} has no package {id}");
+        FeedVersions? found = version is not null ? null
+            : feeds is FeedSet set ? await set.VersionsEachAsync(id, prerelease: false, cancel) : new FeedVersions(await feeds.VersionsAsync(id, prerelease: false, cancel), []);
+        if (found is { Versions.Count: 0, Failed.Count: > 0 })
+        {
+            throw new HttpRequestException(string.Join("; ", found.Failed.Select(f => $"{f.Feed}: {f.Problem}")));
+        }
+        IReadOnlyList<string>? offered = found?.Chosen;
+        string at = version ?? offered?.FirstOrDefault()
+            ?? (found?.Versions.FirstOrDefault() is { } young
+                ? throw new ArgumentException($"{id} {young} {found.TooNew[young]}, and so is every version of it: name the version to take it")
+                : throw new ArgumentException($"{feeds.Name} has no package {id}"));
         AgentCall.Say(null);
         AgentCall.Follow(window.Actions.Work, FolderPackages.Changing);
         if (frameworks.Length > 0)

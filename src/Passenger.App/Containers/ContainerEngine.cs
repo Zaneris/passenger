@@ -57,6 +57,10 @@ public sealed record EngineState(EngineStatus Status, string? Cli, string? Probl
     /// <summary>The engine's name as messages give it.</summary>
     public string EngineName => IsPodman ? "Podman" : "Docker";
 
+    /// <summary>The SDK's name for loading an image through this CLI (<see cref="MSBuildNames.LocalRegistry"/>): Podman's own
+    /// command's, else Docker's, which reaches Podman's socket as it reaches Docker's.</summary>
+    public string LocalRegistry => PodmanCli ? "Podman" : "Docker";
+
     /// <summary>What the engine cannot do that Passenger would otherwise, said where its problems are: Podman has no
     /// BuildKit, whose checks a Dockerfile's are (buildx would start a BuildKit container on it, which Passenger never does).</summary>
     public string? Limit => IsPodman

@@ -54,6 +54,8 @@ public partial class FrameReferenceManager
             _referencesByThreadAndFrameStackDepth.Clear();
             _syntheticAsyncFrameReferences.Clear();
             _syntheticAsyncFrameReferencesByPhysicalFrame.Clear();
+            _awaitingFrameReferences.Clear();
+            _awaitingFrameIds.Clear();
             _firstOfStop = _nextFrameId;
         }
     }

@@ -21,7 +21,7 @@ public partial class FindBar : UserControl
     public static readonly Thickness BarPadding = new(Gaps.Normal, Gaps.Small);
 
     /// <summary>The room the query's option toggles take over its right end, and a step clear of them.</summary>
-    private const double OptionsRoom = 96;
+    private const double OptionsRoom = 128;
 
     /// <summary>The query's room: its words where every search field's start, clear at its right of the toggles over it.</summary>
     public static readonly Thickness QueryPadding = new(FieldInsets.Padding.Left, FieldInsets.Padding.Top, OptionsRoom, FieldInsets.Padding.Bottom);
@@ -74,6 +74,12 @@ public partial class FindBar : UserControl
     private TableSearch cells = TableSearch.None;
     private CancellationTokenSource? searching;
 
+    /// <summary>The stretch In Selection keeps the search inside, carried through the text's changes, while it is on.</summary>
+    private AnchoredRange? scope;
+
+    /// <summary>Whether In Selection is being turned off by the bar itself (another file, the bar closed), searching nothing.</summary>
+    private bool unscoping;
+
     /// <summary>What Replace All came to, said in the count's place while the text is the one it left (<see cref="toldOf"/>)
     /// and the search the one it ran, so the search its own edits bring does not wipe it; null when it stands no longer.</summary>
     private string? told;
@@ -93,16 +99,18 @@ public partial class FindBar : UserControl
         OptionToggles.Give(MatchCase, OptionToggles.MatchCase);
         OptionToggles.Give(WholeWords, OptionToggles.Words);
         OptionToggles.Give(UseRegex, OptionToggles.Regex);
+        OptionToggles.Give(InSelection, OptionToggles.InSelection);
         // The arrows do what Find Previous and Find Next do, so their tips name those actions' keys.
         ActionTips.Set(PreviousButton, AppActions.FindPrevious, "Previous occurrence");
         ActionTips.Set(NextButton, AppActions.FindNext, "Next occurrence");
         // On the way down, so an option's key never types into the field it is pressed in.
-        AddHandler(KeyDownEvent, (_, e) => OptionToggles.Hear(e, (OptionToggles.MatchCase, MatchCase), (OptionToggles.Words, WholeWords), (OptionToggles.Regex, UseRegex)),
-            RoutingStrategies.Tunnel);
+        AddHandler(KeyDownEvent, (_, e) => OptionToggles.Hear(e, (OptionToggles.MatchCase, MatchCase), (OptionToggles.Words, WholeWords), (OptionToggles.Regex, UseRegex),
+            (OptionToggles.InSelection, InSelection)), RoutingStrategies.Tunnel);
         Query.TextChanged += (_, _) => SearchAnew();
         MatchCase.IsCheckedChanged += (_, _) => SearchAnew();
         WholeWords.IsCheckedChanged += (_, _) => SearchAnew();
         UseRegex.IsCheckedChanged += (_, _) => SearchAnew();
+        InSelection.IsCheckedChanged += (_, _) => Scope(InSelection.IsChecked == true);
         NextButton.Click += (_, _) => Next();
         PreviousButton.Click += (_, _) => Previous();
         CloseButton.Click += (_, _) => Close();
@@ -130,6 +138,10 @@ public partial class FindBar : UserControl
     {
         beside?.SetHighlights([], -1);
         beside = next;
+        if (document != shown.Document)
+        {
+            Unscope();
+        }
         editor = shown;
         unchangeable = readOnly;
         Follow(table);
@@ -150,6 +162,7 @@ public partial class FindBar : UserControl
     public void Detach()
     {
         IsVisible = false;
+        Unscope();
         if (document is not null)
         {
             document.Changed -= OnDocumentChanged;
@@ -186,7 +199,52 @@ public partial class FindBar : UserControl
     /// <summary>Opens the bar (with the replace row if <paramref name="replace"/>), its query the
     /// selection when that is on one line, or the word under the caret. Refused to an agent's action, as its search would
     /// move the person's selection and its box take their keys (<see cref="AgentAsks.Popup"/>).</summary>
-    public void Open(bool replace)
+    public void Open(bool replace) => Open(replace, seeded: true);
+
+    /// <summary>Incremental Search: the bar opened with nothing in it, its matches found from the caret on as the query is
+    /// typed.</summary>
+    public void OpenEmpty()
+    {
+        Query.Text = string.Empty;
+        Open(replace: false, seeded: false);
+    }
+
+    /// <summary>Find in Selection: In Selection turned over, the bar opened (keeping its query) where it was closed.</summary>
+    public void ToggleInSelection()
+    {
+        if (editor is null || grid is not null)
+        {
+            return;
+        }
+        if (!IsVisible)
+        {
+            Open(replace: false, seeded: false);
+        }
+        InSelection.IsChecked = InSelection.IsChecked != true;
+    }
+
+    /// <summary>Find Word at Caret and its previous: the selection on one line, or the word at the caret, looked for again
+    /// from where it stands, the bar shown with it as its query and the editor keeping the keys, so Find Next and Find
+    /// Previous go on with it.</summary>
+    public void FindAtCaret(bool forward)
+    {
+        if (editor is null || grid is not null || Seeding(editor) is not { } at)
+        {
+            return;
+        }
+        AgentAsks.Popup();
+        IsVisible = true;
+        // The copy at the caret chosen, the one the search lands on and the step goes on from.
+        editor.Select(at);
+        string seed = editor.Document.Snapshot.GetText(at);
+        if (seed != Query.Text)
+        {
+            Query.Text = seed;
+        }
+        Step(forward);
+    }
+
+    private void Open(bool replace, bool seeded)
     {
         if (editor is null)
         {
@@ -196,7 +254,7 @@ public partial class FindBar : UserControl
         IsVisible = true;
         ReplaceRow.IsVisible = replace;
         // A table's chosen cell seeds nothing: the query typed last is what is looked for again.
-        string? seed = grid is null ? Seed(editor) : null;
+        string? seed = grid is null && seeded ? Seed(editor) : null;
         if (seed is not null && seed != Query.Text)
         {
             Query.Text = seed;
@@ -214,29 +272,32 @@ public partial class FindBar : UserControl
     }
 
     /// <summary>The selection when it is on one line, or the word under the caret.</summary>
-    private static string? Seed(CodeEditor editor)
+    private static string? Seed(CodeEditor editor) => Seeding(editor) is { } range ? editor.Document.Snapshot.GetText(range) : null;
+
+    /// <summary>Where <see cref="Seed"/> stands in the text, or null for neither.</summary>
+    private static TextRange? Seeding(CodeEditor editor)
     {
         TextSnapshot text = editor.Document.Snapshot;
         Selection primary = editor.Selections.Primary;
-        string? seed = null;
         if (!primary.IsEmpty && text.GetLineFromOffset(primary.Start) == text.GetLineFromOffset(primary.End))
         {
-            seed = text.GetText(primary.Range);
+            return primary.Range;
         }
-        else if (primary.IsEmpty)
+        if (primary.IsEmpty)
         {
             TextRange word = TextNavigation.WordAt(text, primary.Caret);
             if (word.Length > 0 && WordCharacters.IsWord(text[word.Start]))
             {
-                seed = text.GetText(word);
+                return word;
             }
         }
-        return seed;
+        return null;
     }
 
     public void Close()
     {
         IsVisible = false;
+        Unscope();
         Untell();
         searching?.Cancel();
         editor?.SetHighlights([], -1);
@@ -255,6 +316,40 @@ public partial class FindBar : UserControl
     public void Next() => Step(forward: true);
 
     public void Previous() => Step(forward: false);
+
+    /// <summary>In Selection turned on or off: on, the stretch it keeps the search inside is the selection as it stands, or
+    /// the caret's line where nothing is chosen.</summary>
+    private void Scope(bool on)
+    {
+        scope?.Remove();
+        scope = null;
+        if (on && editor is not null && document is not null)
+        {
+            Selection primary = editor.Selections.Primary;
+            TextSnapshot text = document.Snapshot;
+            LineSpan line = text.GetLine(text.GetLineFromOffset(primary.Caret));
+            scope = document.MarkAt(primary.IsEmpty ? new TextRange(line.Start, line.Length) : primary.Range);
+        }
+        if (!unscoping)
+        {
+            SearchAnew();
+        }
+    }
+
+    /// <summary>In Selection turned off by the bar itself, as it closes or follows another file, searching nothing.</summary>
+    private void Unscope()
+    {
+        scope?.Remove();
+        scope = null;
+        // Matches kept from while it was on are the stretch's alone: what acts on a match next searches again.
+        searched = null;
+        unscoping = true;
+        InSelection.IsChecked = false;
+        unscoping = false;
+    }
+
+    /// <summary>A search's matches, those inside In Selection's stretch alone while it is on.</summary>
+    private SearchResult Scoped(SearchResult found) => scope is null ? found : found.Within(scope.Range);
 
     /// <summary>The search changed (its query or an option): what Replace All came to no longer stands.</summary>
     private void SearchAnew()
@@ -288,7 +383,7 @@ public partial class FindBar : UserControl
     /// <summary>Shows what a search of a text found, the match at or after the caret the current one.</summary>
     private void Found(SearchResult found, TextSnapshot text, bool jump)
     {
-        result = found;
+        result = Scoped(found);
         searched = text;
         current = -1;
         if (editor is not null && result.Matches.Count > 0)
@@ -415,7 +510,7 @@ public partial class FindBar : UserControl
         }
         Untell();
         TextSnapshot text = editor.Document.Snapshot;
-        SearchResult found = TextSearch.FindAll(text, query, TextSearch.AtOnce, int.MaxValue);
+        SearchResult found = Scoped(TextSearch.FindAll(text, query, TextSearch.AtOnce, int.MaxValue));
         if (found.Stopped)
         {
             IdeErrors.Observe(ReplaceAllApartAsync(editor, text, query, replacement));
@@ -433,10 +528,12 @@ public partial class FindBar : UserControl
     private async Task ReplaceAllApartAsync(CodeEditor shown, TextSnapshot text, SearchQuery query, string replacement)
     {
         Count.Text = Searching;
+        TextRange? within = scope?.Range;
         // Each match's groups are found again where it stood, as long as the search took: off the UI thread too.
         (SearchResult found, (IReadOnlyList<TextEdit> edits, string? why)) = await BackgroundWork.Run(() =>
         {
-            SearchResult searched = TextSearch.FindAll(text, query, TextSearch.Apart, int.MaxValue);
+            SearchResult all = TextSearch.FindAll(text, query, TextSearch.Apart, int.MaxValue);
+            SearchResult searched = within is { } stretch ? all.Within(stretch) : all;
             return (searched, searched.Stopped ? ([], null) : Replacing(searched, replacement));
         });
         if (editor != shown || !IsVisible || !Replaces)

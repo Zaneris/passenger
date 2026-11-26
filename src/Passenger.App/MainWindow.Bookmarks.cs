@@ -31,7 +31,7 @@ public partial class MainWindow
         AddBookmarkActions();
         Editors.Opened += (_, document) =>
         {
-            document.Bookmarks = session.Bookmarks.LinesIn(document.Path);
+            document.ShowBookmarks(session.Bookmarks.LinesIn(document.Path), session.Bookmarks.MnemonicsIn(document.Path));
             document.Text.Changed += (_, _) => session.Bookmarks.Follow(document.Path);
         };
     }
@@ -48,16 +48,17 @@ public partial class MainWindow
             }
             foreach (OpenDocument document in Editors.Documents.Where(d => d.Path == path))
             {
-                document.Bookmarks = next.Bookmarks.LinesIn(path);
+                document.ShowBookmarks(next.Bookmarks.LinesIn(path), next.Bookmarks.MnemonicsIn(path));
             }
         };
         foreach (OpenDocument document in Editors.Documents)
         {
-            document.Bookmarks = next.Bookmarks.LinesIn(document.Path);
+            document.ShowBookmarks(next.Bookmarks.LinesIn(document.Path), next.Bookmarks.MnemonicsIn(document.Path));
         }
     }
 
-    /// <summary>Toggle Bookmark on the caret's line, and Next and Previous Bookmark from it through every file.</summary>
+    /// <summary>Toggle Bookmark on the caret's line, Next and Previous Bookmark from it through every file, and the numbered
+    /// bookmarks' Toggle Bookmark and Go to Bookmark 0 to 9.</summary>
     private void AddBookmarkActions()
     {
         actions!.Add(new IdeAction(AppActions.ToggleBookmark, "Toggle Bookmark", "Bookmarks", context => session.Bookmarks.Toggle(context.File!.Path, context.Caret.Line))
@@ -67,6 +68,23 @@ public partial class MainWindow
         });
         Step(AppActions.NextBookmark, "Next Bookmark", 1);
         Step(AppActions.PreviousBookmark, "Previous Bookmark", -1);
+        for (int n = 0; n < AppActions.NumberedBookmarks.Count; n++)
+        {
+            char digit = (char)('0' + n);
+            actions.Add(new IdeAction(AppActions.NumberedBookmarks[n].Toggle, $"Toggle Bookmark {digit}", "Bookmarks",
+                context => session.Bookmarks.ToggleNumbered(context.File!.Path, context.Caret.Line, digit))
+            {
+                WhyNot = Refusals.NeedsLines,
+            });
+            actions.Add(new IdeAction(AppActions.NumberedBookmarks[n].GoTo, $"Go to Bookmark {digit}", "Bookmarks", _ =>
+            {
+                Bookmark numbered = session.Bookmarks.Numbered(digit)!;
+                NavigateTo(numbered.Path, new TextPosition(numbered.Line, 0));
+            })
+            {
+                WhyNot = _ => session.Bookmarks.Numbered(digit) is null ? $"No bookmark {digit}" : null,
+            });
+        }
 
         void Step(string id, string title, int step) => actions.Add(new IdeAction(id, title, "Bookmarks", context =>
         {

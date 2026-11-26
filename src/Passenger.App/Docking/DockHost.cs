@@ -100,6 +100,9 @@ public sealed class DockHost : Grid
     private (ToolWindow Window, double Left, double Right, double Bottom)? maximized;
     private List<ToolWindow>? hiddenAll;
 
+    /// <summary>The windows Hide Side Windows hid, which it shows again (<see cref="ToggleHideSides"/>).</summary>
+    private List<ToolWindow>? hiddenSides;
+
     /// <summary>The IDE's window the frame is in, once it is.</summary>
     private Window? host;
 
@@ -444,6 +447,9 @@ public sealed class DockHost : Grid
     /// <summary>The window shown last, which Shift+Escape hides.</summary>
     public ToolWindow? Active { get; private set; }
 
+    /// <summary>The window whose view last took the keys, shown or not, which Jump to Last Tool Window gives them again.</summary>
+    public ToolWindow? LastWithKeys { get; private set; }
+
     /// <summary>A window header's options menu while it is open.</summary>
     public MenuFlyout? OpenOptions { get; internal set; }
 
@@ -469,6 +475,7 @@ public sealed class DockHost : Grid
 
     public void Add(ToolWindow window)
     {
+        window.GotKeys += (_, _) => LastWithKeys = window;
         window.Order = windows.Count(w => w.Anchor == window.Anchor);
         window.Unserved = WhyUnserved?.Invoke(window);
         windows.Add(window);
@@ -660,7 +667,7 @@ public sealed class DockHost : Grid
         {
             return;
         }
-        hiddenAll = null;
+        Shown(window);
         window.IsClosed = false;
         if (peeked == window)
         {
@@ -752,7 +759,7 @@ public sealed class DockHost : Grid
     /// (<see cref="hovered"/>) or an agent's input did.</summary>
     private void PeekOver(ToolWindow window, bool byHover)
     {
-        hiddenAll = null;
+        Shown(window);
         window.IsClosed = false;
         foreach (ToolWindow other in windows.Where(w => (w.Anchor == window.Anchor && w.Mode == ToolMode.Docked) || w == peeked).Where(w => w != window))
         {
@@ -1054,27 +1061,48 @@ public sealed class DockHost : Grid
     public bool IsMaximized => maximized is not null;
 
     /// <summary>Hides every docked window open, or opens them again in their places (Ctrl+Shift+F12).</summary>
-    public void ToggleHideAll()
+    public void ToggleHideAll() => ToggleHidden(ref hiddenAll, _ => true);
+
+    /// <summary>Hides the docked windows open at the left and right, the editors given their room, or opens them again in
+    /// their places; those below the editors stay as they are.</summary>
+    public void ToggleHideSides() => ToggleHidden(ref hiddenSides, AtSide);
+
+    private static bool AtSide(ToolWindow window) => window.Anchor is not (ToolAnchor.BottomLeft or ToolAnchor.BottomRight);
+
+    /// <summary>A window shown by the person ends what Hide All Tool Windows hid, and Hide Side Windows' where it is at a side:
+    /// the next of either hides again.</summary>
+    private void Shown(ToolWindow window)
     {
-        if (hiddenAll is { } hidden)
+        hiddenAll = null;
+        if (AtSide(window))
         {
-            foreach (ToolWindow window in hidden)
+            hiddenSides = null;
+        }
+    }
+
+    /// <summary>Hides the docked windows open that <paramref name="which"/> takes, kept in <paramref name="hidden"/>, or, where
+    /// it holds those it hid, opens them again in their places; a window over the editors goes too.</summary>
+    private void ToggleHidden(ref List<ToolWindow>? hidden, Func<ToolWindow, bool> which)
+    {
+        if (hidden is { } was)
+        {
+            hidden = null;
+            foreach (ToolWindow window in was)
             {
                 Show(window.Id);
             }
-            hiddenAll = null;
             return;
         }
-        if (peeked is { } over)
+        if (peeked is { } over && which(over))
         {
             Hide(over.Id);
         }
-        List<ToolWindow> open = [.. Served.Where(w => w.IsShown && w.Mode == ToolMode.Docked)];
+        List<ToolWindow> open = [.. Served.Where(w => w.IsShown && w.Mode == ToolMode.Docked && which(w))];
         foreach (ToolWindow window in open)
         {
             Hide(window.Id);
         }
-        hiddenAll = open;
+        hidden = open;
     }
 
     private void Restore()
@@ -1254,6 +1282,7 @@ public sealed class DockHost : Grid
         }
         Restore();
         hiddenAll = null;
+        hiddenSides = null;
         PeekAt(null);
         others = layout.Windows.Where(w => Find(w.Key) is null).ToDictionary();
         foreach (ToolWindow window in windows)

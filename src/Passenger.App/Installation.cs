@@ -25,6 +25,16 @@ internal static partial class Installation
 
     private const string Classes = @"Software\Classes";
 
+    /// <summary>Whether Velopack's Update.exe runs this copy as the version an update replaces (its obsolete hook, which
+    /// Passenger answers with nothing): Update.exe renames current\ the moment this process has gone, and is refused for as
+    /// long as anything of it holds the folder, so it is answered before anything else of Passenger loads, out of current\
+    /// at once.</summary>
+    public static bool Obsolete(string[] args) => args is [ObsoleteHook, ..] or [LegacyObsoleteHook, ..];
+
+    /// <summary>The obsolete hook's flags, Velopack's and Squirrel's before it, which VelopackApp answers alike.</summary>
+    private const string ObsoleteHook = "--veloapp-obsolete";
+    private const string LegacyObsoleteHook = "--squirrel-obsolete";
+
     /// <summary>Whether this copy is one Velopack packed, whose start Main hands to Velopack first.</summary>
     public static bool Installed => File.Exists(Path.Combine(AppContext.BaseDirectory, "sq.version"));
 

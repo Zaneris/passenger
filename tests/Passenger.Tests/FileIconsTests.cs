@@ -49,12 +49,13 @@ public sealed class FileIconsTests : IDisposable
     public void Dispose() => TestFolders.Delete(folder);
 
     /// <summary>Each kind of file is drawn in a shape and colour of its own in the Explorer, the tabs and the Commit
-    /// window, a row's icon pixel for pixel as a PathIcon draws it, as one flow, each step the check one test made in
-    /// an instance of its own.</summary>
+    /// window, in the theme's colours as it is switched, a row's icon pixel for pixel as a PathIcon draws it, as one flow,
+    /// each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
     public void Each_kind_of_file_is_drawn_in_its_own_icon_as_a_PathIcon_draws_it()
     {
         Flow.StepApart<FileIconsTests>("each kind of file is drawn in a shape and colour of its own in the Explorer the tabs and the Commit window", t => t.Each_kind_of_file_is_drawn_in_a_shape_and_colour_of_its_own_in_the_Explorer_the_tabs_and_the_Commit_window());
+        Flow.StepApart<FileIconsTests>("the Explorers and the tabs file icons take the themes colours as it is switched", t => t.The_Explorers_and_the_tabs_file_icons_take_the_themes_colours_as_it_is_switched());
         Flow.StepApart<FileIconsTests>("a rows icon draws every icon of the theme pixel for pixel as a PathIcon draws it", t => t.A_rows_icon_draws_every_icon_of_the_theme_pixel_for_pixel_as_a_PathIcon_draws_it());
         Flow.StepApart<FileIconsTests>("a themes icon saturation brightness and tint reach every icon", t => t.A_themes_icon_saturation_brightness_and_tint_reach_every_icon());
         Flow.StepApart<FileIconsTests>("a themes own icons replace those it names and leave the rest", t => t.A_themes_own_icons_replace_those_it_names_and_leave_the_rest());
@@ -318,6 +319,43 @@ public sealed class FileIconsTests : IDisposable
             window.Close();
         }
     }
+
+    /// <summary>The Explorer's rows and the tabs draw a file's icon in the colour the theme now gives it as dark and light
+    /// are switched, where they kept the colour of the theme they were drawn in (#2296).</summary>
+    private void The_Explorers_and_the_tabs_file_icons_take_the_themes_colours_as_it_is_switched()
+    {
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        ThemeChoice was = window.Settings.Theme;
+        try
+        {
+            window.OpenFile(Path.Combine(folder, "Program.cs"));
+            Ui.Settle();
+            foreach (ThemeChoice theme in (ThemeChoice[])[ThemeChoice.Light, ThemeChoice.Dark, ThemeChoice.Light])
+            {
+                window.ApplySettings(window.Settings with { Theme = theme });
+                Ui.Settle();
+                object blue = Resource(TokenKeys.FileIcon_Blue);
+                Assert.True(ReferenceEquals(blue, Drawn(window, "Program.cs").Foreground),
+                    $"Switched to {theme}, the Explorer draws Program.cs in {Colour(Drawn(window, "Program.cs").Foreground)}, not the theme's blue {Colour(blue)}");
+                Assert.True(Icons(window.EditorArea).Any(i => CSharpIcon(i) && ReferenceEquals(Brush(i), blue)),
+                    $"Switched to {theme}, Program.cs's tab draws its icon in {string.Join(", ", Icons(window.EditorArea).Where(CSharpIcon).Select(i => Colour(Brush(i))))}, not the theme's blue {Colour(blue)}");
+            }
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { Theme = was });
+            window.Close();
+        }
+    }
+
+    /// <summary>A brush's colour in words for a failure.</summary>
+    private static string Colour(object? brush) => brush is ISolidColorBrush solid ? solid.Color.ToString() : brush?.ToString() ?? "no brush";
+
+    /// <summary>Whether a row's icon draws the C# file's icon, by the key it finds the icon by as it draws.</summary>
+    private static bool CSharpIcon(RowIcon icon) => icon.DataKey is { } key && ReferenceEquals(Resource(key), Resource("FileIcon.CSharp"));
+
+    /// <summary>The brush a row's icon draws in: one given, else its key's in the theme as it is now.</summary>
+    private static IBrush? Brush(RowIcon icon) => icon.Foreground ?? Resource(icon.ForegroundKey ?? TokenKeys.Icon) as IBrush;
 
     /// <summary>A row draws its icons with RowIcon, one control where a PathIcon is five: every icon of the theme and every
     /// file icon, at 16 and 14 and as a 10-square chevron turned and not, draws pixel for pixel as a PathIcon in its place

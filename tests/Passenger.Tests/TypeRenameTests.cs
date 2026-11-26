@@ -33,6 +33,10 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
 
     private const string Crate = "namespace Shop;\n\npublic class Crate\n{\n}\n";
 
+    private const string Ticket = "namespace Shop;\n\npublic class Ticket\n{\n    public Ticket() { }\n}\n";
+
+    private const string Desk = "namespace Shop;\n\npublic static class Desk\n{\n    public static Ticket Issue() => new Ticket();\n}\n";
+
     private readonly RestoredFolders folders;
 
     private readonly string folder;
@@ -55,6 +59,8 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         TestFolders.Write(project, "shelf.cs", Shelf);
         TestFolders.Write(project, "Stock.cs", Stock);
         TestFolders.Write(project, "crate.cs", Crate);
+        TestFolders.Write(project, "Ticket.cs", Ticket);
+        TestFolders.Write(project, "Desk.cs", Desk);
         TestGit.Init(project);
         return project;
     })));
@@ -82,6 +88,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
     {
         Flow.StepApart("a class renamed with its file and one an agent renames commit as renames, the moves first where Git would lose one", () => new TypeRenameTests(folders), t => t.A_class_renamed_with_its_file_and_one_an_agent_renames_commit_as_renames_the_moves_first_where_git_would_lose_one());
         Flow.StepApart("renaming a file in the solution view offers to rename its class, takes a form's nested files, and renames a file of other types alone", () => new TypeRenameTests(folders), t => t.Renaming_a_file_in_the_solution_view_offers_to_rename_its_class_takes_a_forms_nested_files_and_renames_a_file_of_other_types_alone());
+        Flow.StepApart("a copy of a class's file renamed with its class in the solution view renames the copy alone", () => new TypeRenameTests(folders), t => t.A_copy_of_a_classs_file_renamed_with_its_class_in_the_solution_view_renames_the_copy_alone());
         Flow.StepApart("Fix Name Violation on a class named like its file renames the file in letter case, and Undo takes both back", () => new TypeRenameTests(folders), t => t.Fix_name_violation_on_a_class_named_like_its_file_renames_the_file_in_letter_case_and_undo_takes_both_back());
         Flow.StepApart("the rename of a class whose file cannot be renamed is refused before anything changes, and made once the file is let go", () => new TypeRenameTests(folders), t => t.Rename_of_a_class_whose_file_cannot_be_renamed_is_refused_before_anything_changes_and_made_once_the_file_is_let_go());
     }
@@ -235,6 +242,49 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         Ui.Press(window, "ESCAPE");
         Assert.Null(window.Assist.Renaming);
         window.Close();
+    }
+
+    /// <summary>A copy of a class's file in another folder declares the class again (CS0101); renamed in the solution view
+    /// with its class, or its class renamed in its editor, the copy alone takes the new name: the original keeps its file
+    /// and its class, and what uses the class is left as it was (#2284).</summary>
+    private void A_copy_of_a_classs_file_renamed_with_its_class_in_the_solution_view_renames_the_copy_alone()
+    {
+        string original = Path.Combine(folder, "Ticket.cs");
+        string copies = Path.Combine(folder, "Copies");
+        string copy = TestFolders.Write(folder, "Copies/Ticket.cs", Ticket);
+        string voucher = Path.Combine(copies, "Voucher.cs");
+        MainWindow window = Open("Desk.cs");
+        try
+        {
+            Choose(window, copy);
+            Ui.Run(window, AppActions.Rename);
+            NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
+            Assert.True(popup.Option?.IsChecked == true, "Renaming the copy of Ticket.cs did not offer to rename its class with it");
+            window.KeyTextInput("Voucher");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => !window.IsPopupOpen, $"the rename to finish: {popup.Problem}");
+            Assert.True(File.Exists(original) && File.ReadAllText(original) == Ticket,
+                $"Renaming the copy renamed its original too: {(File.Exists(original) ? File.ReadAllText(original) : "Ticket.cs is gone")}");
+            Assert.False(File.Exists(copy), "The copy kept its name");
+            Assert.Equal(Ticket.Replace("Ticket", "Voucher", StringComparison.Ordinal), File.ReadAllText(voucher));
+            Assert.Equal(Desk, window.EditorArea.CodeEditor.Document.Snapshot.ToString());
+
+            // Renamed in the editor of another copy, the class is that copy's alone, and its file the one offered.
+            string again = TestFolders.Write(folder, "Copies/Ticket.cs", Ticket);
+            window.OpenFile(again);
+            Ui.Settle();
+            Assert.Equal([again], RenameAt(window, "class Tick", "Pass"));
+            string pass = Path.Combine(copies, "Pass.cs");
+            Ui.WaitFor(() => File.Exists(pass), $"the copy renamed with its class: {window.Status}");
+            Assert.Equal(Ticket.Replace("Ticket", "Pass", StringComparison.Ordinal), window.EditorArea.Active?.Text.Snapshot.ToString());
+            Assert.True(File.ReadAllText(original) == Ticket, $"Renaming the copy's class renamed its original's too: {File.ReadAllText(original)}");
+            Assert.Equal(Desk, File.ReadAllText(Path.Combine(folder, "Desk.cs")));
+        }
+        finally
+        {
+            window.Close();
+            Directory.Delete(copies, recursive: true);
+        }
     }
 
     /// <summary>Rename on a file in the Solution view offers to rename the class it is named after, which renames it and its

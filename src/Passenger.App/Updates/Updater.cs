@@ -21,6 +21,10 @@ public abstract class Updater
     /// installed, or had nothing to install.</summary>
     public string? NotInstalled { get; protected set; }
 
+    /// <summary>Why a version that was to install as the last session ended did not, in the installer's own words, read
+    /// off the window's thread at the next start: null where the installer keeps none, or said nothing.</summary>
+    public virtual string? WhyNotInstalled(string version) => null;
+
     /// <summary>What installing asks of the person, said before Restart to Update (an administrator's password); null for
     /// an install that asks nothing, which closing Passenger installs too.</summary>
     public virtual string? Asks => null;

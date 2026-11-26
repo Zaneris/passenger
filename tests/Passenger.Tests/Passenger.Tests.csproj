@@ -56,7 +56,7 @@
   <ItemGroup>
     <PackageDownload Include="Avalonia.Templates" Version="[$(AvaloniaTemplatesVersion)]" />
     <PackageDownload Include="CommunityToolkit.Mvvm" Version="[$(CommunityToolkitMvvmVersion)]" />
-    <PackageDownload Include="Aspire.ProjectTemplates" Version="[$(AspireTemplatesVersion)];[$(AspirePackageTemplatesVersion)]" />
+    <PackageDownload Include="Aspire.ProjectTemplates" Version="[$(AspireTemplatesVersion)]" />
     <PackageDownload Include="Aspire.AppHost.Sdk" Version="[$(AspireTemplatesVersion)]" />
     <AssemblyMetadata Include="NuGetPackageRoot" Value="$(NuGetPackageRoot)" />
     <AssemblyMetadata Include="AvaloniaTemplatesVersion" Value="$(AvaloniaTemplatesVersion)" />
@@ -66,31 +66,22 @@
     <AssemblyMetadata Include="ReactiveUiVersion" Value="$(ReactiveUiVersion)" />
     <AssemblyMetadata Include="ReactiveUiGeneratorsVersion" Value="$(ReactiveUiGeneratorsVersion)" />
     <AssemblyMetadata Include="AspireTemplatesVersion" Value="$(AspireTemplatesVersion)" />
-    <AssemblyMetadata Include="AspirePackageTemplatesVersion" Value="$(AspirePackageTemplatesVersion)" />
   </ItemGroup>
 
-  <!-- Aspire's dashboard and orchestrator (DCP) for this machine, about 900 MB in the package cache, which only a test
-       that runs an AppHost needs: downloaded where PassengerAspireRuntime is true (a property, or an environment variable of
-       that name, which the person or CI sets). Without them every AppHost the run restores leaves them out (the
-       Directory.Build.targets AspireApp.UseFeed writes), and a test that would run one skips, saying how to have them
-       (AspireApp.Unavailable). -->
+  <!-- The aspire CLI of the run's own for this machine (about 360 MB in the package cache), whose bundle holds the
+       dashboard and orchestrator every AppHost the tests run takes, unpacked into the run's Aspire home (AspireCli): only
+       a test that runs an AppHost or the CLI needs it, so it is downloaded where PassengerAspireRuntime is true (a
+       property, or an environment variable of that name, which the person or CI sets), and a test that would run one
+       skips without it, saying how to have it (AspireApp.Unavailable). The run puts it on its PATH behind a wrapper that
+       gives it a home of the run's own (TestRun): the tests never run the person's. On Windows an AppHost and the CLI
+       keep their record of running AppHosts in the person's profile whatever the environment says, so there the tests
+       that would run one skip. -->
   <PropertyGroup>
     <PassengerAspireRuntime Condition="'$(PassengerAspireRuntime)' != 'true'">false</PassengerAspireRuntime>
   </PropertyGroup>
-  <ItemGroup Condition="'$(PassengerAspireRuntime)' == 'true'">
-    <PackageDownload Include="Aspire.Dashboard.Sdk.$(NETCoreSdkRuntimeIdentifier)" Version="[$(AspireTemplatesVersion)]" />
-    <PackageDownload Include="Aspire.Hosting.Orchestration.$(NETCoreSdkRuntimeIdentifier)" Version="[$(AspireTemplatesVersion)]" />
-  </ItemGroup>
-  <!-- And on macOS and Linux the aspire CLI of the run's own (native, about 150 MB, its bundle of 350 MB more unpacked
-       beside it as first run), which the run puts on its PATH behind a wrapper that gives it a home of the run's own
-       (TestRun): the tests never run the person's. On Windows an AppHost and the CLI keep their record of running AppHosts in
-       the person's profile whatever the environment says, so there the tests that would run one skip. -->
   <ItemGroup Condition="'$(PassengerAspireRuntime)' == 'true' and !$([MSBuild]::IsOSPlatform('Windows'))">
-    <PackageDownload Include="Aspire.Cli.$(NETCoreSdkRuntimeIdentifier)" Version="[$(AspireTemplatesVersion)];[$(AspirePackageTemplatesVersion)]" />
-    <AssemblyMetadata Include="AspireCli" Value="$(NuGetPackageRoot)aspire.cli.$(NETCoreSdkRuntimeIdentifier.ToLowerInvariant())/$(AspireTemplatesVersion)/tools/net10.0/$(NETCoreSdkRuntimeIdentifier)/aspire" />
-    <!-- The CLI of Aspire's package-only AppHosts, whose bundle (their dashboard and orchestrator) the run unpacks into a
-         folder of its own (AspirePackageApp). -->
-    <AssemblyMetadata Include="AspirePackageCli" Value="$(NuGetPackageRoot)aspire.cli.$(NETCoreSdkRuntimeIdentifier.ToLowerInvariant())/$(AspirePackageTemplatesVersion)/tools/any/$(NETCoreSdkRuntimeIdentifier)/aspire" />
+    <PackageDownload Include="Aspire.Cli.$(NETCoreSdkRuntimeIdentifier)" Version="[$(AspireTemplatesVersion)]" />
+    <AssemblyMetadata Include="AspireCli" Value="$(NuGetPackageRoot)aspire.cli.$(NETCoreSdkRuntimeIdentifier.ToLowerInvariant())/$(AspireTemplatesVersion)/tools/any/$(NETCoreSdkRuntimeIdentifier)/aspire" />
   </ItemGroup>
   <ItemGroup>
     <AssemblyMetadata Include="AspireRuntime" Value="$(PassengerAspireRuntime)" />
@@ -100,13 +91,11 @@
        package cache before they run (tests/AspireGraphs): restored and built first, never linked. -->
   <ItemGroup>
     <ProjectReference Include="../AspireGraphs/AppHost/AspireGraphs.AppHost.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../AspireGraphs/FileAppHost/AspireGraphs.FileAppHost.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../AspireGraphs/ServiceDefaults/AspireGraphs.ServiceDefaults.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../AspireGraphs/ApiService/AspireGraphs.ApiService.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../AspireGraphs/FunctionsHost/AspireGraphs.FunctionsHost.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../AspireGraphs/Functions/AspireGraphs.Functions.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="../AspireGraphs/PackageAppHost/AspireGraphs.PackageAppHost.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="../AspireGraphs/PackageServiceDefaults/AspireGraphs.PackageServiceDefaults.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="../AspireGraphs/PackageApiService/AspireGraphs.PackageApiService.csproj" ReferenceOutputAssembly="false" />
     <AssemblyMetadata Include="AzureFunctionsSdkVersion" Value="$(AzureFunctionsSdkVersion)" />
     <AssemblyMetadata Include="AzureFunctionsWorkerVersion" Value="$(AzureFunctionsWorkerVersion)" />
     <AssemblyMetadata Include="AzureFunctionsHttpVersion" Value="$(AzureFunctionsHttpVersion)" />
@@ -258,6 +247,11 @@
     <None Include="Themes/*.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Themes/pictures/*.webp" CopyToOutputDirectory="PreserveNewest" />
     <None Include="VsCodeThemes/*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Rider's keymaps as tools/rider-keymaps.py resolves them, which the keymap tests hold the presets to (RiderKeymaps). -->
+  <ItemGroup>
+    <None Include="RiderKeymaps.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- The signing tests' GPG keys and X.509 certificate, carried as gpg-agent stores them (TestGpgKeys, TestX509Keys). -->

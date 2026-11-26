@@ -18,8 +18,9 @@ namespace Passenger.Tests;
 /// <summary>WPF's previewer through the window, on Windows: <see cref="WpfXamlTests"/>' <c>dotnet new wpf</c> app (App.xaml's
 /// merged brushes and heading style, a <c>d:DataContext</c> view model, a button template drawing its background) built and
 /// previewed: the window with App.xaml's resources, an edit followed, broken XAML's error with its line over the last frame,
-/// a user control at its design size with its design-time data and inside a window, an element chosen by a click or the
-/// caret, content finding the window or page it is drawn in, the project's code in design mode; elsewhere they skip.</summary>
+/// a user control at its design size with its design-time data and inside a window, one naming a referenced library's XML
+/// namespace, an element chosen by a click or the caret, content finding the window or page it is drawn in, the project's
+/// code in design mode; elsewhere they skip.</summary>
 public sealed class WpfPreviewTests : IClassFixture<WpfPreviewTests.Gallery>
 {
     private const string OnlyOnWindows = "WPF draws only on Windows, so its previewer runs only there";
@@ -38,7 +39,8 @@ public sealed class WpfPreviewTests : IClassFixture<WpfPreviewTests.Gallery>
     }
 
     /// <summary>WPF's preview: a window with App.xaml's resources following an edit and saying why broken XAML did not
-    /// load, at its line; a user control at its design size with its design-time data context; the caret outlining its
+    /// load, at its line; a user control at its design size with its design-time data context, and one naming a referenced
+    /// library's XML namespace; the caret outlining its
     /// element and a click selecting its start tag; and a window's controls in design mode, the app's run showing them
     /// running. On Windows only.</summary>
     [AvaloniaFact]
@@ -46,6 +48,7 @@ public sealed class WpfPreviewTests : IClassFixture<WpfPreviewTests.Gallery>
     {
         Flow.StepApart("a window previews with App.xaml's resources, follows an edit, and shows why broken XAML did not load, with its line", () => new WpfPreviewTests(app), t => t.A_window_previews_with_app_xamls_resources_follows_an_edit_and_shows_why_broken_xaml_did_not_load_with_its_line());
         Flow.StepApart("a user control previews at its design size with its design-time data context", () => new WpfPreviewTests(app), t => t.A_user_control_previews_at_its_design_size_with_its_design_time_data_context());
+        Flow.StepApart("a user control naming a referenced librarys XML namespace previews what the library declares", () => new WpfPreviewTests(app), t => t.A_user_control_naming_a_referenced_librarys_xml_namespace_previews_what_the_library_declares());
         Flow.StepApart("the caret outlines its element from the first frame, and clicking an element in the preview selects its start tag", () => new WpfPreviewTests(app), t => t.The_caret_outlines_its_element_from_the_first_frame_and_clicking_an_element_in_the_preview_selects_its_start_tag());
         Flow.StepApart("a window previews its controls in design mode, its chrome kept, and the app's run shows them running", () => new WpfPreviewTests(app), t => t.A_window_previews_its_controls_in_design_mode_its_window_chrome_kept_and_the_app_run_shows_them_running());
     }
@@ -116,6 +119,82 @@ public sealed class WpfPreviewTests : IClassFixture<WpfPreviewTests.Gallery>
         Assert.Null(preview.Error);
         window.Close();
     }
+
+    /// <summary>A user control naming a library the project references by its XML namespace (an XmlnsDefinition's URI, as
+    /// Microsoft.Xaml.Behaviors' <c>i:</c> is) previews its control and attached property, where the previewer, loading
+    /// the project's own assembly alone, said the namespace's members were unknown (#2273).</summary>
+    private void A_user_control_naming_a_referenced_librarys_xml_namespace_previews_what_the_library_declares()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string gallery = File.ReadAllText(app.PathOf("Gallery.csproj"));
+        string framework = System.Text.RegularExpressions.Regex.Match(gallery, "<TargetFramework>([^<]+)</TargetFramework>").Groups[1].Value;
+        string badges = TestFolders.Create("badges-");
+        File.WriteAllText(Path.Combine(badges, "Badges.csproj"), $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>{framework}</TargetFramework>
+                <UseWPF>true</UseWPF>
+              </PropertyGroup>
+            </Project>
+
+            """);
+        File.WriteAllText(Path.Combine(badges, "Badge.cs"), Badges);
+        app.Write("Gallery.csproj", gallery.Replace("</Project>", $"""
+              <ItemGroup>
+                <ProjectReference Include="{Path.Combine(badges, "Badges.csproj")}" />
+              </ItemGroup>
+            </Project>
+            """, StringComparison.Ordinal));
+        MainWindow window = app.Open(app.Write("Ribbons.xaml", Ribbons));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        XamlPreview preview = Previewed(window, window.EditorArea.Active!);
+        Assert.True(preview.Error is null, $"The user control naming the library's XML namespace did not preview: {preview.Error}");
+        PreviewElement ribbon = ElementOf(preview, editor, "<b:Ribbon");
+        Assert.True(ribbon.Box.Width > 100 && ribbon.Box.Height > 10, $"The library's ribbon is drawn {ribbon.Box.Width} by {ribbon.Box.Height}, not across the control");
+        window.Close();
+    }
+
+    /// <summary>A library's control and attached property under an XML namespace of its own.</summary>
+    private const string Badges = """
+        using System.Windows;
+        using System.Windows.Controls;
+        using System.Windows.Markup;
+
+        [assembly: XmlnsDefinition("https://passenger.example/badges", "Badges")]
+
+        namespace Badges;
+
+        public class Ribbon : Border
+        {
+        }
+
+        public static class Badge
+        {
+            public static readonly DependencyProperty TextProperty = DependencyProperty.RegisterAttached("Text", typeof(string), typeof(Badge));
+
+            public static string GetText(DependencyObject element) => (string)element.GetValue(TextProperty);
+
+            public static void SetText(DependencyObject element, string value) => element.SetValue(TextProperty, value);
+        }
+
+        """;
+
+    /// <summary>A user control drawing the library's ribbon by its XML namespace, with its attached property set.</summary>
+    private const string Ribbons = """
+        <UserControl x:Class="Gallery.Ribbons"
+                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                     xmlns:b="https://passenger.example/badges"
+                     mc:Ignorable="d"
+                     d:DesignWidth="320" d:DesignHeight="120">
+            <StackPanel>
+                <b:Ribbon b:Badge.Text="New" Height="40" Background="#E2A33F" />
+            </StackPanel>
+        </UserControl>
+
+        """;
 
     private void The_caret_outlines_its_element_from_the_first_frame_and_clicking_an_element_in_the_preview_selects_its_start_tag()
     {

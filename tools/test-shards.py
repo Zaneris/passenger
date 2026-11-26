@@ -15,11 +15,13 @@ import glob
 import importlib.util
 import json
 import os
+import platform
 import re
 import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import Counter
@@ -86,8 +88,19 @@ ALLOWANCE = 0
 # A hung test is stopped and named after this, rather than holding its run or its shard's job to the job's own limit;
 # in minutes, as the tests read it for their long waits to end within (Limits.Hang).
 HANG = "10m"
-# What every dotnet test of the tests is given, so a test hung for HANG is stopped and named (`hang` prints it).
-HANG_ARGUMENTS = ["--blame-hang-timeout", HANG, "--blame-hang-dump-type", "none"]
+# On macOS blame dumps every .NET process of a hung run whole, whatever type is asked ("none" too), about 7 GB each.
+MAC_OS_DUMPS_WHOLE = platform.system() == "Darwin"
+# What every dotnet test of the tests is given, so a test hung for HANG is stopped and named (`hang` prints it), a mini
+# dump of the test host and of each program under it taken first (blame's), but on macOS, where the hung test host ends
+# itself once its report is written, a minute before blame would dump it (HangReports in the tests).
+HANG_ARGUMENTS = ["--blame-hang-timeout", HANG, "--blame-hang-dump-type", "none" if MAC_OS_DUMPS_WHOLE else "mini"]
+# The folder within a run's results that keeps what a hang leaves: blame's dumps, each once (VSTEST_DUMP_PATH, where
+# blame would write them in a temporary folder and then copy them twice into the results), and the report a test still
+# running near HANG writes (PASSENGER_TEST_HANGS): the tests running, what the IDE stood on and its log's end, and each
+# .NET program under the tests with its threads' stacks. A whole dump macOS's blame took anyway goes where nothing keeps it.
+HANGS = "hangs"
+DUMPS_VARIABLE = "VSTEST_DUMP_PATH"
+REPORTS_VARIABLE = "PASSENGER_TEST_HANGS"
 # What a shard's dotnet test of a project wrote to its console, kept beside its results as it came (`test`), so a shard
 # stopped partway leaves what it ran.
 CONSOLE_LOG = "console-{}.log"
@@ -119,11 +132,11 @@ TOGETHER = {
 # What only some shards' jobs give the machine (test.yml), by what a class's source names, so every class needing it is
 # dealt to those: .NET's mobile workloads, the debug relays, an Android emulator or Xcode's simulators and MAUI's packages
 # for a mobile platform, the shards --apart-shards names, which run its classes last, apart from the rest dealt to them
-# (--apart), as their devices' times are their own; Aspire's dashboard and orchestrator, with the run's own aspire CLI,
-# which the build downloads (PassengerAspireRuntime), the second shard's, beside the classes dealt there too (--second).
+# (--apart), as their devices' times are their own; the run's own aspire CLI, whose bundle holds Aspire's dashboard and
+# orchestrator, which the build downloads (PassengerAspireRuntime), the second shard's, beside the classes dealt there too
+# (--second).
 SET_UPS = {
-    "aspire": re.compile(r"\bAspire(?:Functions)?App\.(?:IsUnavailable|Unavailable|IsCliUnavailable|CliUnavailable"
-                         r"|AppHostSkipped|CliSkipped)\b|\bAspirePackageApp\.RunSkipped\b"),
+    "aspire": re.compile(r"\bAspire(?:Functions)?App\.(?:IsUnavailable|Unavailable|AppHostSkipped)\b"),
     "mobile": re.compile(r"\bAndroidDevices\.\w|\bAppleSimulators\.\w|\bSimulatorApp\b|\bMacCatalystApp\b"
                          r"|does not restore here from the package cache alone|lacks a workload of the app's heads"),
 }
@@ -880,6 +893,26 @@ def tell_failed(results, lane, label):
     summarize(lines)
 
 
+def hang_environment(results):
+    """This process's environment with the hang variables naming the HANGS folder of <results>, made; on macOS blame's
+    dumps go to a folder of the system's temporary one, emptied as each dotnet test ends (drop_whole_dumps)."""
+    folder = os.path.join(os.path.abspath(results), HANGS)
+    dumps = whole_dumps() if MAC_OS_DUMPS_WHOLE else folder
+    for made in (folder, dumps):
+        os.makedirs(made, exist_ok=True)
+    return dict(os.environ, **{REPORTS_VARIABLE: folder, DUMPS_VARIABLE: dumps})
+
+
+def whole_dumps():
+    return os.path.join(tempfile.gettempdir(), "passenger-whole-dumps")
+
+
+def drop_whole_dumps():
+    """Removes what macOS's blame dumped whole, which no artifact could carry and which would fill the disk."""
+    if MAC_OS_DUMPS_WHOLE:
+        shutil.rmtree(whole_dumps(), ignore_errors=True)
+
+
 def run_tests(arguments):
     """A shard's tests: each step of its runs (RUNS) one after another, the runs of a step at once, each a dotnet test of
     its project with its settings; what each writes to its console goes to the log and, line by line as it comes, to its
@@ -904,7 +937,7 @@ def run_tests(arguments):
                        "console;verbosity=normal"] + HANG_ARGUMENTS
             sys.stdout.flush()
             log = open(os.path.join(results, CONSOLE_LOG.format(run["name"])), "wb")
-            process = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE)
+            process = subprocess.Popen(command, cwd=ROOT, env=hang_environment(results), stdout=subprocess.PIPE)
             copying = threading.Thread(target=copy_lines, args=(process.stdout, log, printing))
             copying.start()
             going.append((process, copying, log))
@@ -913,6 +946,7 @@ def run_tests(arguments):
             log.close()
             if process.wait() != 0:
                 code = process.returncode
+        drop_whole_dumps()
     return code
 
 
@@ -1093,14 +1127,47 @@ def said_short(entry):
     return name if ran == 0 else f"{name} ({ran} of its {listed} tests)"
 
 
+def sized(size):
+    return f"{size / 2 ** 20:.1f} MB" if size >= 2 ** 20 else f"{size / 2 ** 10:.1f} KB"
+
+
 def ended(arguments):
     """After a shard's tests, however they ended: SHARD_STATE beside its results, saying which shard it was and how it
-    ended, for the summary jobs; then the classes it did not reach (unreached)."""
+    ended, for the summary jobs; then what a hang left (hung) and the classes it did not reach (unreached)."""
     os.makedirs(arguments.results, exist_ok=True)
     with open(os.path.join(arguments.results, SHARD_STATE), "w", encoding="utf-8", newline="\n") as file:
         file.write(json.dumps({"system": arguments.system, "lane": arguments.lane, "shard": arguments.shard,
                                "shards": arguments.of, "status": arguments.status}) + "\n")
+    hung(arguments)
     return unreached(arguments)
+
+
+def hung(arguments):
+    """What a hang left in the results' HANGS folder: each report printed whole into the log, and the tests it says were
+    running, with the reports and dumps named and their sizes, in the job's summary and an annotation, which say the
+    artifact carries them; nothing when no test hung."""
+    folder = os.path.join(arguments.results, HANGS)
+    kept = sorted(os.listdir(folder)) if os.path.isdir(folder) else []
+    if not kept:
+        return
+    running = []
+    for name in kept:
+        if name.endswith(".txt"):
+            lines = read(os.path.join(folder, name)).splitlines()
+            write(f"{name}:")
+            for line in lines:
+                write(f"  {line}")
+            after = lines[lines.index("Running:") + 1:] if "Running:" in lines else []
+            running += [line.strip() for line in after[:next((i for i, line in enumerate(after) if not line.startswith("  ")), len(after))]]
+    said = [f"{name} ({sized(os.path.getsize(os.path.join(folder, name)))})" for name in kept]
+    heading = (f"{arguments.label or f'Shard {arguments.shard}'} hung, and kept {len(kept)} files of it in "
+               f"{HANGS}/ of its results' artifact")
+    say("warning" if arguments.lane == "report" else "error", "A test hung",
+        f"{heading}: {', '.join(said)}" + (f"; running: {'; '.join(running)}" if running else ""))
+    summarize([f"### {heading}", ""] + [f"- Running: {test}" for test in running] + [
+        "", "The reports are printed whole in the log of the step that says how the shard ended; a dump opens in "
+        "`dotnet-dump analyze` (on the system that took it), whose `clrstack -all` gives each thread's managed stack.", ""]
+        + [f"- `{entry}`" for entry in said])
 
 
 def unreached(arguments):

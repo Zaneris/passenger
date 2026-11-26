@@ -101,6 +101,8 @@ public partial class MainWindow
         Tab(A.SplitDown, "Split Down", c => Editors.Split(TabOf(c)!.Value.Group, TabOf(c)!.Value.File, Orientation.Vertical, move: false), Splits, (2, 2), ["Split Horizontally"]);
         Tab(A.Unsplit, "Unsplit", c => Editors.Unsplit(GroupOf(c), all: false), NotSplit, (2, 3));
         Tab(A.UnsplitAll, "Unsplit All", c => Editors.Unsplit(GroupOf(c), all: true), NotSplit, (2, 4));
+        Tab(A.NextSplit, "Next Split", _ => Editors.StepSplit(1), _ => NotSplit(null), (2, 5), ["Next Splitter"]);
+        Tab(A.PreviousSplit, "Previous Split", _ => Editors.StepSplit(-1), _ => NotSplit(null), (2, 6), ["Previous Splitter"]);
 
         // The Window menu keeps these two after its Editor Tabs.
         Add(A.MoveToOppositeGroup, "Move to Opposite Group", Tabs, c => Editors.MoveToOpposite(TabOf(c)!.Value.Group, TabOf(c)!.Value.File), c => Refusals.NeedsFile(c) ?? NotSplit(c), ("Window", 2, 0));
@@ -117,7 +119,7 @@ public partial class MainWindow
 
         int IndexOf(ActionContext c) => TabOf(c)!.Value.Group.Tabs.Select(t => t.Document).ToList().IndexOf(TabOf(c)!.Value.File);
 
-        string? NotSplit(ActionContext c) => Editors.IsSplit(GroupOf(c)) ? null : "The editor is not split";
+        string? NotSplit(ActionContext? c) => Editors.IsSplit(c is null ? Editors.ActiveGroup : GroupOf(c)) ? null : "The editor is not split";
 
         // A tool window's view stands in one place, so its tab moves between groups but is never shown twice.
         string? Splits(ActionContext c) => Refusals.NeedsFile(c) ?? (TabOf(c)?.File.Tool is { } tool ? $"{tool.Window.Title} shows in one place at a time" : null);

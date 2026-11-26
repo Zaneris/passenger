@@ -12,23 +12,16 @@ namespace Passenger.Tests;
 /// <summary>Two official, container-free starters, restored together and shared by the window tests.</summary>
 public sealed class AspireApp : SharedProject
 {
-    private static readonly Lazy<Task<string>> Hive = new(() => InstallAsync(TemplatesVersion), LazyThreadSafetyMode.ExecutionAndPublication);
-    private static readonly Lazy<Task<string>> PackageHive = new(() => InstallAsync(PackageTemplatesVersion), LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<Task<string>> Hive = new(InstallAsync, LazyThreadSafetyMode.ExecutionAndPublication);
     public static string TemplatesVersion => AvaloniaApp.Metadata("AspireTemplatesVersion");
-
-    /// <summary>The Aspire whose AppHost is a project or program of Aspire's AppHost package alone, no AppHost SDK.</summary>
-    public static string PackageTemplatesVersion => AvaloniaApp.Metadata("AspirePackageTemplatesVersion");
     public const string Name = "PassengerAspire";
     public const string CompanionName = "CompanionAspire";
     public const string RequestLog = "Passenger request {RequestValue}";
-    /// <summary>Why a test that runs a real AppHost skips (<see cref="Unavailable"/>): Aspire's dashboard and orchestrator not
-    /// downloaded, or Windows, where an AppHost keeps its record of running AppHosts in the person's profile whatever its
-    /// environment says, so no home of the run's own (<see cref="AspireCli.Home"/>) keeps it from theirs.</summary>
-    public const string AppHostSkipped = "Runs a real AppHost, which needs Aspire's dashboard and orchestrator (PassengerAspireRuntime=true) and, to keep out of the person's ~/.aspire, macOS or Linux";
-
-    /// <summary>Why a test that runs the aspire CLI skips (<see cref="CliUnavailable"/>): as <see cref="AppHostSkipped"/>, or
-    /// no CLI of the run's own (<see cref="AspireCli.Program"/>); the person's is never run.</summary>
-    public const string CliSkipped = "Runs the aspire CLI, the run's own, which the build downloads with Aspire's dashboard and orchestrator (PassengerAspireRuntime=true) on macOS and Linux; the person's is never run";
+    /// <summary>Why a test that runs a real AppHost or the aspire CLI skips (<see cref="Unavailable"/>): no CLI of the run's
+    /// own (<see cref="AspireCli.Program"/>), whose bundle holds the dashboard and orchestrator an AppHost runs with, or
+    /// Windows, where an AppHost keeps its record of running AppHosts in the person's profile whatever its environment says,
+    /// so no home of the run's own (<see cref="AspireCli.Home"/>) keeps it from theirs; the person's CLI is never run.</summary>
+    public const string AppHostSkipped = "Runs a real AppHost or the aspire CLI, which needs the aspire CLI of the run's own, its bundle holding Aspire's dashboard and orchestrator (PassengerAspireRuntime=true), and, to keep out of the person's ~/.aspire, macOS or Linux";
 
     public AspireApp() : base("aspire-") => WhyNot = Unavailable;
 
@@ -47,6 +40,7 @@ public sealed class AspireApp : SharedProject
             new[] { ("First", Name), ("Second", CompanionName) }.SelectMany(app =>
                 new[] { "AppHost", "ApiService", "Web", "ServiceDefaults" }.Select(project =>
                     $"  <Project Path=\"{app.Item1}/{app.Item2}.{project}/{app.Item2}.{project}.csproj\" />\n"))) + "</Solution>\n");
+        await AspireCli.SetUpAsync();
         await PrepareAsync(byRealPath: true);
         using JsonDocument assets = JsonDocument.Parse(File.ReadAllText(Path.Combine(Path.GetDirectoryName(Host)!, "obj", "project.assets.json")));
         Assert.True(assets.RootElement.GetProperty("libraries").TryGetProperty("MessagePack/2.5.307", out _),
@@ -58,47 +52,42 @@ public sealed class AspireApp : SharedProject
     public static bool IsUnavailable => Unavailable is not null;
 
     public static string? Unavailable => !RuntimeDownloaded ? RuntimeMissing
-        : OperatingSystem.IsWindows() ? "On Windows an AppHost keeps its record of running AppHosts in the person's profile whatever its environment says, which no test may touch" : null;
+        : OperatingSystem.IsWindows() ? "On Windows an AppHost keeps its record of running AppHosts in the person's profile whatever its environment says, which no test may touch"
+        : AspireCli.Program is null ? "The build downloaded no aspire CLI of the run's own for this machine" : null;
 
-    public static bool IsCliUnavailable => CliUnavailable is not null;
-
-    public static string? CliUnavailable => Unavailable
-        ?? (AspireCli.Program is null ? "The build downloaded no aspire CLI of the run's own for this machine" : null);
-
-    /// <summary>Whether the test project downloaded Aspire's dashboard and orchestrator, which running an AppHost needs: only
-    /// where PassengerAspireRuntime was true as it restored (Passenger.Tests.csproj); elsewhere a folder's AppHosts restore
-    /// without them (<see cref="UseFeed"/>).</summary>
+    /// <summary>Whether the test project downloaded the aspire CLI, whose bundle running an AppHost needs: only where
+    /// PassengerAspireRuntime was true as it restored (Passenger.Tests.csproj).</summary>
     public static bool RuntimeDownloaded => AvaloniaApp.Metadata("AspireRuntime") == "true";
 
-    /// <summary>The target that takes the dashboard and orchestrator out of an AppHost's references once the AppHost SDK's
-    /// AddReferenceToDashboardAndDCP has added them, before restore or a build collects them.</summary>
-    private const string LeftOut = """
-          <Target Name="PassengerTestsLeaveOutAspireRuntime" AfterTargets="AddReferenceToDashboardAndDCP">
-            <ItemGroup>
-              <PackageReference Remove="@(PackageReference)" Condition="$([System.String]::Copy('%(Identity)').StartsWith('Aspire.Dashboard.Sdk.')) or $([System.String]::Copy('%(Identity)').StartsWith('Aspire.Hosting.Orchestration.'))" />
-            </ItemGroup>
-          </Target>
+    public const string RuntimeMissing = "Runs an AppHost, whose dashboard and orchestrator come from the aspire CLI's bundle, which the tests download only where PassengerAspireRuntime is true: restore and build them with it set";
+
+    /// <summary>What stands in for the aspire CLI's bundle in a folder's builds where the run has no CLI of its own (<see
+    /// cref="AspireCli.Program"/>): an AppHost's build takes its dashboard and orchestrator from these folders, which hold
+    /// neither, and never looks for the bundle, so it builds, and nothing runs it.</summary>
+    private static string NoBundle => $"""
+          <PropertyGroup Condition="'$(DcpDir)' == ''">
+            <DcpDir>{Path.Combine(TestRun.Root, "no-aspire-bundle", "dcp")}</DcpDir>
+            <AspireDashboardDir>{Path.Combine(TestRun.Root, "no-aspire-bundle", "dashboard")}</AspireDashboardDir>
+          </PropertyGroup>
 
         """;
 
-    public const string RuntimeMissing ="Runs an AppHost, whose dashboard and orchestrator the tests download only where PassengerAspireRuntime is true: restore and build them with it set";
-
     /// <summary>A folder's restores from the run's local feed alone (<see cref="AvaloniaApp.UseFeed"/>), with Aspire's AppHost
-    /// SDK in it: the rest of an AppHost's graph is in the package cache the test project's restore filled, never fetched.
-    /// Where that restore left out Aspire's dashboard and orchestrator (<see cref="RuntimeDownloaded"/>), the folder's
-    /// Directory.Build.targets takes them out of its AppHosts' references after the SDK adds them, keeping the AppHost
-    /// package the SDK adds with them; a folder with a Directory.Build.targets of its own has it put first.</summary>
+    /// SDK in it for the AppHosts a test writes with it: the rest of an AppHost's graph is in the package cache the test
+    /// project's restore filled, never fetched. Where the run has no CLI of its own, the folder's Directory.Build.targets
+    /// gives its AppHosts' builds what stands in for its bundle (<see cref="NoBundle"/>); a folder with a
+    /// Directory.Build.targets of its own has it put first.</summary>
     public static void UseFeed(string folder)
     {
-        if (!RuntimeDownloaded)
+        if (AspireCli.Program is null)
         {
             string targets = Path.Combine(folder, "Directory.Build.targets");
             string own = File.Exists(targets) ? File.ReadAllText(targets) : "<Project>\n</Project>\n";
-            if (!own.Contains(LeftOut, StringComparison.Ordinal))
+            if (!own.Contains(NoBundle, StringComparison.Ordinal))
             {
                 int end = own.LastIndexOf("</Project>", StringComparison.Ordinal);
-                Assert.True(end >= 0, $"{targets} is no MSBuild project, so Aspire's runtime could not be left out of its AppHosts");
-                File.WriteAllText(targets, own[..end] + LeftOut + own[end..]);
+                Assert.True(end >= 0, $"{targets} is no MSBuild project, so its AppHosts could not be given what stands in for the aspire CLI's bundle");
+                File.WriteAllText(targets, own[..end] + NoBundle + own[end..]);
             }
         }
         string version = TemplatesVersion.ToLowerInvariant();
@@ -156,31 +145,48 @@ public sealed class AspireApp : SharedProject
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
-    /// <summary>Makes what one of Aspire's templates at <paramref name="version"/> makes, from a hive of the run's own, without
-    /// restore or changes to the person's template hive.</summary>
-    public static async Task MakeAsync(string version, string template, string folder, string name, params string[] options)
+    /// <summary>Makes what one of Aspire's templates makes, from a hive of the run's own, without restore or changes to the
+    /// person's template hive.</summary>
+    public static async Task MakeAsync(string template, string folder, string name, params string[] options)
     {
-        string hive = await (version == PackageTemplatesVersion ? PackageHive : Hive).Value;
+        string hive = await Hive.Value;
         ChildResult made = await Run(["new", template, "--output", folder, "--name", name, "--framework", TestProjects.Framework, .. options,
             "--no-update-check", "--debug:custom-hive", hive], Path.GetDirectoryName(hive));
-        Assert.True(made.Succeeded, $"Aspire {version}'s {template} did not generate:\n{made.Output}{made.Error}");
+        Assert.True(made.Succeeded, $"Aspire {TemplatesVersion}'s {template} did not generate:\n{made.Output}{made.Error}");
     }
 
-    /// <summary>Generates the pinned upstream starter, without restore or changes to the person's template hive.</summary>
-    public static async Task CreateAsync(string folder, string name)
+    /// <summary>Makes Aspire's starter, an AppHost of Aspire's package alone adding its two services by path, its program kept
+    /// to the run (<see cref="KeepToTheRun"/>) and each service started by its HTTP launch profile.</summary>
+    public static async Task<string> MakeStarterAsync(string folder, string name)
     {
-        await MakeAsync(TemplatesVersion, "aspire-starter", folder, name, "--use-redis-cache", "false", "--skipRestore");
-        AvaloniaApp.UseFeed(folder);
+        await MakeAsync("aspire-starter", folder, name, "--use-redis-cache", "false", "--skipRestore");
         string hostFolder = Path.Combine(folder, name + ".AppHost");
-        string project = Path.Combine(hostFolder, name + ".AppHost.csproj");
-        string projectText = File.ReadAllText(project);
-        Assert.Contains($"Sdk=\"Aspire.AppHost.Sdk/{TemplatesVersion}\"", projectText, StringComparison.Ordinal);
-        Assert.Contains("<AspireUseCliBundle>true</AspireUseCliBundle>", projectText, StringComparison.Ordinal);
-        File.WriteAllText(project, projectText.Replace("<AspireUseCliBundle>true</AspireUseCliBundle>",
-            "<AspireUseCliBundle>false</AspireUseCliBundle>", StringComparison.Ordinal));
+        string project = File.ReadAllText(Path.Combine(hostFolder, name + ".AppHost.csproj"));
+        Assert.Contains("<Project Sdk=\"Microsoft.NET.Sdk\">", project, StringComparison.Ordinal);
+        Assert.Contains($"<PackageReference Include=\"{Passenger.Host.AspireHosts.Package}\" Version=\"{TemplatesVersion}\" />", project, StringComparison.Ordinal);
+        Assert.DoesNotContain(Passenger.Host.AspireHosts.Sdk, project, StringComparison.Ordinal);
+        Assert.DoesNotContain(Passenger.Host.AspireHosts.Property, project, StringComparison.Ordinal);
         string hostSource = Path.Combine(hostFolder, "AppHost.cs");
         string hostText = File.ReadAllText(hostSource);
-        string connectionPath = JsonSerializer.Serialize(ConnectionInfoPath(project));
+        foreach (string service in new[] { "ApiService", "Web" })
+        {
+            string added = $"\"../{name}.{service}/{name}.{service}.csproj\")";
+            Assert.Contains(added, hostText, StringComparison.Ordinal);
+            hostText = hostText.Replace(added, added[..^1] + ", options => options.LaunchProfileName = \"http\")", StringComparison.Ordinal);
+        }
+        File.WriteAllText(hostSource, hostText);
+        KeepToTheRun(hostFolder);
+        return hostSource;
+    }
+
+    /// <summary>Generates the pinned upstream starter, without restore or changes to the person's template hive, its AppHost
+    /// recording the IDE's execution endpoint it is given and its services answering what the tests ask.</summary>
+    public static async Task CreateAsync(string folder, string name)
+    {
+        string hostSource = await MakeStarterAsync(folder, name);
+        AvaloniaApp.UseFeed(folder);
+        string hostText = File.ReadAllText(hostSource);
+        string connectionPath = JsonSerializer.Serialize(ConnectionInfoPath(Path.Combine(Path.GetDirectoryName(hostSource)!, name + ".AppHost.csproj")));
         string recordConnection = $$"""
             var passengerDcpFile = {{connectionPath}};
             var passengerDcpOptions = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write };
@@ -199,9 +205,7 @@ public sealed class AspireApp : SharedProject
             File.Move(passengerDcpFile + ".tmp", passengerDcpFile, overwrite: true);
 
             """;
-        File.WriteAllText(hostSource, recordConnection + hostText.Replace("(\"apiservice\")", "(\"apiservice\", launchProfileName: \"http\")", StringComparison.Ordinal)
-            .Replace("(\"webfrontend\")", "(\"webfrontend\", launchProfileName: \"http\")", StringComparison.Ordinal));
-        KeepToTheRun(hostFolder);
+        File.WriteAllText(hostSource, recordConnection + hostText);
 
         string api = Path.Combine(folder, name + ".ApiService", "Program.cs");
         string apiText = File.ReadAllText(api);
@@ -297,7 +301,7 @@ public sealed class AspireApp : SharedProject
             })
             """;
         string hostText = File.ReadAllText(host);
-        const string Health = "builder.AddProject<Projects.PassengerAspire_ApiService>(\"apiservice\", launchProfileName: \"http\")\n    .WithHttpHealthCheck(\"/health\")";
+        const string Health = $"builder.AddDotnetProject(\"apiservice\", \"../{Name}.ApiService/{Name}.ApiService.csproj\", options => options.LaunchProfileName = \"http\")\n    .WithHttpHealthCheck(\"/health\")";
         Assert.Contains(Health, hostText.ReplaceLineEndings("\n"), StringComparison.Ordinal);
         File.WriteAllText(host, hostText.ReplaceLineEndings("\n").Replace(Health, Health + command, StringComparison.Ordinal));
 
@@ -332,25 +336,19 @@ public sealed class AspireApp : SharedProject
         File.WriteAllText(FileService, $"File.WriteAllText({JsonSerializer.Serialize(FileServiceRan)}, \"executed\");\n");
     }
 
-    /// <summary>A hive of the run's own holding Aspire's templates at <paramref name="version"/>; for the AppHost SDK's version,
-    /// its SDK put in the run's feed for the starters it makes.</summary>
-    private static async Task<string> InstallAsync(string version)
+    /// <summary>A hive of the run's own holding Aspire's templates, its AppHost SDK put in the run's feed for the AppHosts the
+    /// tests write with it.</summary>
+    private static async Task<string> InstallAsync()
     {
-        string folder = Directory.CreateDirectory(Path.Combine(TestRun.Root, "aspire-templates", version)).FullName;
+        string folder = Directory.CreateDirectory(Path.Combine(TestRun.Root, "aspire-templates", TemplatesVersion)).FullName;
         string hive = Path.Combine(folder, "hive");
-        string lower = version.ToLowerInvariant();
+        string lower = TemplatesVersion.ToLowerInvariant();
         string package = Path.Combine(AvaloniaApp.Metadata("NuGetPackageRoot"), "aspire.projecttemplates", lower,
             $"aspire.projecttemplates.{lower}.nupkg");
-        Assert.True(File.Exists(package), $"Aspire.ProjectTemplates {version} is missing at {package}; restore the test project first");
+        Assert.True(File.Exists(package), $"Aspire.ProjectTemplates {TemplatesVersion} is missing at {package}; restore the test project first");
         string localPackage = Path.Combine(folder, Path.GetFileName(package));
         File.Copy(package, localPackage, overwrite: true);
-        if (version == TemplatesVersion)
-        {
-            string sdk = Path.Combine(AvaloniaApp.Metadata("NuGetPackageRoot"), "aspire.apphost.sdk", lower, $"aspire.apphost.sdk.{lower}.nupkg");
-            Assert.True(File.Exists(sdk), $"Aspire.AppHost.Sdk {version} is missing at {sdk}; restore the test project first");
-            File.Copy(sdk, Path.Combine(AvaloniaApp.Feed, Path.GetFileName(sdk)), overwrite: true);
-        }
-        AvaloniaApp.UseFeed(folder);
+        UseFeed(folder);
         ChildResult installed = await Run(["new", "install", localPackage, "--debug:custom-hive", hive], folder);
         Assert.True(installed.Succeeded, $"Aspire templates did not install into the private hive:\n{installed.Output}{installed.Error}");
         return hive;
@@ -368,9 +366,26 @@ public sealed class AspireApp : SharedProject
 public static class AspireCli
 {
     /// <summary>The CLI the build downloaded for this machine, null where it downloaded none (PassengerAspireRuntime off,
-    /// Windows); its bundle unpacks beside it, in the package cache, as it first runs.</summary>
+    /// Windows); its bundle is unpacked into the run's Aspire home (<see cref="SetUpAsync"/>).</summary>
     public static string? Program { get; } = typeof(AspireCli).Assembly.GetCustomAttributes<System.Reflection.AssemblyMetadataAttribute>()
         .FirstOrDefault(attribute => attribute.Key == "AspireCli")?.Value is { } path && File.Exists(path) ? path : null;
+
+    private static readonly Lazy<Task> Unpacked = new(UnpackAsync, LazyThreadSafetyMode.ExecutionAndPublication);
+
+    /// <summary>The CLI's bundle, the dashboard and orchestrator every AppHost the tests run takes, unpacked once a run into
+    /// the run's Aspire home, as a person's CLI unpacks it in theirs, where an AppHost's build finds it; nothing where the run
+    /// has no CLI.</summary>
+    public static Task SetUpAsync() => Program is null ? Task.CompletedTask : Unpacked.Value;
+
+    private static async Task UnpackAsync()
+    {
+        string home = Environment.GetEnvironmentVariable("ASPIRE_HOME") ?? throw new InvalidOperationException("The run has no Aspire home of its own");
+        System.Diagnostics.ProcessStartInfo setup = ChildProcesses.Command(Program!, ["setup", "--install-path", home], TestRun.Root);
+        setup.Environment["HOME"] = Home;
+        setup.Environment[AspireVariables.TelemetryOptOut] = "1";
+        ChildResult unpacked = await ChildProcesses.RunAsync(setup, limit: TimeSpan.FromMinutes(3).Scaled());
+        Assert.True(unpacked.Succeeded, $"The aspire CLI did not unpack its bundle:\n{unpacked.Output}{unpacked.Error}");
+    }
 
     private const string Prefix = "/tmp/passenger-aspire-";
 
