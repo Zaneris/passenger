@@ -102,8 +102,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>What the window says of the code around the caret: the status bar's path, a hover card and File
     /// Structure, once the server has the file; the structure window following the editor; Go to Symbol's generated
-    /// declarations; parameter info's overloads, those the arguments no longer fit set back; and documentation as its
-    /// tags write it in every card.</summary>
+    /// declarations; parameter info's overloads, those the arguments no longer fit set back; documentation as its tags
+    /// write it in every card; and a hover's signature with the attributes declared on what it names.</summary>
     [AvaloniaFact]
     public void The_code_around_the_caret_is_named_and_its_overloads_shown_as_the_server_has_it()
     {
@@ -113,6 +113,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("Go to Symbol lists a generated method's own declaration alone, and what only a generator wrote after", () => new CodeAssistTests(project), t => t.Go_to_Symbol_lists_a_generated_methods_own_declaration_alone_and_what_only_a_generator_wrote_after());
         Flow.StepApart("parameter info shows every overload, setting back those the arguments no longer fit", () => new CodeAssistTests(project), t => t.Parameter_info_shows_every_overload_setting_back_those_the_arguments_no_longer_fit());
         Flow.StepApart("documentation shows bold, emphasis, underline, code and links in the hover, completion and parameter cards, tags written escaped too", () => new CodeAssistTests(project), t => t.Documentation_shows_its_tags_in_the_hover_completion_and_parameter_cards_tags_written_escaped_too());
+        Flow.StepApart("a hover's signature shows the attributes declared on the symbol and its parameters, those out of reach left out", () => new CodeAssistTests(project), t => t.A_hovers_signature_shows_the_attributes_declared_on_the_symbol_and_its_parameters_those_out_of_reach_left_out());
     }
 
     /// <summary>Find Usages groups, previews and keeps each search, lists each place once and gives its results the
@@ -282,8 +283,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.True(editor.IsKeyboardFocusWithin, $"Escape on the hover card left the editor without its keys, which {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"} has");
     }
 
-    [AvaloniaFact]
-    public void Hovering_over_CSharp_usages_shows_the_bound_symbols_declared_attributes()
+    private void A_hovers_signature_shows_the_attributes_declared_on_the_symbol_and_its_parameters_those_out_of_reach_left_out()
     {
         MainWindow window = WithoutNavigationBar(project.Open("AttributeUses.cs"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -323,8 +323,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             Hover("cache.Extend(3)", "Extend"), StringComparison.Ordinal);
 
         string plain = Hover("cache.Reset()", "Reset");
-        Assert.StartsWith("void Cache.Reset()", plain, StringComparison.Ordinal);
-        Assert.DoesNotContain("[CachePolicy", plain, StringComparison.Ordinal);
+        Assert.True(plain.StartsWith("void Cache.Reset()", StringComparison.Ordinal) && !plain.Contains("[CachePolicy", StringComparison.Ordinal),
+            $"A method's hover shows an attribute its caller could not name, a private one of its class:\n{plain}");
         window.Close();
 
         string Hover(string usage, string name)
@@ -3778,7 +3778,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                     public void Clear([CachePolicy("key")] string key) { }
                     public void Set([CachePolicy("value", Slots = new int[] { 1, 2 })] int @class) { }
                     public (int value, int size) Pair([CachePolicy("pair")] (int, int) value) => value;
-                    public void Reset() { }
+                    [Kept] public void Reset() { }
+
+                    private sealed class KeptAttribute : Attribute;
                 }
 
                 static class CacheExtensions
