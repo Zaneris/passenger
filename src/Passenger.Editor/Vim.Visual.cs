@@ -1039,11 +1039,18 @@ public sealed partial class Vim
     {
         int last = VimMotions.LastLine(text, breakEnds);
         LineSpan on = VimMotions.LineOf(text, r.Cursor);
-        if (inner && n % 2 == 0 && on.Line == last && r.Cursor == on.End && (on.Length > 0 ? on : on.Line > 0 ? text.GetLine(on.Line - 1) : on) is { Length: > 0 } blanks
-            && TextNavigation.IndentEnd(text, blanks) == blanks.End)
+        int lastHeld = last;
+        while (lastHeld > 0 && VimMotions.Blank(text, lastHeld))
         {
-            // Past the end of a last line of blanks alone, or on an empty one after it, an even count stops on its last blank.
-            return r with { Cursor = VimMotions.StepBack(text, blanks.End) };
+            lastHeld--;
+        }
+        if (inner && n % 2 == 0 && text.GetLine(lastHeld) is { Length: > 0 } blanks && TextNavigation.IndentEnd(text, blanks) == blanks.End
+            && ((on.Line == blanks.Line && r.Cursor == blanks.End) || (lastHeld >= last - 1
+                && ((on.Line == last && on.Line == blanks.Line + 1) || (on.Line == blanks.Line && r.Cursor >= VimMotions.StepBack(text, blanks.End))))))
+        {
+            // Past the last line of blanks alone, or, with one empty line after it at most, on its last blank or that empty line, an even count stops on that blank.
+            int stays = VimMotions.StepBack(text, blanks.End);
+            return stays != r.Cursor ? r with { Cursor = stays } : null;
         }
         if (last > 1 && VimMotions.Blank(text, last) && VimMotions.Blank(text, last - 1) && text.GetLineStart(last - 1) is var before
             && (r.Cursor == before || on.Line == last || (on.Length > 0 && r.Cursor < on.End)))
@@ -1067,9 +1074,10 @@ public sealed partial class Vim
         }
         int end = Settled(text, text.GetLine(last).End, breakEnds);
         int to = !inner && r.Cursor >= end ? end : LastWrittenBefore(text, inner ? Math.Min(CharEnd(text, r.Cursor), text.Length) : text.Length) ?? 0;
-        if (inner && n % 2 == 0 && CharEnd(text, to) is var white && white < r.Cursor && text[white] is ' ' or '\t')
+        if (inner && n % 2 == 0 && CharEnd(text, to) is var white && white < r.Cursor && text[white] is ' ' or '\t'
+            && (on.Length == 0 || VimMotions.LineOf(text, white).Line == on.Line))
         {
-            // An even count stops in the white the sentence ends with, as is takes sentence and white by turns.
+            // An even count stops in the white the sentence ends with, but from a line of blanks alone below it, as is takes sentence and white by turns.
             to = white;
         }
         return to != r.Cursor ? r with { Cursor = to } : null;
