@@ -80,6 +80,13 @@ public sealed class Language
     private static readonly (string Scope, string Carried)[] EmbeddedAs =
         [("source.json.comments", "source.json"), ("source.json.lines", "source.json"), ("text.html.derivative", "text.html.basic")];
 
+    /// <summary>The grammars of what only a C# string holds, by the names <c>[StringSyntax]</c> and <c>lang=</c> give it: .NET's
+    /// date and time formats, coloured by Passenger's own grammar.</summary>
+    private static readonly (string[] Names, GrammarFile Grammar)[] StringsAlone =
+    [
+        (["Date", "Time", "DateTime", "DateTimeFormat", "DateOnlyFormat", "TimeOnlyFormat"], new GrammarFile("source.datetime-format", "datetime-format.tmLanguage.json")),
+    ];
+
     /// <summary>Grammars carried only for another's includes, each by the scope it names: YAML's, a grammar for each version
     /// of YAML and one for YAML embedded in another document, which YAML's own grammar reads by.</summary>
     private static readonly (string Scope, string File)[] Included =
@@ -89,8 +96,8 @@ public sealed class Language
         ("source.yaml.embedded", "yaml-embedded.tmLanguage.json"),
     ];
 
-    /// <summary>Each grammar's file by the scope it names, every language's and every one of <see cref="Included"/>, for
-    /// the grammars that embed others, and by the scopes of <see cref="EmbeddedAs"/>.</summary>
+    /// <summary>Each grammar's file by the scope it names, every language's, every one of <see cref="Included"/>, for the
+    /// grammars that embed others, and of <see cref="StringsAlone"/>, and by the scopes of <see cref="EmbeddedAs"/>.</summary>
     private static readonly Lazy<Dictionary<string, string>> GrammarFiles = new(() =>
     {
         Dictionary<string, string> files = All.Select(l => l.Grammar).OfType<GrammarFile>()
@@ -98,6 +105,10 @@ public sealed class Language
         foreach ((string scope, string file) in Included)
         {
             files[scope] = file;
+        }
+        foreach ((_, GrammarFile alone) in StringsAlone)
+        {
+            files[alone.Scope] = alone.File;
         }
         foreach ((string scope, string carried) in EmbeddedAs)
         {
@@ -335,9 +346,12 @@ public sealed class Language
     /// <summary>The file names it claims, though a language declared before it may claim a file first.</summary>
     public IReadOnlyList<FilePattern> Patterns => patterns;
 
-    /// <summary>The language a C# string marked by <c>[StringSyntax]</c> or a <c>lang=</c> comment holds, by its name as either
-    /// gives it (Sql, Xml), its id compared without case; null for one Passenger has none of.</summary>
-    public static Language? OfEmbedded(string name) => All.FirstOrDefault(language => string.Equals(language.Id, name, StringComparison.OrdinalIgnoreCase));
+    /// <summary>The grammar a C# string marked by <c>[StringSyntax]</c> or a <c>lang=</c> comment is coloured by: its language's,
+    /// by its name as either gives it (Sql, Xml) compared with a language's id without case, else that of what only a string
+    /// holds (<see cref="StringsAlone"/>); null for one Passenger has none of.</summary>
+    internal static GrammarFile? GrammarOfEmbedded(string name) =>
+        All.FirstOrDefault(language => string.Equals(language.Id, name, StringComparison.OrdinalIgnoreCase))?.Grammar
+        ?? StringsAlone.FirstOrDefault(alone => alone.Names.Contains(name, StringComparer.OrdinalIgnoreCase)).Grammar;
 
     /// <summary>Every language's id, in the order declared, as a theme names a language it colours.</summary>
     public static IEnumerable<string> Ids => All.Select(l => l.Id);

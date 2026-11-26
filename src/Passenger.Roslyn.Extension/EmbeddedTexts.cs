@@ -15,16 +15,22 @@ namespace Passenger.Roslyn.Extension;
 
 /// <summary>The strings of a C# file that hold a language Roslyn colours none of, found by Roslyn's own embedded-language
 /// rules (a <c>[StringSyntax]</c> they go to, a <c>lang=</c> comment before them) for each language <see cref="Names"/>
-/// lists, each given by its language's name, its text as decoded (Roslyn's virtual characters) and the source each run of
-/// it came from, for the client to colour as that language's files are; a regex's and JSON's come as Roslyn's own tokens.</summary>
+/// lists, and the format an interpolation's hole gives a date or a time, each given by its language's name, its text as
+/// decoded (Roslyn's virtual characters) and the source each run of it came from, for the client to colour as that
+/// language's files are, or by its grammar; a regex's and JSON's come as Roslyn's own tokens.</summary>
 internal static class EmbeddedTexts
 {
     /// <summary>The languages a string is read as, by the names <c>[StringSyntax]</c> and <c>lang=</c> give them.</summary>
-    private static readonly ImmutableArray<string> Names = ["Sql", "Xml", "Html", "Css", "JavaScript", "Yaml"];
+    private static readonly ImmutableArray<string> Names = ["Sql", "Xml", "Html", "Css", "JavaScript", "Yaml", "Date", "Time", "DateTime", DateTimeFormat,
+        "DateOnlyFormat", "TimeOnlyFormat"];
+
+    /// <summary>The name a date's or time's format goes by, given an interpolation's format of a value of one.</summary>
+    private const string DateTimeFormat = "DateTimeFormat";
 
     private static readonly EmbeddedLanguageCommentDetector Comments = new(Names);
 
-    /// <summary>The strings in a range of the document that hold one of <see cref="Names"/>' languages; null for none.</summary>
+    /// <summary>The strings in a range of the document that hold one of <see cref="Names"/>' languages, and the formats of
+    /// dates and times in its interpolations' holes; null for none.</summary>
     public static async Task<EmbeddedText[]?> InAsync(Document document, TextSpan range, CancellationToken cancel)
     {
         document = document.WithFrozenPartialSemantics(cancel);
@@ -36,6 +42,15 @@ internal static class EmbeddedTexts
         foreach (SyntaxNode node in root.DescendantNodes(range))
         {
             cancel.ThrowIfCancellationRequested();
+            if (node is InterpolationSyntax { FormatClause: { } clause } hole)
+            {
+                model ??= await document.GetRequiredSemanticModelAsync(cancel).ConfigureAwait(false);
+                if (IsDateOrTime(model.GetTypeInfo(hole.Expression, cancel).Type) && Read(DateTimeFormat, clause.FormatStringToken, info.VirtualCharService, cancel) is { } format)
+                {
+                    strings.Add(format);
+                }
+                continue;
+            }
             SyntaxToken anchor = node switch
             {
                 LiteralExpressionSyntax literal when info.IsAnyStringLiteral(literal.Token.RawKind) => literal.Token,
@@ -54,6 +69,11 @@ internal static class EmbeddedTexts
         }
         return strings.Count == 0 ? null : [.. strings];
     }
+
+    /// <summary>Whether a value is a date's or a time's, whose format an interpolation's hole may give after its colon.</summary>
+    private static bool IsDateOrTime(ITypeSymbol? type) =>
+        (type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T, TypeArguments: [var held] } ? held : type)
+            is INamedTypeSymbol { Name: "DateTime" or "DateTimeOffset" or "DateOnly" or "TimeOnly", ContainingNamespace: { Name: "System", ContainingNamespace.IsGlobalNamespace: true } };
 
     /// <summary>The language a string holds by <see cref="Names"/>' name, or null: an interpolated string's only by a comment
     /// of its own or what it goes to, never by one above an expression in a hole that holds it.</summary>

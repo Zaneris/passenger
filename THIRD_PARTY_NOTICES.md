@@ -1196,7 +1196,8 @@ tag 2.7.1 (commit 7317ea20), its `syntaxes/` folder, unchanged: `GDScript.tmLang
 `GDResource.tmLanguage.json` (scenes, resources and project.godot, which embeds the other two) and
 `GDShader.tmLanguage.json` (Godot's shaders).
 
-`gitattributes.tmLanguage.json`, which colours .gitattributes files, is Passenger's own, under Passenger's licence.
+`gitattributes.tmLanguage.json`, which colours .gitattributes files, is Passenger's own, under Passenger's licence, as is
+`datetime-format.tmLanguage.json`, which colours a C# string's date and time format.
 
 Reading them, Passenger leaves out what VS Code's reader passes over (a capture that is not a rule) and lets a rule
 that begins with no end never end, as VS Code does, takes YAML's typed scalars (booleans, numbers, null) out of a block

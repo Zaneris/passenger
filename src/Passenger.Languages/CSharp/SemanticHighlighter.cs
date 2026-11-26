@@ -315,14 +315,14 @@ public sealed class SemanticHighlighter : CarriedColours
     }
 
     /// <summary>The colours of the strings that hold another language, each coloured by that language's grammar as its files
-    /// are (<see cref="Language.OfEmbedded"/>), laid back on the C# characters each of its characters came from, within
+    /// are (<see cref="Language.GrammarOfEmbedded"/>), laid back on the C# characters each of its characters came from, within
     /// <paramref name="range"/>; a string of a language with no grammar left as the server's.</summary>
     private static List<SyntaxSpan> DecodeEmbedded(EmbeddedText[] strings, TextRange range, CancellationToken cancel)
     {
         List<SyntaxSpan> result = [];
         foreach (EmbeddedText embedded in strings)
         {
-            if (Language.OfEmbedded(embedded.Language)?.Grammar is not { } grammar)
+            if (Language.GrammarOfEmbedded(embedded.Language) is not { } grammar)
             {
                 continue;
             }

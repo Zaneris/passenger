@@ -83,6 +83,12 @@ public sealed class FileColoursTests : FileColoursFolder
                 // lang=json
                 string body = """{ "id": 57, "open": true }""";
                 string broken = Regex.Replace("x", "(unclosed", "");
+
+                string stamp = System.DateTime.Now.ToString("yyyy'T'HH:mm");
+                // lang=datetime
+                string day = "dddd";
+                string hole = $"{System.DateTime.Now:fff}";
+                string apart = System.DateTime.Now.ToString("ss" + "zz");
             }
         }
         """";
@@ -549,6 +555,11 @@ public sealed class FileColoursTests : FileColoursFolder
             Assert.Equal(TokenKind.JsonKey, KindOf(editor, "\"id\""));
             Assert.Equal(TokenKind.Number, KindOf(editor, "57"));
             Assert.Equal(TokenKind.Keyword, KindOf(editor, "true"));
+            Assert.Equal(TokenKind.StringEscape, KindOf(editor, "yyyy"));
+            Assert.Equal(TokenKind.String, KindOf(editor, "'T'"));
+            Assert.Equal(TokenKind.StringEscape, KindOf(editor, "dddd"));
+            Assert.Equal(TokenKind.StringEscape, KindOf(editor, "fff"));
+            Assert.Equal(TokenKind.String, KindOf(editor, "\"ss\""));
             int unclosed = EmbeddedCode.IndexOf("(unclosed", StringComparison.Ordinal);
             Ui.WaitFor(() => editor.Markers.Any(m => m.Kind == MarkerKind.Warning && m.Range.Start <= unclosed + 9 && m.Range.End >= unclosed),
                 () => $"the regex that doesn't parse marked as a warning, where the marks are [{string.Join("; ", editor.Markers.Select(m => $"{m.Kind} {m.Range.Start}: {m.Message}"))}]");

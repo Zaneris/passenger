@@ -60,6 +60,9 @@ internal static class ScopeColours
         ("constant.character.entity", TokenKind.Entity),
         ("string.unquoted.cdata", TokenKind.Text),
 
+        // .NET's date and time formats: a specifier in an escape's colour, the text between them the string's.
+        ("constant.other.placeholder.datetime-format", TokenKind.StringEscape),
+
         // JSON: keys apart from values.
         ("support.type.property-name.json", TokenKind.JsonKey),
 
