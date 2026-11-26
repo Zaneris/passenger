@@ -5,30 +5,77 @@ using Avalonia.Media;
 
 namespace Passenger.App;
 
+/// <summary>A stretch of words a click follows: where it begins and ends among them, and what it leads to (a page's
+/// address, a symbol's key), which the words hand to <see cref="SelectableWords.Follow"/>.</summary>
+public readonly record struct WordsLink(int Start, int End, object Target);
+
 /// <summary>Words to read and copy (code, a Markdown page's, a value in Details), laid out a rounding error wider than
 /// the width they measured where they are given that width: the text's formatter sums a line's advances with an error of
 /// its own, so given its own measured width (as a box sized to them gives it wherever that width falls on a pixel at the
 /// scale in force, code's at 1.25 and 2) it wraps the line's last word to a line there is no height for, cutting the words
-/// short.</summary>
+/// short. Their links (<see cref="WordLinks"/>) are one way everywhere: the hand and an underline over the one the pointer
+/// is on, and a click on it that selected nothing following it.</summary>
 public class SelectableWords : SelectableTextBlock
 {
     /// <summary>A millionth of a unit: far above a line's error in summing its advances, far below a pixel at any scale.</summary>
     private const double RoundingError = 1e-6;
 
+    /// <summary>The pointer over a link, made once for every block: a move over one makes none.</summary>
+    private static Cursor? hand;
+
     /// <summary>The width the words last measured, before the layout rounded it.</summary>
     private double measured;
 
-    private static Cursor? hand;
-    private Link? pressedLink;
-    private Point? linkPointer;
+    private IReadOnlyList<WordsLink> links = [];
 
-    internal readonly record struct Link(int Start, int End, string Text, string Target);
+    /// <summary>The link the pointer is on, underlined; null for none.</summary>
+    private WordsLink? pointed;
 
-    internal Action<string, string>? OpenLink { get; init; }
-
-    internal IReadOnlyList<Link>? InlineLinks { get; set; }
+    /// <summary>The link a press began on, followed where the press ends as a click on it.</summary>
+    private WordsLink? pressed;
 
     protected override Type StyleKeyOverride => typeof(SelectableTextBlock);
+
+    /// <summary>The stretches a click follows, by their place in the words as drawn.</summary>
+    public IReadOnlyList<WordsLink> WordLinks
+    {
+        get => links;
+        set
+        {
+            links = value;
+            if (pointed is { } link && !value.Contains(link))
+            {
+                Hover(null);
+            }
+        }
+    }
+
+    /// <summary>Follows a link clicked; nothing without.</summary>
+    public Action<WordsLink>? Follow { get; set; }
+
+    /// <summary>The link drawn at a point of the words, or null: the one whose words are drawn there, on any of its lines.</summary>
+    public WordsLink? WordLinkAt(Point point)
+    {
+        if (links.Count == 0)
+        {
+            return null;
+        }
+        Point inText = point - new Point(Padding.Left, Padding.Top);
+        // Not the hit's IsInside, which is false below a block's first line.
+        int at = TextLayout.HitTestPoint(inText).TextPosition;
+        foreach (WordsLink link in links)
+        {
+            if (at >= link.Start && at < link.End && TextLayout.HitTestTextRange(link.Start, link.End - link.Start).Any(drawn => drawn.Contains(inText)))
+            {
+                return link;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Where a link's first word is drawn among the words, for a click on it.</summary>
+    public Point PointOf(WordsLink link) =>
+        TextLayout.HitTestTextRange(link.Start, link.End - link.Start).First().Center + new Point(Padding.Left, Padding.Top);
 
     protected override Size MeasureOverride(Size availableSize)
     {
@@ -43,11 +90,10 @@ public class SelectableWords : SelectableTextBlock
     protected override void RenderTextLayout(DrawingContext context, Point origin)
     {
         base.RenderTextLayout(context, origin);
-        if (linkPointer is not { } point || LinkAt(point) is not { } link || Foreground is not { } ink)
+        if (pointed is not { } link || Foreground is not { } ink)
         {
             return;
         }
-        // Draw over the current layout so pointer movement never reformats the signature or its selection.
         Pen pen = new(ink);
         foreach (Rect run in TextLayout.HitTestTextRange(link.Start, link.End - link.Start))
         {
@@ -58,81 +104,62 @@ public class SelectableWords : SelectableTextBlock
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
-        pressedLink = e.ClickCount == 1 && e.KeyModifiers == KeyModifiers.None && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed
-            ? LinkAt(InText(e.GetPosition(this))) : null;
+        pressed = e.ClickCount == 1 && e.KeyModifiers == KeyModifiers.None && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed
+            ? WordLinkAt(e.GetPosition(this)) : null;
         base.OnPointerPressed(e);
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
-        if (InlineLinks is not { Count: > 0 })
+        if (links.Count == 0)
         {
             return;
         }
-        Point point = InText(e.GetPosition(this));
-        Link? link = LinkAt(point);
-        if (pressedLink is not null && (pressedLink != link || SelectionStart != SelectionEnd))
+        WordsLink? link = WordLinkAt(e.GetPosition(this));
+        if (pressed is not null && (pressed != link || SelectionStart != SelectionEnd))
         {
-            pressedLink = null;
+            pressed = null;
         }
-        HoverLink(link is not null ? point : null);
+        Hover(link);
     }
 
     protected override void OnTapped(TappedEventArgs e)
     {
         base.OnTapped(e);
-        Link? link = pressedLink;
-        pressedLink = null;
-        if (link is { } chosen && SelectionStart == SelectionEnd && chosen == LinkAt(InText(e.GetPosition(this))))
+        WordsLink? link = pressed;
+        pressed = null;
+        if (link is { } chosen && SelectionStart == SelectionEnd && chosen == WordLinkAt(e.GetPosition(this)))
         {
             e.Handled = true;
-            OpenLink?.Invoke(chosen.Text, chosen.Target);
+            Follow?.Invoke(chosen);
         }
     }
 
     protected override void OnPointerExited(PointerEventArgs e)
     {
-        pressedLink = null;
-        HoverLink(null);
+        pressed = null;
+        Hover(null);
         base.OnPointerExited(e);
     }
 
-    private void HoverLink(Point? point)
+    /// <summary>The pointer now on <paramref name="link"/>, or on none: its hand and underline drawn again only where that
+    /// changed.</summary>
+    private void Hover(WordsLink? link)
     {
-        if (linkPointer == point)
+        if (pointed == link)
         {
             return;
         }
-        linkPointer = point;
-        if (point is not null)
-        {
-            Cursor = hand ??= new Cursor(StandardCursorType.Hand);
-        }
-        else
+        pointed = link;
+        if (link is null)
         {
             ClearValue(CursorProperty);
         }
+        else
+        {
+            Cursor = hand ??= new Cursor(StandardCursorType.Hand);
+        }
         InvalidateVisual();
-    }
-
-    private Point InText(Point position) => position - new Point(Padding.Left, Padding.Top);
-
-    private Link? LinkAt(Point point)
-    {
-        if (InlineLinks is not { Count: > 0 } links)
-        {
-            return null;
-        }
-        int at = TextLayout.HitTestPoint(point).CharacterHit.FirstCharacterIndex;
-        foreach (Link link in links)
-        {
-            // Hit testing also finds a nearby character in empty space.
-            if (link.Start <= at && at < link.End && TextLayout.HitTestTextRange(link.Start, link.End - link.Start).Any(rect => rect.Contains(point)))
-            {
-                return link;
-            }
-        }
-        return null;
     }
 }

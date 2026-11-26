@@ -9,7 +9,8 @@ namespace Passenger.Languages.CSharp;
 public static class ServerCode
 {
     /// <summary>The parts' text, and a span for each part of a type the editor colours; blank lines before and after the
-    /// code left out.</summary>
+    /// code left out. With <paramref name="declarations"/>, each part naming a symbol by its key (<see cref="CodePart.Declaration"/>)
+    /// is put there by where it begins, its span plain text where its type is no colour.</summary>
     public static (string Text, SyntaxSpan[] Spans) Of(IReadOnlyList<CodePart> parts, Dictionary<int, string>? declarations = null)
     {
         string whole = string.Concat(parts.Select(p => p.Text));

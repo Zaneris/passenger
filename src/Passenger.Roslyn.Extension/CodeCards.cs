@@ -11,7 +11,6 @@ using Microsoft.CodeAnalysis.LanguageServer.Handler;
 using Microsoft.CodeAnalysis.LanguageServer.Handler.Completion;
 using Microsoft.CodeAnalysis.LanguageServer.Handler.SemanticTokens;
 using Microsoft.CodeAnalysis.LanguageService;
-using Microsoft.CodeAnalysis.MetadataAsSource;
 using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.QuickInfo;
 using Microsoft.CodeAnalysis.Shared.Extensions;
@@ -85,8 +84,7 @@ internal static class CodeCards
 /// <summary><see cref="ExtensionMethods.Hover"/>: textDocument/hover as the server's own answers a client without Visual
 /// Studio's extensions, its quick info's sections one after another, with the parts of its blocks of code.</summary>
 [Method(ExtensionMethods.Hover)]
-internal sealed class CodedHoverHandler(IGlobalOptionService options, IMetadataAsSourceFileService metadata)
-    : ILspServiceDocumentRequestHandler<TextDocumentPositionParams, CodedHover?>
+internal sealed class CodedHoverHandler(IGlobalOptionService options) : ILspServiceDocumentRequestHandler<TextDocumentPositionParams, CodedHover?>
 {
     public bool MutatesSolutionState => false;
 
@@ -100,7 +98,8 @@ internal sealed class CodedHoverHandler(IGlobalOptionService options, IMetadataA
         bool markdown = context.GetRequiredClientCapabilities().TextDocument?.Hover?.ContentFormat?.Contains(MarkupKind.Markdown) == true;
         int position = await document.GetPositionFromLinePositionAsync(ProtocolConversions.PositionToLinePosition(request.Position), cancellationToken).ConfigureAwait(false);
         SymbolDescriptionOptions description = options.GetSymbolDescriptionOptions(document.Project.Language);
-        if (document.Project.Language == LanguageNames.CSharp)
+        bool csharp = document.Project.Language == LanguageNames.CSharp;
+        if (csharp)
         {
             description = description with { QuickInfoOptions = description.QuickInfoOptions with { IncludeNavigationHintsInQuickInfo = true } };
         }
@@ -115,26 +114,12 @@ internal sealed class CodedHoverHandler(IGlobalOptionService options, IMetadataA
         // A line break after each section, as the server's own sets them apart.
         ImmutableArray<TaggedText> tags = [.. sections.SelectMany(s => s.TaggedParts.Add(new TaggedText(TextTags.LineBreak, Environment.NewLine)))];
         SourceText text = await document.GetValueTextAsync(cancellationToken).ConfigureAwait(false);
-        List<CodePart[]> code = [];
-        foreach (QuickInfoSection section in info.Sections)
-        {
-            Func<TaggedText, string?>? declaration = null;
-            if (section.Kind == QuickInfoSectionKinds.Description && document.Project.Language == LanguageNames.CSharp
-                && section.TaggedParts.Any(part => part.NavigationTarget is not null)
-                && await document.Project.GetCompilationAsync(cancellationToken).ConfigureAwait(false) is { } compilation)
-            {
-                declaration = part => HoverDeclarations.NavigationKey(part, compilation, metadata, cancellationToken);
-            }
-            if (CodeCards.Blocks(section.TaggedParts, declaration) is { } blocks)
-            {
-                code.AddRange(blocks);
-            }
-        }
         return new CodedHover
         {
             Range = ProtocolConversions.TextSpanToRange(info.Span, text),
             Contents = ProtocolConversions.GetDocumentationMarkupContent(tags, document.Project.Language, markdown),
-            Code = code.Count > 0 ? code : null,
+            // A C# signature's parts name what they stand for by the symbol's key, which only a click on one resolves.
+            Code = CodeCards.Blocks(tags, csharp ? tag => tag.NavigationTarget : null),
         };
     }
 }
@@ -288,16 +273,14 @@ internal sealed class CodedSignatureInformation : SignatureInformation
 internal sealed class CodedHoverHandlerFactory : ILspServiceFactory
 {
     private readonly IGlobalOptionService options;
-    private readonly IMetadataAsSourceFileService metadata;
 
     [ImportingConstructor]
-    public CodedHoverHandlerFactory(IGlobalOptionService options, IMetadataAsSourceFileService metadata)
+    public CodedHoverHandlerFactory(IGlobalOptionService options)
     {
         this.options = options;
-        this.metadata = metadata;
     }
 
-    public ILspService CreateILspService(LspServices lspServices, WellKnownLspServerKinds serverKind) => new CodedHoverHandler(options, metadata);
+    public ILspService CreateILspService(LspServices lspServices, WellKnownLspServerKinds serverKind) => new CodedHoverHandler(options);
 }
 
 [ExportCSharpVisualBasicLspServiceFactory(typeof(CodedCompletionResolveHandler), WellKnownLspServerKinds.Any)]

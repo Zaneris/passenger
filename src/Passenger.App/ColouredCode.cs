@@ -44,7 +44,7 @@ public sealed class ColouredCode : Border
             TextWrapping = TextWrapping.Wrap,
             FontFeatures = CSharp.Fonts.NoLigatures,
             Text = code,
-            OpenLink = openDeclaration,
+            Follow = openDeclaration is null ? null : link => openDeclaration(Shown[link.Start..link.End], (string)link.Target),
         };
         text.Bind(TextElement.ForegroundProperty, text.GetResourceObservable(TokenKeys.Editor_Text));
         Child = text;
@@ -219,7 +219,7 @@ public sealed class ColouredCode : Border
             strong = (stretch.Start, stretch.End);
         }
         List<Inline> runs = [];
-        List<SelectableWords.Link>? links = declarations is { Count: > 0 } ? [] : null;
+        List<WordsLink> links = [];
         int at = 0;
         for (int index = 0; index < placed.Count; index++)
         {
@@ -231,9 +231,9 @@ public sealed class ColouredCode : Border
             Add(at, span.Start, null);
             string? key = declarations?.GetValueOrDefault(given[index].Start);
             Add(span.Start, span.End, span.Kind);
-            if (key is not null && links is not null)
+            if (key is not null)
             {
-                links.Add(new SelectableWords.Link(span.Start, span.End, shown[span.Start..span.End], key));
+                links.Add(new WordsLink(span.Start, span.End, key));
             }
             at = span.End;
         }
@@ -242,7 +242,7 @@ public sealed class ColouredCode : Border
         // An inline added beside a text would take the text as a run before it.
         text.Text = null;
         text.Inlines.AddRange(runs);
-        text.InlineLinks = links;
+        text.WordLinks = links;
 
         // A run of the stretch, split where the strong stretch begins and ends.
         void Add(int from, int to, TokenKind? kind)

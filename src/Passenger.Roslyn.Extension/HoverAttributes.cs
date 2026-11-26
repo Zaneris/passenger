@@ -146,7 +146,7 @@ internal static class HoverAttributes
                 continue;
             }
             tags.Add(new TaggedText(TextTags.Punctuation, "["));
-            tags.Add(new TaggedText(TextTags.Class, AttributeName(type)));
+            tags.Add(new TaggedText(TextTags.Class, AttributeName(type), TaggedTextStyle.None, SymbolKey.CreateString(type, cancel), null));
             if (!attribute.ConstructorArguments.IsEmpty || !attribute.NamedArguments.IsEmpty)
             {
                 IEnumerable<AttributeArgumentSyntax> arguments = attribute.ConstructorArguments
