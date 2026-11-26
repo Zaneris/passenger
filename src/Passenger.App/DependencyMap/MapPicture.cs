@@ -98,11 +98,13 @@ public sealed class MapPicture : Control
 
     private IReadOnlySet<MapEdge> broken = new HashSet<MapEdge>();
 
-    /// <summary>Lays the map out again for what it shows and draws it, keeping the zoom and as much of the place shown as
-    /// stands, those of its edges <paramref name="breaking"/> the layer rules in the error's colour.</summary>
+    /// <summary>Lays the map out again for what it shows and draws it, keeping the zoom and the chosen node where it stood
+    /// (else the place shown), however the layout moved it, those of its edges <paramref name="breaking"/> the layer rules
+    /// in the error's colour.</summary>
     public void Show(MapGraph shown, IReadOnlyList<MapEdge> drawn, IReadOnlySet<MapEdge>? breaking = null)
     {
         UiThread.Check();
+        Point? stood = chosen is { } before && Shown(before) is { } was ? was.TopLeft : null;
         graph = shown;
         edges = drawn;
         broken = breaking ?? new HashSet<MapEdge>();
@@ -120,6 +122,10 @@ public sealed class MapPicture : Control
         marks.Height = height;
         drawing.InvalidateVisual();
         marks.InvalidateVisual();
+        if (stood is { } at && chosen is { } kept && boxes.TryGetValue(kept, out MapBox box))
+        {
+            offset = new Vector(at.X - (box.X * zoom), at.Y - (box.Y * zoom));
+        }
         Place();
     }
 
@@ -173,6 +179,16 @@ public sealed class MapPicture : Control
     }
 
     private Point Middle => new(Bounds.Width / 2, Bounds.Height / 2);
+
+    /// <summary>The pane given another size keeps the chosen node in view.</summary>
+    protected override void OnSizeChanged(SizeChangedEventArgs e)
+    {
+        base.OnSizeChanged(e);
+        if (chosen is { } kept)
+        {
+            Reveal(kept);
+        }
+    }
 
     private void ZoomAbout(double to, Point at)
     {

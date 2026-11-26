@@ -3541,6 +3541,21 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.WaitFor(() => window.EditorArea.Active?.Name == "Gauges.cs" && window.EditorArea.CodeEditor.CaretPosition.Line == 5,
             () => $"a double click on Dial going to its declaration, not {window.EditorArea.Active?.Name}:{window.EditorArea.CodeEditor.CaretPosition.Line + 1}");
 
+        // The map in the smallest window keeps its chosen node in view, where a click reaches it.
+        (double width, double height) = (window.Width, window.Height);
+        window.Width = MainWindow.SmallestWidth;
+        window.Height = MainWindow.SmallestHeight;
+        window.ShowToolWindow(ToolWindowIds.DependencyMap);
+        Ui.Settle();
+        Rect small = map.Picture.Shown(dial)!.Value;
+        Assert.True(new Rect(map.Picture.Bounds.Size).Contains(small.Center), $"Dial stands at {small} in the smallest window's map of {map.Picture.Bounds.Size}");
+        Ui.Click(map.Picture, small.Center);
+        Assert.Same(dial, map.Chosen);
+        window.Width = width;
+        window.Height = height;
+        window.OpenFile(project.PathOf("Gauges.cs"));
+        Ui.Settle();
+
         // The map follows an edit made while it was out of sight: Both made to call Area.Of, read again as the map shows.
         map.Choose(map.Rows.Single(r => r.Node.Name == "Both(Dial, IGauge)").Node, fromPicture: false);
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "any.Read()");
