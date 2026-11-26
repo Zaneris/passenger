@@ -24,8 +24,8 @@ public sealed class SignatureLines
     /// <summary>The signature laid out a parameter a line.</summary>
     public string Text { get; }
 
-    /// <summary>The signature <paramref name="code"/> laid out a parameter a line; null for code of more than one line, or
-    /// with no list of parameters, or an empty one.</summary>
+    /// <summary>The signature <paramref name="code"/> laid out a parameter a line, keeping leading attribute lines; null
+    /// where the signature has no parameters or already spans several lines.</summary>
     public static SignatureLines? Of(string code) =>
         Scan(code) is { } list && list.Close > list.Breaks[0].At ? new SignatureLines(Laid(code, list.Breaks), [.. list.Breaks]) : null;
 
@@ -51,11 +51,16 @@ public sealed class SignatureLines
         return parameters;
     }
 
-    /// <summary>A one-line signature's breaks, after its list's opening bracket and each parameter's comma with the spaces
-    /// after it, and where its list closes; null where it has no list of parameters closed on its line.</summary>
+    /// <summary>A signature's breaks, after its list's opening bracket and each parameter's comma with the spaces after it,
+    /// and where its list closes; null where it has no list of parameters closed on its line.</summary>
     private static (List<(int At, int Spaces)> Breaks, int Close)? Scan(string code)
     {
-        if (code.Contains('\n', StringComparison.Ordinal) || ListStart(code) is not { } open)
+        int start = code.LastIndexOf('\n') + 1;
+        if (start > 0 && (code[0] != '[' || !code.AsSpan(0, start).TrimEnd().EndsWith("]", StringComparison.Ordinal)))
+        {
+            return null;
+        }
+        if (ListStart(code, start) is not { } open)
         {
             return null;
         }
@@ -135,9 +140,9 @@ public sealed class SignatureLines
 
     /// <summary>The bracket opening the parameter list: the first '(' straight after a name, a type's arguments or an
     /// array's brackets, or the '[' after <c>this</c>.</summary>
-    private static int? ListStart(string code)
+    private static int? ListStart(string code, int start)
     {
-        for (int i = 1; i < code.Length; i++)
+        for (int i = start + 1; i < code.Length; i++)
         {
             char before = code[i - 1];
             if ((code[i] == '(' && (Core.CSharpNames.Continues(before) || before is '>' or ']'))

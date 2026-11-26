@@ -248,26 +248,35 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         string text = editor.Document.Snapshot.ToString();
 
         Assert.Contains("[CachePolicy(\"cache\")]", Hover("Cache cache", "Cache"), StringComparison.Ordinal);
-        Assert.Contains("[CachePolicy(\"cache\")]", Hover("new Cache()", "Cache"), StringComparison.Ordinal);
+        Assert.StartsWith("[CachePolicy(\"cache\")]\nCache.Cache([CachePolicy(\"capacity\")] int capacity)",
+            Hover("new Cache(2)", "Cache"), StringComparison.Ordinal);
         Assert.Contains("[CachePolicy(\"property\")]", Hover("cache.Count", "Count"), StringComparison.Ordinal);
         string field = Hover("cache.Capacity", "Capacity");
         Assert.Contains("[CachePolicy(\"field\", Slots = new int[]", field, StringComparison.Ordinal);
         Assert.Contains("[CachePolicy(\"event\")]", Hover("cache.Changed", "Changed"), StringComparison.Ordinal);
 
         string first = Hover("cache.Clear(1)", "Clear");
-        Assert.Contains("void Cache.Clear(int count)", first, StringComparison.Ordinal);
+        const string declaration = "[CachePolicy(\"short\", Priority = 2)]\n[Description(\"Evicts entries\")]\n"
+            + "void Cache.Clear([CachePolicy(\"count\", Priority = 1)] int count, [CachePolicy(\"scope\")] [string scope = \"default\"])";
+        ColouredCode code = Assert.Single(window.Assist.HoverCard!.GetVisualDescendants().OfType<ColouredCode>());
+        Assert.StartsWith(declaration, code.Code, StringComparison.Ordinal);
+        Assert.StartsWith(declaration, first, StringComparison.Ordinal);
         Assert.Contains("Clears the requested number of entries.", first, StringComparison.Ordinal);
-        Assert.Contains("[CachePolicy(\"short\", Priority = 2)]", first, StringComparison.Ordinal);
-        Assert.Contains("[Description(\"Evicts entries\")]", first, StringComparison.Ordinal);
         Assert.DoesNotContain("[CachePolicy(\"named\")]", first, StringComparison.Ordinal);
 
         string second = Hover("cache.Clear(\"key\")", "Clear");
-        Assert.Contains("void Cache.Clear(string key)", second, StringComparison.Ordinal);
-        Assert.Contains("[CachePolicy(\"named\")]", second, StringComparison.Ordinal);
+        Assert.StartsWith("[CachePolicy(\"named\")]\nvoid Cache.Clear([CachePolicy(\"key\")] string key)", second, StringComparison.Ordinal);
         Assert.DoesNotContain("[CachePolicy(\"short\"", second, StringComparison.Ordinal);
 
+        Assert.StartsWith("void Cache.Set([CachePolicy(\"value\", Slots = new int[] { 1, 2 })] int @class)",
+            Hover("cache.Set(3)", "Set"), StringComparison.Ordinal);
+        Assert.StartsWith("(int value, int size) Cache.Pair([CachePolicy(\"pair\")] (int, int) value)",
+            Hover("cache.Pair((1, 2))", "Pair"), StringComparison.Ordinal);
+        Assert.StartsWith("[CachePolicy(\"extend\")]\n(extension) void Cache.Extend([CachePolicy(\"size\")] int size)",
+            Hover("cache.Extend(3)", "Extend"), StringComparison.Ordinal);
+
         string plain = Hover("cache.Reset()", "Reset");
-        Assert.Contains("void Cache.Reset()", plain, StringComparison.Ordinal);
+        Assert.StartsWith("void Cache.Reset()", plain, StringComparison.Ordinal);
         Assert.DoesNotContain("[CachePolicy", plain, StringComparison.Ordinal);
         window.Close();
 
@@ -3589,12 +3598,15 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 {
                     public static void Run()
                     {
-                        Cache cache = new Cache();
+                        Cache cache = new Cache(2);
                         _ = cache.Count;
                         _ = cache.Capacity;
                         cache.Changed += static () => { };
                         cache.Clear(1);
                         cache.Clear("key");
+                        cache.Set(3);
+                        _ = cache.Pair((1, 2));
+                        cache.Extend(3);
                         cache.Reset();
                     }
                 }
@@ -3606,6 +3618,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 [CachePolicy("cache")]
                 sealed class Cache
                 {
+                    public Cache([CachePolicy("capacity")] int capacity) => Capacity = capacity;
+
                     [CachePolicy("property")] public int Count { get; }
                     [CachePolicy("field", Slots = new int[] { })] public int Capacity = 8;
                     [CachePolicy("event")] public event Action? Changed;
@@ -3613,12 +3627,22 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                     /// <summary>Clears the requested number of entries.</summary>
                     [CachePolicy("short", Priority = 2)]
                     [Description("Evicts entries")]
-                    public void Clear(int count) => Changed?.Invoke();
+                    public void Clear([CachePolicy("count", Priority = 1)] int count, [CachePolicy("scope")] string scope = "default") => Changed?.Invoke();
 
                     [CachePolicy("named")]
-                    public void Clear(string key) { }
+                    public void Clear([CachePolicy("key")] string key) { }
+
+                    public void Set([CachePolicy("value", Slots = new int[] { 1, 2 })] int @class) { }
+
+                    public (int value, int size) Pair([CachePolicy("pair")] (int, int) value) => value;
 
                     public void Reset() { }
+                }
+
+                static class CacheExtensions
+                {
+                    [CachePolicy("extend")]
+                    public static void Extend([CachePolicy("receiver")] this Cache cache, [CachePolicy("size")] int size) { }
                 }
 
                 sealed class CachePolicyAttribute(string name) : Attribute
