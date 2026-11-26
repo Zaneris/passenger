@@ -53,6 +53,7 @@
       <RoslynServerAssembly Include="Microsoft.CodeAnalysis;Microsoft.CodeAnalysis.CSharp;Microsoft.CodeAnalysis.Workspaces;Microsoft.CodeAnalysis.CSharp.Workspaces;Microsoft.CodeAnalysis.ExternalAccess.Extensions" />
       <!-- Edit and Continue (HotReload.cs): the server's own EnC service, kept internal, made public to compile against below. -->
       <RoslynServerAssembly Include="Microsoft.CodeAnalysis.Features" />
+      <RoslynServerAssembly Include="Humanizer" />
       <!-- The project system the loader joins: the server's own, kept internal, made public to compile against below. -->
       <RoslynServerAssembly Include="Microsoft.CodeAnalysis.LanguageServer;Microsoft.CodeAnalysis.LanguageServer.Protocol;Microsoft.CodeAnalysis.Workspaces.MSBuild;Microsoft.CodeAnalysis.Workspaces.MSBuild.Contracts;Microsoft.Extensions.Logging.Abstractions;System.Composition.AttributedModel" />
       <Reference Include="@(RoslynServerAssembly->'$(RoslynServerFolder)%(Identity).dll')" Private="false" />

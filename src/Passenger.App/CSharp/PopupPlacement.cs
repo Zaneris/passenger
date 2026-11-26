@@ -176,48 +176,61 @@ internal sealed class PopupPlacement
         }
     }
 
-    private void PlaceOn(Control popup, Passenger.Editor.CodeEditor editor, Canvas onto, Point at, bool above)
+    private void PlaceOn(Control popup, Passenger.Editor.CodeEditor editor, Canvas onto, Point at, bool above, Rect? overflowRoom = null)
     {
         Heard(popup);
         at = editor.TranslatePoint(at, onto) ?? at;
-        (popup as IHeldToEditor)?.Within(Math.Max(0, onto.Bounds.Width - RightEdge));
-        (popup as IGivesWayInHeight)?.WithinHeight(double.PositiveInfinity);
-        Size size = Measured(popup);
-        Rect room = HeldIn(editor, onto);
-        double lineHeight = editor.LineHeight;
-        double below = at.Y + lineHeight + 2;
-        double over = at.Y - size.Height - 2;
-        if (popup is IGivesWayInHeight lowered && over < room.Top && below + size.Height > room.Bottom)
+        Rect room = HeldIn(editor, onto, overflowRoom);
+        IHeldToEditor? held = popup as IHeldToEditor;
+        held?.Within(Math.Max(0, room.Width - RightEdge));
+        double below = at.Y + editor.LineHeight + 2;
+        double before = at.Y - 2;
+        Size size = FitHeight(popup, room, before, below);
+        if (size.Height > room.Height && overflowRoom is { } overflow)
         {
-            lowered.WithinHeight(Math.Max(room.Bottom - below, at.Y - 2 - room.Top));
-            size = Measured(popup);
-            over = at.Y - size.Height - 2;
+            room = overflow;
+            size = FitHeight(popup, room, before, below);
         }
+
+        double over = before - size.Height;
         bool fitsOver = over >= room.Top;
         bool fitsUnder = below + size.Height <= room.Bottom;
-        double x = Math.Clamp(at.X - 4, room.Left, Math.Max(room.Left, room.Right - size.Width - RightEdge));
-        double y = above ? (fitsOver ? over : below) : (fitsUnder || !fitsOver ? below : over);
-        if (popup is IHeldToEditor && !fitsOver && !fitsUnder)
+        bool placeOver = fitsOver && (above || !fitsUnder);
+        if (held is not null && !fitsOver && !fitsUnder)
         {
-            y = Math.Clamp(room.Bottom - below >= at.Y - room.Top ? below : over, room.Top, Math.Max(room.Top, room.Bottom - size.Height));
+            placeOver = at.Y - room.Top > room.Bottom - below;
         }
-        Canvas.SetLeft(popup, x);
-        Canvas.SetTop(popup, y);
+        double y = placeOver ? over : below;
+        Canvas.SetLeft(popup, Math.Clamp(at.X - 4, room.Left, Math.Max(room.Left, room.Right - size.Width - RightEdge)));
+        Canvas.SetTop(popup, held is null ? y : Math.Clamp(y, room.Top, Math.Max(room.Top, room.Bottom - size.Height)));
         lines.AddOrUpdate(popup, new StrongBox<double>(at.Y));
     }
 
-    /// <summary>Where a popup placed at a line of an editor is held, in the coordinates of the layer it is placed on: across
-    /// the layer, and down only the editor's own rows, never over the bars above it (its group's tabs, the navigation bar,
-    /// a banner, Find) nor below it; the whole layer where the editor is not under it.</summary>
-    private static Rect HeldIn(Passenger.Editor.CodeEditor editor, Canvas onto)
+    private static Size FitHeight(Control popup, Rect room, double before, double below)
     {
-        Rect whole = new(onto.Bounds.Size);
+        IGivesWayInHeight? lowered = popup as IGivesWayInHeight;
+        lowered?.WithinHeight(double.PositiveInfinity);
+        Size size = Measured(popup);
+        double available = Math.Min(room.Height, Math.Max(before - room.Top, room.Bottom - below));
+        if (lowered is not null && size.Height > available)
+        {
+            lowered.WithinHeight(available);
+            size = Measured(popup);
+        }
+        return size;
+    }
+
+    /// <summary>Holds a popup across the given bounds (the layer by default) and down the editor's rows, clear of its tabs,
+    /// navigation bar, banner and Find bar. Uses the full bounds when the editor is outside the layer.</summary>
+    private static Rect HeldIn(Passenger.Editor.CodeEditor editor, Canvas onto, Rect? bounds = null)
+    {
+        Rect whole = bounds ?? new Rect(onto.Bounds.Size);
         if (editor.TranslatePoint(default, onto) is not { } top)
         {
             return whole;
         }
         double from = Math.Clamp(top.Y, 0, whole.Height);
-        return new Rect(0, from, whole.Width, Math.Clamp(top.Y + editor.Bounds.Height, from, whole.Height) - from);
+        return new Rect(whole.X, from, whole.Width, Math.Clamp(top.Y + editor.Bounds.Height, from, whole.Height) - from);
     }
 
     /// <summary>The size a popup takes as it is now held, measured again.</summary>
@@ -348,8 +361,25 @@ internal sealed class PopupPlacement
         {
             return;
         }
-        Open(box, () => IdeErrors.Observe(Carried("Rename", () => done(null))));
-        Place(box, offset, above: true);
+        Canvas onto = TopLevel.GetTopLevel(layer) is MainWindow window ? window.RenameLayer : layer;
+        Open(box, () => IdeErrors.Observe(Carried("Rename", () => done(null))), onto);
+        Passenger.Editor.CodeEditor editor = Editor;
+        void Reposition()
+        {
+            if (modal == box)
+            {
+                Rect overflowRoom = onto != layer && layer.TranslatePoint(default, onto) is { } origin
+                    ? new Rect(origin.X, 0, layer.Bounds.Width, onto.Bounds.Height)
+                    : new Rect(onto.Bounds.Size);
+                PlaceOn(box, editor, onto, editor.PointOf(offset), above: true, overflowRoom: overflowRoom);
+            }
+        }
+        // A docked panel can leave the editor too short without resizing the window.
+        void Resized(object? sender, SizeChangedEventArgs e) => UiThread.Post(Reposition);
+        editor.SizeChanged += Resized;
+        box.DetachedFromVisualTree += (_, _) => editor.SizeChanged -= Resized;
+        box.ContentsChanged += (_, _) => Reposition();
+        Reposition();
         box.Done += (_, name) => IdeErrors.Observe(Carried("Rename", () => done(name)));
     }
 
@@ -366,12 +396,12 @@ internal sealed class PopupPlacement
     }
 
     /// <summary>A modal on the layer in place of any open, its window's presses heard.</summary>
-    private void Open(Control popup, Action dismiss)
+    private void Open(Control popup, Action dismiss, Canvas? onto = null)
     {
         CloseModal();
         modal = popup;
         dismissed = dismiss;
-        layer.Children.Add(popup);
+        (onto ?? layer).Children.Add(popup);
         presses = TopLevel.GetTopLevel(layer)?.AddDisposableHandler(InputElement.PointerPressedEvent, OnPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
     }
 
@@ -431,7 +461,7 @@ internal sealed class PopupPlacement
         if (modal is not null)
         {
             bool keysElsewhere = KeysElsewhere(modal);
-            layer.Children.Remove(modal);
+            (modal.Parent as Panel)?.Children.Remove(modal);
             modal = null;
             if (!keysElsewhere)
             {

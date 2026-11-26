@@ -52,6 +52,7 @@ public static class Handlers
     public const string GodotNameStrings = "Passenger.Roslyn.Extension.GodotNameStrings";
     public const string GodotFix = "Passenger.Roslyn.Extension.GodotFix";
     public const string ToolkitRenames = "Passenger.Roslyn.Extension.ToolkitRenames";
+    public const string RenameSuggestions = "Passenger.Roslyn.Extension.RenameSuggestions";
     public const string GeneratedMembers = "Passenger.Roslyn.Extension.GeneratedMembers";
     public const string MauiExpressionCompletion = "Passenger.Roslyn.Extension.MauiExpressionCompletion";
     public const string MauiExpressionSymbol = "Passenger.Roslyn.Extension.MauiExpressionSymbol";
@@ -79,7 +80,7 @@ public static class Handlers
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, SymbolContainers, WrittenPlaces,
         ComponentClass, GeneratedTexts, GeneratedNamed, GeneratedListed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames, GeneratedMembers,
         MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover,
-        CompletionCall, StepBindings, EditorConfigKeys, EditorConfigValues, Signposts, CodeClones, ExtractClones, Dependencies, DependencyAt, LayerChecks,
+        CompletionCall, RenameSuggestions, StepBindings, EditorConfigKeys, EditorConfigValues, Signposts, CodeClones, ExtractClones, Dependencies, DependencyAt, LayerChecks,
         TestDoublesOffered, CreateFake, FillArguments,
     ];
 }

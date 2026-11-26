@@ -843,14 +843,18 @@ public sealed record Choice(string Text, string Detail, object Value, bool Detai
 /// own caption, names what a refactoring makes). For a
 /// type declared in files named after it, Also rename files to reflect this change is a check box under it, with the
 /// files it would rename, clicked while the keys stay with the name.</summary>
-public sealed class RenameBox : Border, IHeardPopup, IHeldToEditor
+public sealed class RenameBox : Border, IHeardPopup, IGivesWayInHeight
 {
+    private const int VisibleNameLimit = 6;
+    private readonly string original;
     private readonly TextBox name;
     private readonly StackPanel body;
     private CheckBox? renameFiles;
+    private ListBox? suggestionList;
 
     public RenameBox(string current, string caption = "Rename")
     {
+        original = current;
         Called = caption;
         Classes.Add(StyleClasses.Popup);
         Width = PopupFrame.Narrow;
@@ -881,6 +885,21 @@ public sealed class RenameBox : Border, IHeardPopup, IHeldToEditor
     /// <summary>Held to a room narrower than a name's popup is wide.</summary>
     public void Within(double room) => Width = Math.Min(PopupFrame.Narrow, Math.Max(0, room));
 
+    /// <summary>The list gives way so there is room for the name field and at least one candidate.</summary>
+    public void WithinHeight(double room)
+    {
+        if (suggestionList is not { } list)
+        {
+            return;
+        }
+        list.MaxHeight = double.PositiveInfinity;
+        if (double.IsFinite(room) && list.IsEffectivelyVisible)
+        {
+            Measure(Size.Infinity);
+            list.MaxHeight = Math.Max(ListRow.Height, room - (DesiredSize.Height - list.DesiredSize.Height));
+        }
+    }
+
     /// <summary>What the box asks for, its caption.</summary>
     public string Called { get; }
 
@@ -899,6 +918,62 @@ public sealed class RenameBox : Border, IHeardPopup, IHeldToEditor
     /// <summary>Also rename files to reflect this change, checked or cleared.</summary>
     public event EventHandler<bool>? RenamesFilesChanged;
 
+    /// <summary>The options under the input changed how much room the box needs.</summary>
+    internal event EventHandler? ContentsChanged;
+
+    internal void OfferSuggestions(IReadOnlyList<string> suggestions)
+    {
+        if (suggestions.Count == 0)
+        {
+            return;
+        }
+
+        ListBox list = new()
+        {
+            Classes = { StyleClasses.Tree },
+            Focusable = false,
+            ItemTemplate = new FuncDataTemplate<string>((item, _) => new TextBlock
+            {
+                Text = item,
+                Classes = { StyleClasses.Code },
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            }),
+        };
+        suggestionList = list;
+        TextBlock label = new() { Text = "Suggested names", Classes = { StyleClasses.Muted, StyleClasses.Caption } };
+        AutomationProperties.SetLabeledBy(list, label);
+        StackPanel offered = new() { Spacing = Gaps.Tight, Children = { label, list } };
+        body.Children.Insert(2, offered);
+
+        void Filter(string prefix)
+        {
+            string[] matches = [.. suggestions.Where(item => item.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).Take(VisibleNameLimit)];
+            list.SelectedIndex = -1;
+            list.ItemsSource = matches;
+            offered.IsVisible = matches.Length > 0;
+            InvalidateMeasure();
+            ContentsChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        list.SelectionChanged += (_, _) =>
+        {
+            if (list.SelectedItem is string selected)
+            {
+                name.Text = selected;
+                name.Focus();
+                name.CaretIndex = selected.Length;
+            }
+        };
+        name.TextChanged += (_, _) =>
+        {
+            if (Text != (list.SelectedItem as string))
+            {
+                Filter(Text);
+            }
+        };
+        Filter(Text == original ? string.Empty : Text);
+    }
+
     /// <summary>Offers to rename the files named after the type with it, checked as the option was left.</summary>
     public void OfferFiles(IReadOnlyList<string> files, bool on)
     {
@@ -914,10 +989,21 @@ public sealed class RenameBox : Border, IHeardPopup, IHeldToEditor
         });
         // Measured again now, as it grew, so it is placed for its new size before the next layout.
         InvalidateMeasure();
+        ContentsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.KeyModifiers == KeyModifiers.None && e.Key is Key.Up or Key.Down && suggestionList is { ItemCount: > 0 } list)
+        {
+            int direction = e.Key == Key.Down ? 1 : -1;
+            int selected = list.SelectedIndex;
+            list.SelectedIndex = selected < 0 ? (direction > 0 ? 0 : list.ItemCount - 1)
+                : (selected + direction + list.ItemCount) % list.ItemCount;
+            list.ScrollIntoView(list.SelectedIndex);
+            e.Handled = true;
+            return;
+        }
         if (e.Key == Key.Enter)
         {
             string text = name.Text?.Trim() ?? string.Empty;
