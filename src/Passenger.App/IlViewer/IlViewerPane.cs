@@ -87,7 +87,7 @@ internal sealed class IlViewerPane : UserControl
     public void Say(string message, string? file = null) => Render(file, message);
 
     public void Show(CompiledRequest request, CompiledSource result) =>
-        Render(Path.GetFileName(request.Source), result.Message, result, request);
+        Render(Path.GetFileName(request.Source), result.Message, result, $"{request.Source}\n{request.Assembly}");
 
     public void ShowAssembly(string caption, CompiledSource result)
     {
@@ -95,15 +95,15 @@ internal sealed class IlViewerPane : UserControl
         Highlight(result.CurrentInstruction);
     }
 
-    private void Render(string? file, string? message, CompiledSource? result = null, CompiledRequest? request = null)
+    private void Render(string? caption, string? message, CompiledSource? result = null, string? captionTip = null)
     {
         CloseOpcodeTip();
         highlighted = null;
         compiled = message is null ? result : null;
         bool hasCode = compiled is not null;
-        source.Text = file;
-        source.IsVisible = file is not null;
-        ToolTip.SetTip(source, hasCode ? request is null ? file : $"{request.Source}\n{request.Assembly}" : null);
+        source.Text = caption;
+        source.IsVisible = caption is not null;
+        ToolTip.SetTip(source, hasCode ? captionTip ?? caption : null);
         empty.Text = message;
         empty.IsVisible = !hasCode;
         output.IsVisible = hasCode;
@@ -112,7 +112,7 @@ internal sealed class IlViewerPane : UserControl
         TextDocument document = new(compiled?.Text ?? string.Empty);
         output.Document = document;
         output.Links = compiled?.Links is { Length: > 0 } ? LinksOn : null;
-        Language language = hasCode && request?.View == CompiledView.LowLevelCSharp ? Language.CSharp : Language.PlainText;
+        Language language = hasCode && Mode == CompiledView.LowLevelCSharp ? Language.CSharp : Language.PlainText;
         output.Highlighter = compiled?.Colours ?? Highlighters.For(language, document);
     }
 

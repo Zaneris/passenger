@@ -148,7 +148,7 @@ public partial class MainWindow
         if (request is not null)
         {
             pane.Say("Reading compiled code…", Path.GetFileName(request.Source));
-            IdeErrors.Observe(ReadIlAsync(pane, request, document!.Text.Snapshot));
+            IdeErrors.Observe(ReadCompiledAsync(cancel => ReadIlAsync(pane, request, document!.Text.Snapshot, cancel)));
         }
         else if (reason is not null)
         {
@@ -171,7 +171,7 @@ public partial class MainWindow
         if (request is { } stopped)
         {
             pane.Say("Reading assembly…", stopped.Frame.Name);
-            IdeErrors.Observe(ReadAssemblyAsync(pane, stopped));
+            IdeErrors.Observe(ReadCompiledAsync(cancel => ReadAssemblyAsync(pane, stopped, cancel)));
         }
         else
         {
@@ -179,28 +179,13 @@ public partial class MainWindow
         }
     }
 
-    private async Task ReadAssemblyAsync(IlViewerPane pane, (DebugSession Session, DapStackFrame Frame, int Stop) request)
+    private async Task ReadCompiledAsync(Func<CancellationToken, Task> load)
     {
         using CancellationTokenSource read = new();
         ilRead = read;
-        TextSnapshot? sourceText = Editors.Active is { IsModified: false } document && request.Frame.Source?.Path is { } path
-            && PathNames.Same(document.Path, path) ? document.Text.Snapshot : null;
         try
         {
-            DisassembleFrameResponse result = await request.Session.DisassembleAsync(request.Frame, read.Token);
-            CompiledSource compiled = await BackgroundWork.Run(() => CompiledSource.Assembly(result, read.Token), read.Token);
-            if (!read.IsCancellationRequested && Debugger.AssemblyFrame == request)
-            {
-                ilSourceText = sourceText;
-                pane.ShowAssembly($"{result.Architecture} · {request.Frame.Name}", compiled);
-            }
-        }
-        catch (DapException error)
-        {
-            if (!read.IsCancellationRequested && Debugger.AssemblyFrame == request)
-            {
-                pane.Say(error.Reason, request.Frame.Name);
-            }
+            await load(read.Token);
         }
         catch (OperationCanceledException) when (read.IsCancellationRequested)
         {
@@ -210,6 +195,29 @@ public partial class MainWindow
             if (ReferenceEquals(ilRead, read))
             {
                 ilRead = null;
+            }
+        }
+    }
+
+    private async Task ReadAssemblyAsync(IlViewerPane pane, (DebugSession Session, DapStackFrame Frame, int Stop) request, CancellationToken cancel)
+    {
+        TextSnapshot? sourceText = Editors.Active is { IsModified: false } document && request.Frame.Source?.Path is { } path
+            && PathNames.Same(document.Path, path) ? document.Text.Snapshot : null;
+        try
+        {
+            DisassembleFrameResponse result = await request.Session.DisassembleAsync(request.Frame, cancel);
+            CompiledSource compiled = await BackgroundWork.Run(() => CompiledSource.Assembly(result, cancel), cancel);
+            if (!cancel.IsCancellationRequested && Debugger.AssemblyFrame == request)
+            {
+                ilSourceText = sourceText;
+                pane.ShowAssembly($"{result.Architecture} · {request.Frame.Name}", compiled);
+            }
+        }
+        catch (DapException error)
+        {
+            if (!cancel.IsCancellationRequested && Debugger.AssemblyFrame == request)
+            {
+                pane.Say(error.Reason, request.Frame.Name);
             }
         }
     }
@@ -233,29 +241,14 @@ public partial class MainWindow
             : (new CompiledRequest(document.Path, Path.GetFullPath(target, project.Folder), mode), null);
     }
 
-    private async Task ReadIlAsync(IlViewerPane pane, CompiledRequest request, TextSnapshot sourceText)
+    private async Task ReadIlAsync(IlViewerPane pane, CompiledRequest request, TextSnapshot sourceText, CancellationToken cancel)
     {
-        using CancellationTokenSource read = new();
-        ilRead = read;
-        try
+        CompiledSource result = await BackgroundWork.Run(() => CompiledSource.Read(request, cancel), cancel);
+        if (!cancel.IsCancellationRequested)
         {
-            CompiledSource result = await BackgroundWork.Run(() => CompiledSource.Read(request, read.Token), read.Token);
-            if (ReferenceEquals(ilRead, read) && !read.IsCancellationRequested)
-            {
-                ilSourceText = sourceText;
-                pane.Show(request, result);
-                FollowIlCaret();
-            }
-        }
-        catch (OperationCanceledException) when (read.IsCancellationRequested)
-        {
-        }
-        finally
-        {
-            if (ReferenceEquals(ilRead, read))
-            {
-                ilRead = null;
-            }
+            ilSourceText = sourceText;
+            pane.Show(request, result);
+            FollowIlCaret();
         }
     }
 
