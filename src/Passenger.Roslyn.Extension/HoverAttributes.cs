@@ -141,10 +141,33 @@ internal static class HoverAttributes
                     .Concat(attribute.NamedArguments.Select(pair =>
                         (AttributeArgumentSyntax)generator.AttributeArgument(pair.Key, AttributeValue(generator, pair.Value))));
                 AttributeArgumentListSyntax list = SyntaxFactory.AttributeArgumentList(SyntaxFactory.SeparatedList(arguments));
-                tags.Add(new TaggedText(TextTags.Text, list.NormalizeWhitespace(eol: separator.Text, elasticTrivia: false).ToString()));
+                AddArgumentTags(tags, list.NormalizeWhitespace(eol: separator.Text, elasticTrivia: false));
             }
             tags.Add(new TaggedText(TextTags.Punctuation, "]"));
             tags.Add(separator);
+        }
+    }
+
+    private static void AddArgumentTags(ImmutableArray<TaggedText>.Builder tags, AttributeArgumentListSyntax arguments)
+    {
+        foreach (SyntaxToken token in arguments.DescendantTokens())
+        {
+            string kind = token.Kind() switch
+            {
+                SyntaxKind.StringLiteralToken or SyntaxKind.CharacterLiteralToken => TextTags.StringLiteral,
+                SyntaxKind.NumericLiteralToken => TextTags.NumericLiteral,
+                var keyword when SyntaxFacts.IsKeywordKind(keyword) => TextTags.Keyword,
+                _ => TextTags.Text,
+            };
+            if (token.HasLeadingTrivia)
+            {
+                tags.Add(new TaggedText(TextTags.Text, token.LeadingTrivia.ToFullString()));
+            }
+            tags.Add(new TaggedText(kind, token.Text));
+            if (token.HasTrailingTrivia)
+            {
+                tags.Add(new TaggedText(TextTags.Text, token.TrailingTrivia.ToFullString()));
+            }
         }
     }
 

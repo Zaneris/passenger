@@ -260,6 +260,13 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             + "void Cache.Clear([CachePolicy(\"count\", Priority = 1)] int count, [CachePolicy(\"scope\")] [string scope = \"default\"])";
         ColouredCode code = Assert.Single(window.Assist.HoverCard!.GetVisualDescendants().OfType<ColouredCode>());
         Assert.StartsWith(declaration, code.Code, StringComparison.Ordinal);
+        Assert.True(code.TryFindResource(TokenKeys.Syntax_String, code.ActualThemeVariant, out object? stringBrush));
+        Assert.True(code.TryFindResource(TokenKeys.Syntax_Number, code.ActualThemeVariant, out object? numberBrush));
+        IBrush stringColour = Assert.IsAssignableFrom<IBrush>(stringBrush);
+        IBrush numberColour = Assert.IsAssignableFrom<IBrush>(numberBrush);
+        Assert.Contains(code.Runs, run => run.Text == "\"short\"" && run.Foreground == stringColour);
+        Assert.Contains(code.Runs, run => run.Text == "\"count\"" && run.Foreground == stringColour);
+        Assert.Contains(code.Runs, run => run.Text == "2" && run.Foreground == numberColour);
         Assert.Contains("Clears the requested number of entries.", first, StringComparison.Ordinal);
         Assert.DoesNotContain("[CachePolicy(\"named\")]", first, StringComparison.Ordinal);
 
@@ -3616,13 +3623,14 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 [CachePolicy("cache")]
                 sealed class Cache
                 {
+                    private const int DefaultPriority = 2;
                     public Cache([CachePolicy("capacity")] int capacity) => Capacity = capacity;
                     [CachePolicy("property")] public int Count { get; }
                     [CachePolicy("field", Slots = new int[] { })] public int Capacity = 8;
                     [CachePolicy("event")] public event Action? Changed;
 
                     /// <summary>Clears the requested number of entries.</summary>
-                    [CachePolicy("short", Priority = 2)]
+                    [CachePolicy("short", Priority = DefaultPriority)]
                     [Description("Evicts entries")]
                     public void Clear([CachePolicy("count", Priority = 1)] int count, [CachePolicy("scope")] string scope = "default") => Changed?.Invoke();
 
