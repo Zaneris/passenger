@@ -533,6 +533,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             if (popups.Modal == box && context.Editors.Active == document && document.Text.Snapshot == text)
             {
                 box.OfferSuggestions(suggestions);
+                popups.Place(box, offset, above: true);
             }
         }
         catch (OperationCanceledException) when (asking.IsCancellationRequested)
@@ -980,6 +981,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
                 && popups.Modal == box)
             {
                 box.OfferFiles(named.Files, RenameSettings.RenameFiles);
+                popups.Place(box, offset, above: true);
             }
         }
         catch (LanguageServerFailed)

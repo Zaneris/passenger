@@ -1942,7 +1942,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         RenameAt("var draft", "pendingOrders");
         Assert.Equal(fromInitializer, Suggestions());
         window.KeyTextInput("ord");
-        Ui.WaitFor(() => Suggestions() is ["orders", "orderArray"], "the names beginning with ord to match the draft");
+        Ui.WaitFor(() => Suggestions() is ["orders", "orderArray", "pendingOrders", "pendingOrderArray"],
+            "the names ord matches, those it begins first, as completion narrows its names");
         Assert.Equal("ord", window.Assist.Renaming);
         Ui.Press(window, "DOWN");
         Assert.Equal("orders", window.Assist.Renaming);
@@ -1982,7 +1983,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         RenameAt("var overflow", First);
         Assert.Equal([First, "inventoryAdjustmentRequests", "adjustmentRequests", "requests", "pendingInventoryAdjustmentRequestList", Last], Suggestions());
         window.KeyTextInput("requestL");
-        Ui.WaitFor(() => Suggestions() is ["requestList"], "a matching name outside the first six to appear");
+        Ui.WaitFor(() => Suggestions() is ["requestList", ..], "a name requestL begins, outside the first six, to come first");
         Ui.Press(window, "ESCAPE");
 
         window.OpenFile(project.PathOf("RenameReader.cs"));
@@ -3936,6 +3937,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 using System.Collections.Generic;
                 using System.Threading.Tasks;
 
+                namespace Renaming;
+
                 sealed class Order;
                 sealed class CustomerOrder;
                 sealed class CustomerOrderRepository;
@@ -3978,7 +3981,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                     private static Task<Order[]> GetPendingOrdersAsync() => Task.FromResult<Order[]>([]);
                 }
                 """);
-            File.WriteAllText(PathOf("RenameReader.cs"), "static class RenameReader { public static Order Read() => RenameOffers.stash; }\n");
+            File.WriteAllText(PathOf("RenameReader.cs"), "namespace Renaming;\n\nstatic class RenameReader { public static Order Read() => RenameOffers.stash; }\n");
             File.WriteAllText(PathOf("Helper.cs"), "static class Helper\n{\n    public static int Twice(int value) => value * 2;\n}\n");
             File.WriteAllText(PathOf("AttributeUses.cs"), """
                 static class AttributeUses

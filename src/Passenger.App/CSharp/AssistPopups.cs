@@ -14,6 +14,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.App.Editors;
 using Passenger.Editor;
+using Passenger.Text;
 
 namespace Passenger.App.CSharp;
 
@@ -885,7 +886,8 @@ public sealed class RenameBox : Border, IHeardPopup, IGivesWayInHeight
     /// <summary>Held to a room narrower than a name's popup is wide.</summary>
     public void Within(double room) => Width = Math.Min(PopupFrame.Narrow, Math.Max(0, room));
 
-    /// <summary>The list gives way so there is room for the name field and at least one candidate.</summary>
+    /// <summary>Held to a room lower than it would be, its names' list giving way, down to a row, so the name and one name
+    /// offered show whole; as tall as it is of itself in a taller one.</summary>
     public void WithinHeight(double room)
     {
         if (suggestionList is not { } list)
@@ -918,41 +920,37 @@ public sealed class RenameBox : Border, IHeardPopup, IGivesWayInHeight
     /// <summary>Also rename files to reflect this change, checked or cleared.</summary>
     public event EventHandler<bool>? RenamesFilesChanged;
 
-    /// <summary>The options under the input changed how much room the box needs.</summary>
-    internal event EventHandler? ContentsChanged;
-
+    /// <summary>Names offered in place of the one renamed, best first: shown under the name, at most six at a time, those the
+    /// name as typed matches as completion matches its names (<see cref="FuzzyMatch.Label"/>), best way first and the
+    /// offer's order within a way; Up and Down or a click put one in the box, the keys staying there.</summary>
     internal void OfferSuggestions(IReadOnlyList<string> suggestions)
     {
         if (suggestions.Count == 0)
         {
             return;
         }
-
-        ListBox list = new()
+        ListBox list = new() { Classes = { StyleClasses.Tree }, Focusable = false };
+        ReusedRows.Use(list, () =>
         {
-            Classes = { StyleClasses.Tree },
-            Focusable = false,
-            ItemTemplate = new FuncDataTemplate<string>((item, _) => new TextBlock
-            {
-                Text = item,
-                Classes = { StyleClasses.Code },
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            }),
-        };
+            TextBlock row = new() { Classes = { StyleClasses.Code }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            return row.Showing<string>(offered => row.Text = offered);
+        });
         suggestionList = list;
         TextBlock label = new() { Text = "Suggested names", Classes = { StyleClasses.Muted, StyleClasses.Caption } };
         AutomationProperties.SetLabeledBy(list, label);
         StackPanel offered = new() { Spacing = Gaps.Tight, Children = { label, list } };
         body.Children.Insert(2, offered);
 
-        void Filter(string prefix)
+        void Filter(string typed)
         {
-            string[] matches = [.. suggestions.Where(item => item.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).Take(VisibleNameLimit)];
+            string[] matches = [.. suggestions.Select((name, at) => (name, at, score: FuzzyMatch.Label(typed, name)))
+                .Where(m => m.score is not null)
+                .OrderByDescending(m => FuzzyMatch.LabelWay(typed, m.name, m.score!.Value)).ThenBy(m => m.at)
+                .Take(VisibleNameLimit).Select(m => m.name)];
             list.SelectedIndex = -1;
             list.ItemsSource = matches;
             offered.IsVisible = matches.Length > 0;
             InvalidateMeasure();
-            ContentsChanged?.Invoke(this, EventArgs.Empty);
         }
 
         list.SelectionChanged += (_, _) =>
@@ -989,7 +987,6 @@ public sealed class RenameBox : Border, IHeardPopup, IGivesWayInHeight
         });
         // Measured again now, as it grew, so it is placed for its new size before the next layout.
         InvalidateMeasure();
-        ContentsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)

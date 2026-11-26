@@ -273,8 +273,8 @@
             <app:ThemeBackdrop Place="Frame" />
             </Panel>
         </Border>
-        <!-- Rename can extend over a tool window when the editor has too little room for a candidate. -->
-        <Canvas Name="RenameLayer" x:FieldModifier="internal" Grid.Row="1" />
+        <!-- A popup placed at a line that the editor's rows cannot hold whole, over the tool windows (PopupPlacement.Place). -->
+        <Canvas Name="LineOverflow" x:FieldModifier="internal" Grid.Row="1" />
     </Grid>
 
     <!-- Popups (Go to File, Go to Line) over everything; a click outside one dismisses it. -->
