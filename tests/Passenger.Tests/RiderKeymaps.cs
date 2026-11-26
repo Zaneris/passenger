@@ -73,6 +73,10 @@ internal static class RiderKeymaps
             ["EditorCodeBlockStartWithSelection"] = ["control shift OPEN_BRACKET"],
             ["EditorCodeBlockEndWithSelection"] = ["control shift CLOSE_BRACKET"],
             ["GotoCustomRegion"] = ["control alt PERIOD"],
+            ["QuickImplementations"] = ["control shift I"],
+            ["ShowErrorDescription"] = ["control F1"],
+            ["ExpressionTypeInfo"] = ["control shift P"],
+            ["ShowFilePath"] = ["control alt F12"],
         }),
         [MacOS] = (Default, new()
         {
@@ -84,6 +88,8 @@ internal static class RiderKeymaps
             ["EditorCodeBlockEnd"] = ["meta alt CLOSE_BRACKET"],
             ["EditorCodeBlockStartWithSelection"] = ["meta alt shift OPEN_BRACKET"],
             ["EditorCodeBlockEndWithSelection"] = ["meta alt shift CLOSE_BRACKET"],
+            ["QuickImplementations"] = ["alt SPACE", "meta Y"],
+            ["ExpressionTypeInfo"] = ["control shift P"],
             ["ToggleTemporaryLineBreakpoint"] = ["shift meta alt BACK_SLASH", "meta shift alt F8"],
             ["MethodOverloadSwitchUp"] = ["alt UP"],
             ["MethodOverloadSwitchDown"] = ["alt DOWN"],
@@ -112,9 +118,16 @@ internal static class RiderKeymaps
             ["EditorCodeBlockEnd"] = [],
             ["EditorCodeBlockStartWithSelection"] = ["control alt shift OPEN_BRACKET"],
             ["EditorCodeBlockEndWithSelection"] = ["control alt shift CLOSE_BRACKET"],
+            ["QuickImplementations"] = ["alt F12"],
+            ["ShowErrorDescription"] = [],
+            ["ExpressionTypeInfo"] = [],
+            ["ShowFilePath"] = [],
         }),
         ["Visual Studio OSX"] = (MacOS, new()
         {
+            ["ShowErrorDescription"] = [],
+            ["ExpressionTypeInfo"] = [],
+            ["ShowFilePath"] = [],
             ["OpenFile"] = ["meta O"],
             ["Generate"] = ["control meta N"],
             ["NewElement"] = ["meta N", "alt INSERT"],
@@ -145,6 +158,8 @@ internal static class RiderKeymaps
             ["EditorCodeBlockEnd"] = [],
             ["EditorCodeBlockStartWithSelection"] = [],
             ["EditorCodeBlockEndWithSelection"] = [],
+            ["QuickImplementations"] = ["alt F12"],
+            ["ExpressionTypeInfo"] = [],
         }),
         [Emacs] = (Default, EmacsOwn),
         ["VSCode OSX"] = (MacOS, new()
@@ -168,6 +183,7 @@ internal static class RiderKeymaps
             ["MethodOverloadSwitchUp"] = [],
             ["EditorCodeBlockStart"] = [],
             ["EditorCodeBlockEnd"] = [],
+            ["QuickImplementations"] = ["alt SPACE", "alt F12"],
         }),
     };
 

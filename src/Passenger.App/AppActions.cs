@@ -581,6 +581,13 @@ public static class AppActions
     public const string CodeBlockStartWithSelection = "app.editor.codeBlockStartWithSelection";
     public const string CodeBlockEndWithSelection = "app.editor.codeBlockEndWithSelection";
     public const string GoToRegion = "app.goToRegion";
+
+    // Peeks at the caret, bound as Rider's keymaps bind them (StructureKeys): its QuickImplementations, ShowErrorDescription,
+    // ExpressionTypeInfo and ShowFilePath.
+    public const string QuickImplementations = "app.code.quickImplementations";
+    public const string ErrorDescription = "app.code.errorDescription";
+    public const string ExpressionTypeInfo = "app.code.expressionTypeInfo";
+    public const string ShowFilePath = "app.showFilePath";
     public const string ShowExecutionPoint = "app.debug.showExecutionPoint";
 
     // Rider's XDebugger.AttachToProcess and RiderReattach, on its Visual Studio keymaps' Ctrl+Alt+P (Cmd+Alt+P) and
@@ -977,10 +984,10 @@ public static class AppActions
         _ => "Visual Studio",
     };
 
-    /// <summary>The moves by the code's structure as each of Rider's keymaps binds them, by its name. Where Rider gives a
-    /// key to one of them and to an action Passenger has there already, that action keeps it: Visual Studio's own Move Line
-    /// Alt+Up and Down, the Mac's Clone Caret Ctrl+Shift+Up and Down, and Select Containing Declaration Cmd+Alt+[ over Code
-    /// Block Start, as Rider's own descriptor gives it.</summary>
+    /// <summary>The moves by the code's structure and the peeks as each of Rider's keymaps binds them, by its name. Where
+    /// Rider gives a key to one of them and to an action Passenger has there already, that action keeps it: Visual Studio's
+    /// own Move Line Alt+Up and Down, the Mac's Clone Caret Ctrl+Shift+Up and Down and Redo Cmd+Y, and Select Containing
+    /// Declaration Cmd+Alt+[ over Code Block Start, as Rider's own descriptor gives it.</summary>
     private static readonly Dictionary<string, (string Action, string Key)[]> StructureKeys = new()
     {
         ["Visual Studio"] =
@@ -988,33 +995,35 @@ public static class AppActions
             (NextUsage, "control shift DOWN"), (PreviousUsage, "control shift UP"), (GoToContainingDeclaration, "control OPEN_BRACKET"),
             (SelectContainingDeclaration, "control shift OPEN_BRACKET"), (CodeBlockStart, "alt shift OPEN_BRACKET"),
             (CodeBlockStartWithSelection, "control alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "control alt shift CLOSE_BRACKET"),
-            (GoToRegion, "control alt PERIOD"),
+            (GoToRegion, "control alt PERIOD"), (QuickImplementations, "alt F12"),
         ],
         ["Visual Studio OSX"] =
         [
             (NextUsage, "control alt DOWN"), (PreviousUsage, "control alt UP"), (GoToContainingDeclaration, "meta OPEN_BRACKET"),
             (SelectContainingDeclaration, "meta alt OPEN_BRACKET"), (CodeBlockEnd, "meta alt CLOSE_BRACKET"),
             (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
-            (GoToRegion, "meta alt PERIOD"),
+            (GoToRegion, "meta alt PERIOD"), (QuickImplementations, "alt SPACE"),
         ],
         ["VSCode"] =
         [
             (GoToContainingDeclaration, "alt shift OPEN_BRACKET"), (SelectContainingDeclaration, "control alt shift OPEN_BRACKET"),
-            (GoToRegion, "control alt PERIOD"),
+            (GoToRegion, "control alt PERIOD"), (QuickImplementations, "alt F12"), (ErrorDescription, "control F1"), (ShowFilePath, "control alt F12"),
         ],
         ["VSCode OSX"] =
         [
             (MethodUp, "control shift UP"), (MethodDown, "control shift DOWN"), (NextUsage, "control alt DOWN"), (PreviousUsage, "control alt UP"),
             (GoToContainingDeclaration, "control OPEN_BRACKET"), (SelectContainingDeclaration, "control shift OPEN_BRACKET"),
             (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
-            (GoToRegion, "meta alt PERIOD"),
+            (GoToRegion, "meta alt PERIOD"), (QuickImplementations, "alt SPACE"), (QuickImplementations, "alt F12"), (ErrorDescription, "meta F1"),
+            (ExpressionTypeInfo, "control shift P"), (ShowFilePath, "meta alt F12"),
         ],
         ["$default"] =
         [
             (MethodUp, "alt UP"), (MethodDown, "alt DOWN"), (GoToContainingDeclaration, "alt shift OPEN_BRACKET"),
             (SelectContainingDeclaration, "control alt shift OPEN_BRACKET"), (CodeBlockStart, "control OPEN_BRACKET"), (CodeBlockEnd, "control CLOSE_BRACKET"),
             (CodeBlockStartWithSelection, "control shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "control shift CLOSE_BRACKET"),
-            (GoToRegion, "control alt PERIOD"),
+            (GoToRegion, "control alt PERIOD"), (QuickImplementations, "control shift I"), (ErrorDescription, "control F1"),
+            (ExpressionTypeInfo, "control shift P"), (ShowFilePath, "control alt F12"),
         ],
         ["Mac OS X 10.5+"] =
         [
@@ -1022,7 +1031,8 @@ public static class AppActions
             (GoToContainingDeclaration, "control OPEN_BRACKET"), (SelectContainingDeclaration, "control shift OPEN_BRACKET"),
             (CodeBlockStart, "meta alt OPEN_BRACKET"), (CodeBlockEnd, "meta alt CLOSE_BRACKET"),
             (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
-            (GoToRegion, "meta alt PERIOD"),
+            (GoToRegion, "meta alt PERIOD"), (QuickImplementations, "alt SPACE"), (QuickImplementations, "meta Y"), (ErrorDescription, "meta F1"),
+            (ExpressionTypeInfo, "control shift P"), (ShowFilePath, "meta alt F12"),
         ],
     };
 

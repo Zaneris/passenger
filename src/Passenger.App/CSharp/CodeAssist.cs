@@ -6,6 +6,7 @@ using Passenger.App.MSBuild;
 using Passenger.App.Web;
 using Passenger.App.Workspace;
 using Passenger.App.Xaml;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Lsp;
 using Passenger.Text;
@@ -419,6 +420,106 @@ public sealed class CodeAssist
 
     /// <summary>A value read for the card at an offset of the file shown, its row taking the keys (Quick Evaluate Expression).</summary>
     public void ShowValue(int offset, DebuggerHover value) => quickInfo.ShowValue(offset, value);
+
+    /// <summary>How many places Quick Implementations shows the code of, and how many lines of each.</summary>
+    private const int MostPeeked = 4;
+
+    private const int MostPeekedLines = 30;
+
+    /// <summary>Quick Implementations: the code of what implements the symbol at the caret, else of its declaration, each
+    /// under its file and line, in a card at the caret.</summary>
+    public Task QuickImplementationsAsync(string title) => quickInfo.PeekAsync(title, Refusals.NothingImplements, async (card, cancel) =>
+    {
+        if (context.Editors.Active is not { } file || context.ServerOf(file)?.Lsp is not { } lsp)
+        {
+            return;
+        }
+        int offset = context.Caret;
+        IReadOnlyList<LspLocation> places = await lsp.ImplementationAsync(offset, cancel);
+        if (places.Count == 0)
+        {
+            places = await lsp.DefinitionAsync(offset, cancel);
+        }
+        string root = context.Root ?? string.Empty;
+        foreach (LspLocation place in places.Take(MostPeeked))
+        {
+            string path = DocumentUris.ToPath(place.Uri);
+            TextSnapshot? open = ServerPlaces.TextOf(context.Editors, path);
+            if (await BackgroundWork.Run(() => Peeked(open ?? ServerPlaces.Read(path), path, place.Range.Start), cancel) is { } peeked)
+            {
+                card.AddText($"{PathNames.Shown(path, root)}:{peeked.Line + 1}");
+                card.AddCode(peeked.Code, Passenger.Languages.Language.ForPath(path));
+            }
+        }
+    });
+
+    /// <summary>The code a place declares, from where its declaration begins (a C# member or type whole, by the file's parse;
+    /// in another language, the place's line), its lines but the first set back by the first's indent, at most
+    /// <see cref="MostPeekedLines"/> of them; null for a file that could not be read.</summary>
+    private static (int Line, string Code)? Peeked(TextSnapshot? text, string path, LspPosition at)
+    {
+        if (text is null)
+        {
+            return null;
+        }
+        int offset = text.GetOffset(ServerPlaces.PositionOf(text, at));
+        LineSpan placed = text.GetLine(text.GetLineFromOffset(offset));
+        TextRange whole = Passenger.Languages.Language.ForPath(path) == Passenger.Languages.Language.CSharp
+            && Passenger.Languages.CSharp.CodeStructure.Containing(new Passenger.Languages.CSharp.ParsedText(Passenger.Languages.CSharp.CSharpParsing.Parse(text.ToString()), text), new TextRange(offset, 0), select: true) is { } found
+                ? found.Whole
+                : new TextRange(placed.Start, placed.Length);
+        int line = text.GetLineFromOffset(whole.Start);
+        int indent = whole.Start - text.GetLineStart(line);
+        string[] lines = text.GetText(whole.Start, whole.Length).Split('\n');
+        IEnumerable<string> shown = lines.Take(MostPeekedLines).Select((each, i) => i > 0 && each.Length >= indent && string.IsNullOrWhiteSpace(each[..indent]) ? each[indent..] : each);
+        return (line, string.Join('\n', shown) + (lines.Length > MostPeekedLines ? "\n…" : string.Empty));
+    }
+
+    /// <summary>Error Description: the problems on the caret's line, each in its kind's colour, in a card at the caret.</summary>
+    public Task ErrorDescriptionAsync(string title) => quickInfo.PeekAsync(title, Refusals.NoProblemHere, (card, _) =>
+    {
+        TextSnapshot text = context.Editor.Document.Snapshot;
+        LineSpan line = text.GetLine(text.GetLineFromOffset(Math.Min(context.Caret, text.Length)));
+        foreach (Marker marker in context.Editor.Markers.Where(m => m.Range.Start <= line.End && (m.Range.End > line.Start || m.Range.Start == line.Start)))
+        {
+            card.AddText(marker.Message, marker.Kind switch
+            {
+                MarkerKind.Error => InfoCard.Brush(TokenKeys.Error),
+                MarkerKind.Warning => InfoCard.Brush(TokenKeys.Warning),
+                _ => null,
+            });
+        }
+        return Task.CompletedTask;
+    });
+
+    /// <summary>Expression Type Info: the type of the expression at the caret, as C# writes it there, in a card.</summary>
+    public Task ExpressionTypeAsync(string title) => quickInfo.PeekAsync(title, Refusals.NoExpressionType, async (card, cancel) =>
+    {
+        if (context.Editors.Active is { } file && file.Language == Passenger.Languages.Language.CSharp && context.ServerOf(file)?.Lsp is { } lsp
+            && (await lsp.ExtensionAsync<Roslyn.Extension.ExpressionTyped>(Roslyn.Extension.Handlers.ExpressionType, new Roslyn.Extension.Caret(lsp.PlaceOf(context.Caret)), cancel)).Type is { } type)
+        {
+            card.AddCode(type, Passenger.Languages.Language.CSharp);
+        }
+    });
+
+    /// <summary>Show File Path: the file shown and each folder above it, in a list at the caret; the one chosen is shown in
+    /// the system's file manager by <paramref name="reveal"/>.</summary>
+    public void ShowFilePath(string title, OpenDocument file, Action<string> reveal)
+    {
+        List<Choice> choices = [new Choice(Path.GetFileName(file.Path), file.Path, file.Path)];
+        foreach (string folder in FoldersUp.From(Path.GetDirectoryName(file.Path) ?? string.Empty))
+        {
+            choices.Add(new Choice(Path.GetFileName(folder) is { Length: > 0 } name ? name : folder, folder, folder));
+        }
+        popups.ShowModal(new ChoicePopup(title, choices), context.Caret, title, choice =>
+        {
+            if (choice?.Value is string chosen)
+            {
+                reveal(chosen);
+            }
+            return Task.CompletedTask;
+        });
+    }
 
     /// <summary>Places of the file shown to go to, by their names (Go to Region's): straight to one, else a list at the
     /// caret to choose from; <paramref name="none"/> said where there are none.</summary>

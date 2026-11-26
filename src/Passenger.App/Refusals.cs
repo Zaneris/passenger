@@ -193,6 +193,15 @@ public static class Refusals
     /// <summary>Next or Previous Usage where the editor highlights no usage of the symbol at the caret.</summary>
     public const string NoUsagesHighlighted = "No usage of the symbol at the caret is highlighted";
 
+    /// <summary>Quick Implementations where the server knows nothing the caret's symbol is implemented by or declared at.</summary>
+    public const string NothingImplements = "Nothing at the caret has an implementation or a declaration to show";
+
+    /// <summary>Error Description where the caret's line has no problem.</summary>
+    public const string NoProblemHere = "No problem is marked on the caret's line";
+
+    /// <summary>Expression Type Info where no expression with a type stands at the caret.</summary>
+    public const string NoExpressionType = "No expression with a type is at the caret";
+
     /// <summary>Go to Region in a C# file with no #region.</summary>
     public static string NoRegions(string file) => $"{file} has no #region";
 

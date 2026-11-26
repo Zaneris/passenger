@@ -103,7 +103,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>What the window says of the code around the caret: the status bar's path, a hover card and File
     /// Structure, once the server has the file; the structure window following the editor; Go to Symbol's generated
     /// declarations; parameter info's overloads, those the arguments no longer fit set back; documentation as its tags
-    /// write it in every card; and a hover's signature with the attributes declared on what it names.</summary>
+    /// write it in every card; a hover's signature with the attributes declared on what it names; and the peeks at the
+    /// caret.</summary>
     [AvaloniaFact]
     public void The_code_around_the_caret_is_named_and_its_overloads_shown_as_the_server_has_it()
     {
@@ -113,6 +114,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("the structure window shows the shown file's outline whenever it is shown, once the server has the file, and follows the editor", () => new CodeAssistTests(project), t => t.The_structure_window_shows_the_shown_files_outline_whenever_it_is_shown_and_once_the_server_has_the_file_and_follows_the_editor());
         Flow.StepApart("Go to Symbol lists a generated method's own declaration alone, and what only a generator wrote after", () => new CodeAssistTests(project), t => t.Go_to_Symbol_lists_a_generated_methods_own_declaration_alone_and_what_only_a_generator_wrote_after());
         Flow.StepApart("parameter info shows every overload, setting back those the arguments no longer fit", () => new CodeAssistTests(project), t => t.Parameter_info_shows_every_overload_setting_back_those_the_arguments_no_longer_fit());
+        Flow.StepApart("the peeks show an interface member's implementation, the caret line's problem, an expression's type and the file's folders", () => new CodeAssistTests(project), t => t.The_peeks_show_an_interface_members_implementation_the_caret_lines_problem_an_expressions_type_and_the_files_folders());
         Flow.StepApart("documentation shows bold, emphasis, underline, code and links in the hover, completion and parameter cards, tags written escaped too", () => new CodeAssistTests(project), t => t.Documentation_shows_its_tags_in_the_hover_completion_and_parameter_cards_tags_written_escaped_too());
         Flow.StepApart("a hover's signature shows the attributes declared on the symbol and its parameters, those out of reach left out", () => new CodeAssistTests(project), t => t.A_hovers_signature_shows_the_attributes_declared_on_the_symbol_and_its_parameters_those_out_of_reach_left_out());
     }
@@ -702,6 +704,58 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         + "        var count = label.Length;\n        double half = first / 2.0;\n        int Doubled(int value, bool loud) => loud ? value * 2 : value;\n"
         + "        _ = label;\n        _ = Described(label, label, first);\n        _ = System.Math.Max(1, 2);\n        return Doubled(count, false) + (int)half;\n    }\n\n"
         + "    public static string Described(string firstName, string lastName, int yearOfBirth, bool includeTheMiddleInitial = false) => firstName;\n}\n";
+
+    /// <summary>Quick Implementations, Error Description and Expression Type Info each show their card at the caret from their
+    /// keys where the keymap in force has some, and Show File Path lists the file and its folders, the one chosen shown in
+    /// the file manager.</summary>
+    private void The_peeks_show_an_interface_members_implementation_the_caret_lines_problem_an_expressions_type_and_the_files_folders()
+    {
+        MainWindow window = project.Open("Gauges.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        void Run(string action)
+        {
+            if (window.Actions.Keymap.ShortcutsFor(action) is [var key, ..])
+            {
+                Ui.Press(window, key.Notation());
+            }
+            else
+            {
+                Assert.Null(window.Actions.Run(action));
+                Ui.Settle();
+            }
+        }
+
+        Ui.PlaceAfter(editor, "any.Re");
+        Run(AppActions.QuickImplementations);
+        Ui.WaitFor(() => window.Assist.HoverText?.Contains("public int Read() => 1;", StringComparison.Ordinal) == true,
+            () => $"Dial's Read in the Quick Implementations card, which says [{window.Assist.HoverText}] ({window.Status})");
+        Assert.Contains("Gauges.cs:8", window.Assist.HoverText, StringComparison.Ordinal);
+        Ui.Press(window, "ESCAPE");
+
+        Ui.PlaceAfter(editor, "dial.Read()");
+        Run(AppActions.ExpressionTypeInfo);
+        Ui.WaitFor(() => window.Assist.HoverText?.Trim() == "int", () => $"int in the Expression Type Info card, which says [{window.Assist.HoverText}] ({window.Status})");
+        Ui.Press(window, "ESCAPE");
+
+        Ui.PlaceAfter(editor, "any.Read();");
+        window.KeyTextInput(" static int Wrong() => \"text\";");
+        Ui.WaitFor(() => editor.Markers.Any(m => m.Kind == MarkerKind.Error), () => "the error of a string returned as an int marked");
+        Run(AppActions.ErrorDescription);
+        Ui.WaitFor(() => window.Assist.HoverText?.Contains("string", StringComparison.Ordinal) == true,
+            () => $"the error in the Error Description card, which says [{window.Assist.HoverText}] ({window.Status})");
+        Ui.Press(window, "ESCAPE");
+        Ui.Press(window, Ui.Command("Z"));
+
+        string folder = Path.GetDirectoryName(window.EditorArea.Active!.Path)!;
+        Run(AppActions.ShowFilePath);
+        Ui.WaitFor(() => window.Assist.Offered.Count > 1, "the file and its folders listed");
+        Assert.Equal(["Gauges.cs", Path.GetFileName(folder)], window.Assist.Offered.Take(2));
+        Ui.Press(window, "DOWN");
+        Ui.Press(window, "ENTER");
+        Assert.Equal([folder], window.ShownInFileManager);
+        window.Close();
+    }
 
     /// <summary>Parameter Info at a call of several overloads shows each: those the arguments so far no longer fit set back,
     /// the parameter the caret's argument fills strong in each that fits. An argument typed that only one overload takes sets

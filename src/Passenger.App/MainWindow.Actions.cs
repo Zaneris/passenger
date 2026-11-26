@@ -247,6 +247,14 @@ public partial class MainWindow
         Add(A.CodeBlockStartWithSelection, "Move Caret to Code Block Start with Selection", "Editor", _ => ToCodeBlock(end: false, extend: true), Refusals.NeedsFile);
         Add(A.CodeBlockEndWithSelection, "Move Caret to Code Block End with Selection", "Editor", _ => ToCodeBlock(end: true, extend: true), Refusals.NeedsFile);
         Add(A.GoToRegion, "Go to Region", "Navigate", _ => GoToRegion(), WhyNoCSharpStructure, ("Navigate", 1, 7), words: ["Regions", "#region"]);
+        Add(A.QuickImplementations, "Quick Implementations", "Code", _ => IdeErrors.Observe(Assist.QuickImplementationsAsync(TitleOf(A.QuickImplementations))),
+            WhyNoCSharpStructure, words: ["Quick Definition", "Peek Definition", "Peek Implementation"]);
+        Add(A.ErrorDescription, "Error Description", "Code", _ => IdeErrors.Observe(Assist.ErrorDescriptionAsync(TitleOf(A.ErrorDescription))), Refusals.NeedsFile,
+            words: ["Problem", "Diagnostic"]);
+        Add(A.ExpressionTypeInfo, "Expression Type Info", "Code", _ => IdeErrors.Observe(Assist.ExpressionTypeAsync(TitleOf(A.ExpressionTypeInfo))), WhyNoCSharpStructure,
+            words: ["Type of Expression"]);
+        Add(A.ShowFilePath, "Show File Path", "Navigate", _ => Assist.ShowFilePath(TitleOf(A.ShowFilePath), Editors.Active!, ShowInFileManager), Refusals.NeedsFile,
+            words: ["Reveal", "Folder"]);
 
         Add(A.Back, "Back", "Navigate", _ => navigator.StepHistory(-1), menu: ("Navigate", 0, 0));
         Add(A.Forward, "Forward", "Navigate", _ => navigator.StepHistory(1), menu: ("Navigate", 0, 1));

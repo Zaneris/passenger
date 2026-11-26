@@ -96,6 +96,44 @@ internal sealed class QuickInfo
     /// <summary>The pointer left the word the card is of: the card goes after a pause, unless the pointer reaches it.</summary>
     public void PointerLeft() => Leave();
 
+    /// <summary>A peek at the caret (Quick Implementations, Error Description, Expression Type Info): the card filled by
+    /// <paramref name="fill"/>, placed and told as Quick Documentation's is; <paramref name="none"/> said where it fills
+    /// nothing, and a server's failure said for <paramref name="what"/>.</summary>
+    public async Task PeekAsync(string what, string none, Func<InfoCard, CancellationToken, Task> fill)
+    {
+        hovering?.Cancel();
+        CancellationTokenSource cancel = new();
+        hovering = cancel;
+        ForgetValues();
+        hoverCard.Clear();
+        hoverCard.IsVisible = false;
+        int offset = context.Caret;
+        try
+        {
+            await fill(hoverCard, cancel.Token);
+        }
+        catch (LanguageServerFailed failed)
+        {
+            context.Failed(what, failed);
+            return;
+        }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+        {
+            return;
+        }
+        if (cancel.IsCancellationRequested)
+        {
+            return;
+        }
+        if (hoverCard.IsEmpty)
+        {
+            context.Say(none);
+            return;
+        }
+        Place(offset, Editor.PointOf(offset), null, null, null);
+        Said();
+    }
+
     /// <summary>Quick Documentation: the card for what is at the caret (its problems, a paused program's value, the symbol's
     /// description); pressed again while a value's card shows, the card takes the keys, its rows to open with the arrows.</summary>
     public void QuickDocumentation()
