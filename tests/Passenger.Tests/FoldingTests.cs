@@ -35,6 +35,7 @@ public sealed class FoldingTests : IDisposable
         Flow.StepApart<FoldingTests>("a method folds to its signature the caret steps past it and going into it unfolds it", t => t.A_method_folds_to_its_signature_the_caret_steps_past_it_and_going_into_it_unfolds_it());
         Flow.StepApart<FoldingTests>("line commands take a folded method whole and step over one whole leaving every body whole", t => t.Line_commands_take_a_folded_method_whole_and_step_over_one_whole_leaving_every_body_whole());
         Flow.StepApart<FoldingTests>("keys among three hundred folded methods carry every region to where the parse finds it", t => t.Keys_among_three_hundred_folded_methods_carry_every_region_to_where_the_parse_finds_it());
+        Flow.StepApart<FoldingTests>("a selection and a block the person folds stay folded through edits and a reopen and Expand takes them away", t => t.A_selection_and_a_block_the_person_folds_stay_folded_through_edits_and_a_reopen_and_expand_takes_them_away());
         Flow.StepApart<FoldingTests>("a file opens folded as it last closed and so does its folder after a restart", t => t.A_file_opens_folded_as_it_last_closed_and_so_does_its_folder_after_a_restart());
         Flow.StepApart<FoldingTests>("a file opens with its header usings and regions folded and Collapse to Definitions folds every member and doc comment", t => t.A_file_opens_with_its_header_usings_and_regions_folded_and_Collapse_to_Definitions_folds_every_member_and_doc_comment());
         Flow.StepApart<FoldingTests>("collapsing with the view wheeled down past where the folded rows end draws them", t => t.Collapsing_with_the_view_wheeled_down_past_where_the_folded_rows_end_draws_them());
@@ -683,6 +684,74 @@ public sealed class FoldingTests : IDisposable
     }
 
     /// <summary>A window that keeps its state in a folder of its own, over the test's folder.</summary>
+    /// <summary>Collapse Block and Collapse Selection, each from its keys where the keymap in force has some, fold a stretch of
+    /// the person's own, which stays folded where its text goes through edits above, inside and below it and through a
+    /// reopen of the file; Expand at it takes it away.</summary>
+    private void A_selection_and_a_block_the_person_folds_stay_folded_through_edits_and_a_reopen_and_expand_takes_them_away()
+    {
+        string settings = TestFolders.Create("fold-own-");
+        try
+        {
+            string path = Path.Combine(folder, "Own.cs");
+            File.WriteAllText(path, Source);
+            MainWindow window = Keeping(settings);
+            window.OpenFile(path);
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
+            Ui.WaitFor(() => document.FoldsFound, "the file's regions");
+            editor.Focus();
+            void Run(string action)
+            {
+                if (window.Actions.Keymap.ShortcutsFor(action) is [var key, ..])
+                {
+                    Ui.Press(window, key.Notation());
+                }
+                else
+                {
+                    Assert.Null(window.Actions.Run(action));
+                    Ui.Settle();
+                }
+            }
+            (int, int)[] Own() => [.. editor.FoldRegions.Where(r => r is { Kind: FoldKind.Own, Folded: true }).Select(r => (r.Start, r.End))];
+            string Text() => editor.Document.Snapshot.ToString();
+
+            editor.Selections = SelectionSet.Single(Source.IndexOf("int area", StringComparison.Ordinal));
+            Run(AppActions.CollapseBlock);
+            int twice = Source.IndexOf("    int Twice", StringComparison.Ordinal);
+            editor.Selections = SelectionSet.Single(new Selection(twice, Source.Length - 1));
+            Run(AppActions.CollapseSelection);
+            (int, int)[] Expected() => [(Text().IndexOf("{\n        int area", StringComparison.Ordinal), Text().IndexOf("}\n\n    int Twice", StringComparison.Ordinal) + 1),
+                (Text().IndexOf("    int Twice", StringComparison.Ordinal), Text().LastIndexOf('}') + 1)];
+            Assert.Equal(Expected(), Own());
+
+            editor.ApplyEdits([new TextEdit(0, 0, "// Shapes.\n")]);
+            editor.ApplyEdits([new TextEdit(Text().IndexOf("w * h", StringComparison.Ordinal), 0, "1 * ")]);
+            editor.ApplyEdits([new TextEdit(Text().Length, 0, "// End.\n")]);
+            Ui.WaitFor(() => Own().SequenceEqual(Expected()), () => $"the folds of the person's own where their text went, not [{string.Join("; ", Own())}]");
+
+            Ui.Press(window, Ui.Command("S"));
+            Assert.True(window.EditorArea.Close(document), "The file did not close");
+            window.OpenFile(path);
+            Ui.Settle();
+            editor = window.EditorArea.CodeEditor;
+            Ui.WaitFor(() => window.EditorArea.Active!.FoldsFound, "the reopened file's regions");
+            Assert.Equal(Expected(), Own());
+
+            editor.Focus();
+            editor.Selections = SelectionSet.Single(Text().IndexOf("    int Twice", StringComparison.Ordinal));
+            Assert.Null(window.Actions.Run(EditorActions.Unfold));
+            Ui.Settle();
+            Assert.Equal([Expected()[0]], Own());
+            Assert.DoesNotContain(editor.FoldRegions, r => r.Kind == FoldKind.Own && !r.Folded);
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(settings);
+        }
+    }
+
     private MainWindow Keeping(string settings)
     {
         MainWindow window = new() { Width = 1000, Height = 800, StateFolder = settings };

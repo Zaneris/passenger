@@ -293,6 +293,13 @@ public sealed class OpenDocument : Observable
         Path = path;
         Text = new TextDocument(file.Text);
         Decorations = new DocumentDecorations(Text);
+        Decorations.Changed += (_, kind) =>
+        {
+            if (kind == DecorationKind.Folds && ownFolds.Count > 0 && FoldRegions.Any(r => r is { Kind: FoldKind.Own, Folded: false }))
+            {
+                FoldRegions = WithOwn(FoldRegions);
+            }
+        };
         Encoding = file.Encoding;
         HasBom = file.HasBom;
         EncodingName = file.EncodingName;
@@ -746,6 +753,46 @@ public sealed class OpenDocument : Observable
     /// <summary>Which of the regions first found in the file fold as it opens (the window's: those folded as it last
     /// closed, else those Settings folds by default); none while unset. A region that holds a caret stays open.</summary>
     public Func<FoldRegion, bool>? FoldsAtFirst { get; set; }
+
+    /// <summary>The stretches the person folded themselves, carried through every edit by their anchors; one an edit emptied
+    /// or the person unfolded is let go.</summary>
+    private readonly List<AnchoredRange> ownFolds = [];
+
+    /// <summary>The person's own folds the file opens with (kept with its other folds), laid as its regions are first found.</summary>
+    public IReadOnlyList<(int Start, int End)> OwnFoldsAtFirst { get; set; } = [];
+
+    /// <summary>The stretches the person folded themselves, as they stand now.</summary>
+    public IReadOnlyList<(int Start, int End)> OwnFolds => [.. ownFolds.Where(f => f.End > f.Start).Select(f => (f.Start, f.End))];
+
+    /// <summary>Folds a stretch of the person's own (Collapse Selection, Collapse Block), kept folded through every edit by
+    /// its anchors until it is unfolded or an edit takes its text away.</summary>
+    public void FoldOwn(TextRange range)
+    {
+        ownFolds.Add(Text.RangeAt(range, AnchorGravity.After, AnchorGravity.Before));
+        FoldRegions = WithOwn(FoldRegions);
+    }
+
+    /// <summary>The regions with the person's own folds laid over them, folded, where their anchors stand now: those the
+    /// regions hold unfolded (the person opened them) or an edit emptied are let go first.</summary>
+    private IReadOnlyList<FoldRegion> WithOwn(IReadOnlyList<FoldRegion> regions)
+    {
+        if (ownFolds.Count == 0)
+        {
+            return regions;
+        }
+        HashSet<(int, int)> opened = [.. FoldRegions.Where(r => r is { Kind: FoldKind.Own, Folded: false }).Select(r => (r.Start, r.End))];
+        ownFolds.RemoveAll(fold =>
+        {
+            bool gone = fold.End <= fold.Start || opened.Contains((fold.Start, fold.End));
+            if (gone)
+            {
+                fold.Remove();
+            }
+            return gone;
+        });
+        return [.. regions.Where(r => r.Kind != FoldKind.Own).Concat(ownFolds.Select(f => new FoldRegion(f.Start, f.End, "…", Folded: true, Kind: FoldKind.Own)))
+            .OrderBy(r => r.Start).ThenByDescending(r => r.End)];
+    }
 
     /// <summary>Whether the file's regions have been found, so which of them are folded is the person's to keep.</summary>
     public bool FoldsFound { get; private set; }
@@ -1363,10 +1410,15 @@ public sealed class OpenDocument : Observable
         if (!FoldsFound)
         {
             FoldsFound = true;
-            FoldRegions = Opening(found);
+            TextSnapshot text = Text.Snapshot;
+            foreach ((int start, int end) in OwnFoldsAtFirst.Where(f => f.Start >= 0 && f.End <= text.Length && f.End > f.Start))
+            {
+                ownFolds.Add(Text.RangeAt(TextRange.FromBounds(start, end), AnchorGravity.After, AnchorGravity.Before));
+            }
+            FoldRegions = WithOwn(Opening(found));
             return;
         }
-        if (Same(FoldRegions, found))
+        if (ownFolds.Count == 0 && Same(FoldRegions, found))
         {
             return;
         }
@@ -1374,12 +1426,12 @@ public sealed class OpenDocument : Observable
         IReadOnlyList<FoldRegion> regions = FoldRegions;
         for (int i = 0; i < regions.Count; i++)
         {
-            if (regions[i].Folded)
+            if (regions[i] is { Folded: true, Kind: not FoldKind.Own })
             {
                 (folded ??= []).Add(regions[i].Start);
             }
         }
-        FoldRegions = folded is null ? found : FoldList.Of(found).FoldedAt(folded);
+        FoldRegions = WithOwn(folded is null ? found : FoldList.Of(found).FoldedAt(folded));
     }
 
     /// <summary>The first regions, folded as the file opens: as <see cref="FoldsAtFirst"/> says, but for one hiding a caret.</summary>

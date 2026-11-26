@@ -202,6 +202,12 @@ public static class Refusals
     /// <summary>Expression Type Info where no expression with a type stands at the caret.</summary>
     public const string NoExpressionType = "No expression with a type is at the caret";
 
+    /// <summary>Collapse Selection with nothing selected.</summary>
+    public const string NothingSelectedToFold = "Select what to fold first";
+
+    /// <summary>Collapse Block where no block of braces is around the caret.</summary>
+    public const string NoBlockHere = "No block of braces is around the caret";
+
     /// <summary>Go to Region in a C# file with no #region.</summary>
     public static string NoRegions(string file) => $"{file} has no #region";
 

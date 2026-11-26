@@ -77,6 +77,8 @@ internal static class RiderKeymaps
             ["ShowErrorDescription"] = ["control F1"],
             ["ExpressionTypeInfo"] = ["control shift P"],
             ["ShowFilePath"] = ["control alt F12"],
+            ["CollapseSelection"] = ["control PERIOD"],
+            ["CollapseBlock"] = ["control shift PERIOD"],
         }),
         [MacOS] = (Default, new()
         {
@@ -122,6 +124,7 @@ internal static class RiderKeymaps
             ["ShowErrorDescription"] = [],
             ["ExpressionTypeInfo"] = [],
             ["ShowFilePath"] = [],
+            ["CollapseSelection"] = ["control M , H", "control M , control H"],
         }),
         ["Visual Studio OSX"] = (MacOS, new()
         {
@@ -160,6 +163,8 @@ internal static class RiderKeymaps
             ["EditorCodeBlockEndWithSelection"] = [],
             ["QuickImplementations"] = ["alt F12"],
             ["ExpressionTypeInfo"] = [],
+            ["CollapseSelection"] = [],
+            ["CollapseBlock"] = ["control alt OPEN_BRACKET", "control K , control L"],
         }),
         [Emacs] = (Default, EmacsOwn),
         ["VSCode OSX"] = (MacOS, new()
@@ -184,6 +189,7 @@ internal static class RiderKeymaps
             ["EditorCodeBlockStart"] = [],
             ["EditorCodeBlockEnd"] = [],
             ["QuickImplementations"] = ["alt SPACE", "alt F12"],
+            ["CollapseBlock"] = ["meta alt OPEN_BRACKET", "meta K , meta L"],
         }),
     };
 

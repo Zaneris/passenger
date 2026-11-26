@@ -253,6 +253,8 @@ public partial class MainWindow
             words: ["Problem", "Diagnostic"]);
         Add(A.ExpressionTypeInfo, "Expression Type Info", "Code", _ => IdeErrors.Observe(Assist.ExpressionTypeAsync(TitleOf(A.ExpressionTypeInfo))), WhyNoCSharpStructure,
             words: ["Type of Expression"]);
+        Add(A.CollapseSelection, "Collapse Selection", "Editor", _ => CollapseSelection(), Refusals.NeedsFile, words: ["Fold Selection", "Folding"]);
+        Add(A.CollapseBlock, "Collapse Block", "Editor", _ => CollapseBlock(), Refusals.NeedsFile, words: ["Fold Block", "Folding"]);
         Add(A.ShowFilePath, "Show File Path", "Navigate", _ => Assist.ShowFilePath(TitleOf(A.ShowFilePath), Editors.Active!, ShowInFileManager), Refusals.NeedsFile,
             words: ["Reveal", "Folder"]);
 

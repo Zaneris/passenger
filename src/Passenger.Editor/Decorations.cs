@@ -54,6 +54,9 @@ public enum FoldKind : byte
 
     /// <summary>#region to #endregion.</summary>
     Region,
+
+    /// <summary>A stretch the person folded themselves (Collapse Selection, Collapse Block), no region the language gives.</summary>
+    Own,
 }
 
 /// <summary>A word drawn inside a line at an offset, part of no document: a parameter's name before its argument or a
