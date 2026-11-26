@@ -126,6 +126,8 @@ internal static class Declarations
         ClassDeclarationSyntax type => [new(Typed(type), "class", SymbolKind.Class, type.Identifier.SpanStart)],
         StructDeclarationSyntax type => [new(Typed(type), "struct", SymbolKind.Struct, type.Identifier.SpanStart)],
         InterfaceDeclarationSyntax type => [new(Typed(type), "interface", SymbolKind.Interface, type.Identifier.SpanStart)],
+        TypeDeclarationSyntax { Keyword.ValueText: "union" } type => [new(Typed(type), "union", SymbolKind.Struct, type.Identifier.SpanStart)],
+        ExtensionBlockDeclarationSyntax extension => [new(Extension(extension), "extension", SymbolKind.Class, extension.Keyword.SpanStart)],
         EnumDeclarationSyntax type => [new(type.Identifier.Text, "enum", SymbolKind.Enum, type.Identifier.SpanStart)],
         DelegateDeclarationSyntax type => [new($"{type.Identifier.Text}{type.TypeParameterList}({Parameters(type.ParameterList)})", "delegate", SymbolKind.Function,
             type.Identifier.SpanStart, type.ReturnType)],
@@ -151,8 +153,13 @@ internal static class Declarations
 
     private static string Typed(TypeDeclarationSyntax type) => $"{type.Identifier.Text}{type.TypeParameterList}";
 
+    /// <summary>An extension block, named as the compiler names it, by what it extends: <c>extension&lt;T&gt;(List&lt;T&gt;)</c>.</summary>
+    private static string Extension(ExtensionBlockDeclarationSyntax extension) =>
+        $"extension{extension.TypeParameterList}({(extension.ParameterList is { } receiver ? Parameters(receiver) : string.Empty)})";
+
     private static string? Name(SyntaxNode node) => node switch
     {
+        ExtensionBlockDeclarationSyntax extension => Extension(extension),
         BaseTypeDeclarationSyntax type => type.Identifier.Text,
         MethodDeclarationSyntax method => $"{method.Identifier.Text}({Parameters(method.ParameterList)})",
         ConstructorDeclarationSyntax constructor => $"{constructor.Identifier.Text}({Parameters(constructor.ParameterList)})",
