@@ -108,7 +108,7 @@ public sealed partial class CodeEditor
         && (offset < span.End || (offset == span.End && (span.IsLast || beforeWrap)));
 
     /// <summary>The composition as it is drawn.</summary>
-    private TextLine PreeditLabel() => labels.Get((Preedit, -9, null), () => Format(Preedit, [], RunWith(palette.Preedit)));
+    private TextLine PreeditLabel() => labels.Get((Preedit, -9), () => Format(Preedit, [], RunWith(palette.Preedit)));
 
     /// <summary>The first hint at or after an offset, shown or not.</summary>
     private int FirstHintFrom(int offset) => Sorted.FirstAtOrAfter(decorations.InlayHints, static h => h.Offset, offset);
@@ -158,7 +158,7 @@ public sealed partial class CodeEditor
     /// <summary>The room a hint takes on its row, its label padded, and the label.</summary>
     private double HintWidth(InlayHint hint, out TextLine label)
     {
-        label = labels.TryGet((hint.Label, -6, null), out TextLine? known) ? known : labels.Add((hint.Label, -6, null), Format(hint.Label, [], hintRun ??= HintRun()));
+        label = labels.TryGet((hint.Label, -6), out TextLine? known) ? known : labels.Add((hint.Label, -6), Format(hint.Label, [], hintRun ??= HintRun()));
         double pad = metrics.CharWidth / 2;
         return label.WidthIncludingTrailingWhitespace + pad + (hint.PadLeft ? pad : 0) + (hint.PadRight ? pad : 0);
     }
@@ -179,7 +179,7 @@ public sealed partial class CodeEditor
     {
         foreach (Gap gap in gaps)
         {
-            if (!labels.TryGet((gap.Hint.Label, -6, null), out TextLine? label) || !ReferenceEquals(label, gap.Label))
+            if (!labels.TryGet((gap.Hint.Label, -6), out TextLine? label) || !ReferenceEquals(label, gap.Label))
             {
                 return false;
             }
@@ -483,5 +483,5 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>A hint's label: a little smaller than the code, in its own muted colour.</summary>
-    private GenericTextRunProperties HintRun(IBrush? foreground = null) => new(Typeface, FontSize * 0.88, foregroundBrush: foreground ?? palette.InlayHint);
+    private GenericTextRunProperties HintRun() => new(Typeface, FontSize * 0.88, foregroundBrush: palette.InlayHint);
 }

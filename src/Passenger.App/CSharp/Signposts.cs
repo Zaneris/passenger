@@ -282,7 +282,7 @@ internal sealed class Signposts
             return;
         }
         bool withComplexity = settings.SignpostComplexity;
-        if (!ReferenceEquals(known.Parsed, parsed) || known.WithComplexity != withComplexity)
+        if (!ReferenceEquals(known.Parsed, parsed) || (known.Complexity is not null) != withComplexity)
         {
             IReadOnlyList<SignpostDeclaration> declarations;
             ILookup<int, FunctionComplexity>? complexity;
@@ -303,7 +303,6 @@ internal sealed class Signposts
             known.Parsed = parsed;
             known.Declarations = declarations;
             known.Complexity = complexity;
-            known.WithComplexity = withComplexity;
             known.Version = version;
             RefreshComplexity(document, known);
         }
@@ -381,6 +380,7 @@ internal sealed class Signposts
         }
         IReadOnlyList<BlameLine>? blame = settings.SignpostAuthors ? vcs.BlameOf(document) : null;
         Dictionary<int, List<RowAboveWord>> rows = [];
+        bool said = blame is not null;
         foreach ((SignpostDeclaration declaration, (string, int) key) in Keyed(CountsOrAuthors ? known.Declarations : []))
         {
             List<RowAboveWord> words = [];
@@ -397,6 +397,7 @@ internal sealed class Signposts
             {
                 words.Add(new RowAboveWord(authors.Label, new SignpostWord(SignpostKind.Authors, declaration.Name, authors.Latest)));
             }
+            said |= words.Count > 0;
             rows.Add(declaration.LineCode, words);
         }
         if (settings.SignpostComplexity && known.Complexity is { } complexity)
@@ -404,12 +405,8 @@ internal sealed class Signposts
             foreach (IGrouping<int, FunctionComplexity> group in complexity)
             {
                 bool shared = group.Skip(1).Any();
-                foreach (FunctionComplexity function in group)
+                foreach (FunctionComplexity function in group.Where(f => f.Score >= settings.SignpostComplexityMinimum))
                 {
-                    if (function.Score < settings.SignpostComplexityMinimum)
-                    {
-                        continue;
-                    }
                     if (!rows.TryGetValue(group.Key, out List<RowAboveWord>? words))
                     {
                         rows.Add(group.Key, words = []);
@@ -418,23 +415,21 @@ internal sealed class Signposts
                 }
             }
         }
-        bool said = blame is not null || rows.Values.Any(words => words.Count > 0);
         // Keep space for counts that have not arrived once there is something to show.
-        document.Decorations.SetRowsAbove(said
-            ? [.. rows.Select(row => new RowAbove(row.Key, row.Value.Count > 0 ? row.Value : [new RowAboveWord("…")]))]
-            : []);
+        document.Decorations.SetRowsAbove([.. rows.Where(row => said || row.Value.Count > 0)
+            .Select(row => new RowAbove(row.Key, row.Value.Count > 0 ? row.Value : [new RowAboveWord("…")]))]);
     }
 
     private RowAboveWord ComplexityScore(FunctionComplexity function, int version, bool shared)
     {
-        string foreground = function.Score switch
+        string dotBrush = function.Score switch
         {
             int score when score < settings.SignpostComplexityYellowFrom => TokenKeys.Vcs_File_Added,
             int score when score < settings.SignpostComplexityRedFrom => TokenKeys.Warning,
             _ => TokenKeys.Error,
         };
-        string label = shared ? $"● {function.Score} ({function.Name})" : $"● {function.Score}";
-        return new RowAboveWord(label, new ComplexityWord(function, version), foreground);
+        string label = shared ? $"{function.Score} ({function.Name})" : $"{function.Score}";
+        return new RowAboveWord(label, new ComplexityWord(function, version), dotBrush);
     }
 
     /// <summary>The declarations with what their counts are kept by: their name, and which of the declarations of that name
@@ -459,7 +454,6 @@ internal sealed class Signposts
         public ILookup<int, FunctionComplexity>? Complexity { get; set; }
         public (Anchor Place, string Name)? ExpandedComplexity { get; set; }
         public ParsedText? Parsed { get; set; }
-        public bool WithComplexity { get; set; }
         public int Version { get; set; } = -1;
         public Dictionary<(string, int), Counted> Counts { get; } = [];
     }

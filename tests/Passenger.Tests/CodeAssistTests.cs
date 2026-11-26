@@ -1120,8 +1120,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     {
         MainWindow window = project.Open("Shapes.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
-        string Said(int line) => string.Join(" / ", editor.RowsAbove.Where(r => editor.Document.Snapshot.GetLineFromOffset(r.Offset) == line)
-            .SelectMany(r => r.Words).Where(w => w.Foreground is null).Select(w => w.Text));
+        string Said(int line) => string.Join(" / ", editor.RowsAbove.Where(r => editor.Document.Snapshot.GetLineFromOffset(r.Offset) == line).SelectMany(r => r.Words).Select(w => w.Text));
         Ui.WaitFor(() => Said(0) == "1 usage / 1 implementation" && Said(2) == "no usages / 1 implementation",
             () => $"the signposts counted: IShape's says '{Said(0)}' and Sides' '{Said(2)}', where they say '1 usage / 1 implementation' and 'no usages / 1 implementation' "
                 + $"(the language server {(window.CSharpService is { } csharp ? $"{(csharp.IsReady ? "ready" : "not ready")}, '{csharp.State}', the file {(csharp.For(window.EditorArea.Active!)?.Lsp is null ? "not " : string.Empty)}opened in it" : "not started")})");
@@ -1190,15 +1189,15 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 SignpostComplexity = true, SignpostComplexityMinimum = 3, SignpostComplexityYellowFrom = 8, SignpostComplexityRedFrom = 16,
             };
             window.ApplySettings(complexityOnly);
-            IEnumerable<(string Text, string? Foreground)> Scores() => editor.RowsAbove.SelectMany(r => r.Words).Select(w => (w.Text, w.Foreground));
+            IEnumerable<(string Text, string? DotBrush)> Scores() => editor.RowsAbove.SelectMany(r => r.Words).Select(w => (w.Text, w.DotBrush));
             IEnumerable<(int Line, string Text)> Increments() => editor.LineAnnotations
                 .Where(a => a.Text.StartsWith('+')).Select(a => (a.Line, a.Text));
             Ui.WaitFor(() => editor.RowsAbove.Count == 2, () => $"Complexity signposts: {string.Join(", ", Scores())}");
-            Assert.Equal([("● 8", TokenKeys.Warning), ("● 21", TokenKeys.Error)], Scores());
+            Assert.Equal([("8", TokenKeys.Warning), ("21", TokenKeys.Error)], Scores());
             Assert.Empty(Increments());
 
             window.ApplySettings(complexityOnly with { SignpostComplexityMinimum = 0, SignpostComplexityYellowFrom = 9, SignpostComplexityRedFrom = 22 });
-            Assert.Equal([("● 0", TokenKeys.Vcs_File_Added), ("● 8", TokenKeys.Vcs_File_Added), ("● 21", TokenKeys.Warning)], Scores());
+            Assert.Equal([("0", TokenKeys.Vcs_File_Added), ("8", TokenKeys.Vcs_File_Added), ("21", TokenKeys.Warning)], Scores());
             window.ApplySettings(complexityOnly);
 
             LineAnnotation debuggerValue = new(2, "value: 1", LineAnnotationLook.Muted);

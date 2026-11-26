@@ -140,7 +140,7 @@ public sealed partial class CodeEditor
         foreach (RowAboveWord word in row.Words)
         {
             key.Add(word.Text);
-            key.Add(word.Foreground);
+            key.Add(word.DotBrush);
         }
         key.Add(aboveHovered is { } hovered && hovered.Line == span.Line && hovered.Nth == span.Nth ? hovered.Word : -1);
         return key.Value;
@@ -167,15 +167,21 @@ public sealed partial class CodeEditor
             for (int i = 0; i < words.Count; i++)
             {
                 RowAboveWord word = words[i];
-                (string Text, int Style, string? Foreground) key = (word.Text, -10, word.Foreground);
+                (string Text, int Style) key = (word.Text, -10);
                 if (!labels.TryGet(key, out TextLine? label))
                 {
-                    IBrush? foreground = word.Foreground is { } resource ? Tokens.Find(this, resource) : null;
-                    label = labels.Add(key, Format(word.Text, [], foreground is null ? hintRun ??= HintRun() : HintRun(foreground)));
+                    label = labels.Add(key, Format(word.Text, [], hintRun ??= HintRun()));
                 }
-                double width = label.WidthIncludingTrailingWhitespace;
+                double textX = x;
+                if (word.DotBrush is { } resource && Tokens.Find(this, resource) is { } brush)
+                {
+                    const double radius = 3;
+                    context.DrawEllipse(brush, null, new Point(x + radius, lineHeight / 2), radius, radius);
+                    textX += 2 * radius + 5;
+                }
+                double width = textX - x + label.WidthIncludingTrailingWhitespace;
                 double top = (lineHeight - label.Height) / 2;
-                label.Draw(context, new Point(x, top));
+                label.Draw(context, new Point(textX, top));
                 if (aboveHovered is { } hovered && hovered.Line == span.Line && hovered.Nth == span.Nth && hovered.Word == i)
                 {
                     context.FillRectangle(palette.LinkUnderline, new Rect(x, top + label.Baseline + 1, width, 1));
