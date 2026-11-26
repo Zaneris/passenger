@@ -19,13 +19,13 @@ public sealed class RowGlyphs : Control
     public static readonly StyledProperty<bool> HasChevronProperty = AvaloniaProperty.Register<RowGlyphs, bool>(nameof(HasChevron));
     public static readonly StyledProperty<bool> TurnedProperty = AvaloniaProperty.Register<RowGlyphs, bool>(nameof(Turned));
     public static readonly StyledProperty<Geometry?> IconProperty = AvaloniaProperty.Register<RowGlyphs, Geometry?>(nameof(Icon));
-    public static readonly StyledProperty<IBrush?> IconBrushProperty = AvaloniaProperty.Register<RowGlyphs, IBrush?>(nameof(IconBrush));
+    public static readonly StyledProperty<string?> IconTintProperty = AvaloniaProperty.Register<RowGlyphs, string?>(nameof(IconTint));
 
     static RowGlyphs()
     {
         WidthProperty.OverrideDefaultValue<RowGlyphs>(Column + IconSize + Gap);
         HeightProperty.OverrideDefaultValue<RowGlyphs>(ListRow.Height);
-        AffectsRender<RowGlyphs>(HasChevronProperty, TurnedProperty, IconProperty, IconBrushProperty);
+        AffectsRender<RowGlyphs>(HasChevronProperty, TurnedProperty, IconProperty, IconTintProperty);
     }
 
     public RowGlyphs()
@@ -58,11 +58,12 @@ public sealed class RowGlyphs : Control
         set => SetValue(IconProperty, value);
     }
 
-    /// <summary>The icon's brush; the theme's icon colour when none is given.</summary>
-    public IBrush? IconBrush
+    /// <summary>The theme key of the icon's brush, looked up as it is drawn so it follows the theme; the theme's icon colour
+    /// when none is given.</summary>
+    public string? IconTint
     {
-        get => GetValue(IconBrushProperty);
-        set => SetValue(IconBrushProperty, value);
+        get => GetValue(IconTintProperty);
+        set => SetValue(IconTintProperty, value);
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -88,7 +89,7 @@ public sealed class RowGlyphs : Control
         }
         if (Icon is { } icon)
         {
-            Glyph(context, icon, IconBrush ?? themed, new Point(Column, (Bounds.Height - IconSize) / 2), IconSize, turned: false, scale);
+            Glyph(context, icon, (IconTint is { } tint ? Resource(tint) as IBrush : null) ?? themed, new Point(Column, (Bounds.Height - IconSize) / 2), IconSize, turned: false, scale);
         }
     }
 

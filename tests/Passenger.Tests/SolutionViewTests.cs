@@ -1223,7 +1223,7 @@ public sealed class SolutionViewTests : IDisposable
     {
         RowGlyphs glyphs = window.ExplorerView.GetVisualDescendants().OfType<RowGlyphs>().FirstOrDefault(i => ReferenceEquals(i.DataContext, row))
             ?? throw new InvalidOperationException($"The Explorer draws no icon on {row.Name}'s row");
-        return (glyphs.Icon, glyphs.IconBrush);
+        return (glyphs.Icon, glyphs.IconTint is { } tint ? (Avalonia.Media.IBrush)Resource(tint) : null);
     }
 
     private static object Resource(string key)

@@ -43,7 +43,7 @@ public sealed class ProjectLabel : DockPanel
         }
         ProjectKind kind = ProjectKinds.Of(project);
         icon.Data = FileIcons.ForProject(project.Path, kind);
-        icon.Foreground = FileIcons.BrushForFile(project.Path);
+        icon.ForegroundKey = FileIcons.TintForFile(project.Path);
         AutomationProperties.SetName(this, ProjectKinds.Said(words, kind));
     }
 }

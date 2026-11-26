@@ -673,7 +673,7 @@ public sealed class FindView : DockPanel
             FindRow? file = !usage && row.Children.FirstOrDefault()?.Usage is not null ? row.Children[0] : null;
             icon.IsVisible = file is not null;
             icon.Data = file is { Usage: { } first } ? Explorer.FileIcons.ForFile(first.Path) : null;
-            icon.Foreground = file is { Usage: { } at } ? Explorer.FileIcons.BrushForFile(at.Path) : null;
+            icon.ForegroundKey = file is { Usage: { } at } ? Explorer.FileIcons.TintForFile(at.Path) : null;
             label.Text = row.Label;
             label.Classes.Set(StyleClasses.Strong, !usage && row.Depth == 0);
             label.Classes.Set(StyleClasses.Code, usage);

@@ -1341,7 +1341,7 @@ public sealed class ExplorerNode : Observable, ITreeRow
     public Thickness Indent => new(Depth * Gaps.Indent, 0, 0, 0);
     public double Opacity => IsDimmed || IsCut ? ListRow.Dimmed : 1;
     public Geometry Icon => FileIcons.For(this);
-    public IBrush IconBrush => FileIcons.BrushFor(this);
+    public string IconTint => FileIcons.TintFor(this);
 
     /// <summary>Whether a path lies under this node: inside its folder, or its project's folder, or nested under its file.</summary>
     public bool Contains(string path)

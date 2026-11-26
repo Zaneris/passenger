@@ -1259,7 +1259,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 {
                     string last = folder.Name[(folder.Name.LastIndexOf('/') + 1)..];
                     folderIcon.Data = Explorer.FileIcons.ForFolder(last, branch.IsExpanded);
-                    folderIcon.Foreground = Explorer.FileIcons.BrushForFolder(last);
+                    folderIcon.ForegroundKey = Explorer.FileIcons.TintForFolder(last);
                 }
                 branchName.Text = folder?.Name ?? ((CommitGroup)branch).Name;
                 branchName.Classes.Set(StyleClasses.Strong, folder is null);

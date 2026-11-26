@@ -77,7 +77,7 @@ public sealed class UsagesPopup : SearchPopup<Usage>
         return row.Showing<Usage>(usage =>
         {
             icon.Data = Explorer.FileIcons.ForFile(usage.Path);
-            icon.Foreground = Explorer.FileIcons.BrushForFile(usage.Path);
+            icon.ForegroundKey = Explorer.FileIcons.TintForFile(usage.Path);
             place.Text = $"{Path.GetFileName(usage.Path)}:{usage.Line + 1}";
             kind.Text = !usage.Generated ? KindOf(usage.Kind) : KindOf(usage.Kind) is { Length: > 0 } does ? $"{does} in generated code" : "In generated code";
             ToolTip.SetTip(row, usage.Path);

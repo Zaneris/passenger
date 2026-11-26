@@ -143,7 +143,7 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
         return row.Showing<RecentLocation>(place =>
         {
             icon.Data = Explorer.FileIcons.ForFile(place.Place.Path);
-            icon.Foreground = Explorer.FileIcons.BrushForFile(place.Place.Path);
+            icon.ForegroundKey = Explorer.FileIcons.TintForFile(place.Place.Path);
             name.Text = place.Name;
             member.Text = place.Member ?? string.Empty;
             ToolTip.SetTip(header, place.Place.Path);

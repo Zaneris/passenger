@@ -146,7 +146,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
             if (file)
             {
                 icon.Data = Explorer.FileIcons.ForFile(symbol.Path);
-                icon.Foreground = Explorer.FileIcons.BrushForFile(symbol.Path);
+                icon.ForegroundKey = Explorer.FileIcons.TintForFile(symbol.Path);
             }
             else
             {

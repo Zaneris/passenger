@@ -48,7 +48,7 @@ public sealed class ChangedFileRow
     public void Show(string path, ChangeKind kind, string where)
     {
         icon.Data = FileIcons.ForFile(path);
-        icon.Foreground = FileIcons.BrushForFile(path);
+        icon.ForegroundKey = FileIcons.TintForFile(path);
         name.Text = Path.GetFileName(path);
         name.Resource(TextBlock.ForegroundProperty, ref colour, KindToken(kind));
         name.TextDecorations = kind is ChangeKind.Deleted ? TextDecorations.Strikethrough : null;

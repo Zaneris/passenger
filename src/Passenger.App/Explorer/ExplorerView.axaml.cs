@@ -650,7 +650,7 @@ public partial class ExplorerView : UserControl
             glyphs.HasChevron = node.HasChildren;
             glyphs.Turned = node.IsExpanded;
             glyphs.Icon = node.Icon;
-            glyphs.IconBrush = node.IconBrush;
+            glyphs.IconTint = node.IconTint;
             name.Text = node.Name;
             foreach (TextBlock coloured in (TextBlock[])[name, change])
             {

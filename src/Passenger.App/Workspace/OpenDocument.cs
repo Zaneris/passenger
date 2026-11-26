@@ -1398,7 +1398,7 @@ public sealed class OpenDocument : Observable
     public Avalonia.Media.Geometry Icon => Tool is { } tool && Avalonia.Application.Current is { } app
         && app.TryGetResource(tool.Window.Icon, app.ActualThemeVariant, out object? found) && found is Avalonia.Media.Geometry glyph ? glyph
         : Diff is not null ? Explorer.FileIcons.ForDiff : Explorer.FileIcons.ForFile(Path);
-    public Avalonia.Media.IBrush IconBrush => Explorer.FileIcons.BrushForFile(Path);
+    public string IconTint => Explorer.FileIcons.TintForFile(Path);
 
     /// <summary>The carets: the editor's while the file is shown there, as left otherwise, moved by every change to the text.</summary>
     public SelectionSet Selections { get; set; } = SelectionSet.Single(0);

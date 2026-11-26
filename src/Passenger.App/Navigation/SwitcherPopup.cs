@@ -16,7 +16,7 @@ public sealed record SwitcherRow(string Name, string After, OpenDocument? Docume
 {
     public Geometry? Icon => Document?.Icon;
 
-    public IBrush? IconBrush => Document?.IconBrush;
+    public string? IconTint => Document?.IconTint;
 
     /// <summary>The theme's key of a tool window's icon.</summary>
     public string? IconKey => Window?.Icon;
@@ -59,7 +59,7 @@ public sealed class SwitcherPopup : SearchPopup<SwitcherRow>, IOwnKeys
     {
         icon.Data = row.Icon;
         icon.DataKey = row.IconKey;
-        icon.Foreground = row.IconBrush;
+        icon.ForegroundKey = row.IconTint;
         name.Text = row.Name;
         after.Text = row.After;
     });

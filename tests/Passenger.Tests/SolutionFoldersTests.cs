@@ -87,8 +87,8 @@ public sealed class SolutionFoldersTests : IDisposable
         ExplorerTree tree = window.ExplorerView.Tree;
         ExplorerNode items = Row(window, NodeKind.SolutionFolder, "Solution Items");
         Assert.True(ReferenceEquals(Resource(IconKeys.SolutionFolder), items.Icon), "A closed solution folder is drawn as a folder on disk is, so it passes for one");
-        Assert.NotSame(Resource(TokenKeys.File_Folder), items.IconBrush);
-        Assert.Same(Resource(TokenKeys.File_SolutionFolder), items.IconBrush);
+        Assert.NotEqual(TokenKeys.File_Folder, items.IconTint);
+        Assert.Equal(TokenKeys.File_SolutionFolder, items.IconTint);
 
         Ui.ClickRow(window, items);
         Ui.Press(window, "RIGHT");
