@@ -42,7 +42,7 @@ public sealed class MarkdownReadingTests
     public void CSharp_documentation_formats_escaped_layout_and_references()
     {
         const string xml = """
-            <strong>Title</strong> <i>Approximate</i> <em>Exact</em>
+            <strong>Title</strong> <i>Approximate</i> <em>Exact</em> <u>Unchanged</u>
             <para><paramref name="value"/> of type <typeparamref name="T"/><br/>or <seealso langword="null"/></para>
             <list type="number"><item><term>Read</term><description>an input</description></item><item><description>Return it</description></item></list>
             <c>List&lt;T&gt;</c> <code><b>literal</b></code> <seealso href="https://example.test/docs">Docs</seealso>
@@ -50,11 +50,21 @@ public sealed class MarkdownReadingTests
         IReadOnlyList<M.Inline> parts = M.DocumentationInlines(xml.Replace("<", @"\<", StringComparison.Ordinal).Replace(">", @"\>", StringComparison.Ordinal));
         Assert.Equal(["Title", "Read"], parts.OfType<M.Strong>().Select(strong => M.Plain(strong.Parts)));
         Assert.Equal(["Approximate", "Exact"], parts.OfType<M.Emphasis>().Select(emphasis => M.Plain(emphasis.Parts)));
+        Assert.Equal("Unchanged", M.Plain(Assert.Single(parts.OfType<M.Underline>()).Parts));
         Assert.Equal(["value", "T", "null", "List<T>", "<b>literal</b>"], parts.OfType<M.CodeSpan>().Select(code => code.Text));
         M.Link link = Assert.Single(parts.OfType<M.Link>());
         Assert.Equal(("Docs", "https://example.test/docs"), (M.Plain(link.Parts), link.Target));
         Assert.Contains("1. Read – an input 2. Return it", M.Plain(parts), StringComparison.Ordinal);
         Assert.Contains("value of type T or null", M.Plain(parts), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CSharp_documentation_tables_are_readable_as_text()
+    {
+        const string Table = "<list type=\"table\"><listheader><term>Input</term><description>Result</description></listheader>"
+            + "<item><term><c>hello</c></term><description>Same string</description></item></list>";
+        string markdown = $"```text\n{Passenger.Roslyn.Extension.CodeParts.DocumentationTable}{Table}\n```";
+        Assert.Equal(["Input | Result", "hello | Same string"], Passenger.App.CSharp.HoverMarkdown.ByKind(markdown, plain: false, words: false).SelectMany(block => block.Lines));
     }
 
     /// <summary>GFM 0.29's examples 351, 487 to 489, 361, 362, 364, 383, 387 to 390, 398, 404, 378, 405, 409 and 403 (its

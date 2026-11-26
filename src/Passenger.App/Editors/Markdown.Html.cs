@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Xml;
+using System.Xml.Linq;
 
 namespace Passenger.App.Editors;
 
@@ -47,12 +49,12 @@ internal static partial class Markdown
     /// <summary>The tags read inside words; every other is its words as written.</summary>
     private static readonly HashSet<string> WordTags = new(StringComparer.Ordinal)
     {
-        "a", "img", "picture", "br", "b", "strong", "i", "em", "code", "kbd",
+        "a", "img", "picture", "br", "b", "strong", "i", "em", "u", "code", "kbd",
     };
 
     private static readonly HashSet<string> DocumentationTags = new(StringComparer.Ordinal)
     {
-        "a", "b", "strong", "i", "em", "see", "seealso", "c", "code", "para", "br",
+        "a", "b", "strong", "i", "em", "u", "see", "seealso", "c", "code", "para", "br",
         "paramref", "typeparamref", "list", "listheader", "item", "term", "description",
     };
 
@@ -602,6 +604,32 @@ internal static partial class Markdown
             ? DocumentationWords(HtmlNodes(words.Text, documentation: true), 0)
             : [part])];
 
+    internal static Table? DocumentationTable(string carried)
+    {
+        const string Prefix = Roslyn.Extension.CodeParts.DocumentationTable;
+        if (!carried.StartsWith(Prefix, StringComparison.Ordinal))
+        {
+            return null;
+        }
+        try
+        {
+            XElement list = XElement.Parse(carried[Prefix.Length..]);
+            if (list.Name != "list" || (string?)list.Attribute("type") != "table")
+            {
+                return null;
+            }
+            IReadOnlyList<string> header = list.Element("listheader") is { } heading ? Row(heading) : [];
+            return new Table([null, null], header, [.. list.Elements("item").Select(Row)], Documentation: true);
+        }
+        catch (XmlException)
+        {
+            return null;
+        }
+
+        static IReadOnlyList<string> Row(XElement row) => [Cell(row.Element("term")), Cell(row.Element("description"))];
+        static string Cell(XElement? cell) => cell is null ? "" : string.Concat(cell.Nodes().Select(p => p.ToString(SaveOptions.DisableFormatting))).Trim();
+    }
+
     private static IEnumerable<Inline> DocumentationWords(IEnumerable<HtmlNode> nodes, int depth) =>
         nodes.SelectMany<HtmlNode, Inline>(node => node switch
         {
@@ -661,6 +689,7 @@ internal static partial class Markdown
         "a" when element.Attributes.TryGetValue("href", out string? href) => [new Link(inner, href)],
         "b" or "strong" => [new Strong(inner)],
         "i" or "em" => [new Emphasis(inner)],
+        "u" => [new Underline(inner)],
         "code" or "kbd" => [new CodeSpan(Plain(inner))],
         "img" => ImageOf(element, null, null) is { } image ? [image] : [],
         "br" => [new Break()],

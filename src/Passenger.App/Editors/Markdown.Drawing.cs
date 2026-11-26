@@ -186,13 +186,15 @@ internal static partial class Markdown
     {
         int columns = table.Aligns.Count;
         Grid grid = new() { ColumnDefinitions = new ColumnDefinitions(string.Join(',', Enumerable.Repeat("Auto", columns))) };
-        IReadOnlyList<IReadOnlyList<string>> rows = [table.Header, .. table.Rows];
+        IReadOnlyList<IReadOnlyList<string>> rows = table.AllRows;
         for (int row = 0; row < rows.Count; row++)
         {
+            bool head = row == 0 && table.Header.Count > 0;
             grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
             for (int column = 0; column < columns; column++)
             {
-                MarkdownText words = MarkdownText.Of(Inlines(column < rows[row].Count ? rows[row][column] : ""), page, row == 0 ? StyleClasses.MdCellHead : StyleClasses.MdCellText);
+                string source = column < rows[row].Count ? rows[row][column] : "";
+                MarkdownText words = MarkdownText.Of(table.Documentation ? DocumentationInlines(source) : Inlines(source), page, head ? StyleClasses.MdCellHead : StyleClasses.MdCellText);
                 words.TextAlignment = table.Aligns[column] switch
                 {
                     Align.Center => TextAlignment.Center,
@@ -209,7 +211,7 @@ internal static partial class Markdown
                     [Grid.RowProperty] = row,
                     [Grid.ColumnProperty] = column,
                 };
-                cell.Classes.Set(StyleClasses.Head, row == 0);
+                cell.Classes.Set(StyleClasses.Head, head);
                 grid.Children.Add(cell);
             }
         }
@@ -270,6 +272,14 @@ public sealed class MarkdownText : SelectableWords
                     break;
                 case Markdown.Emphasis emphasis:
                     Add(emphasis.Parts, bold, italic: true, link);
+                    break;
+                case Markdown.Underline underlined:
+                    int first = Inlines!.Count;
+                    Add(underlined.Parts, bold, italic, link);
+                    foreach (Avalonia.Controls.Documents.Run run in Inlines.Skip(first).OfType<Avalonia.Controls.Documents.Run>())
+                    {
+                        run.TextDecorations = Avalonia.Media.TextDecorations.Underline;
+                    }
                     break;
                 case Markdown.Link linked when page.LinkOf(linked.Target) is { } target:
                     int start = shown.Length;

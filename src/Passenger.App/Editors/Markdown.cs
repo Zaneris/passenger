@@ -37,8 +37,12 @@ internal static partial class Markdown
     /// <summary>Fenced code with its info string's first word (<c>csharp</c>), empty for none.</summary>
     internal sealed record Code(string Text, string Info = "") : Block;
 
-    /// <summary>GitHub's table: each column's alignment (null for none), the header's cells and each row's, as written.</summary>
-    internal sealed record Table(IReadOnlyList<Align?> Aligns, IReadOnlyList<string> Header, IReadOnlyList<IReadOnlyList<string>> Rows) : Block;
+    /// <summary>A table's columns, optional header and rows. Documentation cells can contain XML comment tags.</summary>
+    internal sealed record Table(IReadOnlyList<Align?> Aligns, IReadOnlyList<string> Header,
+        IReadOnlyList<IReadOnlyList<string>> Rows, bool Documentation = false) : Block
+    {
+        public IReadOnlyList<IReadOnlyList<string>> AllRows => Header.Count == 0 ? Rows : [Header, .. Rows];
+    }
 
     internal sealed record Quote(IReadOnlyList<Block> Blocks) : Block;
 
@@ -53,6 +57,8 @@ internal static partial class Markdown
     internal sealed record Strong(IReadOnlyList<Inline> Parts) : Inline;
 
     internal sealed record Emphasis(IReadOnlyList<Inline> Parts) : Inline;
+
+    internal sealed record Underline(IReadOnlyList<Inline> Parts) : Inline;
 
     /// <summary>A link's words and where it goes, as written: what it may open is the page's.</summary>
     internal sealed record Link(IReadOnlyList<Inline> Parts, string Target) : Inline;
@@ -594,6 +600,7 @@ internal static partial class Markdown
                 CodeSpan code => code.Text,
                 Strong strong => Plain(strong.Parts),
                 Emphasis emphasis => Plain(emphasis.Parts),
+                Underline underline => Plain(underline.Parts),
                 Link link => Plain(link.Parts),
                 Image image => image.Alt,
                 Break => " ",
