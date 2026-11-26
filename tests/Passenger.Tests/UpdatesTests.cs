@@ -206,6 +206,17 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
                 Assert.Skip("This step runs on Windows alone");
             }
         });
+        Flow.StepApart("on Windows an apply Update exe refuses is tried again and the version installed started", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                t.On_Windows_an_apply_Update_exe_refuses_is_tried_again_and_the_version_installed_started();
+            }
+            else
+            {
+                Assert.Skip("This step runs on Windows alone");
+            }
+        });
         Flow.StepApart("on Windows an Update exe that does not start leaves the update ready and the next start says why", () => new UpdatesTests(images), t =>
         {
             if (OperatingSystem.IsWindows())
@@ -1341,6 +1352,45 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         }
     }
 
+    /// <summary>On Windows an apply Update.exe refuses, as it refuses one whose current\ something holds through its own
+    /// retries, is tried again by the hand-off Passenger starts apart as it ends, with Velopack's own
+    /// words, waiting for Passenger's process first; and for Restart to Update the version installed is then started, as
+    /// Update.exe's own restart would (#2300). A batch file stands in for Update.exe, refusing its first apply.</summary>
+    [SupportedOSPlatform("windows")]
+    private void On_Windows_an_apply_Update_exe_refuses_is_tried_again_and_the_version_installed_started()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Velopack's install is Windows'");
+        using IDisposable theme = TestsTheme();
+        VelopackInstall copy = new(TestFolders.Create("installed-"));
+        string asked = Path.Combine(copy.Root, "asked.txt");
+        string refused = Path.Combine(copy.Root, "refused");
+        string update = TestFolders.Write(copy.Root, "Update.cmd",
+            $"@echo off\r\necho %*>>\"{asked}\"\r\nif \"%~1\"==\"start\" exit /b 0\r\nif exist \"{refused}\" exit /b 0\r\necho refused>\"{refused}\"\r\nexit /b 1\r\n");
+        string newer = Bumped(1, 0);
+        github.Answer = Release($"v{newer}", files: copy.Update(newer));
+        Updater updater = copy.Updater(null, update);
+        MainWindow window = Started(updater);
+        window.WatchForUpdates();
+        Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", $"the status bar to offer Restart to Update to v{newer}");
+        window.Close();
+        Ended(window);
+        updater.Install(restart: true);
+        Assert.True(updater.NotInstalled is null, $"The hand-off to Update.exe did not start: {updater.NotInstalled}");
+        string[] calls = [];
+        Ui.WaitFor(() => (calls = File.Exists(asked) ? Ui.Shared(asked).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : []).Length == 3,
+            () => $"the refused apply to be tried again and the installed version started, where Update.exe was asked [{string.Join("; ", calls)}]");
+        string package = Path.Combine(copy.Root, "packages", copy.Package(newer));
+        // As the batch file stand-in echoes them, a word cmd.exe reads as its own in quotes.
+        foreach (string apply in calls[..2].Select(c => c.Replace("\"", string.Empty, StringComparison.Ordinal)))
+        {
+            Assert.True(apply.StartsWith("apply --package ", StringComparison.Ordinal) && apply.Contains(package, StringComparison.OrdinalIgnoreCase)
+                && apply.Contains($"--waitPid {Environment.ProcessId} --norestart", StringComparison.Ordinal) && apply.Contains($"--rootDir {copy.Root}", StringComparison.OrdinalIgnoreCase),
+                $"Update.exe was asked '{apply}', not Velopack's words for applying {package}, waiting for Passenger and starting nothing itself");
+        }
+        Assert.Equal("start", calls[2]);
+        Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: Update.exe installs Passenger {newer} in {copy.Root} once Passenger has ended, up to 3 times while refused, and starts it", StringComparison.Ordinal));
+    }
+
     /// <summary>On Windows an Update.exe that does not start as Passenger closes (the test's install has none) leaves the
     /// install as it was and the update ready, and the next start says why.</summary>
     [SupportedOSPlatform("windows")]
@@ -2267,9 +2317,10 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
         public override Updater Updater() => Updater(null);
 
-        /// <summary>The install's updater, reading Velopack's log at <paramref name="log"/> where one is given.</summary>
-        public Updater Updater(string? log) =>
-            new VelopackUpdater(new TestVelopackLocator("PassengerIDE", Product.Version, packages, current, root, Path.Combine(root, "Update.exe"), channel), log);
+        /// <summary>The install's updater, reading Velopack's log at <paramref name="log"/> where one is given, its Update.exe
+        /// <paramref name="update"/> where one stands in for it.</summary>
+        public Updater Updater(string? log, string? update = null) =>
+            new VelopackUpdater(new TestVelopackLocator("PassengerIDE", Product.Version, packages, current, root, update ?? Path.Combine(root, "Update.exe"), channel), log);
 
         public override string Package(string version) => $"PassengerIDE-{version}-{channel}-full.nupkg";
 

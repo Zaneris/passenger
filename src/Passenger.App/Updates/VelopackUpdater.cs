@@ -11,8 +11,8 @@ namespace Passenger.App.Updates;
 
 /// <summary>Windows' update, through Velopack as the installer is: the full package the release's feed names for this
 /// install's channel (<c>releases.win-x64.json</c> or <c>-arm64</c>), downloaded into <c>packages\</c> and checked
-/// against its size and SHA-256. As Passenger ends, Velopack's Update.exe replaces the install and, for Restart to
-/// Update, starts the new version; it outlives Passenger, so it is not ChildProcesses' to start. What it said of an
+/// against its size and SHA-256. As Passenger ends, Velopack's Update.exe replaces the install, tried again while it is
+/// refused (<see cref="UpdateHandOff"/>), and, for Restart to Update, starts the new version; it outlives Passenger. What it said of an
 /// update it did not apply is read from Velopack's log (<paramref name="log"/>, by default where Update.exe writes it on
 /// Windows: <c>%LocalAppData%\velopack\velopack_PassengerIDE.log</c>).</summary>
 public sealed class VelopackUpdater(IVelopackLocator locator, string? log = null) : Updater
@@ -108,9 +108,17 @@ public sealed class VelopackUpdater(IVelopackLocator locator, string? log = null
         EndRelays(others, version);
         try
         {
-            // Quietly when Passenger is only closing; with Velopack's progress while a person waits for it to start again.
-            manager.WaitExitThenApplyUpdates(package, silent: !restart, restart: restart);
-            IdeErrors.Write($"Updates: Update.exe installs Passenger {version} in {Installed} once Passenger has ended{(restart ? ", and starts it" : string.Empty)}");
+            if (locator.UpdateExePath is not { } update || !File.Exists(update))
+            {
+                throw new FileNotFoundException("Cannot find Update.exe to apply updates.", locator.UpdateExePath);
+            }
+            // Velopack's own words for it: quiet when only closing, its progress shown while a person waits for the restart.
+            List<string> apply = restart ? [] : ["--silent"];
+            apply.AddRange(["apply", "--package", Path.Combine(locator.PackagesDir!, package.FileName),
+                "--waitPid", Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "--norestart", "--rootDir", locator.RootAppDir!, "--packageDir", locator.PackagesDir!]);
+            UpdateHandOff.Start(update, apply, restart);
+            IdeErrors.Write($"Updates: Update.exe installs Passenger {version} in {Installed} once Passenger has ended, up to {Numbers.Said(UpdateHandOff.Tries)} times while refused{(restart ? ", and starts it" : string.Empty)}");
         }
         catch (Exception error) when (error is IOException or Win32Exception or InvalidOperationException)
         {
