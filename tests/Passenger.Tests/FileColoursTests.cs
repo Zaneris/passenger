@@ -39,6 +39,7 @@ public sealed class FileColoursTests : FileColoursFolder
 
     private const string EmbeddedCode = """"
         using System.Diagnostics.CodeAnalysis;
+        using System.Text.RegularExpressions;
 
         static class Queries
         {
@@ -76,6 +77,12 @@ public sealed class FileColoursTests : FileColoursFolder
                 string joined = /* lang=sql */ "select 91" + " from logs";
                 // lang=unknown
                 string unknown = "select 92";
+
+                bool year = Regex.IsMatch("2026", @"^\d{2,4}");
+                string word = /* lang=regex */ @"\w+";
+                // lang=json
+                string body = """{ "id": 57, "open": true }""";
+                string broken = Regex.Replace("x", "(unclosed", "");
             }
         }
         """";
@@ -535,6 +542,16 @@ public sealed class FileColoursTests : FileColoursFolder
             }
             Assert.Equal(TokenKind.Number, KindOf(editor, "71"));
             Assert.Equal(TokenKind.Tag, KindOf(editor, "root"));
+            Assert.Equal(TokenKind.Keyword, KindOf(editor, "^"));
+            Assert.Equal(TokenKind.Constant, KindOf(editor, @"\d"));
+            Assert.Equal(TokenKind.Operator, KindOf(editor, "{2,4}"));
+            Assert.Equal(TokenKind.Constant, KindOf(editor, @"\w"));
+            Assert.Equal(TokenKind.JsonKey, KindOf(editor, "\"id\""));
+            Assert.Equal(TokenKind.Number, KindOf(editor, "57"));
+            Assert.Equal(TokenKind.Keyword, KindOf(editor, "true"));
+            int unclosed = EmbeddedCode.IndexOf("(unclosed", StringComparison.Ordinal);
+            Ui.WaitFor(() => editor.Markers.Any(m => m.Kind == MarkerKind.Warning && m.Range.Start <= unclosed + 9 && m.Range.End >= unclosed),
+                () => $"the regex that doesn't parse marked as a warning, where the marks are [{string.Join("; ", editor.Markers.Select(m => $"{m.Kind} {m.Range.Start}: {m.Message}"))}]");
             Assert.Equal(TokenKind.Comment, KindOf(editor, "SQL comment"));
             foreach (string text in new[] { "select 86", "select 99", "select 91", "select 92" })
             {
