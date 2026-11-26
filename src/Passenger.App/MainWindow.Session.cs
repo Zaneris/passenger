@@ -547,6 +547,7 @@ public partial class MainWindow
         BindDesigns(next);
         BindXamlWorkspace(next);
         BindTargetFrameworks(next);
+        BindIlViewer(next);
         BindRunTargets(next);
         BindBuildConfigurations(next);
         BindMobile(next);

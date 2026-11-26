@@ -112,6 +112,7 @@ dbgshim's musl Linux natives are the container tools' (below), which the app nev
 | `Microsoft.Diagnostics.DbgShim`, `Microsoft.Diagnostics.DbgShim.osx-arm64`, `Microsoft.Diagnostics.DbgShim.osx-x64`, `Microsoft.Diagnostics.DbgShim.win-x64`, `Microsoft.Diagnostics.DbgShim.win-arm64`, `Microsoft.Diagnostics.DbgShim.win-x86`, `Microsoft.Diagnostics.DbgShim.linux-x64`, `Microsoft.Diagnostics.DbgShim.linux-arm64` | the debugger's way into a runtime (dbgshim), one native per system, and on Windows 32-bit Windows' in the debugger's 32-bit host | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.DiaSymReader` | the expression compiler's | MIT | © Microsoft Corporation. All rights reserved. |
 | `ICSharpCode.Decompiler` | ILSpy's decompiler: the debugger's frames without source, and a library's type opened from XAML | MIT | Copyright 2011-2026 AlphaSierraPapa |
+| `Gee.External.Capstone` | Native instruction decoding in the debugger, with the Capstone engine and its LLVM-derived code | MIT, BSD-3-Clause, NCSA | Copyright (c) Ahmed Garhy, Copyright (c) 2013 COSEINC, Copyright (c) 2003–2013 University of Illinois at Urbana-Champaign |
 | `MP.Microsoft.CodeAnalysis.CSharp.ExpressionEvaluator.ExpressionCompiler`, `MP.Microsoft.CodeAnalysis.ExpressionEvaluator.ExpressionCompiler` | Roslyn's expression compiler, packed from Roslyn's source by MattParkerDev (https://github.com/MattParkerDev/roslyn, branch custom-ee-5.9.0) | MIT | no copyright line; its authors: .NET Foundation and contributors |
 | `ZLinq` | the debugger's queries | MIT | © Cysharp, Inc. |
 | `Velopack` | the Windows install's hooks, which register and remove the file types Passenger opens as it is installed, updated and uninstalled, and its updates: the UpdateManager that downloads a newer release's package from its feed and checks its size and SHA-256 | MIT | Copyright © Velopack Ltd. All rights reserved. |
@@ -256,6 +257,7 @@ here.
 | `Microsoft.CodeAnalysis.CSharp`, `Microsoft.CodeAnalysis.Common`, `Microsoft.DiaSymReader` | the debugger's expressions | MIT | © Microsoft Corporation. All rights reserved. |
 | `MP.Microsoft.CodeAnalysis.CSharp.ExpressionEvaluator.ExpressionCompiler`, `MP.Microsoft.CodeAnalysis.ExpressionEvaluator.ExpressionCompiler` | Roslyn's expression compiler, as in the app | MIT | no copyright line; its authors: .NET Foundation and contributors |
 | `ICSharpCode.Decompiler` | ILSpy's decompiler: the debugger's frames without source | MIT | Copyright 2011-2026 AlphaSierraPapa |
+| `Gee.External.Capstone` | The debugger's native instruction decoding, as in the app | MIT, BSD-3-Clause, NCSA | Copyright (c) Ahmed Garhy, Copyright (c) 2013 COSEINC, Copyright (c) 2003–2013 University of Illinois at Urbana-Champaign |
 | `ZLinq` | the debugger's queries | MIT | © Cysharp, Inc. |
 
 ## Building and testing only
@@ -403,9 +405,74 @@ licence its package.json states and the copyright line its licence file (else it
 `Apache-2.0.txt`, `ISC.txt`, `BSD-3-Clause.txt`, `MS-PL.txt`), from the SPDX License List 3.29.0 (https://github.com/spdx/license-list-data), unchanged; its README
 says where each came from. The app's notices, `THIRD-PARTY-NOTICES.txt` beside it, are written from them, from the
 packages themselves and from this file: Roslyn's server's table above, and everything below; the container tools' carry
-the debugger's two sections below.
+the debugger's sections below.
 
 <!-- The app's notices (THIRD-PARTY-NOTICES.txt) carry everything below this line as it is. -->
+
+## Capstone
+
+The native Capstone engine bundled by `Gee.External.Capstone` is under [Capstone's BSD licence](https://github.com/capstone-engine/capstone/blob/4.0.2/LICENSE.TXT).
+The LLVM code in Capstone is under the [University of Illinois/NCSA licence](https://github.com/capstone-engine/capstone/blob/4.0.2/LICENSE_LLVM.TXT).
+
+```
+Copyright (c) 2013, COSEINC.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+* Redistributions of source code must retain the above copyright notice,
+  this list of conditions and the following disclaimer.
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+* Neither the name of the developer(s) nor the names of its
+  contributors may be used to endorse or promote products derived from this
+  software without specific prior written permission.
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+```
+
+```
+Copyright (c) 2003-2013 University of Illinois at Urbana-Champaign.
+All rights reserved.
+
+Developed by:
+    LLVM Team
+    University of Illinois at Urbana-Champaign
+    http://llvm.org
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal with
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+    * Redistributions of source code must retain the above copyright notice,
+      this list of conditions and the following disclaimers.
+    * Redistributions in binary form must reproduce the above copyright notice,
+      this list of conditions and the following disclaimers in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the names of the LLVM Team, University of Illinois at
+      Urbana-Champaign, nor the names of its contributors may be used to
+      endorse or promote products derived from this Software without specific
+      prior written permission.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS WITH THE
+SOFTWARE.
+```
 
 ## Aspire dashboard protocol
 

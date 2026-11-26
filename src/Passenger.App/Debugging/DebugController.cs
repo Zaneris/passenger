@@ -49,6 +49,12 @@ public sealed partial class DebugController : IDisposable
     /// program runs, so nothing asks of a frame the debugger has let go.</summary>
     private DapStackFrame? frame;
 
+    internal (DebugSession Session, DapStackFrame Frame, int Stop)? AssemblyFrame =>
+        Session is { State: DebugState.Paused, Engine: DebugEngine.Managed } paused && frame is { } selected && view.ShownSnapshot is null
+            ? (paused, selected, shown) : null;
+
+    internal event EventHandler? AssemblyFrameChanged;
+
     /// <summary>The exception the program stopped on, and the frame it was thrown in, shown at that frame's line.</summary>
     private (string Text, int FrameId)? stopException;
 
@@ -3145,6 +3151,7 @@ public sealed partial class DebugController : IDisposable
         {
             Navigate?.Invoke(this, (path, Current(path, chosen)));
         }
+        AssemblyFrameChanged?.Invoke(this, EventArgs.Empty);
         await ShowVariables();
     }
 
@@ -3175,6 +3182,7 @@ public sealed partial class DebugController : IDisposable
     {
         UiThread.Check();
         view.ShowSnapshot(snapshot);
+        AssemblyFrameChanged?.Invoke(this, EventArgs.Empty);
         if (snapshot.Moment is null)
         {
             LeaveMoment();

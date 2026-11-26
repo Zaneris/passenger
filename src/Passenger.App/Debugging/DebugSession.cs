@@ -1094,6 +1094,13 @@ public sealed class DebugSession
     public Task<AheadResponse> AheadAsync(int frameId) =>
         connection.RequestAsync<AheadResponse>(DapCommands.Ahead, new AheadArguments(frameId));
 
+    internal async Task<DisassembleFrameResponse> DisassembleAsync(DapStackFrame frame, CancellationToken cancel)
+    {
+        DisassembleFrameResponse result = await connection.RequestAsync<DisassembleFrameResponse>(DapCommands.DisassembleFrame,
+            new DisassembleFrameArguments(frame.Id), cancel).ConfigureAwait(false);
+        return result with { Sources = [.. result.Sources.Where(s => frame.Source?.Path is { } path && PathNames.Same(ToIde(s.Path), path))] };
+    }
+
     /// <summary>A recorded moment as a past stop, its frames' sources named as a stop's are; one let go throws why.</summary>
     public async Task<SnapshotEvent> MomentAsync(int index)
     {

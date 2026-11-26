@@ -41,6 +41,9 @@ public static class DapCommands
     /// <summary>Passenger's own: a frame without source given its assembly's decompiled symbols.</summary>
     public const string ResolveStackFrame = "resolveStackFrame";
 
+    /// <summary>Passenger's own: the machine instructions of a paused managed frame.</summary>
+    public const string DisassembleFrame = "disassembleFrame";
+
     /// <summary>Passenger's own: what the language's Edit and Continue needs of the program.</summary>
     public const string HotReloadState = "hotReloadState";
 

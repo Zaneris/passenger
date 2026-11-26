@@ -132,6 +132,7 @@ public partial class MainWindow : IdeWindow
         AddHierarchy();
         AddClones();
         AddDependencyMap();
+        AddIlViewer();
         AddTestDoubles();
         AddFileOperations();
         AcceptDrops(this);
