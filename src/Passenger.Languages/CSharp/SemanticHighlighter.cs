@@ -238,7 +238,13 @@ public sealed class SemanticHighlighter : CarriedColours
     private async Task<bool> Land(SemanticTokens answer, TextSnapshot snapshot, int version, TextRange? covered, int request, CancellationToken cancel)
     {
         TokenKind?[] types = kinds;
-        SyntaxSpan[] spans = await BackgroundWork.Run(() => Decode(answer.Data, snapshot, types), cancel);
+        SyntaxSpan[] spans = await BackgroundWork.Run(() =>
+        {
+            SyntaxSpan[] semantic = Decode(answer.Data, snapshot, types);
+            return answer.SqlStrings is { Length: > 0 } sql
+                ? [.. Over(semantic, EmbeddedSqlColours.Of(sql, covered ?? new TextRange(0, snapshot.Length), cancel))]
+                : semantic;
+        }, cancel);
         if (request != asked || disposed)
         {
             return false;

@@ -8,6 +8,7 @@ using Microsoft.CodeAnalysis.LanguageServer.Handler.SemanticTokens;
 using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.Text;
 using Roslyn.LanguageServer.Protocol;
+using EmbeddedSql = Passenger.Lsp.EmbeddedSql;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -26,7 +27,7 @@ internal static class Colours
     private static readonly int[] InVisualStudioLegend = TypesIn(SemanticTokensSchema.GetSchema(clientSupportsVisualStudioExtensions: true));
 
     /// <summary>The colours of the file asked about, all of it or a range; null where the server has no document of it.</summary>
-    public static async Task<SemanticTokens?> OfAsync(global::Roslyn.LanguageServer.Protocol.Range? range, RequestContext context, IGlobalOptionService options, CancellationToken cancel)
+    public static async Task<ColoursResult?> OfAsync(global::Roslyn.LanguageServer.Protocol.Range? range, RequestContext context, IGlobalOptionService options, CancellationToken cancel)
     {
         if (await context.GetDocumentAsync(cancel).ConfigureAwait(false) is not { } document)
         {
@@ -35,7 +36,7 @@ internal static class Colours
         bool loose = document.Project.Solution.WorkspaceKind == WorkspaceKind.MiscellaneousFiles;
         if (!loose && !document.Project.State.HasAllInformation)
         {
-            return new SemanticTokens { Data = [] };
+            return new ColoursResult([], null);
         }
         SourceText text = await document.GetTextAsync(cancel).ConfigureAwait(false);
         LinePositionSpan span = range is { } asked
@@ -43,12 +44,14 @@ internal static class Colours
         int[] named = await SemanticTokensHelpers.HandleRequestHelperAsync(document, [span], supportsVisualStudioExtensions: true,
             options.GetClassificationOptions(document.Project.Language), cancel).ConfigureAwait(false);
         int[] data = ColourTokens.Retyped(named, context.GetRequiredClientCapabilities().HasVisualStudioLspCapability() ? InVisualStudioLegend : InLspLegend);
+        EmbeddedSql[]? sqlStrings = document.Project.Language == LanguageNames.CSharp
+            ? await SqlStrings.InAsync(document, text.Lines.GetTextSpan(span), cancel).ConfigureAwait(false) : null;
         if (!loose)
         {
             // Made of frozen partial semantics: the server tells the client to ask again once the project's compilation is whole.
             await context.GetRequiredLspService<SemanticTokensRefreshQueue>().TryEnqueueRefreshComputationAsync(document.Project, cancel).ConfigureAwait(false);
         }
-        return new SemanticTokens { Data = data };
+        return new ColoursResult(data, sqlStrings);
     }
 
     /// <summary>For each token type of the schema naming every classification apart, the place in a legend of the type the
@@ -72,7 +75,7 @@ internal static class Colours
 }
 
 [Method(ExtensionMethods.Colours)]
-internal sealed class ColoursHandler(IGlobalOptionService options) : ILspServiceDocumentRequestHandler<ColoursParams, SemanticTokens?>
+internal sealed class ColoursHandler(IGlobalOptionService options) : ILspServiceDocumentRequestHandler<ColoursParams, ColoursResult?>
 {
     public bool MutatesSolutionState => false;
 
@@ -80,12 +83,12 @@ internal sealed class ColoursHandler(IGlobalOptionService options) : ILspService
 
     public TextDocumentIdentifier GetTextDocumentIdentifier(ColoursParams request) => request.TextDocument;
 
-    public Task<SemanticTokens?> HandleRequestAsync(ColoursParams request, RequestContext context, CancellationToken cancellationToken) =>
+    public Task<ColoursResult?> HandleRequestAsync(ColoursParams request, RequestContext context, CancellationToken cancellationToken) =>
         Colours.OfAsync(null, context, options, cancellationToken);
 }
 
 [Method(ExtensionMethods.RangeColours)]
-internal sealed class RangeColoursHandler(IGlobalOptionService options) : ILspServiceDocumentRequestHandler<ColoursParams, SemanticTokens?>
+internal sealed class RangeColoursHandler(IGlobalOptionService options) : ILspServiceDocumentRequestHandler<ColoursParams, ColoursResult?>
 {
     public bool MutatesSolutionState => false;
 
@@ -93,7 +96,7 @@ internal sealed class RangeColoursHandler(IGlobalOptionService options) : ILspSe
 
     public TextDocumentIdentifier GetTextDocumentIdentifier(ColoursParams request) => request.TextDocument;
 
-    public Task<SemanticTokens?> HandleRequestAsync(ColoursParams request, RequestContext context, CancellationToken cancellationToken) =>
+    public Task<ColoursResult?> HandleRequestAsync(ColoursParams request, RequestContext context, CancellationToken cancellationToken) =>
         Colours.OfAsync(request.Range, context, options, cancellationToken);
 }
 
@@ -102,6 +105,10 @@ internal sealed class RangeColoursHandler(IGlobalOptionService options) : ILspSe
 internal sealed record ColoursParams(
     [property: JsonPropertyName("textDocument")] TextDocumentIdentifier TextDocument,
     [property: JsonPropertyName("range")] global::Roslyn.LanguageServer.Protocol.Range? Range);
+
+internal sealed record ColoursResult(
+    [property: JsonPropertyName("data")] int[] Data,
+    [property: JsonPropertyName("sqlStrings"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] EmbeddedSql[]? SqlStrings);
 
 [ExportCSharpVisualBasicLspServiceFactory(typeof(ColoursHandler), WellKnownLspServerKinds.Any)]
 [Shared]

@@ -502,6 +502,8 @@ public sealed class SemanticTokens
 
     [JsonConverter(typeof(TokenData))]
     public int[] Data { get; init; } = [];
+
+    public EmbeddedSql[]? SqlStrings { get; init; }
 }
 
 /// <summary>A file's tokens, five numbers each, read into one array of their count: a long file's are a million numbers,

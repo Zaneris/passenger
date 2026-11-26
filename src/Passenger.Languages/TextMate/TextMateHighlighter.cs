@@ -276,7 +276,12 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             bool converged = false;
             if (text.GetLine(line) is { Length: > LongestLine } longLine)
             {
-                state = EndOfLong(text, longLine, state, limit, longLimit, ref buffer);
+                Interlocked.Increment(ref longLinesRead);
+                (state, bool stopped) = ReadLong(grammar, text, longLine, state, limit, longLimit, ref buffer);
+                if (stopped)
+                {
+                    Interlocked.Increment(ref longLinesOutOfTime);
+                }
                 built.Add(new TokenLine([], state));
                 converged = Converged(++line);
             }
@@ -287,9 +292,12 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
                 {
                     while (!converged && line < until && text.GetLine(line) is { Length: <= LongestLine } span)
                     {
-                        TokenLine read = Read(rules, limit, text, span, state, scratch, ref buffer);
-                        built.Add(read);
-                        state = read.End;
+                        (state, bool stopped) = Read(grammar, rules, limit, text, span, state, scratch, ref buffer, includeText: false);
+                        if (stopped)
+                        {
+                            Interlocked.Increment(ref linesOutOfTime);
+                        }
+                        built.Add(new TokenLine(scratch.Count == 0 ? [] : [.. scratch], state));
                         converged = Converged(++line);
                     }
                 }
@@ -372,7 +380,8 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     /// <paramref name="limit"/> is read once more, its grammar's patterns now parsed; past it again, it keeps the colours
     /// found and ends in the state it began in (<see cref="Began"/>), so a rule it was stopped inside never reaches the
     /// lines after it.</summary>
-    private TokenLine Read(Tokenizer rules, TimeSpan limit, TextSnapshot text, LineSpan span, StateStack? state, List<SyntaxSpan> scratch, ref char[] buffer)
+    private static (StateStack End, bool Stopped) Read(Grammar grammar, Tokenizer rules, TimeSpan limit, TextSnapshot text,
+        LineSpan span, StateStack? state, List<SyntaxSpan> scratch, ref char[] buffer, bool includeText)
     {
         if (buffer.Length < span.Length)
         {
@@ -386,19 +395,15 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         if (rules.StoppedEarly)
         {
             tokens = rules.TokenizeLineEncoded(buffer.AsSpan(0, span.Length), before, out next);
-            if (rules.StoppedEarly)
-            {
-                Interlocked.Increment(ref linesOutOfTime);
-                next = Began(state);
-            }
         }
+        bool stopped = rules.StoppedEarly;
         scratch.Clear();
         for (int i = 0; i < tokens.Length; i++)
         {
             int start = tokens[i].Start;
             int end = Math.Min(i + 1 < tokens.Length ? tokens[i + 1].Start : span.Length, span.Length);
             TokenKind kind = grammar.KindOf(EncodedTokenAttributes.GetForeground(tokens[i].Metadata));
-            if (end <= start || kind == TokenKind.Text)
+            if (end <= start || (!includeText && kind == TokenKind.Text))
             {
                 continue;
             }
@@ -411,14 +416,15 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
                 scratch.Add(new SyntaxSpan(start, end - start, kind));
             }
         }
-        return new TokenLine(scratch.Count == 0 ? [] : [.. scratch], next);
+        return (stopped ? Began(grammar, state) : next, stopped);
     }
 
     /// <summary>The state a line longer than <see cref="LongestLine"/> ends in, read by the grammar's long rules within
     /// <paramref name="longLimit"/>, and once more past it, no hold of the grammar's own rules kept meanwhile; past that
     /// time twice, the state it began in (<see cref="Began"/>), so a rule it was stopped inside never reaches the lines
     /// after it.</summary>
-    private StateStack EndOfLong(TextSnapshot text, LineSpan span, StateStack? state, TimeSpan limit, TimeSpan longLimit, ref char[] buffer)
+    private static (StateStack End, bool Stopped) ReadLong(Grammar grammar, TextSnapshot text, LineSpan span,
+        StateStack? state, TimeSpan limit, TimeSpan longLimit, ref char[] buffer)
     {
         if (buffer.Length < span.Length)
         {
@@ -426,7 +432,6 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         }
         text.CopyTo(span.Start, buffer.AsSpan(0, span.Length));
         StateStack before = state ?? StateStack.Initial;
-        Interlocked.Increment(ref longLinesRead);
         lock (grammar.LongGate)
         {
             Tokenizer rules = grammar.LongRules;
@@ -438,25 +443,56 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             }
             rules.TimeBudget = longLimit;
             _ = rules.TokenizeLineEncoded(buffer.AsSpan(0, span.Length), before, out StateStack next);
-            if (!rules.StoppedEarly)
+            if (rules.StoppedEarly)
             {
-                return next;
+                // The first read may have paid for the scanners it reached.
+                _ = rules.TokenizeLineEncoded(buffer.AsSpan(0, span.Length), before, out next);
             }
-            // Once more: a first read pays for the scanners of the rules it reaches, and the machine's pauses come and go.
-            _ = rules.TokenizeLineEncoded(buffer.AsSpan(0, span.Length), before, out next);
             if (!rules.StoppedEarly)
             {
-                return next;
+                return (next, false);
             }
         }
-        Interlocked.Increment(ref longLinesOutOfTime);
-        return Began(state);
+        return (Began(grammar, state), true);
     }
 
     /// <summary>The state a line run out of its time ends in, the one it began in: for a first line, the state an empty
     /// first line ends in, which a first line read within its time ends in when it leaves nothing open, so the next pass
     /// that reads it so goes no further.</summary>
-    private StateStack Began(StateStack? state) => state ?? grammar.FirstLineEnd;
+    private static StateStack Began(Grammar grammar, StateStack? state) => state ?? grammar.FirstLineEnd;
+
+    /// <summary>Colours a fragment off the UI thread. Plain runs are kept so a host string's colour can be replaced.</summary>
+    internal static List<SyntaxSpan> Fragment(GrammarFile file, string source, CancellationToken cancel)
+    {
+        Grammar grammar = Grammar.For(file);
+        TextSnapshot text = TextSnapshot.From(source);
+        TimeSpan limit = LineTime;
+        TimeSpan longLimit = LongLineTime;
+        List<SyntaxSpan> spans = [];
+        List<SyntaxSpan> scratch = [];
+        char[] buffer = [];
+        StateStack? state = null;
+        for (int i = 0; i < text.LineCount; i++)
+        {
+            cancel.ThrowIfCancellationRequested();
+            LineSpan line = text.GetLine(i);
+            if (line.Length > LongestLine)
+            {
+                state = ReadLong(grammar, text, line, state, limit, longLimit, ref buffer).End;
+                spans.Add(new SyntaxSpan(line.Start, line.Length, TokenKind.Text));
+                continue;
+            }
+            lock (grammar.Gate)
+            {
+                state = Read(grammar, grammar.Rules, limit, text, line, state, scratch, ref buffer, includeText: true).End;
+            }
+            foreach (SyntaxSpan span in scratch)
+            {
+                spans.Add(span with { Start = line.Start + span.Start });
+            }
+        }
+        return spans;
+    }
 
     /// <summary>Runs work where a pass was asked for: on the UI thread that asked, else at once.</summary>
     private static void OnUi(SynchronizationContext? landing, Action action)

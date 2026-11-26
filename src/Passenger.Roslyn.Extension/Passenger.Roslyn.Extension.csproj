@@ -39,6 +39,7 @@
     <Compile Include="../Passenger.Xaml/Dialects/MauiExpressionCode.cs" Link="MauiExpressionCode.cs" />
     <Compile Include="../Passenger.Core/Sorted.cs" Link="Sorted.cs" />
     <Compile Include="../Passenger.Text/XmlEntities.cs" Link="XmlEntities.cs" />
+    <Compile Include="../Passenger.Lsp/EmbeddedSql.cs" Link="EmbeddedSql.cs" />
   </ItemGroup>
 
   <PropertyGroup>
