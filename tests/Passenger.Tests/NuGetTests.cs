@@ -81,6 +81,11 @@ public sealed class NuGetTests : IDisposable
             t.Updates_offers_only_what_a_references_range_or_floating_version_takes_and_says_what_it_holds_back();
             OpenWindows.CloseAll();
         });
+        Flow.StepApart<NuGetTests>("updates holds back a version published within the feeds minimum publish age saying why and offers an excepted packages", t =>
+        {
+            t.Updates_holds_back_a_version_published_within_the_feeds_minimum_publish_age_saying_why_and_offers_an_excepted_packages();
+            OpenWindows.CloseAll();
+        });
         Flow.StepApart<NuGetTests>("the solution rows menu manages the solution's packages across every project", t =>
         {
             t.The_solution_rows_menu_manages_the_solutions_packages_across_every_project();
@@ -336,6 +341,45 @@ public sealed class NuGetTests : IDisposable
         Assert.True(File.ReadAllText(lib) == before, $"Update All rewrote 1.* or [1.0.0]:\n{File.ReadAllText(lib)}\n{nuget.Log}");
         Assert.Equal([$"{Floating} 1.2.0 -> none (2.0.0 is outside 1.* in Lib)", $"{Pinned} 1.0.0 -> none (2.0.0 is outside [1.0.0] in Lib)"],
             nuget.Rows.Select(Said));
+        window.Close();
+    }
+
+    /// <summary>A feed of a minimum publish age (nuget.config's minPublishAgeHours, 72 hours here) has the Updates tab hold
+    /// back a version it published two hours ago, the row's "held back" tag saying when and the feed's age, and the package
+    /// chosen offering what the project has, while a package its minPublishAgeExceptions name is offered that new version
+    /// at once, as NuGet's own choice of a version reads them.</summary>
+    private void Updates_holds_back_a_version_published_within_the_feeds_minimum_publish_age_saying_why_and_offers_an_excepted_packages()
+    {
+        const string Young = "Passenger.Young";
+        const string Excepted = "Passenger.Excepted";
+        foreach (string id in (string[])[Young, Excepted])
+        {
+            feed.Add(id, "1.0.0");
+            feed.Add(id, "1.1.0");
+            feed.Publish(id, "1.1.0", DateTimeOffset.UtcNow - TimeSpan.FromHours(2));
+        }
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Young}\" Version=\"1.0.0\" /><PackageReference Include=\"{Excepted}\" Version=\"1.0.0\" /></ItemGroup>");
+        string config = Path.Combine(folder, "nuget.config");
+        File.WriteAllText(config, File.ReadAllText(config)
+            .Replace("protocolVersion=\"3\" allowInsecureConnections=\"true\" />", "protocolVersion=\"3\" allowInsecureConnections=\"true\" minPublishAgeHours=\"72\" />", StringComparison.Ordinal)
+            .Replace("</packageSources>", $"</packageSources>\n  <minPublishAgeExceptions>\n    <package pattern=\"{Excepted}\" />\n  </minPublishAgeExceptions>", StringComparison.Ordinal));
+        Restore.Run(lib);
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().SingleOrDefault(b => Equals(b.Content, "Updates"))
+            ?? throw new Xunit.Sdk.XunitException("NuGet has no Updates tab"));
+        Ui.Landed(() => nuget.CanUpdateAll || nuget.Status.StartsWith("No updates", StringComparison.Ordinal), $"the check for updates: {nuget.Status}");
+        string Said(PackageRow row) => $"{row.Id} {row.Version} -> {row.MovesTo ?? "none"} ({row.HeldBack ?? "nothing held back"})";
+        Assert.Equal([$"{Excepted} 1.0.0 -> 1.1.0 (nothing held back)",
+            $"{Young} 1.0.0 -> none (1.1.0 was published 2 hours ago, within stand-in's minimum publish age of 72 hours)"], nuget.Rows.Select(Said));
+        Assert.True(nuget.Status == "1 update available", $"With {Young} 1.1.0 too new and {Excepted} excepted, the Updates tab says \"{nuget.Status}\"");
+
+        PackageRow young = nuget.Rows.Single(r => r.Id == Young);
+        Border? held = Tag(Ui.Row(nuget.PackageList, young), "held back");
+        Assert.True(held is { IsVisible: true } && ToolTip.GetTip(held) as string == young.HeldBack,
+            $"{Young}'s row is {(held?.IsVisible == true ? $"tagged held back, telling \"{ToolTip.GetTip(held)}\"" : "not tagged held back")}");
+        ChoosePackage(nuget, young);
+        Assert.True(nuget.ChosenVersion == "1.0.0", $"{Young} chosen picks {nuget.ChosenVersion}, not the 1.0.0 it has, 1.1.0 being too new for the feed");
         window.Close();
     }
 

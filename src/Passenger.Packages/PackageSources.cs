@@ -57,6 +57,10 @@ public sealed record ConfigFile(string Path, ConfigPlace Place, IReadOnlyList<Co
 /// or a NuGetPackageSourceCredentials_ variable.</summary>
 public sealed record FeedSource(string Name, string Source, bool Enabled, string? DefinedIn, int ProtocolVersion, bool AllowInsecure, bool SkipCertificateCheck, FeedCredentials? Credentials)
 {
+    /// <summary>How long after a version is published the feed lets it be chosen for the person (nuget.config's
+    /// <c>minPublishAgeHours</c>); none by default.</summary>
+    public TimeSpan MinPublishAge { get; init; }
+
     public bool IsHttp => Source.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || Source.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Why the credentials NuGet gives the feed by its name are not sent to it (<see cref="FeedCredentialHosts"/>);
@@ -114,9 +118,14 @@ public sealed class PackageSourceSet
 {
     private readonly PackageSourceMapping? mapping;
 
+    /// <summary>The packages no feed's minimum publish age holds back, as the files' <c>minPublishAgeExceptions</c> name them.</summary>
+    private readonly MinPublishAgeExceptions? exceptions;
+
     private PackageSourceSet(string root, IReadOnlyList<ConfigFile> files, IReadOnlyList<FeedSource> feeds, PackageSourceMapping? mapping,
-        IReadOnlyList<(string Feed, IReadOnlyList<string> Patterns)> patterns, string? problem, IReadOnlyList<FeedSource>? audits = null)
+        IReadOnlyList<(string Feed, IReadOnlyList<string> Patterns)> patterns, string? problem, IReadOnlyList<FeedSource>? audits = null,
+        MinPublishAgeExceptions? exceptions = null)
     {
+        this.exceptions = exceptions;
         Root = root;
         Files = files;
         Feeds = feeds;
@@ -161,6 +170,12 @@ public sealed class PackageSourceSet
     public bool Allows(string feed, string id) =>
         mapping?.IsEnabled != true || mapping.GetConfiguredPackageSources(id).Contains(feed, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>How long after a version of a package is published a feed lets it be chosen for the person: its minimum
+    /// publish age, none for a package the exceptions name, as NuGet's own choice of a version reads them.</summary>
+    public TimeSpan MinPublishAgeOf(string feed, string id) =>
+        exceptions?.FindException(id) is not null ? TimeSpan.Zero
+        : Feeds.FirstOrDefault(f => f.Name.Equals(feed, StringComparison.OrdinalIgnoreCase))?.MinPublishAge ?? TimeSpan.Zero;
+
     /// <summary>Reads the sources for a folder; NuGet makes the user's nuget.config, naming nuget.org, when there is
     /// none.</summary>
     public static PackageSourceSet Load(string root)
@@ -196,7 +211,11 @@ public sealed class PackageSourceSet
                 (FeedCredentials? credentials, string? withheld) = Credentials(source, files);
                 feeds.Add(new FeedSource(source.Name, source.Source, source.IsEnabled,
                     files.FirstOrDefault(f => f.Feeds.Any(feed => feed.Name.Equals(source.Name, StringComparison.OrdinalIgnoreCase)))?.Path,
-                    source.ProtocolVersion, source.AllowInsecureConnections, source.DisableTLSCertificateValidation, credentials) { Withheld = withheld });
+                    source.ProtocolVersion, source.AllowInsecureConnections, source.DisableTLSCertificateValidation, credentials)
+                {
+                    Withheld = withheld,
+                    MinPublishAge = source.MinPublishAge,
+                });
             }
             foreach (PackageSource source in provider.LoadAuditSources())
             {
@@ -210,9 +229,11 @@ public sealed class PackageSourceSet
             return new PackageSourceSet(root, files, feeds, null, [], failed.Message);
         }
         PackageSourceMapping? mapping;
+        MinPublishAgeExceptions exceptions;
         List<(string Feed, IReadOnlyList<string> Patterns)> patterns = [];
         try
         {
+            exceptions = MinPublishAgeExceptions.GetMinPublishAgeExceptions(settings);
             mapping = PackageSourceMapping.GetPackageSourceMapping(settings);
             foreach (PackageSourceMappingSourceItem item in settings.GetSection(NuGetConfigNames.Mapping)?.Items.OfType<PackageSourceMappingSourceItem>() ?? [])
             {
@@ -223,7 +244,7 @@ public sealed class PackageSourceSet
         {
             return new PackageSourceSet(root, files, feeds, null, [], failed.Message);
         }
-        return new PackageSourceSet(root, files, feeds, mapping, patterns, null, audits);
+        return new PackageSourceSet(root, files, feeds, mapping, patterns, null, audits, exceptions);
     }
 
     /// <summary>A feed's credentials as NuGet would send them, where they are for its host (<see cref="FeedCredentialHosts"/>),

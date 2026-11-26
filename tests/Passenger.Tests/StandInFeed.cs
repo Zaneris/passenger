@@ -7,7 +7,7 @@ namespace Passenger.Tests;
 
 /// <summary>A NuGet v3 feed on a loopback port, so no test reaches nuget.org: its service index, search and flat container,
 /// once an advisory is given its VulnerabilityInfo resource, which restore's audit and the NuGet window read as they read
-/// nuget.org's, and once a version is deprecated its registrations, each package's one page given by reference. Made with a user and password, it answers only a request with those Basic credentials (401 and a
+/// nuget.org's, and once a version is deprecated or given its publish date its registrations, each package's one page given by reference. Made with a user and password, it answers only a request with those Basic credentials (401 and a
 /// challenge otherwise, as a private feed asks); every request is kept with whether it had them and the Authorization it
 /// carried.</summary>
 public sealed class StandInFeed : IDisposable, IAsyncDisposable
@@ -16,6 +16,7 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
     private readonly Dictionary<string, Dictionary<string, byte[]>> packages = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<string>> advisories = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> deprecations = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DateTimeOffset> published = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<(string Path, bool Authorized, string? Authorization)> requests = [];
     private string? accepted;
 
@@ -91,6 +92,16 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
         lock (deprecations)
         {
             deprecations[$"{id}/{version}"] = $$"""{ "reasons": [{{string.Join(", ", reasons.Select(r => $"\"{r}\""))}}], "message": "{{message}}"{{instead}} }""";
+        }
+    }
+
+    /// <summary>When a version was published, as its registration's catalog entry says it from then on (every other one
+    /// on 2020-01-01), its registrations served from then on.</summary>
+    public void Publish(string id, string version, DateTimeOffset at)
+    {
+        lock (published)
+        {
+            published[$"{id}/{version}"] = at;
         }
     }
 
@@ -194,7 +205,13 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
                 deprecation = deprecations.GetValueOrDefault($"{id}/{version}");
             }
             string deprecated = deprecation is null ? string.Empty : $$""", "deprecation": {{deprecation}}""";
-            return $$"""{ "@id": "{{at}}/{{version}}.json", "catalogEntry": { "id": "{{id}}", "version": "{{version}}", "listed": true{{deprecated}} } }""";
+            DateTimeOffset when;
+            lock (published)
+            {
+                when = published.GetValueOrDefault($"{id}/{version}", new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+            }
+            string date = when.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+            return $$"""{ "@id": "{{at}}/{{version}}.json", "catalogEntry": { "id": "{{id}}", "version": "{{version}}", "listed": true, "published": "{{date}}"{{deprecated}} } }""";
         });
         return $$"""{ "@id": "{{at}}/page.json", {{bounds}}, "items": [{{string.Join(", ", leaves)}}] }""";
     }
@@ -208,16 +225,20 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
         {
             advising = advisories.Count > 0;
         }
-        bool deprecating;
+        bool registers;
         lock (deprecations)
         {
-            deprecating = deprecations.Count > 0;
+            registers = deprecations.Count > 0;
+        }
+        lock (published)
+        {
+            registers |= published.Count > 0;
         }
         if (path == "/v3/index.json")
         {
             string search = SearchAt?.AbsoluteUri ?? $"{Root}/query";
             string vulnerabilities = advising ? $$""", { "@id": "{{Root}}/vulnerabilities/index.json", "@type": "VulnerabilityInfo/6.7.0" }""" : string.Empty;
-            string registrations = deprecating ? $$""", { "@id": "{{Root}}/registrations/", "@type": "RegistrationsBaseUrl/3.6.0" }""" : string.Empty;
+            string registrations = registers ? $$""", { "@id": "{{Root}}/registrations/", "@type": "RegistrationsBaseUrl/3.6.0" }""" : string.Empty;
             return (200, Json, Encoding.UTF8.GetBytes($$"""
                 {
                   "version": "3.0.0",
@@ -240,7 +261,7 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
                 return (200, Json, Encoding.UTF8.GetBytes($"{{ {string.Join(", ", known)} }}"));
             }
         }
-        if (deprecating && parts is ["registrations", string registered, "index.json" or "page.json"] && packages.TryGetValue(registered, out Dictionary<string, byte[]>? listed))
+        if (registers && parts is ["registrations", string registered, "index.json" or "page.json"] && packages.TryGetValue(registered, out Dictionary<string, byte[]>? listed))
         {
             return (200, Json, Encoding.UTF8.GetBytes(Registration(registered, [.. listed.Keys.Order(VersionOrder.Instance)], parts[2] == "page.json")));
         }

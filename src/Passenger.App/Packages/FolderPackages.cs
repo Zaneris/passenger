@@ -146,10 +146,10 @@ public sealed partial class FolderPackages
         IPackageFeed[] enabled = [.. Sources.Enabled.Select(f => feeds[f.Name])];
         if (name.Equals(FeedSet.All, StringComparison.OrdinalIgnoreCase))
         {
-            return new FeedSet(FeedSet.All, enabled, Sources.Allows);
+            return new FeedSet(FeedSet.All, enabled, Sources.Allows, Sources.MinPublishAgeOf);
         }
         return enabled.FirstOrDefault(f => f.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } one
-            ? new FeedSet(one.Name, [one], Sources.Allows)
+            ? new FeedSet(one.Name, [one], Sources.Allows, Sources.MinPublishAgeOf)
             : throw new ArgumentException($"No enabled feed is named {name}; the folder's nuget.config files enable {string.Join(", ", enabled.Select(f => f.Name))}");
     }
 

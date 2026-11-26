@@ -55,9 +55,12 @@ public sealed record PackageRow(string Id, string Version, string Description, s
     /// one of them.</summary>
     public IReadOnlyDictionary<string, string> Moves { get; init; } = new Dictionary<string, string>();
 
-    /// <summary>Why the Updates tab offers a newer version to none of the projects whose ranges or floating versions keep it
-    /// out; null where nothing is held back.</summary>
+    /// <summary>Why the Updates tab offers a newer version to none of the projects: one published too recently for the
+    /// feeds' minimum publish age, or one their ranges or floating versions keep out; null where nothing is held back.</summary>
     public string? HeldBack { get; init; }
+
+    /// <summary>The versions too new to be chosen for the person (<see cref="FeedVersions.TooNew"/>), each with why.</summary>
+    public IReadOnlyDictionary<string, string> TooNew { get; init; } = new Dictionary<string, string>();
 
     /// <summary>By project, what fixes a vulnerable version it gets only through others, the Updates tab's: a reference at
     /// the fixed version in the frameworks that get one.</summary>
@@ -815,10 +818,26 @@ public sealed partial class NuGetView : DockPanel
             picked = null;
         }
         IReadOnlyList<string> found;
+        IReadOnlyDictionary<string, string> tooNew = row.TooNew;
         using IDisposable held = BackgroundWork.Scope();
         try
         {
-            found = showsUpdates ? row.AvailableVersions : await Feed.VersionsAsync(row.Id, prerelease.IsChecked == true, cancel.Token);
+            if (showsUpdates)
+            {
+                found = row.AvailableVersions;
+            }
+            else if (Feed is FeedSet set)
+            {
+                FeedVersions answer = await set.VersionsEachAsync(row.Id, prerelease.IsChecked == true, cancel.Token);
+                found = answer is { Versions.Count: 0, Failed.Count: > 0 }
+                    ? throw new HttpRequestException(string.Join("; ", answer.Failed.Select(f => $"{f.Feed}: {f.Problem}")))
+                    : answer.Versions;
+                tooNew = answer.TooNew;
+            }
+            else
+            {
+                found = await Feed.VersionsAsync(row.Id, prerelease.IsChecked == true, cancel.Token);
+            }
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
@@ -833,10 +852,12 @@ public sealed partial class NuGetView : DockPanel
             return;
         }
         versions = found;
+        // A version too new for the feeds' minimum publish age is listed to be picked, never picked for the person.
+        IReadOnlyList<string> offered = tooNew.Count == 0 ? versions : [.. versions.Where(v => !tooNew.ContainsKey(v))];
         VulnerabilityData known = Known;
         string? vulnerable = row.AuditedVersions.Where(v => known.Of(row.Id, v).Count > 0).OrderByDescending(v => v, VersionOrder.Instance).FirstOrDefault();
-        string? fix = vulnerable is null ? null : known.FixedVersion(row.Id, vulnerable, versions);
-        ChosenVersion = PickedOf(row) ?? row.UpdateVersion ?? fix ?? Taken(row) ?? versions.FirstOrDefault() ?? row.Version;
+        string? fix = vulnerable is null ? null : known.FixedVersion(row.Id, vulnerable, offered);
+        ChosenVersion = PickedOf(row) ?? row.UpdateVersion ?? fix ?? Taken(row, offered) ?? offered.FirstOrDefault() ?? row.Version;
         ComboBox picker = new ToolDropDown { Name = "Versions", ItemsSource = versions, SelectedItem = ChosenVersion, VerticalAlignment = VerticalAlignment.Center };
         AutomationProperties.SetName(picker, $"Version of {row.Id}");
         StackPanel vulnerabilities = new() { Spacing = Gaps.Normal };
@@ -891,7 +912,8 @@ public sealed partial class NuGetView : DockPanel
 
     /// <summary>The newest version a project referencing the package takes, every framework's range or floating version
     /// allowing it; null where none does.</summary>
-    private string? Taken(PackageRow row) => row.Installed.Values.Select(at => InstalledVersion.Newest(versions, at)).OfType<string>().Max(VersionOrder.Instance);
+    private static string? Taken(PackageRow row, IReadOnlyList<string> offered) =>
+        row.Installed.Values.Select(at => InstalledVersion.Newest(offered, at)).OfType<string>().Max(VersionOrder.Instance);
 
     /// <summary>The version the person picked of a package, as its versions now offer it; null where they picked none of it,
     /// or its versions no longer offer what they picked.</summary>
