@@ -31,8 +31,8 @@
     <!-- ReactiveUI and its source generators, whose [Reactive] and [ReactiveCommand] members the XAML tests bind to:
          restored for the tests' package cache (tests/AvaloniaGraphs), so an app of theirs restores with its generators and
          reaches no feed. -->
-    <ReactiveUiVersion>27.0.1</ReactiveUiVersion>
-    <ReactiveUiGeneratorsVersion>5.1.0</ReactiveUiGeneratorsVersion>
+    <ReactiveUiVersion>28.0.0</ReactiveUiVersion>
+    <ReactiveUiGeneratorsVersion>7.1.0</ReactiveUiGeneratorsVersion>
     <!-- Aspire's templates, AppHost and .NET project packages, AppHost SDK and CLI at one version, downloaded for the
          tests' local feed: its templates write an AppHost of the package alone, adding its services by path, and the SDK,
          obsolete from 17, is the one the tests' AppHosts written with it name. Every C# AppHost of it takes its dashboard
