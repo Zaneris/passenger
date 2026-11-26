@@ -14,10 +14,22 @@ namespace Passenger.App.ToolWindows;
 /// which the list makes and its model keeps one open.</summary>
 public static class ToolTabs
 {
-    /// <summary>A tool window's row of tabs, one open: <see cref="ChoiceRow{TKey}"/>'s tabs, each standing for what it opens.</summary>
-    public sealed class Strip<TKey> : ChoiceRow<TKey>
+    /// <summary>Tabs Next Tab and Previous Tab step through while what holds them has the keys: a tool window's
+    /// (<see cref="Strip{TKey}"/>), the Terminal's shells.</summary>
+    public interface ITabbed
+    {
+        /// <summary>Shows the tab <paramref name="step"/> places on from the one shown (back for a negative step), round at
+        /// the ends, as a press on it shows it; false where no other tab shows.</summary>
+        bool StepTab(int step);
+    }
+
+    /// <summary>A tool window's row of tabs, one open: <see cref="ChoiceRow{TKey}"/>'s tabs, each standing for what it opens,
+    /// which Next Tab and Previous Tab step through while the window has the keys.</summary>
+    public sealed class Strip<TKey> : ChoiceRow<TKey>, ITabbed
         where TKey : notnull
     {
+        public bool StepTab(int step) => StepChoice(step);
+
         /// <summary>Adds a tab for <paramref name="key"/>, closed, as <see cref="Tab"/> makes it, named <paramref name="name"/>.</summary>
         public ToggleButton Add(TKey key, object title, Action? close = null, string closeTip = "Close", string? name = null) =>
             Join(key, Tab(title, close, closeTip), name);

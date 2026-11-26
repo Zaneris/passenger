@@ -596,6 +596,18 @@ public partial class MainWindow
         [EditorActions.SelectAll] = box => box.SelectAll(),
     };
 
+    /// <summary>The actions words to read and copy with the keys (a card's, a Markdown page's, a value in Details) take
+    /// themselves: Copy their selection, and Select All.</summary>
+    private static readonly Dictionary<string, Action<SelectableWords>> WordsEdits = new(StringComparer.Ordinal)
+    {
+        [EditorActions.Copy] = words => words.Copy(),
+        [EditorActions.SelectAll] = words => words.SelectAll(),
+    };
+
+    /// <summary>Why words with the keys refuse an action they take (<see cref="WordsEdits"/>): Copy with none selected.</summary>
+    private static string? WhyNotInWords(SelectableWords words, string action) =>
+        action == EditorActions.Copy && string.IsNullOrEmpty(words.SelectedText) ? Refusals.NothingSelected : null;
+
     /// <summary>Runs an editing action on a text box, where it takes it (<see cref="TextBoxEdits"/>).</summary>
     private static bool Edit(TextBox box, string action)
     {

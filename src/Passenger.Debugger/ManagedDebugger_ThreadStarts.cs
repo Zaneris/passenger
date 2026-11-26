@@ -3,12 +3,15 @@ using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
 
-/// <summary>Threads standing at a method's first instruction, where the runtime stops a thread it has just started to
-/// announce it: while one is held there, the runtime counts it as standing where no collection can run, and a collection
-/// asked meanwhile waits for it. An evaluation holds every other thread, so one held there would keep the evaluation's
-/// collection (a GC.Collect, one an allocation brings) waiting for good: each is left running as the evaluation is let
-/// go, the program held again at once and after each short go until it has left that place, and is then held where it
-/// stands. The stop the evaluation is set up from is left as it is: no go of the program comes before the evaluation's.</summary>
+/// <summary>Threads standing where the runtime announced them from: a method's first instruction, or, for one announced in
+/// the go before the stop, the runtime's own code it has not yet left for a frame of managed code (a thread the runtime
+/// itself starts). While one is held there, the runtime counts it as standing where no collection can run, and a
+/// collection asked meanwhile waits for it. An evaluation holds every other thread, so one held there would keep the
+/// evaluation's collection (a GC.Collect, one an allocation brings) waiting for good: each is left running as the
+/// evaluation is let go, the program held again at once and after each short go until it has left that place and stands
+/// in managed code or waits, and is then held there. Held in the runtime's own code just past its start (a method's first call
+/// made ready, a type loaded), it may hold what the evaluation needs, or stand where no collection can run. The stop the evaluation is set up from is left as it is: no go of the program comes before the
+/// evaluation's.</summary>
 public partial class ManagedDebugger
 {
     /// <summary>How often a thread standing at its first instruction is let run on, the program held again after, before it
@@ -22,6 +25,28 @@ public partial class ManagedDebugger
     /// <summary>The threads the hold of the evaluation being let go left running at their first instruction, and how they
     /// stood, for <see cref="ClearStartsAsync"/>.</summary>
     private (List<ICorDebugThread> Threads, string Named)? _leftAtTheirStarts;
+
+    /// <summary>The go each thread was announced in, <see cref="_continued"/> as its event came, until it ends.</summary>
+    private readonly Dictionary<int, int> _announcedIn = [];
+
+    /// <summary>Whether a thread stands where the runtime announced it from: at its method's first instruction, or,
+    /// announced in the go before this stop, with no frame of managed code yet.</summary>
+    private bool StandsWhereAnnounced(ICorDebugThread thread) =>
+        AtItsFirstInstruction(thread) || _announcedIn.TryGetValue(thread.Id, out int announced) && _continued - announced <= 1 && !RunsManagedCode(thread);
+
+    /// <summary>Whether any frame of a thread is managed code; true where its frames could not be read.</summary>
+    private bool RunsManagedCode(ICorDebugThread thread)
+    {
+        try
+        {
+            return EnumerateFramesForThread(thread).Take(64).Any(frame => frame is ICorDebugILFrame);
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            _logger?.Invoke($"The frames of thread {thread.Id} could not be read: {error.Message}");
+            return true;
+        }
+    }
 
     /// <summary>Whether a thread's innermost frame stands at its method's first instruction, where a thread the runtime
     /// stopped is counted as standing where no collection can run.</summary>
@@ -52,7 +77,8 @@ public partial class ManagedDebugger
         List<ICorDebugThread> starting;
         try
         {
-            starting = [.. evaluating.Process.EnumerateThreads().Where(thread => thread.Id != evaluating.Id && !waiting.Contains(thread.Id) && AtItsFirstInstruction(thread))];
+            starting = [.. evaluating.Process.EnumerateThreads().Where(thread => thread.Id != evaluating.Id && !waiting.Contains(thread.Id) && !_leftRunning.Contains(thread.Id)
+                && StandsWhereAnnounced(thread))];
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {
@@ -117,9 +143,9 @@ public partial class ManagedDebugger
         return starting.Count == 0;
     }
 
-    /// <summary>With the program running, holds it again at once, and again after each go, until none of the threads given
-    /// stands at its first instruction, an event comes (which holds the program until it is handled), or the tries run out;
-    /// those still there are left in the list. A thread let go may still be on its way out of the runtime's stop when the
+    /// <summary>With the program running, holds it again at once, and again after each go, until each of the threads given
+    /// has left where it was announced and stands in managed code or waits, an event comes (which holds the program until it is
+    /// handled), or the tries run out; those not yet so are left in the list. A thread let go may still be on its way out of the runtime's stop when the
     /// program is held again, so each go is given longer. Whether the program is held.</summary>
     private async Task<bool> LetPastTheirStartsAsync(ICorDebugProcess process, List<ICorDebugThread> starting, string named, string when)
     {
@@ -139,7 +165,7 @@ public partial class ManagedDebugger
                 _logger?.Invoke($"The program could not be held again with threads {named} let run past their first instruction: 0x{held:X8}");
                 return false;
             }
-            starting.RemoveAll(thread => !AtItsFirstInstruction(thread));
+            starting.RemoveAll(thread => !StandsWhereAnnounced(thread) && Settled(thread));
             came = _runtimeEventChannel.Reader.TryPeek(out _);
             if (starting.Count == 0 || goes == TriesPastAStart || came)
             {
@@ -153,9 +179,25 @@ public partial class ManagedDebugger
         }
         string now = string.Join(", ", given.Select(thread => $"{thread.Id} in {StandTold(thread)}"));
         _logger?.Invoke(starting.Count == 0
-            ? $"Let past their first instruction, {when}, in {Plural.Of(goes, "go", "goes")}: threads {named}, now {now}"
-            : $"Still at their first instruction, {when}, {(came ? "an event come" : "the tries spent")} after {Plural.Of(goes, "go", "goes")}: threads {string.Join(", ", starting.Select(thread => thread.Id))} of {named}");
+            ? $"Let past their first instruction, settled, {when}, in {Plural.Of(goes, "go", "goes")}: threads {named}, now {now}"
+            : $"Not yet past their first instruction and settled, {when}, {(came ? "an event come" : "the tries spent")} after {Plural.Of(goes, "go", "goes")}: threads {string.Join(", ", starting.Select(thread => thread.Id))} of {named}");
         return true;
+    }
+
+    /// <summary>Whether a thread stands where holding it keeps nothing from an evaluation: in managed code, where the runtime
+    /// held it for the debugger, or waiting (a sleep, a wait, a join), as the runtime tells, rather than partway through the
+    /// runtime's own work.</summary>
+    private static bool Settled(ICorDebugThread thread)
+    {
+        try
+        {
+            return thread.TryGetActiveFrame(out ICorDebugFrame? leaf) is Cor.S_OK && leaf is ICorDebugILFrame
+                || thread.TryGetUserState(out CorDebugUserState state) is Cor.S_OK && (state & CorDebugUserState.USER_WAIT_SLEEP_JOIN) != 0;
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            return false;
+        }
     }
 
     /// <summary>Each thread given and where it stands, read while the program is held.</summary>

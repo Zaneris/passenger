@@ -2680,11 +2680,13 @@ public sealed partial class VcsTests : IDisposable
         string shop = Path.Combine(folder, "Shop.cs");
         File.WriteAllText(shop, Original.Replace("count++", "count += 2", StringComparison.Ordinal));
         Git("commit", "-q", "-am", "Twice");
-        File.WriteAllText(Path.Combine(folder, "notes.md"), "notes\n");
+        File.WriteAllText(Path.Combine(folder, "notes.md"), "notes\nmore notes\n");
+        Git("add", "notes.md");
+        Git("commit", "-q", "-m", "Notes");
         MainWindow window = Open();
         window.Perform(AppActions.ShowGit);
         GitLogView log = window.GitLog;
-        Ui.Landed(() => log.Rows.Any(r => r.Commit.Subject == "Twice"), "the log");
+        Ui.Landed(() => log.Rows.Any(r => r.Commit.Subject == "Twice") && log.Rows.Any(r => r.Commit.Subject == "Notes"), "the log");
         log.Select(log.Rows.First(r => r.Commit.Subject == "Twice").Commit);
         Ui.Landed(() => log.Files.Count == 1, "the commit's file");
         Avalonia.Controls.ListBox files = Find(log, log.Files);
@@ -2695,6 +2697,15 @@ public sealed partial class VcsTests : IDisposable
         Ui.WaitFor(() => Ui.Clipboard(window) == PathNames.Canonical(shop), "the file's path on the clipboard");
         Ui.ChooseFromMenu(files, "Go to Source");
         Assert.Equal(PathNames.Canonical(shop), window.EditorArea.Active?.Path);
+
+        // The file a commit added, in a diff's window: no line of the parent's, saying so, and every line of it added.
+        window.ApplySettings(window.Settings with { OpenDiffsIn = Passenger.App.Settings.DiffPlace.Window });
+        CommitInfo notes = log.Rows.First(r => r.Commit.Subject == "Notes").Commit;
+        log.Select(notes);
+        Ui.Landed(() => log.Files is [{ Kind: ChangeKind.Added }], "the file the Notes commit added");
+        DiffWindow added = Assert.IsType<DiffWindow>(Ui.Landed(window.ShowCommitDiffAsync(notes, log.Files[0]), "the added file's diff"));
+        OpenDiffs.ShowsNoFile(added.View, MergeSide.Left);
+        added.Close();
         window.Close();
     }
 

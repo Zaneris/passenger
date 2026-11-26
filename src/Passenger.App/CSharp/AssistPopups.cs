@@ -9,6 +9,8 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
+using Passenger.App.Editors;
 using Passenger.Editor;
 
 namespace Passenger.App.CSharp;
@@ -16,8 +18,9 @@ namespace Passenger.App.CSharp;
 /// <summary>A card over the editor, every one alike: hover information, a diagnostic's message, a signature, the
 /// completion list's item. Code is drawn as the editor draws it (<see cref="ColouredCode"/>), a signature too long for the
 /// card a parameter a line, prose in the interface's font, a problem in its severity's colour; as wide as what it holds,
-/// up to the popups' Medium, a width words read well at. A paused program's value with members is its row of the stop's
-/// values (<see cref="AddValues"/>), which the card then takes the pointer and the keys for, up to the popups' Wide. A
+/// up to the popups' Medium, a width words read well at. It takes the pointer, its words and code selectable and copied as
+/// any words to read are (<see cref="SelectableWords"/>), taking the keys only once the person moves into it. A paused
+/// program's value with members is its row of the stop's values (<see cref="AddValues"/>), up to the popups' Wide. A
 /// screen reader meets it as a tooltip called by what it is for (Parameter Info).</summary>
 internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
 {
@@ -25,19 +28,20 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     private const int MostRows = 16;
 
     private readonly StackPanel parts = new() { Spacing = Gaps.Small };
+    private readonly MarkdownPage documentationPage;
 
     /// <summary>The width a card of values has taken: it only grows while it shows them, so a row closed never narrows it
     /// under the pointer.</summary>
     private double fitted;
 
-    public InfoCard(string called)
+    public InfoCard(string called, Action<Uri> browse)
     {
         Called = called;
+        documentationPage = new MarkdownPage(browse);
         Classes.Add(StyleClasses.Popup);
         Padding = PopupFrame.CardInset;
         MaxWidth = PopupFrame.Medium;
         Child = parts;
-        IsHitTestVisible = false;
     }
 
     /// <summary>The most the card is wide: a value's rows the widest of the popups, words and code a width they read at.</summary>
@@ -48,9 +52,6 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     public string Called { get; }
 
     public bool IsEmpty => parts.Children.Count == 0;
-
-    /// <summary>Whether it holds something to use (a sound's Play), so it takes the pointer and stays while the pointer is on it.</summary>
-    public bool Usable { get; private set; }
 
     /// <summary>Plays a sound a preview offers; nothing without it.</summary>
     public Action<string>? Play { get; set; }
@@ -67,6 +68,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     /// <summary>What the card says, a line a part, a value's rows a line each, indented as they are.</summary>
     public string Text => string.Join('\n', parts.Children.Select(part => part switch
     {
+        MarkdownText markdown => markdown.Shown.Replace('\u00A0', ' '),
         TextBlock words => words.Text,
         ColouredCode code => code.Code,
         Border { Child: Panel { Children: [ColouredCode overload, ..] } } => overload.Code,
@@ -84,11 +86,14 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         }
         pictures.Clear();
         Values = null;
-        Usable = false;
         fitted = 0;
-        IsHitTestVisible = false;
         MaxWidth = PopupFrame.Medium;
     }
+
+    /// <summary>Whether the person is using it: it has the keys, the menu of its words or of a value's rows is open, or a
+    /// value is being typed in it.</summary>
+    public bool InUse => IsKeyboardFocusWithin || Values?.IsInUse == true
+        || parts.GetVisualDescendants().OfType<SelectableWords>().Any(words => words.ContextFlyout is { IsOpen: true } menu && menu.Target == words);
 
     /// <summary>Held to a room narrower than it would be, its words wrapping to it; as wide as it takes of itself, up to
     /// <see cref="Widest"/>, in a wider one.</summary>
@@ -104,7 +109,6 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         double holds = whole - Padding.Top - Padding.Bottom - BorderThickness.Top - BorderThickness.Bottom - values.Padding.Top - values.Padding.Bottom;
         values.MaxHeight = Math.Max(ListRow.Height, Math.Min(rows, holds)) + values.Padding.Top + values.Padding.Bottom;
         parts.Children.Add(values);
-        IsHitTestVisible = true;
         values.Tree.Rows.CollectionChanged += (_, _) =>
         {
             if (Values == values)
@@ -198,7 +202,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         return code;
     }
 
-    public void AddText(string text, IBrush? colour = null) => parts.Children.Add(new TextBlock
+    public void AddText(string text, IBrush? colour = null) => parts.Children.Add(new SelectableWords
     {
         Text = text,
         TextWrapping = TextWrapping.Wrap,
@@ -230,8 +234,6 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
                     Spacing = Gaps.Small,
                     Children = { play, new TextBlock { Classes = { StyleClasses.Caption }, Text = preview.Named, VerticalAlignment = VerticalAlignment.Center, Foreground = Brush(TokenKeys.TextMuted) } },
                 });
-                Usable = true;
-                IsHitTestVisible = true;
                 break;
             default:
                 AddText(preview.Named);
@@ -263,29 +265,41 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
 
     /// <summary>A language server's hover, read by its kind: plain text as written, Markdown as <see cref="AddMarkdown"/>
     /// shows it.</summary>
-    public void AddHover(Lsp.Hover hover) =>
-        AddBlocks(HoverMarkdown.ByKind(Lsp.Shapes.Text(hover.Contents), HoverMarkdown.IsPlain(hover.Contents), words: true), hover.Code);
+    public void AddHover(Lsp.Hover hover, bool csharp = false)
+    {
+        string text = Lsp.Shapes.Text(hover.Contents);
+        if (HoverMarkdown.IsPlain(hover.Contents))
+        {
+            AddBlocks(HoverMarkdown.ByKind(text, plain: true, words: true), hover.Code);
+        }
+        else
+        {
+            AddMarkdown(text, hover.Code, rich: csharp);
+        }
+    }
 
     /// <summary>A hover's Markdown: its fenced code as code (<see cref="AddServed"/>, by the parts given for it, else as the
     /// language its fence names), the prose between as its words (<see cref="HoverMarkdown"/>).</summary>
     /// <param name="overloadsShown">Whether the card lists the overloads above it (<see cref="AddOverloads"/>), which take
     /// the place of its signature and of what it says of how many more there are.</param>
-    public void AddMarkdown(string markdown, IReadOnlyList<IReadOnlyList<Roslyn.Extension.CodePart>>? code = null, bool overloadsShown = false) =>
-        AddBlocks(HoverMarkdown.ByKind(markdown, plain: false, words: true), code, overloadsShown);
+    /// <param name="rich">Whether this is C# documentation, with its inline styles and links.</param>
+    public void AddMarkdown(string markdown, IReadOnlyList<IReadOnlyList<Roslyn.Extension.CodePart>>? code = null, bool overloadsShown = false, bool rich = false) =>
+        AddBlocks(rich ? HoverMarkdown.Blocks(markdown) : HoverMarkdown.ByKind(markdown, plain: false, words: true), code, overloadsShown, rich);
 
     /// <summary>What a description says after its signature of how many more overloads there are, after the space it may
     /// begin with.</summary>
     private static readonly System.Text.RegularExpressions.Regex MoreOverloads =
-        new(@"^\s*\(\+\s*\d+\s+(generic\s+)?overloads?\)\s*", System.Text.RegularExpressions.RegexOptions.NonBacktracking | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        new(@"^(?:\s|&nbsp;)*\\?\(\\?\+(?:\s|&nbsp;)*\d+(?:\s|&nbsp;)+(?:generic(?:\s|&nbsp;)+)?overloads?\\?\)(?:\s|&nbsp;)*",
+            System.Text.RegularExpressions.RegexOptions.NonBacktracking | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     private void AddBlocks(IEnumerable<(IReadOnlyList<string> Lines, bool Code, string Info)> blocks, IReadOnlyList<IReadOnlyList<Roslyn.Extension.CodePart>>? given,
-        bool overloadsShown = false)
+        bool overloadsShown = false, bool rich = false)
     {
         List<IReadOnlyList<Roslyn.Extension.CodePart>> unused = [.. given ?? []];
         bool signature = overloadsShown;
         foreach ((IReadOnlyList<string> lines, bool code, string info) in blocks)
         {
-            string text = string.Join('\n', lines).Trim('\n', ' ');
+            string text = string.Join('\n', rich && !code ? lines.Select(l => l.TrimEnd()) : lines).Trim('\n', ' ');
             if (overloadsShown)
             {
                 text = MoreOverloads.Replace(text, string.Empty);
@@ -307,6 +321,15 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
                 if (at >= 0)
                 {
                     unused.RemoveAt(at);
+                }
+            }
+            else if (rich)
+            {
+                MarkdownText words = MarkdownText.Of(Markdown.Inlines(HoverMarkdown.Dataless(text)), documentationPage, StyleClasses.Caption);
+                if (words.Shown.Length > 0)
+                {
+                    words.Foreground = Brush(TokenKeys.TextMuted);
+                    parts.Children.Add(words);
                 }
             }
             else

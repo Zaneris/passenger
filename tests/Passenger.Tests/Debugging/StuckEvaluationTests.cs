@@ -461,8 +461,12 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
             $"The exception's Message, with a thread at its first instruction, was answered {message.Result}; the engine's log:\n{host.EngineLog()}");
         EvaluateResponse collected = await host.EvaluateAsync(frame, "Starting.Collect()");
         Assert.True(collected.Result == "42", $"The collection at the exception's stop was answered {collected.Result}; the engine's log:\n{host.EngineLog()}");
-        Assert.True(host.EngineLog().Contains("Let past their first instruction", StringComparison.Ordinal),
-            $"No thread was let past its first instruction, so nothing here held the thread Announced there:\n{host.EngineLog()}");
+        // Let go, the thread runs on until it settles, unless an event (the evaluation's own end) comes first and holds the program.
+        string log = host.EngineLog();
+        Assert.True(log.Contains("Let past their first instruction, settled", StringComparison.Ordinal) || log.Contains("Not yet past their first instruction and settled, as an evaluation", StringComparison.Ordinal)
+            && log.Contains("an event come", StringComparison.Ordinal),
+            $"The thread Announced was neither let past its first instruction until it stood in managed code or waited, nor stopped short of that by an "
+            + $"event, so the evaluations held it where it was announced:\n{log}");
     }
 
     /// <summary>What has the debuggee's runtime promote a method straight to optimized code, and keeps its tiering worker for

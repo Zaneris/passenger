@@ -619,27 +619,30 @@ public partial class MainWindow
         Task<string?> encoding = vcs.EncodingChangeAsync(path);
         Task<bool> breaksAlike = vcs.BreaksStoredAlikeAsync(path);
         TextDocument mine = open?.Text ?? new TextDocument(EditorArea.ReadText(path) ?? string.Empty);
+        MergeSide? noFile = open is null && !File.Exists(path) ? MergeSide.Right : null;
         // An open file's differences are its change bars' own when they are of its text now.
         if (open is null || await vcs.DiffAsync(open) is not { } diff)
         {
-            string head = await vcs.HeadTextAsync(path) ?? string.Empty;
+            string? head = await vcs.HeadTextAsync(path);
+            noFile = head is null ? MergeSide.Left : noFile;
             TextSnapshot text = mine.Snapshot;
-            diff = await BackgroundWork.Run(() => FileDiff.Compare(head, text));
+            diff = await BackgroundWork.Run(() => FileDiff.Compare(head ?? string.Empty, text));
         }
         diff = diff.StoringBreaksAlike(await breaksAlike);
         string[] besides = [.. new[] { await encoding, mode?.Said }.OfType<string>()];
-        return LocalDiff(path, open, mine, diff, "HEAD", note: besides.Length == 0 ? null : string.Join("; ", besides), again: () => ShowDiffAsync(path));
+        return LocalDiff(path, open, mine, diff, "HEAD", note: besides.Length == 0 ? null : string.Join("; ", besides), again: () => ShowDiffAsync(path), noFile: noFile);
     }
 
     /// <summary>A version's text (the last commit's, a branch's, a revision's), or another file's (Compare With, named by
     /// <paramref name="other"/>), beside the file's where Settings opens diffs (<see cref="LocalDiff"/>).</summary>
     private IDiffHost OpenLocalDiff(string path, OpenDocument? open, TextDocument mine, FileDiff diff, string version, string? other = null, string? note = null,
-        Func<Task<IDiffHost?>>? again = null) => ShowDiff(LocalDiff(path, open, mine, diff, version, other, note, again));
+        Func<Task<IDiffHost?>>? again = null, MergeSide? noFile = null) => ShowDiff(LocalDiff(path, open, mine, diff, version, other, note, again, noFile));
 
     /// <summary>A version's text beside the file's, the right side the open file's own text when it is still open,
-    /// <paramref name="note"/> said after the differences, <paramref name="again"/> how it is asked for afresh.</summary>
+    /// <paramref name="note"/> said after the differences, <paramref name="again"/> how it is asked for afresh,
+    /// <paramref name="noFile"/> the side whose version has no such file.</summary>
     private DiffContent LocalDiff(string path, OpenDocument? open, TextDocument mine, FileDiff diff, string version, string? other = null, string? note = null,
-        Func<Task<IDiffHost?>>? again = null)
+        Func<Task<IDiffHost?>>? again = null, MergeSide? noFile = null)
     {
         // Closed while the differences were read, the file's text is one nothing would save: it is shown, not edited.
         if (open is not null && !Editors.Documents.Contains(open))
@@ -651,7 +654,7 @@ public partial class MainWindow
         (string Left, string Right) titles = (version, open is not null ? mineTitle : $"{mineTitle} (read-only)");
         return new DiffContent(title, $"{version}\n{other ?? path}\n{path}", path, open, () =>
         {
-            DiffView view = Diffs.ForFile(other is null ? Path.GetFileName(path) : title, diff, mine, open, titles, other ?? path, path);
+            DiffView view = Diffs.ForFile(other is null ? Path.GetFileName(path) : title, diff, mine, open, titles, other ?? path, path, noFile);
             view.Note = note;
             if (open is null)
             {
@@ -690,11 +693,12 @@ public partial class MainWindow
         string before = parent is null || file.Kind is ChangeKind.Added ? string.Empty : (await session.Vcs.VersionAsync(parent, file.From ?? file.Path, file.Path))?.Text ?? string.Empty;
         string after = file.Kind is ChangeKind.Deleted ? string.Empty : (await session.Vcs.VersionAsync(commit.Hash, file.Path, file.Path))?.Text ?? string.Empty;
         string leftTitle = parent is null ? "Before the first commit" : GitHashes.Short(parent);
+        MergeSide? noFile = parent is null || file.Kind is ChangeKind.Added ? MergeSide.Left : file.Kind is ChangeKind.Deleted ? MergeSide.Right : null;
         TextDocument mine = new(after);
         TextSnapshot text = mine.Snapshot;
         FileDiff diff = await BackgroundWork.Run(() => FileDiff.Compare(before, text));
         return ShowDiff(new DiffContent($"{file.Name}: {commit.Short} {commit.Subject}", $"{commit.Hash}\n{file.From ?? file.Path}\n{file.Path}", file.Path, null,
-            () => Diffs.ForFile(file.Name, diff, mine, null, (leftTitle, commit.Short), file.From ?? file.Path, file.Path)));
+            () => Diffs.ForFile(file.Name, diff, mine, null, (leftTitle, commit.Short), file.From ?? file.Path, file.Path, noFile)));
     }
 
     /// <summary>Shows a diff where Settings opens them (Open diffs in): in a window of its own over this one, or in a tab of

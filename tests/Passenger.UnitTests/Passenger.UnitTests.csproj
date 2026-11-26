@@ -441,6 +441,11 @@
     <Compile Include="../../src/Passenger.Roslyn.Extension/RefactoringChecks.cs" Link="Roslyn/RefactoringChecks.cs" />
   </ItemGroup>
 
+  <!-- A documentation comment's escaped tags read as tags before Roslyn's formatting, as its server reads them. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.Roslyn.Extension/EscapedDocumentationTags.cs" Link="Roslyn/EscapedDocumentationTags.cs" />
+  </ItemGroup>
+
   <!-- The services an Aspire AppHost names, read from its syntax as Passenger.Languages compiles the reader. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.Roslyn.Extension/AspireServices.cs" Link="Roslyn/AspireServices.cs" />

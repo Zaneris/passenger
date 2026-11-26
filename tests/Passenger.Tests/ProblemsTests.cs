@@ -109,6 +109,17 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Ui.Choose(rows.ContextMenu, "Copy Message");
         Ui.WaitFor(() => Ui.Clipboard(window) == chosen.Problem!.Message, "the message on the clipboard");
 
+        // Next Tab and Previous Tab with the window's keys step its tabs, the editor's tabs left as they are.
+        Ui.Click(Ui.Row(rows, chosen));
+        Passenger.App.Workspace.OpenDocument shownFile = window.EditorArea.Active!;
+        foreach ((string action, ProblemsTab expected) in new[] { (AppActions.NextTab, ProblemsTab.Solution), (AppActions.PreviousTab, ProblemsTab.File) })
+        {
+            Passenger.Editor.Keystroke keys = window.Actions.Keymap.ShortcutsFor(action).First(s => s.Second is null).First;
+            Ui.Press(window, keys.Notation());
+            Assert.True(problems.Shown == expected && window.EditorArea.Active == shownFile && window.ProblemsWindow.IsKeyboardFocusWithin,
+                $"{keys.Display()} in the Problems window shows its {problems.Shown} tab, not {expected}, the editors showing {window.EditorArea.Active?.Name}, the keys {(window.ProblemsWindow.IsKeyboardFocusWithin ? "kept" : "gone")}");
+        }
+
         problems.Shown = ProblemsTab.Solution;
         int typed = window.EditorArea.CodeEditor.Document.Snapshot.ToString().IndexOf(" x", StringComparison.Ordinal);
         window.EditorArea.CodeEditor.Selections = SelectionSet.Single(new Selection(typed, typed + " x".Length));

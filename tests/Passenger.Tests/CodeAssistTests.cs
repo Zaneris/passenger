@@ -10,6 +10,7 @@ using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.DependencyMap;
+using Passenger.App.Editors;
 using Passenger.Roslyn.Extension;
 using Passenger.App.Navigation;
 using Passenger.App.Settings;
@@ -101,7 +102,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>What the window says of the code around the caret: the status bar's path, a hover card and File
     /// Structure, once the server has the file; the structure window following the editor; Go to Symbol's generated
-    /// declarations; and parameter info's overloads, those the arguments no longer fit set back.</summary>
+    /// declarations; parameter info's overloads, those the arguments no longer fit set back; and documentation as its
+    /// tags write it in every card.</summary>
     [AvaloniaFact]
     public void The_code_around_the_caret_is_named_and_its_overloads_shown_as_the_server_has_it()
     {
@@ -110,6 +112,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("the structure window shows the shown file's outline whenever it is shown, once the server has the file, and follows the editor", () => new CodeAssistTests(project), t => t.The_structure_window_shows_the_shown_files_outline_whenever_it_is_shown_and_once_the_server_has_the_file_and_follows_the_editor());
         Flow.StepApart("Go to Symbol lists a generated method's own declaration alone, and what only a generator wrote after", () => new CodeAssistTests(project), t => t.Go_to_Symbol_lists_a_generated_methods_own_declaration_alone_and_what_only_a_generator_wrote_after());
         Flow.StepApart("parameter info shows every overload, setting back those the arguments no longer fit", () => new CodeAssistTests(project), t => t.Parameter_info_shows_every_overload_setting_back_those_the_arguments_no_longer_fit());
+        Flow.StepApart("documentation shows bold, emphasis, underline, code and links in the hover, completion and parameter cards, tags written escaped too", () => new CodeAssistTests(project), t => t.Documentation_shows_its_tags_in_the_hover_completion_and_parameter_cards_tags_written_escaped_too());
     }
 
     /// <summary>Find Usages groups, previews and keeps each search, lists each place once and gives its results the
@@ -173,14 +176,16 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>Fixes and context actions do what they offer: Fix All in the solution undone in every file at once, a
-    /// fix the server will not make saying why, an agent's action with choices; Escape closes their lists wherever the
-    /// keys are; live and postfix templates expand and end as their editor moves on; Extend Selection grows and
-    /// shrinks; and type and parameter hints show and go with Settings.</summary>
+    /// fix the server will not make saying why, the using of an extension method a call bound to another receiver's
+    /// takes, an agent's action with choices; Escape closes their lists wherever the keys are; live and postfix templates
+    /// expand and end as their editor moves on; Extend Selection grows and shrinks; and type and parameter hints show and
+    /// go with Settings.</summary>
     [AvaloniaFact]
     public void Fixes_context_actions_templates_and_selection_do_what_they_offer_and_take_back_whole()
     {
         Flow.StepApart("Fix All in the solution reaching a file not open is undone in every file it changed at once", () => new CodeAssistTests(project), t => t.Fix_all_in_the_solution_reaching_a_file_not_open_is_undone_in_every_file_it_changed_at_once());
         Flow.StepApart("a fix the language server will not make, once chosen, says why in the status bar", () => new CodeAssistTests(project), t => t.A_fix_the_language_server_will_not_make_once_chosen_says_why_in_the_status_bar());
+        Flow.StepApart("a call bound only to another receiver's extension method is offered the using of one that takes its own", () => new CodeAssistTests(project), t => t.A_call_bound_only_to_another_receivers_extension_method_is_offered_the_using_of_one_that_takes_its_own());
         Flow.StepApart("through MCP an action with choices lists them, asks for one and applies the one named", () => new CodeAssistTests(project), t => t.Through_mcp_an_action_with_choices_lists_them_asks_for_one_and_applies_the_one_named());
         Flow.StepApart("Escape closes the lists of choices and the rename box wherever the keys are", () => new CodeAssistTests(project), t => t.Escape_closes_the_lists_of_choices_and_the_rename_box_wherever_the_keys_are());
         Flow.StepApart("live and postfix templates expand where they belong, fill their variables and wrap what they follow", () => new CodeAssistTests(project), t => t.Live_and_postfix_templates_expand_where_they_belong_fill_their_variables_and_wrap_what_they_follow());
@@ -191,9 +196,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>What the window says of the code around the caret, in one window on Program.cs: the status bar's path names
-    /// the file and the member the caret is in; resting the pointer on a method shows a card with its signature; File
-    /// Structure lists the file's members, opens on the caret's and filters keeping their type; and Go to Symbol finds a
-    /// member in another file by name and goes to it.</summary>
+    /// the file and the member the caret is in; resting the pointer on a method shows a card with its signature, which the
+    /// pointer reaches and copies from; File Structure lists the file's members, opens on the caret's and filters keeping
+    /// their type; and Go to Symbol finds a member in another file by name and goes to it.</summary>
     private void The_path_a_hover_card_file_structure_and_go_to_symbol_name_the_code_and_go_to_it()
     {
         MainWindow window = WithoutNavigationBar(project.Open("Program.cs"));
@@ -210,6 +215,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
         Ui.WaitFor(() => window.Assist.HoverText is not null, "the hover card");
         Assert.Contains("int Helper.Twice(int value)", window.Assist.HoverText, StringComparison.Ordinal);
+        TheCardIsReachedSelectedAndCopied(window, editor, point);
         window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
         Ui.Settle();
 
@@ -238,6 +244,42 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Equal(PathNames.Canonical(project.PathOf("Helper.cs")), window.EditorArea.Active?.Path);
         Assert.Equal(2, window.EditorArea.CodeEditor.CaretPosition.Line);
         window.Close();
+    }
+
+    /// <summary>The hover card under the word at <paramref name="word"/> takes the pointer: crossed to from its word, it
+    /// stays past the pause it waits before going; its code dragged over is selected and Copy's keys copy that, its menu
+    /// offers Copy while the card stays, and Escape takes the card away, the editor having its keys back (#2259).</summary>
+    private static void TheCardIsReachedSelectedAndCopied(MainWindow window, CodeEditor editor, Point word)
+    {
+        Border card = window.Assist.HoverCard!;
+        SelectableTextBlock code = card.GetVisualDescendants().OfType<ColouredCode>().Single(c => c.Code.Contains("Twice", StringComparison.Ordinal))
+            .GetVisualDescendants().OfType<SelectableTextBlock>().Single();
+        Point from = code.TranslatePoint(new Point(1, code.Bounds.Height / 2), window)!.Value;
+        Point to = code.TranslatePoint(new Point(code.Bounds.Width - 1, code.Bounds.Height / 2), window)!.Value;
+        // Across the gap between the word's line and the card, onto it.
+        window.MouseMove(new Point(word.X, card.TranslatePoint(default, window)!.Value.Y - 1), Avalonia.Input.RawInputModifiers.None);
+        window.MouseMove(from, Avalonia.Input.RawInputModifiers.None);
+        Ui.Hold(TimeSpan.FromMilliseconds(600), "past the pause a card waits once the pointer left its word");
+        Assert.True(window.Assist.HoverCard == card, "The hover card went as the pointer crossed from its word onto it, so nothing on it can be selected");
+
+        Ui.Drag(window, from, to);
+        string selected = code.SelectedText;
+        Assert.True(selected.Length > 0 && "int Helper.Twice(int value)".Contains(selected, StringComparison.Ordinal) && window.Assist.HoverCard == card,
+            $"A drag over the card's code selected [{selected}], the card {(window.Assist.HoverCard == card ? "still" : "no longer")} shown");
+        Ui.Press(window, Ui.Command("C"));
+        Assert.True(Ui.Clipboard(window) == selected, $"Copy's keys on the card's selected [{selected}] left [{Ui.Clipboard(window)}] on the clipboard");
+
+        Ui.RightClick(code, new Point(code.Bounds.Width / 2, code.Bounds.Height / 2));
+        MenuFlyout menu = Assert.IsType<MenuFlyout>(code.ContextFlyout);
+        Assert.True(menu.IsOpen && menu.Items.OfType<MenuItem>().Any(item => item.Header as string == "Copy" && item.IsEffectivelyEnabled),
+            $"A right click on the card's selected code opened [{string.Join(", ", menu.Items.OfType<MenuItem>().Select(i => $"{i.Header}{(i.IsEffectivelyEnabled ? string.Empty : " (greyed)")}"))}], open: {menu.IsOpen}");
+        Ui.Hold(TimeSpan.FromMilliseconds(600), "past the pause a card waits once the pointer and the keys left it");
+        Assert.True(window.Assist.HoverCard == card, "The hover card went while its menu was open");
+        menu.Hide();
+        Ui.Settle();
+        Ui.Press(window, "ESCAPE");
+        Ui.WaitFor(() => window.Assist.HoverCard is null, "the card gone at Escape");
+        Assert.True(editor.IsKeyboardFocusWithin, $"Escape on the hover card left the editor without its keys, which {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"} has");
     }
 
     /// <summary>Where the status bar's path is drawn.</summary>
@@ -2305,6 +2347,28 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>Under System.Linq's using, FirstOrDefaultAsync on an IQueryable binds to .NET's AsyncEnumerable, which takes
+    /// no IQueryable (CS0411), as EF Core's does without its using: Quick Fix offers the using of the namespace whose
+    /// extension method takes it, and choosing it ends the error.</summary>
+    private void A_call_bound_only_to_another_receivers_extension_method_is_offered_the_using_of_one_that_takes_its_own()
+    {
+        MainWindow window = project.Open("Queried.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument queried = window.EditorArea.Active!;
+        Ui.PlaceAfter(editor, "n > 1).FirstOrDefault");
+        window.KeyTextInput("Async");
+        bool Uninferred() => window.CSharpService!.For(queried)!.Diagnostics.Any(d => d.Code?.ToString() == "CS0411");
+        Ui.WaitFor(Uninferred, "FirstOrDefaultAsync's error, AsyncEnumerable's taking no IQueryable");
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Contains("using Queries;"),
+            () => $"Quick Fix to offer Queries' using, whose FirstOrDefaultAsync takes an IQueryable, where it offers only {string.Join("; ", window.Assist.Offered)}");
+        Choose(window, "using Queries;");
+        Ui.WaitFor(() => editor.Document.Snapshot.ToString().StartsWith("using System.Linq;\nusing Queries;\n", StringComparison.Ordinal),
+            () => $"Queries' using to be written under System.Linq's:\n{editor.Document.Snapshot}");
+        Ui.WaitFor(() => !Uninferred(), "the call to bind to Queries' FirstOrDefaultAsync once its using is written");
+        window.Close();
+    }
+
     private void A_fix_the_language_server_will_not_make_once_chosen_says_why_in_the_status_bar()
     {
         MainWindow window = project.Open("Program.cs");
@@ -2534,6 +2598,54 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 $"String.Join's Parameter Info reads 'separator.separator':\n{said}");
         }
         window.Close();
+    }
+
+    private void Documentation_shows_its_tags_in_the_hover_completion_and_parameter_cards_tags_written_escaped_too()
+    {
+        MainWindow window = project.Open("Documented.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Uri guide = new("https://example.test/guide?x=1&y=2");
+
+        Ui.PlaceAfter(editor, "return Documented.Re");
+        Ui.Run(window, AppActions.QuickDocumentation);
+        Ui.WaitFor(() => window.Assist.HoverText?.Contains("Use the", StringComparison.Ordinal) == true, "Read's documentation in hover");
+        MarkdownText hover = AssertDocumentation(window.Assist.HoverCard!, "quantity", "guide", guide);
+        string shown = hover.Shown.Replace('\u00A0', ' ');
+        Assert.Contains("Related", hover.Shown, StringComparison.Ordinal);
+        Assert.Contains("or null.", shown, StringComparison.Ordinal);
+        Assert.Matches(@"Read more with value of type (?:T|int)\.\nSecond line\.", shown);
+        Assert.Contains("• First step", window.Assist.HoverText, StringComparison.Ordinal);
+        Assert.Contains("int value = 1;", window.Assist.HoverText, StringComparison.Ordinal);
+        Assert.Contains(hover.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == "any value" && run.FontStyle == FontStyle.Italic);
+        Assert.Contains(hover.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == "unchanged" && run.TextDecorations == TextDecorations.Underline);
+        Assert.Contains(hover.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == "<b>literal</b>");
+        Ui.Click(hover, hover.PointOf(guide));
+        Assert.Equal(guide, window.Browsed.LastOrDefault());
+        Ui.Press(window, "ESCAPE");
+
+        Ui.PlaceAfter(editor, "public static int Run()\n    {\n");
+        window.KeyTextInput("        Documented");
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.IsCompletionOpen, "members of Documented");
+        window.KeyTextInput("Rea");
+        Ui.WaitFor(() => window.Assist.ItemDocumentation?.Contains("Use the", StringComparison.Ordinal) == true, "Read's documentation in completion");
+        AssertDocumentation(window.Assist.ItemCard!, "quantity", "guide", guide);
+        Ui.Press(window, "ESCAPE");
+
+        Ui.PlaceAfter(editor, "return Documented.Read(");
+        Ui.Run(window, AppActions.ParameterInfo);
+        Ui.WaitFor(() => window.Assist.SignatureText?.Contains("The value", StringComparison.Ordinal) == true, "Read's parameter documentation");
+        AssertDocumentation(window.Assist.SignatureCard!, "value", "parameter guide", guide);
+        window.Close();
+
+        static MarkdownText AssertDocumentation(Border card, string bold, string label, Uri target)
+        {
+            MarkdownText words = Assert.Single(card.GetVisualDescendants().OfType<MarkdownText>(), block => block.Links.Any());
+            Assert.Contains((label, target), words.Links);
+            Assert.Contains(words.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == bold && run.FontWeight == FontWeight.Bold);
+            Assert.DoesNotContain("<see", words.Shown, StringComparison.Ordinal);
+            return words;
+        }
     }
 
     private static T Await<T>(Task<T> task, string what) => Ui.Await(task, what, TimeSpan.FromSeconds(30));
@@ -3588,6 +3700,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Greeters.cs"), "class Greeter(string name, int times)\n{\n    public string Name => name;\n\n    public int Times => times;\n\n"
                 + "    public static Greeter Of(string name)\n    {\n        Greeter made = new(name, 2);\n        return made;\n    }\n}\n");
             File.WriteAllText(PathOf("Releases.cs"), "record Release(string Version, int Downloads);\n");
+            File.WriteAllText(PathOf("Queried.cs"), "using System.Linq;\n\nnamespace Queries\n{\n    public static class QueryFirsts\n    {\n"
+                + "        public static T FirstOrDefaultAsync<T>(this IQueryable<T> source) => source.FirstOrDefault();\n    }\n}\n\n"
+                + "static class Queried\n{\n    public static int First(IQueryable<int> numbers) => numbers.Where(n => n > 1).FirstOrDefault();\n}\n");
             File.WriteAllText(PathOf("ReleaseReaders.cs"), "static class ReleaseReaders\n{\n    public static string Of(Release release) => release.Version;\n\n"
                 + "    public static Release Next(Release release) => release with { Version = \"2.0\" };\n}\n");
             File.WriteAllText(PathOf("Mixed.cs"), "static class Mixed\n{\n    /* Pasted:\u2028one,\r\ntwo,\u0085three. */\n    public static int Value()\n    {\n        int total = 1;\n          return total;\n    }\n}\n");
@@ -3614,6 +3729,30 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Paths.cs"), "static class Paths\n{\n"
                 + "    /// <summary>Keeps its logs under <c>C:\\temp</c>, in C:\\temp\\logs, &quot;never&quot; elsewhere.</summary>\n"
                 + "    public static int Keep() => 1;\n}\n");
+            File.WriteAllText(PathOf("Documented.cs"), """
+                static class Documented
+                {
+                    /// <summary>
+                    /// Use the &lt;b&gt;quantity&lt;/b&gt; in the &lt;see href=&quot;https://example.test/guide?x=1&amp;y=2&quot;&gt;guide&lt;/see&gt;.
+                    /// See <see cref="Related"/> or type <c>&lt;b&gt;literal&lt;/b&gt;</c>. Pass <i>any value</i> or <see langword="null"/>. It comes back <u>unchanged</u>.
+                    /// <para>Read more with <paramref name="value"/> of type <typeparamref name="T"/>.<br/>Second line.</para>
+                    /// <list type="bullet"><item><description>First step</description></item></list>
+                    /// <code>int value = 1;</code>
+                    /// </summary>
+                    /// <param name="value">The <b>value</b> in the <see href="https://example.test/guide?x=1&amp;y=2">parameter guide</see>.</param>
+                    public static T Read<T>(T value) => value;
+                    public static int Related() => 0;
+                }
+
+                static class Reader
+                {
+                    public static int Run()
+                    {
+
+                        return Documented.Read(1);
+                    }
+                }
+                """);
             // A statement's completion with no usings, and with the usings a project's implicit ones bring.
             const string Statement = "\nstatic class Statement\n{\n    public static int Sum()\n    {\n        int total = 0;\n        return total;\n    }\n}\n";
             File.WriteAllText(PathOf("Bare.cs"), Statement.Replace("Statement", "Bare", StringComparison.Ordinal));

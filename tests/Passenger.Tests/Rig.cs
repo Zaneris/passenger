@@ -236,6 +236,8 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable(Passenger.App.SystemMotion.Variable, "full,blink=530");
         // Nor the person's high contrast: a window shows the theme its test chooses but where a test stands in.
         Environment.SetEnvironmentVariable(Passenger.App.SystemContrast.Variable, "none");
+        // Nor the person's own Windows Path: a program a test's PATH lacks stays missing but where a test stands in.
+        Environment.SetEnvironmentVariable(UserEnvironment.PathNowVariable, ";");
         // Nor the person's user secrets: a container run mounts a project's from the run's own folder, which a test writes.
         Environment.SetEnvironmentVariable(Passenger.App.Containers.ContainerPlans.UserSecretsVariable, UserSecrets);
         // Nor the person's Passenger: an agent's call with no window to join starts this build headless, in the run's state.
@@ -2542,6 +2544,23 @@ public static class OpenDiffs
         Passenger.App.Vcs.DiffTab tab => tab.Document.Title,
         _ => throw new ArgumentException($"A diff is shown in a window or a tab, not in a {diff.GetType().Name}", nameof(diff)),
     };
+
+    /// <summary>Fails unless the diff shows a file one side's version has none of (<paramref name="noFile"/>: the left for a
+    /// new file, the right for one deleted): that side shows no line, only a pane saying so, and every line of the other is
+    /// marked added (or deleted), so the person reads at a glance what became of the file.</summary>
+    public static void ShowsNoFile(Passenger.App.Vcs.DiffView view, Passenger.Vcs.MergeSide noFile)
+    {
+        bool made = noFile == Passenger.Vcs.MergeSide.Left;
+        (CodeEditor none, CodeEditor whole, string which) = made ? (view.Left, view.Right, "new") : (view.Right, view.Left, "deleted");
+        string[] said = [.. view.GetVisualDescendants().OfType<Passenger.App.ToolWindows.EmptyState>().Where(e => e.IsEffectivelyVisible).Select(e => e.Text ?? string.Empty)];
+        Assert.True(!none.IsEffectivelyVisible && said.SequenceEqual([made ? "New file" : "Deleted file"]),
+            $"The {which} file's diff shows the side with no file {(none.IsEffectivelyVisible ? $"as {none.Document.Snapshot.LineCount} line(s) of text" : "hidden")}, saying [{string.Join("; ", said)}], so nothing tells the file is {which}");
+        TextSnapshot text = whole.Document.Snapshot;
+        int lines = text.LineCount - (text.Length > 0 && text.GetLine(text.LineCount - 1).Length == 0 ? 1 : 0);
+        ChangeMark every = new(0, lines, made ? ChangeMarkKind.Added : ChangeMarkKind.Deleted);
+        Assert.True(whole.ChangeMarks.SequenceEqual([every]),
+            $"The {which} file's diff marks [{string.Join(", ", whole.ChangeMarks)}] on its other side, not every one of its {lines} lines as {every.Kind}");
+    }
 
     /// <summary>Whether it is still open.</summary>
     public static bool IsOpen(Passenger.App.MainWindow window, Passenger.App.Vcs.IDiffHost diff) => In(window).Contains(diff);

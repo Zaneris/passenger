@@ -43,7 +43,8 @@ public sealed class GodotErrorFloodTests
     }
 
     /// <summary>A flood's reads end anywhere: a header cut inside its first word shows whole with the rest of it and is an entry
-    /// of the console's errors, and the start of a line whose rest never comes still shows, before what the console says next.</summary>
+    /// of the console's errors, and the start of a line whose rest never comes still shows, before what the console says next
+    /// on a line of its own.</summary>
     private void An_error_cut_between_two_reads_shows_and_folds_whole_and_a_start_with_no_rest_shows_as_the_console_speaks()
     {
         OutputView console = new() { Fold = new GodotConsoleFold() };
@@ -64,7 +65,7 @@ public sealed class GodotErrorFloodTests
             console.Sink.Write("SCRIPT E", ConsoleStream.Error);
             console.Flush();
             console.Append("Process finished\n");
-            Assert.Equal(Whole + "SCRIPT EProcess finished\n", console.Document.Snapshot.ToString());
+            Assert.Equal(Whole + "SCRIPT E\nProcess finished\n", console.Document.Snapshot.ToString());
         }
         finally
         {

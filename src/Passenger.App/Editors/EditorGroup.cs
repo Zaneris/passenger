@@ -644,13 +644,13 @@ public sealed class EditorGroup : DockPanel
     /// <summary>Whether the editor shows the file, rather than a view of its own in the editor's place.</summary>
     private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes && document.Diff is null && document.Tool is null && document.DatabaseTab is null;
 
-    /// <summary>Gives the keys to what shows the file: a diff's file's side, its preview or rendered notes, which its keys
+    /// <summary>Gives the keys to what shows the file: a diff's side that takes them, its preview or rendered notes, which its keys
     /// move through, else the editor; given them as by Tab (<paramref name="method"/>), it draws the ring round it. False
     /// where it could not take them.</summary>
     public bool FocusShown(NavigationMethod method = NavigationMethod.Unspecified) => preview switch
     {
         not null when active?.Document.DatabaseTable is not null && preview.GetVisualDescendants().OfType<CellGrid>().FirstOrDefault() is { } cells => cells.Focus(method),
-        Vcs.DiffView diff => diff.Right.Focus(method),
+        Vcs.DiffView diff => diff.Keyed.Focus(method),
         ToolTabView tool => tool.Window.TakeKeys(method),
         not null => preview.Focus(method),
         _ when Markdown is { } page && area.MarkdownLayout.View == PaneView.Preview => page.Focus(method),

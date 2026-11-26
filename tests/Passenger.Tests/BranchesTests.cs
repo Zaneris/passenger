@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.LogicalTree;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.ToolWindows;
@@ -255,6 +256,17 @@ public sealed class BranchesTests : IDisposable
                 "Tags",
                 "Worktrees",
             ], Listed(panel));
+
+        // The current branch's mark, HEAD's here, reads as a mark on the chosen row's ground, where a person looks for it.
+        Assert.True(panel.Select("HEAD"));
+        Ui.Settle();
+        TreeList tree = panel.GetVisualDescendants().OfType<TreeList>().Single();
+        RowIcon head = (tree.ContainerFromItem(panel.Selected!) ?? throw new Xunit.Sdk.XunitException("The panel shows no row for HEAD"))
+            .GetVisualDescendants().OfType<RowIcon>().Single(i => i.DataKey == IconKeys.Branch);
+        uint mark = Colour(head, head.ForegroundKey ?? TokenKeys.Icon);
+        uint chosen = ThemeColours.Over(Colour(panel, TokenKeys.RowSelected), Colour(panel, TokenKeys.Panel));
+        Assert.True(ThemeColours.Ratio(mark, chosen) >= 3,
+            $"The current branch's mark ({head.ForegroundKey}, {mark:X8}) reads at {ThemeColours.Ratio(mark, chosen):0.00} to 1 on the chosen row's ground, under the 3 a mark needs: the checked-out branch is the one a person cannot find");
 
         panel.Toggle(panel.Rows.Single(r => r.Title == "Tags"));
         Assert.Equal(["v1.0", "v2.0"], panel.Rows.SkipWhile(r => r.Title != "Tags").Skip(1).TakeWhile(r => r.Title != "Worktrees").Select(r => r.Title));
@@ -960,6 +972,11 @@ public sealed class BranchesTests : IDisposable
             return tip;
         }),
     ];
+
+    /// <summary>A theme colour as the control's look gives it, its alpha first.</summary>
+    private static uint Colour(Control control, string key) =>
+        control.TryFindResource(key, control.ActualThemeVariant, out object? found) && found is ISolidColorBrush { Color: var colour }
+            ? colour.ToUInt32() : throw new Xunit.Sdk.XunitException($"The look gives no colour {key}");
 
     /// <summary>The chosen row's menu as it opens under the pointer, closed again.</summary>
     private static MenuItem[] MenuOf(ListBox rows)

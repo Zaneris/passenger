@@ -44,8 +44,9 @@ public sealed class TerminalTab(TerminalSession session, string name, Run.Termin
 /// <summary>The Terminal window: a shell per tab in the open folder, the first started when the window is first
 /// shown, + for another; a tab whose shell ends closes, and the window hides with its last. A run configuration that uses
 /// the terminal runs its program in a tab of its own (<see cref="RunAsync"/>), which stays once it ends. Shown, it takes
-/// the keys only as asked (<see cref="FocusView"/>, a tab started or chosen), never because a layout shows it.</summary>
-public sealed class TerminalPanel : DockPanel
+/// the keys only as asked (<see cref="FocusView"/>, a tab started or chosen, stepped to by Next Tab or Previous Tab), never
+/// because a layout shows it.</summary>
+public sealed class TerminalPanel : DockPanel, ToolTabs.ITabbed
 {
     private readonly ObservableCollection<TerminalTab> tabs = [];
     private readonly TerminalView view = new() { NothingSelected = Refusals.NothingSelected };
@@ -325,6 +326,16 @@ public sealed class TerminalPanel : DockPanel
             tab.Run?.Stop();
         }
         return Task.WhenAll(closing.Select(tab => tab.Session.DisposeAsync().AsTask()));
+    }
+
+    public bool StepTab(int step)
+    {
+        if (tabs.Count < 2 || ActiveTab is not { } shown)
+        {
+            return false;
+        }
+        Show(tabs[(((tabs.IndexOf(shown) + step) % tabs.Count) + tabs.Count) % tabs.Count]);
+        return true;
     }
 
     private void Show(TerminalTab tab, bool focus = true)

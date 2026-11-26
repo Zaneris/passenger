@@ -418,6 +418,9 @@ public sealed class DebugSession
     /// (its job or process group), but which only the IDE can end once the adapter itself has died.</summary>
     private Process? launched;
 
+    /// <summary>Set once Stop, or a start in the session's place, asks the debugger to end the program.</summary>
+    private bool endAsked;
+
     /// <summary>The program, when it runs in a tab of the Terminal window rather than the adapter's console: where it reads
     /// and writes, and how it ended, which the adapter cannot tell of a program it did not start on macOS and Linux.</summary>
     public Run.TerminalRun? Terminal { get; private set; }
@@ -718,7 +721,9 @@ public sealed class DebugSession
         {
             Ended(ExitCode);
         }
+        endAsked = true;
         await EndProcessesAsync(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(3));
+        EndStarted();
         if (Terminal is { } terminal)
         {
             if (stopping && !OperatingSystem.IsWindows())
@@ -984,11 +989,35 @@ public sealed class DebugSession
             // An ended one waiting for its parent, the adapter, to take its exit (a Godot game after its teardown) reads to .NET as running.
             if (!DotnetProcesses.Runs(program.Id))
             {
+                EndStarted(program);
                 return;
             }
             log(EndedLeftRunning(Path.GetFileName(Program), program.Id));
             ChildProcesses.Kill(program);
             adapter.Kill();
+        }
+    }
+
+    /// <summary>Once Stop or a start in the session's place asked the debugger to end the program, ends what the program
+    /// started, which the debugger's end of the program alone leaves running (a dev server holding the port the next start
+    /// needs), as a run's Stop ends all a program started: on Windows the tree under the program, whose held handle keeps
+    /// the id its children name; elsewhere what is left of the adapter's process group, which holds them.</summary>
+    private void EndStarted(Process? program = null)
+    {
+        if (!endAsked)
+        {
+            return;
+        }
+        if (OperatingSystem.IsWindows())
+        {
+            if ((program ?? launched) is { } ended)
+            {
+                ChildProcesses.Kill(ended);
+            }
+        }
+        else if (adapter.Id > 0)
+        {
+            ChildProcesses.KillLeft(adapter.Id);
         }
     }
 

@@ -26,7 +26,7 @@ internal sealed class ParameterInfo
 {
     private readonly AssistContext context;
     private readonly PopupPlacement popups;
-    private readonly InfoCard card = new("Parameter Info");
+    private readonly InfoCard card;
     private CancellationTokenSource? signing;
 
     /// <summary>The signature and the parameter a screen reader was last told, until the card goes; a language's own card's
@@ -43,7 +43,8 @@ internal sealed class ParameterInfo
     {
         this.context = context;
         this.popups = popups;
-        popups.Add(card);
+        card = new InfoCard("Parameter Info", context.Browse);
+        popups.Add(card, () => Hide(cancel: false));
         following = new Debounce(TimeSpan.FromMilliseconds(100), () => card.IsVisible ? Show() : Task.CompletedTask);
     }
 
@@ -240,14 +241,19 @@ internal sealed class ParameterInfo
         }
         int active = signature.ActiveParameter ?? help.ActiveParameter ?? -1;
         List<string> names = [.. ParameterNames(signature)];
-        if (signature.Parameters is { } parameters && active >= 0 && active < parameters.Count
-            && Shapes.Text(parameters[active].Documentation) is { Length: > 0 } about)
+        JsonElement? documentation = signature.Parameters is { } parameters && active >= 0 && active < parameters.Count
+            && Shapes.Text(parameters[active].Documentation).Length > 0 ? parameters[active].Documentation : signature.Documentation;
+        if (Shapes.Text(documentation) is { Length: > 0 } about)
         {
-            card.AddText(SentencesApart(about, names));
-        }
-        else if (Shapes.Text(signature.Documentation) is { Length: > 0 } documentation)
-        {
-            card.AddText(SentencesApart(documentation, names));
+            string text = SentencesApart(about, names);
+            if (language == Languages.Language.CSharp && documentation is { ValueKind: JsonValueKind.Object } markup && !HoverMarkdown.IsPlain(markup))
+            {
+                card.AddMarkdown(text, rich: true);
+            }
+            else
+            {
+                card.AddText(text);
+            }
         }
         card.IsVisible = true;
         Tell(signature.Label, count > 1 ? $"overload {overload + 1} of {Numbers.Said(count)}" : null, ParameterLabel(signature, active));
@@ -297,7 +303,7 @@ internal sealed class ParameterInfo
 
         public void AddText(string text) => parts.Add(card => card.AddText(text));
 
-        public void AddHover(Hover hover) => parts.Add(card => card.AddHover(hover));
+        public void AddHover(Hover hover, bool csharp = false) => parts.Add(card => card.AddHover(hover, csharp));
 
         public void Into(InfoCard card)
         {
@@ -314,7 +320,7 @@ internal sealed class ParameterInfo
     /// "a separator.separator is included".</summary>
     private static string SentencesApart(string text, IEnumerable<string> parameters) =>
         parameters.Distinct(StringComparer.Ordinal).Aggregate(text, (said, name) => Regex.Replace(
-            said, $@"(?<=\p{{Ll}}\.){Regex.Escape(name)}\b", " " + name, RegexOptions.CultureInvariant));
+            said, $@"(?<=\p{{Ll}}(?:\\)?\.){Regex.Escape(name)}\b", " " + name, RegexOptions.CultureInvariant));
 
     /// <summary>A signature's parameters' names, whether the server labels each by its name (Roslyn), as "name: type"
     /// (TypeScript) or by where it is in the signature's label.</summary>

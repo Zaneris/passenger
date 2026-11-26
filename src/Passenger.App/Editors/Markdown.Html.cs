@@ -47,7 +47,7 @@ internal static partial class Markdown
     /// <summary>The tags read inside words; every other is its words as written.</summary>
     private static readonly HashSet<string> WordTags = new(StringComparer.Ordinal)
     {
-        "a", "img", "picture", "br", "b", "strong", "i", "em", "code", "kbd",
+        "a", "img", "picture", "br", "b", "strong", "i", "em", "u", "code", "kbd",
     };
 
     /// <summary>The tags read as blocks; with those read in words, the tags whose end tag closing nothing open is left out.</summary>
@@ -581,12 +581,13 @@ internal static partial class Markdown
     }
 
     /// <summary>A tag read in words around its words read: a link where an <c>a</c> has an <c>href</c> (its words alone
-    /// where it has none), strong, emphasis, or code.</summary>
+    /// where it has none), strong, emphasis, underline, or code.</summary>
     private static IReadOnlyList<Inline> Element(HtmlElement element, IReadOnlyList<Inline> inner) => element.Name switch
     {
         "a" when element.Attributes.TryGetValue("href", out string? href) => [new Link(inner, href)],
         "b" or "strong" => [new Strong(inner)],
         "i" or "em" => [new Emphasis(inner)],
+        "u" => [new Underline(inner)],
         "code" or "kbd" => [new CodeSpan(Plain(inner))],
         "img" => ImageOf(element, null, null) is { } image ? [image] : [],
         "br" => [new Break()],

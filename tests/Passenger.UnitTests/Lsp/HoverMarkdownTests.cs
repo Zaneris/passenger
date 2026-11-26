@@ -19,7 +19,9 @@ public sealed class HoverMarkdownTests
         (nameof(A_hover_is_read_by_its_kind_plain_text_as_written_and_markdown_without_its_marks),
             A_hover_is_read_by_its_kind_plain_text_as_written_and_markdown_without_its_marks),
         (nameof(Fenced_code_comes_apart_from_the_prose_around_it_the_fences_left_out),
-            Fenced_code_comes_apart_from_the_prose_around_it_the_fences_left_out));
+            Fenced_code_comes_apart_from_the_prose_around_it_the_fences_left_out),
+        (nameof(A_comments_tags_written_escaped_read_as_tags_but_in_code_and_where_they_read_as_no_xml),
+            A_comments_tags_written_escaped_read_as_tags_but_in_code_and_where_they_read_as_no_xml));
 
     private void A_code_span_closes_only_at_as_many_backticks_and_an_unclosed_run_is_written_as_it_is()
     {
@@ -58,6 +60,28 @@ public sealed class HoverMarkdownTests
             $"A Markdown hover's card, a signature's too, showed its marks, or lost the language its fence names: {shown}");
 
         static string Value(JsonDocument hover) => JsonMembers.Text(hover.RootElement, "value")!;
+    }
+
+    /// <summary>What Roslyn's server formats a C# comment's section from (<see cref="Passenger.Roslyn.Extension.EscapedDocumentationTags"/>).</summary>
+    private void A_comments_tags_written_escaped_read_as_tags_but_in_code_and_where_they_read_as_no_xml()
+    {
+        Assert.Equal("""<b>Length</b> <see href="https://example.test/?x=1&amp;y=2">Guide</see> <see cref="T:Example.Unit" /> List&lt;T&gt;""",
+            Passenger.Roslyn.Extension.EscapedDocumentationTags.Of(
+                """&lt;b&gt;Length&lt;/b&gt; &lt;see href="https://example.test/?x=1&amp;y=2"&gt;Guide&lt;/see&gt; &lt;see cref="T:Example.Unit"/&gt; List&lt;T&gt;"""));
+        string[] asWritten =
+        [
+            "<c>&lt;b&gt;literal&lt;/b&gt;</c> and <code>&lt;br/&gt;</code>",
+            "a &lt; b and &lt;b&gt; never closed",
+            "&lt;span&gt;not a comment's&lt;/span&gt;",
+            "no tags & no XML <b>",
+        ];
+        foreach (string xml in asWritten)
+        {
+            Assert.True(ReferenceEquals(xml, Passenger.Roslyn.Extension.EscapedDocumentationTags.Of(xml)),
+                $"Words that write no comment's tag, or write one in code or as no XML, were read as tags: {xml}");
+        }
+        Assert.Equal("<para>One<br />two</para> <c>&lt;i&gt;kept&lt;/i&gt;</c>",
+            Passenger.Roslyn.Extension.EscapedDocumentationTags.Of("&lt;para&gt;One&lt;br/&gt;two&lt;/para&gt; <c>&lt;i&gt;kept&lt;/i&gt;</c>"));
     }
 
     private void Fenced_code_comes_apart_from_the_prose_around_it_the_fences_left_out()

@@ -251,6 +251,12 @@ public sealed class PartialCommitTests : IDisposable
             CommitRow row = window.CommitView.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "Notes.txt");
             Assert.Equal(ChangeKind.Deleted, row.Change.Kind);
             Assert.False(row.IsChosen);
+
+            // Its diff shows no line where the file was, saying it was deleted, every line of the last commit's taken, which has the keys.
+            IDiffHost deleted = Ui.Landed(window.ShowDiffAsync(PathOf("Notes.txt")), "the deleted file's diff")!;
+            OpenDiffs.ShowsNoFile(OpenDiffs.ViewOf(deleted), MergeSide.Right);
+            Ui.Landed(() => OpenDiffs.ViewOf(deleted).Left.IsKeyboardFocusWithin, "the deleted file's diff to give the last commit's side the keys");
+            deleted.Close();
         }
         finally
         {

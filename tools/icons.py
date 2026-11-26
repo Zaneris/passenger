@@ -135,8 +135,10 @@ ICONS = [
     ("Hierarchy", "Diagram", "20_regular"),
     # The Endpoints window's stripe button: the requests of the folder's .http files, sent over the web.
     ("Endpoints", "Globe", "20_regular"),
-    # The Containers window's stripe button: the engine's containers, images, volumes and networks.
-    ("Containers", "Box Multiple", "20_regular"),
+    # The Requests window's stripe button: what the running web apps are asked and answer.
+    ("Requests", "Arrow Swap", "20_regular"),
+    # The Containers window's stripe button: the engine's containers, images, volumes and networks, as a ship carries them.
+    ("Containers", "Vehicle Ship", "20_regular"),
     # The Aspire window's stripe button: an AppHost over the resources it runs.
     ("Aspire", "Cube Tree", "20_regular"),
     # Attach to a service as it runs: the debugger plugged in, beside Detach's plug unplugged.

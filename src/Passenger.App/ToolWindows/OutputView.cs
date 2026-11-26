@@ -353,15 +353,25 @@ public sealed class OutputView : DockPanel, IOwnKeys
     /// <summary>The console's menu while it is open.</summary>
     public ContextMenu? Menu { get; private set; }
 
-    /// <summary>Adds the IDE's own words (a command line, how a run ended, why it could not start) after everything
-    /// written before them, at once; in the error colour when they say what went wrong.</summary>
-    public void Append(string text, bool error = false)
+    /// <summary>Adds the IDE's own words (a command line, how a run ended, why it could not start, what Hot Reload did) after
+    /// everything written before them, at once, beginning a line of their own where a program's line is unfinished; in the
+    /// error colour when they say what went wrong.</summary>
+    public void Append(string text, bool error = false) => Put(text, error, ownLine: true);
+
+    /// <summary>Adds text the IDE shows after everything written before it, at once: a line of its own where
+    /// <paramref name="ownLine"/>, else straight after what stands before it, as the person's end of input ends the line
+    /// they typed.</summary>
+    private void Put(string text, bool error, bool ownLine)
     {
         UiThread.Check();
         Flush(unended: true);
         if (fold?.LetGo() is { } unfinished)
         {
             Insert(unfinished, [new ConsoleRun(0, unfinished.Length, ConsoleStream.Error)]);
+        }
+        if (ownLine && text.Length > 0 && typedFrom > 0 && Document.Snapshot[typedFrom - 1] != '\n' && !text.StartsWith('\n'))
+        {
+            text = "\n" + text;
         }
         Insert(text, [new ConsoleRun(0, text.Length, error ? ConsoleStream.Error : ConsoleStream.System)]);
     }
@@ -865,7 +875,7 @@ public sealed class OutputView : DockPanel, IOwnKeys
         typedFrom = text.Length;
         Input = null;
         InputEnded = true;
-        Append("^D\n");
+        Put("^D\n", error: false, ownLine: false);
         ending.Close();
     }
 

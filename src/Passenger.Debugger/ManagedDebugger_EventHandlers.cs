@@ -62,6 +62,7 @@ public partial class ManagedDebugger
         ICorDebugThread corThread = createThreadCorDebugManagedCallbackEventArgs.Thread;
         NoteMainThread(corThread);
         _threads[corThread.Id] = new ThreadInfo(corThread);
+        _announcedIn[corThread.Id] = _continued;
         if (_dataSlots.Any(slot => slot is not null))
         {
             // A thread made since a data breakpoint was set watches what the others do.
@@ -184,6 +185,7 @@ public partial class ManagedDebugger
     {
         ICorDebugThread corThread = exitThreadCorDebugManagedCallbackEventArgs.Thread;
         _threads.Remove(corThread.Id);
+        _announcedIn.Remove(corThread.Id);
         _exceptionBreakModes.Remove(new ThreadId(corThread.Id));
         OnThreadExited?.Invoke(corThread.Id);
         Continue(clearVariables: false);

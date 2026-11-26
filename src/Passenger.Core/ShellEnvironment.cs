@@ -31,11 +31,17 @@ public static class ShellEnvironment
 
     private static long began;
 
-    /// <summary>Starts reading it, unless the IDE was started from a terminal (whose environment is the shell's already)
-    /// or on Windows (where a program gets the user's whole environment).</summary>
+    /// <summary>Starts reading it, unless the IDE was started from a terminal (whose environment is the shell's already);
+    /// on Windows, where there is no login shell, the PATH takes in what the person's own Path has that it lacks
+    /// (<see cref="Programs.TakeInPersonsPath"/>), for every program the IDE starts.</summary>
     public static void Load()
     {
-        if (OperatingSystem.IsWindows() || Environment.GetEnvironmentVariable("TERM") is not null || readEnded is not null)
+        if (OperatingSystem.IsWindows())
+        {
+            Programs.TakeInPersonsPath();
+            return;
+        }
+        if (Environment.GetEnvironmentVariable("TERM") is not null || readEnded is not null)
         {
             return;
         }

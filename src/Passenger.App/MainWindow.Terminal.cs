@@ -127,8 +127,9 @@ public partial class MainWindow
 
     /// <summary>Whether a key goes to the focused terminal rather than the IDE: everything but Cmd's keys on the Mac (save
     /// Cmd+K, its Clear Buffer), the second key of a chord already begun, the shortcuts of the actions that run from the
-    /// terminal (<see cref="IdeAction.FromTerminal"/>: the tool windows' and their frame's, but never a Ctrl+letter, the
-    /// shell's), and, in a program's tab, Stop's and the debugger's (<see cref="ProgramLeaves"/>).</summary>
+    /// terminal (<see cref="IdeAction.FromTerminal"/>: the tool windows', their frame's and Next and Previous Tab's, but
+    /// never a Ctrl+letter or Ctrl+arrow, the shell's), and, in a program's tab, Stop's and the debugger's
+    /// (<see cref="ProgramLeaves"/>).</summary>
     private bool TerminalTakes(object? focused, KeyEventArgs e)
     {
         if (focused is not Terminal.TerminalView || keys.IsPending)
@@ -140,9 +141,9 @@ public partial class MainWindow
             // Cmd's keys are the IDE's, but for Cmd+K, the terminal's Clear Buffer (the editor's chords begin with it).
             return e.KeyModifiers == KeyModifiers.Meta && e.Key == Key.K;
         }
-        if (e.KeyModifiers == KeyModifiers.Control && e.Key is >= Key.A and <= Key.Z)
+        if (e.KeyModifiers == KeyModifiers.Control && e.Key is >= Key.A and <= Key.Z or Key.Left or Key.Right or Key.Up or Key.Down)
         {
-            // A control character the shell reads (^W deletes a word), whatever a keymap gives it (VS Code's ^W on the Mac).
+            // A control character or word move the shell reads (^W, ^→), whatever a keymap gives it (Next Tab's Ctrl+Right).
             return true;
         }
         if (keys.Keymap.ActionFor(new Shortcut(Keystroke.From(e))) is not { } action)

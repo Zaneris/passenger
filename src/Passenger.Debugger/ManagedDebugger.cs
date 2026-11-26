@@ -1924,6 +1924,7 @@ public partial class ManagedDebugger
         EvalStatus.DueAt.Clear();
         EvalStatus.ImplicitOff = null;
         _threads.Clear();
+        _announcedIn.Clear();
         _leftRunning.Clear();
         _deferredEvents.Clear();
         _behindStep.Clear();

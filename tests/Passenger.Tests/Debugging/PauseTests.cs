@@ -321,7 +321,9 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
                 [new DapSourceBreakpoint(Debuggees.Line(Looping, "each iteration"), Condition: "i.ToString() == \"none\"")]);
         });
         StoppedEvent stopped = await host.WaitForStoppedEvent();
-        Assert.Equal(StopReasons.Exception, stopped.Reason);
+        Assert.True(stopped.Reason == StopReasons.Exception,
+            $"The parallel loop stopped for {stopped.Reason} at line {stopped.Line} ({stopped.Text}), not at iteration 200's exception, its condition never true; "
+            + $"the engine's log ends:\n{string.Join('\n', host.EngineLog().Split('\n').TakeLast(80))}");
         Assert.Equal("200", Assert.Single(await host.LocalsAsync(stopped), v => v.Name == "i").Value);
         ExceptionInfoResponse thrown = await host.RequestAsync<ExceptionInfoResponse>(DapCommands.ExceptionInfo, new ThreadArguments(stopped.ThreadId!.Value));
         Assert.Equal("iteration 200", thrown.Details?.Message);

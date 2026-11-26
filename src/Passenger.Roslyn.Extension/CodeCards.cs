@@ -192,7 +192,7 @@ internal sealed class CodedCompletionItem : LspCompletionItem
 /// <summary><see cref="ExtensionMethods.SignatureHelp"/>: textDocument/signatureHelp by the server's own, asked as for a
 /// client with Visual Studio's extensions so each label comes classified, answered as for one without them with each
 /// label's parts, whether the signature still fits the call's arguments and the parameter the caret's fills there
-/// (<see cref="SignatureFits"/>).</summary>
+/// (<see cref="SignatureFits"/>), and its documentation and each parameter's as Markdown where the client reads it.</summary>
 [Method(ExtensionMethods.SignatureHelp)]
 internal sealed class CodedSignatureHelpHandler(SignatureHelpService signatures) : ILspServiceDocumentRequestHandler<TextDocumentPositionParams, LspSignatureHelp?>
 {
@@ -213,14 +213,27 @@ internal sealed class CodedSignatureHelpHandler(SignatureHelpService signatures)
         int position = await document.GetPositionFromLinePositionAsync(ProtocolConversions.PositionToLinePosition(request.Position), cancellationToken).ConfigureAwait(false);
         (_, SignatureHelpItems? items) = await signatures.GetSignatureHelpAsync(document, position,
             new SignatureHelpTriggerInfo(SignatureHelpTriggerReason.InvokeSignatureHelpCommand), cancellationToken).ConfigureAwait(false);
-        (bool Fits, int Parameter)[]? fits = items is not null && items.Items.Count == help.Signatures.Length
+        bool markdown = context.GetRequiredClientCapabilities().TextDocument?.SignatureHelp?.SignatureInformation?.DocumentationFormat?.Contains(MarkupKind.Markdown) == true;
+        if (items?.Items.Count != help.Signatures.Length)
+        {
+            items = null;
+        }
+        (bool Fits, int Parameter)[]? fits = items is not null
             ? await SignatureFits.OfAsync(document, position, items, cancellationToken).ConfigureAwait(false)
             : null;
         help.Signatures = [.. help.Signatures.Select((s, i) => new CodedSignatureInformation
         {
             Label = s.Label,
-            Documentation = s.Documentation,
-            Parameters = s.Parameters,
+            Documentation = markdown && items is not null
+                ? Documentation(items.Items[i].DocumentationFactory(cancellationToken))
+                : s.Documentation,
+            Parameters = markdown && items is not null && s.Parameters?.Length == items.Items[i].Parameters.Length
+                ? [.. s.Parameters.Select((p, index) => new ParameterInformation
+                {
+                    Label = p.Label,
+                    Documentation = Documentation(items.Items[i].Parameters[index].DocumentationFactory(cancellationToken)),
+                })]
+                : s.Parameters,
             ActiveParameter = fits?[i] is { Parameter: >= 0 } fit ? fit.Parameter : s.ActiveParameter,
             Code = s is VSInternalSignatureInformation { ColorizedLabel: { } classified }
                 ? [.. classified.Runs.Select(r => CodeCards.Part(r.ClassificationTypeName, r.Text))]
@@ -228,6 +241,9 @@ internal sealed class CodedSignatureHelpHandler(SignatureHelpService signatures)
             Fits = fits?[i].Fits,
         })];
         return help;
+
+        MarkupContent Documentation(IEnumerable<TaggedText> tags) =>
+            ProtocolConversions.GetDocumentationMarkupContent([.. tags], document.Project.Language, featureSupportsMarkdown: true);
     }
 }
 

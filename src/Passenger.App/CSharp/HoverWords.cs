@@ -14,7 +14,7 @@ internal sealed class HoverWords : IHoverCard
 
     public void AddText(string text) => Add(text, false);
 
-    public void AddHover(Hover hover) => Add(Plain(hover), true);
+    public void AddHover(Hover hover, bool csharp = false) => Add(Plain(hover), true);
 
     private void Add(string text, bool served)
     {

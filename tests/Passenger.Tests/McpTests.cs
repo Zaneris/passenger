@@ -174,8 +174,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's reads of Git as one flow, each step one test's check in an instance of its own: renames, a
     /// folder's changes committed by its path and a push that did not go, a binary file's and a separator's or mode's
     /// diff, a folder's status and a path naming nothing, lines outside a file refused, what the repository has not
-    /// named, a renamed file's diff and history, a repository another user owns, no git on the path, a new repository's
-    /// .gitignore, and a push asking a login where nobody is.</summary>
+    /// named, a renamed file's diff and history, a repository another user owns, no git on the path (and on Windows one on
+    /// the person's own Path alone), a new repository's .gitignore, and a push asking a login where nobody is.</summary>
     [Fact]
     public async Task An_agent_reads_Gits_changes_diffs_and_history_as_git_names_them_and_hears_each_refusal_in_its_words()
     {
@@ -188,7 +188,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         await Flow.StepApartAsync("an agents diff of a file git mv renamed is its one changed line from where the last commit has it", () => new McpTests(restored), t => t.An_agents_diff_of_a_file_git_mv_renamed_is_its_one_changed_line_from_where_the_last_commit_has_it());
         await Flow.StepApartAsync("an agents history of a file git mv renamed lists its commits from where the last commit has it", () => new McpTests(restored), t => t.An_agents_history_of_a_file_git_mv_renamed_lists_its_commits_from_where_the_last_commit_has_it());
         await Flow.StepApartAsync("a repository git refuses as another users is said to be refused in gits words naming safe directory", () => new McpTests(restored), t => t.A_repository_git_refuses_as_another_users_is_said_to_be_refused_in_gits_words_naming_safe_directory());
-        await Flow.StepApartAsync("with no git on the path a repository is said to need git in the version control menu never taken for none", () => new McpTests(restored), t => t.With_no_git_on_the_path_a_repository_is_said_to_need_git_in_the_version_control_menu_never_taken_for_none());
+        await Flow.StepApartAsync("with no git on the path a repository is said to need git in the version control menu never taken for none and on windows one the persons own path names is found", () => new McpTests(restored), t => t.With_no_git_on_the_path_a_repository_is_said_to_need_git_in_the_version_control_menu_never_taken_for_none_and_on_Windows_one_the_persons_own_Path_names_is_found());
         await Flow.StepApartAsync("an agents create git repository writes the dotnet gitignore and is refused once the folder is in one", () => new McpTests(restored), t => t.An_agents_create_git_repository_writes_the_dotnet_gitignore_and_is_refused_once_the_folder_is_in_one());
         await Flow.StepApartAsync("an agents push to a remote that asks for a login says so where nobody is at the IDE", () => new McpTests(restored), t => t.An_agents_push_to_a_remote_that_asks_for_a_login_says_so_where_nobody_is_at_the_IDE());
     }
@@ -2781,8 +2781,9 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>With no git on the PATH, a folder's repository is never taken for none: the Version control menu says "Git is
     /// not installed" in place of its items, a notice the keys and the pointer pass over, where Create Git Repository…
     /// would be, the status bar saying why and how to install it; vcs_status answers that git is not installed, and
-    /// ide_actions that Create Git Repository cannot run for it.</summary>
-    private async Task With_no_git_on_the_path_a_repository_is_said_to_need_git_in_the_version_control_menu_never_taken_for_none()
+    /// ide_actions that Create Git Repository cannot run for it. On Windows, given a PATH made before a per-user install,
+    /// Passenger finds git where the person's own Path names it: vcs_status answers, and its terminal runs git by name.</summary>
+    private async Task With_no_git_on_the_path_a_repository_is_said_to_need_git_in_the_version_control_menu_never_taken_for_none_and_on_Windows_one_the_persons_own_Path_names_is_found()
     {
         string repository = TestFolders.Create("mcp-no-git-");
         string bare = TestFolders.Create("mcp-no-git-path-");
@@ -2792,27 +2793,44 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         await TestGit.InitAsync(repository);
 
         // macOS's /bin holds no git, as an empty folder holds none elsewhere; a terminal's TERM, so no login shell's PATH is read.
-        await using McpClient client = await Start(["--mcp", repository], languageServer: false,
-            environment: new() { ["PATH"] = OperatingSystem.IsMacOS() ? "/bin" : bare, ["TERM"] = "dumb" });
-        CallToolResult status = await Result(client, McpTools.VcsStatus);
-        Assert.True(status.IsError == true && Text(status).Contains("git is not installed", StringComparison.Ordinal),
-            $"vcs_status over a repository with no git on the PATH answered, rather than that git is not installed: {Text(status)}");
+        await using (McpClient client = await Start(["--mcp", repository], languageServer: false,
+            environment: new() { ["PATH"] = OperatingSystem.IsMacOS() ? "/bin" : bare, ["TERM"] = "dumb" }))
+        {
+            CallToolResult status = await Result(client, McpTools.VcsStatus);
+            Assert.True(status.IsError == true && Text(status).Contains("git is not installed", StringComparison.Ordinal),
+                $"vcs_status over a repository with no git on the PATH answered, rather than that git is not installed: {Text(status)}");
 
-        await Call(client, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#BranchButton" });
-        Dictionary<string, object?> items = new() { ["app"] = "ide", ["filter"] = "MenuItem" };
-        string menu = string.Empty;
-        await Waiting.UntilAsync(async () => (menu = Text(await Call(client, McpTools.AppTree, items))).StartsWith("MenuItem", StringComparison.Ordinal),
-            TimeSpan.FromSeconds(10), Cancel, TimeSpan.FromMilliseconds(200));
-        string notice = $"MenuItem.{StyleClasses.MenuNotice} \"Git is not installed\"";
-        Assert.True(menu.Split('\n').Any(line => line.StartsWith(notice, StringComparison.Ordinal) && line.Contains("[disabled]", StringComparison.Ordinal))
-            && !menu.Contains("Create Git Repository", StringComparison.Ordinal),
-            $"The Version control menu over a repository with no git on the PATH holds, rather than the notice that Git is not installed: {menu}");
-        string bar = Text(await Call(client, McpTools.AppTree, new() { ["app"] = "ide", ["control"] = "#StatusText" }));
-        Assert.True(bar.Contains("git is not installed", StringComparison.Ordinal),
-            $"The status bar, once the Version control menu said Git is not installed, does not say why: {bar}");
-        string[] creating = [.. (await Call(client, McpTools.IdeActions, new() { ["query"] = AppActions.CreateRepository })).EnumerateArray().Select(a => a.GetString()!)];
-        Assert.True(creating.Any(a => a.StartsWith($"{AppActions.CreateRepository}:", StringComparison.Ordinal) && a.Contains("cannot run: git is not installed", StringComparison.Ordinal)),
-            $"ide_actions, over a repository with no git on the PATH, offers Create Git Repository rather than that git is not installed: {string.Join("; ", creating)}");
+            await Call(client, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#BranchButton" });
+            Dictionary<string, object?> items = new() { ["app"] = "ide", ["filter"] = "MenuItem" };
+            string menu = string.Empty;
+            await Waiting.UntilAsync(async () => (menu = Text(await Call(client, McpTools.AppTree, items))).StartsWith("MenuItem", StringComparison.Ordinal),
+                TimeSpan.FromSeconds(10), Cancel, TimeSpan.FromMilliseconds(200));
+            string notice = $"MenuItem.{StyleClasses.MenuNotice} \"Git is not installed\"";
+            Assert.True(menu.Split('\n').Any(line => line.StartsWith(notice, StringComparison.Ordinal) && line.Contains("[disabled]", StringComparison.Ordinal))
+                && !menu.Contains("Create Git Repository", StringComparison.Ordinal),
+                $"The Version control menu over a repository with no git on the PATH holds, rather than the notice that Git is not installed: {menu}");
+            string bar = Text(await Call(client, McpTools.AppTree, new() { ["app"] = "ide", ["control"] = "#StatusText" }));
+            Assert.True(bar.Contains("git is not installed", StringComparison.Ordinal),
+                $"The status bar, once the Version control menu said Git is not installed, does not say why: {bar}");
+            string[] creating = [.. (await Call(client, McpTools.IdeActions, new() { ["query"] = AppActions.CreateRepository })).EnumerateArray().Select(a => a.GetString()!)];
+            Assert.True(creating.Any(a => a.StartsWith($"{AppActions.CreateRepository}:", StringComparison.Ordinal) && a.Contains("cannot run: git is not installed", StringComparison.Ordinal)),
+                $"ide_actions, over a repository with no git on the PATH, offers Create Git Repository rather than that git is not installed: {string.Join("; ", creating)}");
+        }
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // Windows' own folder alone as the PATH given, which holds no git; the person's Path naming git's folder beyond it.
+        string git = Programs.Command("git") ?? throw new InvalidOperationException("No git on the test's PATH to stand on the person's own Path");
+        await using McpClient persons = await Start(["--mcp", repository], languageServer: false,
+            environment: new() { ["PATH"] = Environment.SystemDirectory, [UserEnvironment.PathNowVariable] = $"{Environment.SystemDirectory};{Path.GetDirectoryName(git)}" });
+        CallToolResult found = await Result(persons, McpTools.VcsStatus);
+        Assert.True(found.IsError != true, $"vcs_status, with git on the person's own Path beyond the PATH Passenger was given, answered: {Text(found)}");
+        Assert.Equal("main", (await Call(persons, McpTools.VcsStatus)).GetProperty("branch").GetString());
+        string answer = (await Call(persons, McpTools.TerminalRun, new() { ["command"] = "git --version" })).GetString()!;
+        Assert.True(answer.Contains("git version", StringComparison.Ordinal),
+            $"The terminal's shell, started by a Passenger that found git on the person's own Path, did not run git by name:\n{answer}");
     }
 
     /// <summary>An agent's ide_action runs Create Git Repository in a folder of no repository, answered once it is made: the

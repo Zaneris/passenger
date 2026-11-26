@@ -84,13 +84,13 @@ public sealed partial class BuildRunController
     /// <paramref name="console"/> (null for the terminal's tab) and the status bar, which says <paramref name="running"/>
     /// once attached, the build's environment then back in the app (<see cref="DeviceStart.Started"/>). After an attach that
     /// fails, saying why, the app goes on without Hot Reload: the relay lets its start go as the connection ends, or once its wait is over.</summary>
-    private async Task AttachOnDeviceForHotReloadAsync(string name, DeviceStart start, RelaySession relay, ConsoleSink? console, Working work, BuiltEdits? edits,
+    private async Task AttachOnDeviceForHotReloadAsync(string name, DeviceStart start, RelaySession relay, OutputView? console, Working work, BuiltEdits? edits,
         string running, LiveApp? app, ProgramBuild? builds, UpdateHandlerHook? handlers)
     {
         work.Say($"Attaching to {name} on its device for Hot Reload…");
         string? refused = await session.Debug.AttachForHotReloadThroughRelayAsync(relay, name, (line, error) =>
         {
-            console?.Write($"{line}\n", error ? ConsoleStream.Error : ConsoleStream.Output);
+            console?.Append($"{line}\n", error);
             parts.Say(line);
         }, work.Stopping, edits, app, builds, handlers);
         if (refused is null)

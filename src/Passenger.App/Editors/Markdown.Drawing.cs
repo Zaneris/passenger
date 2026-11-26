@@ -271,6 +271,14 @@ public sealed class MarkdownText : SelectableWords
                 case Markdown.Emphasis emphasis:
                     Add(emphasis.Parts, bold, italic: true, link);
                     break;
+                case Markdown.Underline underlined:
+                    int first = Inlines!.Count;
+                    Add(underlined.Parts, bold, italic, link);
+                    foreach (Avalonia.Controls.Documents.Run run in Inlines.Skip(first).OfType<Avalonia.Controls.Documents.Run>())
+                    {
+                        run.TextDecorations = Avalonia.Media.TextDecorations.Underline;
+                    }
+                    break;
                 case Markdown.Link linked when page.LinkOf(linked.Target) is { } target:
                     int start = shown.Length;
                     Add(linked.Parts, bold, italic, target);

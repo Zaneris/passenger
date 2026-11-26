@@ -58,10 +58,10 @@ public sealed class MarkdownReadingTests
 
     private void A_tag_not_read_stands_as_written_and_what_is_inside_it_is_read()
     {
-        IReadOnlyList<M.Block> blocks = M.Parse("<table align=\"center\"><tr><td><b>cell</b> &amp; more</td></tr></table>\n\nWords with <span title=\"x\">a span</span> and List<T>.");
+        IReadOnlyList<M.Block> blocks = M.Parse("<table align=\"center\"><tr><td><b>cell</b> &amp; more</td></tr></table>\n\nWords with <span title=\"x\">a span</span>, <u>underlined</u> and List<T>.");
         Assert.Equal("&lt;table align=&quot;center&quot;&gt;&lt;tr&gt;&lt;td&gt;<strong>cell</strong> &amp; more&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;",
             Html(Assert.IsType<M.Phrase>(Assert.Single(blocks, b => b is M.Phrase)).Parts));
-        Assert.Equal("Words with &lt;span title=&quot;x&quot;&gt;a span&lt;/span&gt; and List&lt;T&gt;.", Html(Assert.IsType<M.Paragraph>(blocks[1]).Text));
+        Assert.Equal("Words with &lt;span title=&quot;x&quot;&gt;a span&lt;/span&gt;, <u>underlined</u> and List&lt;T&gt;.", Html(Assert.IsType<M.Paragraph>(blocks[1]).Text));
     }
 
     private void Details_left_open_take_the_Markdown_after_them_to_the_line_that_closes_them_and_a_div_leaves_its_headings_the_pages()
@@ -119,6 +119,7 @@ public sealed class MarkdownReadingTests
                 M.CodeSpan code => $"<code>{Encoded(code.Text)}</code>",
                 M.Strong strong => $"<strong>{Html(strong.Parts)}</strong>",
                 M.Emphasis emphasis => $"<em>{Html(emphasis.Parts)}</em>",
+                M.Underline underline => $"<u>{Html(underline.Parts)}</u>",
                 M.Link link => $"<a href=\"{Encoded(link.Target)}\">{Html(link.Parts)}</a>",
                 M.Image image => $"<img src=\"{Encoded(image.Target)}\" alt=\"{Encoded(image.Alt)}\"{(image.Width is { } width ? $" width=\"{width}\"" : "")} />",
                 M.Break => "<br />",

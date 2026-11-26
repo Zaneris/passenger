@@ -281,6 +281,7 @@ public partial class MainWindow
         TextSnapshot text = mine.Snapshot;
         Task<bool> breaksAlike = was is null ? Task.FromResult(false) : session.Vcs.BreaksStoredAlikeAsync(revision, then, was, path);
         FileDiff diff = (await ComparedAsync(theirs, text)).StoringBreaksAlike(await breaksAlike);
-        return OpenLocalDiff(path, open, mine, diff, version, again: () => CompareWithAsync(path, revision, version, then, origin, added));
+        MergeSide? noFile = was is null ? MergeSide.Left : open is null && !File.Exists(path) ? MergeSide.Right : null;
+        return OpenLocalDiff(path, open, mine, diff, version, again: () => CompareWithAsync(path, revision, version, then, origin, added), noFile: noFile);
     }
 }

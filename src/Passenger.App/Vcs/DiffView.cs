@@ -16,7 +16,8 @@ namespace Passenger.App.Vcs;
 /// change at the caret (<see cref="RollBackAtCaretAsync"/>); F7 and Shift+F7 (F8 and Shift+F8 too off the Mac) go to the
 /// next and previous one; F4 asks for its file at the caret's line (Jump to Source); Settings (its keys
 /// <see cref="AppActions.DiffSettings"/>'s) chooses how differences are highlighted, by words at first; Find searches the
-/// side with the caret (<see cref="ShowFind"/>). Made by <see cref="DiffPanes"/>.</summary>
+/// side with the caret (<see cref="ShowFind"/>). A side whose version has no such file (a file new since it, or gone) shows
+/// a pane saying so in place of its lines (<see cref="NoFile"/>). Made by <see cref="DiffPanes"/>.</summary>
 public sealed class DiffView : DockPanel, IOwnKeys
 {
     /// <summary>How long editing pauses before the differences are worked out again.</summary>
@@ -56,12 +57,13 @@ public sealed class DiffView : DockPanel, IOwnKeys
     /// <param name="titles">What the sides are, above them: the last commit and the file by default.</param>
     /// <param name="highlighting">How differences inside changed lines are marked: words by default.</param>
     public DiffView(string name, FileDiff diff, TextDocument mine, bool editable, (string Left, string Right)? titles = null,
-        DiffHighlighting highlighting = DiffHighlighting.Words)
+        DiffHighlighting highlighting = DiffHighlighting.Words, MergeSide? noFile = null)
     {
         Subject = name;
         shown = diff;
         this.highlighting = highlighting;
         IsEditable = editable;
+        NoFile = noFile;
         Left = new CodeEditor { IsReadOnly = true, ChangeBackgrounds = true };
         TextDocument head = new(diff.Head);
         Left.Show(head, SelectionSet.Single(0), default);
@@ -101,6 +103,10 @@ public sealed class DiffView : DockPanel, IOwnKeys
         sides.Children.Add(Left);
         sides.Children.Add(bands);
         sides.Children.Add(Right);
+        leftNone = NoFilePane(Left, "New file");
+        rightNone = NoFilePane(Right, "Deleted file");
+        sides.Children.Add(leftNone);
+        sides.Children.Add(rightNone);
 
         count = new TextBlock();
         settings = ToolButtons.Of(AppActions.DiffSettings, IconKeys.Settings, "Settings", _ => ShowSettings());
@@ -386,6 +392,38 @@ public sealed class DiffView : DockPanel, IOwnKeys
     /// <summary>The file's side.</summary>
     public CodeEditor Right { get; }
 
+    /// <summary>The side whose version has no such file, null where both have it: the left's for a file new since its
+    /// version, the right's for one gone (while its text is empty, so a file come back on disk shows).</summary>
+    public MergeSide? NoFile { get; }
+
+    /// <summary>What shows in each side's place while its version has no such file.</summary>
+    private readonly Border leftNone;
+    private readonly Border rightNone;
+
+    /// <summary>The side the keys go to as the diff opens or is shown again: the file's, unless it has no such file.</summary>
+    public CodeEditor Keyed => Right.IsVisible ? Right : Left;
+
+    /// <summary>A side's pane where its version has no such file: the side's ground, saying so, no line taken for its text.</summary>
+    private static Border NoFilePane(CodeEditor side, string words)
+    {
+        Border pane = new() { Child = new ToolWindows.EmptyState(words), IsVisible = false };
+        pane.Bind(Border.BackgroundProperty, side.GetResourceObservable(TokenKeys.Editor_Background));
+        Grid.SetRow(pane, 1);
+        Grid.SetColumn(pane, Grid.GetColumn(side));
+        return pane;
+    }
+
+    /// <summary>Each side's lines, or in their place the pane saying its version has no such file.</summary>
+    private void ShowFiles()
+    {
+        bool leftNew = NoFile == MergeSide.Left;
+        bool rightGone = NoFile == MergeSide.Right && Right.Document.Snapshot.Length == 0;
+        Left.IsVisible = !leftNew;
+        leftNone.IsVisible = leftNew;
+        Right.IsVisible = !rightGone;
+        rightNone.IsVisible = rightGone;
+    }
+
     /// <summary>Next and Previous Difference's keys, ahead of what the IDE binds them to elsewhere (Smart Step Into's
     /// Shift+F7), and Jump to Source's.</summary>
     public bool TakesKey(KeyEventArgs e) => DiffLines.Step(e) != 0 || IsJump(e);
@@ -616,6 +654,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     private void Show(FileDiff diff)
     {
         shown = diff;
+        ShowFiles();
         RefreshCommitChoices();
         RefreshStaged();
         bool off = highlighting == DiffHighlighting.None;

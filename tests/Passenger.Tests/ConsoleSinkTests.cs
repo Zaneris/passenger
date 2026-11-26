@@ -181,7 +181,8 @@ public sealed class ConsoleSinkTests
 
     /// <summary>A line one stream begins shows whole though the other stream writes whole lines between its two writes,
     /// those lines before it; a prompt with no line break shows as written once a moment passes with no end to it; and the
-    /// IDE's own words come after a line still unended, each stream's text in its order and its colour (#2048).</summary>
+    /// IDE's own words come after a line still unended, on a line of their own, each stream's text in its order and its
+    /// colour (#2048).</summary>
     private void A_line_the_other_stream_writes_into_shows_whole_after_it_and_a_prompt_with_no_line_break_as_written()
     {
         OutputView console = new(toolbar: false);
@@ -199,6 +200,12 @@ public sealed class ConsoleSinkTests
         console.Append("\nProcess finished.\n");
         string shown = Shown(console);
         Assert.Equal($"{Lines}Name? half a line\nProcess finished.\n", shown);
+        // As a program held by an update between a line's two writes, the update's words said between them.
+        console.Sink.Write("A line of ");
+        console.Append("Hot Reload: C# changes applied\n");
+        console.Sink.Write("two writes\n");
+        Assert.True(Shown(console) == $"{shown}A line of \nHot Reload: C# changes applied\ntwo writes\n",
+            $"The IDE's words said while a program's line was unfinished joined it, where they begin a line of their own: [{Shown(console)[shown.Length..]}]");
         TextSnapshot text = console.Document.Snapshot;
         string errors = string.Concat(console.Editor.Highlighter!.GetSpans(text, 0, text.Length).Where(s => s.Kind == TokenKind.ErrorOutput).Select(s => text.GetText(s.Start, s.Length)));
         Assert.True(errors == "dotnet watch : Waiting for changes\nan error between\nhalf a line",
