@@ -19,6 +19,12 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        // Velopack's Update.exe runs the version it is about to replace with this as current\ is renamed: ended first.
+        if (Installation.Obsolete(args))
+        {
+            LeaveStartingFolder();
+            return 0;
+        }
         StartedAt = Stopwatch.GetTimestamp();
         // Run by git to ask for a login: the window answers, and nothing of the IDE starts.
         if (Passenger.Vcs.GitAskPass.Answer(args) is int asked)
