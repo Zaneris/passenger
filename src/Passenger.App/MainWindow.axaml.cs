@@ -101,6 +101,7 @@ public partial class MainWindow : IdeWindow
         AddSettings();
         AddActiveEditor();
         AddFolding();
+        AddClipboard();
         AddCompilationSymbols();
         AddPackages();
         AddProfiler();

@@ -115,6 +115,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("Go to Symbol lists a generated method's own declaration alone, and what only a generator wrote after", () => new CodeAssistTests(project), t => t.Go_to_Symbol_lists_a_generated_methods_own_declaration_alone_and_what_only_a_generator_wrote_after());
         Flow.StepApart("parameter info shows every overload, setting back those the arguments no longer fit", () => new CodeAssistTests(project), t => t.Parameter_info_shows_every_overload_setting_back_those_the_arguments_no_longer_fit());
         Flow.StepApart("the peeks show an interface member's implementation, the caret line's problem, an expression's type and the file's folders", () => new CodeAssistTests(project), t => t.The_peeks_show_an_interface_members_implementation_the_caret_lines_problem_an_expressions_type_and_the_files_folders());
+        Flow.StepApart("paste from history pastes a line copied before the one the clipboard holds now", () => new CodeAssistTests(project), t => t.Paste_from_history_pastes_a_line_copied_before_the_one_the_clipboard_holds_now());
+        Flow.StepApart("copy reference names the symbol at the caret whole and elsewhere the file's place", () => new CodeAssistTests(project), t => t.Copy_reference_names_the_symbol_at_the_caret_whole_and_elsewhere_the_files_place());
+        Flow.StepApart("smart type completion lists only what fits the type expected at the caret", () => new CodeAssistTests(project), t => t.Smart_type_completion_lists_only_what_fits_the_type_expected_at_the_caret());
         Flow.StepApart("documentation shows bold, emphasis, underline, code and links in the hover, completion and parameter cards, tags written escaped too", () => new CodeAssistTests(project), t => t.Documentation_shows_its_tags_in_the_hover_completion_and_parameter_cards_tags_written_escaped_too());
         Flow.StepApart("a hover's signature shows the attributes declared on the symbol and its parameters, those out of reach left out", () => new CodeAssistTests(project), t => t.A_hovers_signature_shows_the_attributes_declared_on_the_symbol_and_its_parameters_those_out_of_reach_left_out());
     }
@@ -754,6 +757,76 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Press(window, "DOWN");
         Ui.Press(window, "ENTER");
         Assert.Equal([folder], window.ShownInFileManager);
+        window.Close();
+    }
+
+    /// <summary>Two lines copied in turn: Paste from History lists both, newest first, each by its text, and the older chosen
+    /// goes above the caret's line as the whole line it was copied as, then stands first in the history.</summary>
+    private void Paste_from_history_pastes_a_line_copied_before_the_one_the_clipboard_holds_now()
+    {
+        MainWindow window = project.Open("Gauges.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string before = editor.Document.Snapshot.ToString();
+        editor.Focus();
+        Ui.PlaceAfter(editor, "int Read();");
+        Ui.Press(window, Ui.Shortcut(EditorActions.Copy));
+        Ui.PlaceAfter(editor, "public int Read() => 1;");
+        Ui.Press(window, Ui.Shortcut(EditorActions.Copy));
+        Ui.Press(window, Ui.Shortcut(AppActions.PasteFromHistory));
+        Ui.Landed(() => window.Popup is Passenger.App.Vcs.ChoicePopup, "Paste from History's list");
+        Passenger.App.Vcs.ChoicePopup popup = (Passenger.App.Vcs.ChoicePopup)window.Popup!;
+        Assert.True(popup.Rows.Take(2).Select(r => r.Label).SequenceEqual(["public int Read() => 1;", "int Read();"]),
+            $"Paste from History listed [{string.Join("; ", popup.Rows.Select(r => r.Label))}], not the two lines copied, newest first");
+        Ui.Press(window, "DOWN");
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        Assert.Contains("    int Read();\n    public int Read() => 1;", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Equal("    int Read();\n", window.Copied[0].Text);
+        Ui.Press(window, Ui.Command("Z"));
+        Assert.Equal(before, editor.Document.Snapshot.ToString());
+        window.Close();
+    }
+
+    /// <summary>Copy Reference on Dial's Read puts Dial.Read on the clipboard, as C# names it whole; on a blank line, where
+    /// no symbol stands, the file's path in the folder and the line.</summary>
+    private void Copy_reference_names_the_symbol_at_the_caret_whole_and_elsewhere_the_files_place()
+    {
+        MainWindow window = project.Open("Gauges.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        Ui.PlaceAfter(editor, "dial.Re");
+        Ui.Press(window, Ui.Shortcut(AppActions.CopyReference));
+        Ui.WaitFor(() => window.Copied.FirstOrDefault().Text == "Dial.Read", () => $"Dial.Read copied, where the history starts [{window.Copied.FirstOrDefault().Text}] ({window.Status})");
+        editor.Selections = SelectionSet.Single(editor.Document.Snapshot.ToString().IndexOf("\n\nclass Dial", StringComparison.Ordinal) + 1);
+        Ui.Press(window, Ui.Shortcut(AppActions.CopyReference));
+        Ui.WaitFor(() => window.Copied.FirstOrDefault().Text == "Gauges.cs:5", () => $"Gauges.cs:5 copied, where the history starts [{window.Copied.FirstOrDefault().Text}] ({window.Status})");
+        window.Close();
+    }
+
+    /// <summary>Smart Type Completion after a method's arrow returning int lists what fits int there (the int parameter, the
+    /// methods returning int) and none of the rest (a string parameter, a Dial).</summary>
+    private void Smart_type_completion_lists_only_what_fits_the_type_expected_at_the_caret()
+    {
+        MainWindow window = project.Open("Gauges.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string before = editor.Document.Snapshot.ToString();
+        editor.Focus();
+        Ui.PlaceAfter(editor, "dial.Read() + any.Read();");
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("static int Count(Dial dial, int number, string label) => ");
+        Ui.Press(window, "ESCAPE");
+        Ui.Settle();
+        Ui.Press(window, Ui.Shortcut(AppActions.SmartTypeCompletion));
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("number"), () => $"the int parameter offered, where the list holds [{string.Join(", ", window.Assist.CompletionLabels.Take(20))}] ({window.Status})");
+        IReadOnlyList<string> offered = window.Assist.CompletionLabels;
+        Assert.True(offered.Contains("Both") && !offered.Contains("label") && !offered.Contains("dial"),
+            $"Smart Type Completion for an int offered [{string.Join(", ", offered)}], not what returns or holds an int alone");
+        Ui.Press(window, "ESCAPE");
+        for (int i = 0; i < 5 && editor.Document.Snapshot.ToString() != before; i++)
+        {
+            Ui.Press(window, Ui.Command("Z"));
+        }
+        Assert.Equal(before, editor.Document.Snapshot.ToString());
         window.Close();
     }
 

@@ -73,6 +73,8 @@ public static class Handlers
     public const string CreateFake = "Passenger.Roslyn.Extension.CreateFake";
     public const string FillArguments = "Passenger.Roslyn.Extension.FillArguments";
     public const string ExpressionType = "Passenger.Roslyn.Extension.ExpressionType";
+    public const string SymbolReference = "Passenger.Roslyn.Extension.SymbolReference";
+    public const string TypeFits = "Passenger.Roslyn.Extension.TypeFits";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -82,7 +84,7 @@ public static class Handlers
         ComponentClass, GeneratedTexts, GeneratedNamed, GeneratedListed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames, GeneratedMembers,
         MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover,
         CompletionCall, RenameSuggestions, StepBindings, EditorConfigKeys, EditorConfigValues, Signposts, CodeClones, ExtractClones, Dependencies, DependencyAt, LayerChecks,
-        TestDoublesOffered, CreateFake, FillArguments, ExpressionType,
+        TestDoublesOffered, CreateFake, FillArguments, ExpressionType, SymbolReference, TypeFits,
     ];
 }
 
@@ -481,6 +483,17 @@ public sealed record Caret([property: JsonPropertyName("at")] Place At);
 
 /// <summary>The type of the expression at a caret as C# writes it there (<see cref="Handlers.ExpressionType"/>); null for none.</summary>
 public sealed record ExpressionTyped([property: JsonPropertyName("type")] string? Type);
+
+/// <summary>The symbol at a caret named whole, its namespace and the types it is in before it (<see cref="Handlers.SymbolReference"/>):
+/// <c>Shop.Pet.Describe</c>; null where the caret stands on no symbol named apart from its method (a local, a parameter).</summary>
+public sealed record SymbolReferenced([property: JsonPropertyName("reference")] string? Reference);
+
+/// <summary>The type C# expects at a caret, as written there, and the names in reach there whose type fits it (<see
+/// cref="Handlers.TypeFits"/>): locals, parameters, fields, properties, methods by what they return, an enum's type for its
+/// members; no type where none is expected.</summary>
+public sealed record FittingNames(
+    [property: JsonPropertyName("expected")] string? Expected,
+    [property: JsonPropertyName("names")] IReadOnlyList<string> Names);
 
 /// <summary>Where Go to Declaration goes in Aspire's code: an AddProject call's project file, or the AppHost's file and the
 /// place (<paramref name="At"/>) its Add call names a resource a service reads; a null path when neither can be proven.</summary>

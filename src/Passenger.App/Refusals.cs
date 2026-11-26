@@ -220,6 +220,15 @@ public static class Refusals
     /// <summary>Collapse Block where no block of braces is around the caret.</summary>
     public const string NoBlockHere = "No block of braces is around the caret";
 
+    /// <summary>Paste from History before anything was copied, here or on the clipboard.</summary>
+    public const string NothingCopied = "Nothing has been copied yet";
+
+    /// <summary>Smart Type Completion where C# expects no type at the caret.</summary>
+    public const string NoTypeExpected = "No type is expected at the caret";
+
+    /// <summary>Smart Type Completion where nothing in reach of the caret fits the type expected there.</summary>
+    public static string NothingFits(string type) => $"Nothing in reach fits {type} here";
+
     /// <summary>Go to Region in a C# file with no #region.</summary>
     public static string NoRegions(string file) => $"{file} has no #region";
 

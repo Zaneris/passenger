@@ -610,7 +610,7 @@ public static class AppActions
     public const string TypeHierarchy = "app.hierarchy.types";
     public const string ShrinkSelection = "app.editor.shrinkSelection";
 
-    // Moves by the code's structure (MainWindow.Structure), bound as Rider's keymaps bind them (StructureKeys): its MethodUp
+    // Moves by the code's structure (MainWindow.Structure), bound as Rider's keymaps bind them (RiderKeys): its MethodUp
     // and MethodDown, GotoNext/PrevElementUnderCaretUsage, ReSharperGoto/SelectContainingDeclaration, EditorCodeBlockStart
     // and End with their WithSelection, and GotoCustomRegion.
     public const string MethodUp = "app.editor.methodUp";
@@ -625,17 +625,23 @@ public static class AppActions
     public const string CodeBlockEndWithSelection = "app.editor.codeBlockEndWithSelection";
     public const string GoToRegion = "app.goToRegion";
 
-    // Peeks at the caret, bound as Rider's keymaps bind them (StructureKeys): its QuickImplementations, ShowErrorDescription,
+    // Peeks at the caret, bound as Rider's keymaps bind them (RiderKeys): its QuickImplementations, ShowErrorDescription,
     // ExpressionTypeInfo and ShowFilePath.
     public const string QuickImplementations = "app.code.quickImplementations";
     public const string ErrorDescription = "app.code.errorDescription";
     public const string ExpressionTypeInfo = "app.code.expressionTypeInfo";
     public const string ShowFilePath = "app.showFilePath";
 
-    // Folds of the person's own (OpenDocument.FoldOwn), bound as Rider's keymaps bind them (StructureKeys): its
+    // Folds of the person's own (OpenDocument.FoldOwn), bound as Rider's keymaps bind them (RiderKeys): its
     // CollapseSelection and CollapseBlock.
     public const string CollapseSelection = "app.editor.collapseSelection";
     public const string CollapseBlock = "app.editor.collapseBlock";
+
+    // Rider's PasteMultiple (Paste from History), CopyReference and SmartTypeCompletion, bound as its keymaps bind them
+    // (RiderKeys): a text copied before pasted, what the caret stands on named, and completion of what fits the type there.
+    public const string PasteFromHistory = "app.editor.pasteFromHistory";
+    public const string CopyReference = "app.copyReference";
+    public const string SmartTypeCompletion = "app.code.smartTypeCompletion";
     public const string ShowExecutionPoint = "app.debug.showExecutionPoint";
 
     // Rider's XDebugger.AttachToProcess and RiderReattach, on its Visual Studio keymaps' Ctrl+Alt+P (Cmd+Alt+P) and
@@ -996,7 +1002,7 @@ public static class AppActions
     {
         // A chord no keymap here takes and a game is unlikely to want, as the game hears it while it has the keys.
         Keymap keymap = Base(preset);
-        foreach ((string action, string key) in StructureKeys[RiderKeymapOf(preset)])
+        foreach ((string action, string key) in RiderKeys[RiderKeymapOf(preset)])
         {
             keymap.Bind(action, key);
         }
@@ -1004,7 +1010,8 @@ public static class AppActions
         {
             // Rider's Emacs keymap's own lists of these, over $default's, each key taken from any action that had it.
             keymap.Own(MethodUp, "alt UP", "control alt A").Own(MethodDown, "alt DOWN", "control alt E")
-                .Own(CodeBlockStart, "control OPEN_BRACKET", "control alt OPEN_BRACKET").Own(CodeBlockEnd, "control CLOSE_BRACKET", "control alt CLOSE_BRACKET");
+                .Own(CodeBlockStart, "control OPEN_BRACKET", "control alt OPEN_BRACKET").Own(CodeBlockEnd, "control CLOSE_BRACKET", "control alt CLOSE_BRACKET")
+                .Own(PasteFromHistory, "alt Y").Own(SmartTypeCompletion, "control shift SPACE", "control alt SLASH");
         }
         keymap.Bind(GameKeys, "control F11")
             .Bind(NextRegion, OperatingSystem.IsMacOS() ? "control meta BACK_QUOTE" : "control alt BACK_QUOTE")
@@ -1081,11 +1088,11 @@ public static class AppActions
         _ => "Visual Studio",
     };
 
-    /// <summary>The moves by the code's structure, the peeks and the person's own folds as each of Rider's keymaps binds them,
-    /// by its name. Where Rider gives a key to one of them and to an action Passenger has there already, that one keeps it:
+    /// <summary>The moves by the code's structure, the peeks, the person's own folds, Paste from History, Copy Reference and
+    /// Smart Type Completion as each of Rider's keymaps binds them, by its name. Where Rider gives a key to one of them and to an action Passenger has there already, that one keeps it:
     /// Visual Studio's own Move Line Alt+Up and Down, the Mac's Clone Caret Ctrl+Shift+Up and Down and Redo Cmd+Y, VS Code's
     /// Quick Fix Cmd+. and Collapse Cmd+Alt+[ on the Mac, and Select Containing Declaration Cmd+Alt+[ over Code Block Start.</summary>
-    private static readonly Dictionary<string, (string Action, string Key)[]> StructureKeys = new()
+    private static readonly Dictionary<string, (string Action, string Key)[]> RiderKeys = new()
     {
         ["Visual Studio"] =
         [
@@ -1093,7 +1100,8 @@ public static class AppActions
             (SelectContainingDeclaration, "control shift OPEN_BRACKET"), (CodeBlockStart, "alt shift OPEN_BRACKET"),
             (CodeBlockStartWithSelection, "control alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "control alt shift CLOSE_BRACKET"),
             (GoToRegion, "control alt PERIOD"), (QuickImplementations, "alt F12"), (CollapseSelection, "control M , H"), (CollapseSelection, "control M , control H"),
-            (CollapseBlock, "control shift PERIOD"),
+            (CollapseBlock, "control shift PERIOD"), (PasteFromHistory, "control shift V"), (PasteFromHistory, "control shift INSERT"),
+            (CopyReference, "control alt shift C"), (SmartTypeCompletion, "control alt SPACE"),
         ],
         ["Visual Studio OSX"] =
         [
@@ -1101,12 +1109,14 @@ public static class AppActions
             (SelectContainingDeclaration, "meta alt OPEN_BRACKET"), (CodeBlockEnd, "meta alt CLOSE_BRACKET"),
             (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
             (GoToRegion, "meta alt PERIOD"), (QuickImplementations, "alt SPACE"), (CollapseSelection, "meta PERIOD"), (CollapseBlock, "meta shift PERIOD"),
+            (PasteFromHistory, "meta shift V"), (PasteFromHistory, "meta shift INSERT"), (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control alt SPACE"),
         ],
         ["VSCode"] =
         [
             (GoToContainingDeclaration, "alt shift OPEN_BRACKET"), (SelectContainingDeclaration, "control alt shift OPEN_BRACKET"),
             (GoToRegion, "control alt PERIOD"), (QuickImplementations, "alt F12"), (ErrorDescription, "control F1"), (ShowFilePath, "control alt F12"),
-            (CollapseBlock, "control alt OPEN_BRACKET"), (CollapseBlock, "control K , control L"),
+            (CollapseBlock, "control alt OPEN_BRACKET"), (CollapseBlock, "control K , control L"), (PasteFromHistory, "control shift INSERT"),
+            (CopyReference, "control alt shift C"),
         ],
         ["VSCode OSX"] =
         [
@@ -1115,6 +1125,7 @@ public static class AppActions
             (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
             (GoToRegion, "meta alt PERIOD"), (QuickImplementations, "alt SPACE"), (QuickImplementations, "alt F12"), (ErrorDescription, "meta F1"),
             (ExpressionTypeInfo, "control shift P"), (ShowFilePath, "meta alt F12"), (CollapseBlock, "meta K , meta L"),
+            (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control shift SPACE"),
         ],
         ["$default"] =
         [
@@ -1123,7 +1134,8 @@ public static class AppActions
             (CodeBlockStartWithSelection, "control shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "control shift CLOSE_BRACKET"),
             (GoToRegion, "control alt PERIOD"), (QuickImplementations, "control shift I"), (ErrorDescription, "control F1"),
             (ExpressionTypeInfo, "control shift P"), (ShowFilePath, "control alt F12"), (CollapseSelection, "control PERIOD"),
-            (CollapseBlock, "control shift PERIOD"),
+            (CollapseBlock, "control shift PERIOD"), (PasteFromHistory, "control shift V"), (PasteFromHistory, "control shift INSERT"),
+            (CopyReference, "control alt shift C"), (SmartTypeCompletion, "control shift SPACE"),
         ],
         ["Mac OS X 10.5+"] =
         [
@@ -1133,7 +1145,8 @@ public static class AppActions
             (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
             (GoToRegion, "meta alt PERIOD"), (QuickImplementations, "alt SPACE"), (QuickImplementations, "meta Y"), (ErrorDescription, "meta F1"),
             (ExpressionTypeInfo, "control shift P"), (ShowFilePath, "meta alt F12"), (CollapseSelection, "meta PERIOD"),
-            (CollapseBlock, "meta shift PERIOD"),
+            (CollapseBlock, "meta shift PERIOD"), (PasteFromHistory, "meta shift V"), (PasteFromHistory, "meta shift INSERT"),
+            (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control shift SPACE"),
         ],
     };
 

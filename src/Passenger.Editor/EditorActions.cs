@@ -45,6 +45,12 @@ public static class EditorActions
     public const string Cut = "editor.cut";
     public const string Copy = "editor.copy";
     public const string Paste = "editor.paste";
+
+    // Rider's EditorPasteSimple, the clipboard's text pasted as it is, indented as nothing else; and HippieCompletion and
+    // HippieBackwardCompletion, a word begun at the caret finished as a word the text has, a press stepping to the next.
+    public const string PasteAsPlainText = "editor.pasteAsPlainText";
+    public const string ExpandWord = "editor.expandWord";
+    public const string ExpandWordBackward = "editor.expandWordBackward";
     public const string SelectAll = "editor.selectAll";
     public const string SelectNextOccurrence = "editor.selectNextOccurrence";
     public const string UnselectOccurrence = "editor.unselectOccurrence";
@@ -103,7 +109,8 @@ public static class EditorActions
         (Duplicate, "Duplicate"), (DeleteLine, "Delete Line"), (MoveLineUp, "Move Line Up"), (MoveLineDown, "Move Line Down"),
         (ToggleLineComment, "Comment with Line Comment"), (ToggleBlockComment, "Comment with Block Comment"), (Comment, "Comment"), (Uncomment, "Uncomment"), (JoinLines, "Join Lines"),
         (ToggleCase, "Toggle Case"), (CutToLineEnd, "Cut to Line End"), (Undo, "Undo"), (Redo, "Redo"), (Cut, "Cut"), (Copy, "Copy"),
-        (Paste, "Paste"), (SelectAll, "Select All"), (SelectNextOccurrence, "Select Next Occurrence"),
+        (Paste, "Paste"), (PasteAsPlainText, "Paste as Plain Text"), (ExpandWord, "Cyclic Expand Word"),
+        (ExpandWordBackward, "Cyclic Expand Word (Backward)"), (SelectAll, "Select All"), (SelectNextOccurrence, "Select Next Occurrence"),
         (UnselectOccurrence, "Unselect Occurrence"), (SelectAllOccurrences, "Select All Occurrences"), (CaretPerLine, "Caret Per Line"),
         (CloneCaretAbove, "Clone Caret Above"), (CloneCaretBelow, "Clone Caret Below"), (Escape, "Escape"),
         (ToggleFold, "Toggle Folding"), (Fold, "Collapse"), (Unfold, "Expand"), (FoldAll, "Collapse All"), (UnfoldAll, "Expand All"),
@@ -131,7 +138,7 @@ public static class EditorActions
     [
         Backspace, Delete, DeleteWordLeft, DeleteWordRight, NewLine, StartNewLine, StartNewLineBefore, Indent, Outdent, Duplicate,
         DeleteLine, MoveLineUp, MoveLineDown, ToggleLineComment, ToggleBlockComment, Comment, Uncomment, JoinLines, ToggleCase,
-        CutToLineEnd, Undo, Redo, Cut, Paste,
+        CutToLineEnd, Undo, Redo, Cut, Paste, PasteAsPlainText, ExpandWord, ExpandWordBackward,
     ];
 
     public static bool IsMovement(string action) => Movements.Contains(action);
@@ -238,6 +245,9 @@ public static class DefaultKeymaps
         .Bind(EditorActions.Cut, "meta X", "shift DELETE", "meta L")
         .Bind(EditorActions.Copy, "meta C", "meta INSERT")
         .Bind(EditorActions.Paste, "meta V", "shift INSERT")
+        .Bind(EditorActions.PasteAsPlainText, "meta alt shift V")
+        .Bind(EditorActions.ExpandWord, "alt SLASH")
+        .Bind(EditorActions.ExpandWordBackward, "alt shift SLASH")
         .Bind(EditorActions.SelectAll, "meta A")
         .Bind(EditorActions.SelectNextOccurrence, "alt shift PERIOD")
         .Bind(EditorActions.UnselectOccurrence, "alt shift COMMA")
@@ -309,6 +319,8 @@ public static class DefaultKeymaps
         .Bind(EditorActions.Cut, "control X", "shift DELETE")
         .Bind(EditorActions.Copy, "control C", "control INSERT")
         .Bind(EditorActions.Paste, "control V", "shift INSERT")
+        .Bind(EditorActions.PasteAsPlainText, "control alt shift V")
+        .Bind(EditorActions.ExpandWord, "alt SLASH")
         .Bind(EditorActions.SelectAll, "control A")
         .Bind(EditorActions.SelectNextOccurrence, "alt shift PERIOD")
         .Bind(EditorActions.UnselectOccurrence, "alt shift COMMA")
@@ -382,6 +394,9 @@ public static class DefaultKeymaps
         .Bind(EditorActions.Cut, "meta X", "shift DELETE")
         .Bind(EditorActions.Copy, "meta C", "meta INSERT")
         .Bind(EditorActions.Paste, "meta V", "shift INSERT")
+        .Bind(EditorActions.PasteAsPlainText, "meta alt shift V")
+        .Bind(EditorActions.ExpandWord, "alt SLASH")
+        .Bind(EditorActions.ExpandWordBackward, "alt shift SLASH")
         .Bind(EditorActions.SelectAll, "meta A")
         .Bind(EditorActions.SelectNextOccurrence, "meta D", "meta F3")
         .Bind(EditorActions.UnselectOccurrence, "meta U")
@@ -449,6 +464,9 @@ public static class DefaultKeymaps
         .Bind(EditorActions.Cut, "control X", "shift DELETE")
         .Bind(EditorActions.Copy, "control C", "control INSERT")
         .Bind(EditorActions.Paste, "control V", "shift INSERT")
+        .Bind(EditorActions.PasteAsPlainText, "control alt shift V")
+        .Bind(EditorActions.ExpandWord, "alt SLASH")
+        .Bind(EditorActions.ExpandWordBackward, "alt shift SLASH")
         .Bind(EditorActions.SelectAll, "control A")
         .Bind(EditorActions.SelectNextOccurrence, "control D", "control F3")
         .Bind(EditorActions.UnselectOccurrence, "control U")
@@ -518,6 +536,9 @@ public static class DefaultKeymaps
         .Bind(EditorActions.Cut, "meta X", "shift DELETE")
         .Bind(EditorActions.Copy, "meta C", "meta INSERT")
         .Bind(EditorActions.Paste, "meta V", "shift INSERT")
+        .Bind(EditorActions.PasteAsPlainText, "meta alt shift V")
+        .Bind(EditorActions.ExpandWord, "alt SLASH")
+        .Bind(EditorActions.ExpandWordBackward, "alt shift SLASH")
         .Bind(EditorActions.SelectAll, "meta A")
         .Bind(EditorActions.SelectNextOccurrence, "control G")
         .Bind(EditorActions.UnselectOccurrence, "control shift G")
@@ -643,6 +664,9 @@ public static class DefaultKeymaps
         .Bind(EditorActions.Cut, "control X", "shift DELETE")
         .Bind(EditorActions.Copy, "control C", "control INSERT")
         .Bind(EditorActions.Paste, "control V", "shift INSERT")
+        .Bind(EditorActions.PasteAsPlainText, "control alt shift V")
+        .Bind(EditorActions.ExpandWord, "alt SLASH")
+        .Bind(EditorActions.ExpandWordBackward, "alt shift SLASH")
         .Bind(EditorActions.SelectAll, "control A")
         .Bind(EditorActions.SelectNextOccurrence, "alt J")
         .Bind(EditorActions.UnselectOccurrence, "alt shift J")

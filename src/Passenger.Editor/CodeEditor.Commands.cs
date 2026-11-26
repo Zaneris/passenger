@@ -150,7 +150,7 @@ public sealed partial class CodeEditor
             return IsEdit(action);
         }
         string eol = document.LineEnding;
-        if (action is EditorActions.NewLine or EditorActions.Indent or EditorActions.Paste)
+        if (action is EditorActions.NewLine or EditorActions.Indent or EditorActions.Paste or EditorActions.PasteAsPlainText)
         {
             LeaveEndTag();
             text = document.Snapshot;
@@ -230,7 +230,13 @@ public sealed partial class CodeEditor
                 Apply(TextEditing.Cut(text, selections, Folding.Hidden));
                 return true;
             case EditorActions.Paste:
-                BackgroundWork.Track(PasteFromClipboardAsync());
+                BackgroundWork.Track(PasteFromClipboardAsync(plain: false));
+                return true;
+            case EditorActions.PasteAsPlainText:
+                BackgroundWork.Track(PasteFromClipboardAsync(plain: true));
+                return true;
+            case EditorActions.ExpandWord or EditorActions.ExpandWordBackward:
+                ExpandWord(backward: action == EditorActions.ExpandWordBackward);
                 return true;
         }
         return false;
@@ -376,13 +382,16 @@ public sealed partial class CodeEditor
     private void SetClipboard(string copied, bool wholeLines)
     {
         lineCopy = wholeLines ? copied : null;
+        Copied?.Invoke(this, new CopiedText(copied, wholeLines));
         if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
         {
             UnawaitedWork.Observe(clipboard.SetTextAsync(copied));
         }
     }
 
-    private async Task PasteFromClipboardAsync()
+    /// <summary>The clipboard's text pasted at the carets, whole lines above the caret's line where this IDE copied it as
+    /// them; reindented as the language reindents a paste unless <paramref name="plain"/>.</summary>
+    private async Task PasteFromClipboardAsync(bool plain)
     {
         if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard || await clipboard.TryGetTextAsync() is not { Length: > 0 } pasted)
         {
@@ -390,8 +399,59 @@ public sealed partial class CodeEditor
         }
         string normalized = pasted.Replace("\r\n", "\n");
         bool wholeLines = lineCopy is not null && normalized == lineCopy.Replace("\r\n", "\n");
+        Apply(TextEditing.Paste(document.Snapshot, selections, pasted, wholeLines, document.LineEnding, ReindentsPaste && !plain ? Indent : null));
+    }
+
+    /// <summary>Text pasted at the carets as Paste pastes the clipboard's, whole lines above the caret's line where it was
+    /// copied as them, and put on the clipboard; Paste from History's choice. A read-only editor refuses it.</summary>
+    public void PasteText(string pasted, bool wholeLines)
+    {
+        if (IsReadOnly)
+        {
+            return;
+        }
+        SetClipboard(pasted, wholeLines);
+        LeaveEndTag();
         Apply(TextEditing.Paste(document.Snapshot, selections, pasted, wholeLines, document.LineEnding, ReindentsPaste ? Indent : null));
+    }
+
+    /// <summary>Cyclic Expand Word's last step: where the word it finishes begins, as typed, the round of words it steps
+    /// through (<see cref="WordExpansion"/>), the one it shows (0 for the word as typed), and the text's version and caret
+    /// it left, so a press at once after steps on from there.</summary>
+    private sealed record Expansion(int Start, string Begun, IReadOnlyList<string> Words, int Index, int Version, int Caret);
+
+    private Expansion? expansion;
+
+    /// <summary>The other texts whose words Cyclic Expand Word offers after this one's above the caret: the other open files'.</summary>
+    public Func<IEnumerable<string>>? WordsElsewhere { get; set; }
+
+    /// <summary>The word begun at the caret finished as the next word of its round, or the one before; each press one more
+    /// step of the same undo, the word as typed coming round again after the last.</summary>
+    private void ExpandWord(bool backward)
+    {
+        if (selections.HasMultiple || !selections.Primary.IsEmpty)
+        {
+            return;
+        }
+        int caret = selections.Primary.Caret;
+        Expansion? going = expansion is { } last && last.Version == document.Version && last.Caret == caret ? last : null;
+        if (going is null)
+        {
+            if (WordExpansion.At(document.Snapshot.ToString(), caret, WordsElsewhere?.Invoke() ?? []) is not { Words.Count: > 0 } found)
+            {
+                return;
+            }
+            going = new Expansion(found.Start, found.Begun, found.Words, 0, 0, 0);
+        }
+        int round = going.Words.Count + 1;
+        int index = (((going.Index + (backward ? -1 : 1)) % round) + round) % round;
+        string word = index == 0 ? going.Begun : going.Words[index - 1];
+        Apply(new EditPlan([new TextEdit(going.Start, caret - going.Start, word)], SelectionSet.Single(going.Start + word.Length), EditKind.Joined));
+        expansion = going with { Index = index, Version = document.Version, Caret = going.Start + word.Length };
     }
 
     private static bool IsEdit(string action) => action.StartsWith("editor.", StringComparison.Ordinal);
 }
+
+/// <summary>Text an editor put on the clipboard, and whether it was whole lines, which a paste puts above the caret's line.</summary>
+public readonly record struct CopiedText(string Text, bool WholeLines);

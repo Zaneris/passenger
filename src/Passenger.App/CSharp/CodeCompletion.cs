@@ -425,6 +425,59 @@ internal sealed partial class CodeCompletion
         return true;
     }
 
+    /// <summary>Smart Type Completion: the server's items at the caret whose type fits the one C# expects there, alone, as
+    /// Passenger's extension finds them (<see cref="Roslyn.Extension.FittingNames"/>); said why where no type is expected or
+    /// nothing fits.</summary>
+    public async Task FittingAsync(LspDocument lsp)
+    {
+        using (BackgroundWork.Scope())
+        {
+            Ask ask = AskHere();
+            CancellationTokenSource cancel = Asking();
+            try
+            {
+                int caret = Editor.Selections.Primary.Caret;
+                TextSnapshot asked = Editor.Document.Snapshot;
+                Task<(CompletionList? List, int Version)> listing = lsp.CompletionAsync(caret, null, cancel.Token, false);
+                Task<Roslyn.Extension.FittingNames> fitting = lsp.ExtensionAsync<Roslyn.Extension.FittingNames>(Roslyn.Extension.Handlers.TypeFits,
+                    new Roslyn.Extension.Caret(lsp.PlaceOf(caret)), cancel.Token);
+                await Task.WhenAll(listing, fitting);
+                (CompletionList? list, _) = await listing;
+                Roslyn.Extension.FittingNames fits = await fitting;
+                if (cancel.IsCancellationRequested)
+                {
+                    return;
+                }
+                HashSet<string> names = new(fits.Names, StringComparer.Ordinal);
+                CompletionItem[] fit = [.. (list?.Items ?? []).Where(i => names.Contains(Unbracketed(i.Label)))];
+                if (fits.Expected is not { } expected || fit.Length == 0)
+                {
+                    Close();
+                    context.Say(fits.Expected is { } type ? Refusals.NothingFits(type) : Refusals.NoTypeExpected);
+                    return;
+                }
+                Made(lsp, list, [fit], null, null, asked, caret, incomplete: false, before: null, fitting: true);
+            }
+            catch (OperationCanceledException)
+            {
+                // Asked again, or let go: nothing to show.
+            }
+            catch (LanguageServerFailed failed)
+            {
+                context.Failed("Smart Type Completion", failed);
+            }
+            finally
+            {
+                if (ReferenceEquals(asking, ask))
+                {
+                    LetGoOfAsking();
+                }
+            }
+        }
+
+        static string Unbracketed(string label) => label.EndsWith('>') && label.IndexOf('<', StringComparison.Ordinal) is > 0 and int open ? label[..open] : label;
+    }
+
     /// <summary>A list asked for anew, any still coming let go: what tells it it has been asked for again since.</summary>
     public CancellationTokenSource Asking()
     {
@@ -571,10 +624,10 @@ internal sealed partial class CodeCompletion
     }
 
     /// <summary>The list opened of the server's items asked at <paramref name="caret"/>, its parts in order, a language's
-    /// own first and the templates last; one grown by items as they came starts where the one it grew from
-    /// (<paramref name="before"/>) did.</summary>
+    /// own first and the templates last, but for a list of what fits a type (<paramref name="fitting"/>); one grown by items
+    /// as they came starts where the one it grew from (<paramref name="before"/>) did.</summary>
     private Completion Made(LspDocument lsp, CompletionList? list, IReadOnlyList<CompletionItem>[] parts, OwnItems? named, WebDocument? web,
-        TextSnapshot asked, int caret, bool incomplete, Completion? before)
+        TextSnapshot asked, int caret, bool incomplete, Completion? before, bool fitting = false)
     {
         IReadOnlyList<CompletionItem> served = parts.FirstOrDefault(p => p.Count > 0) ?? parts[0];
         int start = named?.Start ?? (served.FirstOrDefault(i => i.TextEdit is not null)?.TextEdit is { } edit
@@ -600,7 +653,7 @@ internal sealed partial class CodeCompletion
             }
         }
         IReadOnlyList<CompletionItem> ahead = named?.Items ?? [];
-        CompletionItem[] offered = [.. templatesOffered.Keys, .. postfixOffered.Keys];
+        CompletionItem[] offered = fitting ? [] : [.. templatesOffered.Keys, .. postfixOffered.Keys];
         int listStart = before?.Start ?? Math.Min(start, Editor.Selections.Primary.Caret);
         string listTail = named is { Tail: { } tail } ? tail : web is not null ? Tail(asked, served, caret) : string.Empty;
         string lead = web is not null && start < caret && caret <= asked.Length ? asked.GetText(start, caret - start) : string.Empty;
@@ -610,7 +663,7 @@ internal sealed partial class CodeCompletion
             Tail = listTail,
             WordCharacters = named?.WordCharacters ?? string.Empty,
             Lead = lead,
-            Coming = before is null && list?.Later is not null,
+            Coming = !fitting && before is null && list?.Later is not null,
         };
         Filter();
         return open;

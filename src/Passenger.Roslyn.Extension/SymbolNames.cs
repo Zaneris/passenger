@@ -34,6 +34,33 @@ public sealed class SymbolAt : IExtensionDocumentMessageHandler<Caret, SymbolsFo
     }
 }
 
+/// <summary>Copy Reference's name of the symbol at a caret, as <see cref="SymbolAt"/> finds it: its namespace, the types it
+/// is in and its own name with its type parameters, no parameters; none for a local, a parameter or a label.</summary>
+public sealed class SymbolReference : IExtensionDocumentMessageHandler<Caret, SymbolReferenced>
+{
+    private static readonly SymbolDisplayFormat Whole = new(
+        globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Omitted,
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
+        memberOptions: SymbolDisplayMemberOptions.IncludeContainingType,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers);
+
+    public async Task<SymbolReferenced> ExecuteAsync(Caret message, ExtensionDocumentMessageContext context, CancellationToken cancellationToken)
+    {
+        Document document = context.Document();
+        SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        int position = text.Lines.GetPosition(new LinePosition(message.At.Line, message.At.Character));
+        ISymbol? symbol = await SymbolFinder.FindSymbolAtPositionAsync(document, position, cancellationToken).ConfigureAwait(false);
+        if (symbol is not null && await document.GetSyntaxTreeAsync(cancellationToken).ConfigureAwait(false) is { } tree)
+        {
+            symbol = SymbolNames.PositionalPropertyAt(symbol, tree, position) ?? symbol;
+        }
+        return new SymbolReferenced(symbol is null or ILocalSymbol or IParameterSymbol or ILabelSymbol or IRangeVariableSymbol or IDiscardSymbol
+            ? null
+            : symbol.OriginalDefinition.ToDisplayString(Whole));
+    }
+}
+
 /// <summary>What the symbols declared at places are in (<see cref="SymbolNames.ContainerOf"/>), as a symbol found by name is
 /// told it, for symbols found otherwise (Go to Symbol's).</summary>
 public sealed class SymbolContainers : IExtensionWorkspaceMessageHandler<ContainersAsked, ContainersFound>

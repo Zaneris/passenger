@@ -86,7 +86,7 @@ public partial class MainWindow
             KeysOf = () => AppActions.KeysIn(A.CompareFiles) is var keys && keys != A.CompareFiles ? keys : null,
         });
         // The path of what is chosen in the Explorer, else of the file shown.
-        OnDisk(A.CopyPath, "Copy Path", path => IdeErrors.Observe(CopyPathAsync(path)));
+        OnDisk(A.CopyPath, "Copy Path", path => IdeErrors.Observe(CopyAsync(path)));
         OnDisk(A.RevealInFileManager, FileManager.Showing, ShowInFileManager, FileManager.Name);
         OnDisk(A.OpenInTerminal, "Open in Terminal", path => IdeErrors.Observe(OpenTerminalAt(Directory.Exists(path) ? path : Path.GetDirectoryName(path)!)), "Terminal");
         OnDisk(A.OpenInBrowser, "Open in Browser", path => Browse(new Uri(path)), "Browser",
@@ -345,15 +345,6 @@ public partial class MainWindow
         return rows.Count > 1 && rows.FirstOrDefault(n => n.LeavesFilesBehind) is { } leaving
             ? Refusals.RemovedAlone(leaving.Name, leaving is { Kind: NodeKind.ProjectReference or NodeKind.SharedProject, Owner: { } owner } ? Path.GetFileNameWithoutExtension(owner) : "the solution")
             : null;
-    }
-
-    private async Task CopyPathAsync(string path)
-    {
-        if (Clipboard is { } clipboard)
-        {
-            await clipboard.SetTextAsync(path);
-            status.Text = $"Copied {path}";
-        }
     }
 
     /// <summary>A row's menu, its items the window's actions run on the row: Build, Rebuild and Clean for the solution or

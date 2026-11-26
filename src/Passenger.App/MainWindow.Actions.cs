@@ -260,6 +260,10 @@ public partial class MainWindow
             words: ["Type of Expression"]);
         Add(A.CollapseSelection, "Collapse Selection", "Editor", _ => CollapseSelection(), Refusals.NeedsFile, words: ["Fold Selection", "Folding"]);
         Add(A.CollapseBlock, "Collapse Block", "Editor", _ => CollapseBlock(), Refusals.NeedsFile, words: ["Fold Block", "Folding"]);
+        Add(A.PasteFromHistory, "Paste from History", "Editor", _ => IdeErrors.Observe(ShowPasteHistoryAsync()), c => Refusals.NeedsFile(c) ?? c.ReadOnlyWhy,
+            words: ["Clipboard History", "Paste Multiple"]);
+        Add(A.CopyReference, "Copy Reference", "Editor", _ => IdeErrors.Observe(CopyReferenceAsync()), Refusals.NeedsFile,
+            words: ["Copy Qualified Name", "Copy Fully Qualified Name"]);
         Add(A.ShowFilePath, "Show File Path", "Navigate", _ => Assist.ShowFilePath(TitleOf(A.ShowFilePath), Editors.Active!, ShowInFileManager), Refusals.NeedsFile,
             words: ["Reveal", "Folder"]);
 

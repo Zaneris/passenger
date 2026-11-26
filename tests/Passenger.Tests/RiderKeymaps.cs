@@ -228,7 +228,10 @@ internal static class RiderKeymaps
         ([AppActions.CodeBlockEndWithSelection], ["EditorCodeBlockEndWithSelection"]), ([AppActions.GoToRegion], ["GotoCustomRegion"]),
         ([AppActions.QuickImplementations], ["QuickImplementations"]), ([AppActions.ErrorDescription], ["ShowErrorDescription"]),
         ([AppActions.ExpressionTypeInfo], ["ExpressionTypeInfo"]), ([AppActions.ShowFilePath], ["ShowFilePath"]),
-        ([AppActions.CollapseSelection], ["CollapseSelection"]), ([AppActions.CollapseBlock], ["CollapseBlock"])
+        ([AppActions.CollapseSelection], ["CollapseSelection"]), ([AppActions.CollapseBlock], ["CollapseBlock"]),
+        ([EditorActions.PasteAsPlainText], ["EditorPasteSimple"]), ([EditorActions.ExpandWord], ["HippieCompletion"]),
+        ([EditorActions.ExpandWordBackward], ["HippieBackwardCompletion"]), ([AppActions.PasteFromHistory], ["PasteMultiple"]),
+        ([AppActions.CopyReference], ["CopyReference"]), ([AppActions.SmartTypeCompletion], ["SmartTypeCompletion"])
     ];
 
     /// <summary>Where a keymap here differs from Rider's on purpose: a shortcut it keeps that Rider's lacks, or one of Rider's
@@ -305,6 +308,7 @@ internal static class RiderKeymaps
         (Emacs, AppActions.ShowSettings, "control alt S", false, "Find's, the keymap's own over the one it inherits"),
         (Emacs, AppActions.NextOverload, "control DOWN", false, "the paragraph move's, the keymap's own over the one it inherits"),
         (Emacs, AppActions.PreviousOverload, "control UP", false, "the paragraph move's, the keymap's own over the one it inherits"),
+        (Emacs, EditorActions.ExpandWord, "alt SLASH", false, "Basic Completion's, the keymap's own over the one it inherits"),
         .. (OperatingSystem.IsMacOS() ? MacEmacs : []),
     ];
 

@@ -52,13 +52,58 @@ public sealed class EditingBehaviourTests
     }
 
     /// <summary>Occurrences taken from a caret leave longer names holding the word alone, a brace typed above the one
-    /// Enter wrote types over it unless a block around lacks its own, and Tab steps over a closer the typing help wrote.</summary>
+    /// Enter wrote types over it unless a block around lacks its own, Tab steps over a closer the typing help wrote, Cyclic
+    /// Expand Word finishes a word begun as the text's words, and Paste as Plain Text pastes what Paste reindents as it is.</summary>
     [AvaloniaFact]
     public void Words_and_braces_typed_go_where_a_person_means()
     {
         Flow.StepApart<EditingBehaviourTests>("occurrences of a word taken from a caret leave longer names holding it alone", t => t.Occurrences_of_a_word_taken_from_a_caret_leave_longer_names_holding_it_alone());
         Flow.StepApart<EditingBehaviourTests>("a brace typed above the one enter wrote types over it unless a block around lacks its own", t => t.A_brace_typed_above_the_one_enter_wrote_types_over_it_unless_a_block_around_lacks_its_own());
         Flow.StepApart<EditingBehaviourTests>("tab steps over a closer the typing help wrote and indents before one the person wrote", t => t.Tab_steps_over_a_closer_the_typing_help_wrote_and_indents_before_one_the_person_wrote());
+        Flow.StepApart<EditingBehaviourTests>("cyclic expand word finishes a word begun as the nearest above then steps on and back below and undoes at once", t => t.Cyclic_expand_word_finishes_a_word_begun_as_the_nearest_above_then_steps_on_and_back_below_and_undoes_at_once());
+        Flow.StepApart<EditingBehaviourTests>("paste as plain text pastes the clipboard as it is where paste reindents it", t => t.Paste_as_plain_text_pastes_the_clipboard_as_it_is_where_paste_reindents_it());
+    }
+
+    /// <summary>Alt+/ after "to" finishes it as the words above, nearest first, then those below from the end; the word as
+    /// typed comes round again, Undo takes the steps back at once, and Alt+Shift+/ goes the other way, the nearest below first.</summary>
+    private void Cyclic_expand_word_finishes_a_word_begun_as_the_nearest_above_then_steps_on_and_back_below_and_undoes_at_once()
+    {
+        const string Text = "total = 1;\ntoken = 2;\nto\ntopmost = 3;\ntoday = 4;\n";
+        EditorRig rig = new(Text);
+        int after = Text.IndexOf("\nto\n", StringComparison.Ordinal) + 3;
+        rig.PlaceCaret(after);
+        List<string> stepped = [];
+        for (int i = 0; i < 5; i++)
+        {
+            rig.Press("alt SLASH");
+            stepped.Add(rig.Text.Split('\n')[2]);
+        }
+        Assert.Equal(["token", "total", "today", "topmost", "to"], stepped);
+        rig.Press("alt SLASH");
+        rig.Press("alt SLASH");
+        Assert.Equal("total", rig.Text.Split('\n')[2]);
+        rig.Press("meta Z");
+        Assert.True(rig.Text == Text, $"Undo after Cyclic Expand Word's steps left \"{rig.Text.Split('\n')[2]}\", not the word as typed");
+        rig.PlaceCaret(after);
+        rig.Press("alt shift SLASH");
+        Assert.Equal("topmost", rig.Text.Split('\n')[2]);
+    }
+
+    /// <summary>A copy holding a tab-indented line pasted at a line's start: Paste writes the tab as the editor's four spaces,
+    /// Paste as Plain Text the tab as it was copied.</summary>
+    private void Paste_as_plain_text_pastes_the_clipboard_as_it_is_where_paste_reindents_it()
+    {
+        EditorRig rig = new("one\n\tb\n");
+        rig.Editor.Selections = SelectionSet.Single(new Selection(0, 6));
+        rig.Press("meta C");
+        rig.PlaceCaret(7);
+        rig.Press("meta alt shift V");
+        Ui.Settle();
+        Assert.Equal("one\n\tb\none\n\tb", rig.Text);
+        rig.Press("meta Z");
+        rig.Press("meta V");
+        Ui.Settle();
+        Assert.Equal("one\n\tb\none\n    b", rig.Text);
     }
 
     private void Carets_cloned_down_the_lines_type_together_and_undo_as_one()

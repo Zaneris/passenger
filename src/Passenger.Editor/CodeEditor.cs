@@ -132,6 +132,9 @@ public sealed partial class CodeEditor : Control
     /// <summary>Raised when the view scrolls.</summary>
     public event EventHandler? ScrollChanged;
 
+    /// <summary>Text this editor put on the clipboard (a copy, a cut, Vim's yank), and whether it was whole lines.</summary>
+    public event EventHandler<CopiedText>? Copied;
+
     /// <summary>Raised when any caret or selection changes, by an edit or a move.</summary>
     public event EventHandler? SelectionChanged;
 

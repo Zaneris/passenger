@@ -502,6 +502,21 @@ public sealed class CodeAssist
         }
     });
 
+    /// <summary>Copy Reference's text: the symbol at the caret named whole where C# names one there (<see
+    /// cref="Roslyn.Extension.SymbolReferenced"/>), else the file's path in <paramref name="folder"/>, or whole outside it,
+    /// and the caret's line.</summary>
+    public async Task<string> ReferenceAsync(OpenDocument file, int caret, string? folder)
+    {
+        if (file.Language == Passenger.Languages.Language.CSharp && context.ServerOf(file)?.Lsp is { } lsp
+            && (await lsp.ExtensionAsync<Roslyn.Extension.SymbolReferenced>(Roslyn.Extension.Handlers.SymbolReference, new Roslyn.Extension.Caret(lsp.PlaceOf(caret)),
+                CancellationToken.None)).Reference is { } named)
+        {
+            return named;
+        }
+        string path = folder is not null && PathNames.Relative(file.Path, folder) is { } relative ? relative : file.Path;
+        return $"{path}:{file.Text.Snapshot.GetLineFromOffset(Math.Min(caret, file.Text.Snapshot.Length)) + 1}";
+    }
+
     /// <summary>Show File Path: the file shown and each folder above it, in a list at the caret; the one chosen is shown in
     /// the system's file manager by <paramref name="reveal"/>.</summary>
     public void ShowFilePath(string title, OpenDocument file, Action<string> reveal)
@@ -793,6 +808,8 @@ public sealed class CodeAssist
         WebAssist web = context.Languages.Web;
         Code(AppActions.Complete, "Basic Completion", context => IdeErrors.Observe(completion.Start(null)), new("Code/Code Completion", 0, 0), xaml: true, msbuild: true,
             godot: true, shader: true, writes: true, config: true);
+        Code(AppActions.SmartTypeCompletion, "Smart Type Completion", _ => IdeErrors.Observe(context.Current?.Lsp is { } lsp ? completion.FittingAsync(lsp) : Task.CompletedTask),
+            new("Code/Code Completion", 0, 1), writes: true, csharp: true);
         Code(AppActions.CompleteStatement, "Complete Current Statement", _ => completion.CompleteStatement(), new("Code/Code Completion", 1, 0), server: false, syntax: true, writes: true);
         registry.Add(new IdeAction(AppActions.NextOverload, "Next Overload", "Code", _ => parameterInfo.Step(1))
         {
