@@ -240,6 +240,49 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void Hovering_over_CSharp_usages_shows_the_bound_symbols_declared_attributes()
+    {
+        MainWindow window = WithoutNavigationBar(project.Open("AttributeUses.cs"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string text = editor.Document.Snapshot.ToString();
+
+        Assert.Contains("[CachePolicy(\"cache\")]", Hover("Cache cache", "Cache"), StringComparison.Ordinal);
+        Assert.Contains("[CachePolicy(\"cache\")]", Hover("new Cache()", "Cache"), StringComparison.Ordinal);
+        Assert.Contains("[CachePolicy(\"property\")]", Hover("cache.Count", "Count"), StringComparison.Ordinal);
+        string field = Hover("cache.Capacity", "Capacity");
+        Assert.Contains("[CachePolicy(\"field\", Slots = new int[]", field, StringComparison.Ordinal);
+        Assert.Contains("[CachePolicy(\"event\")]", Hover("cache.Changed", "Changed"), StringComparison.Ordinal);
+
+        string first = Hover("cache.Clear(1)", "Clear");
+        Assert.Contains("void Cache.Clear(int count)", first, StringComparison.Ordinal);
+        Assert.Contains("Clears the requested number of entries.", first, StringComparison.Ordinal);
+        Assert.Contains("[CachePolicy(\"short\", Priority = 2)]", first, StringComparison.Ordinal);
+        Assert.Contains("[Description(\"Evicts entries\")]", first, StringComparison.Ordinal);
+        Assert.DoesNotContain("[CachePolicy(\"named\")]", first, StringComparison.Ordinal);
+
+        string second = Hover("cache.Clear(\"key\")", "Clear");
+        Assert.Contains("void Cache.Clear(string key)", second, StringComparison.Ordinal);
+        Assert.Contains("[CachePolicy(\"named\")]", second, StringComparison.Ordinal);
+        Assert.DoesNotContain("[CachePolicy(\"short\"", second, StringComparison.Ordinal);
+
+        string plain = Hover("cache.Reset()", "Reset");
+        Assert.Contains("void Cache.Reset()", plain, StringComparison.Ordinal);
+        Assert.DoesNotContain("[CachePolicy", plain, StringComparison.Ordinal);
+        window.Close();
+
+        string Hover(string usage, string name)
+        {
+            window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
+            Ui.WaitFor(() => window.Assist.HoverText is null, "the previous hover card has closed");
+            int offset = text.IndexOf(usage, StringComparison.Ordinal) + usage.IndexOf(name, StringComparison.Ordinal) + 1;
+            Point point = editor.TranslatePoint(editor.PointOf(offset) + new Point(1, editor.LineHeight / 2), window)!.Value;
+            window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
+            Ui.WaitFor(() => window.Assist.HoverText is not null, $"the hover for {usage}");
+            return window.Assist.HoverText!;
+        }
+    }
+
     /// <summary>Where the status bar's path is drawn.</summary>
     private static Control PathHost(MainWindow window) => window.GetVisualDescendants().OfType<Control>().First(c => c.Name == "BreadcrumbHost");
 
@@ -3541,6 +3584,50 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 TestProjects.Console());
             File.WriteAllText(PathOf("Program.cs"), "class Program\n{\n    static void Main()\n    {\n        int result = Helper.Twice(2);\n    }\n}\n");
             File.WriteAllText(PathOf("Helper.cs"), "static class Helper\n{\n    public static int Twice(int value) => value * 2;\n}\n");
+            File.WriteAllText(PathOf("AttributeUses.cs"), """
+                static class AttributeUses
+                {
+                    public static void Run()
+                    {
+                        Cache cache = new Cache();
+                        _ = cache.Count;
+                        _ = cache.Capacity;
+                        cache.Changed += static () => { };
+                        cache.Clear(1);
+                        cache.Clear("key");
+                        cache.Reset();
+                    }
+                }
+                """);
+            File.WriteAllText(PathOf("AttributedCache.cs"), """
+                using System;
+                using System.ComponentModel;
+
+                [CachePolicy("cache")]
+                sealed class Cache
+                {
+                    [CachePolicy("property")] public int Count { get; }
+                    [CachePolicy("field", Slots = new int[] { })] public int Capacity = 8;
+                    [CachePolicy("event")] public event Action? Changed;
+
+                    /// <summary>Clears the requested number of entries.</summary>
+                    [CachePolicy("short", Priority = 2)]
+                    [Description("Evicts entries")]
+                    public void Clear(int count) => Changed?.Invoke();
+
+                    [CachePolicy("named")]
+                    public void Clear(string key) { }
+
+                    public void Reset() { }
+                }
+
+                sealed class CachePolicyAttribute(string name) : Attribute
+                {
+                    public string Name { get; } = name;
+                    public int Priority { get; set; }
+                    public int[]? Slots { get; set; }
+                }
+                """);
             File.WriteAllText(PathOf("Shapes.cs"), "interface IShape\n{\n    int Sides { get; }\n}\n\nclass Square : IShape\n{\n    public int Sides => 4;\n}\n");
             File.WriteAllText(PathOf("Gauges.cs"), "interface IGauge\n{\n    int Read();\n}\n\nclass Dial : IGauge\n{\n    public int Read() => 1;\n}\n\n"
                 + "static class Readings\n{\n    static int Both(Dial dial, IGauge any) => dial.Read() + any.Read();\n}\n");

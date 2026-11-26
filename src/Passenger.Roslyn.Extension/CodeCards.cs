@@ -6,6 +6,10 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Classification;
 using Microsoft.CodeAnalysis.Completion;
 using Microsoft.CodeAnalysis.Completion.Providers;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Editing;
+using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.LanguageServer;
 using Microsoft.CodeAnalysis.LanguageServer.Handler;
 using Microsoft.CodeAnalysis.LanguageServer.Handler.Completion;
@@ -82,7 +86,7 @@ internal static class CodeCards
 }
 
 /// <summary><see cref="ExtensionMethods.Hover"/>: textDocument/hover as the server's own answers a client without Visual
-/// Studio's extensions, its quick info's sections one after another, with the parts of its blocks of code.</summary>
+/// Studio's extensions, with the parts of its blocks of code and the attributes on a C# symbol's use.</summary>
 [Method(ExtensionMethods.Hover)]
 internal sealed class CodedHoverHandler(IGlobalOptionService options) : ILspServiceDocumentRequestHandler<TextDocumentPositionParams, CodedHover?>
 {
@@ -104,7 +108,10 @@ internal sealed class CodedHoverHandler(IGlobalOptionService options) : ILspServ
             return null;
         }
         // A line break after each section, as the server's own sets them apart.
-        ImmutableArray<TaggedText> tags = [.. info.Sections.SelectMany(s => s.TaggedParts.Add(new TaggedText(TextTags.LineBreak, Environment.NewLine)))];
+        ImmutableArray<TaggedText> attributes = document.Project.Language == LanguageNames.CSharp
+            ? await AttributesAtAsync(document, info.Span.Start, cancellationToken).ConfigureAwait(false) : [];
+        ImmutableArray<TaggedText> tags =
+            [.. info.Sections.SelectMany(s => s.TaggedParts.Add(new TaggedText(TextTags.LineBreak, Environment.NewLine))), .. attributes];
         SourceText text = await document.GetValueTextAsync(cancellationToken).ConfigureAwait(false);
         return new CodedHover
         {
@@ -112,6 +119,94 @@ internal sealed class CodedHoverHandler(IGlobalOptionService options) : ILspServ
             Contents = ProtocolConversions.GetDocumentationMarkupContent(tags, document.Project.Language, markdown),
             Code = CodeCards.Blocks(tags),
         };
+    }
+
+    /// <summary>Only one bound reference can say which attributes belong to this use, even if Quick Info has a signature for an unbound call.</summary>
+    private static async Task<ImmutableArray<TaggedText>> AttributesAtAsync(Document document, int position, CancellationToken cancel)
+    {
+        SemanticModel model = await document.GetRequiredSemanticModelAsync(cancel).ConfigureAwait(false);
+        TokenSemanticInfo info = await SymbolFinder.GetSemanticInfoAtPositionAsync(model, position, document.Project.Solution.Services, cancel)
+            .ConfigureAwait(false);
+        ISymbol? symbol = info.AliasSymbol?.Target ?? (info.ReferencedSymbols is [var referenced] ? referenced : null);
+        if (symbol is IMethodSymbol { MethodKind: MethodKind.Constructor })
+        {
+            // At an explicit type name, Quick Info can describe the constructor but the name also refers to the type.
+            SyntaxNode root = await document.GetRequiredSyntaxRootAsync(cancel).ConfigureAwait(false);
+            if (root.FindToken(position, findInsideTrivia: true).Parent is SimpleNameSyntax name
+                && model.GetSymbolInfo(name, cancel).Symbol is INamedTypeSymbol type)
+            {
+                symbol = type;
+            }
+        }
+        if (symbol is IMethodSymbol { ReducedFrom: { } extension })
+        {
+            symbol = extension;
+        }
+        if (symbol is not (INamedTypeSymbol or IMethodSymbol or IPropertySymbol or IFieldSymbol or IEventSymbol)
+            || symbol.GetAttributes() is not { IsEmpty: false } attributes)
+        {
+            return [];
+        }
+
+        SyntaxGenerator generator = SyntaxGenerator.GetGenerator(document);
+        ImmutableArray<TaggedText>.Builder tags = ImmutableArray.CreateBuilder<TaggedText>();
+        foreach (AttributeData attribute in attributes)
+        {
+            cancel.ThrowIfCancellationRequested();
+            if (attribute is not { AttributeClass: { TypeKind: not TypeKind.Error } type, AttributeConstructor: not null })
+            {
+                continue;
+            }
+            if (tags.Count == 0)
+            {
+                tags.Add(new TaggedText(TextTags.CodeBlockStart, string.Empty));
+            }
+            else
+            {
+                tags.Add(new TaggedText(TextTags.LineBreak, Environment.NewLine));
+            }
+            tags.Add(new TaggedText(TextTags.Punctuation, "["));
+            tags.Add(new TaggedText(TextTags.Class, AttributeName(type)));
+            if (!attribute.ConstructorArguments.IsEmpty || !attribute.NamedArguments.IsEmpty)
+            {
+                IEnumerable<AttributeArgumentSyntax> arguments = attribute.ConstructorArguments
+                    .Select(value => SyntaxFactory.AttributeArgument(AttributeValue(generator, value)))
+                    .Concat(attribute.NamedArguments.Select(pair =>
+                        (AttributeArgumentSyntax)generator.AttributeArgument(pair.Key, AttributeValue(generator, pair.Value))));
+                AttributeArgumentListSyntax list = SyntaxFactory.AttributeArgumentList(SyntaxFactory.SeparatedList(arguments));
+                tags.Add(new TaggedText(TextTags.Text, list.NormalizeWhitespace(elasticTrivia: false).ToString()));
+            }
+            tags.Add(new TaggedText(TextTags.Punctuation, "]"));
+        }
+        if (tags.Count > 0)
+        {
+            tags.Add(new TaggedText(TextTags.CodeBlockEnd, string.Empty));
+        }
+        return tags.ToImmutable();
+    }
+
+    /// <summary>Keep the element type because an empty or mixed array may have no inferable type.</summary>
+    private static ExpressionSyntax AttributeValue(SyntaxGenerator generator, TypedConstant value) =>
+        value is { Kind: TypedConstantKind.Array, IsNull: false, Type: IArrayTypeSymbol type }
+            ? SyntaxFactory.ArrayCreationExpression(
+                (ArrayTypeSyntax)SyntaxFactory.ParseTypeName(type.ToDisplayString(AttributeType)),
+                SyntaxFactory.InitializerExpression(SyntaxKind.ArrayInitializerExpression,
+                    SyntaxFactory.SeparatedList(value.Values.Select(item => AttributeValue(generator, item)))))
+            : (ExpressionSyntax)generator.TypedConstantExpression(value);
+
+    private static readonly SymbolDisplayFormat AttributeType = new(
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypes,
+        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers | SymbolDisplayMiscellaneousOptions.UseSpecialTypes);
+
+    private static string AttributeName(INamedTypeSymbol type)
+    {
+        const string suffix = "Attribute";
+        return string.Concat(type.ToDisplayParts(AttributeType).Select(part =>
+            SymbolEqualityComparer.Default.Equals(part.Symbol, type) && part.ToString() is { } name
+            && name.Length > suffix.Length && name.EndsWith(suffix, StringComparison.Ordinal)
+            && SyntaxFacts.GetKeywordKind(name[..^suffix.Length]) == SyntaxKind.None
+                ? name[..^suffix.Length] : part.ToString()));
     }
 }
 
