@@ -360,14 +360,14 @@ internal sealed class Signposts
     private (int First, int Last)? Shown(OpenDocument document)
     {
         (int First, int Last)? shown = null;
-        editors.ForEachEditor(editor =>
+        foreach (EditorGroup group in editors.Groups)
         {
-            if (editor.Document == document.Text && editor.IsVisible)
+            if (group.Editor is { IsVisible: true } editor && editor.Document == document.Text)
             {
                 (int first, int last) = editor.LinesShown;
                 shown = shown is { } before ? (Math.Min(before.First, first), Math.Max(before.Last, last)) : (first, last);
             }
-        });
+        }
         return shown;
     }
 

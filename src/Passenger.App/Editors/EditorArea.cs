@@ -419,7 +419,8 @@ public sealed partial class EditorArea : UserControl
     /// <summary>The drag of a group's tabs, which its frame's surface measures.</summary>
     internal DragGesture<(EditorGroup Group, OpenDocument Document)>? TabDragOf(EditorGroup group) => FrameOf(group)?.TabDrag;
 
-    /// <summary>Runs for every editor there is and every one a split makes, as wiring for its events.</summary>
+    /// <summary>Runs for every editor there is and every one a split makes, as wiring for its events: the hook is kept for
+    /// the window's life, with all it holds, so a question of the editors there are now reads <see cref="Groups"/>.</summary>
     public void ForEachEditor(Action<CodeEditor> hook)
     {
         editorHooks.Add(hook);

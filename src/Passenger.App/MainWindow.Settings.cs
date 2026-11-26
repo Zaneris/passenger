@@ -112,7 +112,13 @@ public partial class MainWindow
     private AppSettings visualSettings = new();
 
     /// <summary>The editors take the theme's code size where the person set none.</summary>
-    private void OnThemeFonts(object? sender, EventArgs args) => Editors.ForEachEditor(editor => ApplyTo(editor, settingsStore.Effective));
+    private void OnThemeFonts(object? sender, EventArgs args)
+    {
+        foreach (Editors.EditorGroup group in Editors.Groups)
+        {
+            ApplyTo(group.Editor, settingsStore.Effective);
+        }
+    }
 
     /// <summary>The window's share of the look follows the settings shown: each editor's, the title bar's, the menu's, the
     /// terminal's.</summary>
