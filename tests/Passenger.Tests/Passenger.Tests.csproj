@@ -258,6 +258,11 @@
     <None Include="VsCodeThemes/*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Rider's keymaps as tools/rider-keymaps.py resolves them, which the keymap tests hold the presets to (RiderKeymaps). -->
+  <ItemGroup>
+    <None Include="RiderKeymaps.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- The signing tests' GPG keys and X.509 certificate, carried as gpg-agent stores them (TestGpgKeys, TestX509Keys). -->
   <ItemGroup>
     <None Include="SigningKeys/*/*" CopyToOutputDirectory="PreserveNewest" />

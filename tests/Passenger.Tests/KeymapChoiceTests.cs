@@ -57,12 +57,12 @@ public sealed class KeymapChoiceTests : IDisposable
         Flow.StepApart<IntelliJKeymapTests>("IntelliJ IDEA's keymap gives its actions IntelliJ IDEA's keys on this platform", t => t.IntelliJ_IDEAs_keymap_gives_its_actions_IntelliJ_IDEAs_keys_on_this_platform());
         Flow.StepApart<IntelliJKeymapTests>("IntelliJ IDEA's shortcuts read back from settings as they were kept", t => t.IntelliJ_IDEAs_shortcuts_read_back_from_settings_as_they_were_kept());
         Flow.StepApart<KeymapChoiceTests>("shortcuts set over one keymap stay with it and Reset Shortcuts gives back the chosen keymap's own", t => t.Shortcuts_set_over_one_keymap_stay_with_it_and_Reset_Shortcuts_gives_back_the_chosen_keymaps_own());
-        Flow.StepApart<KeymapChoiceTests>("each keymap's keys for Duplicate Parameter Info Toggle Case and Generate are those Rider's keymap resolves them to", t => t.Each_keymaps_keys_for_Duplicate_Parameter_Info_Toggle_Case_and_Generate_are_those_Riders_keymap_resolves_them_to());
+        Flow.StepApart<KeymapChoiceTests>("every keymap's keys are those Rider's keymap resolves them to but where a difference says why", t => t.Every_keymaps_keys_are_those_Riders_keymap_resolves_them_to_but_where_a_difference_says_why());
         Flow.StepApart<KeymapChoiceTests>("the menus and the tool windows' buttons name the chosen keymap's keys", t => t.The_menus_and_the_tool_windows_buttons_name_the_chosen_keymaps_keys());
         Flow.StepApart<KeymapChoiceTests>("the mouse's caret and column gestures are the keymap's in force", t => t.The_mouses_caret_and_column_gestures_are_the_keymaps_in_force());
         Flow.StepApart<MouseShortcutSettingsTests>("a mouse shortcut added in Settings says its conflict first runs its action and is kept after a restart", t => t.A_mouse_shortcut_added_in_Settings_says_its_conflict_first_runs_its_action_and_is_kept_after_a_restart());
         Flow.StepApart<MouseShortcutSettingsTests>("a settings json of keys alone keeps the keymap's gestures for the actions it names", t => t.A_settings_json_of_keys_alone_keeps_the_keymaps_gestures_for_the_actions_it_names());
-        Flow.StepApart<KeymapTests>("a double Shift recorded in the Keyboard Shortcut dialog runs its action from the editor", t => t.A_double_Shift_recorded_in_the_Keyboard_Shortcut_dialog_runs_its_action_from_the_editor());
+        Flow.StepApart<KeymapTests>("a double tap recorded runs its action and a double Shift opens Go to Everything but two capitals typed do not", t => t.A_double_tap_recorded_runs_its_action_and_a_double_Shift_opens_Go_to_Everything_but_two_capitals_typed_do_not());
     }
 
     /// <summary>Each key reaches what it is meant for where it is pressed: the terminal and a floating terminal keep
@@ -476,60 +476,63 @@ public sealed class KeymapChoiceTests : IDisposable
         }
     }
 
-    /// <summary>Duplicate, Compare Files, Show Diff, Parameter Info and its overloads' steps, Toggle Case, Generate, Clone
-    /// Caret, the moves, Context Help (with External Documentation's), Show Usages, Quick Evaluate Expression, Open Solution
-    /// and Open File have in each keymap the keys and gestures Rider's of that preset here resolves them to
-    /// (<see cref="RiderKeymaps"/>), the Mac's Cmd+Up and Down too in Visual Studio's and IntelliJ IDEA's. A key Rider gives
-    /// several by place has one action, the rest taking it there (<see cref="AppActions.KeysIn"/>); New is New Item.</summary>
-    private void Each_keymaps_keys_for_Duplicate_Parameter_Info_Toggle_Case_and_Generate_are_those_Riders_keymap_resolves_them_to()
+    /// <summary>Every keymap's keys, double taps and mouse shortcuts for each of Passenger's actions Rider has are those
+    /// Rider's keymap of that preset here resolves its actions to (<see cref="RiderKeymaps.Actions"/>), but where a
+    /// difference says why (<see cref="RiderKeymaps.Differences"/>), each of which still holds: a key Rider gives several
+    /// actions by place runs one, the rest taking it there (<see cref="AppActions.KeysIn"/>), Compare Files and Show Diff
+    /// having none of their own.</summary>
+    private void Every_keymaps_keys_are_those_Riders_keymap_resolves_them_to_but_where_a_difference_says_why()
     {
-        bool mac = OperatingSystem.IsMacOS();
+        List<string> wrong = [];
+        foreach ((string keymap, string action, string _, bool _, string _) in RiderKeymaps.Differences)
+        {
+            if (!RiderKeymaps.Actions.Any(row => row.Ours[0] == action))
+            {
+                wrong.Add($"A difference in Rider's {keymap} names {action}, which begins no row of the actions Rider has");
+            }
+        }
         foreach (KeymapPreset preset in SettingsDialog.KeymapChoices)
         {
             AppActions.Choose(preset, new Dictionary<string, string[]>());
             Keymap keymap = AppActions.Keymap();
             string rider = RiderKeymaps.Of(preset);
-            bool visualStudio = preset == KeymapPreset.VisualStudio;
-            bool vsCode = preset == KeymapPreset.VSCode;
-            (string Action, string Riders, string[] Besides)[] checks =
-            [
-                (EditorActions.Duplicate, vsCode ? "EditorDuplicateLines" : "EditorDuplicate", []), (AppActions.CompareFiles, "CompareTwoFiles", []),
-                (AppActions.ShowDiff, "Diff.ShowDiff", []), (AppActions.ParameterInfo, "ParameterInfo", []), (EditorActions.ToggleCase, "EditorToggleCase", []),
-                (AppActions.Generate, "Generate", []), (EditorActions.Up, "EditorUp", []), (EditorActions.Down, "EditorDown", []),
-                (EditorActions.Left, "EditorLeft", []), (EditorActions.Right, "EditorRight", []),
-                (EditorActions.CloneCaretAbove, visualStudio ? "CloneCaretAboveWithVirtualSpace" : "EditorCloneCaretAbove", []),
-                (EditorActions.CloneCaretBelow, visualStudio ? "CloneCaretBelowWithVirtualSpace" : "EditorCloneCaretBelow", []),
-                (EditorActions.TextStart, "EditorTextStart", mac && !vsCode ? ["meta UP"] : []),
-                (EditorActions.TextEnd, "EditorTextEnd", mac && !vsCode ? ["meta DOWN"] : []),
-                (AppActions.ContextHelp, "ContextHelp", [.. RiderKeymaps.Resolve(rider, "ExternalJavaDoc").Select(s => s.Notation())]),
-                (AppActions.ShowUsages, "ShowUsages", []), (AppActions.QuickEvaluate, "QuickEvaluateExpression", []),
-                (AppActions.OpenSolution, "RiderOpenSolution", []), (AppActions.OpenFile, "OpenFile", []),
-                (AppActions.NextOverload, "MethodOverloadSwitchDown", []), (AppActions.PreviousOverload, "MethodOverloadSwitchUp", []),
-            ];
-            foreach ((string action, string riders, string[] besides) in checks)
+            string name = DefaultKeymaps.NameOf(preset);
+            foreach ((string[] ours, string[] riders) in RiderKeymaps.Actions)
             {
-                string[] ours = [.. keymap.ShortcutsFor(AppActions.KeysIn(action)).Select(s => s.Notation()).Order(StringComparer.Ordinal)];
-                string[] theirs = [.. RiderKeymaps.Resolve(rider, riders).Concat(besides.Select(Shortcut.Parse)).Select(s => s.Notation()).Distinct().Order(StringComparer.Ordinal)];
-                Assert.True(ours.SequenceEqual(theirs),
-                    $"In {DefaultKeymaps.NameOf(preset)}'s keymap {action} runs from [{string.Join("; ", ours)}], where Rider's {rider} gives {riders} [{string.Join("; ", theirs)}]");
-            }
-            foreach ((string action, string riders) in new[] { (AppActions.ShowUsages, "ShowUsages"), (AppActions.QuickEvaluate, "QuickEvaluateExpression") })
-            {
-                string[] ours = [.. keymap.MouseShortcutsFor(action).Select(g => g.Notation()).Order(StringComparer.Ordinal)];
-                string[] theirs = [.. RiderKeymaps.ResolveMouse(rider, riders).Select(g => g.Notation()).Order(StringComparer.Ordinal)];
-                Assert.True(ours.SequenceEqual(theirs),
-                    $"In {DefaultKeymaps.NameOf(preset)}'s keymap {action} runs from the gestures [{string.Join("; ", ours)}], where Rider's {rider} gives {riders} [{string.Join("; ", theirs)}]");
+                HashSet<string> have = [.. ours.Select(AppActions.KeysIn).SelectMany(a => keymap.ShortcutsFor(a).Select(s => s.Notation())
+                    .Concat(keymap.MouseShortcutsFor(a).Select(g => g.Notation())))];
+                HashSet<string> theirs = [.. riders.SelectMany(r => RiderKeymaps.Resolve(rider, r).Concat(RiderKeymaps.ResolveMouse(rider, r)))];
+                HashSet<string> expected = [.. theirs];
+                foreach ((string _, string _, string written, bool kept, string why) in RiderKeymaps.Differences.Where(d => d.Keymap == rider && d.Action == ours[0]))
+                {
+                    string shortcut = MouseShortcut.IsMouse(written) ? MouseShortcut.Parse(written).Notation() : Shortcut.Parse(written).Notation();
+                    if (kept && have.Contains(shortcut) && !theirs.Contains(shortcut))
+                    {
+                        expected.Add(shortcut);
+                    }
+                    else if (!kept && !have.Contains(shortcut) && theirs.Contains(shortcut))
+                    {
+                        expected.Remove(shortcut);
+                    }
+                    else
+                    {
+                        wrong.Add($"In {name}'s keymap {ours[0]} {(kept ? "keeps" : "leaves")} {written} ({why}) no more: it has [{string.Join("; ", have.Order(StringComparer.Ordinal))}], Rider's {rider} [{string.Join("; ", theirs.Order(StringComparer.Ordinal))}]");
+                    }
+                }
+                if (!have.SetEquals(expected))
+                {
+                    wrong.Add($"In {name}'s keymap {string.Join(" with ", ours)} lacks [{string.Join("; ", expected.Except(have).Order(StringComparer.Ordinal))}] and has besides [{string.Join("; ", have.Except(expected).Order(StringComparer.Ordinal))}], where Rider's {rider} gives {string.Join(" with ", riders)} [{string.Join("; ", theirs.Order(StringComparer.Ordinal))}]");
+                }
             }
             foreach (string shared in (string[])[AppActions.CompareFiles, AppActions.ShowDiff])
             {
-                Assert.True(keymap.ShortcutsFor(shared).Count == 0,
-                    $"In {DefaultKeymaps.NameOf(preset)}'s keymap {shared} has keys of its own, [{string.Join("; ", keymap.ShortcutsFor(shared).Select(s => s.Notation()))}], where it takes another's where it is pressed");
+                if (keymap.ShortcutsFor(shared).Count > 0)
+                {
+                    wrong.Add($"In {name}'s keymap {shared} has keys of its own, [{string.Join("; ", keymap.ShortcutsFor(shared).Select(s => s.Notation()))}], where it takes another's where it is pressed");
+                }
             }
-            string[] newItem = [.. keymap.ShortcutsFor(AppActions.NewItem).Select(s => s.Notation()).Order(StringComparer.Ordinal)];
-            string[] riderNew = [.. RiderKeymaps.Resolve(rider, "NewElement").Except(RiderKeymaps.Resolve(rider, "Generate")).Select(s => s.Notation()).Order(StringComparer.Ordinal)];
-            Assert.True(newItem.SequenceEqual(riderNew),
-                $"In {DefaultKeymaps.NameOf(preset)}'s keymap New Item runs from [{string.Join("; ", newItem)}], where Rider's New (NewElement) has [{string.Join("; ", riderNew)}] that Generate does not take");
         }
+        Assert.True(wrong.Count == 0, $"{wrong.Count} of the keymaps' keys are not Rider's, nor said why:\n{string.Join("\n", wrong)}");
     }
 
     /// <summary>Duplicate's key in Visual Studio's keymap (Cmd+D on the Mac, Ctrl+D elsewhere) duplicates the caret's line in

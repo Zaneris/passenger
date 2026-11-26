@@ -60,12 +60,15 @@ public static class AppActions
     public const string GoToFile = "app.goToFile";
     public const string GoToLine = "app.goToLine";
     public const string GoToSymbol = "app.goToSymbol";
+
+    // Rider's SearchEverywhere: a double Shift in every keymap, with Ctrl+T (Cmd+T on the Mac) in its Visual Studio keymaps
+    // and F1 and Ctrl+Shift+A in its VS Code keymap for Windows and Linux.
     public const string GoToEverything = "app.goToEverything";
     public const string FileStructure = "app.fileStructure";
 
-    // Rider's ShowNavBar (Jump to Navigation Bar): Ctrl+F2 in its Visual Studio keymap, Ctrl+Shift+; (Cmd+Shift+; on the
-    // Mac) in its VS Code keymaps, Alt+Home in $default's and Mac OS X 10.5+'s. Its Visual Studio OSX keymap gives its
-    // Cmd+F2 to Toggle Bookmark too, which keeps it here, and Mac OS X 10.5+'s Cmd+Up is the editor's Text Start here.
+    // Rider's ShowNavBar (Jump to Navigation Bar): Ctrl+F2 (Cmd+F2 on the Mac) in its Visual Studio keymaps, Ctrl+Shift+;
+    // (Cmd+Shift+; on the Mac) in its VS Code keymaps, Alt+Home in $default's and Mac OS X 10.5+'s, whose Cmd+Up is the
+    // editor's Text Start here.
     public const string JumpToNavigationBar = "app.jumpToNavigationBar";
 
     // Rider's GotoRelated (Related Symbol), here a XAML or Razor file's code-behind and back: its Visual Studio keymaps'
@@ -296,8 +299,8 @@ public static class AppActions
     public const string RevealInFileManager = "app.explorer.reveal";
     public const string OpenInTerminal = "app.explorer.openInTerminal";
 
-    // An HTML file opened in the person's browser (Rider's WebOpenInAction): its plugin's Alt+F2 for $default, which the
-    // Mac keymaps and VS Code's take from it, and Ctrl+Alt+F2 for Visual Studio's.
+    // An HTML file opened in the person's browser (Rider's WebOpenInAction): its plugin's Alt+F2 for $default, which every
+    // keymap takes from it, and Ctrl+Alt+F2 beside it in the Visual Studio keymap for Windows and Linux.
     public const string OpenInBrowser = "app.explorer.openInBrowser";
 
     public const string Build = "app.build";
@@ -327,8 +330,9 @@ public static class AppActions
     public const string DebugInTerminal = "app.debug.inTerminal";
     public const string ProfileInTerminal = "app.profile.inTerminal";
 
-    // Run, Debug and Profile of the program at hand (a gutter icon's, an Explorer row's, the open file's): no keys, Rider's
-    // RunClass key being Attach to Process's in its Visual Studio keymap.
+    // Run, Debug and Profile of the program at hand (a gutter icon's, an Explorer row's, the open file's): Rider's RunClass
+    // and DebugClass, Ctrl+Alt+F5 in its Visual Studio keymaps and Ctrl+Shift+D on the Mac, the tests' where its other
+    // keymaps give the tests the same keys; Profile Here has none.
     public const string RunHere = "app.run.here";
     public const string DebugHere = "app.debug.here";
     public const string ProfileHere = "app.profile.here";
@@ -545,7 +549,7 @@ public static class AppActions
 
     // Rider's View > Active Editor: Soft-Wrap (EditorToggleUseSoftWraps) and Show Whitespaces (EditorToggleShowWhitespaces)
     // on its Visual Studio keymaps' Ctrl+E, W and Ctrl+R, W chords (Cmd on macOS), and Increase, Decrease and Reset Font
-    // Size (EditorIncreaseFontSize, EditorDecreaseFontSize, EditorResetFontSize), which they and their parents give no keys.
+    // Size, every editor's (EditorIncreaseFontSizeGlobal and Decrease's, with the VS Code keymaps' EditorIncreaseFontSize).
     public const string SoftWrap = "app.editor.softWrap";
     public const string ShowWhitespaces = "app.editor.showWhitespaces";
     public const string IncreaseFontSize = "app.editor.increaseFontSize";
@@ -790,20 +794,21 @@ public static class AppActions
                 .Bind(GoToFile, "meta shift T")
                 .Bind(GoToLine, "meta G")
                 .Bind(GoToSymbol, "meta shift alt T")
-                .Bind(GoToEverything, "meta T")
+                .Bind(GoToEverything, "shift , shift", "meta T")
                 .Bind(FindAction, "meta shift A")
                 .Bind(FindInFiles, "meta shift F")
                 .Bind(RecentFiles, "control COMMA")
                 .Bind(RecentChangedFiles, "meta shift COMMA")
                 .Bind(LastEditLocation, "shift meta BACK_SPACE")
-                .Bind(ToggleBookmark, "meta K , K", "meta K , meta K", "meta F2")
+                .Bind(ToggleBookmark, "meta K , K", "meta K , meta K")
                 .Bind(NextBookmark, "meta K , N", "meta K , meta N")
                 .Bind(PreviousBookmark, "meta K , P", "meta K , meta P")
-                .Bind(ShowBookmarks, "meta K , W", "meta K , meta W", "control BACK_QUOTE")
+                .Bind(ShowBookmarks, "meta K , W", "meta K , meta W", "control BACK_QUOTE", "meta 2")
                 .Bind(ReplaceInFiles, "meta shift H")
                 .Bind(ShowSettings, "meta COMMA")
                 .Bind(ShowNuGet, "meta 7", "meta shift 7")
                 .Bind(FileStructure, "alt BACK_SLASH")
+                .Bind(JumpToNavigationBar, "meta F2")
                 .Bind(GoToRelated, "meta shift F7")
                 .Bind(Find, "meta F")
                 .Bind(Replace, "control H")
@@ -819,9 +824,11 @@ public static class AppActions
                 .Bind(Debug, "alt F5")
                 .Bind(Stop, "shift F5")
                 .Bind(Rerun, "alt shift F5")
+                .Bind(RunHere, "control alt F5")
+                .Bind(DebugHere, "control shift D")
                 .Bind(ShowBuild, "meta 0")
                 .Bind(ShowRun, "meta 4")
-                .Bind(ShowFind, "meta 3")
+                .Bind(ShowFind, "meta 3", "meta alt F12")
                 .Bind(ShowDebug, "meta 5")
                 .Bind(ShowProblems, "meta 6")
                 .Bind(ToggleBreakpoint, "F9")
@@ -852,8 +859,11 @@ public static class AppActions
                 .Bind(DebugTests, "meta U , D", "meta U , meta D")
                 .Bind(RerunTests, "meta U , U", "meta U , meta U")
                 .Bind(RerunFailedTests, "meta U , F", "meta U , meta F")
-                .Bind(ShowTests, "meta 8")
-                .Bind(ShowStructure, "meta alt F", "control alt F")
+                .Bind(RunAllTests, "meta U , L", "meta U , meta L")
+                .Bind(RunTestsUntilFailure, "meta U , W", "meta U , meta W")
+                .Bind(StopTests, "meta U , S", "meta U , meta S")
+                .Bind(ShowTests, "meta 8", "meta shift 8")
+                .Bind(ShowStructure, "control alt F")
                 .Bind(MaximizeToolWindow, "meta shift QUOTE")
                 .Bind(HideAllToolWindows, "meta shift F12")
                 .Bind(HideToolWindow, "shift ESCAPE")
@@ -907,6 +917,8 @@ public static class AppActions
                 .Bind(OpenInNewWindow, "shift F4")
                 .Bind(SoftWrap, "meta E , W", "meta E , meta W")
                 .Bind(ShowWhitespaces, "meta R , W", "meta R , meta W")
+                .Bind(IncreaseFontSize, "control shift PERIOD")
+                .Bind(DecreaseFontSize, "control shift COMMA")
                 .Bind(NextProjectWindow, "meta alt BACK_QUOTE")
                 .Bind(PreviousProjectWindow, "meta shift alt BACK_QUOTE");
         }
@@ -923,7 +935,7 @@ public static class AppActions
             .Bind(GoToFile, "control shift T")
             .Bind(GoToLine, "control G")
             .Bind(GoToSymbol, "control shift alt T")
-            .Bind(GoToEverything, "control T")
+            .Bind(GoToEverything, "shift , shift", "control T")
             .Bind(FindAction, "control shift A")
             .Bind(FindInFiles, "control shift F")
             .Bind(RecentFiles, "control COMMA")
@@ -933,35 +945,37 @@ public static class AppActions
             .Bind(ToggleBookmark, "control K , K", "control K , control K")
             .Bind(NextBookmark, "control K , N", "control K , control N")
             .Bind(PreviousBookmark, "control K , P", "control K , control P")
-            .Bind(ShowBookmarks, "control K , W", "control K , control W", "control BACK_QUOTE")
+            .Bind(ShowBookmarks, "control K , W", "control K , control W", "control BACK_QUOTE", "alt 2")
             .Bind(ReplaceInFiles, "control shift H")
             .Bind(ShowSettings, "control alt S")
             .Bind(ShowNuGet, "alt 7", "alt shift 7")
             .Bind(FileStructure, "alt BACK_SLASH")
             .Bind(JumpToNavigationBar, "control F2")
             .Bind(GoToRelated, "control alt F7")
-            .Bind(Find, "control F")
+            .Bind(Find, "control F", "alt F3")
             .Bind(Replace, "control H")
-            .Bind(FindNext, "F3", "control alt PAGE_DOWN")
+            .Bind(FindNext, "F3", "control alt PAGE_DOWN", "alt shift SLASH")
             .Bind(FindPrevious, "shift F3", "control alt PAGE_UP")
             .Bind(FocusExplorer, "alt 1", "control alt L")
             .Bind(SelectOpenedFile, "alt shift L")
             .Bind(CopyPath, "control shift C")
-            .Bind(OpenInBrowser, "control alt F2")
+            .Bind(OpenInBrowser, "control alt F2", "alt F2")
             .Bind(Build, "control shift B")
+            .Bind(BuildSelected, "control shift F7")
             .Bind(RunProgram, "control F5")
             .Bind(Debug, "alt F5")
             .Bind(Stop, "shift F5")
             .Bind(Rerun, "control shift F5")
+            .Bind(RunHere, "control alt F5")
             .Bind(ShowBuild, "alt 0")
             .Bind(ShowRun, "alt 4")
-            .Bind(ShowFind, "alt 3")
+            .Bind(ShowFind, "alt 3", "control alt F12")
             .Bind(ShowDebug, "alt 5")
             .Bind(ShowProblems, "alt 6")
             .Bind(ToggleBreakpoint, "F9")
             .Bind(ToggleBreakpointEnabled, "control F9")
             .Bind(Resume, "F5")
-            .Bind(Pause, "control PAUSE", "shift control P")
+            .Bind(Pause, "control PAUSE", "shift control P", "control alt CANCEL")
             .Bind(StepOver, "F10")
             .Bind(StepInto, "F11")
             .Bind(SmartStepInto, "shift F7")
@@ -986,7 +1000,10 @@ public static class AppActions
             .Bind(DebugTests, "control U , D", "control U , control D")
             .Bind(RerunTests, "control U , U", "control U , control U")
             .Bind(RerunFailedTests, "control U , F", "control U , control F")
-            .Bind(ShowTests, "alt 8")
+            .Bind(RunAllTests, "control U , L", "control U , control L")
+            .Bind(RunTestsUntilFailure, "control U , W", "control U , control W")
+            .Bind(StopTests, "control U , S", "control U , control S")
+            .Bind(ShowTests, "alt 8", "alt shift 8")
             .Bind(ShowStructure, "control alt F")
             .Bind(MaximizeToolWindow, "control shift QUOTE")
             .Bind(HideAllToolWindows, "control shift F12")
@@ -999,12 +1016,13 @@ public static class AppActions
             .Bind(Stage, "control alt A")
             .Bind(DiffSettings, "control shift D")
             .Bind(ShowGit, "alt 9")
+            .Bind(Branches, "control shift BACK_QUOTE")
             .Bind(ShowTerminal, "control alt 1")
             .Bind(UpdateProject, "control alt W")
             .Bind(Back, "control MINUS", "control SUBTRACT", "button4")
             .Bind(Forward, "control shift MINUS", "control shift SUBTRACT", "button5")
             .Bind(Complete, "control SPACE", "control J")
-            .Bind(QuickFix, "alt ENTER", "control PERIOD")
+            .Bind(QuickFix, "alt ENTER", "control PERIOD", "alt shift F10")
             .Bind(Rename, "control R , R", "control R , control R")
             .Bind(GoToDeclaration, "F12", "control button1", "button2")
             .Bind(GoToImplementation, "control F12")
@@ -1066,6 +1084,7 @@ public static class AppActions
                 .Bind(GoToFile, "meta P")
                 .Bind(GoToLine, "control G")
                 .Bind(GoToSymbol, "meta T")
+                .Bind(GoToEverything, "shift , shift")
                 .Bind(FileStructure, "meta alt O", "meta shift O")
                 .Bind(JumpToNavigationBar, "meta shift SEMICOLON")
                 .Bind(GoToRelated, "control meta UP")
@@ -1083,6 +1102,7 @@ public static class AppActions
                 .Bind(FindPrevious, "meta shift G", "shift F3")
                 .Bind(FocusExplorer, "meta shift E")
                 .Bind(SelectOpenedFile, "meta K , E")
+                .Bind(NewFile, "meta N")
                 .Bind(CopyPath, "meta alt C", "meta K , P")
                 .Bind(RevealInFileManager, "meta K , R", "meta alt R")
                 .Bind(OpenInBrowser, "alt F2")
@@ -1094,6 +1114,8 @@ public static class AppActions
                 .Bind(ShowProblems, "meta shift M")
                 .Bind(ShowFind, "meta 3")
                 .Bind(ShowDebug, "meta shift D", "meta shift Y")
+                .Bind(ShowBookmarks, "meta 2")
+                .Bind(ShowContainers, "meta 8")
                 .Bind(HideToolWindow, "meta J")
                 .Bind(Back, "control MINUS", "button4")
                 .Bind(Forward, "control shift MINUS", "button5")
@@ -1157,8 +1179,8 @@ public static class AppActions
                 .Bind(CloseOtherTabs, "meta alt T", "meta K , U")
                 .Bind(CloseAllTabs, "meta K , meta W")
                 .Bind(SoftWrap, "alt Z")
-                .Bind(IncreaseFontSize, "meta EQUALS")
-                .Bind(DecreaseFontSize, "meta MINUS")
+                .Bind(IncreaseFontSize, "meta EQUALS", "control shift PERIOD")
+                .Bind(DecreaseFontSize, "meta MINUS", "control shift COMMA")
                 .Bind(CloseSolution, "meta K , F", "meta shift W")
                 .Bind(ShowTerminal, "control BACK_QUOTE")
                 .Bind(MaximizeToolWindow, "meta shift QUOTE")
@@ -1183,7 +1205,7 @@ public static class AppActions
             .Bind(GoToFile, "control P")
             .Bind(GoToLine, "control G")
             .Bind(GoToSymbol, "control T")
-            .Bind(GoToEverything, "F1", "control shift A")
+            .Bind(GoToEverything, "shift , shift", "F1", "control shift A")
             .Bind(FileStructure, "control shift O")
             .Bind(JumpToNavigationBar, "control shift SEMICOLON")
             .Bind(GoToRelated, "control alt HOME")
@@ -1211,6 +1233,8 @@ public static class AppActions
             .Bind(ShowProblems, "control shift M")
             .Bind(ShowFind, "alt 3")
             .Bind(ShowDebug, "control shift Y", "control shift D")
+            .Bind(ShowBookmarks, "alt 2")
+            .Bind(ShowContainers, "alt 8")
             .Bind(HideToolWindow, "control J")
             .Bind(Back, "alt LEFT", "button4")
             .Bind(Forward, "alt RIGHT", "button5")
@@ -1232,7 +1256,7 @@ public static class AppActions
             .Bind(IntroduceVariable, "control alt V")
             .Bind(Inline, "control alt N")
             .Bind(ParameterInfo, "control shift SPACE")
-            .Bind(SurroundWith, "control alt J")
+            .Bind(SurroundWith, "control alt J", "control alt T")
             .Bind(OptimizeUsings, "alt shift O")
             .Bind(SafeDelete, "alt DELETE")
             .Bind(IntroduceField, "control alt F")
@@ -1275,8 +1299,8 @@ public static class AppActions
             .Bind(CloseOtherTabs, "control K , U")
             .Bind(CloseAllTabs, "control K , control W")
             .Bind(SoftWrap, "alt Z")
-            .Bind(IncreaseFontSize, "control EQUALS")
-            .Bind(DecreaseFontSize, "control MINUS")
+            .Bind(IncreaseFontSize, "control EQUALS", "alt shift PERIOD")
+            .Bind(DecreaseFontSize, "control MINUS", "alt shift COMMA")
             .Bind(CloseSolution, "control K , F", "control shift W")
             .Bind(ShowTerminal, "control BACK_QUOTE")
             .Bind(MaximizeToolWindow, "control shift QUOTE")

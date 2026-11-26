@@ -2474,8 +2474,10 @@ public static class Ui
         Press(window, shortcut.Notation(), settle);
     }
 
-    /// <summary>The first shortcut the platform's keymap gives an IDE action, in keymap notation.</summary>
-    public static string Shortcut(string action) => Passenger.App.AppActions.Keymap().ShortcutsFor(action)[0].First.Notation();
+    /// <summary>The first shortcut the platform's keymap gives an IDE action, in keymap notation: its first keystroke, or a
+    /// double tap whole.</summary>
+    public static string Shortcut(string action) => Passenger.App.AppActions.Keymap().ShortcutsFor(action)[0] is { IsDoubleTap: true } tap
+        ? tap.Notation() : Passenger.App.AppActions.Keymap().ShortcutsFor(action)[0].First.Notation();
 
     public static RawInputModifiers Raw(KeyModifiers modifiers)
     {
