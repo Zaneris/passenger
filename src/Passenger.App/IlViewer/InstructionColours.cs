@@ -5,8 +5,8 @@ using Passenger.Text;
 
 namespace Passenger.App.IlViewer;
 
-/// <summary>Theme spans and hover targets for the ILSpy text produced from one built file.</summary>
-internal sealed partial class IlColours(SyntaxSpan[] spans, IReadOnlyList<IlColours.Instruction> instructions) : IHighlighter
+/// <summary>Theme spans and hover targets for IL and native assembly.</summary>
+internal sealed partial class InstructionColours(SyntaxSpan[] spans, IReadOnlyList<InstructionColours.Instruction> instructions) : IHighlighter
 {
     private static readonly (string Group, TokenKind Kind)[] Colours =
     [
@@ -29,13 +29,13 @@ internal sealed partial class IlColours(SyntaxSpan[] spans, IReadOnlyList<IlColo
         return new ArraySegment<SyntaxSpan>(spans, first, last - first);
     }
 
-    public IlOpcode? OpcodeAt(int offset)
+    public Instruction? At(int offset)
     {
         int index = Sorted.FirstAfter(instructions, static instruction => instruction.Range.Start, offset) - 1;
-        return index >= 0 && instructions[index].Range.Contains(offset) ? instructions[index].Opcode : null;
+        return index >= 0 && instructions[index].Range.Contains(offset) ? instructions[index] : null;
     }
 
-    public static IlColours Parse(string text, CancellationToken cancel)
+    public static InstructionColours ParseIl(string text, CancellationToken cancel)
     {
         List<SyntaxSpan> spans = [];
         List<Instruction> instructions = [];
@@ -62,7 +62,7 @@ internal sealed partial class IlColours(SyntaxSpan[] spans, IReadOnlyList<IlColo
                 }
             }
         }
-        return new IlColours([.. spans], instructions);
+        return new InstructionColours([.. spans], instructions);
     }
 
     [GeneratedRegex("""
@@ -80,5 +80,5 @@ internal sealed partial class IlColours(SyntaxSpan[] spans, IReadOnlyList<IlColo
         """, RegexOptions.CultureInvariant | RegexOptions.Multiline | RegexOptions.IgnorePatternWhitespace)]
     private static partial Regex Tokens();
 
-    internal readonly record struct Instruction(TextRange Range, IlOpcode Opcode);
+    internal readonly record struct Instruction(TextRange Range, OpcodeHelp Opcode);
 }

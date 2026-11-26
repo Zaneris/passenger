@@ -4,13 +4,14 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Languages;
 using Passenger.Text;
 
 namespace Passenger.App.IlViewer;
 
-/// <summary>The last build's code beside the active source file.</summary>
+/// <summary>The last build's IL and C#, or the selected debug frame's assembly.</summary>
 internal sealed class IlViewerPane : UserControl
 {
     private readonly CodeEditor output = new()
@@ -33,7 +34,7 @@ internal sealed class IlViewerPane : UserControl
     private CompiledSource? compiled;
     private TextRange? highlighted;
 
-    public IlViewerPane(Action changeMode, Action refresh)
+    public IlViewerPane(Action changeMode, Action refresh, Action<CompiledSymbol> navigate)
     {
         AutomationProperties.SetName(output, "Compiled code");
         ToolTip.SetPlacement(output, PlacementMode.Pointer);
@@ -41,8 +42,16 @@ internal sealed class IlViewerPane : UserControl
         output.HoverEnded += (_, _) => CloseOpcodeTip();
         output.ScrollChanged += (_, _) => CloseOpcodeTip();
         output.DetachedFromVisualTree += (_, _) => CloseOpcodeTip();
+        output.LinkClicked += (_, link) =>
+        {
+            if (link.Target is CompiledSymbol symbol)
+            {
+                navigate(symbol);
+            }
+        };
         modes.Add(CompiledView.Il, "IL", "IlViewerIl");
         modes.Add(CompiledView.LowLevelCSharp, "Low-Level C#", "IlViewerCSharp");
+        modes.Add(CompiledView.Assembly, "ASM", "IlViewerAsm");
         modes.Choice = CompiledView.Il;
         modes.Chosen += (_, _) => changeMode();
         Button reload = ToolButtons.Of(IconKeys.Rerun, "Refresh compiled code", refresh);
@@ -62,10 +71,29 @@ internal sealed class IlViewerPane : UserControl
 
     public CompiledView Mode => modes.Choice;
 
+    private IReadOnlyList<TextLink> LinksOn(TextSnapshot text, int line)
+    {
+        if (compiled?.Links is not { Length: > 0 } links)
+        {
+            return [];
+        }
+        LineSpan row = text.GetLine(line);
+        ReadOnlySpan<TextLink> all = links;
+        int start = Sorted.FirstAtOrAfter(all, static link => link.Range.Start, row.Start);
+        int end = Sorted.FirstAtOrAfter(all, static link => link.Range.Start, row.End);
+        return new ArraySegment<TextLink>(links, start, end - start);
+    }
+
     public void Say(string message, string? file = null) => Render(file, message);
 
     public void Show(CompiledRequest request, CompiledSource result) =>
         Render(Path.GetFileName(request.Source), result.Message, result, request);
+
+    public void ShowAssembly(string caption, CompiledSource result)
+    {
+        Render(caption, result.Message, result);
+        Highlight(result.CurrentInstruction);
+    }
 
     private void Render(string? file, string? message, CompiledSource? result = null, CompiledRequest? request = null)
     {
@@ -75,7 +103,7 @@ internal sealed class IlViewerPane : UserControl
         bool hasCode = compiled is not null;
         source.Text = file;
         source.IsVisible = file is not null;
-        ToolTip.SetTip(source, hasCode && request is not null ? $"{request.Source}\n{request.Assembly}" : null);
+        ToolTip.SetTip(source, hasCode ? request is null ? file : $"{request.Source}\n{request.Assembly}" : null);
         empty.Text = message;
         empty.IsVisible = !hasCode;
         output.IsVisible = hasCode;
@@ -83,13 +111,15 @@ internal sealed class IlViewerPane : UserControl
         (output.Highlighter as IDisposable)?.Dispose();
         TextDocument document = new(compiled?.Text ?? string.Empty);
         output.Document = document;
+        output.Links = compiled?.Links is { Length: > 0 } ? LinksOn : null;
         Language language = hasCode && request?.View == CompiledView.LowLevelCSharp ? Language.CSharp : Language.PlainText;
         output.Highlighter = compiled?.Colours ?? Highlighters.For(language, document);
     }
 
-    public void FollowCaret(TextPosition? caret)
+    public void FollowCaret(TextPosition? caret) => Highlight((caret is { } at ? compiled?.RangeAt(at) : null) ?? compiled?.CurrentInstruction);
+
+    private void Highlight(TextRange? found)
     {
-        TextRange? found = caret is { } at ? compiled?.RangeAt(at) : null;
         if (found == highlighted)
         {
             return;
@@ -108,10 +138,12 @@ internal sealed class IlViewerPane : UserControl
 
     private void ShowOpcodeTip(int offset)
     {
-        if (output.Highlighter is not IlColours colours || colours.OpcodeAt(offset) is not { } opcode)
+        if (output.Highlighter is not InstructionColours colours || colours.At(offset) is not { } instruction)
         {
             return;
         }
+        OpcodeHelp opcode = instruction.Opcode;
+        output.SetUsageHighlights([new UsageHighlight(instruction.Range, IsWrite: false)]);
         StackPanel tip = new()
         {
             MaxWidth = PopupFrame.Narrow,
@@ -125,7 +157,7 @@ internal sealed class IlViewerPane : UserControl
                     TextWrapping = TextWrapping.Wrap,
                     IsVisible = opcode.Description.Length > 0,
                 },
-                new TextBlock { Classes = { StyleClasses.Caption, StyleClasses.Muted }, Text = opcode.Stack },
+                new TextBlock { Classes = { StyleClasses.Caption, StyleClasses.Muted }, Text = opcode.Detail, TextWrapping = TextWrapping.Wrap },
             },
         };
         ToolTip.SetTip(output, tip);
@@ -136,6 +168,7 @@ internal sealed class IlViewerPane : UserControl
     {
         if (ToolTip.GetTip(output) is not null)
         {
+            output.SetUsageHighlights([]);
             ToolTip.SetIsOpen(output, false);
             ToolTip.SetTip(output, null);
         }

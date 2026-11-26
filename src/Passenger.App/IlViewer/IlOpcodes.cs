@@ -8,7 +8,7 @@ using ICSharpCode.Decompiler.Documentation;
 
 namespace Passenger.App.IlViewer;
 
-internal sealed record IlOpcode(string Name, string Description, string Stack);
+internal sealed record OpcodeHelp(string Name, string Description, string Detail);
 
 /// <summary>Opcode names and stack effects come from the runtime, with summaries from ILSpy's .NET XML documentation loader.</summary>
 internal static class IlOpcodes
@@ -18,16 +18,16 @@ internal static class IlOpcodes
         .Where(field => field.FieldType == typeof(OpCode))
         .Select(field => (Code: (OpCode)field.GetValue(null)!, Field: field.Name))
         .ToDictionary(entry => entry.Code.Name!, StringComparer.Ordinal);
-    private static readonly ConcurrentDictionary<string, IlOpcode> Described = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, OpcodeHelp> Described = new(StringComparer.Ordinal);
 
-    public static IlOpcode? Find(string name) => Definitions.TryGetValue(name, out (OpCode Code, string Field) entry)
+    public static OpcodeHelp? Find(string name) => Definitions.TryGetValue(name, out (OpCode Code, string Field) entry)
         ? Described.GetOrAdd(name, static (opcode, found) => Describe(opcode, found.Code, found.Field), entry)
         : null;
 
-    private static IlOpcode Describe(string name, OpCode code, string field)
+    private static OpcodeHelp Describe(string name, OpCode code, string field)
     {
         string description = Summary(field) ?? Fallback(name, code.FlowControl);
-        return new IlOpcode(name, description, $"Stack   pop {Count(code.StackBehaviourPop)} · push {Count(code.StackBehaviourPush)}");
+        return new OpcodeHelp(name, description, $"Stack   pop {Count(code.StackBehaviourPop)} · push {Count(code.StackBehaviourPush)}");
     }
 
     private static string Count(StackBehaviour behavior) => behavior switch

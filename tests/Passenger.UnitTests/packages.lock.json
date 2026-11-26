@@ -527,6 +527,7 @@
       "passenger.debugger": {
         "type": "Project",
         "dependencies": {
+          "Gee.External.Capstone": "[2.3.0, )",
           "ICSharpCode.Decompiler": "[11.2.0.10050, )",
           "MP.Microsoft.CodeAnalysis.CSharp.ExpressionEvaluator.ExpressionCompiler": "[5.12.0, )",
           "Microsoft.CodeAnalysis.CSharp": "[5.12.0, )",
@@ -625,6 +626,12 @@
         "requested": "[17.1.0, )",
         "resolved": "17.1.0",
         "contentHash": "IZFDLLwrUCKuGDXQzmAWZa+kQFpVmVwWD8wEl0UWGOR83UQfzqg8hZeSSNUOXlW0Kh3vMO6kEm3FpNC4amKMaw=="
+      },
+      "Gee.External.Capstone": {
+        "type": "CentralTransitive",
+        "requested": "[2.3.0, )",
+        "resolved": "2.3.0",
+        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
       },
       "Gherkin": {
         "type": "CentralTransitive",
@@ -816,6 +823,12 @@
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
       },
+      "Gee.External.Capstone": {
+        "type": "CentralTransitive",
+        "requested": "[2.3.0, )",
+        "resolved": "2.3.0",
+        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
+      },
       "Porta.Pty": {
         "type": "CentralTransitive",
         "requested": "[2.2.4, )",
@@ -891,6 +904,12 @@
         "type": "Transitive",
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
+      },
+      "Gee.External.Capstone": {
+        "type": "CentralTransitive",
+        "requested": "[2.3.0, )",
+        "resolved": "2.3.0",
+        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
       },
       "Porta.Pty": {
         "type": "CentralTransitive",
@@ -968,6 +987,12 @@
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
       },
+      "Gee.External.Capstone": {
+        "type": "CentralTransitive",
+        "requested": "[2.3.0, )",
+        "resolved": "2.3.0",
+        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
+      },
       "Porta.Pty": {
         "type": "CentralTransitive",
         "requested": "[2.2.4, )",
@@ -1043,6 +1068,12 @@
         "type": "Transitive",
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
+      },
+      "Gee.External.Capstone": {
+        "type": "CentralTransitive",
+        "requested": "[2.3.0, )",
+        "resolved": "2.3.0",
+        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
       },
       "Porta.Pty": {
         "type": "CentralTransitive",
@@ -1120,6 +1151,12 @@
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
       },
+      "Gee.External.Capstone": {
+        "type": "CentralTransitive",
+        "requested": "[2.3.0, )",
+        "resolved": "2.3.0",
+        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
+      },
       "Porta.Pty": {
         "type": "CentralTransitive",
         "requested": "[2.2.4, )",
@@ -1195,6 +1232,12 @@
         "type": "Transitive",
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
+      },
+      "Gee.External.Capstone": {
+        "type": "CentralTransitive",
+        "requested": "[2.3.0, )",
+        "resolved": "2.3.0",
+        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
       },
       "Porta.Pty": {
         "type": "CentralTransitive",
@@ -1272,6 +1315,12 @@
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
       },
+      "Gee.External.Capstone": {
+        "type": "CentralTransitive",
+        "requested": "[2.3.0, )",
+        "resolved": "2.3.0",
+        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
+      },
       "Porta.Pty": {
         "type": "CentralTransitive",
         "requested": "[2.2.4, )",
@@ -1347,6 +1396,12 @@
         "type": "Transitive",
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
+      },
+      "Gee.External.Capstone": {
+        "type": "CentralTransitive",
+        "requested": "[2.3.0, )",
+        "resolved": "2.3.0",
+        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
       },
       "Porta.Pty": {
         "type": "CentralTransitive",
