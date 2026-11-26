@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Avalonia;
 using Passenger.App.Editors;
 using Passenger.App.Web;
 using Passenger.App.Workspace;
@@ -500,7 +501,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// <summary>Rename through the language server at the editor's caret, a type's files offered with it.</summary>
     public void ShowServerRename()
     {
-        if (context.Ask("Rename") is null || context.Editors.Active is not { } document)
+        if (context.Ask("Rename") is not { } served || context.Editors.Active is not { } document)
         {
             return;
         }
@@ -514,6 +515,37 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         RenameBox box = ShowRenameBox(document, text, word);
         box.RenamesFilesChanged += (_, on) => RenameSettings = RenameSettings with { RenameFiles = on };
         IdeErrors.Observe(OfferFileRenames(box, document, word.Start));
+        if (document.Language == Languages.Language.CSharp && !served.IsRazor && popups.Modal == box)
+        {
+            IdeErrors.Observe(OfferRenameSuggestionsAsync(box, document, served, text, word.Start));
+        }
+    }
+
+    private async Task OfferRenameSuggestionsAsync(RenameBox box, OpenDocument document, LspDocument served, TextSnapshot text, int offset)
+    {
+        using IDisposable held = BackgroundWork.Scope();
+        using CancellationTokenSource asking = new();
+        void Closed(object? sender, VisualTreeAttachmentEventArgs e) => asking.Cancel();
+        box.DetachedFromVisualTree += Closed;
+        try
+        {
+            string[] suggestions = await served.RenameSuggestionsAsync(offset, asking.Token);
+            if (popups.Modal == box && context.Editors.Active == document && document.Text.Snapshot == text)
+            {
+                box.OfferSuggestions(suggestions);
+            }
+        }
+        catch (OperationCanceledException) when (asking.IsCancellationRequested)
+        {
+        }
+        catch (LanguageServerFailed)
+        {
+            // Suggestions may be unavailable while the input is already usable.
+        }
+        finally
+        {
+            box.DetachedFromVisualTree -= Closed;
+        }
     }
 
     /// <summary>The rename box over a name of a file, C#'s, a web language's or a GDScript's, renamed through its server or
@@ -948,7 +980,6 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
                 && popups.Modal == box)
             {
                 box.OfferFiles(named.Files, RenameSettings.RenameFiles);
-                popups.Place(box, offset, above: true);
             }
         }
         catch (LanguageServerFailed)

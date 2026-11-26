@@ -183,6 +183,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("a fix the language server will not make, once chosen, says why in the status bar", () => new CodeAssistTests(project), t => t.A_fix_the_language_server_will_not_make_once_chosen_says_why_in_the_status_bar());
         Flow.StepApart("through MCP an action with choices lists them, asks for one and applies the one named", () => new CodeAssistTests(project), t => t.Through_mcp_an_action_with_choices_lists_them_asks_for_one_and_applies_the_one_named());
         Flow.StepApart("Escape closes the lists of choices and the rename box wherever the keys are", () => new CodeAssistTests(project), t => t.Escape_closes_the_lists_of_choices_and_the_rename_box_wherever_the_keys_are());
+        Flow.StepApart("Rename offers names from the declaration, filters them as typed, and commits the editable name in one undo step", () => new CodeAssistTests(project), t => t.Rename_offers_names_filters_them_and_commits_the_editable_name());
         Flow.StepApart("live and postfix templates expand where they belong, fill their variables and wrap what they follow", () => new CodeAssistTests(project), t => t.Live_and_postfix_templates_expand_where_they_belong_fill_their_variables_and_wrap_what_they_follow());
         Flow.StepApart("a live template ends when its editor shows another file, and Enter there breaks the line", () => new CodeAssistTests(project), t => t.A_live_template_ends_when_its_editor_shows_another_file_and_enter_there_breaks_the_line());
         Flow.StepApart("Extend Selection grows through the code around the caret, and Shrink takes it back", () => new CodeAssistTests(project), t => t.Extend_selection_grows_through_the_code_around_the_caret_and_shrink_takes_it_back());
@@ -1727,6 +1728,105 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         string text = editor.Document.Snapshot.ToString();
         Assert.StartsWith("// typed meanwhile\nclass Program", text, StringComparison.Ordinal);
         Assert.Contains("int result = Helper.Double(2);", text, StringComparison.Ordinal);
+        window.Close();
+    }
+
+    private void Rename_offers_names_filters_them_and_commits_the_editable_name()
+    {
+        MainWindow window = project.Open("RenameOffers.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string original = editor.Document.Snapshot.ToString();
+
+        string[] Suggestions() => [.. window.GetVisualDescendants().OfType<ListBoxItem>()
+            .Where(item => item.IsEffectivelyVisible && item.Content is string)
+            .Where(item => item.FindAncestorOfType<Passenger.App.CSharp.RenameBox>() is not null)
+            .Select(item => (string)item.Content!)];
+
+        void RenameAt(string after, string first)
+        {
+            Ui.PlaceAfter(editor, after);
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => Suggestions().FirstOrDefault() == first, $"Rename to offer {first}");
+        }
+
+        void AssertOffers(string after, params string[] candidates)
+        {
+            RenameAt(after, candidates[0]);
+            Assert.Equal(candidates, Suggestions());
+            Ui.Press(window, "ESCAPE");
+        }
+
+        string[] fromInitializer = ["pendingOrders", "orders", "pendingOrderArray", "orderArray"];
+        RenameAt("var draft", "pendingOrders");
+        Assert.Equal(fromInitializer, Suggestions());
+        window.KeyTextInput("ord");
+        Ui.WaitFor(() => Suggestions() is ["orders", "orderArray"], "the names beginning with ord to match the draft");
+        Assert.Equal("ord", window.Assist.Renaming);
+        Ui.Press(window, "DOWN");
+        Assert.Equal("orders", window.Assist.Renaming);
+        Assert.Equal(original, editor.Document.Snapshot.ToString());
+        window.KeyTextInput("ToReview");
+        Ui.WaitFor(() => Suggestions().Length == 0, "the list to hide for a custom name");
+        Assert.Equal("ordersToReview", window.Assist.Renaming);
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("return ordersToReview.Length;", StringComparison.Ordinal), "Rename to use the edited name");
+        Assert.Contains("var ordersToReview =", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal(original, editor.Document.Snapshot.ToString());
+
+        RenameAt("return draft", "pendingOrders");
+        Assert.Equal(fromInitializer, Suggestions());
+        Ui.Click(OfferedRow(window, "pendingOrders"));
+        Assert.Equal("pendingOrders", window.Assist.Renaming);
+        Assert.Equal(original, editor.Document.Snapshot.ToString());
+        Assert.IsType<TextBox>(window.FocusManager?.GetFocusedElement());
+        Ui.Press(window, "ESCAPE");
+        Assert.Null(window.Assist.Renaming);
+        Assert.Equal(original, editor.Document.Snapshot.ToString());
+
+        AssertOffers("var other", "pendingOrders", "pendingOrderArray", "orderArray");
+        AssertOffers("void With(Order target", "order");
+        AssertOffers("IEnumerable<Order> sequence", "orders");
+        AssertOffers("Order Item", "Order");
+        AssertOffers("CustomerOrderRepository service", "customerOrderRepository", "orderRepository", "repository");
+        AssertOffers("IRepository<CustomerOrder> storage", "customerOrderRepository", "orderRepository", "repository");
+        AssertOffers("List<CustomerOrder> buffer", "customerOrders", "orders", "customerOrderList", "orderList");
+        AssertOffers("List<int> counts", "numbers", "numberList");
+        AssertOffers("IReadOnlyDictionary<CustomerId, CustomerOrder> table",
+            "customerOrdersByCustomerId", "customerOrdersById", "customerOrderMap", "orderMap", "customerOrders", "orders");
+
+        const string First = "pendingInventoryAdjustmentRequests";
+        const string Last = "inventoryAdjustmentRequestList";
+        RenameAt("var overflow", First);
+        Assert.Equal([First, "inventoryAdjustmentRequests", "adjustmentRequests", "requests", "pendingInventoryAdjustmentRequestList", Last], Suggestions());
+        window.KeyTextInput("requestL");
+        Ui.WaitFor(() => Suggestions() is ["requestList"], "a matching name outside the first six to appear");
+        Ui.Press(window, "ESCAPE");
+
+        window.OpenFile(project.PathOf("RenameReader.cs"));
+        Ui.Settle();
+        AssertOffers("RenameOffers.stash", "s_order");
+
+        window.OpenFile(project.PathOf("RenameOffers.cs"));
+        window.Width = 860;
+        window.Height = 600;
+        window.ShowToolWindow(ToolWindowIds.Problems);
+        Ui.Settle();
+        editor.Focus();
+        RenameAt("var overflow", First);
+        ScrollViewer scroll = OfferedRow(window, First).FindAncestorOfType<ScrollViewer>()!;
+        Assert.True(scroll.Extent.Height > scroll.Viewport.Height, "The six candidates should scroll in the shortened editor");
+        Ui.Press(window, "UP");
+        Assert.Equal(Last, window.Assist.Renaming);
+        Ui.WaitFor(() => scroll.Offset.Y > 0, "the last candidate to scroll into view");
+
+        window.Height = MainWindow.SmallestHeight;
+        Ui.Settle();
+        Ui.Press(window, "ESCAPE");
+        RenameAt("var overflow", First);
+        Ui.Click(OfferedRow(window, First));
+        Assert.Equal(First, window.Assist.Renaming);
+        Ui.Press(window, "ESCAPE");
         window.Close();
     }
 
@@ -3540,6 +3640,65 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Sample.csproj"),
                 TestProjects.Console());
             File.WriteAllText(PathOf("Program.cs"), "class Program\n{\n    static void Main()\n    {\n        int result = Helper.Twice(2);\n    }\n}\n");
+            File.WriteAllText(PathOf(".editorconfig"), """
+                root = true
+
+                [RenameOffers.cs]
+                dotnet_naming_rule.static_fields.symbols = static_fields
+                dotnet_naming_rule.static_fields.style = static_style
+                dotnet_naming_rule.static_fields.severity = suggestion
+                dotnet_naming_symbols.static_fields.applicable_kinds = field
+                dotnet_naming_symbols.static_fields.required_modifiers = static
+                dotnet_naming_style.static_style.required_prefix = s_
+                dotnet_naming_style.static_style.capitalization = camel_case
+                """);
+            File.WriteAllText(PathOf("RenameOffers.cs"), """
+                using System.Collections.Generic;
+                using System.Threading.Tasks;
+
+                sealed class Order;
+                sealed class CustomerOrder;
+                sealed class CustomerOrderRepository;
+                sealed class InventoryAdjustmentRequest;
+                readonly record struct CustomerId(int Value);
+                interface IRepository<T>;
+
+                sealed class RenameOffers
+                {
+                    public static readonly Order stash = new();
+                    public Order Item { get; } = new();
+                    public void With(Order target) { }
+                    public void WithAll(IEnumerable<Order> sequence) { }
+                    public void WithConcrete(CustomerOrderRepository service) { }
+                    public void WithGeneric(IRepository<CustomerOrder> storage) { }
+                    public void WithList(List<CustomerOrder> buffer) { }
+                    public void WithNumbers(List<int> counts) { }
+                    public void WithDictionary(IReadOnlyDictionary<CustomerId, CustomerOrder> table) { }
+
+                    public async Task<int> CountAsync()
+                    {
+                        var draft = await GetPendingOrdersAsync();
+                        return draft.Length;
+                    }
+
+                    public async Task<int> CountWithConflictAsync()
+                    {
+                        Order[] orders = [];
+                        var other = await GetPendingOrdersAsync();
+                        return other.Length + orders.Length;
+                    }
+
+                    public static int CountInventory()
+                    {
+                        var overflow = GetPendingInventoryAdjustmentRequests();
+                        return overflow.Count;
+                    }
+
+                    private static List<InventoryAdjustmentRequest> GetPendingInventoryAdjustmentRequests() => [];
+                    private static Task<Order[]> GetPendingOrdersAsync() => Task.FromResult<Order[]>([]);
+                }
+                """);
+            File.WriteAllText(PathOf("RenameReader.cs"), "static class RenameReader { public static Order Read() => RenameOffers.stash; }\n");
             File.WriteAllText(PathOf("Helper.cs"), "static class Helper\n{\n    public static int Twice(int value) => value * 2;\n}\n");
             File.WriteAllText(PathOf("Shapes.cs"), "interface IShape\n{\n    int Sides { get; }\n}\n\nclass Square : IShape\n{\n    public int Sides => 4;\n}\n");
             File.WriteAllText(PathOf("Gauges.cs"), "interface IGauge\n{\n    int Read();\n}\n\nclass Dial : IGauge\n{\n    public int Read() => 1;\n}\n\n"

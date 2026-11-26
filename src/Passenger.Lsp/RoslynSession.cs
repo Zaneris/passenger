@@ -1040,6 +1040,9 @@ public sealed class LspDocument : IDisposable
     public Task<Roslyn.Extension.ToolkitFound> ToolkitRenamesAsync(int offset, string name, CancellationToken cancel = default) =>
         ExtensionAsync<Roslyn.Extension.ToolkitFound>(Roslyn.Extension.Handlers.ToolkitRenames, new Roslyn.Extension.ToolkitAsked(PlaceOf(offset), name), cancel);
 
+    public Task<string[]> RenameSuggestionsAsync(int offset, CancellationToken cancel) =>
+        ExtensionAsync<string[]>(Roslyn.Extension.Handlers.RenameSuggestions, new Roslyn.Extension.Caret(PlaceOf(offset)), cancel);
+
     /// <summary>Whether the method whose name, just written, ends at <paramref name="offset"/> is called where it stands,
     /// and takes arguments.</summary>
     public Task<Roslyn.Extension.CallFound> CompletionCallAsync(int offset, CancellationToken cancel = default) =>
