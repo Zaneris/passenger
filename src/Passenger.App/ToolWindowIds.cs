@@ -31,6 +31,7 @@ public static class ToolWindowIds
     public const string StepLibrary = "stepLibrary";
     public const string Coverage = "coverage";
     public const string Modules = "modules";
+    public const string IlViewer = "ilViewer";
     public const string DependencyMap = "dependencyMap";
     public const string Database = "database";
     public const string Clones = "clones";

@@ -543,9 +543,7 @@ public sealed class ProjectSession : IAsyncDisposable
             {
                 packageFolders |= PackageFolders.Learn(project);
                 string? framework = Frameworks.Of(project);
-                string? built = framework is null
-                    ? evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.TargetPath)?.Value
-                    : evaluated.Dependencies.FirstOrDefault(d => string.Equals(d.Framework, framework, StringComparison.OrdinalIgnoreCase))?.TargetPath;
+                string? built = BuildOutputOf(project, framework);
                 Passenger.Host.FrameworkDependencies? chosen = framework is null ? evaluated.Dependencies.FirstOrDefault()
                     : evaluated.Dependencies.FirstOrDefault(d => string.Equals(d.Framework, framework, StringComparison.OrdinalIgnoreCase));
                 now[project.Path] = new ProjectEvaluation(
@@ -645,6 +643,11 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The loaded project a file or folder (a canonical path) belongs to, the nearest one holding it; null outside
     /// them all.</summary>
     public ProjectModel? ProjectOf(string path) => Workspace is null ? null : ProjectModel.Owning(Workspace.Projects.Where(p => !Unloaded.Contains(p.Path)), path);
+
+    /// <summary>The evaluated output assembly for the requested framework, or the outer evaluation's for a single target.</summary>
+    internal static string? BuildOutputOf(ProjectModel project, string? framework) => framework is null || project.TargetFrameworks.Count < 2
+        ? project.Property(Passenger.Host.CarriedProperties.TargetPath)
+        : project.Evaluated?.Dependencies.FirstOrDefault(each => string.Equals(each.Framework, framework, StringComparison.OrdinalIgnoreCase))?.TargetPath;
 
     /// <summary>The code of the project a file belongs to with the configurations of the programs that run it
     /// (<see cref="ConfiguredCode"/>); null outside them all, or where no program of the folder runs it.</summary>
