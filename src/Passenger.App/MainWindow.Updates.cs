@@ -546,11 +546,24 @@ public partial class MainWindow
             status.Text = $"Passenger was updated to {installing}";
             IdeErrors.Write($"Updates: Passenger {installing} was installed as the last session ended");
         }
+        else if (why is null && selfUpdate is { } updater)
+        {
+            IdeErrors.Observe(SayNotInstalledAsync(installing, updater));
+        }
         else
         {
-            Say(why is null ? $"Passenger {installing} did not install: Help, Show Log says why" : $"Passenger {installing} did not install: {why}", LogPlace);
-            IdeErrors.Write($"Updates: Passenger {installing} was to install as the last session ended, but this is {Product.Version}{(why is null ? string.Empty : $": {why}")}");
+            SayNotInstalled(installing, why);
         }
+    }
+
+    /// <summary>That a version did not install, in its installer's words where it kept them (Velopack's log).</summary>
+    private async Task SayNotInstalledAsync(string installing, Updater updater) =>
+        SayNotInstalled(installing, await BackgroundWork.Run(() => updater.WhyNotInstalled(installing)));
+
+    private void SayNotInstalled(string installing, string? why)
+    {
+        Say(why is null ? $"Passenger {installing} did not install: Help, Show Log says why" : $"Passenger {installing} did not install: {why}", LogPlace);
+        IdeErrors.Write($"Updates: Passenger {installing} was to install as the last session ended, but this is {Product.Version}{(why is null ? string.Empty : $": {why}")}");
     }
 
     /// <summary>The newest version announced: the store's in the window a person uses, so a restart does not say it
