@@ -47,13 +47,7 @@ internal static class HoverAttributes
             declaration = type;
         }
         ImmutableArray<AttributeData> attributes = declaration.GetAttributes();
-        ImmutableArray<IParameterSymbol> parameters = symbol switch
-        {
-            IMethodSymbol method => method.Parameters,
-            IPropertySymbol property => property.Parameters,
-            INamedTypeSymbol { DelegateInvokeMethod: { } invoke } => invoke.Parameters,
-            _ => [],
-        };
+        ImmutableArray<IParameterSymbol> parameters = ((symbol as INamedTypeSymbol)?.DelegateInvokeMethod ?? symbol).GetParameters();
         ImmutableArray<TaggedText> parts = section.TaggedParts;
         int copied = block + 1;
         int[] starts = parameters.Any(p => !p.GetAttributes().IsEmpty)
@@ -150,25 +144,27 @@ internal static class HoverAttributes
 
     private static void AddArgumentTags(ImmutableArray<TaggedText>.Builder tags, AttributeArgumentListSyntax arguments)
     {
+        string text = arguments.ToString();
+        int copied = 0;
         foreach (SyntaxToken token in arguments.DescendantTokens())
         {
-            string kind = token.Kind() switch
+            string? kind = token.Kind() switch
             {
                 SyntaxKind.StringLiteralToken or SyntaxKind.CharacterLiteralToken => TextTags.StringLiteral,
                 SyntaxKind.NumericLiteralToken => TextTags.NumericLiteral,
                 var keyword when SyntaxFacts.IsKeywordKind(keyword) => TextTags.Keyword,
-                _ => TextTags.Text,
+                _ => null,
             };
-            if (token.HasLeadingTrivia)
+            if (kind is null)
             {
-                tags.Add(new TaggedText(TextTags.Text, token.LeadingTrivia.ToFullString()));
+                continue;
             }
+            int start = token.SpanStart - arguments.SpanStart;
+            tags.Add(new TaggedText(TextTags.Text, text[copied..start]));
             tags.Add(new TaggedText(kind, token.Text));
-            if (token.HasTrailingTrivia)
-            {
-                tags.Add(new TaggedText(TextTags.Text, token.TrailingTrivia.ToFullString()));
-            }
+            copied = start + token.Span.Length;
         }
+        tags.Add(new TaggedText(TextTags.Text, text[copied..]));
     }
 
     // Keep the element type so empty and mixed arrays remain valid C#.

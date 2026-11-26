@@ -106,8 +106,7 @@ internal sealed class CodedHoverHandler(IGlobalOptionService options) : ILspServ
         ImmutableArray<QuickInfoSection> sections = document.Project.Language == LanguageNames.CSharp
             ? await HoverAttributes.AnnotateAsync(document, info, cancellationToken).ConfigureAwait(false) : info.Sections;
         // A line break after each section, as the server's own sets them apart.
-        ImmutableArray<TaggedText> tags =
-            [.. sections.SelectMany(s => s.TaggedParts.Add(new TaggedText(TextTags.LineBreak, Environment.NewLine)))];
+        ImmutableArray<TaggedText> tags = [.. sections.SelectMany(s => s.TaggedParts.Add(new TaggedText(TextTags.LineBreak, Environment.NewLine)))];
         SourceText text = await document.GetValueTextAsync(cancellationToken).ConfigureAwait(false);
         return new CodedHover
         {

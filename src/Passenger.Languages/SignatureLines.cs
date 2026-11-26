@@ -56,11 +56,8 @@ public sealed class SignatureLines
     private static (List<(int At, int Spaces)> Breaks, int Close)? Scan(string code)
     {
         int start = code.LastIndexOf('\n') + 1;
-        if (start > 0 && (code[0] != '[' || !code.AsSpan(0, start).TrimEnd().EndsWith("]", StringComparison.Ordinal)))
-        {
-            return null;
-        }
-        if (ListStart(code, start) is not { } open)
+        if ((start > 0 && (code[0] != '[' || !code.AsSpan(0, start).TrimEnd().EndsWith("]", StringComparison.Ordinal)))
+            || ListStart(code, start) is not { } open)
         {
             return null;
         }
