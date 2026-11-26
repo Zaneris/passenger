@@ -131,10 +131,6 @@ public sealed class DebugAdapter
             }
             return new ResolveStackFrameResponse(ToProtocol(await Read(() => debugger.ResolveStackFrame(arguments.StackFrameId))));
         });
-        connection.Handle<DisassembleFrameArguments, DisassembleFrameResponse>(DapCommands.DisassembleFrame, async arguments =>
-            await Read(() => debugger.NativeCodeAt(arguments.FrameId)) is { } code
-                ? NativeDisassembly.Decode(code)
-                : throw new DapException(DapCommands.DisassembleFrame, "This stack frame has no readable managed machine code."));
         connection.Handle<ScopesArguments, ScopesResponse>(DapCommands.Scopes, async arguments =>
         {
             List<ScopeInfo> scopes = await Read(() => debugger.GetScopes(arguments.FrameId));

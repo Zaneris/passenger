@@ -9,7 +9,6 @@ using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.Disassembler;
 using ICSharpCode.Decompiler.Metadata;
 using Passenger.Core;
-using Passenger.Dap;
 using Passenger.Editor;
 using Passenger.Text;
 using AssemblyImage = ICSharpCode.Decompiler.Metadata.PEFile;
@@ -20,7 +19,6 @@ internal enum CompiledView
 {
     Il,
     LowLevelCSharp,
-    Assembly,
 }
 
 internal sealed record CompiledRequest(string Source, string Assembly, CompiledView View);
@@ -32,57 +30,10 @@ internal readonly record struct CompiledSequencePoint(TextPosition Start, TextPo
 /// <summary>A source file's methods as emitted by the build, located through the matching portable PDB.</summary>
 internal sealed record CompiledSource(string Text, IReadOnlyList<CompiledSection> Sections,
     IReadOnlyList<CompiledSequencePoint> SequencePoints, InstructionColours? Colours = null, string? Message = null,
-    TextRange? CurrentInstruction = null, TextLink[]? Links = null)
+    TextLink[]? Links = null)
 {
     private static readonly Guid Sha1 = new("ff1816ec-aa5e-4d10-87f7-6f4963833460");
     private static readonly Guid Sha256 = new("8829d00f-11b8-4213-878b-770e8597ac16");
-
-    public static CompiledSource Assembly(DisassembleFrameResponse result, CancellationToken cancel)
-    {
-        if (result.Instructions.Count == 0)
-        {
-            return Say("This stack frame has no assembly to show.");
-        }
-
-        StringBuilder text = new();
-        List<SyntaxSpan> colours = [];
-        List<InstructionColours.Instruction> help = [];
-        List<(uint Offset, TextRange Text)> lines = [];
-        TextRange? current = null;
-        foreach (DapNativeInstruction instruction in result.Instructions)
-        {
-            cancel.ThrowIfCancellationRequested();
-            int start = text.Length;
-            text.Append(instruction.Current ? "> " : "  ");
-            text.Append(CultureInfo.InvariantCulture, $"0x{instruction.Address:X}");
-            colours.Add(new SyntaxSpan(start + 2, text.Length - start - 2, TokenKind.Constant));
-            text.Append("  ");
-            TextRange mnemonic = new(text.Length, instruction.Mnemonic.Length);
-            colours.Add(new SyntaxSpan(mnemonic.Start, mnemonic.Length, TokenKind.Keyword));
-            help.Add(new InstructionColours.Instruction(mnemonic, AsmOpcodes.Describe(result.Architecture, instruction)));
-            text.Append(instruction.Mnemonic.PadRight(8)).Append(instruction.Operands);
-            TextRange line = new(start, text.Length - start);
-            lines.Add((instruction.Offset, line));
-            if (instruction.Current)
-            {
-                current = line;
-            }
-            text.Append('\n');
-        }
-
-        List<CompiledSequencePoint> points = [];
-        foreach (DapNativeSource source in result.Sources)
-        {
-            int start = Sorted.FirstAtOrAfter(lines, static line => line.Offset, source.Start);
-            int end = Sorted.FirstAtOrAfter(lines, static line => line.Offset, source.End);
-            if (start < end)
-            {
-                points.Add(new CompiledSequencePoint(new TextPosition(source.Line - 1, source.Column - 1),
-                    new TextPosition(source.EndLine - 1, source.EndColumn - 1), new TextRange(lines[start].Text.Start, lines[end - 1].Text.End - lines[start].Text.Start)));
-            }
-        }
-        return new CompiledSource(text.ToString(), [], points, new InstructionColours([.. colours], help), CurrentInstruction: current);
-    }
 
     /// <summary>The output for the most specific matching statement, or the enclosing method's heading.</summary>
     public TextRange? RangeAt(TextPosition caret)

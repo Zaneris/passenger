@@ -30,7 +30,6 @@
 
   <ItemGroup>
     <PackageReference Include="Krafs.Publicizer" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
-    <PackageReference Include="Gee.External.Capstone" />
     <PackageReference Include="ICSharpCode.Decompiler" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <PackageReference Include="MP.Microsoft.CodeAnalysis.CSharp.ExpressionEvaluator.ExpressionCompiler" />

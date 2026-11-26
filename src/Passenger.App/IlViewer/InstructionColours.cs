@@ -5,7 +5,7 @@ using Passenger.Text;
 
 namespace Passenger.App.IlViewer;
 
-/// <summary>Theme spans and hover targets for IL and native assembly.</summary>
+/// <summary>Theme spans and hover targets for IL.</summary>
 internal sealed partial class InstructionColours(SyntaxSpan[] spans, IReadOnlyList<InstructionColours.Instruction> instructions) : IHighlighter
 {
     private static readonly (string Group, TokenKind Kind)[] Colours =

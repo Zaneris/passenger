@@ -1,10 +1,8 @@
 using Passenger.App.CSharp;
-using Passenger.App.Debugging;
 using Passenger.App.Docking;
 using Passenger.App.IlViewer;
 using Passenger.App.Workspace;
 using Passenger.Core;
-using Passenger.Dap;
 using Passenger.Languages;
 using Passenger.Lsp;
 using Passenger.Text;
@@ -18,18 +16,22 @@ public partial class MainWindow
     private CompiledRequest? ilRequest;
     private CancellationTokenSource? ilRead;
     private TextSnapshot? ilSourceText;
-    private (DebugSession Session, DapStackFrame Frame, int Stop)? assemblyRequest;
 
     private void AddIlViewer()
     {
         ToolWindow window = new(ToolWindowIds.IlViewer, "Compiled Code", IconKeys.Reference,
-            () => ilViewer = new IlViewerPane(() => FollowIlViewer(), () => FollowIlViewer(refresh: true),
+            () => ilViewer = new IlViewerPane(() => FollowIlViewer(), action => Request(action),
                 symbol => IdeErrors.Observe(OpenCompiledSymbolAsync(symbol))), ToolAnchor.RightTop)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowIlViewer,
         };
         Dock.Add(window);
+        actions!.Add(new IdeAction(AppActions.IlViewerRefresh, "Refresh Compiled Code", "Compiled Code", _ => FollowIlViewer(refresh: true))
+        {
+            WhyNot = c => NeedsFolder(c) ?? Unserved(ToolWindowIds.IlViewer),
+            Words = ["Read the build's IL and low-level C# again"],
+        });
         window.Built += (_, _) => FollowIlViewer();
         window.PropertyChanged += (_, change) =>
         {
@@ -83,9 +85,6 @@ public partial class MainWindow
         next.WorkspaceChanged += (_, _) => Follow();
         next.ProjectsEvaluated += (_, _) => Follow();
         next.FrameworkChosen += (_, _) => Follow();
-        next.Debug.AssemblyFrameChanged += (_, _) => FollowAssembly();
-        next.Debug.StateChanged += (_, _) => FollowAssembly();
-        next.Debug.SelectionChanged += (_, _) => FollowAssembly();
         buildRun.BuildFinished += (_, outcome) =>
         {
             if (outcome.Succeeded)
@@ -102,14 +101,6 @@ public partial class MainWindow
                 FollowIlViewer(refresh);
             }
         }
-
-        void FollowAssembly()
-        {
-            if (ilViewer?.Mode == CompiledView.Assembly)
-            {
-                Follow();
-            }
-        }
     }
 
     private void FollowIlViewer(bool refresh = false)
@@ -124,16 +115,9 @@ public partial class MainWindow
             ilRead?.Cancel();
             ilRequest = null;
             ilSourceText = null;
-            assemblyRequest = null;
-            return;
-        }
-        if (pane.Mode == CompiledView.Assembly)
-        {
-            FollowAssembly(pane, refresh);
             return;
         }
 
-        assemblyRequest = null;
         OpenDocument? document = Editors.Active;
         (CompiledRequest? request, string? reason) = IlRequestFor(document, pane.Mode);
         if (request is not null && request == ilRequest && !refresh)
@@ -156,29 +140,6 @@ public partial class MainWindow
         }
     }
 
-    private void FollowAssembly(IlViewerPane pane, bool refresh)
-    {
-        ilRequest = null;
-        (DebugSession Session, DapStackFrame Frame, int Stop)? request = Debugger.AssemblyFrame;
-        if (request is not null && request == assemblyRequest && !refresh)
-        {
-            return;
-        }
-
-        ilRead?.Cancel();
-        ilSourceText = null;
-        assemblyRequest = request;
-        if (request is { } stopped)
-        {
-            pane.Say("Reading assembly…", stopped.Frame.Name);
-            IdeErrors.Observe(ReadCompiledAsync(cancel => ReadAssemblyAsync(pane, stopped, cancel)));
-        }
-        else
-        {
-            pane.Say("Pause a .NET program to see the selected stack frame's assembly.");
-        }
-    }
-
     private async Task ReadCompiledAsync(Func<CancellationToken, Task> load)
     {
         using CancellationTokenSource read = new();
@@ -195,29 +156,6 @@ public partial class MainWindow
             if (ReferenceEquals(ilRead, read))
             {
                 ilRead = null;
-            }
-        }
-    }
-
-    private async Task ReadAssemblyAsync(IlViewerPane pane, (DebugSession Session, DapStackFrame Frame, int Stop) request, CancellationToken cancel)
-    {
-        TextSnapshot? sourceText = Editors.Active is { IsModified: false } document && request.Frame.Source?.Path is { } path
-            && PathNames.Same(document.Path, path) ? document.Text.Snapshot : null;
-        try
-        {
-            DisassembleFrameResponse result = await request.Session.DisassembleAsync(request.Frame, cancel);
-            CompiledSource compiled = await BackgroundWork.Run(() => CompiledSource.Assembly(result, cancel), cancel);
-            if (!cancel.IsCancellationRequested && Debugger.AssemblyFrame == request)
-            {
-                ilSourceText = sourceText;
-                pane.ShowAssembly($"{result.Architecture} · {request.Frame.Name}", compiled);
-            }
-        }
-        catch (DapException error)
-        {
-            if (!cancel.IsCancellationRequested && Debugger.AssemblyFrame == request)
-            {
-                pane.Say(error.Reason, request.Frame.Name);
             }
         }
     }
@@ -254,7 +192,7 @@ public partial class MainWindow
 
     private void FollowIlCaret()
     {
-        if ((ilRequest is not null || assemblyRequest is not null) && ilViewer is { } pane && Editors.Active is { } document)
+        if (ilRequest is not null && ilViewer is { } pane && Editors.Active is { } document)
         {
             bool sourceMatches = ReferenceEquals(document.Text.Snapshot, ilSourceText) && !document.IsModified;
             pane.FollowCaret(sourceMatches ? Editors.CodeEditor.CaretPosition : null);

@@ -717,6 +717,7 @@ public static class AppActions
     // The Refresh of the windows that read what they show again on asking: no keys of Rider's.
     public const string EndpointsRefresh = "app.endpoints.refresh";
     public const string GitLogRefresh = "app.vcs.refreshLog";
+    public const string IlViewerRefresh = "app.ilViewer.refresh";
 
     // Commit Signing…, the Commit window's and the Git menu's: no keys of Rider's.
     public const string CommitSigning = "app.vcs.commitSigning";

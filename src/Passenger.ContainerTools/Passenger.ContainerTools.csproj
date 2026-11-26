@@ -56,7 +56,6 @@
       <NoticeLine Include="tools=$(ProjectDepsFilePath)" />
       <NoticeLine Include="section=SharpDbg and ICorDebugSharp" />
       <NoticeLine Include="section=Code from ILSpy and ClrDebug" />
-      <NoticeLine Include="section=Capstone" />
     </ItemGroup>
     <WriteLinesToFile File="$(NoticesArguments)" Lines="@(NoticeLine)" Overwrite="true" WriteOnlyWhenDifferent="true" />
     <ItemGroup>

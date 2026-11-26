@@ -2,12 +2,6 @@
   "version": 2,
   "dependencies": {
     "net11.0": {
-      "Gee.External.Capstone": {
-        "type": "Direct",
-        "requested": "[2.3.0, )",
-        "resolved": "2.3.0",
-        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
-      },
       "ICSharpCode.Decompiler": {
         "type": "Direct",
         "requested": "[11.2.0.10050, )",
@@ -180,12 +174,6 @@
       }
     },
     "net11.0/linux-arm64": {
-      "Gee.External.Capstone": {
-        "type": "Direct",
-        "requested": "[2.3.0, )",
-        "resolved": "2.3.0",
-        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
-      },
       "Microsoft.Diagnostics.DbgShim.linux-arm": {
         "type": "Transitive",
         "resolved": "10.0.750501",
@@ -243,12 +231,6 @@
       }
     },
     "net11.0/linux-musl-arm64": {
-      "Gee.External.Capstone": {
-        "type": "Direct",
-        "requested": "[2.3.0, )",
-        "resolved": "2.3.0",
-        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
-      },
       "Microsoft.Diagnostics.DbgShim.linux-arm": {
         "type": "Transitive",
         "resolved": "10.0.750501",
@@ -306,12 +288,6 @@
       }
     },
     "net11.0/linux-musl-x64": {
-      "Gee.External.Capstone": {
-        "type": "Direct",
-        "requested": "[2.3.0, )",
-        "resolved": "2.3.0",
-        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
-      },
       "Microsoft.Diagnostics.DbgShim.linux-arm": {
         "type": "Transitive",
         "resolved": "10.0.750501",
@@ -369,12 +345,6 @@
       }
     },
     "net11.0/linux-x64": {
-      "Gee.External.Capstone": {
-        "type": "Direct",
-        "requested": "[2.3.0, )",
-        "resolved": "2.3.0",
-        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
-      },
       "Microsoft.Diagnostics.DbgShim.linux-arm": {
         "type": "Transitive",
         "resolved": "10.0.750501",
@@ -432,12 +402,6 @@
       }
     },
     "net11.0/osx-arm64": {
-      "Gee.External.Capstone": {
-        "type": "Direct",
-        "requested": "[2.3.0, )",
-        "resolved": "2.3.0",
-        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
-      },
       "Microsoft.Diagnostics.DbgShim.linux-arm": {
         "type": "Transitive",
         "resolved": "10.0.750501",
@@ -495,12 +459,6 @@
       }
     },
     "net11.0/osx-x64": {
-      "Gee.External.Capstone": {
-        "type": "Direct",
-        "requested": "[2.3.0, )",
-        "resolved": "2.3.0",
-        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
-      },
       "Microsoft.Diagnostics.DbgShim.linux-arm": {
         "type": "Transitive",
         "resolved": "10.0.750501",
@@ -558,12 +516,6 @@
       }
     },
     "net11.0/win-arm64": {
-      "Gee.External.Capstone": {
-        "type": "Direct",
-        "requested": "[2.3.0, )",
-        "resolved": "2.3.0",
-        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
-      },
       "Microsoft.Diagnostics.DbgShim.linux-arm": {
         "type": "Transitive",
         "resolved": "10.0.750501",
@@ -621,12 +573,6 @@
       }
     },
     "net11.0/win-x64": {
-      "Gee.External.Capstone": {
-        "type": "Direct",
-        "requested": "[2.3.0, )",
-        "resolved": "2.3.0",
-        "contentHash": "2ap/rYmjtzCOT8hxrnEW/QeiOt+paD8iRrIcdKX0cxVwWLFa1e+JDBNeECakmccXrSFeBQuu5AV8SNkipFMMMw=="
-      },
       "Microsoft.Diagnostics.DbgShim.linux-arm": {
         "type": "Transitive",
         "resolved": "10.0.750501",

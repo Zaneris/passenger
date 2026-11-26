@@ -1,10 +1,12 @@
 using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Docking;
 using Passenger.App.Explorer;
 using Passenger.App.Run;
 using Passenger.App.Settings;
@@ -73,8 +75,8 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
 
     /// <summary>Rerun asks first and Stop ends the program, each stream's lines heard and shown whole however the other
     /// writes into them, characters outside the system's code page reaching both ways, the apphost started on
-    /// Passenger's dotnet, and a message naming a file linked, as one flow, each step the check one test made in an
-    /// instance of its own.</summary>
+    /// Passenger's dotnet, a message naming a file linked, and the build's compiled code shown, as one flow, each step the
+    /// check one test made in an instance of its own.</summary>
     [AvaloniaFact]
     public void The_run_window_shows_a_programs_output_whole_and_reruns_or_stops_as_asked()
     {
@@ -84,6 +86,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         Flow.StepApart("a programs characters outside the systems code page reach the run window as written and the program as typed", () => new BuildRunTests(folders), t => t.A_programs_characters_outside_the_systems_code_page_reach_the_run_window_as_written_and_the_program_as_typed());
         Flow.StepApart("Run starts the projects apphost on the dotnet passenger builds with", () => new BuildRunTests(folders), t => t.Run_starts_the_projects_apphost_on_the_dotnet_passenger_builds_with());
         Flow.StepApart("a build message naming a file but no place in it links the file and opens it", () => new BuildRunTests(folders), t => t.A_build_message_naming_a_file_but_no_place_in_it_links_the_file_and_opens_it());
+        Flow.StepApart("Compiled Code shows the last build's IL and low-level C# of the file shown and follows the caret and the file", () => new BuildRunTests(folders), t => t.Compiled_Code_shows_the_last_builds_il_and_low_level_csharp_of_the_file_shown_and_follows_the_caret_and_the_file());
     }
 
     /// <summary>Under dotnet watch a program that ends or whose build fails is said to wait for a change that builds,
@@ -378,6 +381,99 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// <summary>A compiler's message about a file as a whole, which names no place in it (MSBuild's "file : warning
     /// AVLN3001: ...", as Avalonia's XAML compiler writes one), links its file in the Build window, a path with a space in it
     /// whole, and the link opens it.</summary>
+    private void Compiled_Code_shows_the_last_builds_il_and_low_level_csharp_of_the_file_shown_and_follows_the_caret_and_the_file()
+    {
+        string folder = TestFolders.Create("il-viewer");
+        string project = TestFolders.Write(folder, "Sample.csproj", TestProjects.Library());
+        string first = TestFolders.Write(folder, "Counter.cs", """
+            using System.Threading.Tasks;
+
+            public static partial class Counter
+            {
+                [Marker]
+                public static async Task<int> CountAsync()
+                {
+                    await Task.Yield();
+                    return 1;
+                }
+            }
+            """);
+        string second = TestFolders.Write(folder, "Counter.Other.cs", """
+            public static partial class Counter
+            {
+                public static int OtherCount() => 2;
+            }
+
+            public sealed class MarkerAttribute : System.Attribute { }
+            """);
+        MainWindow window = Ui.OpenFolder(project);
+        try
+        {
+            Ui.WaitFor(() => window.Projects is [{ IsEvaluated: true }], "the C# project evaluation");
+            Assert.Null(window.OpenFile(first));
+            Ui.WaitFor(() => window.EditorArea.Active?.ProjectContext is not null, "the active file's C# project context", Restore.Limit);
+            ToggleButton stripe = window.GetVisualDescendants().OfType<ToggleButton>()
+                .Single(button => button.Tag as string == ToolWindowIds.IlViewer);
+            Ui.Click(stripe);
+            ToolWindow tool = window.DockHost[ToolWindowIds.IlViewer];
+            Assert.Equal(ToolAnchor.RightTop, tool.Anchor);
+            Ui.WaitFor(() => tool.Content.GetVisualDescendants().OfType<TextBlock>().Any(text =>
+                text.Text == "Build the project to see the compiled code for Counter.cs."), "the prompt to build first");
+
+            BuildOutcome built = Ui.Await(window.BuildAsync(), "the C# project build", Restore.Limit);
+            Assert.True(built.Succeeded, built.Message + string.Join(Environment.NewLine, built.Output));
+            CodeEditor output = tool.Content.GetVisualDescendants().OfType<CodeEditor>().Single();
+            Ui.WaitFor(() => Text().Contains("IL_0000", StringComparison.Ordinal), "IL from the build");
+            Assert.Contains("CountAsync", Text(), StringComparison.Ordinal);
+            Assert.DoesNotContain("OtherCount", Text(), StringComparison.Ordinal);
+
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "await Task.Yield()");
+            Ui.WaitFor(() => Highlight().Contains("::Yield()", StringComparison.Ordinal), "the IL instructions for the await statement");
+            Assert.DoesNotContain("ldc.i4.1", Highlight(), StringComparison.Ordinal);
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "return 1");
+            Ui.WaitFor(() => Highlight().Contains("ldc.i4.1", StringComparison.Ordinal), "the IL instructions for the return statement");
+            Assert.DoesNotContain("::Yield()", Highlight(), StringComparison.Ordinal);
+
+            int opcode = Text().IndexOf("ldc.i4.1", output.Highlights[0].Start, StringComparison.Ordinal);
+            Assert.True(output.Highlights[0].Contains(opcode));
+            Assert.Contains(output.Highlighter!.GetSpans(output.Document.Snapshot, opcode - 9, 17), span =>
+                span is { Kind: TokenKind.Keyword } && span.Start == opcode && span.Length == "ldc.i4.1".Length);
+            Assert.Contains(output.Highlighter.GetSpans(output.Document.Snapshot, opcode - 9, 17), span =>
+                span is { Kind: TokenKind.Constant } && span.Start < opcode);
+            Ui.Hover(output, output.PointOf(opcode + 1) + new Point(0, output.LineHeight / 2));
+            Ui.WaitFor(() => ToolTip.GetIsOpen(output), "the opcode tooltip");
+            StackPanel tip = Assert.IsType<StackPanel>(ToolTip.GetTip(output));
+            Assert.Contains(tip.Children.OfType<TextBlock>(), text => text.Text == "ldc.i4.1");
+            Assert.Contains(tip.Children.OfType<TextBlock>(), text => text.Text?.Contains("pop 0 · push 1", StringComparison.Ordinal) == true);
+            Ui.Hover(output, output.PointOf(opcode - 5) + new Point(0, output.LineHeight / 2));
+            Ui.WaitFor(() => !ToolTip.GetIsOpen(output), "the tooltip dismissing over the IL offset");
+
+            Ui.Click(tool.Content.GetVisualDescendants().OfType<ToggleButton>().Single(button => button.Name == "IlViewerCSharp"));
+            Ui.WaitFor(() => Text().Contains("void MoveNext()", StringComparison.Ordinal), "the decompiled async state machine");
+            Assert.Contains("IAsyncStateMachine", Text(), StringComparison.Ordinal);
+            int attribute = Text().IndexOf("[Marker]", StringComparison.Ordinal) + 1;
+            Assert.True(attribute > 0);
+            Assert.NotNull(output.LinkOn(attribute));
+            output.GoTo(output.Document.Snapshot.GetPosition(attribute));
+            Ui.Settle();
+            Ui.Click(output, output.PointOf(attribute + 1) + new Point(0, output.LineHeight / 2));
+            Ui.WaitFor(() => window.EditorArea.Active?.Text.Snapshot.ToString().Contains("class MarkerAttribute", StringComparison.Ordinal) == true,
+                "the clicked attribute's declaration", TimeSpan.FromSeconds(10));
+
+            Assert.Null(window.OpenFile(second));
+            Ui.WaitFor(() => Text().Contains("OtherCount", StringComparison.Ordinal), "the second file's compiled output");
+            Assert.DoesNotContain("CountAsync", Text(), StringComparison.Ordinal);
+
+            string Text() => output.Document.Snapshot.ToString();
+            string Highlight() => output.Highlights.Count == 1 ? Text().Substring(output.Highlights[0].Start, output.Highlights[0].Length) : string.Empty;
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
     private void A_build_message_naming_a_file_but_no_place_in_it_links_the_file_and_opens_it()
     {
         Write("src/Hello/Hello.csproj",

@@ -367,16 +367,6 @@ public sealed record ResolveStackFrameArguments(int StackFrameId);
 
 public sealed record ResolveStackFrameResponse(DapStackFrame StackFrame);
 
-public sealed record DisassembleFrameArguments(int FrameId);
-
-public sealed record DisassembleFrameResponse(string Architecture, IReadOnlyList<DapNativeInstruction> Instructions,
-    IReadOnlyList<DapNativeSource> Sources);
-
-public sealed record DapNativeInstruction(uint Offset, ulong Address, string Mnemonic, string Operands, bool Current);
-
-/// <summary>The source statement for a range of native offsets. Lines and columns count from one.</summary>
-public sealed record DapNativeSource(uint Start, uint End, string Path, int Line, int Column, int EndLine, int EndColumn);
-
 public sealed record ScopesArguments(int FrameId);
 
 public sealed record ScopesResponse(IReadOnlyList<DapScope> Scopes);

@@ -157,7 +157,6 @@
     <PackageVersion Include="Avalonia.Controls.Maui" Version="11.0.0-rc.3.26301.1434" />
     <PackageVersion Include="Microsoft.Maui.Controls.Core" Version="$(MauiVersion)" />
     <PackageVersion Include="Microsoft.Maui.Controls.Xaml" Version="$(MauiVersion)" />
-    <PackageVersion Include="Gee.External.Capstone" Version="2.3.0" />
     <PackageVersion Include="Google.Protobuf" Version="3.36.2" />
     <PackageVersion Include="Grpc.Net.Client" Version="2.85.0" />
     <!-- Also what Passenger's analyzers are compiled against (src/Passenger.Analyzers), so never past the compiler of

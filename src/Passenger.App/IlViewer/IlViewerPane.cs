@@ -11,7 +11,7 @@ using Passenger.Text;
 
 namespace Passenger.App.IlViewer;
 
-/// <summary>The last build's IL and C#, or the selected debug frame's assembly.</summary>
+/// <summary>The last build's IL and low-level C# of the file shown.</summary>
 internal sealed class IlViewerPane : UserControl
 {
     private readonly CodeEditor output = new()
@@ -34,7 +34,7 @@ internal sealed class IlViewerPane : UserControl
     private CompiledSource? compiled;
     private TextRange? highlighted;
 
-    public IlViewerPane(Action changeMode, Action refresh, Action<CompiledSymbol> navigate)
+    public IlViewerPane(Action changeMode, Action<string> request, Action<CompiledSymbol> navigate)
     {
         AutomationProperties.SetName(output, "Compiled code");
         ToolTip.SetPlacement(output, PlacementMode.Pointer);
@@ -51,11 +51,9 @@ internal sealed class IlViewerPane : UserControl
         };
         modes.Add(CompiledView.Il, "IL", "IlViewerIl");
         modes.Add(CompiledView.LowLevelCSharp, "Low-Level C#", "IlViewerCSharp");
-        modes.Add(CompiledView.Assembly, "ASM", "IlViewerAsm");
         modes.Choice = CompiledView.Il;
         modes.Chosen += (_, _) => changeMode();
-        Button reload = ToolButtons.Of(IconKeys.Rerun, "Refresh compiled code", refresh);
-        reload.Name = "IlViewerRefresh";
+        Button reload = ToolButtons.Of(AppActions.IlViewerRefresh, IconKeys.Rerun, "Refresh compiled code", request);
         ToolFlow bar = new()
         {
             Margin = new Thickness(Gaps.Small, Gaps.Hair),
@@ -89,12 +87,6 @@ internal sealed class IlViewerPane : UserControl
     public void Show(CompiledRequest request, CompiledSource result) =>
         Render(Path.GetFileName(request.Source), result.Message, result, $"{request.Source}\n{request.Assembly}");
 
-    public void ShowAssembly(string caption, CompiledSource result)
-    {
-        Render(caption, result.Message, result);
-        Highlight(result.CurrentInstruction);
-    }
-
     private void Render(string? caption, string? message, CompiledSource? result = null, string? captionTip = null)
     {
         CloseOpcodeTip();
@@ -116,7 +108,7 @@ internal sealed class IlViewerPane : UserControl
         output.Highlighter = compiled?.Colours ?? Highlighters.For(language, document);
     }
 
-    public void FollowCaret(TextPosition? caret) => Highlight((caret is { } at ? compiled?.RangeAt(at) : null) ?? compiled?.CurrentInstruction);
+    public void FollowCaret(TextPosition? caret) => Highlight(caret is { } at ? compiled?.RangeAt(at) : null);
 
     private void Highlight(TextRange? found)
     {
@@ -150,7 +142,7 @@ internal sealed class IlViewerPane : UserControl
             Spacing = Gaps.Small,
             Children =
             {
-                new TextBlock { Classes = { StyleClasses.Code }, Text = opcode.Name, FontWeight = FontWeight.SemiBold },
+                new TextBlock { Classes = { StyleClasses.Code, StyleClasses.Strong }, Text = opcode.Name },
                 new TextBlock
                 {
                     Text = opcode.Description,
