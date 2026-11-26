@@ -4,10 +4,18 @@ using Passenger.Text;
 
 namespace Passenger.UnitTests.Languages;
 
+/// <summary>A C# function's cognitive complexity read from its parse as the white paper counts it, each line's increments
+/// summed where they stand.</summary>
 public sealed class CognitiveComplexityTests
 {
+    /// <summary>A function's score reads as the white paper's rules count it.</summary>
     [Fact]
-    public void Branches_nesting_and_logical_runs_are_summed_on_their_source_lines()
+    public void A_functions_cognitive_complexity_counts_as_the_white_paper_counts_it() => Cases.All(
+        (nameof(Branches_nesting_and_logical_runs_are_summed_on_their_source_lines), Branches_nesting_and_logical_runs_are_summed_on_their_source_lines),
+        (nameof(Every_function_on_shared_lines_keeps_its_own_score), Every_function_on_shared_lines_keeps_its_own_score),
+        (nameof(Logical_runs_follow_source_order_across_parentheses_and_reset_at_negation), Logical_runs_follow_source_order_across_parentheses_and_reset_at_negation));
+
+    private void Branches_nesting_and_logical_runs_are_summed_on_their_source_lines()
     {
         FunctionComplexity function = Assert.Single(Read("""
             class Meter
@@ -40,8 +48,7 @@ public sealed class CognitiveComplexityTests
             function.Lines.Select(line => (line.Line + 1, line.Points)));
     }
 
-    [Fact]
-    public void Every_function_on_shared_lines_keeps_its_own_score()
+    private void Every_function_on_shared_lines_keeps_its_own_score()
     {
         IReadOnlyList<FunctionComplexity> functions = Read("""
             class Meter
@@ -65,8 +72,7 @@ public sealed class CognitiveComplexityTests
         Assert.Equal([(7, 2), (9, 2)], functions[3].Lines.Select(line => (line.Line + 1, line.Points)));
     }
 
-    [Fact]
-    public void Logical_runs_follow_source_order_across_parentheses_and_reset_at_negation()
+    private void Logical_runs_follow_source_order_across_parentheses_and_reset_at_negation()
     {
         FunctionComplexity function = Assert.Single(Read("""
             class Meter

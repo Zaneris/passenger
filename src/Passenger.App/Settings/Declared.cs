@@ -280,29 +280,35 @@ public static class Declared
         new(D.EditorPage, "Signposts: authors", "signposts authors git blame last changed who") { When = new(s => s.Signposts, "Signposts are off") });
 
     public static readonly ToggleSetting SignpostComplexity = new(s => s.SignpostComplexity, (s, v) => s with { SignpostComplexity = v },
-        new(D.EditorPage, "Signposts: cognitive complexity", "signposts cognitive complexity score control flow",
-            "Show a colored dot and score above C# functions. Click the score to toggle line-end increments.")
+        new(D.EditorPage, "Signposts: cognitive complexity", "signposts cognitive complexity score control flow nesting",
+            "How hard each C# function's control flow is to follow, its branches and loops counting more the deeper they nest, "
+            + "beside a dot of its colour; a press shows what each of its lines adds, at the line's end.")
         { When = new(s => s.Signposts, "Signposts are off") });
 
-    private static readonly SettingWhen ComplexitySignpostsOn = new(s => s.Signposts && s.SignpostComplexity, "Cognitive complexity signposts are off");
+    private static readonly SettingWhen ComplexityShown = new(s => s.Signposts && s.SignpostComplexity, "Signposts' cognitive complexity is off");
 
     public static readonly NumberSetting SignpostComplexityMinimum = new(s => s.SignpostComplexityMinimum,
         (s, v) => s with { SignpostComplexityMinimum = (int)v }, 0, int.MaxValue, 1,
-        new(D.EditorPage, "Cognitive complexity: minimum visible score", "signposts cognitive complexity minimum visible score hide",
-            "Hide scores below this value. Use 0 to show all scores.")
-        { When = ComplexitySignpostsOn });
+        new(D.EditorPage, "Cognitive complexity: shown from", "signposts cognitive complexity minimum least score shown hidden",
+            "A function of a lower score shows none; 0 shows every function's.")
+        { When = ComplexityShown });
 
     public static readonly NumberSetting SignpostComplexityYellowFrom = new(s => s.SignpostComplexityYellowFrom,
         (s, v) => s with { SignpostComplexityYellowFrom = (int)v }, 0, int.MaxValue, 1,
-        new(D.EditorPage, "Cognitive complexity: yellow starts at", "signposts cognitive complexity green yellow threshold score",
-            "Visible scores below this value are green.")
-        { When = ComplexitySignpostsOn });
+        new(D.EditorPage, "Cognitive complexity: yellow from", "signposts cognitive complexity green yellow threshold score",
+            "A score from it up to red's is yellow, a lower one green.")
+        { When = ComplexityShown }, refused: YellowAboveRed);
 
     public static readonly NumberSetting SignpostComplexityRedFrom = new(s => s.SignpostComplexityRedFrom,
         (s, v) => s with { SignpostComplexityRedFrom = (int)v }, 0, int.MaxValue, 1,
-        new(D.EditorPage, "Cognitive complexity: red starts at", "signposts cognitive complexity yellow red threshold score",
-            "Scores at or above this value are red.")
-        { When = ComplexitySignpostsOn });
+        new(D.EditorPage, "Cognitive complexity: red from", "signposts cognitive complexity yellow red threshold score",
+            "A score from it up is red.")
+        { When = ComplexityShown }, refused: YellowAboveRed);
+
+    /// <summary>Why complexity's yellow cannot begin where it does: above where red begins, which leaves no score yellow.</summary>
+    private static string? YellowAboveRed(AppSettings s) => s.SignpostComplexityYellowFrom > s.SignpostComplexityRedFrom
+        ? $"would have yellow from {s.SignpostComplexityYellowFrom}, above red from {s.SignpostComplexityRedFrom}"
+        : null;
 
     public static readonly ToggleSetting SoftWrapIndent = new(s => s.SoftWrapIndent, (s, v) => s with { SoftWrapIndent = v },
         new(D.EditorPage, "Use the original line's indent for wrapped fragments", "soft wrap wrapped indent indentation fragments"));

@@ -659,6 +659,7 @@ def variant(theme, p, dark):
     t["Passenger.Editor.Warning"] = legible(legible(hue("yellow") if dark else hue("orange"), [editor], M, dark), [badge], T,
                                             badge != "#FFFFFF")
     t["Passenger.Editor.Info"] = legible(muted, [editor], M, dark)
+    t["Passenger.Editor.Fine"] = legible(hue("green"), [editor], M, dark)
     t["Passenger.Editor.Breakpoint"] = legible(hue("red"), [editor], M, dark)
     t["Passenger.Editor.BreakpointLine"] = mix(editor, hue("red"), 0.12)
     t["Passenger.Editor.BreakpointMuted"] = t["Passenger.Icon"]

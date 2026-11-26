@@ -257,6 +257,7 @@
             <SolidColorBrush x:Key="Passenger.Editor.Error" Color="#FF6B7A" read:Mark="Editor.Background" />
             <SolidColorBrush x:Key="Passenger.Editor.Warning" Color="#F2B84B" read:Mark="Editor.Background" />
             <SolidColorBrush x:Key="Passenger.Editor.Info" Color="#8C97AC" read:Mark="Editor.Background" />
+            <SolidColorBrush x:Key="Passenger.Editor.Fine" Color="#34D399" read:Mark="Editor.Background" />
             <SolidColorBrush x:Key="Passenger.Editor.Breakpoint" Color="#F2506A" read:Mark="Editor.Gutter" />
             <SolidColorBrush x:Key="Passenger.Editor.BreakpointLine" Color="#2D1A25" />
             <SolidColorBrush x:Key="Passenger.Editor.BreakpointMuted" Color="#B9C3D7" read:None="a breakpoint turned off, as what cannot be used now" />
@@ -518,6 +519,7 @@
             <SolidColorBrush x:Key="Passenger.Editor.Error" Color="#D12F45" />
             <SolidColorBrush x:Key="Passenger.Editor.Warning" Color="#A35E00" />
             <SolidColorBrush x:Key="Passenger.Editor.Info" Color="#6B7488" />
+            <SolidColorBrush x:Key="Passenger.Editor.Fine" Color="#0E8A5A" />
             <SolidColorBrush x:Key="Passenger.Editor.Breakpoint" Color="#E0405A" />
             <SolidColorBrush x:Key="Passenger.Editor.BreakpointLine" Color="#FCE6EA" />
             <SolidColorBrush x:Key="Passenger.Editor.BreakpointMuted" Color="#6B7488" />

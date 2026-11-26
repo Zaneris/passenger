@@ -370,7 +370,10 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.SignpostUsages);
         Add(Declared.SignpostInheriting);
         Add(Declared.SignpostAuthors);
-        AddComplexitySettings();
+        Add(Declared.SignpostComplexity);
+        Add(Declared.SignpostComplexityMinimum);
+        Add(Declared.SignpostComplexityYellowFrom);
+        Add(Declared.SignpostComplexityRedFrom);
         TextBox masks = new() { Text = Working.SoftWrapFiles, PlaceholderText = "No files", IsEnabled = Working.SoftWrap };
         ToolTip.SetTip(masks, "Use * and ? as wildcards and ; to separate patterns");
         masks.TextChanged += (_, _) => Change(s => s with { SoftWrapFiles = masks.Text ?? string.Empty });
@@ -506,21 +509,6 @@ public sealed partial class SettingsDialog : IdeWindow
 
         Add(Declared.ChordWaitSeconds);
         AddKeymap();
-    }
-
-    private void AddComplexitySettings()
-    {
-        Add(Declared.SignpostComplexity);
-        Add(Declared.SignpostComplexityMinimum);
-
-        NumericUpDown yellow = Declared.SignpostComplexityYellowFrom.Box(Working, Change);
-        NumericUpDown red = Declared.SignpostComplexityRedFrom.Box(Working, Change);
-        yellow.Maximum = Working.SignpostComplexityRedFrom;
-        red.Minimum = Working.SignpostComplexityYellowFrom;
-        yellow.ValueChanged += (_, e) => red.Minimum = e.NewValue ?? 0;
-        red.ValueChanged += (_, e) => yellow.Maximum = e.NewValue ?? int.MaxValue;
-        Add(Declared.SignpostComplexityYellowFrom, yellow);
-        Add(Declared.SignpostComplexityRedFrom, red);
     }
 
     /// <summary>A declared setting's own row, on its page, its editor made from the declaration.</summary>

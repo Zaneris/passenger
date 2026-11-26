@@ -263,6 +263,7 @@ public static class ThemePalettes
         t["Editor.Error"] = Legible(L("Editor.Error", p.Red, [editor], Mark, dark), [badge], Text, IsDark(badge));
         t["Editor.Warning"] = Legible(L("Editor.Warning", dark ? p.Yellow : p.Orange, [editor], Mark, dark), [badge], Text, IsDark(badge));
         t["Editor.Info"] = L("Editor.Info", muted, [editor], Mark, dark);
+        t["Editor.Fine"] = L("Editor.Fine", p.Green, [editor], Mark, dark);
         t["Editor.Breakpoint"] = L("Editor.Breakpoint", p.Red, [gutterGround], Mark, dark);
         t["Editor.BreakpointLine"] = Mix(editor, p.Red, 0.12);
         t["Editor.BreakpointMuted"] = t["Icon"];

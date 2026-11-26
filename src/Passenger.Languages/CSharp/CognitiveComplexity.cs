@@ -11,7 +11,9 @@ public sealed record FunctionComplexity(string Name, int Offset, int RowOffset, 
 /// <summary>The sum of the increments on a zero-based line.</summary>
 public readonly record struct ComplexityLine(int Line, int Points);
 
-/// <summary>Reads cognitive complexity from a C# parse, using SonarSource's control-flow, nesting and logical-sequence rules.</summary>
+/// <summary>Each C# function's cognitive complexity read from a parse, by the Cognitive Complexity white paper's rules: a
+/// break in the flow (a branch, a loop, a catch, a jump, recursion) adds one, more for each level it nests in, and each run
+/// of one logical operator adds one.</summary>
 public static class CognitiveComplexity
 {
     public static IReadOnlyList<FunctionComplexity> Of(ParsedText parsed, CancellationToken cancel = default)

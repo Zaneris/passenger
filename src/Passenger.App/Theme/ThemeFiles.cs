@@ -341,6 +341,8 @@ public static partial class ThemeFiles
             // The Debug button in the file's own icon colours, legible where its icons are.
             Work("Debug", Given("Icon"));
             Work("TitleBar.Debug", Given("TitleBar.Icon"));
+            // A measure's fine mark on the code in the file's own green.
+            Work("Editor.Fine", Given("Test.Passed"));
         }
     }
 

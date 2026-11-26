@@ -144,9 +144,17 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     public bool SignpostInheriting { get; init; } = true;
 
     public bool SignpostAuthors { get; init; } = true;
+
+    /// <summary>Signposts' cognitive complexity of each C# function, in green, yellow or red.</summary>
     public bool SignpostComplexity { get; init; } = true;
+
+    /// <summary>The least score a function shows its complexity at.</summary>
     public int SignpostComplexityMinimum { get; init; } = 3;
+
+    /// <summary>The least score shown in yellow, those under it green.</summary>
     public int SignpostComplexityYellowFrom { get; init; } = 8;
+
+    /// <summary>The least score shown in red, never below <see cref="SignpostComplexityYellowFrom"/>.</summary>
     public int SignpostComplexityRedFrom { get; init; } = 16;
 
     /// <summary>"Soft-wrap these files": a file whose name matches <see cref="SoftWrapFiles"/> opens with its lines
@@ -723,10 +731,6 @@ public sealed record AppSettings : IStateDocument<AppSettings>
         foreach (Setting setting in Declared.All)
         {
             clamped = setting.Clamp(clamped);
-        }
-        if (clamped.SignpostComplexityRedFrom < clamped.SignpostComplexityYellowFrom)
-        {
-            clamped = clamped with { SignpostComplexityRedFrom = clamped.SignpostComplexityYellowFrom };
         }
         return clamped;
 

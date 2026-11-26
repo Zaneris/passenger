@@ -120,7 +120,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>Find Usages groups, previews and keeps each search, lists each place once and gives its results the
     /// keys; Show Usages hands them to the Find window; a file another program has just written lists its caller; the
     /// call hierarchy finds callers at a use in another file and a record's positional property; and the signposts above
-    /// each type and member count what uses and implements it.</summary>
+    /// each type and member count what uses and implements it, and say how complex each function is.</summary>
     [AvaloniaFact]
     public void Usages_and_callers_are_listed_once_each_given_the_keys_and_followed_into_a_file_just_written()
     {
@@ -130,6 +130,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("Find Usages in a file another program has just written lists the caller it wrote beside it", () => new CodeAssistTests(project), t => t.Find_usages_in_a_file_another_program_has_just_written_lists_the_caller_it_wrote_beside_it());
         Flow.StepApart("the call hierarchy at a use in another file and at a record's positional property shows its callers", () => new CodeAssistTests(project), t => t.Call_hierarchy_at_a_use_in_another_file_and_at_a_records_positional_property_shows_its_callers());
         Flow.StepApart("signposts above each type and member count what uses and implements it, a press shows them and Settings turns them off", () => new CodeAssistTests(project), t => t.Signposts_above_each_type_and_member_count_what_uses_and_implements_it_a_press_shows_them_and_settings_turns_them_off());
+        Flow.StepApart("a function's cognitive complexity shows in its signpost in its colour, a press showing what each line adds", () => new CodeAssistTests(project), t => t.Complexity_signposts_toggle_the_increments_at_the_line_ends_and_follow_edits());
         Flow.StepApart("the dependency map opens at the caret and reads its nodes and edges as the compiler binds them", () => new CodeAssistTests(project), t => t.The_dependency_map_opens_at_the_caret_and_reads_its_nodes_and_edges_as_the_compiler_binds_them());
     }
 
@@ -1358,8 +1359,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         }
     }
 
-    [AvaloniaFact]
-    public void Complexity_signposts_toggle_the_increments_at_the_line_ends_and_follow_edits()
+    private void Complexity_signposts_toggle_the_increments_at_the_line_ends_and_follow_edits()
     {
         MainWindow window = project.Open("Complexity.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1376,11 +1376,11 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             IEnumerable<(int Line, string Text)> Increments() => editor.LineAnnotations
                 .Where(a => a.Text.StartsWith('+')).Select(a => (a.Line, a.Text));
             Ui.WaitFor(() => editor.RowsAbove.Count == 2, () => $"Complexity signposts: {string.Join(", ", Scores())}");
-            Assert.Equal([("8", TokenKeys.Warning), ("21", TokenKeys.Error)], Scores());
+            Assert.Equal([("8", TokenKeys.Editor_Warning), ("21", TokenKeys.Editor_Error)], Scores());
             Assert.Empty(Increments());
 
             window.ApplySettings(complexityOnly with { SignpostComplexityMinimum = 0, SignpostComplexityYellowFrom = 9, SignpostComplexityRedFrom = 22 });
-            Assert.Equal([("0", TokenKeys.Vcs_File_Added), ("8", TokenKeys.Vcs_File_Added), ("21", TokenKeys.Warning)], Scores());
+            Assert.Equal([("0", TokenKeys.Editor_Fine), ("8", TokenKeys.Editor_Fine), ("21", TokenKeys.Editor_Warning)], Scores());
             window.ApplySettings(complexityOnly);
 
             LineAnnotation debuggerValue = new(2, "value: 1", LineAnnotationLook.Muted);

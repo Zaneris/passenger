@@ -112,7 +112,7 @@ public sealed class ToggleSetting(Func<AppSettings, bool> get, Func<AppSettings,
 /// <paramref name="step"/>, its unit after it where it has one; one that may be left unset (<paramref name="given"/> false)
 /// shows the value in force and stays unset until changed.</summary>
 public sealed class NumberSetting(Func<AppSettings, double> get, Func<AppSettings, double, AppSettings> set, double min, double max, double step,
-    SettingRow? row = null, string? unit = null, Func<AppSettings, bool>? given = null) : Setting(row)
+    SettingRow? row = null, string? unit = null, Func<AppSettings, bool>? given = null, Func<AppSettings, string?>? refused = null) : Setting(row)
 {
     public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change) =>
         unit is null ? Box(now, change) : WithUnit(Box(now, change), unit);
@@ -145,6 +145,11 @@ public sealed class NumberSetting(Func<AppSettings, double> get, Func<AppSetting
     public override AppSettings FilledIn(AppSettings settings) => given is not null && !given(settings) ? set(settings, get(settings)) : settings;
 
     public override AppSettings Other(AppSettings settings) => set(settings, get(settings) == min ? max : min);
+
+    /// <summary>Why the value the settings come to with it changed is refused (<paramref name="refused"/>, which may weigh it
+    /// against another setting's), naming the setting; null where it is left as it was or allowed.</summary>
+    public override string? Refused(AppSettings was, AppSettings now) =>
+        refused is not null && get(now) != get(was) && refused(now) is { } why ? $"{Row!.Label} ({SettingsDialog.PlaceOfPage(Row.Page)}) {why}" : null;
 }
 
 /// <summary>A size chosen from a drop-down of <paramref name="sizes"/> (1.5 shown as 150%), from the least to the most: the

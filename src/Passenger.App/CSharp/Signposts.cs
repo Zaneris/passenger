@@ -424,9 +424,9 @@ internal sealed class Signposts
     {
         string dotBrush = function.Score switch
         {
-            int score when score < settings.SignpostComplexityYellowFrom => TokenKeys.Vcs_File_Added,
-            int score when score < settings.SignpostComplexityRedFrom => TokenKeys.Warning,
-            _ => TokenKeys.Error,
+            int score when score < settings.SignpostComplexityYellowFrom => TokenKeys.Editor_Fine,
+            int score when score < settings.SignpostComplexityRedFrom => TokenKeys.Editor_Warning,
+            _ => TokenKeys.Editor_Error,
         };
         string label = shared ? $"{function.Score} ({function.Name})" : $"{function.Score}";
         return new RowAboveWord(label, new ComplexityWord(function, version), dotBrush);
