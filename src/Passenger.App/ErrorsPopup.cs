@@ -8,7 +8,8 @@ using Passenger.Editor;
 namespace Passenger.App;
 
 /// <summary>The IDE's internal errors: those caught since the last Clear All, each once with how many times it came,
-/// the chosen one's details under them, and the log a button away.</summary>
+/// the chosen one's details under them, and the log a button away; resized from its corner, its details taking the height
+/// it gains.</summary>
 public sealed class ErrorsPopup : UserControl
 {
     private readonly ListBox list;
@@ -57,7 +58,7 @@ public sealed class ErrorsPopup : UserControl
         {
             Classes = { StyleClasses.Popup },
             Padding = PopupFrame.Inset,
-            Child = new StackPanel
+            Child = PopupFrame.Resizable(new StackPanel
             {
                 Spacing = Gaps.Wide,
                 Children =
@@ -82,7 +83,7 @@ public sealed class ErrorsPopup : UserControl
                         Children = { log, clear, close },
                     },
                 },
-            },
+            }, this, details),
         };
     }
 

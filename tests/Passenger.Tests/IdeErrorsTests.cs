@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -47,14 +48,57 @@ public sealed class IdeErrorsTests : IDisposable
     }
 
     /// <summary>An error in what Replace All, Abort Merge or the question of a file changed on disk set going is shown
-    /// and logged as it happens, the merge and the disk's text kept, as one flow, each step the check one test made in
-    /// an instance of its own.</summary>
+    /// and logged as it happens, the merge and the disk's text kept, and IDE Internal Errors resized to read one, as one
+    /// flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
     public void An_error_in_work_the_window_set_going_is_shown_and_logged_as_it_happens()
     {
         Flow.StepApart<IdeErrorsTests>("an error in what replace all set going is shown and logged as it happens not once its task is collected", t => t.An_error_in_what_replace_all_set_going_is_shown_and_logged_as_it_happens_not_once_its_task_is_collected());
         Flow.StepApart<IdeErrorsTests>("an error in what the Git menus Abort Merge set going is shown and logged as it happens and the merge stays", t => t.An_error_in_what_the_Git_menus_Abort_Merge_set_going_is_shown_and_logged_as_it_happens_and_the_merge_stays());
         Flow.StepApart<IdeErrorsTests>("an error in the question a file changed here and on disk asks is shown and logged as it happens and the disk keeps its text", t => t.An_error_in_the_question_a_file_changed_here_and_on_disk_asks_is_shown_and_logged_as_it_happens_and_the_disk_keeps_its_text());
+        Flow.StepApart<IdeErrorsTests>("IDE Internal Errors is resized from its corner its details taking the height it gains", t => t.Ide_internal_errors_is_resized_from_its_corner_its_details_taking_the_height_it_gains());
+    }
+
+    /// <summary>IDE Internal Errors is resized from its frame's lower right corner as a window is: wider, and its details
+    /// taller, so a long stack trace reads whole, never past the window nor smaller than it opened (#2293).</summary>
+    private void Ide_internal_errors_is_resized_from_its_corner_its_details_taking_the_height_it_gains()
+    {
+        MainWindow window = new() { Width = 1200, Height = 900 };
+        window.Show();
+        Ui.Settle();
+        // Thrown on purpose, for the popup to list; cleared as the step ends.
+        Dispatcher.UIThread.Post(() => throw new InvalidOperationException("A posted job went wrong"));
+        Ui.Settle();
+        try
+        {
+            ErrorsPopup popup = window.ShowErrors();
+            Ui.Settle();
+            ResizeGrip grip = popup.GetVisualDescendants().OfType<ResizeGrip>().Single();
+            TextBox details = popup.GetVisualDescendants().OfType<TextBox>().Single(box => box.IsReadOnly);
+            (double width, double height) = (popup.Bounds.Width, details.Bounds.Height);
+            Avalonia.Point corner = Ui.Centre(grip, window);
+            Ui.Drag(window, corner, corner + new Avalonia.Point(80, 120));
+            Ui.Settle();
+            Assert.True(popup.Bounds.Width >= width + 150 && details.Bounds.Height >= height + 110,
+                $"A drag from its corner left IDE Internal Errors {popup.Bounds.Width:0} wide, its details {details.Bounds.Height:0} high, where it opened {width:0} by {height:0}");
+            Avalonia.Point lower = Ui.Centre(grip, window);
+            Ui.Drag(window, lower, lower + new Avalonia.Point(0, 2000));
+            Ui.Settle();
+            Button close = popup.GetVisualDescendants().OfType<Button>().Single(button => button.Content as string == "Close");
+            double foot = close.TranslatePoint(new Avalonia.Point(0, close.Bounds.Height), popup)?.Y ?? double.NaN;
+            Assert.True(foot <= popup.Bounds.Height,
+                $"A drag from its corner far below the window left IDE Internal Errors' Close ending at {foot:0}, past the foot of the popup the window holds, {popup.Bounds.Height:0}");
+            Avalonia.Point moved = Ui.Centre(grip, window);
+            Ui.Drag(window, moved, moved - new Avalonia.Point(400, 400));
+            Ui.Settle();
+            Assert.True(popup.Bounds.Width == width && details.Bounds.Height == height,
+                $"A drag back past where it opened left IDE Internal Errors {popup.Bounds.Width:0} wide, its details {details.Bounds.Height:0} high, smaller than its {width:0} by {height:0}");
+        }
+        finally
+        {
+            IdeErrors.Clear();
+            window.Close();
+        }
     }
 
     /// <summary>A language server that ends, stops answering or ends at every start is started again with the open file
