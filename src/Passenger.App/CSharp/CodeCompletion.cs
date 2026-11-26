@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Passenger.App.Navigation;
@@ -18,7 +19,7 @@ internal sealed partial class CodeCompletion
     private readonly AssistContext context;
     private readonly PopupPlacement popups;
     private readonly CompletionPopup completion = new();
-    private readonly InfoCard itemCard = new("Documentation");
+    private readonly InfoCard itemCard;
     private readonly Dictionary<CompletionItem, LiveTemplate> templatesOffered = [];
     private readonly Dictionary<CompletionItem, (PostfixTemplate Template, PostfixTarget Target)> postfixOffered = [];
 
@@ -40,6 +41,7 @@ internal sealed partial class CodeCompletion
     {
         this.context = context;
         this.popups = popups;
+        itemCard = new InfoCard("Documentation", context.Browse);
         popups.Add(completion);
         popups.Add(itemCard, Close);
         ListKeys.Act(completion.List, new ListActs { Open = () => IdeErrors.Observe(Commit()) });
@@ -1150,7 +1152,8 @@ internal sealed partial class CodeCompletion
             }
             if (Shapes.Text(item.Documentation) is { Length: > 0 } documentation)
             {
-                itemCard.AddMarkdown(documentation, item.Code, overloadsShown: overloads);
+                itemCard.AddMarkdown(documentation, item.Code, overloadsShown: overloads,
+                    rich: shownIn == Languages.Language.CSharp && item.Documentation is { ValueKind: JsonValueKind.Object } markup && !HoverMarkdown.IsPlain(markup));
             }
             if (!itemCard.IsEmpty)
             {

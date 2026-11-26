@@ -16,7 +16,7 @@ internal sealed class QuickInfo
     private readonly AssistContext context;
     private readonly PopupPlacement popups;
     private readonly Func<bool> completing;
-    private readonly InfoCard hoverCard = new("Quick Documentation");
+    private readonly InfoCard hoverCard;
     private CancellationTokenSource? hovering;
 
     /// <summary>The pause after the pointer leaves a card (its word, or the card itself) before the card goes: time to reach
@@ -39,6 +39,7 @@ internal sealed class QuickInfo
         this.context = context;
         this.popups = popups;
         this.completing = completing;
+        hoverCard = new InfoCard("Quick Documentation", context.Browse);
         popups.Add(hoverCard, Hide);
         hoverCard.Play = context.Play;
         leaving = new Debounce(TimeSpan.FromMilliseconds(300), () =>
@@ -490,7 +491,7 @@ internal sealed class QuickInfo
             cancel.ThrowIfCancellationRequested();
             if (hover is not null)
             {
-                card.AddHover(hover);
+                card.AddHover(hover, csharp: lsp.LanguageId == LanguageIds.CSharp);
             }
         }
         catch (LanguageServerFailed)

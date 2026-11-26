@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Editors;
 using Passenger.App.Navigation;
 using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
@@ -2500,6 +2501,51 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void CSharp_documentation_formats_XML_in_hover_completion_and_parameter_info()
+    {
+        MainWindow window = project.Open("Documented.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Uri guide = new("https://example.test/guide?x=1&y=2");
+
+        Ui.PlaceAfter(editor, "return Documented.Re");
+        Ui.Run(window, AppActions.QuickDocumentation);
+        Ui.WaitFor(() => window.Assist.HoverText?.Contains("Use the", StringComparison.Ordinal) == true, "Read's documentation in hover");
+        MarkdownText hover = AssertDocumentation(window.Assist.HoverCard!, "quantity", "guide", guide);
+        Assert.Contains("Related", hover.Shown, StringComparison.Ordinal);
+        Assert.Contains("Read more", hover.Shown, StringComparison.Ordinal);
+        Assert.Contains("• First step", window.Assist.HoverText, StringComparison.Ordinal);
+        Assert.Contains("int value = 1;", window.Assist.HoverText, StringComparison.Ordinal);
+        Assert.Contains(hover.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == "<b>literal</b>");
+        Ui.Click(hover, hover.PointOf(guide));
+        Assert.Equal(guide, window.Browsed.LastOrDefault());
+        Ui.Press(window, "ESCAPE");
+
+        Ui.PlaceAfter(editor, "public static int Run()\n    {\n");
+        window.KeyTextInput("        Documented");
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.IsCompletionOpen, "members of Documented");
+        window.KeyTextInput("Rea");
+        Ui.WaitFor(() => window.Assist.ItemDocumentation?.Contains("Use the", StringComparison.Ordinal) == true, "Read's documentation in completion");
+        AssertDocumentation(window.Assist.ItemCard!, "quantity", "guide", guide);
+        Ui.Press(window, "ESCAPE");
+
+        Ui.PlaceAfter(editor, "return Documented.Read(");
+        Ui.Run(window, AppActions.ParameterInfo);
+        Ui.WaitFor(() => window.Assist.SignatureText?.Contains("The value", StringComparison.Ordinal) == true, "Read's parameter documentation");
+        AssertDocumentation(window.Assist.SignatureCard!, "value", "parameter guide", guide);
+        window.Close();
+
+        static MarkdownText AssertDocumentation(Border card, string bold, string label, Uri target)
+        {
+            MarkdownText words = Assert.Single(card.GetVisualDescendants().OfType<MarkdownText>(), block => block.Links.Any());
+            Assert.Contains((label, target), words.Links);
+            Assert.Contains(words.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == bold && run.FontWeight == FontWeight.Bold);
+            Assert.DoesNotContain("<see", words.Shown, StringComparison.Ordinal);
+            return words;
+        }
+    }
+
     private static T Await<T>(Task<T> task, string what) => Ui.Await(task, what, TimeSpan.FromSeconds(30));
 
     /// <summary>Chooses an item of the open list of choices by its words, with the keys a person would press.</summary>
@@ -3516,6 +3562,30 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Paths.cs"), "static class Paths\n{\n"
                 + "    /// <summary>Keeps its logs under <c>C:\\temp</c>, in C:\\temp\\logs, &quot;never&quot; elsewhere.</summary>\n"
                 + "    public static int Keep() => 1;\n}\n");
+            File.WriteAllText(PathOf("Documented.cs"), """
+                static class Documented
+                {
+                    /// <summary>
+                    /// Use the &lt;b&gt;quantity&lt;/b&gt; in the &lt;see href=&quot;https://example.test/guide?x=1&amp;y=2&quot;&gt;guide&lt;/see&gt;.
+                    /// See <see cref="Related"/> or type <c>&lt;b&gt;literal&lt;/b&gt;</c>.
+                    /// <para>Read more with <paramref name="value"/>.</para>
+                    /// <list type="bullet"><item><description>First step</description></item></list>
+                    /// <code>int value = 1;</code>
+                    /// </summary>
+                    /// <param name="value">The <b>value</b> in the <see href="https://example.test/guide?x=1&amp;y=2">parameter guide</see>.</param>
+                    public static int Read(int value) => value;
+                    public static int Related() => 0;
+                }
+
+                static class Reader
+                {
+                    public static int Run()
+                    {
+
+                        return Documented.Read(1);
+                    }
+                }
+                """);
             // A statement's completion with no usings, and with the usings a project's implicit ones bring.
             const string Statement = "\nstatic class Statement\n{\n    public static int Sum()\n    {\n        int total = 0;\n        return total;\n    }\n}\n";
             File.WriteAllText(PathOf("Bare.cs"), Statement.Replace("Statement", "Bare", StringComparison.Ordinal));

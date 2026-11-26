@@ -268,7 +268,7 @@ internal interface IHoverCard
     void AddText(string text);
 
     /// <summary>What a language server says of a place.</summary>
-    void AddHover(Hover hover);
+    void AddHover(Hover hover, bool csharp = false);
 
     /// <summary>A file the code names, previewed: by its words where it cannot be shown.</summary>
     void AddPreview(FilePreview preview) => AddText(preview.Words);
