@@ -317,6 +317,8 @@ public partial class MainWindow
                     return ($"{type.Name} can't be renamed", default(System.Text.Json.JsonElement));
                 }
                 markup = named is null ? new([], null) : await TypeRename.MarkupAsync(session.Xaml, named, renamed, renameFiles: true);
+                // A type declared whole again elsewhere (the file a copy of another) is renamed in the file named alone.
+                given = named is { Apart: true } ? TypeRename.Only(given, type.Declaring) : given;
                 return await WorkspaceEdits.StaleAsync(Editors, paths => server.HeldTextsAsync(paths), given, asked.Since, patience,
                         elsewhere: after => server.WrittenSinceAsync(after)) is { } stale
                     ? (Refusals.NotRenamed(type.Name, stale), given) : (null, given);

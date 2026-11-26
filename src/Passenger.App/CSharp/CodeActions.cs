@@ -749,6 +749,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             await NoteNothingToRenameAsync(old, definitions, asked);
             return new RefactorOutcome("This can't be renamed", null, [], []);
         }
+        // A type declared whole again elsewhere (a file copied beside its original), renamed where this file declares it, is renamed here alone.
+        if (type is { Apart: true } && PathNames.Same(type.Declaring, document.Path))
+        {
+            edit = TypeRename.Only(edit, document.Path);
+        }
         NamedSymbol? symbol = component is null && document.Language == Languages.Language.CSharp ? godot?.Symbol ?? await context.Now(document).SymbolAtAsync(at.Offset) : null;
         // Its uses in XAML, found where it is declared still: a binding's path, x:DataType, x:Static, a handler, a tag.
         (IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> inXaml, string? unfollowed) = symbol is not null

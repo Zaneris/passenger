@@ -25,17 +25,22 @@ public static class TypeRename
 {
     /// <summary>A type a rename names: its name, the name an <c>x:Class</c> gives it where a namespace declares it (null
     /// for one nested in another type), a file declaring it inside the folder (a Razor component's own, for the class Razor
-    /// makes of it), and those of its declarations' C# files that are named after it.</summary>
-    public sealed record Named(string Type, string? FullName, string Declaring, IReadOnlyList<string> Files);
+    /// makes of it), and those of its declarations' C# files that are named after it. <see cref="Apart"/> where it is
+    /// declared whole more than once (a file copied beside its original, CS0101), whose declarations are no type's parts.</summary>
+    public sealed record Named(string Type, string? FullName, string Declaring, IReadOnlyList<string> Files)
+    {
+        public bool Apart { get; init; }
+    }
 
     /// <summary>What a type's rename takes along of the markup its class is made with: the files moved with it, and the
     /// XAML file whose <c>x:Class</c> names it.</summary>
     public sealed record Markup(IReadOnlyList<(string From, string To)> Moves, string? ClassFile);
 
     /// <summary>The type whose name is at an offset of a file the server has open, and its declarations' files inside
-    /// the folder that are named after it (the server's definitions of a partial type are all its parts); null when the
-    /// name is not a type's declared in the folder. A definition at the start of a Razor component's file, of the name
-    /// asked about, is the class Razor makes of it, where none of C#'s declares it.</summary>
+    /// the folder that are named after it: every part's of a partial type, but of a type declared whole more than once
+    /// only the asked file's, as no other is its part; null when the name is not a type's declared in the folder. A
+    /// definition at the start of a Razor component's file, of the name asked about, is the class Razor makes of it, where
+    /// none of C#'s declares it.</summary>
     public static async Task<Named?> NamedAsync(EditorArea editors, string folder, LspDocument server, int offset)
     {
         // The open files as the question went: what is typed meanwhile moves the places the answer names in them.
@@ -47,7 +52,8 @@ public static class TypeRename
         string? fullName = null;
         string? declaring = null;
         string? component = null;
-        List<string> files = [];
+        string here = DocumentUris.ToPath(server.Uri);
+        List<(string Path, bool Partial)> declarations = [];
         foreach (LspLocation place in definitions)
         {
             if (Local(folder, place) is not { } path)
@@ -62,19 +68,33 @@ public static class TypeRename
             }
             if (type is null)
             {
-                (type, fullName) = declared;
+                (type, fullName, _) = declared;
                 declaring = path;
             }
-            if (declared.Name == type && IsNamedAfter(path, type) && !files.Contains(path))
+            if (declared.Name == type)
             {
-                files.Add(path);
+                declarations.Add((path, declared.Partial));
+                declaring = PathNames.Same(path, here) ? path : declaring;
             }
         }
         if (type is null && component is not null)
         {
             return new Named(Stem(component), null, component, []);
         }
-        return type is null || declaring is null ? null : new Named(type, fullName, declaring, files);
+        if (type is null || declaring is null)
+        {
+            return null;
+        }
+        bool apart = declarations.Count > 1 && declarations.Any(d => !d.Partial);
+        List<string> files = [];
+        foreach ((string path, _) in declarations.Where(d => IsNamedAfter(d.Path, type) && (!apart || PathNames.Same(d.Path, here))))
+        {
+            if (!files.Any(f => PathNames.Same(f, path)))
+            {
+                files.Add(path);
+            }
+        }
+        return new Named(type, fullName, declaring, files) { Apart = apart };
     }
 
     /// <summary>The class a Razor component's file makes, as the server holds it: the type a rename names, declared by the
@@ -149,6 +169,24 @@ public static class TypeRename
         return (path, new LspTextEdit(ServerLines.Of(text).RangeOf(TextRange.FromBounds(start, declared.ValueEnd)), name));
     }
 
+    /// <summary>A workspace edit's text edits of one file alone, in the shape it came in: a file renamed after its copy
+    /// changes nothing of its original or of what uses the original's type.</summary>
+    public static JsonElement Only(JsonElement edit, string path)
+    {
+        JsonObject whole = JsonNode.Parse(edit.GetRawText()) as JsonObject ?? [];
+        if (whole["documentChanges"] is JsonArray documents)
+        {
+            whole["documentChanges"] = new JsonArray([.. documents.OfType<JsonObject>().Where(d => d["edits"] is JsonArray
+                && d["textDocument"]?["uri"]?.GetValue<string>() is { } named && PathNames.Same(DocumentUris.ToPath(named), path)).Select(d => d.DeepClone())]);
+        }
+        if (whole["changes"] is JsonObject byUri)
+        {
+            whole["changes"] = new JsonObject(byUri.Where(f => PathNames.Same(DocumentUris.ToPath(f.Key), path))
+                .Select(f => KeyValuePair.Create(f.Key, f.Value?.DeepClone())));
+        }
+        return JsonSerializer.SerializeToElement(whole, Json.Options);
+    }
+
     /// <summary>A workspace edit with one more file's edit after its own, in the shape it came in.</summary>
     public static JsonElement With(JsonElement edit, string path, LspTextEdit change) => With(edit, [(path, [change])]);
 
@@ -203,7 +241,7 @@ public static class TypeRename
     /// <summary>The type declared at a place the server gave in a file, with its <c>x:Class</c> name; null when none is. A
     /// place in an open file is in its text as the question was <paramref name="asked"/>, read where what was typed since
     /// has taken it.</summary>
-    private static (string Name, string? FullName)? Declared(EditorArea editors, Asked asked, string path, LspLocation place)
+    private static (string Name, string? FullName, bool Partial)? Declared(EditorArea editors, Asked asked, string path, LspLocation place)
     {
         if (Syntax(editors, path) is not { } parsed)
         {
@@ -213,7 +251,7 @@ public static class TypeRename
             ? since.MapOffset(ServerLines.Of(since.Snapshot).OffsetOf(place.Range.Start))
             : ServerLines.Of(parsed.Text).OffsetOf(place.Range.Start);
         return DeclarationAt(parsed.Root, offset) is { } declaration && Identifier(declaration) is { } name
-            ? (name.ValueText, FullName(declaration, name.ValueText))
+            ? (name.ValueText, FullName(declaration, name.ValueText), declaration is TypeDeclarationSyntax { Modifiers: var modifiers } && modifiers.Any(SyntaxKind.PartialKeyword))
             : null;
     }
 
@@ -334,10 +372,12 @@ public static class TypeRename
     }
 
     /// <summary>The types renamed in files read before an edit (an open one's text given) and after it, a type whose
-    /// parts take two new names renaming none.</summary>
+    /// parts take two new names renaming none, and one declared whole more than once taking no file along.</summary>
     private static List<(Named Type, string Name)> RenamedIn(IReadOnlyList<(string Path, TextSnapshot? Open, IReadOnlyList<LspTextEdit> Edits, CSharpParseOptions Options)> files)
     {
         Dictionary<string, (Named Type, string? Name)> renamed = new(StringComparer.Ordinal);
+        Dictionary<string, int> declarations = new(StringComparer.Ordinal);
+        HashSet<string> whole = new(StringComparer.Ordinal);
         foreach ((string path, TextSnapshot? open, IReadOnlyList<LspTextEdit> edits, CSharpParseOptions options) in files)
         {
             if ((open ?? EditorArea.Read(path)) is not { } snapshot)
@@ -367,6 +407,11 @@ public static class TypeRename
                     continue;
                 }
                 string key = Qualified(was);
+                declarations[key] = declarations.GetValueOrDefault(key) + 1;
+                if (was is not TypeDeclarationSyntax { Modifiers: var modifiers } || !modifiers.Any(SyntaxKind.PartialKeyword))
+                {
+                    whole.Add(key);
+                }
                 (Named type, string? taking) = renamed.TryGetValue(key, out (Named, string?) known) ? known : (new Named(old, FullName(was, old), path, []), name);
                 List<string> named = [.. type.Files];
                 if (IsNamedAfter(path, old) && !named.Contains(path))
@@ -376,7 +421,9 @@ public static class TypeRename
                 renamed[key] = (type with { Files = named }, taking == name ? name : null);
             }
         }
-        return [.. renamed.Values.Where(r => r.Name is not null).Select(r => (r.Type, r.Name!))];
+        // A type declared whole more than once has no parts: no file is another's, so none is moved.
+        return [.. renamed.Where(r => r.Value.Name is not null).Select(r => declarations[r.Key] > 1 && whole.Contains(r.Key)
+            ? (r.Value.Type with { Files = [], Apart = true }, r.Value.Name!) : (r.Value.Type, r.Value.Name!))];
     }
 
     /// <summary>A C# file's type and delegate declarations, nested ones too, in their order.</summary>
