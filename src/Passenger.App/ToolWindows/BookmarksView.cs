@@ -91,7 +91,7 @@ public sealed class BookmarksView : DockPanel
         DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Normal, 0), Children = { where, text } };
         return row.Showing<Bookmark>(bookmark =>
         {
-            where.Text = $"{bookmark.Name}:{bookmark.Line + 1}";
+            where.Text = bookmark.Mnemonic is { } digit ? $"{digit}  {bookmark.Name}:{bookmark.Line + 1}" : $"{bookmark.Name}:{bookmark.Line + 1}";
             text.Text = lineText(bookmark.Path, bookmark.Line).Trim();
         });
     }

@@ -683,18 +683,14 @@ public sealed class OpenDocument : Observable
     public IFoldFinder? FoldFinder => finder;
 
     /// <summary>The bookmarked lines.</summary>
-    public IReadOnlyList<int> Bookmarks
+    public IReadOnlyList<int> Bookmarks => bookmarks;
+
+    /// <summary>The bookmarked lines and the digits of the numbered ones, by line.</summary>
+    public void ShowBookmarks(IReadOnlyList<int> lines, IReadOnlyDictionary<int, char> mnemonics)
     {
-        get => bookmarks;
-        set
-        {
-            if (!ReferenceEquals(bookmarks, value))
-            {
-                bookmarks = value;
-                Decorations.SetBookmarks(value);
-                Raise();
-            }
-        }
+        bookmarks = lines;
+        Decorations.SetBookmarks(lines, mnemonics);
+        Raise();
     }
 
     /// <summary>Text per line at the gutter's left (Git blame's), empty for none.</summary>

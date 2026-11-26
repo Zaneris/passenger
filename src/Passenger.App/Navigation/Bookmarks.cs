@@ -6,10 +6,14 @@ using Passenger.Text;
 
 namespace Passenger.App.Navigation;
 
-/// <summary>A bookmark: a file and a line (from zero) in it, carried with the file's text while it is open.</summary>
+/// <summary>A bookmark: a file and a line (from zero) in it, carried with the file's text while it is open, and the digit
+/// a numbered one is set and gone to by.</summary>
 public sealed class Bookmark(string path, int line)
 {
     public string Path { get; internal set; } = path;
+
+    /// <summary>The digit of a numbered bookmark, which no other has; null for a plain one.</summary>
+    public char? Mnemonic { get; internal set; }
 
     public int Line => At.Line;
 
@@ -32,11 +36,12 @@ public sealed record BookmarksState : IStateDocument<BookmarksState>
     };
 }
 
-/// <summary>A bookmark as kept: its file and its line from zero.</summary>
-public sealed record KeptBookmark(string Path, int Line);
+/// <summary>A bookmark as kept: its file, its line from zero and a numbered one's digit.</summary>
+public sealed record KeptBookmark(string Path, int Line, char? Mnemonic = null);
 
 /// <summary>Bookmarks: lines marked to come back to, Toggle Bookmark on the caret's line, Next and Previous across
-/// every file in the order they were set. A bookmark in an open file moves with its line, by an anchor in its text.</summary>
+/// every file in the order they were set, and the numbered ones each gone to by its digit. A bookmark in an open file
+/// moves with its line, by an anchor in its text.</summary>
 public sealed class BookmarkStore
 {
     private readonly List<Bookmark> all = [];
@@ -52,15 +57,25 @@ public sealed class BookmarkStore
 
     public IReadOnlyList<int> LinesIn(string path) => [.. all.Where(b => b.Path == path).Select(b => b.Line)];
 
+    /// <summary>The digits of a file's numbered bookmarks, by line.</summary>
+    public IReadOnlyDictionary<int, char> MnemonicsIn(string path) =>
+        all.Where(b => b.Path == path && b.Mnemonic is not null).ToDictionary(b => b.Line, b => b.Mnemonic!.Value);
+
+    /// <summary>The bookmark numbered with a digit, or null.</summary>
+    public Bookmark? Numbered(char digit) => all.FirstOrDefault(b => b.Mnemonic == digit);
+
     /// <summary>Every bookmark as the folder keeps it, in the order they were set.</summary>
-    public BookmarksState Capture() => new() { Bookmarks = [.. all.Select(b => new KeptBookmark(b.Path, b.Line))] };
+    public BookmarksState Capture() => new() { Bookmarks = [.. all.Select(b => new KeptBookmark(b.Path, b.Line, b.Mnemonic))] };
 
     /// <summary>Sets the bookmarks a folder kept after those there are; a line with one already keeps it.</summary>
     public void Restore(BookmarksState kept)
     {
         foreach (KeptBookmark bookmark in kept.Bookmarks.Where(k => !all.Any(b => b.Path == k.Path && b.Line == k.Line)))
         {
-            all.Add(Made(bookmark.Path, bookmark.Line));
+            Bookmark made = Made(bookmark.Path, bookmark.Line);
+            // A digit another bookmark took meanwhile stays that one's.
+            made.Mnemonic = bookmark.Mnemonic is { } digit && Numbered(digit) is null ? digit : null;
+            all.Add(made);
         }
         foreach (string path in kept.Bookmarks.Select(b => b.Path).Distinct())
         {
@@ -95,6 +110,28 @@ public sealed class BookmarkStore
         {
             all.Add(Made(path, line));
         }
+        Changed?.Invoke(this, path);
+    }
+
+    /// <summary>Sets the bookmark of a digit on a line, taking it from the line that had it; on the line that has it, takes
+    /// that bookmark away.</summary>
+    public void ToggleNumbered(string path, int line, char digit)
+    {
+        Bookmark? there = all.FirstOrDefault(b => b.Path == path && b.Line == line);
+        if (there?.Mnemonic == digit)
+        {
+            Remove(there);
+            return;
+        }
+        if (Numbered(digit) is { } before)
+        {
+            Remove(before);
+        }
+        if (there is null)
+        {
+            all.Add(there = Made(path, line));
+        }
+        there.Mnemonic = digit;
         Changed?.Invoke(this, path);
     }
 
@@ -196,7 +233,7 @@ public sealed class BookmarkStore
         if (moved)
         {
             // Two on one line (their lines joined) are one.
-            List<Bookmark> twice = [.. all.Where(b => b.Path == path).GroupBy(b => b.Line).SelectMany(g => g.Skip(1))];
+            List<Bookmark> twice = [.. all.Where(b => b.Path == path).GroupBy(b => b.Line).SelectMany(g => g.OrderBy(b => b.Mnemonic is null).Skip(1))];
             foreach (Bookmark extra in twice)
             {
                 all.Remove(extra);

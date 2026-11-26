@@ -72,6 +72,41 @@ public sealed class StateTests : IDisposable
         Flow.StepApart<StateTests>("a folders documents leave the store once no window has the folder open", t => t.A_folders_documents_leave_the_store_once_no_window_has_the_folder_open());
         Flow.StepApart<StateTests>("a folders kept documents are read off the windows thread as it opens and all come back", t => t.A_folders_kept_documents_are_read_off_the_windows_thread_as_it_opens_and_all_come_back());
         Flow.StepApart<StateTests>("a kept tests code read otherwise goes and its results stay", t => t.A_kept_tests_code_read_otherwise_goes_and_its_results_stay());
+        Flow.StepApart<StateTests>("numbered bookmarks are set and gone to by their digits and come back with the folder", t => t.Numbered_bookmarks_are_set_and_gone_to_by_their_digits_and_come_back_with_the_folder());
+    }
+
+    /// <summary>Ctrl+Shift and a digit sets that digit's bookmark on the caret's line, taking it from where it was, its digit
+    /// drawn in the gutter; Ctrl and the digit goes to it from any file, and the numbered bookmarks come back with their
+    /// folder (#2313).</summary>
+    private void Numbered_bookmarks_are_set_and_gone_to_by_their_digits_and_come_back_with_the_folder()
+    {
+        File.WriteAllText(Path.Combine(folder, "One.cs"), "class One\n{\n    void M()\n    {\n    }\n}\n");
+        File.WriteAllText(Path.Combine(folder, "Two.cs"), "class Two\n{\n}\n");
+        MainWindow first = Keeping(folder);
+        first.OpenFile(Path.Combine(folder, "One.cs"));
+        Ui.Settle();
+        first.EditorArea.CodeEditor.Focus();
+        first.EditorArea.CodeEditor.GoTo(new TextPosition(1, 0));
+        Ui.Press(first, "control shift 1");
+        first.EditorArea.CodeEditor.GoTo(new TextPosition(2, 4));
+        Ui.Press(first, "control shift 1");
+        Assert.True(first.EditorArea.CodeEditor.Decorations.BookmarkMnemonics.SequenceEqual([new KeyValuePair<int, char>(2, '1')]),
+            $"Bookmark 1 set on line 2 then on line 3 left the gutter's digits {string.Join(", ", first.EditorArea.CodeEditor.Decorations.BookmarkMnemonics)}, where it moves to line 3 alone");
+        first.OpenFile(Path.Combine(folder, "Two.cs"));
+        Ui.Settle();
+        first.EditorArea.CodeEditor.GoTo(new TextPosition(1, 0));
+        Ui.Press(first, "control shift 2");
+        Ui.Press(first, "control 1");
+        Assert.Equal(("One.cs", 2), (first.EditorArea.Active!.Name, first.EditorArea.CodeEditor.CaretPosition.Line));
+        first.Close();
+
+        MainWindow second = Keeping(folder);
+        Assert.Equal([("One.cs", 2, (char?)'1'), ("Two.cs", 1, '2')], second.Bookmarks.All.Select(b => (b.Name, b.Line, b.Mnemonic)));
+        Ui.Press(second, "control 2");
+        Assert.Equal(("Two.cs", 1), (second.EditorArea.Active!.Name, second.EditorArea.CodeEditor.CaretPosition.Line));
+        Ui.Press(second, "control shift 2");
+        Assert.Null(second.Bookmarks.Numbered('2'));
+        second.Close();
     }
 
     /// <summary>A kept run's code as an earlier build read it compares with nothing read now: left in, every test kept would

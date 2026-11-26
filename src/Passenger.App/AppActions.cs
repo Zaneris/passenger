@@ -91,6 +91,37 @@ public static class AppActions
     public const string NextBookmark = "app.bookmarks.next";
     public const string PreviousBookmark = "app.bookmarks.previous";
     public const string ShowBookmarks = "app.bookmarks.show";
+
+    // The numbered bookmarks: Rider's ToggleBookmark0 to 9 on Ctrl+Shift and the digit (but 5 in its VS Code keymaps), and
+    // GotoBookmark0 to 9 on Ctrl and the digit, in every keymap, the Mac's too.
+    public const string ToggleBookmark0 = "app.bookmarks.toggle0";
+    public const string ToggleBookmark1 = "app.bookmarks.toggle1";
+    public const string ToggleBookmark2 = "app.bookmarks.toggle2";
+    public const string ToggleBookmark3 = "app.bookmarks.toggle3";
+    public const string ToggleBookmark4 = "app.bookmarks.toggle4";
+    public const string ToggleBookmark5 = "app.bookmarks.toggle5";
+    public const string ToggleBookmark6 = "app.bookmarks.toggle6";
+    public const string ToggleBookmark7 = "app.bookmarks.toggle7";
+    public const string ToggleBookmark8 = "app.bookmarks.toggle8";
+    public const string ToggleBookmark9 = "app.bookmarks.toggle9";
+    public const string GoToBookmark0 = "app.bookmarks.goTo0";
+    public const string GoToBookmark1 = "app.bookmarks.goTo1";
+    public const string GoToBookmark2 = "app.bookmarks.goTo2";
+    public const string GoToBookmark3 = "app.bookmarks.goTo3";
+    public const string GoToBookmark4 = "app.bookmarks.goTo4";
+    public const string GoToBookmark5 = "app.bookmarks.goTo5";
+    public const string GoToBookmark6 = "app.bookmarks.goTo6";
+    public const string GoToBookmark7 = "app.bookmarks.goTo7";
+    public const string GoToBookmark8 = "app.bookmarks.goTo8";
+    public const string GoToBookmark9 = "app.bookmarks.goTo9";
+
+    /// <summary>Each digit's Toggle Bookmark and Go to Bookmark, at the digit's place.</summary>
+    public static IReadOnlyList<(string Toggle, string GoTo)> NumberedBookmarks { get; } =
+    [
+        (ToggleBookmark0, GoToBookmark0), (ToggleBookmark1, GoToBookmark1), (ToggleBookmark2, GoToBookmark2), (ToggleBookmark3, GoToBookmark3),
+        (ToggleBookmark4, GoToBookmark4), (ToggleBookmark5, GoToBookmark5), (ToggleBookmark6, GoToBookmark6), (ToggleBookmark7, GoToBookmark7),
+        (ToggleBookmark8, GoToBookmark8), (ToggleBookmark9, GoToBookmark9),
+    ];
     public const string ReplaceInFiles = "app.replaceInFiles";
     public const string ShowSettings = "app.settings";
     public const string ShowLog = "app.showLog";
@@ -750,6 +781,15 @@ public static class AppActions
             .Bind(CompletionExtensionMethods, "alt X")
             .Bind(CompletionFields, "alt F")
             .Bind(CompletionEvents, "alt E");
+        for (int digit = 0; digit < NumberedBookmarks.Count; digit++)
+        {
+            keymap.Bind(NumberedBookmarks[digit].GoTo, $"control {digit}");
+            // Rider's VS Code keymaps give Toggle Bookmark 5 no keys.
+            if (preset != KeymapPreset.VSCode || digit != 5)
+            {
+                keymap.Bind(NumberedBookmarks[digit].Toggle, $"control shift {digit}");
+            }
+        }
         foreach ((string action, string[] shortcuts) in overrides)
         {
             List<Shortcut> keys = [];
