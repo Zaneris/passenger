@@ -63,12 +63,16 @@ public sealed class AppDocuments
     }
 }
 
-/// <summary>The parts of an app's OpenAPI document (3.0 or 3.1, and Swagger 2.0's) the Endpoints window reads: its operations,
+/// <summary>The parts of an app's OpenAPI document (3.0 to 3.2, and Swagger 2.0's) the Endpoints window reads: its operations,
 /// and its schemas as written, a <c>$ref</c> followed into <c>components/schemas</c> (<c>definitions</c> in 2.0). Read as any
 /// other program's JSON (<see cref="JsonMembers"/>), so a member of an unexpected kind is passed over, never thrown on.</summary>
 public sealed partial class OpenApiDocument
 {
-    private static readonly string[] Methods = ["get", "put", "post", "delete", "options", "head", "patch", "trace"];
+    /// <summary>A path's operations named by their method, 3.2's <c>query</c> among them.</summary>
+    private static readonly string[] Methods = ["get", "put", "post", "delete", "options", "head", "patch", "trace", "query"];
+
+    /// <summary>A path's member (3.2) holding operations of any other method, each named by its method as it is sent.</summary>
+    private const string AdditionalOperations = "additionalOperations";
 
     /// <summary>In a segment's shape, the first character of what a <c>{name}</c> or a <c>{{variable}}</c> holds, which
     /// takes at least one.</summary>
@@ -92,6 +96,16 @@ public sealed partial class OpenApiDocument
                 if (Methods.Contains(member.Name, StringComparer.OrdinalIgnoreCase) && member.Value.ValueKind == JsonValueKind.Object)
                 {
                     operations.Add(Operation(member.Name.ToUpperInvariant(), path.Name, member.Value, shared));
+                }
+                else if (member.Name == AdditionalOperations)
+                {
+                    foreach (JsonProperty other in JsonMembers.Properties(path.Value, AdditionalOperations))
+                    {
+                        if (other.Value.ValueKind == JsonValueKind.Object && other.Name.Length > 0 && !Methods.Contains(other.Name, StringComparer.OrdinalIgnoreCase))
+                        {
+                            operations.Add(Operation(other.Name, path.Name, other.Value, shared));
+                        }
+                    }
                 }
             }
         }

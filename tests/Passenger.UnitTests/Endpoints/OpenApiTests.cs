@@ -76,7 +76,9 @@ public sealed class OpenApiTests
         (nameof(A_document_named_by_a_reference_to_another_host_is_refused_as_a_url_of_another_machine_is),
             A_document_named_by_a_reference_to_another_host_is_refused_as_a_url_of_another_machine_is),
         (nameof(A_swagger_2_documents_body_parameter_response_schemas_and_definitions_are_read),
-            A_swagger_2_documents_body_parameter_response_schemas_and_definitions_are_read));
+            A_swagger_2_documents_body_parameter_response_schemas_and_definitions_are_read),
+        (nameof(An_openapi_3_2_documents_query_and_additional_operations_are_read_and_make_their_requests),
+            An_openapi_3_2_documents_query_and_additional_operations_are_read_and_make_their_requests));
 
     /// <summary>A response is held to its operation's schema, each break said where it is.</summary>
     [Fact]
@@ -354,6 +356,44 @@ public sealed class OpenApiTests
         Assert.Equal("""{"name":"string"}""", OpenApiSchemas.Sample(given, add.RequestSchema!.Value)!.ToJsonString());
         using JsonDocument nameless = JsonDocument.Parse("{}");
         Assert.Equal([new SchemaBreak("/name", "is missing, though its schema requires it")], OpenApiSchemas.Check(given, add.ResponseSchema(200)!.Value, nameless.RootElement));
+    }
+
+    /// <summary>OpenAPI 3.2's operations beyond the methods 3.1 names: a path's <c>query</c>, a QUERY with its body, and its
+    /// <c>additionalOperations</c>, each by its method as written to be sent, one naming a method of its own fields passed over
+    /// as the specification forbids it there; a request is made for each.</summary>
+    private void An_openapi_3_2_documents_query_and_additional_operations_are_read_and_make_their_requests()
+    {
+        OpenApiDocument given = OpenApiDocument.Parse("""
+            { "openapi": "3.2.0", "paths": { "/items": {
+                "query": { "operationId": "FindItems", "requestBody": { "content": { "application/json": {
+                  "schema": { "type": "object", "properties": { "name": { "type": "string" } } } } } },
+                  "responses": { "200": { "description": "OK" } } },
+                "additionalOperations": {
+                  "PURGE": { "operationId": "PurgeItems", "responses": { "204": { "description": "Purged" } } },
+                  "post": { "operationId": "NotHere", "responses": { "200": { "description": "OK" } } } } } } }
+            """)!;
+        Assert.Equal(["QUERY /items", "PURGE /items"], given.Operations.Select(o => o.Title));
+        Assert.Equal("PurgeItems", given.OperationFor("PURGE", "/items")?.OperationId);
+        Assert.Equal("""
+            @Web_HostAddress = http://localhost:5123
+
+            # OpenAPI: FindItems
+            QUERY {{Web_HostAddress}}/items
+            Accept: application/json
+            Content-Type: application/json
+
+            {
+              "name": "string"
+            }
+
+            ###
+            # OpenAPI: PurgeItems
+            PURGE {{Web_HostAddress}}/items
+            Accept: application/json
+
+            ###
+
+            """.Replace("\r\n", "\n", StringComparison.Ordinal), OpenApiRequests.Entries(given, given.Operations, string.Empty, "Web_HostAddress", "http://localhost:5123"));
     }
 
     private void Requests_are_made_for_the_operations_a_file_does_not_call_yet_with_variables_and_bodies_from_the_schemas()
