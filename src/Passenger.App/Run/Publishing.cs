@@ -52,6 +52,10 @@ public sealed record PublishRequest(string Project, string? Profile, string? Con
     /// <summary>The registry a container publish pushes its image to; null for the engine on this machine.</summary>
     public string? Registry { get; init; }
 
+    /// <summary>The engine on this machine a container publish loads its image into, as the SDK names it
+    /// (<see cref="EngineState.LocalRegistry"/>), once asked; null before, and for a push to a registry.</summary>
+    public string? LocalRegistry { get; init; }
+
     /// <summary>Where an AppHost's publishers write, which Passenger then lands in <see cref="Folder"/>.</summary>
     public string? Staging { get; init; }
 
@@ -100,6 +104,10 @@ public sealed record PublishRequest(string Project, string? Profile, string? Con
         if (Kind == PublishKind.Container)
         {
             arguments.Add($"-t:{MSBuildNames.PublishContainer}");
+            if (LocalRegistry is { } engine)
+            {
+                arguments.Add(PropertySwitch.Of(MSBuildNames.LocalRegistry, engine));
+            }
         }
         return arguments;
     }

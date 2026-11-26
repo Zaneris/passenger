@@ -183,6 +183,10 @@ public static class MSBuildNames
     /// <summary>The registry an SDK container's image is pushed to; none for the engine on this machine.</summary>
     public const string ContainerRegistry = "ContainerRegistry";
 
+    /// <summary>The engine on this machine an SDK container's image is loaded into, by its CLI (Docker, Podman); with none
+    /// named, the SDK takes the first it finds, Apple's or WSL's own before either.</summary>
+    public const string LocalRegistry = "LocalRegistry";
+
     /// <summary>An SDK container's several tags, the one tag's place where it has more than one.</summary>
     public const string ContainerImageTags = "ContainerImageTags";
 
