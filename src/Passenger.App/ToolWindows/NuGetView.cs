@@ -515,7 +515,7 @@ public sealed partial class NuGetView : DockPanel
                     : new FeedSearch(await feed.SearchAsync(Query.Trim(), prerelease.IsChecked == true, cancel.Token), [], 0);
                 found = [.. answer.Packages.Select(h => Brought(new PackageRow(h.Id, h.Version, h.Description, h.Authors, h.Downloads,
                     installed.TryGetValue(h.Id, out Dictionary<string, IReadOnlyList<InstalledVersion>>? have) ? have : new Dictionary<string, IReadOnlyList<InstalledVersion>>())
-                { Feeds = h.Feeds }, transitive))];
+                { Feeds = h.Feeds, HeldBack = h.HeldBack }, transitive))];
                 Tell(Said(answer, feed), answer.Failed.Count > 0 ? string.Join("\n", answer.Failed.Select(f => $"{f.Feed}: {f.Problem}")) : null);
             }
             if (cancel.IsCancellationRequested)
@@ -826,17 +826,11 @@ public sealed partial class NuGetView : DockPanel
             {
                 found = row.AvailableVersions;
             }
-            else if (Feed is FeedSet set)
-            {
-                FeedVersions answer = await set.VersionsEachAsync(row.Id, prerelease.IsChecked == true, cancel.Token);
-                found = answer is { Versions.Count: 0, Failed.Count: > 0 }
-                    ? throw new HttpRequestException(string.Join("; ", answer.Failed.Select(f => $"{f.Feed}: {f.Problem}")))
-                    : answer.Versions;
-                tooNew = answer.TooNew;
-            }
             else
             {
-                found = await Feed.VersionsAsync(row.Id, prerelease.IsChecked == true, cancel.Token);
+                FeedVersions answer = (await Feed.VersionsEachAsync(row.Id, prerelease.IsChecked == true, cancel.Token)).Answered();
+                found = answer.Versions;
+                tooNew = answer.TooNew;
             }
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)

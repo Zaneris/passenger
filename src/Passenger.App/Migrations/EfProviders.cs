@@ -44,7 +44,7 @@ public static class EfProviders
     {
         bool prerelease = VersionOrder.IsPrerelease(asked);
         List<(string Version, string Range)> held = [];
-        foreach (string version in await feed.VersionsAsync(behind.Id, prerelease, cancel))
+        foreach (string version in (await feed.VersionsEachAsync(behind.Id, prerelease, cancel)).Answered().Chosen)
         {
             if (await RangeAsync(feed, behind.Id, version, framework, cancel) is not { } range)
             {
@@ -67,7 +67,7 @@ public static class EfProviders
         {
             held.Add((behind.Version, behind.Range));
         }
-        foreach (string core in await feed.VersionsAsync(EfRestore.Core, prerelease, cancel))
+        foreach (string core in (await feed.VersionsEachAsync(EfRestore.Core, prerelease, cancel)).Answered().Chosen)
         {
             if (VersionOrder.Instance.Compare(core, runtime) > 0 && VersionOrder.Instance.Compare(core, asked) < 0
                 && held.Where(h => EfRestore.InRange(h.Range, core)).Select(h => h.Version).Order(VersionOrder.Instance).FirstOrDefault() is { } fits)
@@ -85,7 +85,7 @@ public static class EfProviders
         CancellationToken cancel)
     {
         bool prerelease = VersionOrder.IsPrerelease(runtime);
-        IReadOnlyList<string> providers = await feed.VersionsAsync(behind.Id, prerelease, cancel);
+        IReadOnlyList<string> providers = (await feed.VersionsEachAsync(behind.Id, prerelease, cancel)).Answered().Chosen;
         foreach (string version in providers.Where(v => VersionOrder.Instance.Compare(v, behind.Version) > 0))
         {
             if (await RangeAsync(feed, behind.Id, version, framework, cancel) is { } range && EfRestore.InRange(range, runtime))
@@ -94,7 +94,7 @@ public static class EfProviders
                 return new EfAlignment($"Update {behind.Id} to {version}", [new EfMove(owner, [(behind.Id, version)])]);
             }
         }
-        IReadOnlyList<string> cores = await feed.VersionsAsync(EfRestore.Core, VersionOrder.IsPrerelease(Lower(behind.Range)), cancel);
+        IReadOnlyList<string> cores = (await feed.VersionsEachAsync(EfRestore.Core, VersionOrder.IsPrerelease(Lower(behind.Range)), cancel)).Answered().Chosen;
         if (cores.FirstOrDefault(v => EfRestore.InRange(behind.Range, v)) is not { } supported)
         {
             return null;
