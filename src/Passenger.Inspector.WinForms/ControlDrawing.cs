@@ -28,7 +28,7 @@ internal static partial class ControlDrawing
 
     /// <summary>Whether a control's window shows itself, as its own style says: a window never shown (the designer's) holds
     /// controls that show though none of them is visible on any screen.</summary>
-    private static bool Shows(Control control) => control.IsHandleCreated && (GetWindowLongPtr(control.Handle, -16) & Visible) != 0;
+    public static bool Shows(Control control) => control.IsHandleCreated && (GetWindowLongPtr(control.Handle, -16) & Visible) != 0;
 
     /// <summary>A control's client area and all it holds into the picture at <paramref name="at"/>, as its window's corner:
     /// the control's own client area drawn alone (WM_PRINTCLIENT, its frame left out), then what it holds.</summary>

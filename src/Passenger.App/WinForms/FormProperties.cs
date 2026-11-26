@@ -52,10 +52,10 @@ public sealed class FormPropertyRow(DesignProperty? property, DesignEvent? raise
 /// <summary>The properties or the events of the component chosen in a form's design, under the Structure window's outline of
 /// its components, as Windows Forms' property grid lists them: its name and type over a row for each by name, what the code
 /// sets in bold, its category under it, a value of parts (a Point, a Font, FlatAppearance) opening to them. A value is typed
-/// in its row (Enter, Enter again writing it as its type converter reads it), chosen from its list where it offers one,
-/// turned on and off flag by flag (Anchor), or picked as a colour; Reset in a row's menu puts it back to its default. An
-/// event's row hooks a handler, written into the form's code where it declares none, and goes to it (Enter or a double
-/// click), or one typed by name; Remove Handler unhooks it. Each change asked of the window as an edit of the design.</summary>
+/// in its row (Enter, Enter again writing it), chosen from its list, turned on and off flag by flag (Anchor), picked as a
+/// colour, a list of words edited a line an item, a collection given an item of a type it takes; Reset in a row's menu puts
+/// it back to its default. An event's row hooks a handler, written into the form's code where it declares none, and goes
+/// to it, or one typed by name; Remove Handler unhooks it. Each change asked of the window as an edit of the design.</summary>
 public sealed class FormProperties : DockPanel
 {
     private const string PropertiesKey = "properties";
@@ -124,6 +124,15 @@ public sealed class FormProperties : DockPanel
 
     /// <summary>The component renamed: its field, through a rename of the code.</summary>
     public event EventHandler<string>? RenameRequested;
+
+    /// <summary>A list of words given whole, a line an item.</summary>
+    public event EventHandler<(string Property, string Lines)>? ItemsRequested;
+
+    /// <summary>An item of a type (its full name with its assembly's) added to a collection.</summary>
+    public event EventHandler<(string Property, string Type)>? AddItemRequested;
+
+    /// <summary>The popup a list of words' items are edited in, while it is open.</summary>
+    public ItemsPopup? EditingItems { get; private set; }
 
     public ObservableCollection<FormPropertyRow> Rows { get; } = [];
 
@@ -346,7 +355,33 @@ public sealed class FormProperties : DockPanel
             }
         };
         grid.InValue(colour);
-        grid.Tag = new Control[] { choices, flags, colour };
+        Button items = new() { Content = "Edit Items…", HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false };
+        items.Click += (_, _) =>
+        {
+            if (grid.DataContext is FormPropertyRow { Property: { Lines: { } lines } property })
+            {
+                EditItems(items, property, lines);
+            }
+        };
+        grid.InValue(items);
+        ToolDropDown adds = new("Add an item") { HorizontalAlignment = HorizontalAlignment.Stretch, IsVisible = false };
+        ReusedRows.Use(adds, () =>
+        {
+            TextBlock kind = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            return kind.Showing<string>(type => kind.Text = ShortName(type));
+        });
+        adds.SelectionChanged += (_, _) =>
+        {
+            if (!showing && grid.DataContext is FormPropertyRow { Property: { } property } && adds.SelectedItem is string type)
+            {
+                showing = true;
+                adds.SelectedItem = null;
+                showing = false;
+                AddItemRequested?.Invoke(this, (property.Name, type));
+            }
+        };
+        grid.InValue(adds);
+        grid.Tag = new Control[] { choices, flags, colour, items, adds };
         TextBox box = grid.Box;
         box.KeyDown += (_, e) =>
         {
@@ -411,6 +446,15 @@ public sealed class FormProperties : DockPanel
                 named.Text = text;
             }
             colour.IsVisible = coloured;
+            bool lined = !typed && row.Property is { Lines: not null };
+            items.IsVisible = lined;
+            bool adding = !typed && row.Property is { Adds.Count: > 0 };
+            if (adding)
+            {
+                adds.ItemsSource = row.Property!.Adds;
+                adds.SelectedItem = null;
+            }
+            adds.IsVisible = adding;
             if (typed && !box.IsVisible)
             {
                 box.Text = text;
@@ -421,8 +465,8 @@ public sealed class FormProperties : DockPanel
                 });
             }
             box.IsVisible = typed;
-            grid.Value.IsVisible = !typed && !listed && !flagged && !coloured;
-            grid.SplitFor(editor: listed || typed || flagged || coloured);
+            grid.Value.IsVisible = !typed && !listed && !flagged && !coloured && !lined && !adding;
+            grid.SplitFor(editor: listed || typed || flagged || coloured || lined || adding);
             grid.Value.Classes.Set(StyleClasses.Muted, row.Property is { ReadOnly: true });
             showing = false;
         }
@@ -464,6 +508,30 @@ public sealed class FormProperties : DockPanel
                 toggle.IsChecked = held.Contains(property.Flags[i]);
             }
         }
+    }
+
+    /// <summary>A list of words' items edited as text in a popup over its row's button, the lines given written as the list.</summary>
+    private void EditItems(Control from, DesignProperty property, IReadOnlyList<string> lines)
+    {
+        ItemsPopup popup = new(property.Name, lines);
+        popup.Chosen += (_, given) =>
+        {
+            EditingItems = null;
+            closePopup();
+            if (given is not null)
+            {
+                ItemsRequested?.Invoke(this, (property.Name, given));
+            }
+        };
+        EditingItems = popup;
+        showPopup(popup, from);
+    }
+
+    /// <summary>A type's name alone, without its namespace or assembly.</summary>
+    private static string ShortName(string type)
+    {
+        string full = type.Split(',')[0];
+        return full[(full.LastIndexOfAny(['.', '+']) + 1)..];
     }
 
     /// <summary>The colour picker over a colour's swatch: the one chosen written as its red, green and blue (and alpha where

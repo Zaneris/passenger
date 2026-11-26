@@ -166,13 +166,29 @@ public sealed class FormDesignPane : DockPanel
     {
         // Kept by its field, so one the frame does not draw yet (made, renamed) is chosen as the next frame draws it.
         wanted = field;
-        Chosen = field is null ? null : design.Components.FirstOrDefault(c => c.Field == field && (c.Width > 0 || InTray(c)));
+        // One drawn nowhere (a menu's item, a column, a tab page not shown) is chosen too, outlined nowhere.
+        Chosen = field is null ? null : design.Components.FirstOrDefault(c => c.Field == field);
         ShowOutline();
     }
 
-    /// <summary>The deepest component drawn at a point of the frame, in its pixels; the root where none other is.</summary>
-    public DesignedBox? ComponentAt(Point point) =>
-        design.Components.LastOrDefault(c => c.Width > 0 && new Rect(c.X, c.Y, c.Width, c.Height).Contains(point));
+    /// <summary>The deepest component drawn at a point of the frame, in its pixels, under the front-most of those that hold it;
+    /// the root where none other is.</summary>
+    public DesignedBox? ComponentAt(Point point) => Under(point, null).LastOrDefault();
+
+    /// <summary>The components drawn at a point, from the root inward: of each one's boxes, listed front first as Windows Forms
+    /// orders a holder's controls, the first there (one being moved passed over, with what it holds).</summary>
+    private List<DesignedBox> Under(Point point, string? passing)
+    {
+        List<DesignedBox> under = [];
+        for (DesignedBox? at = design.Components.FirstOrDefault(c => c.Parent is null && There(c)); at is not null;
+            at = design.Components.FirstOrDefault(c => c.Parent == at.Field && c.Field != passing && There(c)))
+        {
+            under.Add(at);
+        }
+        return under;
+
+        bool There(DesignedBox box) => box.Width > 0 && new Rect(box.X, box.Y, box.Width, box.Height).Contains(point);
+    }
 
     private void OnFramePressed(object? sender, PointerPressedEventArgs e)
     {
@@ -293,25 +309,7 @@ public sealed class FormDesignPane : DockPanel
 
     /// <summary>The deepest component holding controls at a point of the frame that a box dropped there may go into: never the
     /// box itself nor one it holds.</summary>
-    private DesignedBox? ContainerAt(Point at, DesignedBox moved) =>
-        design.Components.LastOrDefault(c => c.Holds && c.Width > 0 && new Rect(c.X, c.Y, c.Width, c.Height).Contains(at) && !Within(c, moved.Field));
-
-    /// <summary>Whether a box is the component named or one it holds.</summary>
-    private bool Within(DesignedBox box, string field)
-    {
-        for (DesignedBox? at = box; at is not null; at = at.Parent is { } parent ? design.Components.FirstOrDefault(c => c.Field == parent) : null)
-        {
-            if (at.Field == field)
-            {
-                return true;
-            }
-            if (at.Parent is null)
-            {
-                return false;
-            }
-        }
-        return false;
-    }
+    private DesignedBox? ContainerAt(Point at, DesignedBox moved) => Under(at, moved.Field).LastOrDefault(c => c.Holds);
 
     protected override void OnKeyDown(KeyEventArgs e)
     {

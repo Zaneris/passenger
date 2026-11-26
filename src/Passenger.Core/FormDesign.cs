@@ -29,6 +29,9 @@ public sealed record DesignerStatement(DesignerAct Act, string Target, string? M
     public DesignerValue? Value { get; init; }
 
     public IReadOnlyList<DesignerValue>? Arguments { get; init; }
+
+    /// <summary>The component whose section comment it stands under (the last one above it); none before the first.</summary>
+    public string? Section { get; init; }
 }
 
 /// <summary>A value of designer code as the code writes it, its names unresolved (the designer resolves them by the file's
@@ -165,6 +168,15 @@ public static class DesignEditKinds
     public const string Hook = "hook";
 
     public const string Unhook = "unhook";
+
+    /// <summary>A list of words (a ListBox's Items) given as its text, a line an item.</summary>
+    public const string Items = "items";
+
+    /// <summary>An item of a type added to a component's collection (a strip's items, a list's columns), named by its member.</summary>
+    public const string AddItem = "item";
+
+    /// <summary>An item of a list moved up (X -1) or down (X 1) in it.</summary>
+    public const string Order = "order";
 }
 
 /// <summary>A property of the component inspected, as Windows Forms' property grid shows it: its name, category and type,
@@ -193,6 +205,13 @@ public sealed record DesignProperty(string Name, string Category, string Type, s
 
     /// <summary>A flags enum's flags (Anchor's Top, Bottom, Left, Right), each turned on or off alone; none for any other.</summary>
     public IReadOnlyList<string>? Flags { get; init; }
+
+    /// <summary>A list of words' items (a ListBox's Items), a line each, which the list is given whole; none for any other value.</summary>
+    public IReadOnlyList<string>? Lines { get; init; }
+
+    /// <summary>The types of item a collection of components takes (a strip's menu items and buttons, a list's columns), each
+    /// its full name with its assembly's; none for a value of no such items.</summary>
+    public IReadOnlyList<string>? Adds { get; init; }
 
     /// <summary>The parts of a value its type lists apart (a Point's X and Y, a Font's Bold, a button's FlatAppearance's
     /// BorderSize), each set by its dotted name; none for a value of no parts.</summary>
@@ -315,6 +334,16 @@ public sealed record DesignedBox(string Field, string Type, string? Parent, doub
 {
     /// <summary>The event a double click on it hooks, as its type says; none where it says none.</summary>
     public string? DefaultEvent { get; init; }
+
+    /// <summary>Its place, from 0, in the list in order it is an item of (a menu's, a strip's, a list's columns, a tab control's
+    /// pages), where it moves up or down; null for one of no such list.</summary>
+    public int? Place { get; init; }
+
+    /// <summary>How many items that list holds; 0 for one of no list.</summary>
+    public int Places { get; init; }
+
+    /// <summary>Whether it is a control, which stands in front of or behind the others its holder holds.</summary>
+    public bool Control { get; init; }
 }
 
 /// <summary>What the designer could not make of a statement (by its place in the list sent) or of the form as a whole.</summary>

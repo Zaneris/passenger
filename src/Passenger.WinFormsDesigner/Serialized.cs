@@ -36,6 +36,7 @@ internal sealed record Serialized(IReadOnlyList<SerializedLine> Lines, IReadOnly
         HashSet<string> fields = [.. declared.Members.OfType<CodeMemberField>().Select(f => f.Name)];
         List<SerializedLine> lines = [];
         string? section = null;
+        string? heading = null;
         foreach (CodeStatement statement in method.Statements)
         {
             if (statement is CodeCommentStatement { Comment.Text: var comment })
@@ -43,7 +44,7 @@ internal sealed record Serialized(IReadOnlyList<SerializedLine> Lines, IReadOnly
                 // The serializer heads each component's statements with its name between two empty comments.
                 if (comment.Trim() is { Length: > 0 } name)
                 {
-                    section = name;
+                    heading = name;
                 }
                 continue;
             }
@@ -52,7 +53,14 @@ internal sealed record Serialized(IReadOnlyList<SerializedLine> Lines, IReadOnly
                 // The control designers' shadows of these say a default is to be written; their designer never writes it.
                 continue;
             }
-            lines.Add(new SerializedLine(DesignerKeys.Of(Neutral(statement, fields)), section, text.Statement(statement), text.Exact(statement)));
+            DesignerStatement neutral = Neutral(statement, fields);
+            // A nested component's heading (a split container's panel) stands only over what is its own.
+            if (heading is not null && (!heading.Contains('.') || $"{neutral.Target}.{neutral.Member}".StartsWith($"{heading}.", StringComparison.Ordinal)))
+            {
+                section = heading;
+            }
+            heading = null;
+            lines.Add(new SerializedLine(DesignerKeys.Of(neutral), section, text.Statement(statement), text.Exact(statement)));
         }
         return new Serialized(lines, [.. declared.Members.OfType<CodeMemberField>().Select(f => new SerializedField(f.Name, text.Field(f)))]);
     }

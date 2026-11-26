@@ -56,6 +56,7 @@ internal sealed class Designer(Assembly? project) : IDisposable
         Events events = new(surface);
         services.AddService(typeof(IEventBindingService), events);
         services.AddService(typeof(IResourceService), new Resources());
+        services.AddService(typeof(ITypeResolutionService), new Resolution(types));
         surface.BeginLoad(based);
         if (!surface.IsLoaded || surface.GetService(typeof(IDesignerHost)) is not IDesignerHost host || host.RootComponent is not Control root)
         {
@@ -77,6 +78,7 @@ internal sealed class Designer(Assembly? project) : IDisposable
                 notes.Add(new DesignNote((failed is TargetInvocationException { InnerException: { } inner } ? inner : failed).Message, i));
             }
         }
+        Components.Reveal(request.Inspect is { } shownField ? Components.Find(host, root, shownField) : null);
         Show(root);
         int bar = Bar(root);
         Point origin = root.PointToScreen(Point.Empty);
@@ -95,7 +97,7 @@ internal sealed class Designer(Assembly? project) : IDisposable
             origin.Offset(0, -bar);
         }
         (byte[] png, List<DesignedBox> boxes) = Drawn(host, root, bar, origin);
-        IComponent? inspected = request.Inspect is { } field ? field.Length == 0 ? root : host.Container.Components[field] : null;
+        IComponent? inspected = request.Inspect is { } field ? Components.Find(host, root, field) : null;
         return new FormDesignReply
         {
             Kind = PreviewKinds.Frame,
@@ -238,64 +240,7 @@ internal sealed class Designer(Assembly? project) : IDisposable
         }
         using MemoryStream png = new();
         picture.Save(png, ImageFormat.Png);
-        List<DesignedBox> boxes = [new DesignedBox(string.Empty, root.GetType().Name, null, 0, 0, client.Width, bar + client.Height, true) { DefaultEvent = DefaultEvent(root) }];
-        Walk(root, host, origin, boxes);
-        foreach (IComponent tray in host.Container.Components.Cast<IComponent>().Where(c => c is not Control && c is not ToolStripItem && c != root))
-        {
-            boxes.Add(new DesignedBox(tray.Site?.Name ?? string.Empty, tray.GetType().Name, null, 0, 0, 0, 0, false) { DefaultEvent = DefaultEvent(tray) });
-        }
-        return (png.ToArray(), boxes);
-    }
-
-    /// <summary>The boxes of what a control holds, in turn: its controls, a strip's items.</summary>
-    private static void Walk(Control holder, IDesignerHost host, Point origin, List<DesignedBox> boxes)
-    {
-        if (holder is ToolStrip strip)
-        {
-            // The designer's own items (a strip's Type Here) are sited in no container: none of the form's.
-            foreach (ToolStripItem item in strip.Items.Cast<ToolStripItem>().Where(i => i.Site is not null))
-            {
-                Point at = strip.PointToScreen(item.Bounds.Location);
-                boxes.Add(new DesignedBox(item.Site!.Name ?? item.Name ?? string.Empty, item.GetType().Name, NameOf(strip, host), at.X - origin.X, at.Y - origin.Y, item.Width, item.Height, false)
-                {
-                    DefaultEvent = DefaultEvent(item),
-                });
-            }
-        }
-        foreach (Control control in holder.Controls)
-        {
-            if (!control.IsHandleCreated || control.Site is null && control.Controls.Count == 0)
-            {
-                continue;
-            }
-            if (control.Site is not null)
-            {
-                Point at = control.Parent!.PointToScreen(control.Location);
-                boxes.Add(new DesignedBox(control.Site.Name ?? control.Name, control.GetType().Name, NameOf(holder, host), at.X - origin.X, at.Y - origin.Y,
-                    control.Width, control.Height, host.GetDesigner(control) is ParentControlDesigner) { DefaultEvent = DefaultEvent(control) });
-            }
-            Walk(control, host, origin, boxes);
-        }
-    }
-
-    /// <summary>The event a double click on a component hooks, as its type's <c>[DefaultEvent]</c> says.</summary>
-    private static string? DefaultEvent(object component) => TypeDescriptor.GetDefaultEvent(component)?.Name;
-
-    /// <summary>The field of the nearest component holding a control (empty for the root).</summary>
-    private static string NameOf(Control control, IDesignerHost host)
-    {
-        for (Control? at = control; at is not null; at = at.Parent)
-        {
-            if (at == host.RootComponent)
-            {
-                return string.Empty;
-            }
-            if (at.Site?.Name is { } name)
-            {
-                return name;
-            }
-        }
-        return string.Empty;
+        return (png.ToArray(), Components.Boxes(host, root, origin, bar));
     }
 
     /// <summary>A title bar like the system's, drawn above the client area: it is no part of what the form holds.</summary>
@@ -363,6 +308,39 @@ internal sealed class Designer(Assembly? project) : IDisposable
             public void Dispose()
             {
             }
+        }
+    }
+
+    /// <summary>Types by their names for Windows Forms' serializers, which write what a type asks of its code (an
+    /// ISupportInitialize's BeginInit and EndInit) only where its name is found: the project's and the framework's.</summary>
+    private sealed class Resolution(Types types) : ITypeResolutionService
+    {
+        public Assembly? GetAssembly(AssemblyName name) => GetAssembly(name, false);
+
+        public Assembly? GetAssembly(AssemblyName name, bool throwOnError)
+        {
+            try
+            {
+                return Assembly.Load(name);
+            }
+            catch (Exception missing) when (!throwOnError && missing is FileNotFoundException or FileLoadException or BadImageFormatException)
+            {
+                return null;
+            }
+        }
+
+        public string? GetPathOfAssembly(AssemblyName name) => GetAssembly(name)?.Location;
+
+        public Type? GetType(string name) => GetType(name, false, false);
+
+        public Type? GetType(string name, bool throwOnError) => GetType(name, throwOnError, false);
+
+        public Type? GetType(string name, bool throwOnError, bool ignoreCase) =>
+            Type.GetType(name, false, ignoreCase) ?? types.Find(name.Split(',')[0].Trim().Replace('+', '.'))
+            ?? (throwOnError ? throw new TypeLoadException($"No type {name} is found") : null);
+
+        public void ReferenceAssembly(AssemblyName name)
+        {
         }
     }
 

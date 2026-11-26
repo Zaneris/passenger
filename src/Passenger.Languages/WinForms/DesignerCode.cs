@@ -56,7 +56,8 @@ public static class DesignerCode
             List<DesignerField> fields = [.. declared.SelectMany(f => f.Declaration.Variables.Select(v => new DesignerField(v.Identifier.ValueText, Written(f.Declaration.Type))))];
             HashSet<string> named = [.. fields.Select(f => f.Name)];
             IReadOnlyList<StatementSyntax> statements = method.Body?.Statements ?? [];
-            List<DesignerStatement> read = [.. statements.Select(s => Statement(s, named))];
+            string? section = null;
+            List<DesignerStatement> read = [.. statements.Select(s => Statement(s, named) with { Section = section = SectionAbove(s) ?? section })];
             int qualified = statements.Count(s => s is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax { Left: MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax } } });
             DesignerLayout layout = new(
                 [.. statements.Select(s => (s.SpanStart, s.Span.End))],
@@ -68,6 +69,14 @@ public static class DesignerCode
             return new DesignerSource(NamespaceOf(type), UsingsOf(type), fields, method.Identifier.SpanStart, read) { Layout = layout };
         }
         return null;
+    }
+
+    /// <summary>The component a section comment just above a statement names, as the designer writes one: three comment
+    /// lines, the middle one the name; null where none stands there.</summary>
+    private static string? SectionAbove(StatementSyntax statement)
+    {
+        List<string> comments = [.. statement.GetLeadingTrivia().Where(t => t.IsKind(SyntaxKind.SingleLineCommentTrivia)).Select(t => t.ToString()[2..].Trim())];
+        return comments is [.., "", { Length: > 0 } name, ""] ? name : null;
     }
 
     /// <summary>The classes a file's text gives an InitializeComponent of no parameters, by their full names.</summary>

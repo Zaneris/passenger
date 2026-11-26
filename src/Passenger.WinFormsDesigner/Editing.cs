@@ -22,7 +22,20 @@ internal static class Editing
     {
         using DesignerTransaction transaction = host.CreateTransaction(edit.Kind);
         string? handler = null;
-        List<string> chosen = edit.Kind switch
+        List<string> chosen;
+        try
+        {
+            chosen = Made();
+        }
+        catch (Exception failed) when (failed is ArgumentException or InvalidOperationException or NotSupportedException or NullReferenceException
+            or TargetInvocationException or InvalidCastException)
+        {
+            throw new DesignerException($"Windows Forms' designers refused it: {(failed is TargetInvocationException { InnerException: { } inner } ? inner : failed).Message}");
+        }
+        transaction.Commit();
+        return (chosen, handler);
+
+        List<string> Made() => edit.Kind switch
         {
             DesignEditKinds.Add => Added(edit, host, root, origin, types),
             DesignEditKinds.Move => Moved(edit, host, root),
@@ -33,10 +46,64 @@ internal static class Editing
             DesignEditKinds.Reset => Each(edit, host, root, Inspecting.Reset),
             DesignEditKinds.Hook => Each(edit, host, root, (component, member) => handler = Inspecting.Hook(component, member, edit.Text, events, types, nullable)),
             DesignEditKinds.Unhook => Each(edit, host, root, (component, member) => Inspecting.Unhook(component, member, events)),
+            DesignEditKinds.Items => Each(edit, host, root, (component, member) => Inspecting.Lines(component, member, edit.Text ?? string.Empty, host)),
+            DesignEditKinds.AddItem => ItemAdded(edit, host, root, types),
+            DesignEditKinds.Order => Reordered(edit, host, root),
             _ => throw new DesignerException($"The designer makes no {edit.Kind}"),
         };
-        transaction.Commit();
-        return (chosen, handler);
+    }
+
+    /// <summary>An item of a type made and added to a component's collection (a strip's items, a menu item's, a list's
+    /// columns, a tab control's pages), as its collection editor makes one: through the host, its designer setting it up.</summary>
+    private static List<string> ItemAdded(DesignEdit edit, IDesignerHost host, Control root, Types types)
+    {
+        IComponent owner = edit.Components is [var only] ? Components.Find(host, root, only) ?? throw new DesignerException($"The form has no component {only}")
+            : throw new DesignerException("Items are added to one component at a time");
+        string written = edit.Type ?? throw new DesignerException("No type of item was named");
+        Type type = System.Type.GetType(written, throwOnError: false) ?? types.Find(written.Split(',')[0].Trim()) ?? throw new DesignerException($"{written.Split(',')[0]} is not found");
+        PropertyDescriptor property = TypeDescriptor.GetProperties(owner)[edit.Member ?? string.Empty] ?? throw new DesignerException($"{owner.GetType().Name} has no {edit.Member}");
+        if (property.GetValue(owner) is not System.Collections.IList items)
+        {
+            throw new DesignerException($"{edit.Member} takes no items");
+        }
+        IComponent made = host.CreateComponent(type);
+        if (made is ToolStripItem item)
+        {
+            // A strip item's designer sets itself up for the strip's own Type Here, which no surface here shows: it is named instead.
+            if (item is not ToolStripSeparator && string.IsNullOrEmpty(item.Text))
+            {
+                TypeDescriptor.GetProperties(item)["Text"]?.SetValue(item, Components.NameOf(item, root));
+            }
+        }
+        else
+        {
+            (host.GetDesigner(made) as IComponentInitializer)?.InitializeNewComponent(new System.Collections.Hashtable());
+        }
+        IComponentChangeService? changes = host.GetService(typeof(IComponentChangeService)) as IComponentChangeService;
+        changes?.OnComponentChanging(owner, property);
+        items.Add(made);
+        changes?.OnComponentChanged(owner, property, null, null);
+        return [Components.NameOf(made, root)];
+    }
+
+    /// <summary>An item moved up or down its list, by as many places as the edit's X, no further than its ends.</summary>
+    private static List<string> Reordered(DesignEdit edit, IDesignerHost host, Control root)
+    {
+        IComponent item = edit.Components is [var only] ? Components.Find(host, root, only) ?? throw new DesignerException($"The form has no component {only}")
+            : throw new DesignerException("One item is moved at a time");
+        System.Collections.IList list = Components.ListOf(item) ?? throw new DesignerException($"{edit.Components[0]} is no item of a list");
+        int from = list.IndexOf(item);
+        int to = Math.Clamp(from + edit.X, 0, list.Count - 1);
+        if (from != to)
+        {
+            IComponent owner = Components.Find(host, root, Components.OwnerOf(item, root) ?? string.Empty) ?? root;
+            IComponentChangeService? changes = host.GetService(typeof(IComponentChangeService)) as IComponentChangeService;
+            changes?.OnComponentChanging(owner, null);
+            list.RemoveAt(from);
+            list.Insert(to, item);
+            changes?.OnComponentChanged(owner, null, null, null);
+        }
+        return [.. edit.Components];
     }
 
     /// <summary>A property's or an event's edit made to each component named.</summary>
@@ -45,7 +112,7 @@ internal static class Editing
         string member = edit.Member ?? throw new DesignerException("No property or event was named");
         foreach (string name in edit.Components)
         {
-            made(name.Length == 0 ? root : host.Container.Components[name] ?? throw new DesignerException($"The form has no component {name}"), member);
+            made(Components.Find(host, root, name) ?? throw new DesignerException($"The form has no component {name}"), member);
         }
         return [.. edit.Components];
     }
@@ -73,7 +140,7 @@ internal static class Editing
         {
             Set(placed, "Location", holder.PointToClient(at));
         }
-        return [.. made.Select(c => c.Site?.Name ?? string.Empty)];
+        return [.. made.Select(c => Components.NameOf(c, root))];
     }
 
     private static List<string> Moved(DesignEdit edit, IDesignerHost host, Control root)
@@ -121,11 +188,11 @@ internal static class Editing
         string holder = string.Empty;
         foreach (string name in edit.Components)
         {
-            if (host.Container.Components[name] is not { } component || component == root)
+            if (Components.Find(host, root, name) is not { } component || component == root)
             {
                 continue;
             }
-            holder = component is Control { Parent: { } parent } ? Name(parent, root) : string.Empty;
+            holder = Components.OwnerOf(component, root) ?? string.Empty;
             List<IComponent> gone = [];
             Within(component, gone);
             foreach (IComponent each in gone)
@@ -178,9 +245,9 @@ internal static class Editing
         (TypeDescriptor.GetProperties(component)[property] ?? throw new DesignerException($"{component.GetType().Name} has no {property}")).SetValue(component, value);
 
     private static Control Control(IDesignerHost host, Control root, string name) => name.Length == 0 ? root
-        : host.Container.Components[name] as Control ?? throw new DesignerException($"The form has no control {name}");
+        : Components.Find(host, root, name) as Control ?? throw new DesignerException($"The form has no control {name}");
 
-    private static string Name(Control control, Control root) => control == root ? string.Empty : control.Site?.Name ?? control.Name;
+    private static string Name(Control control, Control root) => Components.NameOf(control, root);
 
     /// <summary>The deepest control holding controls under a point of the screen, the root where none other is.</summary>
     private static Control ContainerAt(IDesignerHost host, Control root, Control within, Point screen)
@@ -234,7 +301,7 @@ internal static class Editing
             }
         }
         int[] kept = [.. after.Lines.Select(l => l.Key is { } key && file.TryGetValue(key, out int at) && !gone.Contains(at) ? at : -1)];
-        HashSet<string> headed = [.. after.Lines.Where((l, i) => kept[i] >= 0).Select(l => l.Section).OfType<string>()];
+        HashSet<string> headed = [.. request.Statements.Where((s, i) => !gone.Contains(i)).Select(s => s.Section).OfType<string>()];
         (int At, string? Section) anchor = (-1, null);
         for (int i = 0; i < after.Lines.Count; i++)
         {
@@ -249,12 +316,12 @@ internal static class Editing
                 {
                     changes.Add(new DesignerChange(DesignerChangeKinds.Replace, kept[i]) { Text = line.Text });
                 }
-                anchor = (kept[i], line.Section);
+                anchor = (kept[i], request.Statements[kept[i]].Section);
                 continue;
             }
             // The first of a section the file writes goes under its comment, before the statement after it there.
             int next = Enumerable.Range(i + 1, after.Lines.Count - i - 1).FirstOrDefault(j => kept[j] >= 0, -1);
-            if (anchor.Section != line.Section && next >= 0 && after.Lines[next].Section == line.Section && line.Section is not null)
+            if (anchor.Section != line.Section && next >= 0 && request.Statements[kept[next]].Section == line.Section && line.Section is not null)
             {
                 changes.Add(new DesignerChange(DesignerChangeKinds.Insert, kept[next]) { Text = line.Text, Before = true });
                 continue;

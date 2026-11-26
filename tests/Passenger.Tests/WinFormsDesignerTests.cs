@@ -51,6 +51,135 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         Flow.StepApart("a name given as (Name) renames the components field its uses its Name and its section", () => new WinFormsDesignerTests(app), t => t.A_name_given_as_Name_renames_the_components_field_its_uses_its_Name_and_its_section());
         Flow.StepApart("only what the code sets is bold and a values part a flag and a colour are written", () => new WinFormsDesignerTests(app), t => t.Only_what_the_code_sets_is_bold_and_a_values_part_a_flag_and_a_colour_are_written());
         Flow.StepApart("a timer from the toolbox goes to the tray and is chosen there", () => new WinFormsDesignerTests(app), t => t.A_timer_from_the_toolbox_goes_to_the_tray_and_is_chosen_there());
+        Flow.StepApart("a lists items are written a line an item and a menu item is added under the help menu", () => new WinFormsDesignerTests(app), t => t.A_lists_items_are_written_a_line_an_item_and_a_menu_item_is_added_under_the_help_menu());
+        Flow.StepApart("a split container from the toolbox takes a button into its second panel", () => new WinFormsDesignerTests(app), t => t.A_split_container_from_the_toolbox_takes_a_button_into_its_second_panel());
+        Flow.StepApart("a tab page chosen in the outline is shown and takes a button", () => new WinFormsDesignerTests(app), t => t.A_tab_page_chosen_in_the_outline_is_shown_and_takes_a_button());
+    }
+
+    private void A_lists_items_are_written_a_line_an_item_and_a_menu_item_is_added_under_the_help_menu()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string file = app.PathOf("MainForm.Designer.cs");
+        MainWindow window = app.Open(app.PathOf("MainForm.cs"), languageServer: false);
+        FormDesignPane pane = Drawn(window);
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        DesignedBox list = Component(pane, "List");
+        Ui.Click(pane.Frame, new Point(list.X + (list.Width / 2), list.Y + (list.Height / 2)));
+        FormProperties properties = window.FormProperties ?? throw new Xunit.Sdk.XunitException("The Structure window shows no properties under its outline");
+        Ui.WaitFor(() => properties.Rows.Any(r => r.Property is { Name: "Items", Lines: not null }), () => $"List's Items to be offered a line an item, not \"{properties.Said}\"");
+        Ui.Click(properties.EditorOf("Items") ?? throw new Xunit.Sdk.XunitException("List's Items show no button to edit them"));
+        ItemsPopup popup = properties.EditingItems ?? throw new Xunit.Sdk.XunitException("Edit Items opened no popup");
+        Ui.WaitFor(() => popup.Lines.IsFocused, "the items' box to take the keys");
+        window.KeyTextInput("One");
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("Two");
+        Ui.ClickButton(popup, "OK");
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("List.Items.AddRange(new object[] { \"One\", \"Two\" });", StringComparison.Ordinal),
+            () => $"List's items to be written, where the status bar says {window.Status}");
+        DesignedBox help = Component(pane, "HelpItem");
+        Ui.Click(pane.Frame, new Point(help.X + (help.Width / 2), help.Y + (help.Height / 2)));
+        Ui.WaitFor(() => properties.EditorOf("DropDownItems") is ComboBox, () => $"HelpItem's DropDownItems to offer items to add, not \"{properties.Said}\", {pane.Chosen?.Field} chosen, "
+            + $"its row {properties.Rows.FirstOrDefault(r => r.Name == "DropDownItems")?.Property?.ToString() ?? "missing"} among [{string.Join(", ", properties.Rows.Select(r => r.Name))}]");
+        ComboBox adds = (ComboBox)properties.EditorOf("DropDownItems")!;
+        Pick(adds, "System.Windows.Forms.ToolStripMenuItem,");
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("HelpItem.DropDownItems.AddRange(new ToolStripItem[] { toolStripMenuItem1 });", StringComparison.Ordinal),
+            () => $"a menu item to be added under Help, where the status bar says \"{window.Status}\", the design \"{pane.Design.Status}\" ({string.Join(" | ", pane.Design.Notes)}), "
+                + $"{(pane.Design.Editing ? "an edit under way" : "no edit under way")}, the list's choice {adds.SelectedItem ?? "none"}");
+        string added = File.ReadAllText(file).ReplaceLineEndings("\n");
+        Assert.Contains("        toolStripMenuItem1 = new ToolStripMenuItem();\n", added);
+        Assert.Contains("        toolStripMenuItem1.Text = \"toolStripMenuItem1\";\n", added);
+        Ui.WaitFor(() => window.StructureView.Rows.Any(r => r is { Name: "toolStripMenuItem1", Depth: 3 }),
+            () => $"the new menu item to be outlined under Help, not [{string.Join(", ", window.StructureView.Rows.Select(r => $"{r.Name}@{r.Depth}"))}]");
+        Ui.WaitFor(() => pane.Chosen?.Field == "toolStripMenuItem1", () => $"the new menu item to be chosen, not {pane.Chosen?.Field ?? "nothing"}");
+        AddMenuItemBeside(window, pane, properties, "HelpItem");
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("HelpItem.DropDownItems.AddRange(new ToolStripItem[] { toolStripMenuItem1, toolStripMenuItem2 });", StringComparison.Ordinal),
+            () => $"a second menu item to be added after the first, where the status bar says {window.Status}");
+        Assert.Equal("toolStripMenuItem2", pane.Chosen?.Field);
+        pane.Focus();
+        Ui.Settle();
+        Assert.True(window.Perform(AppActions.FormMoveUp), "Move Up did not run on the chosen menu item");
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("HelpItem.DropDownItems.AddRange(new ToolStripItem[] { toolStripMenuItem2, toolStripMenuItem1 });", StringComparison.Ordinal),
+            () => $"Move Up to put the second item first, where the status bar says {window.Status}");
+        window.Close();
+    }
+
+    /// <summary>Another menu item added under a menu item, from that item's properties.</summary>
+    private static void AddMenuItemBeside(MainWindow window, FormDesignPane pane, FormProperties properties, string menu)
+    {
+        window.StructureView.ChooseRow(r => r.Name == menu);
+        ListBox outline = window.StructureView.GetVisualDescendants().OfType<ListBox>().First();
+        Ui.Click((Control)outline.ContainerFromItem(window.StructureView.Rows.First(r => r.Name == menu))!);
+        Ui.WaitFor(() => properties.EditorOf("DropDownItems") is ComboBox, () => $"{menu}'s DropDownItems to offer items to add, {pane.Chosen?.Field} chosen");
+        Pick((ComboBox)properties.EditorOf("DropDownItems")!, "System.Windows.Forms.ToolStripMenuItem,");
+    }
+
+    /// <summary>A drop-down's item chosen by the start of its words, as a person's choice from its list sets it.</summary>
+    private static void Pick(ComboBox box, string start)
+    {
+        object item = box.Items.Cast<object>().FirstOrDefault(i => i is string words && words.StartsWith(start, StringComparison.Ordinal))
+            ?? throw new Xunit.Sdk.XunitException($"The list offers nothing of {start}: [{string.Join(", ", box.Items.Cast<object>())}]");
+        box.SelectedItem = item;
+        Ui.Settle();
+    }
+
+    private void A_split_container_from_the_toolbox_takes_a_button_into_its_second_panel()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string file = app.PathOf("MainForm.Designer.cs");
+        MainWindow window = app.Open(app.PathOf("MainForm.cs"), languageServer: false);
+        FormDesignPane pane = Drawn(window);
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        window.ShowToolWindow(ToolWindowIds.Toolbox);
+        AddFromToolbox(window, "SplitContainer");
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("splitContainer1 = new SplitContainer();", StringComparison.Ordinal), () => $"the SplitContainer to be written, where the status bar says {window.Status}");
+        string written = File.ReadAllText(file).ReplaceLineEndings("\n");
+        Assert.True(written.Contains("        ((System.ComponentModel.ISupportInitialize)splitContainer1).BeginInit();\n", StringComparison.Ordinal),
+            $"The SplitContainer's set-up was not begun as the SDK's designer begins it, its lines: [{string.Join(" | ", written.Split('\n').Where(l => l.Contains("splitContainer1", StringComparison.Ordinal)))}]");
+        Ui.WaitFor(() => pane.Design.Components.Any(c => c is { Field: "splitContainer1.Panel2", Holds: true, Parent: "splitContainer1" }),
+            () => $"the SplitContainer's second panel to be drawn as a place to hold controls, not [{string.Join(", ", pane.Design.Components.Select(c => c.Field))}]");
+        DesignedBox panel = Component(pane, "splitContainer1.Panel2");
+        Ui.Click(pane.Frame, new Point(panel.X + (panel.Width / 2), panel.Y + (panel.Height / 2)));
+        Assert.Equal("splitContainer1.Panel2", pane.Chosen?.Field);
+        AddFromToolbox(window, "Button");
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("splitContainer1.Panel2.Controls.Add(button1);", StringComparison.Ordinal),
+            () => $"the Button to be written into the second panel, where the status bar says {window.Status}");
+        Ui.WaitFor(() => pane.Design.Components.Any(c => c is { Field: "button1", Parent: "splitContainer1.Panel2" }), "the Button to be drawn in the second panel");
+        window.Close();
+    }
+
+    private void A_tab_page_chosen_in_the_outline_is_shown_and_takes_a_button()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string file = app.PathOf("MainForm.Designer.cs");
+        MainWindow window = app.Open(app.PathOf("MainForm.cs"), languageServer: false);
+        FormDesignPane pane = Drawn(window);
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        AddFromToolbox(window, "TabControl");
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("tabControl1.Controls.Add(tabPage2);", StringComparison.Ordinal), () => $"the TabControl and its two pages to be written, where the status bar says {window.Status}");
+        Ui.WaitFor(() => pane.Design.Components.Any(c => c is { Field: "tabPage2", Width: 0 }), "the second page to be outlined, not shown");
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        Ui.WaitFor(() => window.StructureView.Rows.Any(r => r.Name == "tabPage2"), "the Structure window to outline the second page");
+        ListBox outline = window.StructureView.GetVisualDescendants().OfType<ListBox>().First();
+        Ui.Click((Control)outline.ContainerFromItem(window.StructureView.Rows.First(r => r.Name == "tabPage2"))!);
+        Ui.WaitFor(() => pane.Design.Components.Any(c => c is { Field: "tabPage2", Width: > 0 }) && pane.Chosen?.Field == "tabPage2",
+            () => $"the second page to be shown and chosen, not {pane.Chosen?.Field ?? "nothing"}");
+        AddFromToolbox(window, "Button");
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("tabPage2.Controls.Add(button1);", StringComparison.Ordinal),
+            () => $"the Button to be written into the second page, where the status bar says {window.Status}");
+        window.Close();
+    }
+
+    /// <summary>A Toolbox item added by Enter on its row, into the container chosen in the design.</summary>
+    private static void AddFromToolbox(MainWindow window, string item)
+    {
+        window.ShowToolWindow(ToolWindowIds.Toolbox);
+        ToolboxView tools = window.ToolboxWindow;
+        Ui.WaitFor(() => tools.Rows.Any(r => r.Entry?.Name == "Button"), () => $"the Toolbox to list Windows Forms' controls, not \"{tools.Said}\"");
+        tools.Choose(item);
+        TreeList list = tools.GetVisualDescendants().OfType<TreeList>().Single();
+        Ui.Settle();
+        Assert.True(ListKeys.Hold(list), $"The Toolbox's {item} row could not take the keys");
+        Ui.Press(window, "ENTER");
     }
 
     private void Only_what_the_code_sets_is_bold_and_a_values_part_a_flag_and_a_colour_are_written()

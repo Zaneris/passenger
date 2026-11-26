@@ -49,6 +49,18 @@ public static class Refusals
     /// <summary>Delete, Bring to Front or Send to Back asked of the form itself.</summary>
     public const string FormItselfStays = "The form itself is neither deleted nor put in front of or behind anything";
 
+    /// <summary>Move Up or Move Down asked of a component that is no item of a list.</summary>
+    public const string NotInList = "Only an item of a list (a menu's, a strip's, a list's columns, a tab control's pages) moves up or down in it";
+
+    /// <summary>Move Up asked of the first item of its list.</summary>
+    public const string FirstInList = "It is first in its list already";
+
+    /// <summary>Move Down asked of the last item of its list.</summary>
+    public const string LastInList = "It is last in its list already";
+
+    /// <summary>Bring to Front or Send to Back asked of an item a control draws (a menu's, a list's columns).</summary>
+    public const string ItemHasNoOrder = "An item is drawn by what holds it, in its list's order, which Move Up and Move Down change";
+
     /// <summary>Bring to Front or Send to Back asked of a component in the tray.</summary>
     public const string TrayHasNoOrder = "A component in the tray is drawn nowhere, so it stands in front of or behind nothing";
 

@@ -268,6 +268,8 @@ public partial class MainWindow
             formProperties.UnhookRequested += (_, raised) => DesignShown(shown => EditDesignAsync(shown, Edit(shown, DesignEditKinds.Unhook, raised, null)));
             formProperties.HookRequested += (_, hook) => DesignShown(shown => HookAsync(shown, shown.Design.Inspected ?? string.Empty, hook.Event, hook.Handler));
             formProperties.RenameRequested += (_, name) => DesignShown(shown => RenameComponentAsync(shown, shown.Design.Inspected ?? string.Empty, name));
+            formProperties.ItemsRequested += (_, items) => DesignShown(shown => EditDesignAsync(shown, Edit(shown, DesignEditKinds.Items, items.Property, items.Lines)));
+            formProperties.AddItemRequested += (_, item) => DesignShown(shown => EditDesignAsync(shown, Edit(shown, DesignEditKinds.AddItem, item.Property, null) with { Type = item.Type }));
         }
         formProperties.Show(shown.Design);
         return formProperties;
@@ -348,8 +350,8 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Delete, Bring to Front and Send to Back of the components chosen in the design with the keys, in its menu and
-    /// Find Action; Delete takes the Delete key there.</summary>
+    /// <summary>Delete, Bring to Front, Send to Back, Move Up and Move Down of the components chosen in the design with the
+    /// keys, in its menu and Find Action; Delete takes the Delete key there.</summary>
     private void AddDesignEdits()
     {
         actions!.Add(new IdeAction(A.FormDelete, "Delete", "Design", context => Edit(context, DesignEditKinds.Delete))
@@ -368,11 +370,32 @@ public partial class MainWindow
             Words = ["Order", "Z-order"],
         });
 
-        void Edit(ActionContext context, string kind)
+        actions.Add(new IdeAction(A.FormMoveUp, "Move Up", "Design", context => Edit(context, DesignEditKinds.Order, -1))
+        {
+            WhyNot = context => DesignWhyNot(context) ?? DesignWith(context)?.Pane.Chosen switch
+            {
+                { Place: null } => Refusals.NotInList,
+                { Place: 0 } => Refusals.FirstInList,
+                _ => null,
+            },
+            Words = ["Move Item Up", "Order"],
+        });
+        actions.Add(new IdeAction(A.FormMoveDown, "Move Down", "Design", context => Edit(context, DesignEditKinds.Order, 1))
+        {
+            WhyNot = context => DesignWhyNot(context) ?? DesignWith(context)?.Pane.Chosen switch
+            {
+                { Place: null } => Refusals.NotInList,
+                { Place: var place, Places: var places } when place == places - 1 => Refusals.LastInList,
+                _ => null,
+            },
+            Words = ["Move Item Down", "Order"],
+        });
+
+        void Edit(ActionContext context, string kind, int by = 0)
         {
             if (DesignWith(context) is { } shown && shown.Pane.Chosen is { } chosen)
             {
-                IdeErrors.Observe(EditDesignAsync(shown, new DesignEdit(kind) { Components = [chosen.Field] }));
+                IdeErrors.Observe(EditDesignAsync(shown, new DesignEdit(kind) { Components = [chosen.Field], X = by }));
             }
         }
     }
@@ -387,16 +410,17 @@ public partial class MainWindow
         : shown.Pane.Chosen is not { } chosen ? Refusals.NoComponentChosen
         : chosen.Field.Length == 0 ? Refusals.FormItselfStays
         : orders && FormDesignPane.InTray(chosen) ? Refusals.TrayHasNoOrder
+        : orders && !chosen.Control ? Refusals.ItemHasNoOrder
         : !shown.Design.Running ? shown.Design.Status
         : null;
 
-    /// <summary>A design's menu: Delete, Bring to Front, Send to Back, then View Code.</summary>
+    /// <summary>A design's menu: Delete, Bring to Front, Send to Back, Move Up, Move Down, then View Code.</summary>
     private void ShowDesignMenu(FormDesignPane pane)
     {
         ActionContext context = actions!.Context();
         MenuEntry separator = new(null);
-        List<Control> items = [.. new[] { new MenuEntry(A.FormDelete), separator, new MenuEntry(A.FormBringToFront), new MenuEntry(A.FormSendToBack), separator,
-            new MenuEntry(A.FormCodeOnly) }.Select(entry => FlyoutEntry(entry, context))];
+        List<Control> items = [.. new[] { new MenuEntry(A.FormDelete), separator, new MenuEntry(A.FormBringToFront), new MenuEntry(A.FormSendToBack),
+            new MenuEntry(A.FormMoveUp), new MenuEntry(A.FormMoveDown), separator, new MenuEntry(A.FormCodeOnly) }.Select(entry => FlyoutEntry(entry, context))];
         Open(new ContextMenu { ItemsSource = items, PlacementTarget = pane }, pane);
     }
 
@@ -416,6 +440,9 @@ public partial class MainWindow
             DesignEditKinds.Set => $"Set {named}'s {edit.Member}",
             DesignEditKinds.Reset => $"Reset {named}'s {edit.Member}",
             DesignEditKinds.Hook => $"Handle {named}'s {edit.Member}",
+            DesignEditKinds.Items => $"Set {named}'s {edit.Member}",
+            DesignEditKinds.AddItem => $"Add {edit.Type?.Split(',')[0].Split('.')[^1]} to {named}'s {edit.Member}",
+            DesignEditKinds.Order => edit.X < 0 ? $"Move {named} Up" : $"Move {named} Down",
             _ => $"Remove {named}'s {edit.Member} Handler",
         };
         DesignEdited done = await shown.Design.EditAsync(edit, title, (name, changes) => Assist.ApplyFileChangesAsync(name, changes));

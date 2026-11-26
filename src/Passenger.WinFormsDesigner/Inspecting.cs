@@ -42,6 +42,7 @@ internal static class Inspecting
                 .Select(p => Listed(component, value, p, $"{path}.{p.Name}", host, written, depth + 1))];
         }
         bool extended = property.Attributes[typeof(ExtenderProvidedPropertyAttribute)] is ExtenderProvidedPropertyAttribute { Provider: not null };
+        (IReadOnlyList<string>? lines, IReadOnlyList<string>? adds) = content && value is System.Collections.IList items ? Collected(property, items, owner) : (null, null);
         return new DesignProperty(path, property.Category, type.Name, Written(converter, context, value))
         {
             Set = extended || depth > 0 ? Serialized(property, owner) && (depth == 0 || written(path[..path.IndexOf('.')])) : written(path),
@@ -57,7 +58,68 @@ internal static class Inspecting
                     .Select(v => Enum.GetName(type, v)!).Distinct()]
                 : null,
             Parts = parts,
+            Lines = lines,
+            Adds = adds,
         };
+    }
+
+    /// <summary>What a collection's editor makes of its items: a list of words' lines, or the types of component it adds; a
+    /// strip's items those its designers offer where it stands (a menu's, a tool strip's, a status strip's), a grid's columns
+    /// each kind of column, as their editors offer them only with a person's dialog open.</summary>
+    private static (IReadOnlyList<string>? Lines, IReadOnlyList<string>? Adds) Collected(PropertyDescriptor property, System.Collections.IList items, object owner)
+    {
+        if (items is System.Windows.Forms.ToolStripItemCollection)
+        {
+            System.Windows.Forms.Design.ToolStripItemDesignerAvailability where = owner switch
+            {
+                System.Windows.Forms.MenuStrip => System.Windows.Forms.Design.ToolStripItemDesignerAvailability.MenuStrip,
+                System.Windows.Forms.StatusStrip => System.Windows.Forms.Design.ToolStripItemDesignerAvailability.StatusStrip,
+                System.Windows.Forms.ToolStripDropDownItem or System.Windows.Forms.ContextMenuStrip => System.Windows.Forms.Design.ToolStripItemDesignerAvailability.ContextMenuStrip,
+                _ => System.Windows.Forms.Design.ToolStripItemDesignerAvailability.ToolStrip,
+            };
+            return (null, Kinds(typeof(System.Windows.Forms.ToolStripItem), t => TypeDescriptor.GetAttributes(t)[typeof(System.Windows.Forms.Design.ToolStripItemDesignerAvailabilityAttribute)]
+                is System.Windows.Forms.Design.ToolStripItemDesignerAvailabilityAttribute offered && (offered.ItemAdditionVisibility & where) != 0));
+        }
+        if (items is System.Windows.Forms.DataGridViewColumnCollection)
+        {
+            return (null, Kinds(typeof(System.Windows.Forms.DataGridViewColumn), _ => true));
+        }
+        if (property.GetEditor(typeof(System.Drawing.Design.UITypeEditor)) is not CollectionEditor editor
+            || typeof(CollectionEditor).GetMethod("CreateNewItemTypes", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(editor, null) is not Type[] made)
+        {
+            return (null, null);
+        }
+        if (made.All(t => t == typeof(string) || t == typeof(object)))
+        {
+            return ([.. items.Cast<object?>().Select(i => i?.ToString() ?? string.Empty)], null);
+        }
+        IReadOnlyList<string> adds = [.. made.Where(t => typeof(IComponent).IsAssignableFrom(t) && !t.IsAbstract).Select(t => t.AssemblyQualifiedName ?? t.FullName!)];
+        return (null, adds.Count > 0 ? adds : null);
+    }
+
+    /// <summary>Windows Forms' own types of a kind made by a constructor of no arguments that a test lets through, by their
+    /// full names with their assembly's, in their names' order.</summary>
+    private static List<string> Kinds(Type kind, Func<Type, bool> offered) =>
+        [.. kind.Assembly.GetExportedTypes().Where(t => kind.IsAssignableFrom(t) && !t.IsAbstract && t.GetConstructor(Type.EmptyTypes) is not null && offered(t))
+            .OrderBy(t => t.Name, StringComparer.Ordinal).Select(t => t.AssemblyQualifiedName ?? t.FullName!)];
+
+    /// <summary>A list of words given whole, a line an item, its empty last line left out.</summary>
+    public static void Lines(IComponent component, string name, string text, IDesignerHost host)
+    {
+        PropertyDescriptor property = Property(component, name);
+        if (property.GetValue(component) is not System.Collections.IList items)
+        {
+            throw new DesignerException($"{name} is no list");
+        }
+        string[] lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        IComponentChangeService? changes = host.GetService(typeof(IComponentChangeService)) as IComponentChangeService;
+        changes?.OnComponentChanging(component, property);
+        items.Clear();
+        foreach (string line in lines.Length > 0 && lines[^1].Length == 0 ? lines[..^1] : lines)
+        {
+            items.Add(line);
+        }
+        changes?.OnComponentChanged(component, property, null, null);
     }
 
     public static List<DesignEvent> Events(IComponent component, IEventBindingService events) =>
