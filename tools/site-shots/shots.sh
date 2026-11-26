@@ -123,6 +123,10 @@ fi
 services="$tmp/passenger-site-shots/GreenhouseServices"
 # The AppHost's home of its own, short as macOS's socket paths ask, since its record of itself is a socket there.
 aspire_home=/private/tmp/passenger-site-shots-aspire
+# Aspire's home there too: the aspire CLI's bundle, the dashboard and orchestrator the AppHost's build unpacks and runs on,
+# goes there, never into the person's ~/.aspire, and the CLI that unpacks it sends nothing.
+export ASPIRE_HOME="$aspire_home/.aspire"
+export ASPIRE_CLI_TELEMETRY_OPTOUT=1
 services_prepared=
 # The services (an Aspire AppHost over a web API on EF Core and SQLite and a worker that calls it each second) with a
 # history of their own, built once, when a scene first asks; the AppHost asks the window nothing
@@ -157,7 +161,8 @@ EOF
     GIT_AUTHOR_DATE="2026-10-13T10:15:00+00:00" GIT_COMMITTER_DATE="2026-10-13T10:15:00+00:00" \
         git -C "$services" commit -q -m "Both run by an Aspire AppHost"
     unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
-    dotnet build "$services/GreenhouseServices.slnx" -nologo -v:q -clp:ErrorsOnly
+    # The CLI the build runs to unpack the bundle keeps its own state under HOME: the AppHost's home, never the person's.
+    HOME="$aspire_home" dotnet build "$services/GreenhouseServices.slnx" -nologo -v:q -clp:ErrorsOnly
     services_prepared=1
 }
 
