@@ -147,14 +147,14 @@ public sealed class RenameSuggestions : IExtensionDocumentMessageHandler<Caret, 
         {
             yield break;
         }
-        string plural = singular[^1].Pluralize(inputIsKnownToBeSingular: false);
-        foreach (ImmutableArray<string> name in Suffixes(singular.SetItem(singular.Length - 1, plural)))
+        ImmutableArray<string> plurals = PluralizeLastWord(singular);
+        foreach (ImmutableArray<string> name in Suffixes(plurals))
         {
             yield return name;
         }
         if (role is not null)
         {
-            if (fromValue.Length > 1 && fromValue[^1].Equals(plural, StringComparison.OrdinalIgnoreCase))
+            if (fromValue.Length > 1 && fromValue[^1].Equals(plurals[^1], StringComparison.OrdinalIgnoreCase))
             {
                 yield return [.. fromValue[..^1], singular[^1], role];
             }
@@ -172,7 +172,7 @@ public sealed class RenameSuggestions : IExtensionDocumentMessageHandler<Caret, 
         {
             yield break;
         }
-        ImmutableArray<string> plurals = values.SetItem(values.Length - 1, values[^1].Pluralize(inputIsKnownToBeSingular: false));
+        ImmutableArray<string> plurals = PluralizeLastWord(values);
         ITypeSymbol key = dictionary.TypeArguments[0];
         ImmutableArray<string> keyWords = key.SpecialType == SpecialType.None ? TypeWords(key) : [];
         foreach (ImmutableArray<string> name in Suffixes(keyWords.IsEmpty ? ["Key"] : keyWords))
@@ -188,6 +188,9 @@ public sealed class RenameSuggestions : IExtensionDocumentMessageHandler<Caret, 
             yield return name;
         }
     }
+
+    private static ImmutableArray<string> PluralizeLastWord(ImmutableArray<string> words) =>
+        words.SetItem(words.Length - 1, words[^1].Pluralize(inputIsKnownToBeSingular: false));
 
     private static string? CollectionRole(INamedTypeSymbol named, ImmutableArray<INamedTypeSymbol> shapes)
     {

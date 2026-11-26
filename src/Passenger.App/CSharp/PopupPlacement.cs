@@ -149,40 +149,33 @@ internal sealed class PopupPlacement
         }
     }
 
-    private void PlaceOn(Control popup, Passenger.Editor.CodeEditor editor, Canvas onto, Point at, bool above)
+    private void PlaceOn(Control popup, Passenger.Editor.CodeEditor editor, Canvas onto, Point at, bool above, Rect? overflowRoom = null)
     {
         Heard(popup);
         at = editor.TranslatePoint(at, onto) ?? at;
-        Rect room = HeldIn(editor, onto);
-        if (popup is RenameBox && onto != layer && layer.TranslatePoint(default, onto) is { } origin)
-        {
-            room = new Rect(origin.X, room.Top, layer.Bounds.Width, room.Height);
-        }
-        (popup as IHeldToEditor)?.Within(Math.Max(0, room.Width - RightEdge));
+        Rect room = HeldIn(editor, onto, overflowRoom);
+        IHeldToEditor? held = popup as IHeldToEditor;
+        held?.Within(Math.Max(0, room.Width - RightEdge));
         double below = at.Y + editor.LineHeight + 2;
         double before = at.Y - 2;
         Size size = FitHeight(popup, room, before, below);
-        if (popup is RenameBox && size.Height > room.Height)
+        if (size.Height > room.Height && overflowRoom is { } overflow)
         {
-            room = new Rect(room.X, 0, room.Width, onto.Bounds.Height);
+            room = overflow;
             size = FitHeight(popup, room, before, below);
         }
 
         double over = before - size.Height;
         bool fitsOver = over >= room.Top;
         bool fitsUnder = below + size.Height <= room.Bottom;
-        double x = Math.Clamp(at.X - 4, room.Left, Math.Max(room.Left, room.Right - size.Width - RightEdge));
-        double y = above ? (fitsOver ? over : below) : (fitsUnder || !fitsOver ? below : over);
-        if (popup is IHeldToEditor)
+        bool placeOver = fitsOver && (above || !fitsUnder);
+        if (held is not null && !fitsOver && !fitsUnder)
         {
-            if (!fitsOver && !fitsUnder)
-            {
-                y = room.Bottom - below >= at.Y - room.Top ? below : over;
-            }
-            y = Math.Clamp(y, room.Top, Math.Max(room.Top, room.Bottom - size.Height));
+            placeOver = at.Y - room.Top > room.Bottom - below;
         }
-        Canvas.SetLeft(popup, x);
-        Canvas.SetTop(popup, y);
+        double y = placeOver ? over : below;
+        Canvas.SetLeft(popup, Math.Clamp(at.X - 4, room.Left, Math.Max(room.Left, room.Right - size.Width - RightEdge)));
+        Canvas.SetTop(popup, held is null ? y : Math.Clamp(y, room.Top, Math.Max(room.Top, room.Bottom - size.Height)));
         lines.AddOrUpdate(popup, new StrongBox<double>(at.Y));
     }
 
@@ -200,18 +193,17 @@ internal sealed class PopupPlacement
         return size;
     }
 
-    /// <summary>Where a popup placed at a line of an editor is held, in the coordinates of the layer it is placed on: across
-    /// the layer, and down only the editor's own rows, never over the bars above it (its group's tabs, the navigation bar,
-    /// a banner, Find) nor below it; the whole layer where the editor is not under it.</summary>
-    private static Rect HeldIn(Passenger.Editor.CodeEditor editor, Canvas onto)
+    /// <summary>Holds a popup across the given bounds (the layer by default) and down the editor's rows, clear of its tabs,
+    /// navigation bar, banner and Find bar. Uses the full bounds when the editor is outside the layer.</summary>
+    private static Rect HeldIn(Passenger.Editor.CodeEditor editor, Canvas onto, Rect? bounds = null)
     {
-        Rect whole = new(onto.Bounds.Size);
+        Rect whole = bounds ?? new Rect(onto.Bounds.Size);
         if (editor.TranslatePoint(default, onto) is not { } top)
         {
             return whole;
         }
         double from = Math.Clamp(top.Y, 0, whole.Height);
-        return new Rect(0, from, whole.Width, Math.Clamp(top.Y + editor.Bounds.Height, from, whole.Height) - from);
+        return new Rect(whole.X, from, whole.Width, Math.Clamp(top.Y + editor.Bounds.Height, from, whole.Height) - from);
     }
 
     /// <summary>The size a popup takes as it is now held, measured again.</summary>
@@ -349,7 +341,10 @@ internal sealed class PopupPlacement
         {
             if (modal == box)
             {
-                PlaceOn(box, editor, onto, editor.PointOf(offset), above: true);
+                Rect overflowRoom = onto != layer && layer.TranslatePoint(default, onto) is { } origin
+                    ? new Rect(origin.X, 0, layer.Bounds.Width, onto.Bounds.Height)
+                    : new Rect(onto.Bounds.Size);
+                PlaceOn(box, editor, onto, editor.PointOf(offset), above: true, overflowRoom: overflowRoom);
             }
         }
         // A docked panel can leave the editor too short without resizing the window.

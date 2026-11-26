@@ -884,7 +884,6 @@ public sealed class RenameBox : Border, IHeardPopup, IGivesWayInHeight
             return;
         }
 
-        string? chosen = null;
         ListBox list = new()
         {
             Classes = { StyleClasses.Tree },
@@ -905,7 +904,6 @@ public sealed class RenameBox : Border, IHeardPopup, IGivesWayInHeight
         void Filter(string prefix)
         {
             string[] matches = [.. suggestions.Where(item => item.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).Take(VisibleNameLimit)];
-            chosen = null;
             list.SelectedIndex = -1;
             list.ItemsSource = matches;
             offered.IsVisible = matches.Length > 0;
@@ -917,7 +915,6 @@ public sealed class RenameBox : Border, IHeardPopup, IGivesWayInHeight
         {
             if (list.SelectedItem is string selected)
             {
-                chosen = selected;
                 name.Text = selected;
                 name.Focus();
                 name.CaretIndex = selected.Length;
@@ -925,7 +922,7 @@ public sealed class RenameBox : Border, IHeardPopup, IGivesWayInHeight
         };
         name.TextChanged += (_, _) =>
         {
-            if (Text != chosen)
+            if (Text != (list.SelectedItem as string))
             {
                 Filter(Text);
             }
