@@ -104,7 +104,7 @@ public sealed class FileBasedProgramsTests : IDisposable
         Flow.StepApart<FileBasedProgramsTests>("a second run of an unchanged program builds nothing and a change to its included file builds it", t => t.A_second_run_of_an_unchanged_program_builds_nothing_and_a_change_to_its_included_file_builds_it());
         Flow.StepApart<FileBasedProgramsTests>("a programs xunit tests show in the tests window and run from it", t => t.A_programs_xunit_tests_show_in_the_tests_window_and_run_from_it());
         Flow.StepApart<FileBasedProgramsTests>("files a program includes from another folder or by a wildcard are never programs themselves", t => t.Files_a_program_includes_from_another_folder_or_by_a_wildcard_are_never_programs_themselves());
-        Flow.StepApart<FileBasedProgramsTests>("a program referencing another has it for a project answered across and run with it", t => t.A_program_referencing_another_has_it_for_a_project_answered_across_and_run_with_it());
+        Flow.StepApart<FileBasedProgramsTests>("a program referencing another under an alias has it for a project answered across run with it and followed renamed", t => t.A_program_referencing_another_under_an_alias_has_it_for_a_project_answered_across_run_with_it_and_followed_renamed());
         Flow.StepApart<FileBasedProgramsTests>("a file of top level statements alone with no directive is a program that completes runs and debugs", t => t.A_file_of_top_level_statements_alone_with_no_directive_is_a_program_that_completes_runs_and_debugs());
         Flow.StepApart<FileBasedProgramsTests>("programs beside a solution on net 10 sdks are projects that build and run", t => t.Programs_beside_a_solution_on_net_10_sdks_are_projects_that_build_and_run());
     }
@@ -333,9 +333,10 @@ public sealed class FileBasedProgramsTests : IDisposable
         }
     }
 
-    /// <summary>A program that references another (<c>#:ref lib.cs</c>, a library of its own) has that program for a project
-    /// too, which the language server answers across into, and Run builds and runs the two.</summary>
-    private void A_program_referencing_another_has_it_for_a_project_answered_across_and_run_with_it()
+    /// <summary>A program that references another (<c>#:ref lib.cs Aliases=Shared</c>, a library of its own under an alias)
+    /// has that program for a project too, which the language server answers across into, and Run builds and runs the two;
+    /// the library renamed, the directive names it there, its metadata kept, and the program is evaluated with it again.</summary>
+    private void A_program_referencing_another_under_an_alias_has_it_for_a_project_answered_across_run_with_it_and_followed_renamed()
     {
         TestFolders.Write(folder, "lib.cs", """
             #:property OutputType=Library
@@ -348,9 +349,10 @@ public sealed class FileBasedProgramsTests : IDisposable
             """);
         TestFolders.Write(folder, "app.cs", """
             #:property PublishAot=false
-            #:ref lib.cs
+            #:ref lib.cs Aliases=Shared
+            extern alias Shared;
             int unused = 0;
-            Console.WriteLine(Lib.Shout("referenced"));
+            Console.WriteLine(Shared::Lib.Shout("referenced"));
 
             """);
         Restore.Run(App);
@@ -371,6 +373,13 @@ public sealed class FileBasedProgramsTests : IDisposable
             Ui.Launched(window, window.RunAsync(), "app.cs to build and run", TimeSpan.FromMinutes(2));
             Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the program to finish", TimeSpan.FromMinutes(2));
             Assert.Contains("REFERENCED\n", Output(window), StringComparison.Ordinal);
+
+            Assert.Null(Ui.Await(window.RenameAsync(Path.Combine(folder, "lib.cs"), "shared.cs"), "the rename of lib.cs"));
+            Assert.Contains("#:ref shared.cs Aliases=Shared\n", File.ReadAllText(App), StringComparison.Ordinal);
+            string shared = Path.Combine(folder, "shared.cs");
+            Ui.WaitFor(() => window.Projects.FirstOrDefault(p => PathNames.Same(p.Path, App)) is { IsEvaluated: true } app && app.ProjectReferences.Contains(shared, PathNames.Comparer),
+                () => $"app.cs, its #:ref renamed, to be evaluated referencing shared.cs ({string.Join(", ", window.Projects.Select(p => $"{Path.GetFileName(p.Path)}: {string.Join(", ", p.ProjectReferences)}"))})",
+                TimeSpan.FromMinutes(1));
         }
         finally
         {
