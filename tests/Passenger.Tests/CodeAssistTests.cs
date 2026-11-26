@@ -295,6 +295,18 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             Ui.Settle();
             Assert.Equal(resting, Ui.Pixels(window, underline));
 
+            if (name == "Order")
+            {
+                Point from = text.TranslatePoint(new Point(hit.Left + 1, hit.Center.Y), window)!.Value;
+                Point to = text.TranslatePoint(new Point(hit.Right - 1, hit.Center.Y), window)!.Value;
+                Ui.Drag(window, from, to);
+                Assert.Same(card, window.Assist.HoverCard);
+                Assert.NotEmpty(text.SelectedText);
+                Assert.Contains(text.SelectedText, name, StringComparison.Ordinal);
+                Ui.Press(window, Ui.Command("C"));
+                Assert.Equal(text.SelectedText, Ui.Clipboard(window));
+            }
+
             Ui.Click(text, link);
             Ui.WaitFor(() => window.EditorArea.Active?.Path == PathNames.Canonical(project.PathOf(file)), $"the declaration of {name}");
             Assert.Equal(declaration, window.EditorArea.CodeEditor.CaretPosition);

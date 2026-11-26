@@ -9,6 +9,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Passenger.Editor;
 
 namespace Passenger.App.CSharp;
@@ -52,6 +53,14 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     /// <summary>Whether it holds something to use (a sound's Play), so it takes the pointer and stays while the pointer is on it.</summary>
     public bool Usable { get; private set; }
 
+    /// <summary>Whether the card's signature can be followed or selected.</summary>
+    public bool HasDeclarationLinks { get; private set; }
+
+    /// <summary>Whether the card's value rows or linked signature are being used.</summary>
+    public bool InUse => Values is { } values ? IsKeyboardFocusWithin || values.IsInUse
+        : HasDeclarationLinks && (IsKeyboardFocusWithin || parts.GetVisualDescendants().OfType<SelectableWords>()
+            .Any(words => words.ContextFlyout is { IsOpen: true } menu && menu.Target == words));
+
     /// <summary>Plays a sound a preview offers; nothing without it.</summary>
     public Action<string>? Play { get; set; }
 
@@ -88,6 +97,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         pictures.Clear();
         Values = null;
         Usable = false;
+        HasDeclarationLinks = false;
         fitted = 0;
         IsHitTestVisible = false;
         MaxWidth = PopupFrame.Medium;
@@ -144,6 +154,11 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         if (given is not null && Languages.CSharp.ServerCode.Of(given, declarations) is var (shown, spans) && Languages.CSharp.ServerCode.SameCode(shown, code))
         {
             parts.Children.Add(Signed(ColouredCode.Of(shown, spans, language, declarations, OpenDeclaration)));
+            if (declarations is { Count: > 0 })
+            {
+                HasDeclarationLinks = true;
+                IsHitTestVisible = true;
+            }
             return;
         }
         AddCode(code, language == Languages.Language.CSharp || language == Languages.Language.Razor ? null : language);

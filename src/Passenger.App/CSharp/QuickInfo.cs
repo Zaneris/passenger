@@ -20,8 +20,7 @@ internal sealed class QuickInfo
     private CancellationTokenSource? hovering;
     private (Workspace.OpenDocument File, TextSnapshot Text, int Offset)? declarationOrigin;
 
-    /// <summary>The pause after the pointer leaves a card of a paused program's value (its word, or the card itself) before
-    /// the card goes: time to reach the card from the word, on which it stays while the pointer or the keys are on it.</summary>
+    /// <summary>The time to reach an interactive card after the pointer leaves its word.</summary>
     private readonly Debounce leaving;
 
     /// <summary>Takes the card away once the stop its value was read at is gone.</summary>
@@ -51,18 +50,18 @@ internal sealed class QuickInfo
             return Task.CompletedTask;
         });
         hoverCard.PointerEntered += (_, _) => leaving.Stop();
-        hoverCard.PointerExited += (_, _) => LeaveValues();
+        hoverCard.PointerExited += (_, _) => Leave();
         hoverCard.PropertyChanged += (_, e) =>
         {
             if (e.Property == InputElement.IsKeyboardFocusWithinProperty && e.NewValue is false)
             {
-                LeaveValues();
+                Leave();
             }
         };
         hoverCard.SizeChanged += (_, _) => KeepValuesPlaced();
         hoverCard.KeyDown += (_, e) =>
         {
-            if (e.Key == Key.Escape && hoverCard.Values is not null)
+            if (e.Key == Key.Escape && (hoverCard.Values is not null || hoverCard.HasDeclarationLinks))
             {
                 Hide();
                 e.Handled = true;
@@ -94,21 +93,21 @@ internal sealed class QuickInfo
     /// <summary>What a word of a row above a line says more of (a commit's), null where it says nothing.</summary>
     public Func<RowAboveWord, string?>? AboveWords { get; set; }
 
-    /// <summary>Whether a card of a value is in use: it has the keys, its menu is open, or a value is being typed in it.</summary>
-    public bool ValuesInUse => hoverCard.IsVisible && hoverCard.Values is { } values && (hoverCard.IsKeyboardFocusWithin || values.IsInUse);
+    /// <summary>Whether the card is in use: it has the keys, its menu is open, or a value is being typed in it.</summary>
+    public bool InUse => hoverCard.IsVisible && hoverCard.InUse;
 
     /// <summary>Whether a card of a value, or one holding something to use, stays: in use, or the pointer is on it.</summary>
-    private bool HoverHeld => ValuesInUse || (hoverCard.IsVisible && Reachable && hoverCard.IsPointerOver);
+    private bool HoverHeld => InUse || (hoverCard.IsVisible && Reachable && hoverCard.IsPointerOver);
 
-    /// <summary>Whether the card shown is one the pointer may go to: a value's rows, or something to use (a sound's Play).</summary>
-    private bool Reachable => hoverCard.Values is not null || hoverCard.Usable;
+    /// <summary>Whether the pointer may go to the card to use its value rows, sound controls or signature links.</summary>
+    private bool Reachable => hoverCard.Values is not null || hoverCard.Usable || hoverCard.HasDeclarationLinks;
 
     /// <summary>The pointer left the word the card is of: a card the pointer may go to goes after a pause, any other at once.</summary>
     public void PointerLeft()
     {
         if (hoverCard.IsVisible && Reachable)
         {
-            LeaveValues();
+            Leave();
         }
         else
         {
@@ -314,7 +313,7 @@ internal sealed class QuickInfo
             {
                 if (hoverCard.Values == rows)
                 {
-                    LeaveValues();
+                    Leave();
                 }
             };
         }
@@ -401,9 +400,9 @@ internal sealed class QuickInfo
         ? Math.Max(popups.Held.Top, line.Y - height - 2)
         : Math.Max(popups.Held.Top, Math.Min(line.Y + Editor.LineHeight + 2, popups.Held.Bottom - height));
 
-    /// <summary>The pointer left a card of a value, or its word, or the keys left the card: it goes after a pause unless
+    /// <summary>The pointer left an interactive card, or its word, or the keys left the card: it goes after a pause unless
     /// the pointer comes back to it or it is in use.</summary>
-    private void LeaveValues()
+    private void Leave()
     {
         if (hoverCard.IsVisible && Reachable)
         {
