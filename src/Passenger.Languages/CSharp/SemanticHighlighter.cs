@@ -242,8 +242,8 @@ public sealed class SemanticHighlighter : CarriedColours
         SyntaxSpan[] spans = await BackgroundWork.Run(() =>
         {
             SyntaxSpan[] semantic = Decode(answer.Data, snapshot, types);
-            return answer.SqlStrings is { Length: > 0 } sql
-                ? [.. Over(semantic, DecodeSql(sql, covered ?? new TextRange(0, snapshot.Length), cancel))]
+            return answer.EmbeddedTexts is { Length: > 0 } embedded
+                ? [.. Over(semantic, DecodeEmbedded(embedded, covered ?? new TextRange(0, snapshot.Length), cancel))]
                 : semantic;
         }, cancel);
         if (request != asked || disposed)
@@ -314,19 +314,25 @@ public sealed class SemanticHighlighter : CarriedColours
         return spans;
     }
 
-    /// <summary>Projects SQL's token colours back onto the C# characters that produced them.</summary>
-    private static List<SyntaxSpan> DecodeSql(EmbeddedSql[] strings, TextRange range, CancellationToken cancel)
+    /// <summary>The colours of the strings that hold another language, each coloured by that language's grammar as its files
+    /// are (<see cref="Language.OfEmbedded"/>), laid back on the C# characters each of its characters came from, within
+    /// <paramref name="range"/>; a string of a language with no grammar left as the server's.</summary>
+    private static List<SyntaxSpan> DecodeEmbedded(EmbeddedText[] strings, TextRange range, CancellationToken cancel)
     {
         List<SyntaxSpan> result = [];
-        foreach (EmbeddedSql sql in strings)
+        foreach (EmbeddedText embedded in strings)
         {
-            List<SyntaxSpan> colours = TextMateHighlighter.Fragment(Language.Sql.Grammar!, sql.Text, cancel);
+            if (Language.OfEmbedded(embedded.Language)?.Grammar is not { } grammar)
+            {
+                continue;
+            }
+            List<SyntaxSpan> colours = TextMateHighlighter.Fragment(grammar, embedded.Text, cancel);
             int token = 0;
             int part = 0;
-            while (token < colours.Count && part < sql.Parts.Length)
+            while (token < colours.Count && part < embedded.Parts.Length)
             {
                 SyntaxSpan colour = colours[token];
-                EmbeddedSqlPart source = sql.Parts[part];
+                EmbeddedTextPart source = embedded.Parts[part];
                 int from = Math.Max(source.Offset, colour.Start);
                 int to = Math.Min(source.End, colour.End);
                 if (from < to)

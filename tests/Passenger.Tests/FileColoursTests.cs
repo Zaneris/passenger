@@ -37,6 +37,49 @@ public sealed class FileColoursTests : FileColoursFolder
 
         """;
 
+    private const string EmbeddedCode = """"
+        using System.Diagnostics.CodeAnalysis;
+
+        static class Queries
+        {
+            [StringSyntax("Sql")]
+            private static string Query { get; set; } = "select 7";
+
+            [StringSyntax(StringSyntaxAttribute.Xml)]
+            private static string Layout { get; set; } = "<root id='4' />";
+
+            private static void Run([StringSyntax("Sql")] string command) { }
+
+            private static void Read(int userId)
+            {
+                Run(command: "SELECT customer FROM users WHERE id = 71");
+                Run("s\u0065lect 36");
+
+                // language=SQL
+                string marked = @"UPDATE customers SET active = 1";
+                string block = /* lang=sql */ "TRUNCATE TABLE staging";
+                Run($"""
+                    /* multiline
+                    SQL comment */
+                    select customer
+                    from customers
+                    where id = {userId}
+                    order by customer
+                    """);
+                string later = "DELETE FROM logs";
+                Run(later);
+                Query = "INSERT INTO logs VALUES (34)";
+
+                // lang=sql
+                string around = $"SELECT {("select 86")} FROM purchases";
+                string plain = "select 99";
+                string joined = /* lang=sql */ "select 91" + " from logs";
+                // lang=unknown
+                string unknown = "select 92";
+            }
+        }
+        """";
+
     private const string Settings = """
         {
           // Warning and up, unless a category says otherwise.
@@ -114,6 +157,7 @@ public sealed class FileColoursTests : FileColoursFolder
         Flow.StepApart<FileColoursTests>("a Markdown file's JSONC and tsx blocks and raw html are coloured as their own files are", t => t.A_markdown_files_jsonc_and_tsx_blocks_and_raw_html_are_coloured_as_their_own_files_are());
         Flow.StepApart<FileColoursTests>("a GDScript file a scene and a shader show their tokens as their kinds", t => t.A_GDScript_file_a_scene_and_a_shader_show_their_tokens_as_their_kinds());
         Flow.StepApart<FileColoursTests>("a Protocol Buffers schema shows its keywords strings comments types and numbers as their kinds", t => t.A_protocol_buffers_schema_shows_its_keywords_strings_comments_types_and_numbers_as_their_kinds());
+        Flow.StepApart<FileColoursTests>("a C# string marked as another language takes its files' colours and one unmarked or joined stays a string", t => t.A_csharp_string_marked_as_another_language_takes_its_files_colours_and_one_unmarked_or_joined_stays_a_string());
         Flow.StepApart<FileColoursTests>("each kind is drawn in its own colour in the dark theme and the light", t => t.Each_kind_is_drawn_in_its_own_colour_in_the_dark_theme_and_the_light());
         Flow.StepApart<FileColoursTests>("a code colour scheme from the repository draws the code in its colours on the theme's ground under either theme", t => t.A_code_colour_scheme_from_the_repository_draws_the_code_in_its_colours_on_the_themes_ground_under_either_theme());
         Flow.StepApart<FileColoursTests>("two JSON documents keep independent states when their tokenizer is shared", t => t.Two_JSON_documents_keep_independent_states_when_their_tokenizer_is_shared());
@@ -464,6 +508,52 @@ public sealed class FileColoursTests : FileColoursFolder
     /// <summary>Godot's files in their kinds' colours: a GDScript file's keywords, function, class, string, number and
     /// comment, a scene's sections, strings and paths, and a shader's comment and number; a script names itself GDScript, indents
     /// with a tab where its lines say nothing, and comments a line with '#'.</summary>
+    private void A_csharp_string_marked_as_another_language_takes_its_files_colours_and_one_unmarked_or_joined_stays_a_string()
+    {
+        File.WriteAllText(Path.Combine(folder, "Queries.csproj"),
+            """<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net11.0</TargetFramework></PropertyGroup></Project>""");
+        MainWindow window = Window();
+        try
+        {
+            CodeEditor file = Open(window, "Query.sql", "SELECT customer FROM users WHERE id = 71");
+            TokenKind? keyword = KindOf(file, "SELECT");
+            TokenKind? identifier = KindOf(file, "customer");
+            Assert.Equal(TokenKind.Keyword, keyword);
+
+            window.OpenFolder(folder);
+            CodeEditor editor = Open(window, "Queries.cs", EmbeddedCode);
+            Ui.WaitFor(() => KindOf(editor, "SELECT", settle: false) == keyword,
+                () => $"the named SQL argument's keyword to be coloured ({window.CSharpService?.State})", TimeSpan.FromMinutes(2));
+
+            foreach (string word in new[] { "select", "FROM", @"s\u0065lect", "UPDATE", "TRUNCATE", "order by", "DELETE", "INSERT INTO" })
+            {
+                Assert.True(KindOf(editor, word) == keyword, $"'{word}' should use the SQL keyword colour.");
+            }
+            foreach (string word in new[] { "customer", "purchases" })
+            {
+                Assert.True(KindOf(editor, word) == identifier, $"'{word}' should use the SQL identifier colour.");
+            }
+            Assert.Equal(TokenKind.Number, KindOf(editor, "71"));
+            Assert.Equal(TokenKind.Tag, KindOf(editor, "root"));
+            Assert.Equal(TokenKind.Comment, KindOf(editor, "SQL comment"));
+            foreach (string text in new[] { "select 86", "select 99", "select 91", "select 92" })
+            {
+                Assert.True(KindOf(editor, text) == TokenKind.String, $"'{text}' should keep the C# string colour.");
+            }
+
+            int at = EmbeddedCode.IndexOf("language=SQL", StringComparison.Ordinal) + "language=".Length;
+            editor.Selections = SelectionSet.Single(new Selection(at, at + 3));
+            editor.Focus();
+            window.KeyTextInput("text");
+            Ui.WaitFor(() => KindOf(editor, "UPDATE", settle: false) == TokenKind.String,
+                "removing the SQL marker to restore the string's C# colour");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private void A_protocol_buffers_schema_shows_its_keywords_strings_comments_types_and_numbers_as_their_kinds()
     {
         MainWindow window = Window();

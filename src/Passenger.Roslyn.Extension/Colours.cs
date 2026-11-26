@@ -8,7 +8,7 @@ using Microsoft.CodeAnalysis.LanguageServer.Handler.SemanticTokens;
 using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.Text;
 using Roslyn.LanguageServer.Protocol;
-using EmbeddedSql = Passenger.Lsp.EmbeddedSql;
+using EmbeddedText = Passenger.Lsp.EmbeddedText;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -44,14 +44,14 @@ internal static class Colours
         int[] named = await SemanticTokensHelpers.HandleRequestHelperAsync(document, [span], supportsVisualStudioExtensions: true,
             options.GetClassificationOptions(document.Project.Language), cancel).ConfigureAwait(false);
         int[] data = ColourTokens.Retyped(named, context.GetRequiredClientCapabilities().HasVisualStudioLspCapability() ? InVisualStudioLegend : InLspLegend);
-        EmbeddedSql[]? sqlStrings = document.Project.Language == LanguageNames.CSharp
-            ? await SqlStrings.InAsync(document, text.Lines.GetTextSpan(span), cancel).ConfigureAwait(false) : null;
+        EmbeddedText[]? embedded = document.Project.Language == LanguageNames.CSharp
+            ? await EmbeddedTexts.InAsync(document, text.Lines.GetTextSpan(span), cancel).ConfigureAwait(false) : null;
         if (!loose)
         {
             // Made of frozen partial semantics: the server tells the client to ask again once the project's compilation is whole.
             await context.GetRequiredLspService<SemanticTokensRefreshQueue>().TryEnqueueRefreshComputationAsync(document.Project, cancel).ConfigureAwait(false);
         }
-        return new ColoursResult(data, sqlStrings);
+        return new ColoursResult(data, embedded);
     }
 
     /// <summary>For each token type of the schema naming every classification apart, the place in a legend of the type the
@@ -106,9 +106,11 @@ internal sealed record ColoursParams(
     [property: JsonPropertyName("textDocument")] TextDocumentIdentifier TextDocument,
     [property: JsonPropertyName("range")] global::Roslyn.LanguageServer.Protocol.Range? Range);
 
+/// <summary>A file's colours, or a range's: Roslyn's tokens in the client's legend, and the strings that hold another
+/// language (<see cref="EmbeddedTexts"/>), left out where there are none.</summary>
 internal sealed record ColoursResult(
     [property: JsonPropertyName("data")] int[] Data,
-    [property: JsonPropertyName("sqlStrings"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] EmbeddedSql[]? SqlStrings);
+    [property: JsonPropertyName("embeddedTexts"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] EmbeddedText[]? EmbeddedTexts);
 
 [ExportCSharpVisualBasicLspServiceFactory(typeof(ColoursHandler), WellKnownLspServerKinds.Any)]
 [Shared]

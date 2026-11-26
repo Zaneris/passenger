@@ -9,23 +9,30 @@ using Microsoft.CodeAnalysis.LanguageService;
 using Microsoft.CodeAnalysis.Shared.Extensions;
 using Microsoft.CodeAnalysis.Text;
 using Passenger.Lsp;
+using EmbeddedText = Passenger.Lsp.EmbeddedText;
 
 namespace Passenger.Roslyn.Extension;
 
-/// <summary>Finds SQL strings with Roslyn's embedded-language rules and maps their decoded characters to C# source.</summary>
-internal static class SqlStrings
+/// <summary>The strings of a C# file that hold a language Roslyn colours none of, found by Roslyn's own embedded-language
+/// rules (a <c>[StringSyntax]</c> they go to, a <c>lang=</c> comment before them) for each language <see cref="Names"/>
+/// lists, each given by its language's name, its text as decoded (Roslyn's virtual characters) and the source each run of
+/// it came from, for the client to colour as that language's files are; a regex's and JSON's come as Roslyn's own tokens.</summary>
+internal static class EmbeddedTexts
 {
-    private static readonly ImmutableArray<string> Names = ["Sql"];
+    /// <summary>The languages a string is read as, by the names <c>[StringSyntax]</c> and <c>lang=</c> give them.</summary>
+    private static readonly ImmutableArray<string> Names = ["Sql", "Xml", "Html", "Css", "JavaScript", "Yaml"];
+
     private static readonly EmbeddedLanguageCommentDetector Comments = new(Names);
 
-    public static async Task<EmbeddedSql[]?> InAsync(Document document, TextSpan range, CancellationToken cancel)
+    /// <summary>The strings in a range of the document that hold one of <see cref="Names"/>' languages; null for none.</summary>
+    public static async Task<EmbeddedText[]?> InAsync(Document document, TextSpan range, CancellationToken cancel)
     {
         document = document.WithFrozenPartialSemantics(cancel);
         SyntaxNode root = await document.GetRequiredSyntaxRootAsync(cancel).ConfigureAwait(false);
         EmbeddedLanguageInfo info = document.GetRequiredLanguageService<IEmbeddedLanguagesProvider>().EmbeddedLanguageInfo;
         EmbeddedLanguageDetector detector = new(info, Names, Comments);
         SemanticModel? model = null;
-        List<EmbeddedSql> strings = [];
+        List<EmbeddedText> strings = [];
         foreach (SyntaxNode node in root.DescendantNodes(range))
         {
             cancel.ThrowIfCancellationRequested();
@@ -40,7 +47,7 @@ internal static class SqlStrings
                 continue;
             }
             model ??= await document.GetRequiredSemanticModelAsync(cancel).ConfigureAwait(false);
-            if (IsSql(anchor, info, detector, model, cancel) && Read(anchor, info.VirtualCharService, cancel) is { } embedded)
+            if (LanguageOf(anchor, info, detector, model, cancel) is { } language && Read(language, anchor, info.VirtualCharService, cancel) is { } embedded)
             {
                 strings.Add(embedded);
             }
@@ -48,52 +55,58 @@ internal static class SqlStrings
         return strings.Count == 0 ? null : [.. strings];
     }
 
-    private static bool IsSql(SyntaxToken anchor, EmbeddedLanguageInfo info, EmbeddedLanguageDetector detector,
+    /// <summary>The language a string holds by <see cref="Names"/>' name, or null: an interpolated string's only by a comment
+    /// of its own or what it goes to, never by one above an expression in a hole that holds it.</summary>
+    private static string? LanguageOf(SyntaxToken anchor, EmbeddedLanguageInfo info, EmbeddedLanguageDetector detector,
         SemanticModel model, CancellationToken cancel)
     {
         if (anchor.Parent is not InterpolatedStringExpressionSyntax)
         {
-            if (!detector.IsEmbeddedLanguageToken(anchor, model, cancel, out _, out IEnumerable<string>? commentOptions))
+            if (!detector.IsEmbeddedLanguageToken(anchor, model, cancel, out string? identifier, out IEnumerable<string>? commentOptions))
             {
-                return false;
+                return null;
             }
             if (commentOptions is null)
             {
-                return true;
+                return identifier;
             }
         }
-        return HasOwnComment(anchor, info, detector)
-            || (detector.IsEmbeddedLanguageStringLiteralToken_Direct(anchor, model, cancel, out string? name)
-                && detector.IsEmbeddedLanguageIdentifier(name));
+        return OwnComment(anchor, info, detector)
+            ?? (detector.IsEmbeddedLanguageStringLiteralToken_Direct(anchor, model, cancel, out string? name) && detector.IsEmbeddedLanguageIdentifier(name)
+                ? name
+                : null);
     }
 
-    /// <summary>An outer SQL marker must not pass through an interpolation hole into its C# expressions.</summary>
-    private static bool HasOwnComment(SyntaxToken anchor, EmbeddedLanguageInfo info, EmbeddedLanguageDetector detector)
+    /// <summary>The language a <c>lang=</c> comment of the string's own names, up to its statement; never one above a hole
+    /// the string stands in, which is the outer string's.</summary>
+    private static string? OwnComment(SyntaxToken anchor, EmbeddedLanguageInfo info, EmbeddedLanguageDetector detector)
     {
-        if (Matches(anchor.GetPreviousToken().TrailingTrivia))
+        if (Named(anchor.GetPreviousToken().TrailingTrivia) is { } trailing)
         {
-            return true;
+            return trailing;
         }
         for (SyntaxNode? node = anchor.Parent; node is not null and not InterpolationSyntax; node = node.Parent)
         {
-            if (Matches(node.GetLeadingTrivia()))
+            if (Named(node.GetLeadingTrivia()) is { } leading)
             {
-                return true;
+                return leading;
             }
             if (node is StatementSyntax)
             {
                 break;
             }
         }
-        return false;
+        return null;
 
-        bool Matches(SyntaxTriviaList trivia) => detector.HasLanguageComment(trivia, info.SyntaxFacts, out _, out _);
+        string? Named(SyntaxTriviaList trivia) => detector.HasLanguageComment(trivia, info.SyntaxFacts, out string? identifier, out _) ? identifier : null;
     }
 
-    private static EmbeddedSql? Read(SyntaxToken anchor, IVirtualCharService characters, CancellationToken cancel)
+    /// <summary>A string's text as decoded, a hole's place one '?' of no source so the language reads on past it, and the
+    /// runs of the source it came from; null where it has no characters to read.</summary>
+    private static EmbeddedText? Read(string language, SyntaxToken anchor, IVirtualCharService characters, CancellationToken cancel)
     {
         StringBuilder text = new();
-        List<EmbeddedSqlPart> parts = [];
+        List<EmbeddedTextPart> parts = [];
         IEnumerable<SyntaxToken?> pieces = anchor.Parent is InterpolatedStringExpressionSyntax interpolation
             ? interpolation.Contents.Select(static piece => (piece as InterpolatedStringTextSyntax)?.TextToken)
             : [anchor];
@@ -101,7 +114,7 @@ internal static class SqlStrings
         {
             if (piece is not { } token)
             {
-                // A placeholder preserves the SQL state across a hole without giving it a C# range.
+                // A hole is a character of no source, so the language reads on past it as it would past a value.
                 text.Append('?');
                 continue;
             }
@@ -122,11 +135,11 @@ internal static class SqlStrings
                 }
                 else
                 {
-                    parts.Add(new EmbeddedSqlPart(text.Length, span.Start, 1, span.Length));
+                    parts.Add(new EmbeddedTextPart(text.Length, span.Start, 1, span.Length));
                 }
                 text.Append(character.Value);
             }
         }
-        return parts.Count == 0 ? null : new EmbeddedSql(text.ToString(), [.. parts]);
+        return parts.Count == 0 ? null : new EmbeddedText(language, text.ToString(), [.. parts]);
     }
 }

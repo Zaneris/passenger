@@ -503,7 +503,9 @@ public sealed class SemanticTokens
     [JsonConverter(typeof(TokenData))]
     public int[] Data { get; init; } = [];
 
-    public EmbeddedSql[]? SqlStrings { get; init; }
+    /// <summary>The strings of the range that hold another language, for the client to colour as that language's files are
+    /// (Passenger's extension's colours alone).</summary>
+    public EmbeddedText[]? EmbeddedTexts { get; init; }
 }
 
 /// <summary>A file's tokens, five numbers each, read into one array of their count: a long file's are a million numbers,

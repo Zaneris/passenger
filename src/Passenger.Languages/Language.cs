@@ -335,6 +335,10 @@ public sealed class Language
     /// <summary>The file names it claims, though a language declared before it may claim a file first.</summary>
     public IReadOnlyList<FilePattern> Patterns => patterns;
 
+    /// <summary>The language a C# string marked by <c>[StringSyntax]</c> or a <c>lang=</c> comment holds, by its name as either
+    /// gives it (Sql, Xml), its id compared without case; null for one Passenger has none of.</summary>
+    public static Language? OfEmbedded(string name) => All.FirstOrDefault(language => string.Equals(language.Id, name, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>Every language's id, in the order declared, as a theme names a language it colours.</summary>
     public static IEnumerable<string> Ids => All.Select(l => l.Id);
 
