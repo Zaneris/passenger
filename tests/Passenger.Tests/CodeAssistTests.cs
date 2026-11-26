@@ -2638,16 +2638,16 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Run(window, AppActions.ParameterInfo);
         Ui.WaitFor(() => window.Assist.SignatureText?.Contains("The value", StringComparison.Ordinal) == true, "Echo's parameter documentation");
         AssertDocumentation(window.Assist.SignatureCard!, "value", "parameter guide", guide);
-        AssertTable(window.Assist.SignatureCard!, [], ["T", "The input type"]);
+        AssertRows(window.Assist.SignatureText!, "T", "The input type");
         window.Close();
 
-        static void AssertTable(Border card, string[] header, string[] rows)
+        // A table's row: its term, a dash and its description, a line of their own.
+        static void AssertRows(string said, params string[] cells)
         {
-            Border table = Assert.Single(card.GetVisualDescendants().OfType<Border>(), control => control.Classes.Contains(StyleClasses.MdTable));
-            Grid grid = Assert.IsType<Grid>(table.Child);
-            Assert.Equal(2, grid.ColumnDefinitions.Count);
-            Assert.Equal(header, grid.Children.OfType<Border>().Where(cell => cell.Classes.Contains(StyleClasses.Head)).Select(cell => ((MarkdownText)cell.Child!).Shown));
-            Assert.Equal(rows, grid.Children.OfType<Border>().Where(cell => !cell.Classes.Contains(StyleClasses.Head)).Select(cell => ((MarkdownText)cell.Child!).Shown));
+            for (int i = 0; i < cells.Length; i += 2)
+            {
+                Assert.Matches($@"(?m)^{System.Text.RegularExpressions.Regex.Escape(cells[i])} *– *{System.Text.RegularExpressions.Regex.Escape(cells[i + 1])}$", said.Replace('\u00A0', ' '));
+            }
         }
 
         static void AssertExamples(Border card)
@@ -2662,7 +2662,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             ColouredCode log = Assert.Single(blocks, block => block.Code == "[INFO] Worker ready");
             Assert.Null(log.Language);
             Assert.Empty(log.Runs);
-            AssertTable(card, ["Input", "Result"], ["hello", "The same string", "42", "The same integer"]);
+            AssertRows(string.Join('\n', card.GetVisualDescendants().OfType<MarkdownText>().Select(words => words.Shown)),
+                "Input", "Result", "hello", "The same string", "42", "The same integer");
         }
 
         static MarkdownText AssertDocumentation(Border card, string bold, string label, Uri target)

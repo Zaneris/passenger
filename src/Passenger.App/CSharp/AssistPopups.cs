@@ -321,9 +321,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
                 int at = unused.FindIndex(p => Languages.CSharp.ServerCode.SameCode(Languages.CSharp.ServerCode.Of(p).Text, text));
                 if (at < 0 && rich && info == "text")
                 {
-                    parts.Children.Add(Markdown.DocumentationTable(text) is { } table
-                        ? Markdown.Control(table, documentationPage)
-                        : ColouredCode.Of(text, IsCSharpExample(text) ? Languages.Language.CSharp : null));
+                    parts.Children.Add(ColouredCode.Of(text, IsCSharpExample(text) ? Languages.Language.CSharp : null));
                     continue;
                 }
                 AddServed(text, at < 0 ? null : unused[at], ColouredCode.LanguageOf(info));
@@ -348,10 +346,12 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         }
     }
 
+    /// <summary>Whether a documentation comment's code example, which comes fenced as text, reads as C#: parsed without an
+    /// error and declaring something (a using, a namespace, a type, a variable of a type or of <c>var</c>), as a log's
+    /// line or a lone call of words does not.</summary>
     private static bool IsCSharpExample(string code)
     {
         SyntaxNode root = Languages.CSharp.CSharpParsing.Parse(code).GetRoot();
-        // Roslyn also uses a text fence for prose or output. A valid parse alone admits ambiguous fragments such as a call.
         return !root.ContainsDiagnostics && root.DescendantNodes().Any(node => node is PredefinedTypeSyntax or UsingDirectiveSyntax
             or BaseNamespaceDeclarationSyntax or BaseTypeDeclarationSyntax or VariableDeclarationSyntax { Type.IsVar: true });
     }
