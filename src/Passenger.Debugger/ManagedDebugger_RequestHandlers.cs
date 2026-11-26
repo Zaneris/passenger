@@ -743,6 +743,21 @@ public partial class ManagedDebugger
                     result.Add(CreateSyntheticAsyncStackFrameInfo(syntheticFrameId, threadId, physicalFrameStackDepth, syntheticFrame, decompiled: false));
                 }
             }
+
+            // A run the runtime resumed (runtime async) is awaited by methods its chain of continuations holds, not its thread.
+            List<ICorDebugILFrame> awaiting = _asyncStepper?.AwaitingRun(thread) ?? [];
+            for (int at = 0; at < awaiting.Count; at++)
+            {
+                if (index >= endFrame)
+                {
+                    return result;
+                }
+                if (index >= startFrame)
+                {
+                    result.Add(DescribeFrame(_frameReferenceManager.GetOrCreateAwaitingFrameId(threadId, at), awaiting[at]));
+                }
+                index++;
+            }
         }
         catch (Exception ex)
         {
@@ -780,10 +795,20 @@ public partial class ManagedDebugger
 
     private ICorDebugILFrame ResolvableFrame(int frameId)
     {
+        if (_frameReferenceManager.GetAwaitingFrameById(frameId) is var (awaitedOn, at))
+        {
+            return AwaitingFrame(awaitedOn, at) ?? throw new InvalidOperationException($"Stack frame '{frameId}' awaits a run the program has gone on from");
+        }
         (ThreadId threadId, FrameStackDepth frameStackDepth) frameInfo = _frameReferenceManager.GetFrameInfoById(frameId) ?? throw new ArgumentException(_frameReferenceManager.Unknown(frameId));
         return GetFrameForThreadIdAndStackDepth(frameInfo.threadId, frameInfo.frameStackDepth) as ICorDebugILFrame
             ?? throw new InvalidOperationException($"Stack frame '{frameId}' cannot be resolved because it is not an IL frame.");
     }
+
+    /// <summary>The method awaiting a thread's resumed run at a place in its chain, read again from the chain as it stands.</summary>
+    private ICorDebugILFrame? AwaitingFrame(ThreadId threadId, int index) =>
+        _threads.GetValueOrDefault(threadId.Value)?.Thread is { } thread && _asyncStepper?.AwaitingRun(thread) is { } awaiting && index < awaiting.Count
+            ? awaiting[index]
+            : null;
 
     /// <summary>What a frame whose method the debugger cannot read is called.</summary>
     private const string UnknownMethod = "[Unknown method]";
@@ -902,6 +927,11 @@ public partial class ManagedDebugger
             int syntheticLocalsReference = _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.SyntheticAsyncScope,
                 syntheticFrame.Value.frame.StateMachine, syntheticFrame.Value.threadId, syntheticFrame.Value.physicalFrameStackDepth, null));
             result.Add(new ScopeInfo { Name = "Locals", VariablesReference = syntheticLocalsReference, Expensive = false });
+            return result;
+        }
+        // A method awaiting a resumed run keeps its locals in its continuation, which no scope reads.
+        if (_frameReferenceManager.GetAwaitingFrameById(frameId) is not null)
+        {
             return result;
         }
         (ThreadId threadId, FrameStackDepth frameStackDepth)? frameInfo = _frameReferenceManager.GetFrameInfoById(frameId);
@@ -1194,7 +1224,7 @@ public partial class ManagedDebugger
             throw new InvalidOperationException("Frame ID is required for evaluation");
         }
 
-        if (_frameReferenceManager.GetSyntheticAsyncFrameById(frameId.Value) is not null)
+        if (_frameReferenceManager.GetSyntheticAsyncFrameById(frameId.Value) is not null || _frameReferenceManager.GetAwaitingFrameById(frameId.Value) is not null)
         {
             throw new InvalidOperationException("Expression evaluation is not supported for synthetic async caller frames");
         }

@@ -29,4 +29,32 @@ public partial class FrameReferenceManager
             return _syntheticAsyncFrameReferences.GetValueOrDefault(frameId);
         }
     }
+
+    /// <summary>The frames of the methods awaiting a resumed run (runtime async), by their place in the thread's chain.</summary>
+    private readonly Dictionary<int, (ThreadId threadId, int index)> _awaitingFrameReferences = [];
+    private readonly Dictionary<(ThreadId threadId, int index), int> _awaitingFrameIds = [];
+
+    /// <summary>The id of the method a thread's resumed run is awaited by at a place in its chain (0 the innermost).</summary>
+    internal int GetOrCreateAwaitingFrameId(ThreadId threadId, int index)
+    {
+        lock (_lock)
+        {
+            if (_awaitingFrameIds.TryGetValue((threadId, index), out int existing))
+            {
+                return existing;
+            }
+            int frameId = _nextFrameId++;
+            _awaitingFrameReferences[frameId] = (threadId, index);
+            _awaitingFrameIds[(threadId, index)] = frameId;
+            return frameId;
+        }
+    }
+
+    internal (ThreadId threadId, int index)? GetAwaitingFrameById(int frameId)
+    {
+        lock (_lock)
+        {
+            return _awaitingFrameReferences.TryGetValue(frameId, out (ThreadId threadId, int index) found) ? found : null;
+        }
+    }
 }

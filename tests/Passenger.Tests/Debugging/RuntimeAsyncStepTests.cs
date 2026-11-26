@@ -49,6 +49,33 @@ public class RuntimeAsyncStepTests(ITestOutputHelper testOutputHelper)
         await Flow.StepApartAsync<RuntimeAsyncStepTests>("a step past the end of a method that went on after an await stops in the caller that awaits it", () => new RuntimeAsyncStepTests(testOutputHelper), t => t.A_step_past_the_end_of_a_method_that_went_on_after_an_await_stops_in_the_caller_that_awaits_it());
         await Flow.StepApartAsync<RuntimeAsyncStepTests>("a step over an await in a method the runtime called stops on the next line once the method goes on", () => new RuntimeAsyncStepTests(testOutputHelper), t => t.A_step_over_an_await_in_a_method_the_runtime_called_stops_on_the_next_line_once_the_method_goes_on());
         await Flow.StepApartAsync<RuntimeAsyncStepTests>("a step over an await stops in its own run when another run of the method goes on first", () => new RuntimeAsyncStepTests(testOutputHelper), t => t.A_step_over_an_await_stops_in_its_own_run_when_another_run_of_the_method_goes_on_first());
+        await Flow.StepApartAsync<RuntimeAsyncStepTests>("a stop in a method gone on after its await lists the methods awaiting it as the state machine build does (#2339)", () => new RuntimeAsyncStepTests(testOutputHelper), t => t.A_stop_in_a_method_gone_on_after_its_await_lists_the_methods_awaiting_it_as_the_state_machine_build_does());
+    }
+
+    /// <summary>A stop in InnerAsync once its await went on, its run resumed by the runtime rather than called: the Call
+    /// Stack lists OuterAsync awaiting it at its await, then the program's Main awaiting OuterAsync, each at the line it
+    /// waits at, in the runtime-async build as in the state-machine build, whose awaiting methods are read from their tasks.</summary>
+    private async Task A_stop_in_a_method_gone_on_after_its_await_lists_the_methods_awaiting_it_as_the_state_machine_build_does()
+    {
+        IReadOnlyList<(string Name, int Line)> stateMachines = await OwnFrames(StateMachines, Doubled);
+        IReadOnlyList<(string Name, int Line)> runtimeAsync = await OwnFrames(RuntimeAsync, Doubled);
+        Assert.True(stateMachines.Count == 3 && stateMachines.Select(frame => frame.Line).SequenceEqual([Doubled, InnerAwaited, TotalAwaited]),
+            $"The state-machine build's stop in InnerAsync lists [{string.Join(" < ", stateMachines)}], not it, OuterAsync and Main at the lines each waits at");
+        Assert.True(runtimeAsync.SequenceEqual(stateMachines),
+            $"The runtime-async build's stop in InnerAsync lists [{string.Join(" < ", runtimeAsync)}], where the state-machine build lists [{string.Join(" < ", stateMachines)}]");
+
+        async Task<IReadOnlyList<(string Name, int Line)>> OwnFrames(string debuggee, int breakpoint)
+        {
+            string source = Debuggees.Source(RuntimeAsync, "Program.cs");
+            await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+            await host.InitializeAsync().LaunchAsync(Debuggees.Program(debuggee), stopAtEntry: false, justMyCode: true).WaitForInitializedEvent();
+            await host.BreakpointsAsync(breakpoint, source).ConfigurationDoneAsync();
+            StoppedEvent stop = await host.WaitForStoppedEvent();
+            Assert.Equal((StopReasons.Breakpoint, breakpoint), (stop.Reason, stop.Line));
+            StackTraceResponse stack = await host.StackTraceAsync(stop.ThreadId!.Value, null);
+            string own = $"{debuggee}.dll!";
+            return [.. stack.StackFrames.Where(frame => frame.Name.StartsWith(own, StringComparison.Ordinal)).Select(frame => (frame.Name[own.Length..], frame.Line))];
+        }
     }
 
     private async Task A_step_over_an_await_that_suspends_stops_on_the_next_line_once_the_method_goes_on()
