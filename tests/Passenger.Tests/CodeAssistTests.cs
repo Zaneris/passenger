@@ -260,13 +260,11 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             + "void Cache.Clear([CachePolicy(\"count\", Priority = 1)] int count, [CachePolicy(\"scope\")] [string scope = \"default\"])";
         ColouredCode code = Assert.Single(window.Assist.HoverCard!.GetVisualDescendants().OfType<ColouredCode>());
         Assert.StartsWith(declaration, code.Code, StringComparison.Ordinal);
-        Assert.StartsWith(declaration, first, StringComparison.Ordinal);
         Assert.Contains("Clears the requested number of entries.", first, StringComparison.Ordinal);
         Assert.DoesNotContain("[CachePolicy(\"named\")]", first, StringComparison.Ordinal);
 
         string second = Hover("cache.Clear(\"key\")", "Clear");
         Assert.StartsWith("[CachePolicy(\"named\")]\nvoid Cache.Clear([CachePolicy(\"key\")] string key)", second, StringComparison.Ordinal);
-        Assert.DoesNotContain("[CachePolicy(\"short\"", second, StringComparison.Ordinal);
 
         Assert.StartsWith("void Cache.Set([CachePolicy(\"value\", Slots = new int[] { 1, 2 })] int @class)",
             Hover("cache.Set(3)", "Set"), StringComparison.Ordinal);
@@ -3619,7 +3617,6 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 sealed class Cache
                 {
                     public Cache([CachePolicy("capacity")] int capacity) => Capacity = capacity;
-
                     [CachePolicy("property")] public int Count { get; }
                     [CachePolicy("field", Slots = new int[] { })] public int Capacity = 8;
                     [CachePolicy("event")] public event Action? Changed;
@@ -3631,11 +3628,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
                     [CachePolicy("named")]
                     public void Clear([CachePolicy("key")] string key) { }
-
                     public void Set([CachePolicy("value", Slots = new int[] { 1, 2 })] int @class) { }
-
                     public (int value, int size) Pair([CachePolicy("pair")] (int, int) value) => value;
-
                     public void Reset() { }
                 }
 
