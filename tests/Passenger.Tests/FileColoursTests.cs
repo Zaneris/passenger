@@ -111,7 +111,7 @@ public sealed class FileColoursTests : FileColoursFolder
     public void Each_kind_of_file_is_coloured_as_its_language_in_the_themes_colours()
     {
         Flow.StepApart<FileColoursTests>("a project file settings a workflow a readme and a script each show their tokens in Riders colours", t => t.A_project_file_settings_a_workflow_a_readme_and_a_script_each_show_their_tokens_in_Riders_colours());
-        Flow.StepApart<FileColoursTests>("a Markdown file's JSONC and tsx blocks and raw html are coloured as their own files are", t => t.A_markdown_files_jsonc_and_tsx_blocks_and_raw_html_are_coloured_as_their_own_files_are());
+        Flow.StepApart<FileColoursTests>("a Markdown file's JSONC and tsx blocks and raw html and a Razor file's script are coloured as their own files are", t => t.A_markdown_files_jsonc_and_tsx_blocks_and_raw_html_and_a_razor_files_script_are_coloured_as_their_own_files_are());
         Flow.StepApart<FileColoursTests>("a GDScript file a scene and a shader show their tokens as their kinds", t => t.A_GDScript_file_a_scene_and_a_shader_show_their_tokens_as_their_kinds());
         Flow.StepApart<FileColoursTests>("each kind is drawn in its own colour in the dark theme and the light", t => t.Each_kind_is_drawn_in_its_own_colour_in_the_dark_theme_and_the_light());
         Flow.StepApart<FileColoursTests>("a code colour scheme from the repository draws the code in its colours on the theme's ground under either theme", t => t.A_code_colour_scheme_from_the_repository_draws_the_code_in_its_colours_on_the_themes_ground_under_either_theme());
@@ -284,7 +284,7 @@ public sealed class FileColoursTests : FileColoursFolder
 
     /// <summary>A Markdown file's blocks of JSON with comments and of TSX, and its raw HTML, are coloured as their own files
     /// are: the jsonc block's comment and key, the tsx block's comment and keywords, and the HTML's tag, attribute and value.</summary>
-    private void A_markdown_files_jsonc_and_tsx_blocks_and_raw_html_are_coloured_as_their_own_files_are()
+    private void A_markdown_files_jsonc_and_tsx_blocks_and_raw_html_and_a_razor_files_script_are_coloured_as_their_own_files_are()
     {
         MainWindow window = Window();
         try
@@ -296,6 +296,11 @@ public sealed class FileColoursTests : FileColoursFolder
             string[] wrong = [.. expected.Select(e => (e.Stretch, e.Kind, Found: KindOf(editor, e.Stretch))).Where(e => e.Found != e.Kind)
                 .Select(e => $"{e.Stretch} as {e.Found?.ToString() ?? "several kinds"}, not {e.Kind}")];
             Assert.True(wrong.Length == 0, $"Markdown's JSON with comments, TSX and raw HTML are not coloured as in their own files: {string.Join("; ", wrong)}");
+
+            // Razor's grammar, before any language server answers, hands a script's code to JavaScript's, in a code block too.
+            CodeEditor razor = Open(window, "Counter.razor", "<h1>Counter</h1>\n\n@if (true)\n{\n    <script>\n        function step() { }\n    </script>\n}\n");
+            Assert.True(KindOf(razor, "function") == TokenKind.Keyword,
+                $"A Razor file's script in a code block left function as {KindOf(razor, "function")?.ToString() ?? "several kinds"}, not a keyword as in a .js file");
         }
         finally
         {
