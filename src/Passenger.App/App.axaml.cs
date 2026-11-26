@@ -39,7 +39,7 @@ public partial class App : Application
         }
         Themes.TakeAccentFromTokens(this);
         Passenger.Editor.FallbackFonts.Install(PlatformFallback.Named, FaceTracking.Set);
-        Passenger.Editor.CodeFonts.Install(PlatformWidths.Monospaced);
+        Passenger.Editor.CodeFonts.Install(PlatformWidths.Monospaced, PlatformWidths.Readable);
         Passenger.Editor.CodeFonts.Use(this, Passenger.Editor.CodeEditor.CodeFont);
         WindowFonts.Use(this, WindowFonts.Carried);
         InterfaceScale.Use(this, 1);

@@ -8,6 +8,10 @@ namespace Passenger.App;
 /// keeps none of them for the process.</summary>
 internal static class PlatformWidths
 {
+    /// <summary>Whether Skia, which draws every window, reads the tables of the platform's face for the name: one whose tables
+    /// it cannot read (a Type1 font's, as Linux systems install) throws wherever words are drawn in it, a list's row too.</summary>
+    public static bool Readable(string family) => SKFontManager.Default.MatchFamily(family) is { } face && face.TryGetTableTags(out _);
+
     /// <summary>The 'post' table, whose isFixedPitch stands at byte 12.</summary>
     private const uint Post = 0x706F7374;
 

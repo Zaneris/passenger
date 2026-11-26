@@ -23,10 +23,11 @@ public static class WindowFonts
     public static readonly FontFamily Carried = FallbackFonts.Carry(new FontFamily(CarriedName));
 
     // Unheld: one list for every window, each asker holding its own wait for it (InstalledAsync).
-    private static readonly Lazy<Task<IReadOnlyList<string>>> Found = new(() => BackgroundWork.Unheld(() => WindowFontNames.Choosable(Families())));
+    private static readonly Lazy<Task<IReadOnlyList<string>>> Found = new(() => BackgroundWork.Unheld(() => WindowFontNames.Choosable(Families().Where(PlatformWidths.Readable))));
 
-    /// <summary>The installed families a person may choose, by name in order, found on the thread pool once for the process,
-    /// the caller's wait held as background work.</summary>
+    /// <summary>The installed families a person may choose, by name in order, those Skia cannot read left out
+    /// (<see cref="PlatformWidths.Readable"/>), found on the thread pool once for the process, the caller's wait held as
+    /// background work.</summary>
     public static Task<IReadOnlyList<string>> InstalledAsync() => BackgroundWork.Run(() => Found.Value);
 
     /// <summary>What a setting's name comes to here.</summary>
@@ -44,12 +45,15 @@ public static class WindowFonts
     public static FontFamily? Named(string? name) => Choice(name) switch
     {
         { Kind: WindowFontKind.Carried } => Carried,
-        { Kind: WindowFontKind.System or WindowFontKind.Installed, Family: string family } => FallbackFonts.Of(family),
+        { Kind: WindowFontKind.System, Family: string family } => FallbackFonts.Of(family),
+        { Kind: WindowFontKind.Installed, Family: string family } when PlatformWidths.Readable(family) => FallbackFonts.Of(family),
         _ => null,
     };
 
     /// <summary>Why a name gives no typeface, as words after it; null when it gives one.</summary>
-    public static string? WhyNot(string name) => Named(name) is null ? "is not a font installed on this computer" : null;
+    public static string? WhyNot(string name) => Named(name) is not null ? null
+        : Choice(name) is { Kind: WindowFontKind.Installed } ? CodeFonts.UnreadableWhy
+        : "is not a font installed on this computer";
 
     /// <summary>How Settings names the system's own choice here: "System font (Segoe UI)".</summary>
     public static string SystemShown() => WindowFontNames.SystemShown(SystemFamily());

@@ -549,7 +549,8 @@ public abstract class FontChoices
 
         public override string? WhyNot(string name) => CodeFonts.WhyNot(name);
 
-        public override string Unusable(string name) => CodeFonts.IsInstalled(name) ? "not monospaced" : "not installed";
+        public override string Unusable(string name) => !CodeFonts.IsInstalled(name) ? "not installed"
+            : CodeFonts.IsReadable(name.Trim()) ? "not monospaced" : "unreadable";
     }
 
     private sealed class WindowChoices : FontChoices
@@ -567,6 +568,6 @@ public abstract class FontChoices
 
         public override string? WhyNot(string name) => WindowFonts.WhyNot(name);
 
-        public override string Unusable(string name) => "not installed";
+        public override string Unusable(string name) => WindowFonts.Choice(name) is { Kind: WindowFontKind.Installed } ? "unreadable" : "not installed";
     }
 }

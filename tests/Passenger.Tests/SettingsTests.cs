@@ -77,13 +77,53 @@ public sealed class SettingsTests : IDisposable
     }
 
     /// <summary>Every page of Settings at its least width and smallest size cuts no word and runs no row under its
-    /// scroll bar, and a search keeps what it matches, as one flow, each step in an instance of its own.</summary>
+    /// scroll bar, its font lists draw every family they offer, and a search keeps what it matches, as one flow, each step
+    /// in an instance of its own.</summary>
     [AvaloniaFact]
     public void Every_Settings_page_is_whole_at_its_smallest_and_found_by_a_search()
     {
         Flow.StepApart<SettingsTests>("every page at the least width cuts no word and lays nothing over anything", t => t.Every_page_at_the_least_width_cuts_no_word_and_lays_nothing_over_anything());
         Flow.StepApart<SettingsTests>("no row of any page runs under its scroll bar at the dialogs smallest size or its own", t => t.No_row_of_any_page_runs_under_its_scroll_bar_at_the_dialogs_smallest_size_or_its_own());
+        Flow.StepApart<SettingsTests>("every family the font lists offer draws as its row comes into view", t => t.Every_family_the_font_lists_offer_draws_as_its_row_comes_into_view());
         Flow.StepApart<SettingsTests>("a search keeps the pages and options it matches", t => t.A_search_keeps_the_pages_and_options_it_matches());
+    }
+
+    /// <summary>Every family the code's and the window's font lists offer draws as its row comes into view, each list opened
+    /// and scrolled from end to end: a face the renderer cannot read (a Type1 font's, as Linux systems install) is never
+    /// offered, where its row threw as it was drawn and the list ignored every click (#2291).</summary>
+    private void Every_family_the_font_lists_offer_draws_as_its_row_comes_into_view()
+    {
+        MainWindow window = Open();
+        SettingsDialog dialog = window.ShowSettings();
+        try
+        {
+            foreach ((string page, Func<Task<IReadOnlyList<string>>> installed) in new (string, Func<Task<IReadOnlyList<string>>>)[]
+                { (SettingsDialog.EditorPage, CodeFonts.InstalledAsync), (SettingsDialog.Appearance, WindowFonts.InstalledAsync) })
+            {
+                dialog.Page = page;
+                Ui.Settle();
+                IReadOnlyList<string> offered = Ui.Await(installed(), "the installed fonts");
+                ComboBox box = Editor<ComboBox>(dialog, "Font family");
+                Ui.WaitFor(() => offered.All(name => box.Items.Cast<object?>().Any(i => i?.ToString() == name)), $"the installed fonts to fill {page}'s list");
+                Ui.Click(box);
+                Ui.WaitFor(() => box.IsDropDownOpen, $"{page}'s font list to open");
+                for (int at = 0; at < box.ItemCount; at += 8)
+                {
+                    box.ScrollIntoView(at);
+                    Ui.Settle();
+                }
+                box.ScrollIntoView(box.ItemCount - 1);
+                Ui.Settle();
+                Assert.True(box.ContainerFromIndex(box.ItemCount - 1) is not null, $"{page}'s font list never showed its last family, {box.Items.Cast<object?>().Last()}");
+                box.IsDropDownOpen = false;
+                Ui.Settle();
+            }
+        }
+        finally
+        {
+            dialog.Close();
+            window.Close();
+        }
     }
 
     private void Visual_edits_preview_without_saving_and_cancel_restores_the_last_apply()

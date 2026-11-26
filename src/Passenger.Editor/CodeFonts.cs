@@ -24,8 +24,14 @@ public static class CodeFonts
 
     private static readonly ConcurrentDictionary<string, bool> Monospaced = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Why an installed family gives no font, as words after it, where the platform cannot read its tables.</summary>
+    public const string UnreadableWhy = "is a font Passenger cannot draw: its tables can't be read";
+
     /// <summary>The platform's measure of a family, by name, given the characters to measure; null until the app gives one.</summary>
     private static Func<string, string, bool>? measure;
+
+    /// <summary>Whether the platform reads a family's tables, by name; null until the app gives it, every family read till then.</summary>
+    private static Func<string, bool>? readable;
 
     // Unheld: one list for every window, each asker holding its own wait for it (InstalledAsync).
     private static readonly Lazy<Task<IReadOnlyList<string>>> Found = new(() => BackgroundWork.Unheld(Find));
@@ -50,21 +56,31 @@ public static class CodeFonts
         {
             return CodeEditor.CodeFont;
         }
-        return Installed(trimmed) is { } family && IsMonospaced(family) ? FallbackFonts.Of(family.Name) : null;
+        return Installed(trimmed) is { } family && IsReadable(family.Name) && IsMonospaced(family) ? FallbackFonts.Of(family.Name) : null;
     }
 
     /// <summary>Why a name gives no code font, as words after it; null when it gives one.</summary>
     public static string? WhyNot(string name) => Named(name) is not null ? null
         : Installed(name.Trim()) is null ? "is not a font installed on this computer"
+        : !IsReadable(name.Trim()) ? UnreadableWhy
         : "is not monospaced: code's columns need every character one width";
 
     /// <summary>Whether a family of the name is installed, monospaced or not.</summary>
     public static bool IsInstalled(string name) => Installed(name.Trim()) is not null;
 
+    /// <summary>Whether the platform reads the tables of a family of the name, which drawing words in it needs: one it cannot
+    /// read (a Type1 font's) is never offered or taken.</summary>
+    public static bool IsReadable(string name) => readable?.Invoke(name) ?? true;
+
     /// <summary>Has a family's widths read by <paramref name="platform"/>: whether a family of the name has every one of the
     /// characters given, each one width (or says it is fixed pitch), read from its own tables without the system's
-    /// collection keeping it, where measuring through that collection keeps every installed family it tells apart.</summary>
-    public static void Install(Func<string, string, bool> platform) => measure = platform;
+    /// collection keeping it, where measuring through that collection keeps every installed family it tells apart; and
+    /// whether its tables can be read at all by <paramref name="reads"/>.</summary>
+    public static void Install(Func<string, string, bool> platform, Func<string, bool> reads)
+    {
+        measure = platform;
+        readable = reads;
+    }
 
     /// <summary>Puts a family in force as the code font, for every control following it.</summary>
     public static void Use(Application app, FontFamily family) => app.Resources[Key] = family;
@@ -92,7 +108,8 @@ public static class CodeFonts
         foreach (FontFamily family in FontManager.Current.SystemFonts)
         {
             // The system's own hidden families begin with a dot.
-            if (!family.Name.StartsWith('.') && !family.Name.Equals(Carried, StringComparison.OrdinalIgnoreCase) && IsMonospaced(family))
+            if (!family.Name.StartsWith('.') && !family.Name.Equals(Carried, StringComparison.OrdinalIgnoreCase) && IsReadable(family.Name)
+                && IsMonospaced(family))
             {
                 names.Add(family.Name);
             }
