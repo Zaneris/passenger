@@ -870,6 +870,11 @@ public sealed class LspDocument : IDisposable
     public async Task<Hover?> HoverAsync(int offset, CancellationToken cancel = default) =>
         await Server.RequestAsync<Hover>(HoverMethod, new TextDocumentPositionParams(Identifier, PositionOf(offset)), cancel);
 
+    /// <summary>Where the symbol carried by a hover signature part is declared.</summary>
+    public async Task<IReadOnlyList<LspLocation>> HoverDeclarationAsync(string symbolKey) =>
+        Shapes.Locations(await Read(Server.RequestAsync<JsonElement>(ExtensionMethods.HoverDeclaration,
+            new { textDocument = Identifier, symbolKey }, default)));
+
     /// <summary>The signatures of the call at a place (<see cref="SignatureHelpMethod"/>).</summary>
     public async Task<SignatureHelp?> SignatureHelpAsync(int offset, CancellationToken cancel = default) =>
         await Server.RequestAsync<SignatureHelp>(SignatureHelpMethod, new TextDocumentPositionParams(Identifier, PositionOf(offset)), cancel);

@@ -3,6 +3,7 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Languages.CSharp;
 using Passenger.Lsp;
+using Passenger.Text;
 
 namespace Passenger.App.CSharp;
 
@@ -88,6 +89,33 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
             card.AddPreview(preview);
         }
         return true;
+    }
+
+    /// <summary>Go to Declaration for the part of a hover signature the person clicked.</summary>
+    public async Task OpenHoverDeclarationAsync(OpenDocument document, TextSnapshot snapshot, int offset, string name, string symbolKey)
+    {
+        if (context.ServerOf(document)?.Lsp is not { } lsp)
+        {
+            return;
+        }
+        using IDisposable held = BackgroundWork.Scope();
+        try
+        {
+            IReadOnlyList<LspLocation> places = await lsp.HoverDeclarationAsync(symbolKey);
+            if (context.CSharp is { } csharp)
+            {
+                (places, _) = await UnloadedSources.OfAsync(places, csharp.UnloadedNow?.Invoke() ?? []);
+                places = await csharp.Generated.CopiedAsync(places);
+            }
+            if (context.Editors.Active == document && document.Text.Snapshot == snapshot)
+            {
+                navigation.Go(places, offset, $"Declarations of {name}", Refusals.NoDeclaration);
+            }
+        }
+        catch (LanguageServerFailed failed)
+        {
+            context.Failed("Go to Declaration", failed);
+        }
     }
 
     /// <summary>Go to Declaration from the file shown, where <see cref="DeclaredAsync"/> leads.</summary>

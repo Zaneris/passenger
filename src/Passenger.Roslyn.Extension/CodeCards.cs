@@ -11,6 +11,7 @@ using Microsoft.CodeAnalysis.LanguageServer.Handler;
 using Microsoft.CodeAnalysis.LanguageServer.Handler.Completion;
 using Microsoft.CodeAnalysis.LanguageServer.Handler.SemanticTokens;
 using Microsoft.CodeAnalysis.LanguageService;
+using Microsoft.CodeAnalysis.MetadataAsSource;
 using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.QuickInfo;
 using Microsoft.CodeAnalysis.Shared.Extensions;
@@ -45,11 +46,11 @@ internal static class CodeCards
             | SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
 
     /// <summary>A stretch of a classification's text; no type for a name the server could not bind, as its colours leave out.</summary>
-    public static CodePart Part(string classification, string text) =>
-        new(text, classification != ClassificationTypeNames.Identifier && Legend.TokenTypeMap.TryGetValue(classification, out string? type) ? type : null);
+    public static CodePart Part(string classification, string text, string? declaration = null) =>
+        new(text, classification != ClassificationTypeNames.Identifier && Legend.TokenTypeMap.TryGetValue(classification, out string? type) ? type : null, declaration);
 
     /// <summary>The blocks of code among tagged text, each the parts between a code block's start and its end; null for none.</summary>
-    public static List<CodePart[]>? Blocks(IEnumerable<TaggedText> tags)
+    public static List<CodePart[]>? Blocks(IEnumerable<TaggedText> tags, Func<TaggedText, string?>? declaration = null)
     {
         List<CodePart[]> blocks = [];
         List<CodePart>? block = null;
@@ -74,7 +75,7 @@ internal static class CodeCards
             }
             else if (tag.Text.Length > 0)
             {
-                block.Add(Part(tag.Tag.ToClassificationTypeName(), tag.Text));
+                block.Add(Part(tag.Tag.ToClassificationTypeName(), tag.Text, declaration?.Invoke(tag)));
             }
         }
         return blocks.Count > 0 ? blocks : null;
@@ -84,7 +85,8 @@ internal static class CodeCards
 /// <summary><see cref="ExtensionMethods.Hover"/>: textDocument/hover as the server's own answers a client without Visual
 /// Studio's extensions, its quick info's sections one after another, with the parts of its blocks of code.</summary>
 [Method(ExtensionMethods.Hover)]
-internal sealed class CodedHoverHandler(IGlobalOptionService options) : ILspServiceDocumentRequestHandler<TextDocumentPositionParams, CodedHover?>
+internal sealed class CodedHoverHandler(IGlobalOptionService options, IMetadataAsSourceFileService metadata)
+    : ILspServiceDocumentRequestHandler<TextDocumentPositionParams, CodedHover?>
 {
     public bool MutatesSolutionState => false;
 
@@ -97,8 +99,13 @@ internal sealed class CodedHoverHandler(IGlobalOptionService options) : ILspServ
         Document document = await context.GetRequiredDocumentAsync(cancellationToken).ConfigureAwait(false);
         bool markdown = context.GetRequiredClientCapabilities().TextDocument?.Hover?.ContentFormat?.Contains(MarkupKind.Markdown) == true;
         int position = await document.GetPositionFromLinePositionAsync(ProtocolConversions.PositionToLinePosition(request.Position), cancellationToken).ConfigureAwait(false);
+        SymbolDescriptionOptions description = options.GetSymbolDescriptionOptions(document.Project.Language);
+        if (document.Project.Language == LanguageNames.CSharp)
+        {
+            description = description with { QuickInfoOptions = description.QuickInfoOptions with { IncludeNavigationHintsInQuickInfo = true } };
+        }
         QuickInfoItem? info = await document.GetRequiredLanguageService<QuickInfoService>()
-            .GetQuickInfoAsync(document, position, options.GetSymbolDescriptionOptions(document.Project.Language), cancellationToken).ConfigureAwait(false);
+            .GetQuickInfoAsync(document, position, description, cancellationToken).ConfigureAwait(false);
         if (info is null)
         {
             return null;
@@ -106,11 +113,26 @@ internal sealed class CodedHoverHandler(IGlobalOptionService options) : ILspServ
         // A line break after each section, as the server's own sets them apart.
         ImmutableArray<TaggedText> tags = [.. info.Sections.SelectMany(s => s.TaggedParts.Add(new TaggedText(TextTags.LineBreak, Environment.NewLine)))];
         SourceText text = await document.GetValueTextAsync(cancellationToken).ConfigureAwait(false);
+        List<CodePart[]> code = [];
+        foreach (QuickInfoSection section in info.Sections)
+        {
+            Func<TaggedText, string?>? declaration = null;
+            if (section.Kind == QuickInfoSectionKinds.Description && document.Project.Language == LanguageNames.CSharp
+                && section.TaggedParts.Any(part => part.NavigationTarget is not null)
+                && await document.Project.GetCompilationAsync(cancellationToken).ConfigureAwait(false) is { } compilation)
+            {
+                declaration = part => HoverDeclarations.CanOpen(part, compilation, metadata, cancellationToken);
+            }
+            if (CodeCards.Blocks(section.TaggedParts, declaration) is { } blocks)
+            {
+                code.AddRange(blocks);
+            }
+        }
         return new CodedHover
         {
             Range = ProtocolConversions.TextSpanToRange(info.Span, text),
             Contents = ProtocolConversions.GetDocumentationMarkupContent(tags, document.Project.Language, markdown),
-            Code = CodeCards.Blocks(tags),
+            Code = code.Count > 0 ? code : null,
         };
     }
 }
@@ -248,14 +270,16 @@ internal sealed class CodedSignatureInformation : SignatureInformation
 internal sealed class CodedHoverHandlerFactory : ILspServiceFactory
 {
     private readonly IGlobalOptionService options;
+    private readonly IMetadataAsSourceFileService metadata;
 
     [ImportingConstructor]
-    public CodedHoverHandlerFactory(IGlobalOptionService options)
+    public CodedHoverHandlerFactory(IGlobalOptionService options, IMetadataAsSourceFileService metadata)
     {
         this.options = options;
+        this.metadata = metadata;
     }
 
-    public ILspService CreateILspService(LspServices lspServices, WellKnownLspServerKinds serverKind) => new CodedHoverHandler(options);
+    public ILspService CreateILspService(LspServices lspServices, WellKnownLspServerKinds serverKind) => new CodedHoverHandler(options, metadata);
 }
 
 [ExportCSharpVisualBasicLspServiceFactory(typeof(CodedCompletionResolveHandler), WellKnownLspServerKinds.Any)]

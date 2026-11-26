@@ -18,6 +18,7 @@ internal sealed class QuickInfo
     private readonly Func<bool> completing;
     private readonly InfoCard hoverCard = new("Quick Documentation");
     private CancellationTokenSource? hovering;
+    private (Workspace.OpenDocument File, TextSnapshot Text, int Offset)? declarationOrigin;
 
     /// <summary>The pause after the pointer leaves a card of a paused program's value (its word, or the card itself) before
     /// the card goes: time to reach the card from the word, on which it stays while the pointer or the keys are on it.</summary>
@@ -229,6 +230,11 @@ internal sealed class QuickInfo
             {
                 if ((over?.File ?? context.Editors.Active) is { } shown)
                 {
+                    if (over is null && shown.Language == Languages.Language.CSharp)
+                    {
+                        declarationOrigin = (shown, shown.Text.Snapshot, offset);
+                        hoverCard.OpenDeclaration = OpenDeclaration;
+                    }
                     await context.Languages.HoverAsync(hoverCard, shown, offset, cancel.Token);
                 }
             }
@@ -251,6 +257,16 @@ internal sealed class QuickInfo
 
     /// <summary>The card shown, its words told to a screen reader.</summary>
     private void Said() => popups.Tell(hoverCard.Text, Urgency.Polite, hoverCard);
+
+    private void OpenDeclaration(string name, string key)
+    {
+        if (hoverCard.IsVisible && declarationOrigin is { } origin
+            && context.Editors.Active == origin.File && origin.File.Text.Snapshot == origin.Text)
+        {
+            Hide();
+            IdeErrors.Observe(context.Languages.CSharp.OpenHoverDeclarationAsync(origin.File, origin.Text, origin.Offset, name, key));
+        }
+    }
 
     /// <summary>Quick Evaluate Expression's card: a value read for an offset, shown as a hovered one is under its line, its
     /// row taking the keys at once, as Quick Documentation pressed again gives them.</summary>
@@ -399,6 +415,8 @@ internal sealed class QuickInfo
     /// it showed over.</summary>
     private void ForgetValues()
     {
+        declarationOrigin = null;
+        hoverCard.OpenDeclaration = null;
         side = null;
         leaving.Stop();
         hoverGone.Dispose();

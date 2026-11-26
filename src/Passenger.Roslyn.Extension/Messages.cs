@@ -113,6 +113,9 @@ public static class ExtensionMethods
     /// <summary>textDocument/hover, answered as the server answers it, with its code's parts (<see cref="CodeParts"/>).</summary>
     public const string Hover = "passenger/hover";
 
+    /// <summary>Where a symbol named by one of the hover signature's parts is declared.</summary>
+    public const string HoverDeclaration = "passenger/hoverDeclaration";
+
     /// <summary>completionItem/resolve, answered as the server answers it, with its documentation's code's parts
     /// (<see cref="CodeParts"/>).</summary>
     public const string CompletionResolve = "passenger/completionResolve";
@@ -145,10 +148,11 @@ public static class CodeParts
     public const string OverloadFits = "passengerOverloadFits";
 }
 
-/// <summary>A stretch of code and its semantic token type, null for none.</summary>
+/// <summary>A stretch of code, its semantic token type, and the symbol key of a navigable hover signature part.</summary>
 public sealed record CodePart(
     [property: JsonPropertyName("text")] string Text,
-    [property: JsonPropertyName("type")][property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Type);
+    [property: JsonPropertyName("type")][property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Type,
+    [property: JsonPropertyName("declaration")][property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Declaration = null);
 
 /// <summary>A C# completion list asked in two parts: what is in scope first, then the types and extension members of
 /// namespaces not imported, which the server lists after every other item and is slowest to find, worked out at once but
