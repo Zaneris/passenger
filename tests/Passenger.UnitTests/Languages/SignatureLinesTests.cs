@@ -15,6 +15,8 @@ public sealed class SignatureLinesTests
         [
             ("void Log(string format = \"a, b\", params object[] args)", "void Log(\n    string format = \"a, b\",\n    params object[] args)"),
             ("int[] Pick((int, int) pair, Func<int, (int, int)> made)", "int[] Pick(\n    (int, int) pair,\n    Func<int, (int, int)> made)"),
+            ("[Trace(1, 2)]\nvoid Log([Check(1, 2)] int count, [Name] string name)",
+                "[Trace(1, 2)]\nvoid Log(\n    [Check(1, 2)] int count,\n    [Name] string name)"),
         ], row => Commas_in_a_types_arguments_a_nested_bracket_or_a_quoted_default_stay_and_a_tag_before_the_signature_is_no_list(row.Item1, row.Item2))),
         ("code with no parameters on one line is left as it is", () => Cases.Each<string>(
         [

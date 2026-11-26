@@ -282,6 +282,63 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.True(editor.IsKeyboardFocusWithin, $"Escape on the hover card left the editor without its keys, which {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"} has");
     }
 
+    [AvaloniaFact]
+    public void Hovering_over_CSharp_usages_shows_the_bound_symbols_declared_attributes()
+    {
+        MainWindow window = WithoutNavigationBar(project.Open("AttributeUses.cs"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string text = editor.Document.Snapshot.ToString();
+
+        Assert.Contains("[CachePolicy(\"cache\")]", Hover("Cache cache", "Cache"), StringComparison.Ordinal);
+        Assert.StartsWith("[CachePolicy(\"cache\")]\nCache.Cache([CachePolicy(\"capacity\")] int capacity)",
+            Hover("new Cache(2)", "Cache"), StringComparison.Ordinal);
+        Assert.Contains("[CachePolicy(\"property\")]", Hover("cache.Count", "Count"), StringComparison.Ordinal);
+        string field = Hover("cache.Capacity", "Capacity");
+        Assert.Contains("[CachePolicy(\"field\", Slots = new int[]", field, StringComparison.Ordinal);
+        Assert.Contains("[CachePolicy(\"event\")]", Hover("cache.Changed", "Changed"), StringComparison.Ordinal);
+
+        string first = Hover("cache.Clear(1)", "Clear");
+        const string declaration = "[CachePolicy(\"short\", Priority = 2)]\n[Description(\"Evicts entries\")]\n"
+            + "void Cache.Clear([CachePolicy(\"count\", Priority = 1)] int count, [CachePolicy(\"scope\")] [string scope = \"default\"])";
+        ColouredCode code = Assert.Single(window.Assist.HoverCard!.GetVisualDescendants().OfType<ColouredCode>());
+        Assert.StartsWith(declaration, code.Code, StringComparison.Ordinal);
+        Assert.True(code.TryFindResource(TokenKeys.Syntax_String, code.ActualThemeVariant, out object? stringBrush));
+        Assert.True(code.TryFindResource(TokenKeys.Syntax_Number, code.ActualThemeVariant, out object? numberBrush));
+        IBrush stringColour = Assert.IsAssignableFrom<IBrush>(stringBrush);
+        IBrush numberColour = Assert.IsAssignableFrom<IBrush>(numberBrush);
+        Assert.Contains(code.Runs, run => run.Text == "\"short\"" && run.Foreground == stringColour);
+        Assert.Contains(code.Runs, run => run.Text == "\"count\"" && run.Foreground == stringColour);
+        Assert.Contains(code.Runs, run => run.Text == "2" && run.Foreground == numberColour);
+        Assert.Contains("Clears the requested number of entries.", first, StringComparison.Ordinal);
+        Assert.DoesNotContain("[CachePolicy(\"named\")]", first, StringComparison.Ordinal);
+
+        string second = Hover("cache.Clear(\"key\")", "Clear");
+        Assert.StartsWith("[CachePolicy(\"named\")]\nvoid Cache.Clear([CachePolicy(\"key\")] string key)", second, StringComparison.Ordinal);
+
+        Assert.StartsWith("void Cache.Set([CachePolicy(\"value\", Slots = new int[] { 1, 2 })] int @class)",
+            Hover("cache.Set(3)", "Set"), StringComparison.Ordinal);
+        Assert.StartsWith("(int value, int size) Cache.Pair([CachePolicy(\"pair\")] (int, int) value)",
+            Hover("cache.Pair((1, 2))", "Pair"), StringComparison.Ordinal);
+        Assert.StartsWith("[CachePolicy(\"extend\")]\n(extension) void Cache.Extend([CachePolicy(\"size\")] int size)",
+            Hover("cache.Extend(3)", "Extend"), StringComparison.Ordinal);
+
+        string plain = Hover("cache.Reset()", "Reset");
+        Assert.StartsWith("void Cache.Reset()", plain, StringComparison.Ordinal);
+        Assert.DoesNotContain("[CachePolicy", plain, StringComparison.Ordinal);
+        window.Close();
+
+        string Hover(string usage, string name)
+        {
+            window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
+            Ui.WaitFor(() => window.Assist.HoverText is null, "the previous hover card has closed");
+            int offset = text.IndexOf(usage, StringComparison.Ordinal) + usage.IndexOf(name, StringComparison.Ordinal) + 1;
+            Point point = editor.TranslatePoint(editor.PointOf(offset) + new Point(1, editor.LineHeight / 2), window)!.Value;
+            window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
+            Ui.WaitFor(() => window.Assist.HoverText is not null, $"the hover for {usage}");
+            return window.Assist.HoverText!;
+        }
+    }
+
     /// <summary>Where the status bar's path is drawn.</summary>
     private static Control PathHost(MainWindow window) => window.GetVisualDescendants().OfType<Control>().First(c => c.Name == "BreadcrumbHost");
 
@@ -3681,6 +3738,62 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 TestProjects.Console());
             File.WriteAllText(PathOf("Program.cs"), "class Program\n{\n    static void Main()\n    {\n        int result = Helper.Twice(2);\n    }\n}\n");
             File.WriteAllText(PathOf("Helper.cs"), "static class Helper\n{\n    public static int Twice(int value) => value * 2;\n}\n");
+            File.WriteAllText(PathOf("AttributeUses.cs"), """
+                static class AttributeUses
+                {
+                    public static void Run()
+                    {
+                        Cache cache = new Cache(2);
+                        _ = cache.Count;
+                        _ = cache.Capacity;
+                        cache.Changed += static () => { };
+                        cache.Clear(1);
+                        cache.Clear("key");
+                        cache.Set(3);
+                        _ = cache.Pair((1, 2));
+                        cache.Extend(3);
+                        cache.Reset();
+                    }
+                }
+                """);
+            File.WriteAllText(PathOf("AttributedCache.cs"), """
+                using System;
+                using System.ComponentModel;
+
+                [CachePolicy("cache")]
+                sealed class Cache
+                {
+                    private const int DefaultPriority = 2;
+                    public Cache([CachePolicy("capacity")] int capacity) => Capacity = capacity;
+                    [CachePolicy("property")] public int Count { get; }
+                    [CachePolicy("field", Slots = new int[] { })] public int Capacity = 8;
+                    [CachePolicy("event")] public event Action? Changed;
+
+                    /// <summary>Clears the requested number of entries.</summary>
+                    [CachePolicy("short", Priority = DefaultPriority)]
+                    [Description("Evicts entries")]
+                    public void Clear([CachePolicy("count", Priority = 1)] int count, [CachePolicy("scope")] string scope = "default") => Changed?.Invoke();
+
+                    [CachePolicy("named")]
+                    public void Clear([CachePolicy("key")] string key) { }
+                    public void Set([CachePolicy("value", Slots = new int[] { 1, 2 })] int @class) { }
+                    public (int value, int size) Pair([CachePolicy("pair")] (int, int) value) => value;
+                    public void Reset() { }
+                }
+
+                static class CacheExtensions
+                {
+                    [CachePolicy("extend")]
+                    public static void Extend([CachePolicy("receiver")] this Cache cache, [CachePolicy("size")] int size) { }
+                }
+
+                sealed class CachePolicyAttribute(string name) : Attribute
+                {
+                    public string Name { get; } = name;
+                    public int Priority { get; set; }
+                    public int[]? Slots { get; set; }
+                }
+                """);
             File.WriteAllText(PathOf("Shapes.cs"), "interface IShape\n{\n    int Sides { get; }\n}\n\nclass Square : IShape\n{\n    public int Sides => 4;\n}\n");
             File.WriteAllText(PathOf("Gauges.cs"), "interface IGauge\n{\n    int Read();\n}\n\nclass Dial : IGauge\n{\n    public int Read() => 1;\n}\n\n"
                 + "static class Readings\n{\n    static int Both(Dial dial, IGauge any) => dial.Read() + any.Read();\n}\n");
