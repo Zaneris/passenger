@@ -2512,10 +2512,13 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Run(window, AppActions.QuickDocumentation);
         Ui.WaitFor(() => window.Assist.HoverText?.Contains("Use the", StringComparison.Ordinal) == true, "Read's documentation in hover");
         MarkdownText hover = AssertDocumentation(window.Assist.HoverCard!, "quantity", "guide", guide);
+        string shown = hover.Shown.Replace('\u00A0', ' ');
         Assert.Contains("Related", hover.Shown, StringComparison.Ordinal);
-        Assert.Contains("Read more", hover.Shown, StringComparison.Ordinal);
+        Assert.Contains("or null.", shown, StringComparison.Ordinal);
+        Assert.Matches(@"Read more with value of type (?:T|int)\.\nSecond line\.", shown);
         Assert.Contains("• First step", window.Assist.HoverText, StringComparison.Ordinal);
         Assert.Contains("int value = 1;", window.Assist.HoverText, StringComparison.Ordinal);
+        Assert.Contains(hover.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == "any value" && run.FontStyle == FontStyle.Italic);
         Assert.Contains(hover.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == "<b>literal</b>");
         Ui.Click(hover, hover.PointOf(guide));
         Assert.Equal(guide, window.Browsed.LastOrDefault());
@@ -3567,13 +3570,13 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 {
                     /// <summary>
                     /// Use the &lt;b&gt;quantity&lt;/b&gt; in the &lt;see href=&quot;https://example.test/guide?x=1&amp;y=2&quot;&gt;guide&lt;/see&gt;.
-                    /// See <see cref="Related"/> or type <c>&lt;b&gt;literal&lt;/b&gt;</c>.
-                    /// <para>Read more with <paramref name="value"/>.</para>
+                    /// See <see cref="Related"/> or type <c>&lt;b&gt;literal&lt;/b&gt;</c>. Pass <i>any value</i> or <see langword="null"/>.
+                    /// <para>Read more with <paramref name="value"/> of type <typeparamref name="T"/>.<br/>Second line.</para>
                     /// <list type="bullet"><item><description>First step</description></item></list>
                     /// <code>int value = 1;</code>
                     /// </summary>
                     /// <param name="value">The <b>value</b> in the <see href="https://example.test/guide?x=1&amp;y=2">parameter guide</see>.</param>
-                    public static int Read(int value) => value;
+                    public static T Read<T>(T value) => value;
                     public static int Related() => 0;
                 }
 

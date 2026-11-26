@@ -38,6 +38,25 @@ public sealed class MarkdownReadingTests
         Assert.Equal("Length Guide Example.Unit <b>literal</b> List<T>", M.Plain(parts));
     }
 
+    [Fact]
+    public void CSharp_documentation_formats_escaped_layout_and_references()
+    {
+        const string xml = """
+            <strong>Title</strong> <i>Approximate</i> <em>Exact</em>
+            <para><paramref name="value"/> of type <typeparamref name="T"/><br/>or <seealso langword="null"/></para>
+            <list type="number"><item><term>Read</term><description>an input</description></item><item><description>Return it</description></item></list>
+            <c>List&lt;T&gt;</c> <code><b>literal</b></code> <seealso href="https://example.test/docs">Docs</seealso>
+            """;
+        IReadOnlyList<M.Inline> parts = M.DocumentationInlines(xml.Replace("<", @"\<", StringComparison.Ordinal).Replace(">", @"\>", StringComparison.Ordinal));
+        Assert.Equal(["Title", "Read"], parts.OfType<M.Strong>().Select(strong => M.Plain(strong.Parts)));
+        Assert.Equal(["Approximate", "Exact"], parts.OfType<M.Emphasis>().Select(emphasis => M.Plain(emphasis.Parts)));
+        Assert.Equal(["value", "T", "null", "List<T>", "<b>literal</b>"], parts.OfType<M.CodeSpan>().Select(code => code.Text));
+        M.Link link = Assert.Single(parts.OfType<M.Link>());
+        Assert.Equal(("Docs", "https://example.test/docs"), (M.Plain(link.Parts), link.Target));
+        Assert.Contains("1. Read – an input 2. Return it", M.Plain(parts), StringComparison.Ordinal);
+        Assert.Contains("value of type T or null", M.Plain(parts), StringComparison.Ordinal);
+    }
+
     /// <summary>GFM 0.29's examples 351, 487 to 489, 361, 362, 364, 383, 387 to 390, 398, 404, 378, 405, 409 and 403 (its
     /// soft break a space, as a paragraph's lines are joined here), and a close taking the nearest opening.</summary>
     private void Emphasis_reads_as_GFMs_spec_examples_read() => Cases.Each<(string Markdown, string Html)>(
