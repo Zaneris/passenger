@@ -63,6 +63,7 @@ public sealed class ToolboxView : DockPanel
     private readonly TreeList list;
     private readonly EmptyState placeholder;
     private List<ToolboxRow> top = [];
+    private IReadOnlyList<ToolboxEntry>? listed;
     private (ToolboxEntry Entry, Point Start, bool Dragging)? pressed;
 
     public ToolboxView()
@@ -149,10 +150,20 @@ public sealed class ToolboxView : DockPanel
         list.SelectedItem = row;
     }
 
-    /// <summary>Shows a design's items, each group open as it was by its name; none says why (<paramref name="why"/>).</summary>
+    /// <summary>Shows a design's items, each group open as it was by its name; none says why (<paramref name="why"/>). The
+    /// items shown already (the design drawn again) keep their rows, and with them the row chosen and the keys.</summary>
     public void Show(IReadOnlyList<ToolboxEntry> entries, string? why)
     {
         UiThread.Check();
+        if (ReferenceEquals(entries, listed))
+        {
+            if (top.Count == 0)
+            {
+                placeholder.Text = why ?? Refusals.NoFormDesign;
+            }
+            return;
+        }
+        listed = entries;
         HashSet<string> closed = [.. top.Where(g => !g.IsExpanded).Select(g => g.Group)];
         top = [];
         foreach (IGrouping<string, ToolboxEntry> group in entries.GroupBy(e => e.Group))
@@ -198,13 +209,20 @@ public sealed class ToolboxView : DockPanel
     private List<ToolboxRow> Matching(ToolboxRow group) =>
         [.. group.Below.Where(r => Filter.Length == 0 || r.Entry!.Name.Contains(Filter.Trim(), StringComparison.OrdinalIgnoreCase))];
 
+    /// <summary>The rows listed again, the one chosen (or another design's row of its item) chosen still, with the keys
+    /// where the list had them.</summary>
     private void Relist()
     {
         ToolboxRow? chosen = list.SelectedItem as ToolboxRow;
+        bool held = list.IsKeyboardFocusWithin;
         rows.Clear();
         List<ToolboxRow> shown = [.. top.Where(g => Filter.Length == 0 || Matching(g).Count > 0)];
         rows.InsertRange(0, TreeRows<ToolboxRow>.Shown(shown, r => Filter.Length > 0 || r.IsExpanded ? Matching(r) : null));
-        list.SelectedItem = chosen is not null && rows.Contains(chosen) ? chosen : null;
+        list.SelectedItem = chosen is null ? null : rows.FirstOrDefault(r => r == chosen || r.Group == chosen.Group && r.Entry?.Name == chosen.Entry?.Name);
+        if (held && list.SelectedItem is not null)
+        {
+            ListKeys.Hold(list);
+        }
         placeholder.IsVisible = rows.Count == 0;
         list.IsVisible = rows.Count > 0;
         if (rows.Count == 0 && top.Count > 0)

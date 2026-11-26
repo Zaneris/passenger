@@ -350,6 +350,7 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         Assert.Contains("        components = new System.ComponentModel.Container();\n", added);
         Assert.Contains("    private System.Windows.Forms.Timer timer1;\n", added);
         Ui.WaitFor(() => pane.Chosen?.Field == "timer1", () => $"the Timer to be chosen, not {pane.Chosen?.Field ?? "nothing"}");
+        Assert.True(tools.Chosen?.Name == "Timer", $"The Toolbox lost its chosen row, now {tools.Chosen?.Name ?? "none"}, as the design was drawn again with the Timer");
         ToggleButton held = pane.GetVisualDescendants().OfType<ToggleButton>().Single(t => t.Tag as string == "timer1");
         Assert.True(held.IsChecked == true && held.IsEffectivelyVisible, "The Timer is not shown chosen in the component tray");
         Ui.WaitFor(() => window.FormProperties?.Rows.Any(r => r.Name == "Interval") == true, () => $"the Timer's properties to be listed, not \"{window.FormProperties?.Said}\"");
