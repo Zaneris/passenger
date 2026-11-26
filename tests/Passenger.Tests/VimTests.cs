@@ -660,7 +660,7 @@ public sealed partial class VimTests
     }
 
     /// <summary>The smallest case that still differs, found by taking out a command, a line or a character, or a count,
-    /// while the case still differs; each round's tries through one Vim.</summary>
+    /// while the case still differs; each round's tries through one Vim, the one taken differing in a Vim of its own too.</summary>
     private static async Task<(VimCase Case, string Differs)> ShrinkAsync(string vim, string folder, VimCase start)
     {
         VimCase best = start;
@@ -669,12 +669,20 @@ public sealed partial class VimTests
         {
             List<VimCase> tries = [.. Smaller(best)];
             IReadOnlyList<string?> found = await DiffersAsync(vim, folder, tries);
-            int at = found.ToList().FindIndex(f => f is not null);
-            if (at < 0)
+            (VimCase Case, string Differs)? taken = null;
+            for (int at = 0; at < tries.Count && taken is null; at++)
+            {
+                // What an earlier try left in Vim may make one differ there alone, so it is taken only where it differs by itself.
+                if (found[at] is not null && (await DiffersAsync(vim, folder, [tries[at]]))[0] is { } alone)
+                {
+                    taken = (tries[at], alone);
+                }
+            }
+            if (taken is not { } smaller)
             {
                 break;
             }
-            (best, differs) = (tries[at], found[at]!);
+            (best, differs) = smaller;
         }
         return (best, differs);
     }
