@@ -791,6 +791,19 @@ public partial class MainWindow
     private void WireDiff(DiffView view, IDiffHost host)
     {
         view.SourceRequested += (_, _) => JumpToSource(view, host);
+        if (host is DiffTab tab)
+        {
+            // Past a file's last difference the step goes on into the Commit window's next changed file, while the tab follows it.
+            view.CrossesFiles = step =>
+            {
+                if (!tab.Follows || commitView?.StepChoice(step) != true)
+                {
+                    return false;
+                }
+                tab.Arriving = step;
+                return true;
+            };
+        }
         if (view.IsEditable && host.Shown.File is { } file && view.Right.Document == file.Text)
         {
             assist.HoverIn(view.Right, file, host is DiffWindow ? () => true : () => Editors.ActiveGroup.Diff == view, (host as DiffWindow)?.Assist);

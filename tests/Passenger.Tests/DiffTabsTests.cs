@@ -50,6 +50,7 @@ public sealed class DiffTabsTests : IDisposable
     {
         Flow.StepApart<DiffTabsTests>("show Diff from the Commit window opens a tab of the editors titled as its window and no window", t => t.Show_Diff_from_the_Commit_window_opens_a_tab_of_the_editors_titled_as_its_window_and_no_window());
         Flow.StepApart<DiffTabsTests>("the Commit windows diff tab follows the file chosen there until it is kept", t => t.The_Commit_windows_diff_tab_follows_the_file_chosen_there_until_it_is_kept());
+        Flow.StepApart<DiffTabsTests>("a step past the Commit windows diffs last change goes on into the next changed file there", t => t.A_step_past_the_Commit_windows_diffs_last_change_goes_on_into_the_next_changed_file_there());
         Flow.StepApart<DiffTabsTests>("an edit in a diff tab is saved to the file from the tab and closing the files tab closes the diff", t => t.An_edit_in_a_diff_tab_is_saved_to_the_file_from_the_tab_and_closing_the_files_tab_closes_the_diff());
         Flow.StepApart<DiffTabsTests>("rollback lines in the commit windows diff puts back the change at the caret and the arrows tip names its keys", t => t.Rollback_lines_in_the_commit_windows_diff_puts_back_the_change_at_the_caret_and_the_arrows_tip_names_its_keys());
         Flow.StepApart<DiffTabsTests>("a diff tab splits moves to a window of its own jumps to its file and is left out of the folders kept tabs", t => t.A_diff_tab_splits_moves_to_a_window_of_its_own_jumps_to_its_file_and_is_left_out_of_the_folders_kept_tabs());
@@ -108,6 +109,27 @@ public sealed class DiffTabsTests : IDisposable
         Assert.Single(window.EditorArea.Diffs);
         Assert.Equal(1, group.Tabs.Count(t => t.Document.Diff is not null));
         Assert.True(window.OwnedWindows.Count == windows, "Show Diff from the editor opened a window with diffs set to open as tabs");
+        window.Close();
+    }
+
+    /// <summary>Next Difference past the last change of the Commit window's diff, or Previous Difference before its first,
+    /// goes on into the changed file after or before it there: the tab takes that file's diff, its caret at the change the
+    /// step comes to first.</summary>
+    private void A_step_past_the_Commit_windows_diffs_last_change_goes_on_into_the_next_changed_file_there()
+    {
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "notes, edited\n");
+        MainWindow window = Open();
+        DiffTab tab = Assert.IsType<DiffTab>(DiffFromCommit(window, byEnter: true));
+        Ui.Landed(() => tab.View is { Hunks.Count: > 0 }, "Shop.cs's differences");
+        List<object> rows = [.. window.CommitView.Rows];
+        bool notesAfter = rows.IndexOf(rows.OfType<CommitRow>().First(r => r.Change.Name == "Notes.txt"))
+            > rows.IndexOf(rows.OfType<CommitRow>().First(r => r.Change.Name == "Shop.cs"));
+        DiffView view = tab.View!;
+        view.Right.Focus();
+        view.Right.GoTo(new TextPosition((notesAfter ? view.Hunks[^1] : view.Hunks[0]).NewStart, 0));
+        Ui.Press(window, notesAfter ? "F7" : "shift F7");
+        Ui.Landed(() => tab.Shown.Path.EndsWith("Notes.txt", StringComparison.Ordinal), "Notes.txt's diff taken by the step past Shop.cs's last change");
+        Ui.Landed(() => tab.View is { Hunks.Count: > 0 } now && now.Right.CaretPosition.Line == now.Hunks[0].NewStart, "the caret at Notes.txt's change");
         window.Close();
     }
 

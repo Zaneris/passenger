@@ -805,6 +805,21 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// <summary>One changed file chosen in the list, which a diff following the choice shows (<see cref="Vcs.DiffTab.Follows"/>).</summary>
     public event EventHandler<string>? ChoiceMoved;
 
+    /// <summary>Moves the choice to the next (1) or previous (-1) changed file as the list shows them, the diff following it;
+    /// false where the choice is no file, or none comes after it that way.</summary>
+    public bool StepChoice(int step)
+    {
+        CommitRow[] files = [.. rows.OfType<CommitRow>().Where(r => r.Change.Kind != ChangeKind.Conflicted)];
+        int at = list.SelectedItem is CommitRow chosen ? Array.IndexOf(files, chosen) : -1;
+        if (at < 0 || at + step < 0 || at + step >= files.Length)
+        {
+            return false;
+        }
+        list.SelectedItem = files[at + step];
+        list.ScrollIntoView(files[at + step]);
+        return true;
+    }
+
     /// <summary>A file to open in the editor.</summary>
     public event EventHandler<string>? OpenRequested;
 

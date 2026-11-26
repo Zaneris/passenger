@@ -610,14 +610,27 @@ public sealed class DiffView : DockPanel, IOwnKeys
     /// <summary>What Rollback Lines says with no change at the caret.</summary>
     public const string NoChangeHere = "No change here to roll back";
 
-    /// <summary>The next or previous difference from the right side's caret, shown on both sides.</summary>
+    /// <summary>What a step past the file's last difference, or before its first, does instead of going round: true where it
+    /// went to another file's (the Commit window's next or previous changed file); null, or false, to go round.</summary>
+    public Func<int, bool>? CrossesFiles { get; set; }
+
+    /// <summary>Where the caret goes once the differences are first found: to the first (1) or the last (-1); 0 for neither.</summary>
+    public int ArriveAt { get; set; }
+
+    /// <summary>The next or previous difference from the right side's caret, shown on both sides; past the last or before
+    /// the first, another file's where <see cref="CrossesFiles"/> takes the step, else round to the other end.</summary>
     public void Step(int step)
     {
+        int line = Right.CaretPosition.Line;
+        bool beyond = step > 0 ? !Hunks.Any(h => h.NewStart > line) : !Hunks.Any(h => h.NewStart + Math.Max(1, h.NewCount) <= line);
+        if (beyond && CrossesFiles?.Invoke(step) == true)
+        {
+            return;
+        }
         if (Hunks.Count == 0)
         {
             return;
         }
-        int line = Right.CaretPosition.Line;
         DiffHunk target = step > 0
             ? Hunks.FirstOrDefault(h => h.NewStart > line, Hunks[0])
             : Hunks.LastOrDefault(h => h.NewStart + Math.Max(1, h.NewCount) <= line, Hunks[^1]);
@@ -666,6 +679,12 @@ public sealed class DiffView : DockPanel, IOwnKeys
         bands.Refresh();
         IdeErrors.Observe(ShowWordsAsync(diff));
         IdeErrors.Observe(ShowSeparatorsAsync(diff));
+        if (ArriveAt != 0 && Hunks.Count > 0)
+        {
+            DiffHunk end = ArriveAt > 0 ? Hunks[0] : Hunks[^1];
+            ArriveAt = 0;
+            Right.GoTo(new TextPosition(Math.Min(end.NewStart, Right.Document.Snapshot.LineCount - 1), 0));
+        }
     }
 
     /// <summary>What else differs than the lines, which the count says after theirs: the file's encoding or byte order
