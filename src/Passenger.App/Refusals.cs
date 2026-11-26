@@ -190,6 +190,12 @@ public static class Refusals
     /// <summary>What is asked works only in a C# file, and the file shown is another language's.</summary>
     public const string NotCSharp = "The file is not C#";
 
+    /// <summary>Next or Previous Usage where the editor highlights no usage of the symbol at the caret.</summary>
+    public const string NoUsagesHighlighted = "No usage of the symbol at the caret is highlighted";
+
+    /// <summary>Go to Region in a C# file with no #region.</summary>
+    public static string NoRegions(string file) => $"{file} has no #region";
+
     /// <summary>The C# language server ended too often and was left stopped, until a person starts it again.</summary>
     public const string CSharpStopped = "The C# language server ended too often and was left stopped until it is started again";
 

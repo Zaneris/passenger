@@ -534,7 +534,7 @@ public sealed class KeymapChoiceTests : IDisposable
 
     /// <summary>Duplicate, Compare Files, Show Diff, Parameter Info and its overloads' steps, Toggle Case, Generate, Clone
     /// Caret, the moves, Context Help (with External Documentation's), Show Usages, Quick Evaluate Expression, Open Solution,
-    /// Open File, Run All Tests with Coverage, Toggle Temporary Breakpoint, a SQL console's Query History and Commit and Commit Message History have in each keymap the keys and gestures Rider's of that preset here resolves them to
+    /// Open File, Run All Tests with Coverage, Toggle Temporary Breakpoint, a SQL console's Query History and Commit, Commit Message History and the moves by the code's structure have in each keymap the keys and gestures Rider's of that preset here resolves them to
     /// (<see cref="RiderKeymaps"/>), the Mac's Cmd+Up and Down too in Visual Studio's and IntelliJ IDEA's. A key Rider gives
     /// several by place has one action, the rest taking it there (<see cref="AppActions.KeysIn"/>); New is New Item.</summary>
     private void Each_keymaps_keys_for_Duplicate_Parameter_Info_Toggle_Case_and_Generate_are_those_Riders_keymap_resolves_them_to()
@@ -566,6 +566,15 @@ public sealed class KeymapChoiceTests : IDisposable
                 (AppActions.CoverAllTests, RiderKeymaps.CoverAll, []), (AppActions.ToggleTemporaryBreakpoint, "ToggleTemporaryLineBreakpoint", []),
                 (AppActions.DatabaseHistory, "Console.History.Browse", []), (AppActions.DatabaseCommit, "Console.Transaction.Commit", []),
                 (AppActions.CommitMessageHistory, "Vcs.ShowMessageHistory", []),
+                // Visual Studio's own Move Line keeps Alt+Up and Down, the Mac's Clone Caret Ctrl+Shift+Up and Down.
+                (AppActions.MethodUp, visualStudio ? "" : "MethodUp", []), (AppActions.MethodDown, visualStudio ? "" : "MethodDown", []),
+                (AppActions.NextUsage, "GotoNextElementUnderCaretUsage", []), (AppActions.PreviousUsage, "GotoPrevElementUnderCaretUsage", []),
+                (AppActions.GoToContainingDeclaration, "ReSharperGotoContainingDeclaration", []),
+                (AppActions.SelectContainingDeclaration, "ReSharperSelectContainingDeclaration", []),
+                // Visual Studio's on the Mac gives Cmd+Alt+[ to Select Containing Declaration, as Rider's own descriptor does.
+                (AppActions.CodeBlockStart, visualStudio && mac ? "" : "EditorCodeBlockStart", []), (AppActions.CodeBlockEnd, "EditorCodeBlockEnd", []),
+                (AppActions.CodeBlockStartWithSelection, "EditorCodeBlockStartWithSelection", []),
+                (AppActions.CodeBlockEndWithSelection, "EditorCodeBlockEndWithSelection", []), (AppActions.GoToRegion, "GotoCustomRegion", []),
             ];
             foreach ((string action, string riders, string[] besides) in checks)
             {

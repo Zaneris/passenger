@@ -66,9 +66,24 @@ internal static class RiderKeymaps
             ["ToggleTemporaryLineBreakpoint"] = ["control shift alt F8"],
             ["Console.History.Browse"] = ["control alt E"],
             ["Vcs.ShowMessageHistory"] = ["control M"],
+            ["MethodUp"] = ["alt UP"],
+            ["MethodDown"] = ["alt DOWN"],
+            ["EditorCodeBlockStart"] = ["control OPEN_BRACKET"],
+            ["EditorCodeBlockEnd"] = ["control CLOSE_BRACKET"],
+            ["EditorCodeBlockStartWithSelection"] = ["control shift OPEN_BRACKET"],
+            ["EditorCodeBlockEndWithSelection"] = ["control shift CLOSE_BRACKET"],
+            ["GotoCustomRegion"] = ["control alt PERIOD"],
         }),
         [MacOS] = (Default, new()
         {
+            ["MethodUp"] = ["control shift UP"],
+            ["MethodDown"] = ["control shift DOWN"],
+            ["GotoNextElementUnderCaretUsage"] = ["control alt DOWN"],
+            ["GotoPrevElementUnderCaretUsage"] = ["control alt UP"],
+            ["EditorCodeBlockStart"] = ["meta alt OPEN_BRACKET"],
+            ["EditorCodeBlockEnd"] = ["meta alt CLOSE_BRACKET"],
+            ["EditorCodeBlockStartWithSelection"] = ["meta alt shift OPEN_BRACKET"],
+            ["EditorCodeBlockEndWithSelection"] = ["meta alt shift CLOSE_BRACKET"],
             ["ToggleTemporaryLineBreakpoint"] = ["shift meta alt BACK_SLASH", "meta shift alt F8"],
             ["MethodOverloadSwitchUp"] = ["alt UP"],
             ["MethodOverloadSwitchDown"] = ["alt DOWN"],
@@ -91,6 +106,12 @@ internal static class RiderKeymaps
             ["ExternalJavaDoc"] = ["shift F1"],
             ["ShowUsages"] = ["shift alt F12"],
             ["Vcs.ShowMessageHistory"] = ["control H"],
+            ["GotoNextElementUnderCaretUsage"] = ["control shift DOWN"],
+            ["GotoPrevElementUnderCaretUsage"] = ["control shift UP"],
+            ["EditorCodeBlockStart"] = ["alt shift OPEN_BRACKET"],
+            ["EditorCodeBlockEnd"] = [],
+            ["EditorCodeBlockStartWithSelection"] = ["control alt shift OPEN_BRACKET"],
+            ["EditorCodeBlockEndWithSelection"] = ["control alt shift CLOSE_BRACKET"],
         }),
         ["Visual Studio OSX"] = (MacOS, new()
         {
@@ -118,6 +139,12 @@ internal static class RiderKeymaps
             ["QuickEvaluateExpression"] = ["ctrl alt f8"],
             ["MethodOverloadSwitchDown"] = [],
             ["MethodOverloadSwitchUp"] = [],
+            ["MethodUp"] = [],
+            ["MethodDown"] = [],
+            ["EditorCodeBlockStart"] = [],
+            ["EditorCodeBlockEnd"] = [],
+            ["EditorCodeBlockStartWithSelection"] = [],
+            ["EditorCodeBlockEndWithSelection"] = [],
         }),
         [Emacs] = (Default, EmacsOwn),
         ["VSCode OSX"] = (MacOS, new()
@@ -139,6 +166,8 @@ internal static class RiderKeymaps
             ["QuickEvaluateExpression"] = ["meta alt f8"],
             ["MethodOverloadSwitchDown"] = [],
             ["MethodOverloadSwitchUp"] = [],
+            ["EditorCodeBlockStart"] = [],
+            ["EditorCodeBlockEnd"] = [],
         }),
     };
 
@@ -162,6 +191,14 @@ internal static class RiderKeymaps
         ("Visual Studio OSX", CoverAll, "meta U , K", true),
         ("Visual Studio OSX", CoverAll, "meta U , meta K", false),
         (Default, "Console.Transaction.Commit", "control alt shift ENTER", false),
+        (Default, "ReSharperGotoContainingDeclaration", "alt shift OPEN_BRACKET", true),
+        (MacOS, "ReSharperGotoContainingDeclaration", "control OPEN_BRACKET", true),
+        ("Visual Studio", "ReSharperGotoContainingDeclaration", "control OPEN_BRACKET", true),
+        ("Visual Studio OSX", "ReSharperGotoContainingDeclaration", "meta OPEN_BRACKET", true),
+        (Default, "ReSharperSelectContainingDeclaration", "control alt shift OPEN_BRACKET", true),
+        (MacOS, "ReSharperSelectContainingDeclaration", "control shift OPEN_BRACKET", true),
+        ("Visual Studio", "ReSharperSelectContainingDeclaration", "control shift OPEN_BRACKET", true),
+        ("Visual Studio OSX", "ReSharperSelectContainingDeclaration", "meta alt OPEN_BRACKET", true),
     ];
 
     /// <summary>dotCover's Cover All Tests from Solution.</summary>

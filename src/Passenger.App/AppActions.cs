@@ -566,6 +566,21 @@ public static class AppActions
     public const string CallHierarchy = "app.hierarchy.calls";
     public const string TypeHierarchy = "app.hierarchy.types";
     public const string ShrinkSelection = "app.editor.shrinkSelection";
+
+    // Moves by the code's structure (MainWindow.Structure), bound as Rider's keymaps bind them (StructureKeys): its MethodUp
+    // and MethodDown, GotoNext/PrevElementUnderCaretUsage, ReSharperGoto/SelectContainingDeclaration, EditorCodeBlockStart
+    // and End with their WithSelection, and GotoCustomRegion.
+    public const string MethodUp = "app.editor.methodUp";
+    public const string MethodDown = "app.editor.methodDown";
+    public const string NextUsage = "app.editor.nextUsage";
+    public const string PreviousUsage = "app.editor.previousUsage";
+    public const string GoToContainingDeclaration = "app.editor.goToContainingDeclaration";
+    public const string SelectContainingDeclaration = "app.editor.selectContainingDeclaration";
+    public const string CodeBlockStart = "app.editor.codeBlockStart";
+    public const string CodeBlockEnd = "app.editor.codeBlockEnd";
+    public const string CodeBlockStartWithSelection = "app.editor.codeBlockStartWithSelection";
+    public const string CodeBlockEndWithSelection = "app.editor.codeBlockEndWithSelection";
+    public const string GoToRegion = "app.goToRegion";
     public const string ShowExecutionPoint = "app.debug.showExecutionPoint";
 
     // Rider's XDebugger.AttachToProcess and RiderReattach, on its Visual Studio keymaps' Ctrl+Alt+P (Cmd+Alt+P) and
@@ -895,7 +910,12 @@ public static class AppActions
     public static Keymap Keymap(KeymapPreset preset, IReadOnlyDictionary<string, string[]> overrides)
     {
         // A chord no keymap here takes and a game is unlikely to want, as the game hears it while it has the keys.
-        Keymap keymap = Base(preset).Bind(GameKeys, "control F11")
+        Keymap keymap = Base(preset);
+        foreach ((string action, string key) in StructureKeys[RiderKeymapOf(preset)])
+        {
+            keymap.Bind(action, key);
+        }
+        keymap.Bind(GameKeys, "control F11")
             .Bind(NextRegion, OperatingSystem.IsMacOS() ? "control meta BACK_QUOTE" : "control alt BACK_QUOTE")
             .Bind(PreviousRegion, OperatingSystem.IsMacOS() ? "control meta shift BACK_QUOTE" : "control alt shift BACK_QUOTE")
             .Bind(ReadAsText, OperatingSystem.IsMacOS() ? "control meta R" : "control alt R");
@@ -945,6 +965,66 @@ public static class AppActions
         }
         return keymap;
     }
+
+    /// <summary>The keymap of Rider's a preset follows on this system, by its name.</summary>
+    private static string RiderKeymapOf(KeymapPreset preset) => (preset, OperatingSystem.IsMacOS()) switch
+    {
+        (KeymapPreset.VSCode, true) => "VSCode OSX",
+        (KeymapPreset.VSCode, false) => "VSCode",
+        (KeymapPreset.IntelliJ, true) => "Mac OS X 10.5+",
+        (KeymapPreset.IntelliJ, false) or (KeymapPreset.Emacs, _) => "$default",
+        (_, true) => "Visual Studio OSX",
+        _ => "Visual Studio",
+    };
+
+    /// <summary>The moves by the code's structure as each of Rider's keymaps binds them, by its name. Where Rider gives a
+    /// key to one of them and to an action Passenger has there already, that action keeps it: Visual Studio's own Move Line
+    /// Alt+Up and Down, the Mac's Clone Caret Ctrl+Shift+Up and Down, and Select Containing Declaration Cmd+Alt+[ over Code
+    /// Block Start, as Rider's own descriptor gives it.</summary>
+    private static readonly Dictionary<string, (string Action, string Key)[]> StructureKeys = new()
+    {
+        ["Visual Studio"] =
+        [
+            (NextUsage, "control shift DOWN"), (PreviousUsage, "control shift UP"), (GoToContainingDeclaration, "control OPEN_BRACKET"),
+            (SelectContainingDeclaration, "control shift OPEN_BRACKET"), (CodeBlockStart, "alt shift OPEN_BRACKET"),
+            (CodeBlockStartWithSelection, "control alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "control alt shift CLOSE_BRACKET"),
+            (GoToRegion, "control alt PERIOD"),
+        ],
+        ["Visual Studio OSX"] =
+        [
+            (NextUsage, "control alt DOWN"), (PreviousUsage, "control alt UP"), (GoToContainingDeclaration, "meta OPEN_BRACKET"),
+            (SelectContainingDeclaration, "meta alt OPEN_BRACKET"), (CodeBlockEnd, "meta alt CLOSE_BRACKET"),
+            (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
+            (GoToRegion, "meta alt PERIOD"),
+        ],
+        ["VSCode"] =
+        [
+            (GoToContainingDeclaration, "alt shift OPEN_BRACKET"), (SelectContainingDeclaration, "control alt shift OPEN_BRACKET"),
+            (GoToRegion, "control alt PERIOD"),
+        ],
+        ["VSCode OSX"] =
+        [
+            (MethodUp, "control shift UP"), (MethodDown, "control shift DOWN"), (NextUsage, "control alt DOWN"), (PreviousUsage, "control alt UP"),
+            (GoToContainingDeclaration, "control OPEN_BRACKET"), (SelectContainingDeclaration, "control shift OPEN_BRACKET"),
+            (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
+            (GoToRegion, "meta alt PERIOD"),
+        ],
+        ["$default"] =
+        [
+            (MethodUp, "alt UP"), (MethodDown, "alt DOWN"), (GoToContainingDeclaration, "alt shift OPEN_BRACKET"),
+            (SelectContainingDeclaration, "control alt shift OPEN_BRACKET"), (CodeBlockStart, "control OPEN_BRACKET"), (CodeBlockEnd, "control CLOSE_BRACKET"),
+            (CodeBlockStartWithSelection, "control shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "control shift CLOSE_BRACKET"),
+            (GoToRegion, "control alt PERIOD"),
+        ],
+        ["Mac OS X 10.5+"] =
+        [
+            (MethodUp, "control shift UP"), (MethodDown, "control shift DOWN"), (NextUsage, "control alt DOWN"), (PreviousUsage, "control alt UP"),
+            (GoToContainingDeclaration, "control OPEN_BRACKET"), (SelectContainingDeclaration, "control shift OPEN_BRACKET"),
+            (CodeBlockStart, "meta alt OPEN_BRACKET"), (CodeBlockEnd, "meta alt CLOSE_BRACKET"),
+            (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
+            (GoToRegion, "meta alt PERIOD"),
+        ],
+    };
 
     /// <summary>The completion list's filters by the kind of member, each on Alt and its badge's letter.</summary>
     private static readonly (string Filter, string Key)[] CompletionFilterKeys =

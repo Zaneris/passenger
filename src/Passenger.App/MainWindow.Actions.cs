@@ -236,6 +236,17 @@ public partial class MainWindow
         Add(A.ReplaceInFiles, "Replace in Files…", "IDE", c => ShowFindInFiles(replace: true, ExplorerScope(c)), NeedsFolder, ("Edit/Find", 1, 1));
         Add(A.ExtendSelection, "Extend Selection", "Editor", _ => ExtendSelection(), Refusals.NeedsFile, ("Edit", 2, 1));
         Add(A.ShrinkSelection, "Shrink Selection", "Editor", _ => ShrinkSelection(), Refusals.NeedsFile, ("Edit", 2, 2));
+        Add(A.MethodUp, "Method Up", "Editor", _ => MoveToMember(down: false), WhyNoCSharpStructure, words: ["Previous Method", "Previous Member"]);
+        Add(A.MethodDown, "Method Down", "Editor", _ => MoveToMember(down: true), WhyNoCSharpStructure, words: ["Next Method", "Next Member"]);
+        Add(A.NextUsage, "Next Usage", "Navigate", _ => MoveToUsage(next: true), Refusals.NeedsFile, words: ["Next Highlighted Usage", "Next Occurrence"]);
+        Add(A.PreviousUsage, "Previous Usage", "Navigate", _ => MoveToUsage(next: false), Refusals.NeedsFile, words: ["Previous Highlighted Usage", "Previous Occurrence"]);
+        Add(A.GoToContainingDeclaration, "Go to Containing Declaration", "Navigate", _ => ToContainingDeclaration(select: false), WhyNoCSharpStructure);
+        Add(A.SelectContainingDeclaration, "Select Containing Declaration", "Editor", _ => ToContainingDeclaration(select: true), WhyNoCSharpStructure);
+        Add(A.CodeBlockStart, "Move Caret to Code Block Start", "Editor", _ => ToCodeBlock(end: false, extend: false), Refusals.NeedsFile);
+        Add(A.CodeBlockEnd, "Move Caret to Code Block End", "Editor", _ => ToCodeBlock(end: true, extend: false), Refusals.NeedsFile);
+        Add(A.CodeBlockStartWithSelection, "Move Caret to Code Block Start with Selection", "Editor", _ => ToCodeBlock(end: false, extend: true), Refusals.NeedsFile);
+        Add(A.CodeBlockEndWithSelection, "Move Caret to Code Block End with Selection", "Editor", _ => ToCodeBlock(end: true, extend: true), Refusals.NeedsFile);
+        Add(A.GoToRegion, "Go to Region", "Navigate", _ => GoToRegion(), WhyNoCSharpStructure, ("Navigate", 1, 7), words: ["Regions", "#region"]);
 
         Add(A.Back, "Back", "Navigate", _ => navigator.StepHistory(-1), menu: ("Navigate", 0, 0));
         Add(A.Forward, "Forward", "Navigate", _ => navigator.StepHistory(1), menu: ("Navigate", 0, 1));

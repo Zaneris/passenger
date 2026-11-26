@@ -420,6 +420,17 @@ public sealed class CodeAssist
     /// <summary>A value read for the card at an offset of the file shown, its row taking the keys (Quick Evaluate Expression).</summary>
     public void ShowValue(int offset, DebuggerHover value) => quickInfo.ShowValue(offset, value);
 
+    /// <summary>Places of the file shown to go to, by their names (Go to Region's): straight to one, else a list at the
+    /// caret to choose from; <paramref name="none"/> said where there are none.</summary>
+    public void ShowPlaces(string title, OpenDocument file, IReadOnlyList<int> offsets, IReadOnlyList<string> names, string none)
+    {
+        ServerLines lines = ServerLines.Of(file.Text.Snapshot);
+        string uri = DocumentUris.FromPath(file.Path);
+        navigation.Go([.. offsets.Select(offset => Place(lines.PositionOf(offset)))], context.Caret, title, none, names);
+
+        LspLocation Place(LspPosition at) => new(uri, new LspRange(at, at));
+    }
+
     /// <summary>What the hover card says of a line-end annotation of the file shown (<see cref="QuickInfo.AnnotationCard"/>).</summary>
     internal Func<LineAnnotation, IHoverCard, bool>? AnnotationCard
     {
