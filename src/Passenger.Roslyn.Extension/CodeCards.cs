@@ -121,7 +121,7 @@ internal sealed class CodedHoverHandler(IGlobalOptionService options, IMetadataA
                 && section.TaggedParts.Any(part => part.NavigationTarget is not null)
                 && await document.Project.GetCompilationAsync(cancellationToken).ConfigureAwait(false) is { } compilation)
             {
-                declaration = part => HoverDeclarations.CanOpen(part, compilation, metadata, cancellationToken);
+                declaration = part => HoverDeclarations.NavigationKey(part, compilation, metadata, cancellationToken);
             }
             if (CodeCards.Blocks(section.TaggedParts, declaration) is { } blocks)
             {

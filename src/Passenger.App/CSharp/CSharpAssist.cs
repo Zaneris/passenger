@@ -92,42 +92,38 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
     }
 
     /// <summary>Go to Declaration for the part of a hover signature the person clicked.</summary>
-    public async Task OpenHoverDeclarationAsync(OpenDocument document, TextSnapshot snapshot, int offset, string name, string symbolKey)
-    {
-        if (context.ServerOf(document)?.Lsp is not { } lsp)
+    public Task OpenHoverDeclarationAsync(OpenDocument document, TextSnapshot snapshot, int offset, string name, string symbolKey) =>
+        FollowDeclarationAsync(document, offset, async () =>
         {
-            return;
-        }
-        using IDisposable held = BackgroundWork.Scope();
-        try
-        {
+            if (context.ServerOf(document)?.Lsp is not { } lsp)
+            {
+                return null;
+            }
             IReadOnlyList<LspLocation> places = await lsp.HoverDeclarationAsync(symbolKey);
             if (context.CSharp is { } csharp)
             {
                 (places, _) = await UnloadedSources.OfAsync(places, csharp.UnloadedNow?.Invoke() ?? []);
                 places = await csharp.Generated.CopiedAsync(places);
             }
-            if (context.Editors.Active == document && document.Text.Snapshot == snapshot)
-            {
-                navigation.Go(places, offset, $"Declarations of {name}", Refusals.NoDeclaration);
-            }
-        }
-        catch (LanguageServerFailed failed)
-        {
-            context.Failed("Go to Declaration", failed);
-        }
-    }
+            return new Declared(places, Refusals.NoDeclaration) { Title = $"Declarations of {name}" };
+        }, snapshot);
 
     /// <summary>Go to Declaration from the file shown, where <see cref="DeclaredAsync"/> leads.</summary>
     public override async Task<bool> DefinitionAsync(int offset)
     {
-        if (context.Ask("Go to Declaration") is null || context.Editors.Active is not { } shown)
+        if (context.Ask("Go to Declaration") is not null && context.Editors.Active is { } shown)
         {
-            return true;
+            await FollowDeclarationAsync(shown, offset, () => DeclaredAsync(shown, offset));
         }
+        return true;
+    }
+
+    private async Task FollowDeclarationAsync(OpenDocument shown, int offset, Func<Task<Declared?>> find, TextSnapshot? snapshot = null)
+    {
+        using IDisposable held = BackgroundWork.Scope();
         try
         {
-            if (await DeclaredAsync(shown, offset) is { } declared && context.Editors.Active == shown)
+            if (await find() is { } declared && context.Editors.Active == shown && (snapshot is null || shown.Text.Snapshot == snapshot))
             {
                 navigation.Go(declared, offset);
                 if (declared.Note is { } note)
@@ -140,7 +136,6 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         {
             context.Failed("Go to Declaration", failed);
         }
-        return true;
     }
 
     /// <summary>Aspire's, a configuration read's, a localized key's, a JS interop call's and a Godot path's places first; then the server's, a Godot

@@ -255,10 +255,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         project.Write("OrderCall.cs", """
             static class OrderCall
             {
-                public static void Run(Customer customer)
-                {
-                    _ = OrderService.GetOrder(customer);
-                }
+                public static void Run(Customer customer) => OrderService.GetOrder(customer);
             }
             """);
         MainWindow window = WithoutNavigationBar(project.Open("OrderCall.cs"));

@@ -59,7 +59,7 @@ public class SelectableWords : SelectableTextBlock
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         pressedLink = e.ClickCount == 1 && e.KeyModifiers == KeyModifiers.None && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed
-            ? LinkAt(InText(e)) : null;
+            ? LinkAt(InText(e.GetPosition(this))) : null;
         base.OnPointerPressed(e);
     }
 
@@ -70,40 +70,30 @@ public class SelectableWords : SelectableTextBlock
         {
             return;
         }
-        Point point = InText(e);
+        Point point = InText(e.GetPosition(this));
         Link? link = LinkAt(point);
         if (pressedLink is not null && (pressedLink != link || SelectionStart != SelectionEnd))
         {
             pressedLink = null;
         }
-        HoverLink(link is not null && !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed ? point : null);
+        HoverLink(link is not null ? point : null);
     }
 
-    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    protected override void OnTapped(TappedEventArgs e)
     {
+        base.OnTapped(e);
         Link? link = pressedLink;
         pressedLink = null;
-        Point point = InText(e);
-        Link? underPointer = LinkAt(point);
-        bool open = link is not null && e.Pointer.Captured == this && e.InitialPressMouseButton == MouseButton.Left
-            && SelectionStart == SelectionEnd && link == underPointer;
-        base.OnPointerReleased(e);
-        HoverLink(underPointer is not null && !open ? point : null);
-        if (open && link is { } chosen)
+        if (link is { } chosen && SelectionStart == SelectionEnd && chosen == LinkAt(InText(e.GetPosition(this))))
         {
             e.Handled = true;
             OpenLink?.Invoke(chosen.Text, chosen.Target);
         }
     }
 
-    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
-    {
-        pressedLink = null;
-        base.OnPointerCaptureLost(e);
-    }
-
     protected override void OnPointerExited(PointerEventArgs e)
     {
+        pressedLink = null;
         HoverLink(null);
         base.OnPointerExited(e);
     }
@@ -126,7 +116,7 @@ public class SelectableWords : SelectableTextBlock
         InvalidateVisual();
     }
 
-    private Point InText(PointerEventArgs e) => e.GetPosition(this) - new Point(Padding.Left, Padding.Top);
+    private Point InText(Point position) => position - new Point(Padding.Left, Padding.Top);
 
     private Link? LinkAt(Point point)
     {

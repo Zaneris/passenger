@@ -13,14 +13,9 @@ using LspLocation = Roslyn.LanguageServer.Protocol.Location;
 
 namespace Passenger.Roslyn.Extension;
 
-internal sealed class HoverDeclarationParams
-{
-    [JsonPropertyName("textDocument")]
-    public required TextDocumentIdentifier TextDocument { get; init; }
-
-    [JsonPropertyName("symbolKey")]
-    public required string SymbolKey { get; init; }
-}
+internal sealed record HoverDeclarationParams(
+    [property: JsonPropertyName("textDocument")] TextDocumentIdentifier TextDocument,
+    [property: JsonPropertyName("symbolKey")] string SymbolKey);
 
 /// <summary>Resolves the symbol Roslyn associated with a signature part. Metadata is only opened on a click.</summary>
 [ExportCSharpVisualBasicStatelessLspService(typeof(HoverDeclarations)), Shared]
@@ -35,7 +30,7 @@ internal sealed class HoverDeclarations(IGlobalOptionService options, IMetadataA
 
     public TextDocumentIdentifier GetTextDocumentIdentifier(HoverDeclarationParams request) => request.TextDocument;
 
-    public static string? CanOpen(TaggedText part, Compilation compilation, IMetadataAsSourceFileService metadata, CancellationToken cancel)
+    public static string? NavigationKey(TaggedText part, Compilation compilation, IMetadataAsSourceFileService metadata, CancellationToken cancel)
     {
         if (part.NavigationTarget is { } key && Resolve(key, compilation, cancel) is { } symbol
             && (symbol.Locations.Any(location => location.IsInSource) || metadata.IsNavigableMetadataSymbol(symbol)))
