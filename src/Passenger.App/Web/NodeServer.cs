@@ -5,7 +5,7 @@ using Passenger.Lsp;
 namespace Passenger.App.Web;
 
 /// <summary>One language server on the web servers' runtime for the folder open (Node.js, Bun or Deno; or, <see cref="Elsewhere"/>,
-/// one that runs on none: GDScript's, in Godot's editor), from its start to its end: started on the runtime found unless it
+/// one that runs on none, such as GDScript's or Buf's), from its start to its end: started on the runtime found unless it
 /// cannot run there (none, one too old for its package or lacking what it needs, the server missing from the app's folder),
 /// which <see cref="Unavailable"/> hears; its log heard; its end (during its start too) or hang told to <see cref="Lost"/> while it is the one kept. A UI-thread object: what the server says from its threads crosses through
 /// <see cref="UiThread"/>.</summary>
@@ -45,9 +45,15 @@ internal sealed class NodeServer
     public Func<NodeRuntime, string?>? Refused { get; init; }
 
     /// <summary>How a server that runs on no Node.js starts, in place of <see cref="Command"/>: made on the UI thread as its
-    /// start begins, then run off it to the server connected and initialized; a <see cref="Godot.GodotScripts.Unavailable"/>
+    /// start begins, then run off it to the server connected and initialized; a <see cref="CannotStart"/>
     /// says why it cannot.</summary>
     public Func<Func<CancellationToken, Task<LanguageSession>>>? Elsewhere { get; init; }
+
+    /// <summary>Why a server started without a Node runtime is unavailable, in its banner and status bar.</summary>
+    internal sealed class CannotStart(string problem, string label) : Exception(problem)
+    {
+        public string Label { get; } = label;
+    }
 
     /// <summary>Why this build cannot run it (a script missing from the app's folder), null when it can.</summary>
     public Func<string?>? Missing { get; init; }
@@ -130,7 +136,7 @@ internal sealed class NodeServer
                 {
                     own = await BackgroundWork.Run(() => starting(cancelled), cancelled);
                 }
-                catch (Godot.GodotScripts.Unavailable unavailable)
+                catch (CannotStart unavailable)
                 {
                     Fail(unavailable.Message, unavailable.Label);
                     return null;

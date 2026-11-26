@@ -33,6 +33,7 @@ public sealed class FileIconsTests : IDisposable
         Write("build.ps1", "Write-Host build\n");
         Write("run.sh", "echo run\n");
         Write("main.go", "package main\n");
+        Write("order.proto", "syntax = \"proto3\";\nmessage Order { int32 id = 1; }\n");
         Write("logo.png", "");
         Write("app.test.ts", "");
         Write("notes.unknown", "");
@@ -77,6 +78,7 @@ public sealed class FileIconsTests : IDisposable
                 ("build.ps1", "PowerShell", "Blue"),
                 ("run.sh", "Terminal", "Purple"),
                 ("main.go", "Go", "Blue"),
+                ("order.proto", "Protobuf", "Purple"),
                 ("logo.png", "Image", "Orange"),
                 ("app.test.ts", "TestTypeScript", "Blue"),
                 ("notes.unknown", "File", null),
@@ -92,6 +94,11 @@ public sealed class FileIconsTests : IDisposable
             Assert.True(ReferenceEquals(Resource(IconKeys.Explorer), Drawn(window, "src").Data), "A plain folder lost the folder icon");
             Assert.True(Icons(window.EditorArea).Any(i => ReferenceEquals(i.Data, Resource("FileIcon.CSharp")) && ReferenceEquals(i.Foreground, Resource(TokenKeys.FileIcon_Blue))),
                 "The open C# file's tab is not drawn with the C# icon");
+            window.OpenFile(Path.Combine(folder, "order.proto"));
+            Ui.Settle();
+            Assert.True(Icons(window.EditorArea).Any(i => ReferenceEquals(i.Data, Resource("FileIcon.Protobuf"))
+                && ReferenceEquals(i.Foreground, Resource(TokenKeys.FileIcon_Purple))),
+                "The open Protobuf file's tab has its own purple icon");
 
             Ui.Landed(() => window.Vcs is { } vcs && vcs.Changes.Any(c => c.Name == "package.json"), "package.json listed as changed");
             window.DockHost.Show(ToolWindowIds.Commit);
