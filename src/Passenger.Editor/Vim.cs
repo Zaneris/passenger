@@ -275,9 +275,14 @@ public sealed partial class Vim(VimRegisters registers)
             intoEmptied = false;
         }
         typingIntoEmptied = Mode == VimMode.Insert;
-        if (result.Edits is { Count: > 0 } made)
+        if (result.Edits is { Count: > 0 } made && made.Any(plan => !plan.Edits.Any() || plan.Edits.Any(edit => edit.Length > 0 || edit.Text.Length > 0)))
         {
             return result with { Edits = [line, .. made.Select(p => p with { Kind = EditKind.Joined })] };
+        }
+        if (result.Edits is { Count: > 0 } && Mode is not (VimMode.Insert or VimMode.Replace))
+        {
+            // Edits that each write nothing (a visual put of an empty register) leave the text empty, as Vim's buffer stays.
+            return result with { Edits = null, Selections = SelectionSet.Single(0) };
         }
         return Mode is VimMode.Insert or VimMode.Replace ? result with { Edits = [line with { Selections = result.Selections ?? line.Selections }] } : result;
     }
