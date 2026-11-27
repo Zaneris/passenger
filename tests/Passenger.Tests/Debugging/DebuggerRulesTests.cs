@@ -22,7 +22,7 @@ public sealed class DebuggerRulesTests
             .Where(field => field.IsLiteral && field.FieldType == typeof(string)).Select(field => (string)field.GetRawConstantValue()!)];
         List<string> found = Written(["src"], "src/Passenger.Dap/DapNames.cs", node => node switch
         {
-            LiteralExpressionSyntax plain when plain.IsKind(SyntaxKind.StringLiteralExpression) && names.Contains(plain.Token.ValueText) && !XmlName(plain) => plain.Token.ValueText,
+            LiteralExpressionSyntax plain when plain.IsKind(SyntaxKind.StringLiteralExpression) && names.Contains(plain.Token.ValueText) && !XmlName(plain) && !LanguagesName(plain) => plain.Token.ValueText,
             // A name numbered after its row's ($ReturnValue1 on), made by a hole after the name.
             InterpolatedStringExpressionSyntax { Contents: [InterpolatedStringTextSyntax text, InterpolationSyntax, ..] } when names.Contains(text.TextToken.ValueText) =>
                 text.TextToken.ValueText + "{}",
@@ -31,6 +31,12 @@ public sealed class DebuggerRulesTests
         Assert.True(found.Count == 0, $"{found.Count} strings write a row's name outside DapRows, so the debugger and the window can come to name one "
             + $"row two ways and the window no longer tells it apart (Set Value offered on Raw View, the exception or a value returned not marked "
             + $"as one): name each through DapRows:\n{string.Join("\n", found)}");
+
+        // A language's name as its entry declares it (Language.Sql's "SQL"), the language's own word, never a row's.
+        static bool LanguagesName(LiteralExpressionSyntax literal) => literal.Parent is ArgumentSyntax { NameColon: null, Parent: ArgumentListSyntax list } argument
+            && list.Arguments.IndexOf(argument) == 1
+            && list.Parent is ImplicitObjectCreationExpressionSyntax { Parent: EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax { Parent: VariableDeclarationSyntax { Type: IdentifierNameSyntax { Identifier.ValueText: "Language" } } } } }
+            && literal.Ancestors().OfType<ClassDeclarationSyntax>().Any(type => type.Identifier.ValueText == "Language");
 
         // An element's or attribute's name in an XML namespace (ns + "Results"), another format's word, never a row's.
         static bool XmlName(LiteralExpressionSyntax literal) => literal.Parent is BinaryExpressionSyntax join && join.IsKind(SyntaxKind.AddExpression) && join.Right == literal

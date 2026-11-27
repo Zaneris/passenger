@@ -68,7 +68,7 @@ public partial class MainWindow
             WhyNot = _ => requestsView?.Chosen is not RequestsView.CommandRow chosen ? Refusals.NoRequestCommand
                 : chosen.Command.Database is null || DatabaseKinds.OfConnection(chosen.Command.Database.Connection) is null ? Refusals.NoCommandDatabase
                 : Mcp.AgentCall.Current is not null || AgentsOwn ? Refusals.AsksThePerson : null,
-            Words = ["SQL", "EF Core", "Database"],
+            Words = [Languages.Language.Sql.Name, "EF Core", "Database"],
         });
         Closed += (_, _) => IdeErrors.Observe(LetGoOfRequestsAsync());
     }
