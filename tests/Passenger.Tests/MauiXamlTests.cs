@@ -47,8 +47,8 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
     }
 
     /// <summary>MAUI's names lead from XAML to C# and back and rename together: Go to Declaration from the page, a C#
-    /// expression's completion, declarations and usages as MAUI's generator writes it, its hover card, an element's
-    /// field from the code-behind, and renames from an element, a view model's property and an expression.</summary>
+    /// expression's completion, declarations and usages as MAUI's generator writes it, its hover card, an x:Code block's
+    /// C#, an element's field from the code-behind, and renames from an element, a view model's property and an expression.</summary>
     [AvaloniaFact]
     public void Mauis_names_lead_from_xaml_to_csharp_and_back_and_rename_together()
     {
@@ -60,6 +60,8 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
             t => t.Prefixed_types_attached_properties_and_char_arguments_read_as_mauis_generator_writes_them_and_find_usages_from_csharp_lists_expressions());
         Flow.StepApart("hover in a C# expression shows the card of the element or member a name reads", () => new MauiXamlTests(app),
             t => t.Hover_in_a_csharp_expression_shows_the_card_of_the_element_or_member_a_name_reads());
+        Flow.StepApart("an x:Code block's C# completes the page's members, is checked where it is written and leads to its declarations", () => new MauiXamlTests(app),
+            t => t.An_x_code_blocks_csharp_completes_the_pages_members_is_checked_where_it_is_written_and_leads_to_its_declarations());
         Flow.StepApart("from the code-behind an element's field goes to the element, and its usages list the element and the expressions reading it", () => new MauiXamlTests(app),
             t => t.From_the_code_behind_an_elements_field_goes_to_the_element_and_its_usages_list_the_element_and_the_expressions_reading_it());
         Flow.StepApart("rename from an element an expression reads renames it, its reads and the code-behind's uses", () => new MauiXamlTests(app),
@@ -359,6 +361,53 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
         Ui.Settle();
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "{Gree");
         Assert.Contains("MainViewModel.cs:14 public string Greeting { get; set; } = \"Hello\";", FoundUsages(window));
+        window.Close();
+    }
+
+    /// <summary>An x:Code block's C#, which the page's compiler puts in its class, served as C# at its places in the XAML:
+    /// completion offers the page's members, a member it names that is not there is marked where it is written, and Go
+    /// to Declaration leads to a method the block declares, in the block, and to a field of the code-behind's.</summary>
+    private void An_x_code_blocks_csharp_completes_the_pages_members_is_checked_where_it_is_written_and_leads_to_its_declarations()
+    {
+        MainWindow window = app.Open(app.PathOf("MainPage.xaml"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Replace(editor, "<ContentPage x:Class=\"MauiApp1.MainPage\">\n", """
+            <ContentPage x:Class="MauiApp1.MainPage">
+                <x:Code><![CDATA[
+                    private string Shout() => CounterBtn.Text.ToUpperInvariant();
+
+                    private int Twice() => count * 2 + Shout().Length + Missing;
+                ]]></x:Code>
+
+            """);
+        Ui.WaitFor(() => document.Markers.Any(m => m.Message.Contains("Missing", StringComparison.Ordinal)),
+            () => $"C#'s error for a name the page lacks, marked in the x:Code: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+        string text = editor.Document.Snapshot.ToString();
+        Marker missing = document.Markers.First(m => m.Message.Contains("Missing", StringComparison.Ordinal));
+        Assert.True(text[missing.Range.Start..missing.Range.End] == "Missing", $"The error is marked on \"{text[missing.Range.Start..missing.Range.End]}\", not the name it is for");
+        // MAUI 11.0's own generator refuses x:Code, which its later previews compile: only C#'s marks in the block are asked of.
+        int block = text.IndexOf("<![CDATA[", StringComparison.Ordinal);
+        int blockEnd = text.IndexOf("]]>", StringComparison.Ordinal);
+        Assert.True(document.Markers.Count(m => m.Range.Start > block && m.Range.End < blockEnd) == 1,
+            $"The x:Code's other code, which compiles, is marked: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+
+        Ui.PlaceAfter(editor, "=> cou");
+        Ui.Run(window, AppActions.Complete);
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("count") && window.Assist.CompletionLabels.Contains("CounterBtn"),
+            () => $"the page's members, its code-behind's and its XAML's, offered in the x:Code: {string.Join(", ", window.Assist.CompletionLabels.Take(30))}");
+        Ui.Press(window, "ESCAPE");
+
+        Ui.PlaceAfter(editor, "+ Sho");
+        Ui.Run(window, AppActions.GoToDeclaration);
+        Ui.Settle();
+        Assert.True(window.EditorArea.Active?.Name == "MainPage.xaml" && CaretLine(editor).Contains("private string |Shout()", StringComparison.Ordinal),
+            $"Go to Declaration from a call of the x:Code's own method went to {window.EditorArea.Active?.Name}: {CaretLine(window.EditorArea.CodeEditor)}");
+        Ui.PlaceAfter(editor, "=> cou");
+        Ui.Run(window, AppActions.GoToDeclaration);
+        Ui.Settle();
+        Assert.True(window.EditorArea.Active?.Name == "MainPage.xaml.cs" && CaretLine(window.EditorArea.CodeEditor).Contains("int |count", StringComparison.Ordinal),
+            $"Go to Declaration from the code-behind's field went to {window.EditorArea.Active?.Name}: {CaretLine(window.EditorArea.CodeEditor)}");
         window.Close();
     }
 

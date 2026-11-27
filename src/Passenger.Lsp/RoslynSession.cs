@@ -551,6 +551,27 @@ public sealed partial class RoslynSession : IAsyncDisposable, IDocumentHost
             ? (await ExtensionAsync<Roslyn.Extension.MauiChecksFound>(Roslyn.Extension.Handlers.MauiXamlChecks, new Roslyn.Extension.MauiChecksAsked(path, text, expressions), cancel).ConfigureAwait(false)).Checks
             : null;
 
+    /// <summary>What completion offers at a place (an offset of the file) in a XAML page's x:Code (Passenger's extension's
+    /// <see cref="Roslyn.Extension.XamlCodeCompletion"/>); null when the server has no extension to ask.</summary>
+    public async Task<Roslyn.Extension.MauiCompletions?> XamlCodeCompletionAsync(string path, string text, Roslyn.Extension.XamlCode code, int at, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? await ExtensionAsync<Roslyn.Extension.MauiCompletions>(Roslyn.Extension.Handlers.XamlCodeCompletion, new Roslyn.Extension.XamlCodeAsked(path, text, code, at), cancel).ConfigureAwait(false)
+            : null;
+
+    /// <summary>The symbol a place in a XAML page's x:Code names (Passenger's extension's <see cref="Roslyn.Extension.XamlCodeSymbol"/>);
+    /// null for none, or when the server has no extension to ask.</summary>
+    public async Task<Roslyn.Extension.NamedSymbol?> XamlCodeSymbolAsync(string path, string text, Roslyn.Extension.XamlCode code, int at, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? (await ExtensionAsync<Roslyn.Extension.SymbolsFound>(Roslyn.Extension.Handlers.XamlCodeSymbol, new Roslyn.Extension.XamlCodeAsked(path, text, code, at), cancel).ConfigureAwait(false)).Symbols.FirstOrDefault()
+            : null;
+
+    /// <summary>The problems C# finds in a XAML page's x:Code (Passenger's extension's <see cref="Roslyn.Extension.XamlCodeChecks"/>);
+    /// null when the server has no extension to ask.</summary>
+    public async Task<IReadOnlyList<Roslyn.Extension.XamlCodeCheck>?> XamlCodeChecksAsync(string path, Roslyn.Extension.XamlCode code, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? (await ExtensionAsync<Roslyn.Extension.XamlCodeChecksFound>(Roslyn.Extension.Handlers.XamlCodeChecks, new Roslyn.Extension.XamlCodeChecked(path, code), cancel).ConfigureAwait(false)).Checks
+            : null;
+
     /// <summary>The class a Razor component's file makes, and where the server takes it (Passenger's extension's
     /// <see cref="Roslyn.Extension.ComponentAsked"/>); null when the server has no extension to ask.</summary>
     public async Task<Roslyn.Extension.ComponentFound?> ComponentAsync(string path, CancellationToken cancel = default) =>

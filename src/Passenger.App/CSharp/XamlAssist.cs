@@ -129,7 +129,7 @@ internal sealed partial class XamlAssist : LanguageAssist
         {
             return null;
         }
-        if (await ExpressionPlaceAsync(xaml, offset) is { } expression)
+        if ((await ExpressionPlaceAsync(xaml, offset) ?? await CodePlaceAsync(xaml, offset)) is { } expression)
         {
             return expression.Place is { } reached
                 ? new Declared(Declared.Served([reached], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration)
@@ -236,7 +236,8 @@ internal sealed partial class XamlAssist : LanguageAssist
         xamlAsked = at;
         try
         {
-            (int Start, IReadOnlyList<(CompletionItem Item, XamlItem Offered)> Items, bool Head)? code = await ExpressionItemsAsync(xaml, caret, cancel.Token);
+            (int Start, IReadOnlyList<(CompletionItem Item, XamlItem Offered)> Items, bool Head)? code = await ExpressionItemsAsync(xaml, caret, cancel.Token)
+                ?? await CodeItemsAsync(xaml, caret, cancel.Token);
             // In an expression's code the server's list stands alone; in the name it starts with, a markup extension's may still be meant.
             XamlCompletionList? list = code is { Head: false } ? null : await xaml.CompleteAsync(caret, cancel.Token);
             if (cancel.IsCancellationRequested || Editor.Document != asked)
@@ -336,7 +337,7 @@ internal sealed partial class XamlAssist : LanguageAssist
     /// string's generated property and each language's entry of its key).</summary>
     private async Task XamlGoTo(XamlDocument xaml, int offset)
     {
-        if (await ExpressionPlaceAsync(xaml, offset) is { } expression)
+        if ((await ExpressionPlaceAsync(xaml, offset) ?? await CodePlaceAsync(xaml, offset)) is { } expression)
         {
             if (expression.Place is { } place)
             {

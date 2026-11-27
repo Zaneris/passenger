@@ -59,6 +59,9 @@ public static class Handlers
     public const string MauiXamlChecks = "Passenger.Roslyn.Extension.MauiXamlChecks";
     public const string MauiExpressionUses = "Passenger.Roslyn.Extension.MauiExpressionUses";
     public const string MauiExpressionHover = "Passenger.Roslyn.Extension.MauiExpressionHover";
+    public const string XamlCodeCompletion = "Passenger.Roslyn.Extension.XamlCodeCompletion";
+    public const string XamlCodeSymbol = "Passenger.Roslyn.Extension.XamlCodeSymbol";
+    public const string XamlCodeChecks = "Passenger.Roslyn.Extension.XamlCodeChecks";
     public const string CompletionCall = "Passenger.Roslyn.Extension.CompletionCall";
     public const string StepBindings = "Passenger.Roslyn.Extension.StepBindings";
     public const string EditorConfigKeys = "Passenger.Roslyn.Extension.EditorConfigKeys";
@@ -82,7 +85,7 @@ public static class Handlers
         DescribeHierarchy, PullMembersUp, PushMembersDown, InterfacesLacking, DocumentTexts, DocumentsWritten, ReferencesRead, ReferencedFiles, GeneratorsRun, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, SymbolContainers, WrittenPlaces,
         ComponentClass, GeneratedTexts, GeneratedNamed, GeneratedListed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames, GeneratedMembers,
-        MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover,
+        MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover, XamlCodeCompletion, XamlCodeSymbol, XamlCodeChecks,
         CompletionCall, RenameSuggestions, StepBindings, EditorConfigKeys, EditorConfigValues, Signposts, CodeClones, ExtractClones, Dependencies, DependencyAt, LayerChecks,
         TestDoublesOffered, CreateFake, FillArguments, ExpressionType, SymbolReference, TypeFits,
     ];
@@ -411,6 +414,40 @@ public sealed record MauiChecksFound([property: JsonPropertyName("checks")] IRea
 public sealed record MauiCheck(
     [property: JsonPropertyName("expression")] int Expression,
     [property: JsonPropertyName("at")] Place? At,
+    [property: JsonPropertyName("start")] int Start,
+    [property: JsonPropertyName("end")] int End,
+    [property: JsonPropertyName("error")] bool Error,
+    [property: JsonPropertyName("code")] string Code,
+    [property: JsonPropertyName("message")] string Message);
+
+/// <summary>A XAML page's x:Code blocks, whose C# its compiler puts in the page's class (<paramref name="Class"/>, its x:Class).</summary>
+public sealed record XamlCode(
+    [property: JsonPropertyName("class")] string Class,
+    [property: JsonPropertyName("blocks")] IReadOnlyList<XamlCodeBlock> Blocks);
+
+/// <summary>An x:Code block's code, and for each of its characters and its end the offset in the XAML file it is written at.</summary>
+public sealed record XamlCodeBlock(
+    [property: JsonPropertyName("code")] string Code,
+    [property: JsonPropertyName("writtenOf")] IReadOnlyList<int> WrittenOf);
+
+/// <summary>A place in a XAML file's x:Code (an offset of the file, whose text is given), at which completion or the
+/// symbol named is asked for.</summary>
+public sealed record XamlCodeAsked(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("code")] XamlCode Code,
+    [property: JsonPropertyName("at")] int At);
+
+/// <summary>A XAML file's x:Code, whose C#'s problems are asked for.</summary>
+public sealed record XamlCodeChecked(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("code")] XamlCode Code);
+
+/// <summary>The problems C# finds in a XAML file's x:Code, each from <paramref name="Start"/> to <paramref name="End"/>, offsets
+/// of the file.</summary>
+public sealed record XamlCodeChecksFound([property: JsonPropertyName("checks")] IReadOnlyList<XamlCodeCheck> Checks);
+
+public sealed record XamlCodeCheck(
     [property: JsonPropertyName("start")] int Start,
     [property: JsonPropertyName("end")] int End,
     [property: JsonPropertyName("error")] bool Error,
