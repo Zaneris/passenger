@@ -88,7 +88,7 @@ public sealed partial class Vim
                 Remember(acting);
                 int n = Math.Max(2, taken.Max(r => text.GetLineFromOffset(r.High)) - taken.Min(r => text.GetLineFromOffset(r.Low)) + 1);
                 SelectionSet starts = SelectionSet.Create([.. taken.Select(r => Selection.At(r.Low))], 0);
-                if (Join(text, starts, block ? Math.Max(2, bottom - top + 1) : n, spaced: op == "J", Options.JoinSpaces) is { } joined)
+                if (Join(text, starts, block ? Math.Max(2, bottom - top + 1) : n, view, spaced: op == "J", Options.JoinSpaces) is { } joined)
                 {
                     int startColumn = TextNavigation.VisualColumn(text, stretch.Anchor, tab);
                     if (block && Math.Max(bottom, top + 1) == VimMotions.LastLine(text, breakEnds) && text.GetLineFromOffset(stretch.Cursor) == top

@@ -242,7 +242,7 @@ public sealed partial class Vim
             case "gv":
                 return Reselect(text, view);
             case "gJ":
-                return Joined(command, Join(text, selections, n, spaced: false), text, selections);
+                return Joined(command, Join(text, selections, n, view, spaced: false), text, selections);
             case "R":
                 return EnterReplace(command, selections);
             case "@" when command.Argument == ":":
@@ -301,7 +301,7 @@ public sealed partial class Vim
             case "r":
                 return Changed(command, Replace(text, selections, n, command.Argument!, view));
             case "J":
-                return Joined(command, Join(text, selections, n, spaced: true, Options.JoinSpaces), text, selections);
+                return Joined(command, Join(text, selections, n, view, spaced: true, Options.JoinSpaces), text, selections);
             case "~":
                 return Changed(command, Toggle(text, selections, n));
         }
