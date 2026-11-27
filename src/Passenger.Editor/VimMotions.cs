@@ -868,7 +868,7 @@ public static class VimMotions
         bool white = false;
         if (MacroAt(text, last, caret) is { } macro && !(asText && caret > macro.Start))
         {
-            if (SentenceBack(text, last, Forward(text, last, caret)) is var found && !BoundAt(text, found))
+            if (!(caret > macro.Start && OwnSentence(text, macro)) && SentenceBack(text, last, Forward(text, last, caret)) is var found && !BoundAt(text, found))
             {
                 // On a macro line the sentence is the one ( finds from where ) goes, past the line's first character read as any text.
                 return SentenceObject(text, found, n, inner, breakEnds, asText: true);
@@ -1089,12 +1089,12 @@ public static class VimMotions
 
     /// <summary>Where the white after the sentence from <paramref name="start"/> to <paramref name="end"/> ends, where the
     /// next sentence begins; after a macro line's own sentence, where the next line's sentence ends unless that line is a
-    /// bounding one (<see cref="Bound"/>), as is and as count what follows it.</summary>
+    /// bounding one (<see cref="Bound"/>) or the macro line's text ends a sentence itself, as is and as count what follows it.</summary>
     private static int WhiteEnd(TextSnapshot text, int last, int start, int end)
     {
         if (BoundAt(text, start) && LineOf(text, start) is { Length: > 0 } macro)
         {
-            return macro.Line < last && !Bound(text, macro.Line + 1) ? Math.Max(end, Forward(text, last, text.GetLine(macro.Line + 1).Start)) : end;
+            return macro.Line < last && !Bound(text, macro.Line + 1) && !OwnSentence(text, macro) ? Math.Max(end, Forward(text, last, text.GetLine(macro.Line + 1).Start)) : end;
         }
         return Math.Max(end, Forward(text, last, start));
     }
@@ -1628,6 +1628,29 @@ public static class VimMotions
     }
 
     private static bool IsSentenceEnd(char c) => c is '.' or '!' or '?';
+
+    /// <summary>Whether a macro line's text past its first character is one sentence its line's end ends: its one end mark,
+    /// closers after it alone, ending the line.</summary>
+    private static bool OwnSentence(TextSnapshot text, LineSpan macro)
+    {
+        int q = macro.End - 1;
+        while (q > macro.Start && IsCloser(text[q]))
+        {
+            q--;
+        }
+        if (q <= macro.Start || !IsSentenceEnd(text[q]))
+        {
+            return false;
+        }
+        for (int p = macro.Start + 1; p < q; p++)
+        {
+            if (EndsSentenceAt(text, p))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
 
     private static bool IsCloser(char c) => c is ')' or ']' or '"' or '\'';
 
