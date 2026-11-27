@@ -433,7 +433,7 @@ public sealed class VariablesList : TreeList
         {
             open.Content = visible ? ViewerFor(node, inline: true) : null;
             open.IsVisible = open.Content is not null;
-            copy.IsVisible = open.IsVisible && node.IsString;
+            copy.IsVisible = visible && Visualize is not null && node.IsString;
         }
     }
 }

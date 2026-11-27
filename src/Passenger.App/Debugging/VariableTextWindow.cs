@@ -9,12 +9,12 @@ namespace Passenger.App.Debugging;
 
 internal sealed class VariableTextWindow : IdeWindow
 {
-    public VariableTextWindow(string name, string text, Func<string, Task<bool>>? save = null)
+    public VariableTextWindow(string name, string text, Func<string, Task<bool>>? save = null, bool compact = false)
     {
         Title = $"Text · {name}";
         Name = "DebugTextViewer";
         Width = save is null ? DialogWidths.Question : DialogWidths.Form;
-        Height = text.Length <= VariableNode.Longest && !text.Contains('\n') ? 220 : 320;
+        Height = compact || (text.Length <= VariableNode.Longest && !text.Contains('\n')) ? 220 : 320;
         MinWidth = PopupFrame.Narrow;
         MinHeight = 200;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;

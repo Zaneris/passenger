@@ -113,8 +113,6 @@ public sealed class CellGrid : Control, IOwnKeys
     /// which way, or null for the file's order.</summary>
     public event EventHandler<(int Column, bool Descending)?>? SortRequested;
 
-    public event EventHandler? CellReadRequested;
-
     /// <summary>A cell written, for the file to take: the table shown as its writing began, the cell's row in the file's
     /// order, its column and its new text.</summary>
     public event EventHandler<CellWrite>? CellWritten;
@@ -657,11 +655,6 @@ public sealed class CellGrid : Control, IOwnKeys
             }
             if (e.ClickCount == 2 && !extend && BeginWriting())
             {
-                return;
-            }
-            if (e.ClickCount == 2 && !extend && CellReadRequested is { } read)
-            {
-                read(this, EventArgs.Empty);
                 return;
             }
             choosing = true;

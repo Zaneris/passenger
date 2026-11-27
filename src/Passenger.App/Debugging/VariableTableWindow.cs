@@ -61,7 +61,6 @@ internal sealed class VariableTableWindow : IdeWindow
         next.Click += (_, _) => GoTo(start + PageSize);
         tables.SelectionChanged += (_, _) => GoTo(0);
         detail.Click += (_, _) => ShowCell();
-        grid.CellReadRequested += (_, _) => ShowCell();
         grid.SortRequested += (_, order) =>
         {
             if (grid.Table is { } current)
@@ -135,7 +134,7 @@ internal sealed class VariableTableWindow : IdeWindow
         cell?.Close();
         (int row, int column) = grid.Caret;
         VariableTextWindow viewer = new($"{table.Header(column)} · row {table.RowLabel(row)}",
-            table.ValueAt(row, column)?.ToString() ?? string.Empty);
+            table.ValueAt(row, column)?.ToString() ?? string.Empty, compact: true);
         cell = viewer;
         viewer.Closed += (_, _) => cell = null;
         viewer.Show(this);

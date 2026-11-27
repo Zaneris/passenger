@@ -29,9 +29,16 @@ public sealed class VariableViewerTests(VariableViewerTests.Project project) : I
             Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Tree.Rows.Any(row => row.Name == "orders"), "the sample's locals at the stop");
 
             CheckText(window);
-            Window dataSet = CheckTables(window);
-            Ui.Run(window, AppActions.Resume);
-            Ui.WaitFor(() => !dataSet.IsVisible && !window.Debugger.IsDebugging, "the viewer to close when the program runs on");
+            Window table = CheckTables(window);
+            Window child = Owned(table, "DebugTextViewer");
+            Assert.Equal(DebugState.Paused, window.Debugger.Session?.State);
+            window.Activate();
+            Button resume = Assert.Single(window.DebugWindow.GetVisualDescendants().OfType<Button>(),
+                button => ActionButtons.GetAction(button) == AppActions.Resume && button.IsVisible && button.IsEnabled);
+            Ui.Click(resume);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the program to finish");
+            Assert.False(table.IsVisible);
+            Assert.False(child.IsVisible);
         }
         finally
         {
@@ -41,7 +48,7 @@ public sealed class VariableViewerTests(VariableViewerTests.Project project) : I
 
     private static void CheckText(MainWindow window)
     {
-        string original = "first\r\n\t" + new string('x', 1200) + "\\nend";
+        string original = "first\r\n\t" + new string('x', 65536) + "\\nend";
         VariablesList hover = DebuggerHoverTests.Hover(window, "payload.Length");
         Assert.Single(hover.Tree.Rows);
         Assert.True(window.Assist.HoverText!.Length < 160);
@@ -55,23 +62,48 @@ public sealed class VariableViewerTests(VariableViewerTests.Project project) : I
         hovered.Selections = SelectionSet.Single(new Selection(0, 5));
         Ui.Press(hoverText, window.Actions.Keymap.ShortcutsFor(EditorActions.Copy).First().Notation());
         Ui.WaitFor(() => Ui.Clipboard(hoverText) == "first", "the selected part of the text on the clipboard");
+        const string inserted = "hover\\修改";
+        string fromHover = inserted + original[5..];
+        Ui.Click(Control<Button>(hoverText, "EditDebugValue"));
+        hovered.Selections = SelectionSet.Single(new Selection(0, 5));
+        hoverText.KeyTextInput(inserted);
+        Assert.Equal(fromHover, hovered.Document.Snapshot.ToString());
+        Ui.Click(Control<Button>(hoverText, "ApplyDebugValue"));
+        VariablesList variables = window.DebugWindow.VariablesList;
+        Ui.WaitFor(() => DebugController.StringValue(Named(variables, "payload").Value) == fromHover,
+            "the string edited in the hover viewer to appear in the paused program");
         hoverText.Close();
 
-        VariablesList variables = window.DebugWindow.VariablesList;
-        variables.SelectedItem = Named(variables, "payload");
+        VariableNode payload = Named(variables, "payload");
+        variables.SelectedItem = payload;
+        variables.ScrollIntoView(payload);
+        Ui.Settle();
+        Control row = variables.ContainerFromItem(payload) ?? throw new InvalidOperationException("The Variables row is missing");
+        Ui.Click(Assert.Single(row.GetVisualDescendants().OfType<Button>(), b => b.Name == "CopyDebugText" && b.IsVisible));
+        Assert.Equal(fromHover, Ui.Clipboard(window));
         Ui.ChooseFromMenu(variables, "Copy Text");
-        Assert.Equal(original, Ui.Clipboard(window));
+        Assert.Equal(fromHover, Ui.Clipboard(window));
         Ui.ChooseFromMenu(variables, "View Text");
         Window text = Owned(window, "DebugTextViewer");
         CodeEditor editor = Control<CodeEditor>(text, "DebugValueText");
-        Assert.Equal(original, editor.Document.Snapshot.ToString());
+        Assert.Equal(fromHover, editor.Document.Snapshot.ToString());
+        editor.Selections = SelectionSet.Single(new Selection(0, inserted.Length));
+        Ui.Press(text, window.Actions.Keymap.ShortcutsFor(EditorActions.Copy).First().Notation());
+        Ui.WaitFor(() => Ui.Clipboard(text) == inserted, "the Variables editor's selected text");
+        Ui.Click(Assert.Single(text.GetVisualDescendants().OfType<CopyButton>()));
+        Assert.Equal(fromHover, Ui.Clipboard(text));
         Ui.Click(Control<Button>(text, "EditDebugValue"));
         Ui.Press(text, window.Actions.Keymap.ShortcutsFor(EditorActions.SelectAll).First().Notation());
-        text.KeyTextInput("changed");
-        Assert.Equal("changed", editor.Document.Snapshot.ToString());
+        const string plain = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        text.KeyTextInput(plain);
+        Assert.Equal(plain, editor.Document.Snapshot.ToString());
         Ui.Click(Control<Button>(text, "ApplyDebugValue"));
-        Ui.WaitFor(() => Named(variables, "payload").Value == "\"changed\"", "the applied text in the locals");
+        Ui.WaitFor(() => DebugController.StringValue(Named(variables, "payload").Value) == plain, "the applied text in the locals");
         text.Close();
+
+        hover = DebuggerHoverTests.Hover(window, "payload.Length");
+        ClickViewerButton(window, hover, "CopyDebugText");
+        Assert.Equal(plain, Ui.Clipboard(window));
     }
 
     private static Window CheckTables(MainWindow window)
@@ -92,7 +124,18 @@ public sealed class VariableViewerTests(VariableViewerTests.Project project) : I
         Ui.Click(Control<Button>(list, "InspectDebugCell"));
         Window cell = Owned(list, "DebugTextViewer");
         Assert.Equal("13", Control<CodeEditor>(cell, "DebugValueText").Document.Snapshot.ToString());
-        cell.Close();
+        Assert.True(cell.Width < list.Width && cell.Height < list.Height);
+        grid.Choose((1, 1), (1, 1));
+        Ui.Click(Control<Button>(list, "InspectDebugCell"));
+        Assert.False(cell.IsVisible);
+        Window second = Owned(list, "DebugTextViewer");
+        Assert.NotSame(cell, second);
+        Assert.Equal("Paid", Control<CodeEditor>(second, "DebugValueText").Document.Snapshot.ToString());
+        Assert.True(list.IsVisible);
+        Ui.Click(Control<Button>(list, "PreviousDebugRows"));
+        Ui.WaitFor(() => grid.Table is { RowCount: 12 } page && page.RowNumber(0) == 1, "the first list page again");
+        Assert.False(second.IsVisible);
+        Assert.Equal("27", IdReads());
 
         VariablesList hover = DebuggerHoverTests.Hover(window, "array.Length");
         Assert.Equal("array", Assert.Single(hover.Tree.Rows).Name);
@@ -104,17 +147,32 @@ public sealed class VariableViewerTests(VariableViewerTests.Project project) : I
 
         Window tableWindow = OpenTable(Named(variables, "ordersTable"));
         CellGrid gridTable = Control<CellGrid>(tableWindow, "DebugValueGrid");
-        Ui.WaitFor(() => gridTable.Table?.Cell(0, 1) == "Sent", "the DataTable's values");
+        Ui.WaitFor(() => gridTable.Table is { RowCount: 12 } firstPage && firstPage.Cell(0, 1) == "Sent", "the DataTable's first page");
+        Ui.Click(Control<Button>(tableWindow, "NextDebugRows"));
+        Ui.WaitFor(() => gridTable.Table is { RowCount: 3 } nextPage && nextPage.Cell(0, 0) == "29", "the DataTable's second page");
+        Ui.Click(Control<Button>(tableWindow, "PreviousDebugRows"));
+        Ui.WaitFor(() => gridTable.Table is { RowCount: 12 } firstPage && firstPage.Cell(0, 0) == "17", "the DataTable's previous page");
 
         variables.SelectedItem = Named(variables, "data");
         Ui.ChooseFromMenu(variables, "Add to Watches");
         Ui.WaitFor(() => variables.Tree.Rows.Any(row => row is { Name: "data", Role: VariableRole.Watch }), "the DataSet watch");
         Window dataSet = OpenTable(Named(variables, "data", VariableRole.Watch));
         CellGrid gridSet = Control<CellGrid>(dataSet, "DebugValueGrid");
-        Ui.WaitFor(() => gridSet.Table?.Cell(0, 1) == "Sent", "the DataSet's first table");
+        Ui.WaitFor(() => gridSet.Table is { RowCount: 12 } firstPage && firstPage.Cell(0, 1) == "Sent", "the DataSet's first table");
+        Ui.Click(Control<Button>(dataSet, "NextDebugRows"));
+        Ui.WaitFor(() => gridSet.Table is { RowCount: 3 } nextPage && nextPage.RowNumber(0) == 13, "the DataSet's second page");
         Control<ComboBox>(dataSet, "DebugValueTables").SelectedIndex = 1;
-        Ui.WaitFor(() => gridSet.Table?.Cell(0, 0) == "29", "the DataSet's second table");
-        return dataSet;
+        Ui.WaitFor(() => gridSet.Table is { RowCount: 1 } returnsTable && returnsTable.RowNumber(0) == 1 && returnsTable.Cell(0, 0) == "99",
+            "the DataSet's selected table to start on page one");
+        Window tinyTable = OpenTable(Named(variables, "returns"));
+        CellGrid tinyGrid = Control<CellGrid>(tinyTable, "DebugValueGrid");
+        Ui.WaitFor(() => tinyGrid.Table is { RowCount: 1, ColumnCount: 2 }, "the one-row table");
+        tinyGrid.Choose((0, 1), (0, 1));
+        Ui.Click(Control<Button>(tinyTable, "InspectDebugCell"));
+        Window longCell = Owned(tinyTable, "DebugTextViewer");
+        Assert.Equal("Memo\r\n" + new string('m', 1200), Control<CodeEditor>(longCell, "DebugValueText").Document.Snapshot.ToString());
+        Assert.True(longCell.Width < tinyTable.Width && longCell.Height < tinyTable.Height);
+        return tinyTable;
 
         string IdReads() => Ui.Await(window.Debugger.Session!.EvaluateAsync("Order.Reads", window.BottomPanel.Debug.SelectedFrame!.Id, EvaluateContexts.Watch), "the number of Id getters called").Result;
 
@@ -143,7 +201,7 @@ public sealed class VariableViewerTests(VariableViewerTests.Project project) : I
             File.WriteAllText(PathOf("Viewers.csproj"), TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>"));
             File.WriteAllText(PathOf("Program.cs"), """
                 using System.Data;
-                string payload = "first\r\n\t" + new string('x', 1200) + "\\nend";
+                string payload = "first\r\n\t" + new string('x', 65536) + "\\nend";
                 List<Order> orders = Enumerable.Range(1, 15).Select(i => new Order(i, "Paid")).ToList();
                 Order[] array = orders.ToArray();
                 using DataSet data = new();
@@ -151,9 +209,11 @@ public sealed class VariableViewerTests(VariableViewerTests.Project project) : I
                 ordersTable.Columns.Add("Id", typeof(int));
                 ordersTable.Columns.Add("Status", typeof(string));
                 ordersTable.Rows.Add(17, "Sent");
+                for (int order = 18; order <= 31; order++) ordersTable.Rows.Add(order, "Paid");
                 DataTable returns = data.Tables.Add("Returns");
                 returns.Columns.Add("Id", typeof(int));
-                returns.Rows.Add(29);
+                returns.Columns.Add("Memo", typeof(string));
+                returns.Rows.Add(99, "Memo\r\n" + new string('m', 1200));
                 Console.WriteLine(payload.Length + orders.Count + array.Length + ordersTable.Rows.Count + data.Tables.Count);
                 sealed class Order(int id, string status)
                 {
