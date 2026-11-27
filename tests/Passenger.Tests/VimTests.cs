@@ -218,6 +218,11 @@ public sealed partial class VimTests
                 || (made.command.Keys[0] is "V" or VimKeys.CtrlV && passenger.Seen.Contains(CharwiseChange)))
                 && (made.command.Keys.Contains("$") || (made.at > 0 && vimCase.Commands[made.at - 1].Keys[^1] == "$"))
                 && vimCase.Commands.Skip(made.at).SelectMany(after => after.Keys).Contains("."))),
+        ("is and as in visual mode within a line of an nroff macro line, which Vim's take in ways of their own past the rules "
+            + "Vim mode follows: from the \"x\" of \"x\", \".P\", \"{\" as stops at the macro line's end where the operator's 2as goes "
+            + "on to the \"{\"; from the blank ending \".H \" after an empty line it goes back to the \"H\", from the \"o\" of \".P o\" "
+            + "back to the line's start, and from the blank under \".H\" back to its \"H\", a block's becoming characterwise",
+            (vimCase, _, passenger) => vimCase.Uses(SentenceObject) && passenger.Seen.Contains(VisualSentenceNearMacro)),
         ("A block's < leaves Vim's cursor at the block's top left even past the end of a top line nothing shifted, where no "
             + "normal-mode cursor of Vim mode stands: Passenger's settles on that line's last character",
             (vimCase, vim, _) => vimCase.Commands.Any(command => command.Keys[0] == VimKeys.CtrlV && command.Keys.Contains("<"))
@@ -238,6 +243,7 @@ public sealed partial class VimTests
     private const string BlankOpening = "a line of blanks opening the text or a paragraph";
     private const string MarkWord = "an end mark or closer standing alone";
     private const string CharwiseChange = "a visual change of a characterwise stretch";
+    private const string VisualSentenceNearMacro = "is or as in visual mode within a line of a macro line";
 
     /// <summary>A case of 1 to 6 lines and 1 to 4 commands, the cursor anywhere on a character; a visual stretch the
     /// keys leave is left only by the last command, the others' ended by Escape. A command beginning with [ or ] never
@@ -272,6 +278,9 @@ public sealed partial class VimTests
 
     private static readonly string[] Marks = [".", ",", ";", "(", ")", "\"", "'", "{", "}", "[", "]", "-", "!", "=", "+"];
 
+    /// <summary>The names after a dot that begin a line: section and paragraph macros, and two that are neither.</summary>
+    private static readonly string[] Macros = ["SH", "NH", "H", "PP", "LP", "P", "IP", "bp", "Px", "XY"];
+
     private static string Line(Random random)
     {
         if (random.Next(6) == 0)
@@ -282,6 +291,11 @@ public sealed partial class VimTests
         if (random.Next(12) == 0)
         {
             return Pick(random, ["{", "}"]) + (random.Next(2) == 0 ? string.Empty : " " + Pick(random, Words));
+        }
+        // Now and then an nroff macro line, where paragraphs, sections and sentences begin, or a line of a dot that is none.
+        if (random.Next(14) == 0)
+        {
+            return "." + Pick(random, Macros) + (random.Next(2) == 0 ? string.Empty : " " + Pick(random, Words));
         }
         StringBuilder line = new(new string(' ', random.Next(4) switch { 0 => 4, 1 => 2, 2 => 8, _ => 0 }));
         int parts = random.Next(1, 7);
@@ -595,10 +609,13 @@ public sealed partial class VimTests
     private static (TextSnapshot Text, SelectionSet Carets) Drive(Vim vim, TextSnapshot text, SelectionSet carets, IEnumerable<string> keys, VimTextView view,
         HashSet<string> seen)
     {
+        string previous = string.Empty;
         foreach (string key in keys)
         {
             Observe(text, seen);
             bool charwise = vim.Mode == VimMode.Visual;
+            seen.UnionWith(key == "s" && previous is "i" or "a" && Vim.IsVisual(vim.Mode) && NearMacro(text, carets.Primary) ? [VisualSentenceNearMacro] : []);
+            previous = key;
             VimResult result = vim.Press(key, text, carets, view);
             seen.UnionWith(result.Action is not null || result.Request is { Kind: not VimRequestKind.Commands } ? [Asked] : []);
             // A key ending a characterwise stretch other than by leaving or yanking it changed it, its text or not.
@@ -668,6 +685,14 @@ public sealed partial class VimTests
         seen.UnionWith(all.Split([' ', '\t', '\n']).Any(word => word.Length > 0 && word.All(EndMark)) ? [MarkWord] : []);
         seen.UnionWith(Enumerable.Range(0, text.LineCount).Any(line => text.GetLine(line) is { Length: > 0 } blanks && TextNavigation.IndentEnd(text, blanks) == blanks.End
             && (line == 0 || text.GetLine(line - 1).Length == 0)) ? [BlankOpening] : []);
+    }
+
+    /// <summary>Whether a macro line stands within a line of a stretch.</summary>
+    private static bool NearMacro(TextSnapshot text, Selection stretch)
+    {
+        int first = text.GetLineFromOffset(Math.Min(stretch.Anchor, stretch.Caret));
+        int last = text.GetLineFromOffset(Math.Max(stretch.Anchor, stretch.Caret));
+        return Enumerable.Range(Math.Max(0, first - 1), Math.Min(text.LineCount - 1, last + 1) - Math.Max(0, first - 1) + 1).Any(line => VimMotions.MacroLine(text, line));
     }
 
     private static bool LoneMark(TextSnapshot text, int line) => text.GetLine(line) is { Length: 1 } span && EndMark(text[span.Start]);
