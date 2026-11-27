@@ -62,6 +62,8 @@ public sealed class EditingBehaviourTests
         Flow.StepApart<EditingBehaviourTests>("tab steps over a closer the typing help wrote and indents before one the person wrote", t => t.Tab_steps_over_a_closer_the_typing_help_wrote_and_indents_before_one_the_person_wrote());
         Flow.StepApart<EditingBehaviourTests>("cyclic expand word finishes a word begun as the nearest above then steps on and back below and undoes at once", t => t.Cyclic_expand_word_finishes_a_word_begun_as_the_nearest_above_then_steps_on_and_back_below_and_undoes_at_once());
         Flow.StepApart<EditingBehaviourTests>("paste as plain text pastes the clipboard as it is where paste reindents it", t => t.Paste_as_plain_text_pastes_the_clipboard_as_it_is_where_paste_reindents_it());
+        Flow.StepApart<EditingBehaviourTests>("statements and elements move by the syntax and unwrap takes a body out each one step of undo", t => t.Statements_and_elements_move_by_the_syntax_and_unwrap_takes_a_body_out_each_one_step_of_undo());
+        Flow.StepApart<EditingBehaviourTests>("split line transpose delete to line ends overwrite and column mode act on their keys", t => t.Split_line_transpose_delete_to_line_ends_overwrite_and_column_mode_act_on_their_keys());
     }
 
     /// <summary>Alt+/ after "to" finishes it as the words above, nearest first, then those below from the end; the word as
@@ -487,6 +489,85 @@ public sealed class EditingBehaviourTests
 
     /// <summary>A C# file opened in the window, with no project: its colours are the window's own, read from its
     /// syntax.</summary>
+    /// <summary>Move Statement Down and Up move the statement at the caret past the one beside it in its block, its comment
+    /// with it and the blank line between staying; Move Element Right and Left move an argument past the one beside it, the
+    /// caret with it; Unwrap takes an if's body out one level; each one step of Undo, on the keymap's keys (#2308).</summary>
+    private void Statements_and_elements_move_by_the_syntax_and_unwrap_takes_a_body_out_each_one_step_of_undo()
+    {
+        const string Source = "class Shop\n{\n    void Sell(int a, int b)\n    {\n        // first\n        A();\n\n        B(a, b);\n        if (a > b)\n        {\n            C();\n        }\n    }\n}\n";
+        (Passenger.App.MainWindow window, Passenger.Editor.CodeEditor editor) = OpenCSharp(Source);
+        try
+        {
+            editor.Selections = SelectionSet.Single(Source.IndexOf("A();", StringComparison.Ordinal) + 1);
+            Ui.Run(window, Passenger.App.AppActions.MoveStatementDown);
+            string moved = Source.Replace("        // first\n        A();\n\n        B(a, b);\n", "        B(a, b);\n\n        // first\n        A();\n", StringComparison.Ordinal);
+            Assert.True(editor.Document.Snapshot.ToString() == moved, $"Move Statement Down did not move A(); and its comment past B(a, b);:\n{editor.Document.Snapshot}");
+            Assert.Equal(moved.IndexOf("A();", StringComparison.Ordinal) + 1, editor.Selections.Primary.Caret);
+            Ui.Run(window, Passenger.App.AppActions.MoveStatementUp);
+            Assert.Equal(Source, editor.Document.Snapshot.ToString());
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Assert.True(editor.Document.Snapshot.ToString() == moved, "Undo after Move Statement Up took more or less than the move back");
+
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            int a = Source.IndexOf("B(a", StringComparison.Ordinal) + 2;
+            editor.Selections = SelectionSet.Single(a);
+            Ui.Run(window, Passenger.App.AppActions.MoveElementRight);
+            Assert.Equal(Source.Replace("B(a, b)", "B(b, a)", StringComparison.Ordinal), editor.Document.Snapshot.ToString());
+            Assert.Equal(a + 3, editor.Selections.Primary.Caret);
+            Ui.Run(window, Passenger.App.AppActions.MoveElementLeft);
+            Assert.Equal(Source, editor.Document.Snapshot.ToString());
+
+            editor.Selections = SelectionSet.Single(Source.IndexOf("C();", StringComparison.Ordinal));
+            Ui.Run(window, Passenger.App.AppActions.Unwrap);
+            Assert.Equal(Source.Replace("        if (a > b)\n        {\n            C();\n        }\n", "        C();\n", StringComparison.Ordinal), editor.Document.Snapshot.ToString());
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Assert.Equal(Source, editor.Document.Snapshot.ToString());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Split Line breaks the line leaving the caret before the break, Transpose swaps the characters around it, Delete
+    /// to Line Start and End take the line's text either side of it, Insert types over the text, and Column Selection Mode
+    /// makes Shift's moves select a column, each on its keys in VS Code's or IntelliJ IDEA's macOS keymap (#2308).</summary>
+    private void Split_line_transpose_delete_to_line_ends_overwrite_and_column_mode_act_on_their_keys()
+    {
+        EditorRig rig = new("first second\nthird fourth\nfifth sixth");
+        rig.Editor.Keymap = DefaultKeymaps.VSCodeMac();
+        rig.PlaceCaret(5);
+        rig.Press("control O");
+        Assert.True(rig.Text == "first\nsecond\nthird fourth\nfifth sixth" && rig.Caret == 5, $"Split Line left \"{rig.Text}\" with the caret at {rig.Caret}");
+        rig.Press("meta Z");
+        rig.PlaceCaret(2);
+        rig.Press("control T");
+        Assert.True(rig.Text.StartsWith("fris", StringComparison.Ordinal) && rig.Caret == 3, $"Transpose left \"{rig.Text}\" with the caret at {rig.Caret}");
+        rig.Press("meta Z");
+        rig.PlaceCaret(6);
+        rig.Press("control K");
+        Assert.Equal("first \nthird fourth\nfifth sixth", rig.Text);
+        rig.Press("meta BACK_SPACE");
+        Assert.Equal("\nthird fourth\nfifth sixth", rig.Text);
+        rig.Press("meta Z");
+        rig.Press("meta Z");
+        rig.PlaceCaret(0);
+        rig.Press("INSERT");
+        rig.Type("FIRST");
+        Assert.Equal("FIRST second\nthird fourth\nfifth sixth", rig.Text);
+        rig.Press("INSERT");
+        rig.Type("!");
+        Assert.Equal("FIRST! second\nthird fourth\nfifth sixth", rig.Text);
+
+        rig.Editor.Keymap = DefaultKeymaps.IntelliJMac();
+        rig.PlaceCaret(1);
+        rig.Press("meta shift 8");
+        rig.Press("shift DOWN");
+        rig.Press("shift RIGHT");
+        Assert.True(rig.Editor.Selections.Items.Select(s => rig.Text.Substring(s.Start, s.Length)).SequenceEqual(["I", "h"]),
+            $"Shift+Down and Shift+Right in Column Selection Mode chose [{string.Join(", ", rig.Editor.Selections.Items.Select(s => rig.Text.Substring(s.Start, s.Length)))}], where they choose a column");
+    }
+
     private static (Passenger.App.MainWindow Window, Passenger.Editor.CodeEditor Editor) OpenCSharp(string source)
     {
         string folder = TestFolders.Create("colours-");

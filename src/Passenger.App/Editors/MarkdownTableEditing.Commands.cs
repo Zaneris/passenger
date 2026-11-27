@@ -15,6 +15,10 @@ internal sealed partial class MarkdownTableEditing
         {
             return false;
         }
+        if (IsToolbarKey(e))
+        {
+            return true;
+        }
         if (e.KeyModifiers == Keystroke.Command)
         {
             return e.Key is Key.B or Key.I || (e.Key == Key.Enter && AtCaret() is not null)
@@ -41,6 +45,9 @@ internal sealed partial class MarkdownTableEditing
         e.Handled = true;
         switch (e.Key)
         {
+            case Key.I when IsToolbarKey(e):
+                ShowToolbar();
+                break;
             case Key.B or Key.I:
                 Format(e.Key == Key.B);
                 break;
@@ -66,6 +73,9 @@ internal sealed partial class MarkdownTableEditing
                 break;
         }
     }
+
+    // Auto-Indent uses Ctrl+Alt+I in the application keymap, so this chord belongs only to the inline editor.
+    private static bool IsToolbarKey(KeyEventArgs e) => e.Key == Key.I && e.KeyModifiers == (Keystroke.Command | KeyModifiers.Alt);
 
     private Spot? AtCaret()
     {

@@ -85,7 +85,7 @@ public sealed class SettingsTests : IDisposable
         Flow.StepApart<SettingsTests>("every page at the least width cuts no word and lays nothing over anything", t => t.Every_page_at_the_least_width_cuts_no_word_and_lays_nothing_over_anything());
         Flow.StepApart<SettingsTests>("no row of any page runs under its scroll bar at the dialogs smallest size or its own", t => t.No_row_of_any_page_runs_under_its_scroll_bar_at_the_dialogs_smallest_size_or_its_own());
         Flow.StepApart<SettingsTests>("every family the font lists offer draws as its row comes into view", t => t.Every_family_the_font_lists_offer_draws_as_its_row_comes_into_view());
-        Flow.StepApart<SettingsTests>("a search keeps the pages and options it matches", t => t.A_search_keeps_the_pages_and_options_it_matches());
+        Flow.StepApart<SettingsTests>("a search keeps the pages and options it matches, each row made as its page first shows it", t => t.A_search_keeps_the_pages_and_options_it_matches());
     }
 
     /// <summary>Every family the code's and the window's font lists offer draws as its row comes into view, each list opened
@@ -596,6 +596,8 @@ public sealed class SettingsTests : IDisposable
         MainWindow window = Open();
         SettingsDialog dialog = window.ShowSettings();
         Ui.Settle();
+        Assert.True(dialog.RowsMade == dialog.Shown.Count, $"Opening Settings made {dialog.RowsMade} rows where its first page shows {dialog.Shown.Count}: "
+            + "every page's rows, the Keymap page's hundreds among them, are made as it opens");
         dialog.Query = "font";
         Ui.Settle();
         // The Keymap page has Increase, Decrease and Reset Font Size.
@@ -607,10 +609,12 @@ public sealed class SettingsTests : IDisposable
         Assert.Contains("Font size", dialog.Shown);
         Assert.DoesNotContain("Show line numbers", dialog.Shown);
 
+        int made = dialog.RowsMade;
         dialog.Query = "split right";
         Ui.Settle();
         Assert.Equal([SettingsDialog.KeymapPage], dialog.Pages);
         Assert.Equal(["Split Right"], dialog.Shown);
+        Assert.True(dialog.RowsMade == made + 1, $"A search finding one action on the Keymap page, never shown, made {dialog.RowsMade - made} rows: a search makes every row of the page it shows");
         dialog.Close();
         window.Close();
     }

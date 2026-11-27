@@ -64,7 +64,7 @@ public sealed class KeymapChoiceTests : IDisposable
         Flow.StepApart<KeymapChoiceTests>("the mouse's caret and column gestures are the keymap's in force", t => t.The_mouses_caret_and_column_gestures_are_the_keymaps_in_force());
         Flow.StepApart<MouseShortcutSettingsTests>("a mouse shortcut added in Settings says its conflict first runs its action and is kept after a restart", t => t.A_mouse_shortcut_added_in_Settings_says_its_conflict_first_runs_its_action_and_is_kept_after_a_restart());
         Flow.StepApart<MouseShortcutSettingsTests>("a settings json of keys alone keeps the keymap's gestures for the actions it names", t => t.A_settings_json_of_keys_alone_keeps_the_keymaps_gestures_for_the_actions_it_names());
-        Flow.StepApart<KeymapTests>("a double tap recorded runs its action and a double Shift opens Go to Everything but two capitals typed do not", t => t.A_double_tap_recorded_runs_its_action_and_a_double_Shift_opens_Go_to_Everything_but_two_capitals_typed_do_not());
+        Flow.StepApart<KeymapTests>("a double tap recorded runs its action a double Shift or Ctrl opens its popup but two capitals or a Ctrl held for a shortcut do not", t => t.A_double_tap_recorded_runs_its_action_a_double_Shift_or_Ctrl_opens_its_popup_but_two_capitals_or_a_Ctrl_held_for_a_shortcut_do_not());
     }
 
     /// <summary>Each key reaches what it is meant for where it is pressed: the terminal and a floating terminal keep

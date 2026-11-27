@@ -85,6 +85,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         Flow.StepApart("the run window shows each streams line whole whatever the other writes into it and a prompt as written", () => new BuildRunTests(folders), t => t.The_run_window_shows_each_streams_line_whole_whatever_the_other_writes_into_it_and_a_prompt_as_written());
         Flow.StepApart("a programs characters outside the systems code page reach the run window as written and the program as typed", () => new BuildRunTests(folders), t => t.A_programs_characters_outside_the_systems_code_page_reach_the_run_window_as_written_and_the_program_as_typed());
         Flow.StepApart("Run starts the projects apphost on the dotnet passenger builds with", () => new BuildRunTests(folders), t => t.Run_starts_the_projects_apphost_on_the_dotnet_passenger_builds_with());
+        Flow.StepApart("Choose and Run runs the configuration chosen and Run Anything a command line in a Terminal tab from their keys", () => new BuildRunTests(folders), t => t.Choose_and_Run_runs_the_configuration_chosen_and_Run_Anything_a_command_line_in_a_Terminal_tab_from_their_keys());
         Flow.StepApart("a build message naming a file but no place in it links the file and opens it", () => new BuildRunTests(folders), t => t.A_build_message_naming_a_file_but_no_place_in_it_links_the_file_and_opens_it());
         Flow.StepApart("Compiled Code shows the last build's IL and low-level C# of the file shown and follows the caret and the file", () => new BuildRunTests(folders), t => t.Compiled_Code_shows_the_last_builds_il_and_low_level_csharp_of_the_file_shown_and_follows_the_caret_and_the_file());
     }
@@ -1028,6 +1029,48 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Assert.True(output.Contains("started as Hello", StringComparison.Ordinal) && output.Contains($"runtime from {Dotnet.Root()}", StringComparison.Ordinal),
                 $"Run started the program other than through its apphost on Passenger's .NET ({Dotnet.Root()}), so an app's manifest is lost or it runs on "
                 + $"another runtime: {output}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Choose and Run's keys list the folder's configurations, Edit Configurations last, and Enter on one chooses it
+    /// and runs it; Choose and Debug's open its own list; Run Anything's double Ctrl takes a command line typed and runs it in
+    /// a Terminal tab of the open folder, then offers it again (#2314).</summary>
+    private void Choose_and_Run_runs_the_configuration_chosen_and_Run_Anything_a_command_line_in_a_Terminal_tab_from_their_keys()
+    {
+        MainWindow window = Open();
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Hello"), "Hello's run configuration");
+            Ui.Run(window, AppActions.ChooseDebugConfiguration);
+            Assert.True(window.Popup is RunOffersPopup { Title: "Choose and Debug" }, $"Choose and Debug's key opened {window.Popup?.GetType().Name ?? "nothing"}");
+            Ui.Press(window, "ESCAPE");
+            Ui.Run(window, AppActions.ChooseRunConfiguration);
+            RunOffersPopup choose = Assert.IsType<RunOffersPopup>(window.Popup);
+            Assert.True(choose.Rows.Select(r => r.Label).SequenceEqual([.. window.Configurations.Select(c => c.Name), "Edit Configurations…"]),
+                $"Choose and Run listed [{string.Join(", ", choose.Rows.Select(r => r.Label))}], where it lists the configurations, Edit Configurations last");
+            window.KeyTextInput("Hello");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "Hello to run and end", TimeSpan.FromMinutes(2));
+            Assert.True(window.Configuration?.Name == "Hello" && Output(window).Contains("Hello from the run", StringComparison.Ordinal),
+                $"Choose and Run on Hello did not run it, chosen: {window.Configuration?.Name}; {window.Status}\n{Output(window)}");
+
+            Ui.Press(window, "control , control");
+            RunOffersPopup anything = Assert.IsType<RunOffersPopup>(window.Popup);
+            Assert.Equal("Run Anything", anything.Title);
+            window.KeyTextInput("echo ran-from-anything");
+            Assert.True(anything.Rows is [.., { Command: "echo ran-from-anything" }], $"Run Anything offered no command line for what was typed: [{string.Join(", ", anything.Rows.Select(r => r.Label))}]");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => window.TerminalPanel.Active is { } shell && TerminalTests.Screen(shell).Split('\n').Any(l => l.Trim() == "ran-from-anything"),
+                () => $"the command line to run in a Terminal tab: {(window.TerminalPanel.Active is { } shell ? TerminalTests.Screen(shell) : "no tab")}");
+            // The terminal keeps a lone Ctrl for the shell, as it keeps every key the shell reads.
+            window.ExplorerView.FocusRows();
+            Ui.Press(window, "control , control");
+            Assert.Contains(Assert.IsType<RunOffersPopup>(window.Popup).Rows, r => r is { Command: "echo ran-from-anything", Detail: RunWords.RecentInTerminal });
+            Ui.Press(window, "ESCAPE");
         }
         finally
         {

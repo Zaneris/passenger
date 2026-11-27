@@ -21,6 +21,9 @@ public static class AspireStates
     /// <summary>The container engine its containers run on is not running or not well: none starts until it is.</summary>
     public const string RuntimeUnhealthy = "RuntimeUnhealthy";
 
+    /// <summary>A parameter its AppHost needs a value of and has none, which what uses it waits for.</summary>
+    public const string ValueMissing = "ValueMissing";
+
     /// <summary>Whether a resource runs no more: it exited, finished, or failed to start.</summary>
     public static bool HasEnded(string? state) => state is Exited or Finished or FailedToStart;
 

@@ -43,6 +43,16 @@ public sealed class AspireResource(JsonElement data)
     /// container, an executable, a parameter or an external resource.</summary>
     public bool IsProject => AspireJson.String(Data, "resourceType") == "Project" && Source is { } source && Path.IsPathFullyQualified(source);
 
+    /// <summary>Whether it is a Go program its AppHost runs: Aspire's Go app, run by go or by Delve.</summary>
+    public bool IsGoProgram => AspireJson.String(Data, "resourceType") is "GoApp" || AspireJson.String(Data, "resourceTypeDisplayName") is "Go"
+        || AspireJson.Properties(Data, "properties").Any(property => property.Name == "executable.path" && property.Value.ValueKind == JsonValueKind.String
+            && Path.GetFileNameWithoutExtension(property.Value.GetString()) is "go" or "dlv");
+
+    /// <summary>Whether it is a parameter that runs with no value, as one made optional and left unset does: what uses it
+    /// gets none. A value its AppHost masks, or one the CLI's snapshot leaves out, is still a value.</summary>
+    public bool IsUnsetParameter => AspireJson.String(Data, "resourceType") == "Parameter" && State == AspireStates.Running
+        && AspireJson.Properties(Data, "properties").All(property => property.Name != "Value");
+
     /// <summary>Whether the AppHost hides the resource: false when it says nothing of it, as the CLI's snapshot of one it
     /// shows need not.</summary>
     public bool IsHidden => JsonMembers.Bool(Data, "isHidden") == true;

@@ -6,7 +6,7 @@ namespace Passenger.UnitTests.Editor;
 
 /// <summary>A double tap of a modifier alone ("shift , shift"), the shortcut IntelliJ IDEA's keymap gives Search
 /// Everywhere: written, read back and shown as menus name it, and run only by the modifier pressed alone and let go twice
-/// within half a second, the time given here rather than read from a clock.</summary>
+/// within half a second, as the second is let go, the time given here rather than read from a clock.</summary>
 public class DoubleTapTests
 {
     private const string Search = "search";
@@ -15,7 +15,7 @@ public class DoubleTapTests
     public void A_double_tap_of_a_modifier_is_written_read_and_shown_as_a_shortcut() => Cases.All(
         ("A double tap reads back as written and is shown by its modifiers name", A_double_tap_reads_back_as_written_and_is_shown_by_its_modifiers_name),
         ("A modifier alone is read only as a double tap", A_modifier_alone_is_read_only_as_a_double_tap),
-        ("A modifier tapped twice within half a second runs its action and nothing between or slower does", A_modifier_tapped_twice_within_half_a_second_runs_its_action_and_nothing_between_or_slower_does));
+        ("A modifier tapped twice within half a second runs its action as it is let go and nothing between or slower does", A_modifier_tapped_twice_within_half_a_second_runs_its_action_as_it_is_let_go_and_nothing_between_or_slower_does));
 
     private void A_double_tap_reads_back_as_written_and_is_shown_by_its_modifiers_name()
     {
@@ -38,17 +38,16 @@ public class DoubleTapTests
                 Assert.Throws<FormatException>(() => Shortcut.Parse(written));
     });
 
-    private void A_modifier_tapped_twice_within_half_a_second_runs_its_action_and_nothing_between_or_slower_does()
+    private void A_modifier_tapped_twice_within_half_a_second_runs_its_action_as_it_is_let_go_and_nothing_between_or_slower_does()
     {
         long now = 0;
         KeymapDispatcher keys = new(new Keymap("taps").Bind(Search, "shift , shift").Bind("letter", "control A"), () => now * Stopwatch.Frequency / 1000);
         string? Down(Key key, KeyModifiers held) => keys.Press(new KeyEventArgs { Key = key, KeyModifiers = held }, out _, out _);
-        void Up(Key key) => keys.Release(new KeyEventArgs { Key = key, KeyModifiers = KeyModifiers.None });
+        string? Up(Key key) => keys.Release(new KeyEventArgs { Key = key, KeyModifiers = KeyModifiers.None });
         string? Tap(Key key = Key.LeftShift)
         {
             string? ran = Down(key, KeyModifiers.Shift);
-            Up(key);
-            return ran;
+            return Up(key) ?? ran;
         }
 
         Assert.Null(Tap());
@@ -90,6 +89,12 @@ public class DoubleTapTests
         Up(Key.LeftShift);
         Up(Key.LeftCtrl);
         Assert.True(Tap() is null, "Shift let go with Ctrl held, then Shift tapped, ran its action, where only a modifier alone taps");
+
+        now += 1000;
+        Assert.Null(Tap());
+        now += 100;
+        Assert.True(Down(Key.LeftShift, KeyModifiers.Shift) is null && Down(Key.A, KeyModifiers.Shift) is null && Up(Key.A) is null && Up(Key.LeftShift) is null,
+            "Shift tapped, then held for a capital at once, ran its action, where a modifier held for a shortcut taps nothing");
 
         now += 1000;
         Assert.Null(Down(Key.LeftShift, KeyModifiers.Shift));

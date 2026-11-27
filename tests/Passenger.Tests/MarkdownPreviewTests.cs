@@ -431,6 +431,7 @@ public sealed class MarkdownPreviewTests
         }
         string command = Keystroke.Command == KeyModifiers.Meta ? "meta" : "control";
         string showToolbar = $"{command} alt I";
+        Assert.Equal(AppActions.AutoIndentLines, AppActions.Keymap().ActionFor(Shortcut.Parse("control alt I")));
         Ui.WaitFor(() => Cell("12") is not null && Cell("Ready") is not null, "both inactive Markdown tables drawn in the editor");
         Assert.Equal(TextAlignment.Right, Cell("12")!.TextAlignment);
         Assert.False(Toolbar().IsEffectivelyVisible);

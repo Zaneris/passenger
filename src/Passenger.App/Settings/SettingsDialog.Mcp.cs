@@ -81,7 +81,7 @@ public sealed partial class SettingsDialog
             },
         });
         const string SetupWords = $"{McpWords} setup set up install configure command config json toml claude code desktop codex opencode copy path";
-        options.Add(new Option(McpPage, "Set up an agent", heading, $"{McpPage} {SetupWords}"));
+        options.Add(new Option(McpPage, "Set up an agent", () => heading, $"{McpPage} {SetupWords}"));
         List<(string, string)> setups = [];
         void Setup(string title, string text, string note, string words)
         {
@@ -110,7 +110,7 @@ public sealed partial class SettingsDialog
             "opencode.jsonc codemode code mode execution timeout");
         AgentSetups = setups;
 
-        void AddBlock(Control row, string title, string words) => options.Add(new Option(McpPage, title, row, $"{McpPage} {title} {words}"));
+        void AddBlock(Control row, string title, string words) => options.Add(new Option(McpPage, title, () => row, $"{McpPage} {title} {words}"));
     }
 
     /// <summary>One agent's setup: its heading with Copy at the right, what to do with it, and the text to copy as code.</summary>

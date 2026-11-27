@@ -40,6 +40,16 @@ public static class EditorActions
     public const string JoinLines = "editor.joinLines";
     public const string ToggleCase = "editor.toggleCase";
     public const string CutToLineEnd = "editor.cutToLineEnd";
+
+    // Rider's EditorSplitLine (a line break the caret stays before), EditorDeleteToLineStart and EditorDeleteToLineEnd,
+    // EditorTranspose (the characters around the caret swapped), EditorToggleInsertState (typing over the text, a block
+    // caret) and EditorToggleColumnMode (Shift's moves and a plain drag selecting a column), as its keymaps bind them.
+    public const string SplitLine = "editor.splitLine";
+    public const string DeleteToLineStart = "editor.deleteToLineStart";
+    public const string DeleteToLineEnd = "editor.deleteToLineEnd";
+    public const string Transpose = "editor.transpose";
+    public const string ToggleOverwrite = "editor.toggleOverwrite";
+    public const string ToggleColumnMode = "editor.toggleColumnMode";
     public const string Undo = "editor.undo";
     public const string Redo = "editor.redo";
     public const string Cut = "editor.cut";
@@ -108,7 +118,9 @@ public static class EditorActions
         (StartNewLine, "Start New Line"), (StartNewLineBefore, "Start New Line Before"), (Indent, "Indent"), (Outdent, "Outdent"),
         (Duplicate, "Duplicate"), (DeleteLine, "Delete Line"), (MoveLineUp, "Move Line Up"), (MoveLineDown, "Move Line Down"),
         (ToggleLineComment, "Comment with Line Comment"), (ToggleBlockComment, "Comment with Block Comment"), (Comment, "Comment"), (Uncomment, "Uncomment"), (JoinLines, "Join Lines"),
-        (ToggleCase, "Toggle Case"), (CutToLineEnd, "Cut to Line End"), (Undo, "Undo"), (Redo, "Redo"), (Cut, "Cut"), (Copy, "Copy"),
+        (ToggleCase, "Toggle Case"), (CutToLineEnd, "Cut to Line End"), (SplitLine, "Split Line"),
+        (DeleteToLineStart, "Delete to Line Start"), (DeleteToLineEnd, "Delete to Line End"), (Transpose, "Transpose"),
+        (ToggleOverwrite, "Toggle Insert/Overwrite"), (ToggleColumnMode, "Column Selection Mode"), (Undo, "Undo"), (Redo, "Redo"), (Cut, "Cut"), (Copy, "Copy"),
         (Paste, "Paste"), (PasteAsPlainText, "Paste as Plain Text"), (ExpandWord, "Cyclic Expand Word"),
         (ExpandWordBackward, "Cyclic Expand Word (Backward)"), (SelectAll, "Select All"), (SelectNextOccurrence, "Select Next Occurrence"),
         (UnselectOccurrence, "Unselect Occurrence"), (SelectAllOccurrences, "Select All Occurrences"), (CaretPerLine, "Caret Per Line"),
@@ -138,7 +150,8 @@ public static class EditorActions
     [
         Backspace, Delete, DeleteWordLeft, DeleteWordRight, NewLine, StartNewLine, StartNewLineBefore, Indent, Outdent, Duplicate,
         DeleteLine, MoveLineUp, MoveLineDown, ToggleLineComment, ToggleBlockComment, Comment, Uncomment, JoinLines, ToggleCase,
-        CutToLineEnd, Undo, Redo, Cut, Paste, PasteAsPlainText, ExpandWord, ExpandWordBackward,
+        CutToLineEnd, Undo, Redo, Cut, Paste, PasteAsPlainText, ExpandWord, ExpandWordBackward, SplitLine, DeleteToLineStart,
+        DeleteToLineEnd, Transpose,
     ];
 
     public static bool IsMovement(string action) => Movements.Contains(action);
@@ -232,6 +245,7 @@ public static class DefaultKeymaps
         .Bind(EditorActions.DeleteLine, "meta shift L")
         .Bind(EditorActions.MoveLineUp, "alt UP")
         .Bind(EditorActions.MoveLineDown, "alt DOWN")
+        .Bind(EditorActions.ToggleOverwrite, "INSERT")
         .Bind(EditorActions.ToggleLineComment, "meta SLASH", "meta DIVIDE", "meta alt SLASH", "meta alt DIVIDE", "meta K , meta SLASH")
         // Its keypad key is Shift+Cmd+/, not Ctrl+Cmd+/, as Rider's Visual Studio OSX has it.
         .Bind(EditorActions.ToggleBlockComment, "control meta SLASH", "meta shift DIVIDE")
@@ -308,6 +322,8 @@ public static class DefaultKeymaps
         .Bind(EditorActions.DeleteLine, "control L", "control shift L")
         .Bind(EditorActions.MoveLineUp, "alt UP")
         .Bind(EditorActions.MoveLineDown, "alt DOWN")
+        .Bind(EditorActions.ToggleOverwrite, "INSERT")
+        .Bind(EditorActions.ToggleColumnMode, "alt shift INSERT")
         .Bind(EditorActions.ToggleLineComment, "control SLASH", "control DIVIDE", "control alt SLASH", "control alt DIVIDE", "control K , control SLASH")
         .Bind(EditorActions.ToggleBlockComment, "control shift SLASH", "control shift DIVIDE")
         .Bind(EditorActions.Comment, "control K , C", "control K , control C")
@@ -384,6 +400,11 @@ public static class DefaultKeymaps
         .Bind(EditorActions.DeleteLine, "meta shift K")
         .Bind(EditorActions.MoveLineUp, "alt UP")
         .Bind(EditorActions.MoveLineDown, "alt DOWN")
+        .Bind(EditorActions.SplitLine, "control O")
+        .Bind(EditorActions.DeleteToLineStart, "meta BACK_SPACE")
+        .Bind(EditorActions.DeleteToLineEnd, "control K", "meta DELETE")
+        .Bind(EditorActions.Transpose, "control T")
+        .Bind(EditorActions.ToggleOverwrite, "INSERT")
         .Bind(EditorActions.ToggleLineComment, "meta SLASH")
         .Bind(EditorActions.ToggleBlockComment, "alt shift A")
         .Bind(EditorActions.Comment, "meta K , meta C")
@@ -454,6 +475,8 @@ public static class DefaultKeymaps
         .Bind(EditorActions.DeleteLine, "control shift K")
         .Bind(EditorActions.MoveLineUp, "alt UP")
         .Bind(EditorActions.MoveLineDown, "alt DOWN")
+        .Bind(EditorActions.ToggleOverwrite, "INSERT")
+        .Bind(EditorActions.ToggleColumnMode, "alt shift INSERT")
         .Bind(EditorActions.ToggleLineComment, "control SLASH")
         .Bind(EditorActions.ToggleBlockComment, "alt shift A")
         .Bind(EditorActions.Comment, "control K , control C")
@@ -526,6 +549,9 @@ public static class DefaultKeymaps
         .Bind(EditorActions.DeleteLine, "meta BACK_SPACE")
         .Bind(EditorActions.MoveLineUp, "alt shift UP")
         .Bind(EditorActions.MoveLineDown, "alt shift DOWN")
+        .Bind(EditorActions.SplitLine, "meta ENTER")
+        .Bind(EditorActions.ToggleOverwrite, "INSERT")
+        .Bind(EditorActions.ToggleColumnMode, "meta shift 8")
         .Bind(EditorActions.ToggleLineComment, "meta SLASH", "meta DIVIDE")
         .Bind(EditorActions.ToggleBlockComment, "meta alt SLASH", "meta alt DIVIDE", "control shift SLASH", "control shift DIVIDE", "meta shift SLASH", "meta shift DIVIDE")
         .Bind(EditorActions.JoinLines, "control shift J")
@@ -616,6 +642,7 @@ public static class DefaultKeymaps
         .Own(EditorActions.DeleteLine)
         .Own(EditorActions.ToggleLineComment, "alt SEMICOLON")
         .Own(EditorActions.CutToLineEnd, "control K")
+        .Own(EditorActions.SplitLine, "control O")
         .Own(EditorActions.Undo, "control SLASH", "shift control MINUS")
         .Own(EditorActions.Redo, "shift control Z", "shift alt MINUS")
         .Own(EditorActions.Cut, "control W", "shift DELETE")
@@ -655,6 +682,9 @@ public static class DefaultKeymaps
         .Bind(EditorActions.DeleteLine, "control Y")
         .Bind(EditorActions.MoveLineUp, "alt shift UP")
         .Bind(EditorActions.MoveLineDown, "alt shift DOWN")
+        .Bind(EditorActions.SplitLine, "control ENTER")
+        .Bind(EditorActions.ToggleOverwrite, "INSERT")
+        .Bind(EditorActions.ToggleColumnMode, "alt shift INSERT")
         .Bind(EditorActions.ToggleLineComment, "control SLASH", "control DIVIDE")
         .Bind(EditorActions.ToggleBlockComment, "control shift SLASH", "control shift DIVIDE")
         .Bind(EditorActions.JoinLines, "control shift J")

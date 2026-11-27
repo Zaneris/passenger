@@ -134,6 +134,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         Flow.StepApart("debug while Run brings the AppHost up takes its place", () => new AspireStandInTests(project), t => t.Debug_while_Run_brings_the_AppHost_up_takes_its_place());
         Flow.StepApart("discover takes a CLI of 13 6 or later within 13 or of 17 and says why it will not take another", () => new AspireStandInTests(project), t => t.Discover_takes_a_CLI_of_13_6_or_later_within_13_or_of_17_and_says_why_it_will_not_take_another());
         Flow.StepApart("an AppHost read through the CLI shows its addresses without credentials and its failure masked", () => new AspireStandInTests(project), t => t.An_AppHost_read_through_the_CLI_shows_its_addresses_without_credentials_and_its_failure_masked());
+        Flow.StepApart("a NET service of an AppHost run outside Passenger is attached to as it runs and a Go program is refused saying why", () => new AspireStandInTests(project), t => t.A_NET_service_of_an_AppHost_run_outside_Passenger_is_attached_to_as_it_runs_and_a_Go_program_is_refused_saying_why());
         Flow.StepApart("a container engine that stops while an AppHost runs is said in the status bar and Problems as for a container run", () => new AspireStandInTests(project), t => t.A_container_engine_that_stops_while_an_AppHost_runs_is_said_in_the_status_bar_and_Problems_as_for_a_container_run());
         Flow.StepApart("an engine down as an AppHost starts is said once and its events ending leave the runs own words", () => new AspireStandInTests(project), t => t.An_engine_down_as_an_AppHost_starts_is_said_once_and_its_events_ending_leave_the_runs_own_words());
         Flow.StepApart("the Containers windows AppHost row merges its containers logs and stats", () => new AspireStandInTests(project), t => t.The_Containers_windows_AppHost_row_merges_its_containers_logs_and_stats());
@@ -2309,11 +2310,9 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
-    /// <summary>A resource waiting for another says so in its Details, what it waits for and references each a link to that
-    /// resource, whose own Details name it back as waiting for it and referencing it, a link that leads back; as the
-    /// AppHost's relationships say, and as the other resource's state stands.</summary>
     /// <summary>The AppHost's graph shows every resource at once, an edge for each wait and reference its relationships give,
-    /// each resource right of those it waits for; a click on a node chooses its row.</summary>
+    /// each resource right of those it waits for; a click on a node chooses its row; and it is copied as a Mermaid flowchart
+    /// of the same nodes and edges.</summary>
     private void The_apphosts_graph_has_an_edge_for_each_wait_and_a_node_chooses_its_row()
     {
         project.Reset();
@@ -2344,6 +2343,17 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
             Ui.Click(graph.Nodes["db"]);
             Ui.WaitFor(() => window.Aspire.SelectedResource?.Name == "db", "the db node to choose db's row");
+
+            // Copied as Mermaid, it is the graph as drawn: a node a resource, an arrow a wait, a dashed line a reference.
+            FindAction(window, "Copy Aspire Graph as Mermaid");
+            Ui.WaitFor(() => window.Copied.FirstOrDefault().Text?.StartsWith("flowchart RL\n", StringComparison.Ordinal) == true,
+                () => $"the graph copied as a Mermaid flowchart ({window.Status})");
+            string[] lines = [.. window.Copied[0].Text.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(1).Select(line => line.Trim())];
+            Dictionary<string, string> ids = lines.Select(line => System.Text.RegularExpressions.Regex.Match(line, "^(r[0-9]+)\\[\"([a-z]+)\"\\]$"))
+                .Where(node => node.Success).ToDictionary(node => node.Groups[2].Value, node => node.Groups[1].Value);
+            Assert.Equal(["api", "cache", "db", "web"], ids.Keys.Order(StringComparer.Ordinal));
+            Assert.Equal([$"{ids["api"]} --> {ids["cache"]}", $"{ids["api"]} --> {ids["db"]}", $"{ids["web"]} --> {ids["api"]}", $"{ids["web"]} -.- {ids["cache"]}"],
+                lines.Where(line => line.Contains(' ', StringComparison.Ordinal)).Order(StringComparer.Ordinal));
             Assert.Empty(backend.Errors);
         }
         finally
@@ -2353,6 +2363,10 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>A resource waiting for another says so in its Details, what it waits for and references each a link to that
+    /// resource, whose own Details name it back as waiting for it and referencing it, a link that leads back; as the
+    /// AppHost's relationships say, and as the other resource's state stands. A parameter missing its value says what gives
+    /// one, and one made optional and left unset that what uses it gets none.</summary>
     private void A_resource_waiting_for_another_says_what_for_in_its_details_with_links_both_ways()
     {
         project.Reset();
@@ -2388,6 +2402,23 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
                 Relationships = { new ResourceRelationship { ResourceName = "cache", Type = "WaitFor" }, new ResourceRelationship { ResourceName = "cache", Type = "Reference" } },
             });
             Ui.WaitFor(() => !DetailsWords(details).Any(words => words.StartsWith("Waiting for", StringComparison.Ordinal)), "web's details to stop saying it waits once it runs");
+
+            // A parameter with no value its AppHost needs says what it waits for, and one made optional and left unset that it has none.
+            backend.PushResource(new Resource { Name = "password", DisplayName = "password", Uid = "password", ResourceType = "Parameter", State = AspireStates.ValueMissing });
+            backend.PushResource(new Resource { Name = "region", DisplayName = "region", Uid = "region", ResourceType = "Parameter", State = AspireStates.Running });
+            Resource valued = new() { Name = "mode", DisplayName = "mode", Uid = "mode", ResourceType = "Parameter", State = AspireStates.Running };
+            valued.Properties.Add(new ResourceProperty { Name = "Value", Value = Google.Protobuf.WellKnownTypes.Value.ForString("fast") });
+            backend.PushResource(valued);
+            Ui.WaitFor(() => window.Aspire.Rows.Count == 5, "the parameters' rows");
+            foreach ((string name, string? said) in (ReadOnlySpan<(string, string?)>)[
+                ("password", AspireDetailsPane.ValueMissingWhy), ("region", AspireDetailsPane.UnsetWhy), ("mode", null)])
+            {
+                Ui.Click(Words(Row(window, name), name));
+                Ui.WaitFor(() => details.Resource?.Name == name, $"{name}'s details");
+                string[] words = DetailsWords(details);
+                Assert.True(said is null ? !words.Contains(AspireDetailsPane.ValueMissingWhy) && !words.Contains(AspireDetailsPane.UnsetWhy) : words.Contains(said),
+                    $"{name}'s details said [{string.Join(" | ", words)}], where a person must read {said ?? "nothing of a missing or unset value"}");
+            }
             Assert.Empty(backend.Errors);
         }
         finally
@@ -2930,6 +2961,81 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         finally
         {
             window.Close();
+        }
+    }
+
+    /// <summary>A .NET service of an AppHost that runs outside Passenger (aspire start's, which the CLI lists) is attached to
+    /// as it runs, never restarted: Attach to Service attaches the debugger to the program its AppHost says it runs as, its
+    /// session named for the resource and its AppHost, where Debug, Run without Debugger and Profile say Passenger does not
+    /// run the AppHost; and a Go program it runs is refused all four, saying Passenger has no Go debugger.</summary>
+    private void A_NET_service_of_an_AppHost_run_outside_Passenger_is_attached_to_as_it_runs_and_a_Go_program_is_refused_saying_why()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in aspire CLI is a shell script, and Windows runs no shell script as a program");
+        project.Reset();
+        project.BuildApi();
+        string cli = StandInCli();
+        string folder = Path.GetDirectoryName(cli)!;
+        string pidFile = Path.Combine(folder, "api.pid");
+        System.Diagnostics.ProcessStartInfo start = ChildProcesses.DotnetCommand([Path.Combine(project.PathOf(StandInAppHost.Api), "bin", "Debug", TestProjects.Framework, $"{StandInAppHost.Api}.dll")]);
+        start.Environment["STAND_IN_PID_FILE"] = pidFile;
+        using System.Diagnostics.Process api = ChildProcesses.Start(start);
+        MainWindow? window = null;
+        try
+        {
+            Ui.WaitFor(() => File.Exists(pidFile), "the service run outside Passenger to say it is up");
+            File.WriteAllText(Path.Combine(folder, "version"), "17.0.0\n");
+            File.WriteAllText(Path.Combine(folder, "ps.json"), JsonSerializer.Serialize(new[]
+            {
+                new { appHostPath = PathNames.Canonical(project.ProjectFile), appHostPid = Environment.ProcessId, status = "Running" },
+            }));
+            JsonObject Resource(string name, string type, string program, int processId, string? source) => new()
+            {
+                ["name"] = $"{name}-x1y2z3", ["displayName"] = name, ["resourceType"] = type, ["state"] = AspireStates.Running, ["source"] = source,
+                ["properties"] = new JsonObject { ["executable.path"] = program, ["executable.pid"] = processId },
+                ["environment"] = new JsonObject(), ["commands"] = new JsonObject(),
+            };
+            File.WriteAllText(Path.Combine(folder, "resources.json"), new JsonObject
+            {
+                ["resources"] = new JsonArray(Resource("api", "Project", "dotnet", api.Id, PathNames.Canonical(project.ApiProject)),
+                    Resource("goapi", "Executable", "/usr/local/go/bin/go", api.Id, null)),
+            }.ToJsonString());
+            window = OpenWithCli(cli);
+            FindAction(window, "Discover Aspire AppHosts");
+            Ui.WaitFor(() => window.AspireWindow.AppSelector.Items.Count == 1, $"the AppHost the CLI lists ({window.Aspire.Status})");
+            Ui.Click(window.AspireWindow.AppSelector);
+            Ui.Press(window, "HOME");
+            Ui.Press(window, "ENTER");
+            FindAction(window, "Show Aspire Resources");
+            Ui.WaitFor(() => window.Aspire.Rows.Count == 2, $"the service's and the Go program's rows ({window.Aspire.Status})");
+            string[] services = ["Debug Service", "Attach to Service", "Run Service without Debugger", "Profile Service"];
+            foreach ((string name, Func<string, string?> said) in (ReadOnlySpan<(string, Func<string, string?>)>)[
+                ("goapi", _ => Refusals.NoGoDebugger("goapi")),
+                ("api", service => service == "Attach to Service" ? null
+                    : $"Passenger does not run {StandInAppHost.Name}: Run, Debug or Profile its configuration first, or Attach to Service debugs api as it runs")])
+            {
+                ContextMenu menu = RowMenu(window, name);
+                foreach (MenuItem item in menu.Items.OfType<MenuItem>().Where(item => services.Contains(item.Header as string)))
+                {
+                    string? why = said((string)item.Header!);
+                    Assert.True(item.IsEnabled == (why is null) && Equals(ToolTip.GetTip(item), why),
+                        $"{item.Header} on {name} was {(item.IsEnabled ? "enabled" : "greyed")} saying [{ToolTip.GetTip(item)}], where a person must read [{why ?? "nothing: it runs"}]");
+                }
+                menu.Close();
+                Ui.Settle();
+            }
+
+            Ui.Choose(RowMenu(window, "api"), "Attach to Service");
+            string session = $"api of {StandInAppHost.Name}";
+            Ui.WaitFor(() => window.Debugger.SessionNamed(session) is { State: Passenger.App.Debugging.DebugState.Running or Passenger.App.Debugging.DebugState.Paused }, $"the debugger attached to the service as it runs ({window.Status})",
+                TimeSpan.FromMinutes(1));
+            Assert.True(DotnetProcesses.Runs(api), "Attaching to the service ended it, where it must run on");
+            Assert.Null(Ui.Await(window.Debugger.DetachAsync(window.Debugger.SessionNamed(session)), "the debugger to let the service go"));
+            Assert.True(DotnetProcesses.Runs(api), "Letting the service go ended it, where it must run on");
+        }
+        finally
+        {
+            window?.Close();
+            ChildProcesses.Kill(api);
         }
     }
 

@@ -1014,6 +1014,158 @@ public static class TextEditing
         return new EditPlan(edits, selections, EditKind.Other);
     }
 
+    /// <summary>Split Line: Enter's line break at each caret (<see cref="NewLine"/>), each caret left before it, where it stood.</summary>
+    public static EditPlan SplitLine(TextSnapshot text, SelectionSet selections, string eol, IndentOptions indent, MarkupKind markup = MarkupKind.None)
+    {
+        EditPlan plan = NewLine(text, selections, eol, indent, markup);
+        return plan with { Selections = selections.With(s => Selection.At(Map(plan.Edits, s.Start, false))), Split = [] };
+    }
+
+    /// <summary>Delete to Line Start: what each caret has before it on its line, the line break before it at a line's start;
+    /// a selection alone where one is chosen.</summary>
+    public static EditPlan? DeleteToLineStart(TextSnapshot text, SelectionSet selections) => DeleteAlongLine(text, selections, toEnd: false);
+
+    /// <summary>Delete to Line End: what each caret has after it on its line, the line break after it at a line's end; a
+    /// selection alone where one is chosen.</summary>
+    public static EditPlan? DeleteToLineEnd(TextSnapshot text, SelectionSet selections) => DeleteAlongLine(text, selections, toEnd: true);
+
+    private static EditPlan? DeleteAlongLine(TextSnapshot text, SelectionSet selections, bool toEnd)
+    {
+        List<Replacement> replacements = [];
+        for (int i = 0; i < selections.Count; i++)
+        {
+            Selection s = selections.Items[i];
+            if (!s.IsEmpty)
+            {
+                replacements.Add(Removal(s.Start, s.End, i));
+                continue;
+            }
+            int number = text.GetLineFromOffset(s.Caret);
+            LineSpan line = text.GetLine(number);
+            int to = toEnd ? (s.Caret < line.End ? line.End : line.EndIncludingBreak)
+                : s.Caret > line.Start ? line.Start : number > 0 ? text.GetLine(number - 1).End : s.Caret;
+            if (to != s.Caret)
+            {
+                replacements.Add(Removal(Math.Min(to, s.Caret), Math.Max(to, s.Caret), i));
+            }
+        }
+        return replacements.Count == 0 ? null : Build(Union(replacements), selections, toEnd ? EditKind.DeleteForward : EditKind.DeleteBackward);
+    }
+
+    /// <summary>Transpose: the characters either side of each caret change places and the caret steps past both; at a line's
+    /// end, the two before it, the caret staying; nothing at a line's start, in a line of one character or at a selection.</summary>
+    public static EditPlan? Transpose(TextSnapshot text, SelectionSet selections)
+    {
+        List<Replacement> replacements = [];
+        for (int i = 0; i < selections.Count; i++)
+        {
+            Selection s = selections.Items[i];
+            LineSpan line = text.GetLine(text.GetLineFromOffset(s.Caret));
+            if (!s.IsEmpty || s.Caret == line.Start)
+            {
+                continue;
+            }
+            int middle = s.Caret < line.End ? s.Caret : TextNavigation.PreviousGrapheme(text, s.Caret);
+            int start = TextNavigation.PreviousGrapheme(text, middle);
+            int end = middle < line.End ? TextNavigation.NextGrapheme(text, middle) : middle;
+            if (start < line.Start || end <= middle)
+            {
+                continue;
+            }
+            string swapped = text.GetText(middle, end - middle) + text.GetText(start, middle - start);
+            replacements.Add(new Replacement(start, end, swapped, swapped.Length, swapped.Length, i));
+        }
+        return replacements.Count == 0 ? null : Build(replacements, selections, EditKind.Other);
+    }
+
+    /// <summary>What is typed in overwrite mode: at each caret it takes the place of as many characters after it on its line
+    /// as it holds, a selection's place where one is chosen, and nothing pairs or closes.</summary>
+    public static EditPlan Overtype(TextSnapshot text, SelectionSet selections, string typed)
+    {
+        int count = new System.Globalization.StringInfo(typed).LengthInTextElements;
+        List<Replacement> replacements = [];
+        for (int i = 0; i < selections.Count; i++)
+        {
+            Selection s = selections.Items[i];
+            int end = s.End;
+            if (s.IsEmpty)
+            {
+                int lineEnd = text.GetLine(text.GetLineFromOffset(s.Caret)).End;
+                int limit = i + 1 < selections.Count ? Math.Min(lineEnd, selections.Items[i + 1].Start) : lineEnd;
+                for (int taken = 0; taken < count && end < limit; taken++)
+                {
+                    end = TextNavigation.NextGrapheme(text, end);
+                }
+            }
+            replacements.Add(new Replacement(s.Start, end, typed, typed.Length, typed.Length, i));
+        }
+        return Build(replacements, selections, EditKind.Typing);
+    }
+
+    /// <summary>Two runs of whole lines change places (<paramref name="moving"/> past <paramref name="beside"/>, one right
+    /// above or below the other, any lines between them staying between), each carrying the carets in it; Move Statement's
+    /// edit. The text moved goes with what keeps offsets in it (a fold).</summary>
+    public static EditPlan SwapLines(TextSnapshot text, SelectionSet selections, (int First, int Last) moving, (int First, int Last) beside)
+    {
+        ((int First, int Last) upper, (int First, int Last) lower) = moving.First < beside.First ? (moving, beside) : (beside, moving);
+        int upperStart = text.GetLine(upper.First).Start;
+        int upperEnd = text.GetLine(upper.Last).End;
+        int lowerStart = text.GetLine(lower.First).Start;
+        int lowerEnd = text.GetLine(lower.Last).End;
+        string above = text.GetText(upperStart, upperEnd - upperStart);
+        string between = text.GetText(upperEnd, lowerStart - upperEnd);
+        string below = text.GetText(lowerStart, lowerEnd - lowerStart);
+        int aboveTo = upperStart + below.Length + between.Length;
+        int Moved(int offset) =>
+            offset >= upperStart && offset <= upperEnd ? offset - upperStart + aboveTo
+            : offset >= lowerStart && offset <= lowerEnd ? offset - lowerStart + upperStart
+            : offset > upperEnd && offset < lowerStart ? offset - upperEnd + upperStart + below.Length
+            : offset;
+        TextEdit edit = new(upperStart, lowerEnd - upperStart, below + between + above);
+        return new EditPlan([edit], selections.With(s => new Selection(Moved(s.Anchor), Moved(s.Caret), s.PreferredX)), EditKind.Other)
+        {
+            Moved = [new TextMove(upperStart, above.Length, aboveTo), new TextMove(lowerStart, below.Length, upperStart)],
+        };
+    }
+
+    /// <summary>Unwrap's edit: a statement's lines (<paramref name="whole"/>) replaced by the lines it holds
+    /// (<paramref name="kept"/>; none takes it out whole), each moved out as far as the statement's first line by what the
+    /// first of them stood further in, one indented less than that left as it is (a verbatim string's); the caret kept on its
+    /// code, else at the start of what took the statement's place.</summary>
+    public static EditPlan Unwrapped(TextSnapshot text, SelectionSet selections, (int First, int Last) whole, (int First, int Last)? kept)
+    {
+        LineSpan top = text.GetLine(whole.First);
+        LineSpan bottom = text.GetLine(whole.Last);
+        if (kept is not { } inside)
+        {
+            int from = bottom.BreakLength == 0 && whole.First > 0 ? text.GetLine(whole.First - 1).End : top.Start;
+            return new EditPlan([new TextEdit(from, bottom.EndIncludingBreak - from, string.Empty)], SelectionSet.Single(from), EditKind.Other);
+        }
+        string outer = text.GetText(top.Start, TextNavigation.IndentEnd(text, top) - top.Start);
+        LineSpan first = text.GetLine(inside.First);
+        string inner = text.GetText(first.Start, TextNavigation.IndentEnd(text, first) - first.Start);
+        int caret = selections.Primary.Caret;
+        int? caretAt = null;
+        System.Text.StringBuilder written = new();
+        for (int number = inside.First; number <= inside.Last; number++)
+        {
+            LineSpan line = text.GetLine(number);
+            string content = text.GetText(line.Start, line.End - line.Start);
+            bool moved = content.Length > 0 && content.StartsWith(inner, StringComparison.Ordinal);
+            if (caret >= line.Start && caret <= line.End)
+            {
+                caretAt = written.Length + (moved ? outer.Length + Math.Max(0, caret - line.Start - inner.Length) : caret - line.Start);
+            }
+            written.Append(moved ? outer + content[inner.Length..] : content);
+            if (number < inside.Last)
+            {
+                written.Append(text.GetText(line.End, line.BreakLength));
+            }
+        }
+        TextEdit edit = new(top.Start, bottom.End - top.Start, written.ToString());
+        return new EditPlan([edit], SelectionSet.Single(top.Start + (caretAt ?? outer.Length)), EditKind.Other);
+    }
+
     /// <summary>Ctrl+K on macOS: removes from each caret to the end of its line, or the line break if
     /// the caret is already there. Also returns the removed text, for the clipboard.</summary>
     public static (EditPlan? Plan, string Removed) CutToLineEnd(TextSnapshot text, SelectionSet selections)

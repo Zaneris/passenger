@@ -67,6 +67,16 @@ public sealed partial class CodeEditor
         }
     }
 
+    /// <summary>A modifier's second tap let go runs the double tap's action, where the editor resolves its own keys.</summary>
+    protected override void OnKeyUp(KeyEventArgs e)
+    {
+        base.OnKeyUp(e);
+        if (ownKeys?.Release(e) is { } action && TryExecute(action))
+        {
+            e.Handled = true;
+        }
+    }
+
     protected override void OnTextInput(TextInputEventArgs e)
     {
         formattedKey = null;
@@ -115,6 +125,11 @@ public sealed partial class CodeEditor
         if (PassesEndTag(typed))
         {
             TypedOverEndTag?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+        if (overwrite && vim is null)
+        {
+            Apply(TextEditing.Overtype(document.Snapshot, selections, typed));
             return;
         }
         formattedKey = BeginFormattedKey(typed);
@@ -295,7 +310,7 @@ public sealed partial class CodeEditor
             drag = new Drag(DragMode.Column, offset, from);
             SetSelections(ColumnSelection(text, from, point.Position), reveal: false);
         }
-        else if (dragged == EditorActions.ColumnSelectionDrag)
+        else if (dragged == EditorActions.ColumnSelectionDrag || (columnMode && left && clicked is null && dragged is null && mods == KeyModifiers.None))
         {
             drag = new Drag(DragMode.Column, offset, point.Position, Clicked: clicked, Before: selections);
             SetSelections(SelectionSet.Single(offset), reveal: false);

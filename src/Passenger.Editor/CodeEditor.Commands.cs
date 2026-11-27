@@ -23,6 +23,10 @@ public sealed partial class CodeEditor
         {
             return true;
         }
+        if (extend && columnMode && vim is null && ExtendColumn(action, text))
+        {
+            return true;
+        }
         switch (action)
         {
             case EditorActions.Left:
@@ -217,6 +221,24 @@ public sealed partial class CodeEditor
             case EditorActions.ToggleCase:
                 Apply(TextEditing.ToggleCase(text, selections));
                 return true;
+            case EditorActions.SplitLine:
+                Apply(TextEditing.SplitLine(text, selections, eol, Indent, Markup));
+                return true;
+            case EditorActions.DeleteToLineStart:
+                Apply(TextEditing.DeleteToLineStart(text, selections));
+                return true;
+            case EditorActions.DeleteToLineEnd:
+                Apply(TextEditing.DeleteToLineEnd(text, selections));
+                return true;
+            case EditorActions.Transpose:
+                Apply(TextEditing.Transpose(text, selections));
+                return true;
+            case EditorActions.ToggleOverwrite:
+                Overwrite = !Overwrite;
+                return true;
+            case EditorActions.ToggleColumnMode:
+                ColumnMode = !ColumnMode;
+                return true;
             case EditorActions.CutToLineEnd:
                 (EditPlan? plan, string removed) = TextEditing.CutToLineEnd(text, selections);
                 if (plan is not null)
@@ -272,6 +294,15 @@ public sealed partial class CodeEditor
     }
 
     private int PageLines => Math.Max(1, (int)(Viewport.Height / metrics.LineHeight) - 1);
+
+    /// <summary>Applies a plan an edit by the code's structure made (Move Statement's lines), as one undo step, what keeps
+    /// offsets in the text it moves going with it.</summary>
+    public void ApplyPlan(EditPlan plan)
+    {
+        document.BreakUndoGroup();
+        Apply(plan);
+        document.BreakUndoGroup();
+    }
 
     private void Apply(EditPlan? plan, bool reveal = true)
     {

@@ -229,6 +229,27 @@ public static class Refusals
     /// <summary>VCS Operations where none of the Git menu's actions can run.</summary>
     public const string NoVcsOperations = "No Git action can run here";
 
+    /// <summary>Move Statement Up where nothing stands above the statement or member in its block, type or file.</summary>
+    public const string NoStatementAbove = "No statement or member is above it in its block";
+
+    /// <summary>Move Statement Down where nothing stands below the statement or member in its block, type or file.</summary>
+    public const string NoStatementBelow = "No statement or member is below it in its block";
+
+    /// <summary>Move Element Left where the element at the caret is a list's first, or in no list.</summary>
+    public const string NoElementLeft = "No element of a list is left of the caret's";
+
+    /// <summary>Move Element Right where the element at the caret is a list's last, or in no list.</summary>
+    public const string NoElementRight = "No element of a list is right of the caret's";
+
+    /// <summary>Unwrap where no statement around the caret holds others (an if, a loop, a using, a try, a block).</summary>
+    public const string NothingToUnwrap = "No statement around the caret holds others to unwrap";
+
+    /// <summary>Choose and Run or Debug where no run configuration matches what is typed, or the folder has none.</summary>
+    public const string NoRunConfigurationMatches = "No run configuration matches";
+
+    /// <summary>Run Anything with nothing typed in a folder with no run configuration.</summary>
+    public const string NothingToRunYet = "No run configurations: type a command line to run it in the Terminal";
+
     /// <summary>Paste from History before anything was copied, here or on the clipboard.</summary>
     public const string NothingCopied = "Nothing has been copied yet";
 
@@ -720,6 +741,9 @@ public static class Refusals
 
     /// <summary>A service of a run of services (each named as it is shown) that the run has not started, or that has ended.</summary>
     public static string NotRunning(string service, string run) => $"{service} of {run} is not running";
+
+    /// <summary>A debugger asked of a Go program an AppHost runs, which Passenger has none for.</summary>
+    public static string NoGoDebugger(string name) => $"{name} is a Go program, and Passenger has no Go debugger";
 
     /// <summary>Hot Reload asked of a program the debugger no longer runs, or never ran.</summary>
     public const string ProgramNotRunning = "The program is not running";

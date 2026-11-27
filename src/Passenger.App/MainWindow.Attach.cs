@@ -95,12 +95,12 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Attaches the debugger to a .NET program, the Debug window open on its frames, beside any other program
-    /// debugged: null once the session is open, else why it could not, as the status bar says. The program's last session,
-    /// still attached (Reattach), is let go of first, the program running on. A container's program is attached to from
-    /// inside its container, Passenger's tools copied in first when they are not there; a 32-bit program by the debugger's
-    /// 32-bit host, downloaded first where this build has none (<see cref="DebugController.X86HostAsync"/>).</summary>
-    public async Task<string?> AttachAsync(DotnetProcess process)
+    /// <summary>Attaches the debugger to a .NET program, its session named <paramref name="named"/> (else for the program),
+    /// the Debug window open on its frames, beside any other program debugged: null once open, else why not, as the status
+    /// bar says. Its last session, still attached (Reattach), is let go of first. A container's program is attached to inside
+    /// its container, Passenger's tools copied in first where they are not; a 32-bit program by the debugger's 32-bit host,
+    /// downloaded first where this build has none (<see cref="DebugController.X86HostAsync"/>).</summary>
+    public async Task<string?> AttachAsync(DotnetProcess process, string? named = null)
     {
         UiThread.Check();
         if (process.WhyNot is { } why)
@@ -115,10 +115,10 @@ public partial class MainWindow
         using IDisposable background = BackgroundWork.Scope();
         DotnetProcess target = process;
         AdapterPlace? place = null;
-        string name = process.Program;
+        string name = named ?? process.Program;
         if (process.Container is { } container)
         {
-            name = $"{process.Program} in {container}";
+            name = $"{named ?? process.Program} in {container}";
             try
             {
                 (target, place) = await InContainerAsync(process, container, held);

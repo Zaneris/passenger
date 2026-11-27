@@ -114,7 +114,7 @@ public sealed partial class CodeEditor
                 continue;
             }
             double y = (row * metrics.LineHeight) - scroll.Y;
-            if (vim is { Mode: VimMode.Normal } && items[i].IsEmpty)
+            if ((vim is { Mode: VimMode.Normal } || (overwrite && vim is null)) && items[i].IsEmpty)
             {
                 DrawBlockCaret(context, text, items[i].Caret, row, x, y, left);
                 continue;

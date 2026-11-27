@@ -67,7 +67,7 @@ public partial class MainWindow
             }
             else
             {
-                unshared = IntoShared([PathNames.Canonical(path)], recording);
+                unshared = IntoShared([PathNames.Canonical(path)], recording) ?? KeepFolders([], [PathNames.Canonical(path)], [], recording);
             }
             said = !made ? $"{name} came in {shown} meanwhile: opened it" : unshared ?? $"New {name} in {shown}";
         }

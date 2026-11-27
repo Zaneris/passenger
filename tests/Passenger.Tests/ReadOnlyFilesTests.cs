@@ -22,12 +22,9 @@ public sealed class ReadOnlyFilesTests : IDisposable
 {
     private const string Trims = "root = true\n[*]\ntrim_trailing_whitespace = true\ninsert_final_newline = true\n";
 
-    /// <summary>The editor actions that change the text, which an editor refusing changes greys.</summary>
-    internal static readonly HashSet<string> Changing = [EditorActions.Backspace, EditorActions.Delete, EditorActions.DeleteWordLeft,
-        EditorActions.DeleteWordRight, EditorActions.NewLine, EditorActions.StartNewLine, EditorActions.StartNewLineBefore, EditorActions.Indent,
-        EditorActions.Outdent, EditorActions.Duplicate, EditorActions.DeleteLine, EditorActions.MoveLineUp, EditorActions.MoveLineDown,
-        EditorActions.ToggleLineComment, EditorActions.ToggleBlockComment, EditorActions.Comment, EditorActions.Uncomment, EditorActions.JoinLines,
-        EditorActions.ToggleCase, EditorActions.CutToLineEnd, EditorActions.Undo, EditorActions.Redo, EditorActions.Cut, EditorActions.Paste];
+    /// <summary>Whether an editor action changes the text, which an editor refusing changes greys: the editor's own word for it
+    /// (<see cref="EditorActions.IsChange"/>), so an action added to the editor is held here with the rest.</summary>
+    private static bool Changing(string id) => EditorActions.IsChange(id);
 
     private readonly string folder = TestFolders.Create("read-only-");
 
@@ -275,9 +272,9 @@ public sealed class ReadOnlyFilesTests : IDisposable
         foreach (string id in edit.Concat(EditorActions.All.Select(a => a.Id)).Distinct())
         {
             string? why = window.Actions.WhyNot(id, context);
-            if (Changing.Contains(id) ? why != ReadOnly : why is not null && !(id == AppActions.HighlightUsages && why == Refusals.NoCSharp))
+            if (Changing(id) ? why != ReadOnly : why is not null && !(id == AppActions.HighlightUsages && why == Refusals.NoCSharp))
             {
-                (Changing.Contains(id) ? offered : greyed).Add($"{id} ({why ?? "enabled"})");
+                (Changing(id) ? offered : greyed).Add($"{id} ({why ?? "enabled"})");
             }
         }
         Assert.True(offered.Count == 0, $"On the decompiled A.cs, which nothing can change, these are offered or greyed for another reason: {string.Join(", ", offered)}");
@@ -440,7 +437,7 @@ public sealed class ReadOnlyFilesTests : IDisposable
         foreach (string id in EditorActions.All.Select(a => a.Id))
         {
             string? whyNot = window.Actions.WhyNot(id, context);
-            bool refused = Changing.Contains(id) && !taken.Contains(id);
+            bool refused = Changing(id) && !taken.Contains(id);
             if (refused ? whyNot != why : whyNot is not null)
             {
                 (refused ? offered : greyed).Add($"{id} ({whyNot ?? "enabled"})");

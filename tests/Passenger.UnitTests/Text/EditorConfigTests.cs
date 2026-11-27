@@ -103,7 +103,8 @@ public sealed class EditorConfigTests : IDisposable
         ("A number range matches a whole number between its ends", test => test.A_number_range_matches_a_whole_number_between_its_ends()),
         ("A bracket matches one of its characters as the format says", test => test.A_bracket_matches_one_of_its_characters_as_the_format_says()),
         ("A backslash in a bracket takes the next character as itself", test => test.A_backslash_in_a_bracket_takes_the_next_character_as_itself()),
-        ("A dash first in a bracket is itself and a range across a slash never matches one", test => test.A_dash_first_in_a_bracket_is_itself_and_a_range_across_a_slash_never_matches_one()));
+        ("A dash first in a bracket is itself and a range across a slash never matches one", test => test.A_dash_first_in_a_bracket_is_itself_and_a_range_across_a_slash_never_matches_one()),
+        ("Matching ten thousand paths against a glob makes nothing as matching ten does", test => test.Matching_ten_thousand_paths_against_a_glob_makes_nothing_as_matching_ten_does()));
 
     /// <summary>A section's glob is the repository's text, matched on the window's thread as a file opens: one whose stars
     /// could be laid along a name in more ways than any machine could try (21 of them over 80 letters) is answered at once.</summary>
@@ -172,4 +173,32 @@ public sealed class EditorConfigTests : IDisposable
         
                 Assert.True(EditorConfig.Matches(glob, relative) == matches, $"[{glob}] {(matches ? "did not match" : "matched")} {relative}");
     });
+
+    /// <summary>A glob is matched against every path a watch hears and every file an .editorconfig is asked of, so what it
+    /// keeps, and what a match makes, may not grow with the paths it has seen: stars, a "/**/", brackets and braces of choices,
+    /// in either letter case.</summary>
+    private void Matching_ten_thousand_paths_against_a_glob_makes_nothing_as_matching_ten_does()
+    {
+        string[] globs = ["*.cs", "{**/*.cs,**/*.csproj}", "src/**/[a-z]?.{md,txt}", "[!.]*.json"];
+        string[] paths = [.. Enumerable.Range(0, 10_000).Select(i => $"/src/Folder{i % 37}/sub/{(char)('a' + i % 26)}{i % 10}.{(i % 3 == 0 ? "cs" : "md")}")];
+        PathGlob lowered = PathGlob.Of("/**/*.CS", lowered: true);
+        long Made(int count)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < count; i++)
+            {
+                foreach (string glob in globs)
+                {
+                    EditorConfig.Matches(glob, paths[i]);
+                }
+                lowered.Matches(paths[i]);
+            }
+            return GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+        Assert.True(globs.Count(glob => EditorConfig.Matches(glob, paths[0])) == 2 && lowered.Matches("/A.Cs") && !lowered.Matches("/A.Csx"),
+            "The globs did not match what they should, so their matching was not held");
+        long few = Made(10);
+        long many = Made(paths.Length);
+        Assert.True(few == 0 && many == 0, $"Matching ten paths against the globs made {few:N0} bytes, ten thousand {many:N0}: what a glob keeps grows with every path a watch hears");
+    }
 }

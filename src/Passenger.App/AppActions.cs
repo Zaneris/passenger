@@ -231,8 +231,9 @@ public static class AppActions
     public const string DatabaseScriptAlter = "app.database.scriptAlter";
     public const string DatabaseScriptDrop = "app.database.scriptDrop";
 
-    // A console's Run Statement, Rider's Console.Execute.Multiline: Ctrl+Enter, the Mac's Cmd+Enter, which Visual Studio's and
-    // VS Code's keymaps give the editor's Start New Line Before and Start New Line, so a SQL file takes theirs (KeysIn).
+    // A console's Run Statement, Rider's Console.Execute.Multiline: Ctrl+Enter, the Mac's Cmd+Enter, which Visual Studio's,
+    // VS Code's and IntelliJ IDEA's keymaps give the editor's Start New Line Before, Start New Line and Split Line, so a SQL
+    // file takes theirs (KeysIn).
     public const string DatabaseConsole = "app.database.console";
     public const string DatabaseRun = "app.database.run";
     // Stop Statement, Rider's Console.Jdbc.Cancel, on Stop's keys in a console running a statement (KeysIn).
@@ -437,6 +438,13 @@ public static class AppActions
     public const string Rerun = "app.rerun";
     public const string EditConfigurations = "app.editConfigurations";
 
+    // Rider's RunAnything (Ctrl tapped twice in every keymap), ChooseRunConfiguration and ChooseDebugConfiguration, bound as
+    // its keymaps bind them (RiderKeys): a run configuration or a command line run from one popup, and a configuration
+    // chosen and run, or debugged, from another.
+    public const string RunAnything = "app.runAnything";
+    public const string ChooseRunConfiguration = "app.chooseRunConfiguration";
+    public const string ChooseDebugConfiguration = "app.chooseDebugConfiguration";
+
     // Where the chosen configuration's app runs (a device, an emulator or a simulator), the widget beside the configuration's.
     public const string ChooseRunTarget = "app.chooseRunTarget";
 
@@ -459,6 +467,7 @@ public static class AppActions
     public const string AspireTelemetry = "app.aspire.telemetry";
     public const string AspireStats = "app.aspire.stats";
     public const string AspireGraph = "app.aspire.graph";
+    public const string AspireGraphMermaid = "app.aspire.graphMermaid";
     public const string AspireLogs = "app.aspire.logs";
     public const string AspireTraces = "app.aspire.traces";
     public const string AspireAppHostConsole = "app.aspire.appHostConsole";
@@ -658,6 +667,15 @@ public static class AppActions
     public const string ExceptionSettings = "app.debug.exceptionSettings";
     public const string CancelBuild = "app.build.cancel";
     public const string ShowExecutionPoint = "app.debug.showExecutionPoint";
+
+    // Rider's MoveStatementUp and MoveStatementDown, MoveElementLeft and MoveElementRight, Unwrap and AutoIndentLines, bound
+    // as its keymaps bind them (RiderKeys): edits by the code's structure, each one step of Undo.
+    public const string MoveStatementUp = "app.editor.moveStatementUp";
+    public const string MoveStatementDown = "app.editor.moveStatementDown";
+    public const string MoveElementLeft = "app.editor.moveElementLeft";
+    public const string MoveElementRight = "app.editor.moveElementRight";
+    public const string Unwrap = "app.editor.unwrap";
+    public const string AutoIndentLines = "app.editor.autoIndentLines";
 
     // Rider's XDebugger.AttachToProcess and RiderReattach, on its Visual Studio keymaps' Ctrl+Alt+P (Cmd+Alt+P) and
     // Alt+Shift+P, and RiderDetachDebuggerAction, after Stop, which no keymap gives keys.
@@ -972,6 +990,7 @@ public static class AppActions
         EditBreakpoint when Preset != KeymapPreset.VisualStudio => ViewBreakpoints,
         DatabaseRun when Preset == KeymapPreset.VisualStudio => EditorActions.StartNewLineBefore,
         DatabaseRun when Preset == KeymapPreset.VSCode => EditorActions.StartNewLine,
+        DatabaseRun when Preset == KeymapPreset.IntelliJ => EditorActions.SplitLine,
         DatabaseSubmit => KeysIn(DatabaseRun),
         DatabaseAddRow => Generate,
         DatabaseDeleteRows => EditorActions.DeleteLine,
@@ -1034,13 +1053,13 @@ public static class AppActions
             // Rider's Emacs keymap's own lists of these, over $default's, each key taken from any action that had it.
             keymap.Own(MethodUp, "alt UP", "control alt A").Own(MethodDown, "alt DOWN", "control alt E")
                 .Own(CodeBlockStart, "control OPEN_BRACKET", "control alt OPEN_BRACKET").Own(CodeBlockEnd, "control CLOSE_BRACKET", "control alt CLOSE_BRACKET")
-                .Own(PasteFromHistory, "alt Y").Own(SmartTypeCompletion, "control shift SPACE", "control alt SLASH");
+                .Own(PasteFromHistory, "alt Y").Own(SmartTypeCompletion, "control shift SPACE", "control alt SLASH")
+                .Own(AutoIndentLines, "control alt I", "control alt Q").Own(MoveStatementUp).Own(MoveStatementDown);
         }
         keymap.Bind(GameKeys, "control F11")
             .Bind(NextRegion, OperatingSystem.IsMacOS() ? "control meta BACK_QUOTE" : "control alt BACK_QUOTE")
             .Bind(PreviousRegion, OperatingSystem.IsMacOS() ? "control meta shift BACK_QUOTE" : "control alt shift BACK_QUOTE")
-            .Bind(ReadAsText, OperatingSystem.IsMacOS() ? "control meta R" : "control alt R")
-            .Bind(MarkdownFormatting, OperatingSystem.IsMacOS() ? "meta alt I" : "control alt I");
+            .Bind(ReadAsText, OperatingSystem.IsMacOS() ? "control meta R" : "control alt R");
         // Rider's Console.History.Browse and Console.Transaction.Commit: $default's, the Mac's with Cmd for Ctrl, as KeysIn says.
         bool commandKey = OperatingSystem.IsMacOS() && preset != KeymapPreset.Emacs;
         keymap.Bind(DatabaseCommit, commandKey ? "meta alt shift ENTER" : "control alt shift ENTER");
@@ -1113,13 +1132,16 @@ public static class AppActions
     };
 
     /// <summary>The moves by the code's structure, the peeks, the person's own folds, Paste from History, Copy Reference,
-    /// Smart Type Completion, New Branch, Commit and Push and VCS Operations as each of Rider's keymaps binds them, by its name. Where Rider gives a key to one of them and to an action Passenger has there already, that one keeps it:
+    /// Smart Type Completion, New Branch, Commit and Push, VCS Operations, Run Anything and the configuration choosers as
+    /// each of Rider's keymaps binds them, by its name. Where Rider gives a key to one of them and to an action Passenger has there already, that one keeps it:
     /// Visual Studio's own Move Line Alt+Up and Down, the Mac's Clone Caret Ctrl+Shift+Up and Down and Redo Cmd+Y, VS Code's
     /// Quick Fix Cmd+. and Collapse Cmd+Alt+[ on the Mac, and Select Containing Declaration Cmd+Alt+[ over Code Block Start.</summary>
     private static readonly Dictionary<string, (string Action, string Key)[]> RiderKeys = new()
     {
         ["Visual Studio"] =
         [
+            (MoveStatementUp, "control alt shift UP"), (MoveStatementDown, "control alt shift DOWN"), (MoveElementLeft, "control alt shift LEFT"), (MoveElementRight, "control alt shift RIGHT"), (Unwrap, "control shift DELETE"), (AutoIndentLines, "control alt I"),
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "control alt shift R"), (ChooseDebugConfiguration, "alt shift F9"),
             (NextUsage, "control shift DOWN"), (PreviousUsage, "control shift UP"), (GoToContainingDeclaration, "control OPEN_BRACKET"),
             (SelectContainingDeclaration, "control shift OPEN_BRACKET"), (CodeBlockStart, "alt shift OPEN_BRACKET"),
             (CodeBlockStartWithSelection, "control alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "control alt shift CLOSE_BRACKET"),
@@ -1131,6 +1153,8 @@ public static class AppActions
         ],
         ["Visual Studio OSX"] =
         [
+            (MoveStatementUp, "control alt shift UP"), (MoveStatementDown, "control alt shift DOWN"), (MoveElementLeft, "meta alt shift LEFT"), (MoveElementRight, "meta alt shift RIGHT"), (Unwrap, "meta shift DELETE"), (AutoIndentLines, "control alt I"),
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "meta alt shift R"), (ChooseDebugConfiguration, "control alt D"),
             (NextUsage, "control alt DOWN"), (PreviousUsage, "control alt UP"), (GoToContainingDeclaration, "meta OPEN_BRACKET"),
             (SelectContainingDeclaration, "meta alt OPEN_BRACKET"), (CodeBlockEnd, "meta alt CLOSE_BRACKET"),
             (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
@@ -1141,6 +1165,8 @@ public static class AppActions
         ],
         ["VSCode"] =
         [
+            (MoveElementLeft, "control alt shift LEFT"), (MoveElementRight, "control alt shift RIGHT"), (Unwrap, "control shift DELETE"), (AutoIndentLines, "control alt I"),
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "control SEMICOLON , A"), (ChooseDebugConfiguration, "alt shift F9"),
             (GoToContainingDeclaration, "alt shift OPEN_BRACKET"), (SelectContainingDeclaration, "control alt shift OPEN_BRACKET"),
             (GoToRegion, "control alt PERIOD"), (QuickImplementations, "alt F12"), (ErrorDescription, "control F1"), (ShowFilePath, "control alt F12"),
             (CollapseBlock, "control alt OPEN_BRACKET"), (CollapseBlock, "control K , control L"), (PasteFromHistory, "control shift INSERT"),
@@ -1149,6 +1175,8 @@ public static class AppActions
         ],
         ["VSCode OSX"] =
         [
+            (MoveElementLeft, "meta alt shift LEFT"), (MoveElementRight, "meta alt shift RIGHT"), (Unwrap, "meta shift DELETE"), (AutoIndentLines, "control alt I"),
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "meta SEMICOLON , A"), (ChooseDebugConfiguration, "control alt D"),
             (MethodUp, "control shift UP"), (MethodDown, "control shift DOWN"), (NextUsage, "control alt DOWN"), (PreviousUsage, "control alt UP"),
             (GoToContainingDeclaration, "control OPEN_BRACKET"), (SelectContainingDeclaration, "control shift OPEN_BRACKET"),
             (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
@@ -1159,6 +1187,8 @@ public static class AppActions
         ],
         ["$default"] =
         [
+            (MoveStatementUp, "control shift UP"), (MoveStatementDown, "control shift DOWN"), (MoveElementLeft, "control alt shift LEFT"), (MoveElementRight, "control alt shift RIGHT"), (Unwrap, "control shift DELETE"), (AutoIndentLines, "control alt I"),
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "alt shift F10"), (ChooseDebugConfiguration, "alt shift F9"),
             (MethodUp, "alt UP"), (MethodDown, "alt DOWN"), (GoToContainingDeclaration, "alt shift OPEN_BRACKET"),
             (SelectContainingDeclaration, "control alt shift OPEN_BRACKET"), (CodeBlockStart, "control OPEN_BRACKET"), (CodeBlockEnd, "control CLOSE_BRACKET"),
             (CodeBlockStartWithSelection, "control shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "control shift CLOSE_BRACKET"),
@@ -1171,6 +1201,8 @@ public static class AppActions
         ],
         ["Mac OS X 10.5+"] =
         [
+            (MoveStatementUp, "meta shift UP"), (MoveStatementDown, "meta shift DOWN"), (MoveElementLeft, "meta alt shift LEFT"), (MoveElementRight, "meta alt shift RIGHT"), (Unwrap, "meta shift DELETE"), (AutoIndentLines, "control alt I"),
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "control alt R"), (ChooseDebugConfiguration, "control alt D"),
             (MethodUp, "control shift UP"), (MethodDown, "control shift DOWN"), (NextUsage, "control alt DOWN"), (PreviousUsage, "control alt UP"),
             (GoToContainingDeclaration, "control OPEN_BRACKET"), (SelectContainingDeclaration, "control shift OPEN_BRACKET"),
             (CodeBlockStart, "meta alt OPEN_BRACKET"), (CodeBlockEnd, "meta alt CLOSE_BRACKET"),
@@ -1798,7 +1830,6 @@ public static class AppActions
         {
             // Cmd+Q, Exit's here, is the application menu's Quit, as in the other keymaps.
             return keymap
-                .Bind(DatabaseRun, "meta ENTER")
                 .Bind(OpenSolution, "control shift O")
                 .Bind(NextProjectWindow, "meta alt BACK_QUOTE")
                 .Bind(PreviousProjectWindow, "meta alt shift BACK_QUOTE")
@@ -2003,7 +2034,6 @@ public static class AppActions
             .Bind(ReformatWithPrettier, "control alt shift P")
             .Bind(RefactorThis, "control alt shift T")
             .Bind(Generate, "alt INSERT")
-            .Bind(DatabaseRun, "control ENTER")
             .Bind(ExtractMethod, "control alt M")
             .Bind(IntroduceVariable, "control alt V")
             .Bind(Inline, "control alt N")
@@ -2080,6 +2110,8 @@ public static class AppActions
     }
 
     private static Keymap EmacsOwn(Keymap keymap) => keymap
+        // Split Line's Ctrl+Enter in $default, which Emacs gives Ctrl+O alone.
+        .Own(DatabaseRun, "control ENTER")
         .Own(FindAction, "alt X", "ESCAPE , X")
         .Own(Find, "control alt S", "alt F3", "control S")
         .Own(FindNext, "F3", "alt S")

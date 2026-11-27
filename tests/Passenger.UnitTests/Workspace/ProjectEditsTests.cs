@@ -20,7 +20,8 @@ public sealed class ProjectEditsTests : IDisposable
         ("a reference to a project in a folder of msbuilds own characters is read back as that project", test => test.A_reference_to_a_project_in_a_folder_of_msbuilds_own_characters_is_read_back_as_that_project()),
         ("a move follows paths written escaped and escapes the paths it writes", test => test.A_move_follows_paths_written_escaped_and_escapes_the_paths_it_writes()),
         ("a folder with a quote in its name is written escaped only inside a condition", test => test.A_folder_with_a_quote_in_its_name_is_written_escaped_only_inside_a_condition()),
-        ("a file named beside an item follows it through a folder of msbuilds own characters", test => test.A_file_named_beside_an_item_follows_it_through_a_folder_of_msbuilds_own_characters()));
+        ("a file named beside an item follows it through a folder of msbuilds own characters", test => test.A_file_named_beside_an_item_follows_it_through_a_folder_of_msbuilds_own_characters()),
+        ("an empty folder of msbuilds own characters is kept by a folder item msbuild reads and let go with its group", test => test.An_empty_folder_of_msbuilds_own_characters_is_kept_by_a_folder_item_msbuild_reads_and_let_go_with_its_group()));
 
     private void A_project_moved_deeper_follows_its_imports_and_hint_paths_and_another_projects_import_into_it_follows_it()
     {
@@ -313,6 +314,39 @@ public sealed class ProjectEditsTests : IDisposable
     }
 
     /// <summary>The paths a project's items name, as XML reads them: each Include, then each DependentUpon.</summary>
+    /// <summary>An empty folder is kept by a Folder item escaped as MSBuild reads it, in an item group of its own, the next
+    /// after it; letting them go takes the group with them, so the file is as it was, and an item under a condition, which
+    /// only some builds see, is never taken.</summary>
+    private void An_empty_folder_of_msbuilds_own_characters_is_kept_by_a_folder_item_msbuild_reads_and_let_go_with_its_group()
+    {
+        const string App = """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+                <Folder Include="Traces\" />
+              </ItemGroup>
+            </Project>
+
+            """;
+        Write("App/App.csproj", App);
+        string project = Path.Combine(root, "App", "App.csproj");
+        string odd = Path.Combine(root, "App", "odd;100%41$@");
+        string monthly = Path.Combine(root, "App", "Reports", "Monthly");
+
+        Assert.True(ProjectEdits.KeepFolders(project, [odd, monthly], _ => false), "No Folder item was written for the empty folders");
+        Assert.Equal(App.Replace("</Project>", """
+              <ItemGroup>
+                <Folder Include="odd%3B100%2541%24%40\" />
+                <Folder Include="Reports\Monthly\" />
+              </ItemGroup>
+            </Project>
+            """, StringComparison.Ordinal), File.ReadAllText(project));
+        Assert.Equal([odd, monthly], ProjectEdits.FoldersKept(File.ReadAllText(project), project));
+        Assert.False(ProjectEdits.KeepFolders(project, [monthly], _ => false), "A folder kept already was written again");
+
+        Assert.True(ProjectEdits.KeepFolders(project, [], _ => true), "The folders let go of kept their items");
+        Assert.Equal(App, File.ReadAllText(project));
+    }
+
     private static string[] Named(string project)
     {
         System.Xml.Linq.XDocument read = System.Xml.Linq.XDocument.Parse(File.ReadAllText(project));

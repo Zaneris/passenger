@@ -368,6 +368,7 @@ public partial class MainWindow
             [E.ToggleBlockComment] = [new("Code", 2, 1)],
             [E.MoveLineUp] = [new("Edit", 4, 1)],
             [E.MoveLineDown] = [new("Edit", 4, 2)],
+            [E.ToggleColumnMode] = [new("Edit", 2, 5)],
             [E.Unfold] = [new("Code/Folding", 0, 0)],
             [E.UnfoldAll] = [new("Code/Folding", 0, 1)],
             [E.Fold] = [new("Code/Folding", 1, 0)],
@@ -395,6 +396,12 @@ public partial class MainWindow
                     : id is E.Undo or E.Redo && TableSteps(context) is { } table ? table.WhyNotStep(id == E.Redo)
                     : E.IsChange(id) ? ChangeRefused(id, context) : null,
                 TitleIn = id == E.Delete ? context => DeleteTitle(context) ?? title : null,
+                IsChecked = id switch
+                {
+                    E.ToggleOverwrite => _ => Editors.CodeEditor.Overwrite,
+                    E.ToggleColumnMode => _ => Editors.CodeEditor.ColumnMode,
+                    _ => null,
+                },
                 Menus = menus.GetValueOrDefault(id, []),
             });
         }
