@@ -207,6 +207,10 @@ public sealed class TestController : IAsyncDisposable
     /// (<see cref="ITestDebugLauncher.DebugGameAsync"/>).</summary>
     public Func<TestHostStart, string, int, bool, Action<string>?, Task<Task>>? DebugGame { get; set; }
 
+    /// <summary>A device test project's app to debug where it runs: the debugger starts it as Debug starts an app on its
+    /// device (<see cref="ITestDebugLauncher.DebugOnDeviceAsync"/>).</summary>
+    public Func<Run.LaunchPlan, Action<string>?, Task<Task>>? DebugOnDevice { get; set; }
+
     /// <summary>A test to debug in a test host the runner started itself: the debugger attaches to it (with Hot Reload and
     /// its hook where the host was started for them), true once it has.</summary>
     public Func<int, TestHostReload?, Task<bool>>? AttachDebugger { get; set; }
@@ -1092,6 +1096,19 @@ public sealed class TestController : IAsyncDisposable
                     return debug(start, folder, leading, csharp, heard);
                 })
                 : throw new InvalidOperationException("No debugger can start the game's tests");
+
+        public Task<Task> DebugOnDeviceAsync(Run.LaunchPlan plan, Action<string>? heard = null) =>
+            owner.DebugOnDevice is { } debug
+                ? UiThread.InvokeAsync<Task>(() =>
+                {
+                    if (!IsCurrent)
+                    {
+                        return Task.FromCanceled<Task>(new CancellationToken(canceled: true));
+                    }
+                    owner.ReleaseWork();
+                    return debug(plan, heard);
+                })
+                : throw new InvalidOperationException("No debugger can start the tests' app on its device");
 
         public TestHostReload? Reload(string assembly, IReadOnlyDictionary<string, string> environment) => owner.ReloadFor?.Invoke(assembly, environment);
 

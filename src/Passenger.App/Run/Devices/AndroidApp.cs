@@ -4,10 +4,15 @@ using Passenger.Core;
 namespace Passenger.App.Run.Devices;
 
 /// <summary>An app installed on an Android device, as its build says it starts: the device's serial, adb, the package and
-/// the activity it launches, and the build's intermediate folder (where a Debug build keeps the environment and the
-/// assemblies it deployed). Its commands are adb's arguments, each made here once.</summary>
+/// the activity it launches (or the instrumentation it runs, <see cref="Instrumentation"/>), and the build's intermediate
+/// folder (where a Debug build keeps the environment and the assemblies it deployed). Its commands are adb's arguments,
+/// each made here once.</summary>
 public sealed partial record AndroidApp(string Serial, string Adb, string Package, string Activity, string Intermediate)
 {
+    /// <summary>The class of the instrumentation the app starts through in place of an activity (a device test project's,
+    /// which runs its tests); empty for an app its activity starts.</summary>
+    public string Instrumentation { get; init; } = string.Empty;
+
     /// <summary>The properties the workload's <c>ComputeRunArguments</c> leaves that the app's start reads.</summary>
     public static readonly IReadOnlyList<string> Properties =
         [MSBuildNames.AndroidLaunchActivity, MSBuildNames.AndroidPackage, MSBuildNames.IntermediateOutputPath, MSBuildNames.AndroidInstrumentation];
@@ -31,24 +36,24 @@ public sealed partial record AndroidApp(string Serial, string Adb, string Packag
     public const string RelayWaitVariable = "PASSENGER_DEBUG_WAIT_MS";
 
     /// <summary>The app's start as MSBuild answered <see cref="Properties"/> after <c>ComputeRunArguments</c>, run on the
-    /// device by <paramref name="adb"/>; why not where it launches no activity.</summary>
+    /// device by <paramref name="adb"/>: its launcher activity, else the instrumentation the workload starts in its place;
+    /// why not where it has neither.</summary>
     public static (AndroidApp? App, string? Problem) Read(MSBuildAnswer said, string serial, string adb, string projectFolder)
     {
         string package = said.Property(MSBuildNames.AndroidPackage) ?? string.Empty;
         string activity = said.Property(MSBuildNames.AndroidLaunchActivity) ?? string.Empty;
+        string instrumentation = activity.Length == 0 ? said.Property(MSBuildNames.AndroidInstrumentation) ?? string.Empty : string.Empty;
         string intermediate = said.Property(MSBuildNames.IntermediateOutputPath) ?? string.Empty;
         if (package.Length == 0)
         {
             return (null, "The Android workload did not say which package it installed");
         }
-        if (activity.Length == 0)
+        if (activity.Length == 0 && instrumentation.Length == 0)
         {
-            return (null, said.Property(MSBuildNames.AndroidInstrumentation) is { Length: > 0 }
-                ? $"{package} starts through its instrumentation, which Passenger does not run: give it a launcher activity"
-                : $"{package} has no launcher activity to start");
+            return (null, $"{package} has no launcher activity to start");
         }
         string folder = Path.DirectorySeparatorChar == '\\' ? intermediate : intermediate.Replace('\\', '/');
-        return (new AndroidApp(serial, adb, package, activity, PathNames.Canonical(Path.Combine(projectFolder, folder))), null);
+        return (new AndroidApp(serial, adb, package, activity, PathNames.Canonical(Path.Combine(projectFolder, folder))) { Instrumentation = instrumentation }, null);
     }
 
     /// <summary>adb's arguments for one command on the app's device.</summary>
@@ -57,12 +62,17 @@ public sealed partial record AndroidApp(string Serial, string Adb, string Packag
     /// <summary>The device's shell starting the app afresh, saying once it has started (<see cref="Started"/>), then writing
     /// its log from its start (<c>logcat</c> of its process alone) until its process ends, when the shell ends too: what the
     /// Run window shows as the program. Its last process is ended first, so the one found is the new one; the first of
-    /// several is its main one.</summary>
-    public IReadOnlyList<string> Run() => On("shell",
+    /// several is its main one. An app started through its instrumentation runs it (<see cref="Instrument"/>).</summary>
+    public IReadOnlyList<string> Run() => Instrumentation.Length > 0 ? Instrument() : On("shell",
         $"am force-stop {Package}; am start -n {Package}/{Activity} >/dev/null || exit 1; i=0; p=; "
         + $"while [ -z \"$p\" ] && [ $i -lt 300 ]; do p=$(pidof {Package}) || {{ sleep 0.1; i=$((i+1)); }}; done; "
         + $"[ -n \"$p\" ] || {{ echo '{Package} did not start'; exit 1; }}; p=${{p%% *}}; echo \"{Started}$p\"; "
         + "logcat -v tag --pid=$p & l=$!; while [ -d /proc/$p ]; do sleep 1; done; kill $l");
+
+    /// <summary>The device's shell running the app's instrumentation afresh, waiting for its end and writing each status it
+    /// sends and its result as they come, in the raw lines <c>am instrument -r</c> writes (<see cref="Testing.InstrumentationLines"/>):
+    /// a device test project's tests, one status as each ends. Its last process is ended first.</summary>
+    public IReadOnlyList<string> Instrument() => On("shell", $"am force-stop {Package}; am instrument -w -r {Package}/{Instrumentation}");
 
     /// <summary>What the app's shell says once it found the app's process, the process's number after it: the line a run
     /// on the device has started at.</summary>

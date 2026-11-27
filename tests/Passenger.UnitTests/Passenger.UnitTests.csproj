@@ -490,6 +490,8 @@
     <Compile Include="../../src/Passenger.App/Testing/CoverageTree.cs" Link="App/CoverageTree.cs" />
     <Compile Include="../../src/Passenger.App/Testing/TestReach.cs" Link="App/TestReach.cs" />
     <Compile Include="../../src/Passenger.App/Testing/InstrumentedCode.cs" Link="App/InstrumentedCode.cs" />
+    <Compile Include="../../src/Passenger.App/Testing/InstrumentationLines.cs" Link="App/InstrumentationLines.cs" />
+    <Compile Include="../../src/Passenger.App/Testing/TrxResults.cs" Link="App/TrxResults.cs" />
   </ItemGroup>
 
   <!-- What desktop app a program's start runs, from its command line and the files beside it in a temporary folder,

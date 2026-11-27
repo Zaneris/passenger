@@ -101,6 +101,7 @@ public partial class MainWindow
         tests.ReloadFor = (assembly, environment) => next.Debug.HotReloadOn()
             && Debugging.UpdateHandlerHook.ForTestHost(assembly, environment) is ({ } hook, { } variables) ? new Testing.TestHostReload(variables, hook) : null;
         tests.DebugGame = (start, folder, leading, csharp, heard) => DebugTestGame(next, start, folder, leading, csharp, testHosts, heard);
+        tests.DebugOnDevice = (plan, heard) => DebugTestsOnDevice(next, plan, testHosts, heard);
         tests.EndDebugging = () => Task.WhenAll(testHosts.ToArray().Select(EndTestHost));
         async Task EndTestHost(DebugTab tab)
         {
@@ -416,6 +417,15 @@ public partial class MainWindow
             }
             return false;
         }
+    }
+
+    /// <summary>A device test project's app started under the debugger as Debug starts an app on its device, in a Debug tab
+    /// ended with the test run; done once its session is open, with the session's end.</summary>
+    private Task<Task> DebugTestsOnDevice(ProjectSession running, LaunchPlan plan, HashSet<DebugTab> testHosts, Action<string>? heard)
+    {
+        CheckTestSession(running);
+        ShowToolWindow(ToolWindowIds.Debug);
+        return buildRun.DebugTestsOnDeviceAsync(plan, tab => testHosts.Add(tab), heard, running.Tests.RunCancellation);
     }
 
     /// <summary>A Godot run of a project's tests (GUT's, GoDotTest's) started under the debugger as Debug starts its game,

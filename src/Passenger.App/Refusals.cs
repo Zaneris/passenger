@@ -1233,13 +1233,9 @@ public static class Refusals
     /// <summary>A Mac Catalyst app run on a system other than macOS.</summary>
     public const string MacCatalystOnMacAlone = "a Mac Catalyst app runs only on a Mac";
 
-    /// <summary>An Android device test project's tests asked to run, which Passenger does not run on a device yet.</summary>
-    public static string AndroidTestsNotYet(string project) =>
-        $"Passenger does not run {project}'s tests on Android devices and emulators yet: it runs a device test project's tests on iOS simulators and as a Mac Catalyst app";
-
-    /// <summary>A device test project's tests asked to be debugged, which Passenger runs on their target undebugged.</summary>
-    public static string DeviceTestsNotDebugged(string project) =>
-        $"Passenger does not debug {project}'s tests where they run, on a device, a simulator or as a Mac Catalyst app, yet: Run Tests runs them there";
+    /// <summary>An Android test project's tests asked to run where its app starts through no instrumentation, which runs them.</summary>
+    public static string NoInstrumentation(string project) =>
+        $"{project}'s tests cannot run on Android: its app starts through no instrumentation, which runs an Android app's tests (androidtest's template declares one)";
 
     /// <summary>The iOS workload could not list simulators (no workload, no Xcode), with how to get them.</summary>
     public static string NoIos(string problem) =>
@@ -1507,6 +1503,9 @@ public static class Refusals
 
     /// <summary>tests_run asked to debug and measure coverage at once.</summary>
     public const string CoverageDebugged = "Coverage is not measured while debugging: a debugged test host runs its code as built, for breakpoints and Hot Reload";
+
+    /// <summary>A run with coverage of a device test project's tests, which its app runs on a device, emulator or simulator.</summary>
+    public const string CoverageOnDevice = "A device test project's tests run in its app, where coverage is not measured";
 
     /// <summary>A stack frame's Go to Source where its code has no source the debugger knows (no symbols, or code the
     /// runtime made).</summary>

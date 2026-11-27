@@ -1123,7 +1123,9 @@ public sealed partial class BuildRunController
     private string? Checkpoint(Working work, string name) => session.IsEnded ? Refusals.SolutionClosed : work.IsStopped ? StoppedStarting(name) : null;
 
     /// <summary>What a start ended by a cancel says: its folder's end, else Stop's.</summary>
-    private string Canceled(Working work, string name) => session.IsEnded ? Refusals.SolutionClosed : StoppedStarting(name);
+    private string Canceled(Working work, string name) => Canceled(name);
+
+    private string Canceled(string name) => session.IsEnded ? Refusals.SolutionClosed : StoppedStarting(name);
 
     /// <summary>A start's build of what it starts, in the Build window, which comes forward only as Settings says for a build
     /// Run, Debug or Profile begins: stopped as the start is (<paramref name="stopping"/>), as Stop stops a build. What is
