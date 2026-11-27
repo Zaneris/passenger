@@ -23,6 +23,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>Dark or light, or as the system is.</summary>
     public ThemeChoice Theme { get; init; } = ThemeChoice.System;
 
+    /// <summary>The language Passenger's words are read in, by its tag ("en", "fr"), or null to follow the system's
+    /// preferred languages (<see cref="LanguageSetting"/>).</summary>
+    public string? DisplayLanguage { get; init; }
+
     /// <summary>The theme, by its source and name, or null for Passenger's own, each in the dark or light <see cref="Theme"/>
     /// says.</summary>
     public SourcedTheme? Look { get; init; }

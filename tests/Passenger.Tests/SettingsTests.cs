@@ -14,6 +14,7 @@ using Passenger.App.Run;
 using Passenger.App.Settings;
 using Passenger.App.State;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.Tests;
@@ -36,6 +37,7 @@ public sealed class SettingsTests : IDisposable
         Flow.StepApart<SettingsTests>("a change reaches every editor and the next window opens on it", t => t.A_change_reaches_every_editor_and_the_next_window_opens_on_it());
         Flow.StepApart<SettingsTests>("the font size actions and the zoom wheel change the editor's font and the next window opens on it", t => t.The_font_size_actions_and_the_zoom_wheel_change_the_editors_font_and_the_next_window_opens_on_it());
         Flow.StepApart<SettingsTests>("terminal preferences apply to the view and are kept for the next window", t => t.Terminal_preferences_apply_to_the_view_and_are_kept_for_the_next_window());
+        Flow.StepApart<SettingsTests>("the language chosen is in force at once and the words shown follow it in place", t => t.The_language_chosen_is_in_force_at_once_and_the_words_shown_follow_it_in_place());
     }
 
     /// <summary>A monospaced font installed beside the carried one is the code font everywhere once chosen, a
@@ -123,6 +125,49 @@ public sealed class SettingsTests : IDisposable
         {
             dialog.Close();
             window.Close();
+        }
+    }
+
+    /// <summary>Settings' Language row offers the system's language, named in itself, English and each carried language; a
+    /// language put in force (the pseudo-locale, as --language puts it) says again in place every word the open dialog shows
+    /// through ShownWords, and English chosen, or the system's languages followed (the test run's en-US), each in force as
+    /// it is applied.</summary>
+    private void The_language_chosen_is_in_force_at_once_and_the_words_shown_follow_it_in_place()
+    {
+        MainWindow window = Open();
+        window.KeepSettings();
+        SettingsDialog dialog = window.ShowSettings();
+        try
+        {
+            dialog.Page = SettingsDialog.Appearance;
+            Ui.Settle();
+            string[] offered = [.. Editor<ComboBox>(dialog, "Language").Items.Cast<object?>().Select(i => i?.ToString() ?? string.Empty)];
+            string[] expected = ["System (English)", "English", .. LanguageSetting.Carried.Select(c => LanguageSetting.NameOf(LanguageSetting.InForce(c.Name)).Shown)];
+            Assert.True(offered.SequenceEqual(expected), $"The Language row offers [{string.Join(", ", offered)}], not [{string.Join(", ", expected)}]");
+            TextBlock label = dialog.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == "Language");
+
+            UiLanguage.Put(UiLanguage.Of(UiLanguage.PseudoTag, LanguageSetting.Carried)!);
+            Ui.Settle();
+            Assert.True(label.Text?.StartsWith("[Ļåñĝûåĝé", StringComparison.Ordinal) == true && label.Text.EndsWith(']'),
+                $"The Language row's label reads \"{label.Text}\" under the pseudo-locale: words given through ShownWords are not said again as the language changes");
+            UiLanguage.Put(UiLanguage.English);
+            Ui.Settle();
+            Assert.True(label.Text == "Language", $"The Language row's label reads \"{label.Text}\" once English is in force again");
+
+            dialog.Change(s => s with { DisplayLanguage = LanguageSetting.English });
+            dialog.Apply();
+            Assert.True(UiLanguage.InForce is { IsEnglish: true, Tag: LanguageSetting.English } && window.Settings.DisplayLanguage == LanguageSetting.English,
+                $"English chosen puts {UiLanguage.InForce.Tag} in force and keeps {window.Settings.DisplayLanguage ?? "System"}");
+            dialog.Change(s => s with { DisplayLanguage = null });
+            dialog.Apply();
+            Assert.True(UiLanguage.InForce is { IsEnglish: true, Tag: "en-US" },
+                $"System puts {UiLanguage.InForce.Tag} in force, where the system's languages (the test run's stand-in) are en-US alone");
+        }
+        finally
+        {
+            dialog.Close();
+            window.Close();
+            UiLanguage.Put(LanguageSetting.InForce(null));
         }
     }
 
@@ -825,7 +870,7 @@ public sealed class SettingsTests : IDisposable
             Assert.True(Passenger.Core.GodotExecutables.SearchedOnThisThread == searched, "Settings looked for Godot on the window's thread as it opened, "
                 + "which walks every PATH folder and the Applications folders while the window draws nothing");
             string godot = GodotLaunch.Found(null) is { Exists: true } found ? found.Executable : "Not found";
-            Assert.Equal(godot, Editor<TextBox>(dialog, Declared.GodotExecutable.Row!.Label).PlaceholderText);
+            Assert.Equal(godot, Editor<TextBox>(dialog, Declared.GodotExecutable.Row!.Label.English).PlaceholderText);
             dialog.Page = SettingsDialog.RunPage;
             Ui.Settle();
             TextBox browser = Editor<TextBox>(dialog, PageBrowsers.Row);

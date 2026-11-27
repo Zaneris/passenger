@@ -50,7 +50,7 @@ internal sealed class EditorConfigKnown
         foreach (Setting setting in Settings.Declared.All.Where(s => s.Row?.Over is not null))
         {
             SettingRow row = setting.Row!;
-            string said = $"Settings, {row.Page}: {row.Label}" + (row.Note is { } note ? $". {note}" : string.Empty);
+            string said = $"Settings, {row.Page}: {row.Label.English}" + (row.Note is { } note ? $". {note.English}" : string.Empty);
             foreach (string key in row.Over!.Keys.Concat(row.Over.Aliases))
             {
                 string kind = setting.EditorConfigValues.Count > 0 ? EditorConfigValueKinds.Choice : setting is NumberSetting ? EditorConfigValueKinds.Number : EditorConfigValueKinds.Text;

@@ -396,7 +396,7 @@ public sealed partial class SettingsDialog
             if (!shown.SequenceEqual(listed.Shown))
             {
                 listed.Shown = shown;
-                listed.Option.Words = $"{KeymapPage} {listed.Action.Title} {RowWords(listed.Action, shown)}";
+                listed.Option.Searched = $"{KeymapPage} {listed.Action.Title} {RowWords(listed.Action, shown)}";
             }
             Show(listed, current);
         }

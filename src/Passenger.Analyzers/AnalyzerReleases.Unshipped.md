@@ -18,3 +18,5 @@ PSG0010 | Passenger | Warning | BareParallelLoops
 PSG0011 | Passenger | Warning | CultureNumbers
 PSG9001 | Passenger | Error | ResourceKeys
 PSG9002 | Passenger | Error | StyleClassNames
+PSG9003 | Passenger | Error | WordsResources
+PSG9004 | Passenger | Error | WordsResources

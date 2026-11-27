@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xliff xmlns="urn:oasis:names:tc:xliff:document:1.2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.2" xsi:schemaLocation="urn:oasis:names:tc:xliff:document:1.2 xliff-core-1.2-transitional.xsd">
+  <file datatype="xml" source-language="en" target-language="pa" original="../TestWords.resx">
+    <body>
+      <trans-unit id="Greeting">
+        <source>Hello</source>
+        <target state="translated">ਸਤ ਸ੍ਰੀ ਅਕਾਲ</target>
+        <note>A greeting the tests read in each language.</note>
+      </trans-unit>
+      <trans-unit id="FilesFound">
+        <source>{count, plural, =0 {No file found} one {# file found} other {# files found}}</source>
+        <target state="new">{count, plural, =0 {No file found} one {# file found} other {# files found}}</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="NotAProject">
+        <source>{name} is not a project</source>
+        <target state="new">{name} is not a project</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="Stopped">
+        <source>{what} stopped: {why}</source>
+        <target state="new">{what} stopped: {why}</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="Moved">
+        <source>{kind, select, file {The file moved} folder {The folder moved} other {It moved}}</source>
+        <target state="new">{kind, select, file {The file moved} folder {The folder moved} other {It moved}}</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="Measured">
+        <source>{amount, number} of {total, number, integer}</source>
+        <target state="new">{amount, number} of {total, number, integer}</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="Quoted">
+        <source>The folder's '{'braces'}' and it''s quoted</source>
+        <target state="new">The folder's '{'braces'}' and it''s quoted</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="EnglishOnly">
+        <source>Only in English</source>
+        <target state="new">Only in English</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="EnglishChanged">
+        <source>Words whose English changed since</source>
+        <target state="new">Words whose English changed since</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="Renamed">
+        <source>{name} was renamed</source>
+        <target state="new">{name} was renamed</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="NotYetTranslated">
+        <source>Not yet translated</source>
+        <target state="new">Not yet translated</target>
+        <note />
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

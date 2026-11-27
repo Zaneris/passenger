@@ -183,6 +183,16 @@ unicode-widths:
 unicode-identifiers:
     python3 -I tools/unicode-identifiers.py
 
+# Rewrite each language's plural rules and the script each language is likely written in from the Unicode CLDR
+# (tools/cldr.py).
+cldr:
+    python3 -I tools/cldr.py
+
+# Bring every translation (xlf/Name.<culture>.xlf beside each .resx) in step with its English, marking a translation
+# older than its English for review, and say what each language lacks (tools/words.py): just words [--add LANGUAGE]
+words *args:
+    python3 -I tools/words.py {{args}}
+
 # Run from a clone of the last build, so rebuilding Passenger never changes the files under it (tools/mcp.sh).
 # Passenger as an MCP server over a folder, its tools on standard input and output: just mcp [FOLDER]
 mcp folder="":

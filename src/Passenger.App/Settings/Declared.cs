@@ -35,6 +35,9 @@ public static class Declared
         [(ThemeChoice.System, "System"), (ThemeChoice.Dark, "Dark"), (ThemeChoice.Light, "Light")],
         new(D.Appearance, "Dark or light", "colour color theme dark light system sync os appearance mode"));
 
+    public static readonly LanguageSetting DisplayLanguage = new(s => s.DisplayLanguage, (s, v) => s with { DisplayLanguage = v },
+        new(D.Appearance, SettingsWords.Language, SettingsWords.LanguageWords.English, SettingsWords.LanguageNote));
+
     public static readonly FontSetting WindowFontFamily = new(nameof(AppSettings.WindowFontFamily), s => s.WindowFontFamily, (s, v) => s with { WindowFontFamily = v }, null,
         FontChoices.Window, new(D.Appearance, "Font family", "font family typeface ui interface window words system segoe san francisco inter",
             "The font of the window's words: menus, tool windows, tabs, dialogs and popups. The system font is Segoe UI on Windows, "

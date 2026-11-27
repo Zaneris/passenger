@@ -228,6 +228,10 @@ public sealed class SettingsStore : IDisposable
         {
             InterfaceScale.Use(scaled, after.DisplayScale);
         }
+        if (Avalonia.Application.Current is not null && (before is null || before.DisplayLanguage != after.DisplayLanguage))
+        {
+            UiLanguage.Put(LanguageSetting.InForce(after.DisplayLanguage));
+        }
     }
 
     /// <summary>The settings whose fonts are in force, which the theme's fonts give way to.</summary>

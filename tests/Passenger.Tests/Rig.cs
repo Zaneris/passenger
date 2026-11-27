@@ -231,6 +231,8 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable(Passenger.App.CSharp.CSharpService.SolutionWideVariable, "off");
         // Nor the person's motion and caret settings: carets blink at Passenger's own rate but where a test stands in.
         Environment.SetEnvironmentVariable(Passenger.App.SystemMotion.Variable, "full,blink=530");
+        // English whatever the machine's languages, so every test reads the words as written.
+        Environment.SetEnvironmentVariable(Passenger.Core.SystemLanguages.Variable, "en-US");
         // Nor the person's high contrast: a window shows the theme its test chooses but where a test stands in.
         Environment.SetEnvironmentVariable(Passenger.App.SystemContrast.Variable, "none");
         // Nor the person's own Windows Path: a program a test's PATH lacks stays missing but where a test stands in.

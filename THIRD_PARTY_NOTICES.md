@@ -825,6 +825,28 @@ Authors, under the SIL Open Font License 1.1, whose full text is beside the font
 | `Inter-SemiBold.ttf` | `78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3` |
 | `Inter-Bold.ttf` | `288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f` |
 
+## Noto Sans Devanagari and Noto Sans Gurmukhi
+
+`src/Passenger.App/Fonts/` holds the hinted Regular, Medium, SemiBold and Bold faces of Noto Sans Devanagari 2.007
+(`NotoSansDevanagari/hinted/ttf/` of `NotoSansDevanagari-v2.007.zip`,
+https://github.com/notofonts/devanagari/releases/tag/NotoSansDevanagari-v2.007) and Noto Sans Gurmukhi 2.004
+(`NotoSansGurmukhi/hinted/ttf/` of `NotoSansGurmukhi-v2.004.zip`,
+https://github.com/notofonts/gurmukhi/releases/tag/NotoSansGurmukhi-v2.004), Hindi's and Punjabi's words where the
+system has no face of their script, Copyright 2022 The Noto Project Authors, under the SIL Open Font License 1.1, whose
+full text is beside the fonts as each release gives it (`NotoSansDevanagari-OFL.txt`, `NotoSansGurmukhi-OFL.txt`). The
+fonts are unmodified; their SHA-256:
+
+| File | SHA-256 |
+|---|---|
+| `NotoSansDevanagari-Regular.ttf` | `4e3c66638958c3e2ab5d37f47a8deb89fffeb7be9985c665a519bbc7ba762313` |
+| `NotoSansDevanagari-Medium.ttf` | `9e5a7818700cac18ae596543362c59c36dbcd28f0c1efc40dd0690ec638ffb35` |
+| `NotoSansDevanagari-SemiBold.ttf` | `943a11e02d0d282bed619951ab4dc9a4912e9fceb00441bf4aacd54fa57b6e63` |
+| `NotoSansDevanagari-Bold.ttf` | `6a09c8d797cfc803d32cdc731e809424d74cbaff59f503de34ade421a08e5bc2` |
+| `NotoSansGurmukhi-Regular.ttf` | `658d0207da305a1411c539a8b0bbeda64d4146e54fb4827facddb890b6b90d74` |
+| `NotoSansGurmukhi-Medium.ttf` | `f7e0a2184434ca064304a2c727b7ded8584049e4b12a7728109b7885a665f75d` |
+| `NotoSansGurmukhi-SemiBold.ttf` | `f8a54df867ccdf5e329877be789e6fc94558e9adb7754e89900368af7b983870` |
+| `NotoSansGurmukhi-Bold.ttf` | `4f1bb4b1a05a0ebe1520678132a9448fce8f1741552c5292d7df7a7786d2c956` |
+
 ## Fluent UI System Icons
 
 `src/Passenger.App/Theme/Icons.axaml` holds path data from Microsoft's Fluent UI System Icons
@@ -970,7 +992,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-## Unicode Character Database
+## Unicode Character Database and CLDR
 
 `src/Passenger.Text/WideCharacters.cs`, the characters the terminal and Vim mode count two columns wide, is derived from the
 Unicode Character Database 16.0.0's `EastAsianWidth.txt` and `emoji/emoji-data.txt`
@@ -980,6 +1002,9 @@ spoof check reads, is derived from Unicode 17.0.0's `security/IdentifierStatus.t
 #39) and its Character Database's `Scripts.txt`, `ScriptExtensions.txt`, `PropertyValueAliases.txt`, `UnicodeData.txt`,
 `PropList.txt` and `DerivedCoreProperties.txt` (https://www.unicode.org/Public/17.0.0/), written by
 `tools/unicode-identifiers.py`.
+`src/Passenger.Core/PluralRules.Cldr.cs`, each language's plural rules, and `src/Passenger.Core/LikelyScripts.Cldr.cs`,
+the script each language is likely written in, are derived from the Unicode CLDR 49's `supplemental/plurals.xml` and
+`supplemental/likelySubtags.xml` (https://github.com/unicode-org/cldr at tag release-49), written by `tools/cldr.py`.
 `src/Passenger.Workspace/GDScript/IdentifierSpoofing.cs` is a port to C# of International Components for Unicode (ICU)
 78.3's spoof check, `icu4c/source/i18n/uspoof.cpp` (`checkImpl`) and `uspoof_impl.cpp` (its script sets, restriction
 level, numerics and hidden overlay) of https://github.com/unicode-org/icu at tag release-78.3, under the same licence.

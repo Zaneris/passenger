@@ -25,6 +25,7 @@ public sealed class FallbackFonts : IFontCollection
     private static readonly OpenTypeTag Morx = OpenTypeTag.Parse("morx");
     private static readonly Lock Installing = new();
     private static readonly ConcurrentDictionary<string, FontFamily> Carried = new(StringComparer.Ordinal);
+    private static IReadOnlyList<string> ForScripts = [];
     private static FontManager? installedIn;
 
     private readonly Platform platform;
@@ -72,6 +73,18 @@ public sealed class FallbackFonts : IFontCollection
     {
         Carried[embedded.Name] = embedded;
         return Of(embedded.Name);
+    }
+
+    /// <summary>A family Passenger carries for the scripts it writes (Devanagari, Gurmukhi), which draws a character of
+    /// theirs where the platform's own fallback names no face that serves it, so a language Passenger speaks needs no font
+    /// installed.</summary>
+    public static void CarryForScripts(FontFamily embedded)
+    {
+        Carry(embedded);
+        lock (Installing)
+        {
+            ForScripts = [.. ForScripts, embedded.Name];
+        }
     }
 
     /// <summary>A carried or installed family by its name, named through the collection; a name its form can't hold (a comma
@@ -163,15 +176,24 @@ public sealed class FallbackFonts : IFontCollection
     {
     }
 
-    /// <summary>The face the platform's fallback names for a character, where it has the character and can shape its script.</summary>
+    /// <summary>The face the platform's fallback names for a character, where it has the character and can shape its script;
+    /// else a family carried for its script (<see cref="CarryForScripts"/>) that does.</summary>
     private Answer? Ask(int codepoint, FontCollectionKey style, string? familyName, string language)
     {
-        if (platform(codepoint, style, familyName, language) is not { } glyphs || !glyphs.CharacterToGlyphMap.TryGetGlyph(codepoint, out _)
-            || !Shapes(glyphs, new Codepoint((uint)codepoint).Script))
+        Script script = new Codepoint((uint)codepoint).Script;
+        if (platform(codepoint, style, familyName, language) is { } glyphs && glyphs.CharacterToGlyphMap.TryGetGlyph(codepoint, out _) && Shapes(glyphs, script))
         {
-            return null;
+            return new Answer(Made(glyphs), new Typeface(found.Serve(glyphs), style.Style, style.Weight, style.Stretch));
         }
-        return new Answer(Made(glyphs), new Typeface(found.Serve(glyphs), style.Style, style.Weight, style.Stretch));
+        foreach (string carried in ForScripts)
+        {
+            if (TryGetGlyphTypeface(carried, style.Style, style.Weight, style.Stretch, out GlyphTypeface? face)
+                && face.CharacterToGlyphMap.TryGetGlyph(codepoint, out _) && Shapes(face, script))
+            {
+                return new Answer(face, new Typeface(Of(carried), style.Style, style.Weight, style.Stretch));
+            }
+        }
+        return null;
     }
 
     /// <summary>A face about to be given, handed first to what the installer sets on each.</summary>

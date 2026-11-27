@@ -155,4 +155,20 @@ internal static class Rules
         Category,
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor WordsUnread = new(
+        "PSG9003",
+        "A words file is not read",
+        "{0}'s words are not all read: {1}",
+        Category,
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor WordsOutOfStep = new(
+        "PSG9004",
+        "A translation is out of step with its English",
+        "{0}: {1}",
+        Category,
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }

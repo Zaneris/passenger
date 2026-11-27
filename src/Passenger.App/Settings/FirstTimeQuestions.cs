@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Passenger.App.State;
 using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App.Settings;
 
@@ -101,7 +102,7 @@ public sealed class FirstTimeQuestions(Func<StateStore> store, Func<bool> unseen
         }
         moment ??= new QuestionMoment();
         List<(ToggleSetting Setting, CheckBox? Box)> chosen = [.. question.Settings.Select(s => (s, question.Settings.Count > 1 && !moment.Decided.ContainsKey(s)
-            ? new CheckBox { Content = s.Row?.Label, IsChecked = true } : null))];
+            ? Labelled(new CheckBox { IsChecked = true }, s.Row?.Label) : null))];
         StackPanel detail = new() { Spacing = Gaps.Small };
         foreach ((ToggleSetting setting, CheckBox? box) in chosen)
         {
@@ -158,6 +159,13 @@ public sealed class FirstTimeQuestions(Func<StateStore> store, Func<bool> unseen
         Changed?.Invoke(this, question);
     }
 
+    /// <summary>A check box showing a setting's label.</summary>
+    private static CheckBox Labelled(CheckBox box, Words? label)
+    {
+        ShownWords.Set(box, ContentControl.ContentProperty, label);
+        return box;
+    }
+
     /// <summary>The question's settings a file's .editorconfig decides (<see cref="EditorConfigOver"/>), each with the words
     /// saying so, which its question shows in place of the setting's box.</summary>
     public static IReadOnlyDictionary<ToggleSetting, string> DecidedBy(FirstTimeQuestion question, Func<string, string?> conventions)
@@ -167,7 +175,7 @@ public sealed class FirstTimeQuestions(Func<StateStore> store, Func<bool> unseen
         {
             if (setting.Row is { Over: { } over } row && over.SetIn(conventions) is { } set)
             {
-                decided[setting] = $"{row.Label}: this file's .editorconfig sets {set}, which every save follows.";
+                decided[setting] = $"{row.Label.English}: this file's .editorconfig sets {set}, which every save follows.";
             }
         }
         return decided;

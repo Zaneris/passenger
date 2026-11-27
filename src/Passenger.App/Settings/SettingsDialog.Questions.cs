@@ -26,7 +26,7 @@ public sealed partial class SettingsDialog
             ToolTip.SetShowOnDisabled(box, true);
             ToolButtons.Grey(box, "Open a folder to choose this for its repository");
         }
-        Add(row.Page, row.Label, box, row.Words, row.Note);
+        Add(row.Page, row.Label, box, row.Searched, row.Note);
     }
 
     private void ApplyQuestions()

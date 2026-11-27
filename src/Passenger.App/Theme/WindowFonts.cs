@@ -22,6 +22,14 @@ public static class WindowFonts
     /// <summary>Inter as Passenger carries it, the platform's own fallback drawing what it lacks (<see cref="FallbackFonts"/>).</summary>
     public static readonly FontFamily Carried = FallbackFonts.Carry(new FontFamily(CarriedName));
 
+    /// <summary>The scripts' faces Passenger carries for the languages it speaks beyond Latin's letters, Hindi's Devanagari and
+    /// Punjabi's Gurmukhi, which draw their words wherever the system names no face of theirs.</summary>
+    public static readonly IReadOnlyList<string> ScriptFaces = [.. new[] { "Noto Sans Devanagari", "Noto Sans Gurmukhi" }.Select(name =>
+    {
+        FallbackFonts.CarryForScripts(new FontFamily($"avares://Passenger/Fonts#{name}"));
+        return name;
+    })];
+
     // Unheld: one list for every window, each asker holding its own wait for it (InstalledAsync).
     private static readonly Lazy<Task<IReadOnlyList<string>>> Found = new(() => BackgroundWork.Unheld(() => WindowFontNames.Choosable(Families().Where(PlatformWidths.Readable))));
 

@@ -84,6 +84,7 @@ internal static class Program
             _ = ThemeSource.Repository.Reached;
             _ = Containers.BuildKitChecks.ByDefault;
             _ = SystemMotion.Named;
+            _ = SystemLanguages.Named;
             _ = SystemContrast.Named;
             _ = Debugging.BrowserRun.Proxy;
             Mcp.McpProxy.CheckVariable();
@@ -238,10 +239,14 @@ internal static class Program
         Console.Error.WriteLine($"passenger: {why}");
     }
 
-    /// <summary>The theme, its dark or light and the code's colours the command line names, over those in force.</summary>
+    /// <summary>The theme, its dark or light, the code's colours and the language the command line names, over those in force.</summary>
     public static void ApplyTheme(Application app, LaunchOptions options)
     {
         ApplyTheme(app, options.Theme);
+        if (options.Language is { } language)
+        {
+            UiLanguage.Put(language);
+        }
         if (options.Look is not null || options.Scheme is not null)
         {
             Themes.Apply(app, options.Look is { } look ? look.Theme : Themes.Look, options.Scheme is { } scheme ? scheme.Theme : Themes.Scheme);

@@ -6,6 +6,7 @@ using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App.Settings;
@@ -256,7 +257,8 @@ public sealed partial class SettingsDialog : IdeWindow
         Func<Option, bool> byShortcut = ShortcutFiltered();
         foreach (Option option in options)
         {
-            option.Kept = words.All(w => option.Words.Contains(w, StringComparison.OrdinalIgnoreCase)) && byShortcut(option);
+            option.Kept = words.All(w => option.Searched.Contains(w, StringComparison.OrdinalIgnoreCase) || option.Shown.Shown.Contains(w, StringComparison.OrdinalIgnoreCase))
+                && byShortcut(option);
         }
         string? was = Page;
         string[] listed = [.. Order.Where(p => options.Any(o => o.Page == p && o.Kept)
@@ -298,6 +300,7 @@ public sealed partial class SettingsDialog : IdeWindow
         {
             Add(Declared.MainMenuBar);
         }
+        Add(Declared.DisplayLanguage);
         Add(Declared.WindowFontFamily);
         Add(Declared.DisplayScale);
         Add(Declared.EditorTabs);
@@ -551,11 +554,11 @@ public sealed partial class SettingsDialog : IdeWindow
             {
                 // Greyed, saying why, while the setting it follows leaves it no effect.
                 ToolTip.SetShowOnDisabled(made, true);
-                dependents.Add((row.Label, made, when));
+                dependents.Add((row.Label.English, made, when));
                 Follow(made, when);
             }
             return made;
-        }, row.Words, row.NoteShown, over: row.Over);
+        }, row.Searched, row.NoteShown, over: row.Over);
     }
 
     /// <summary>The rows another setting greys, each with what it takes effect under.</summary>
@@ -621,13 +624,14 @@ public sealed partial class SettingsDialog : IdeWindow
 
     /// <summary>An option's row (<see cref="Add(string, string, Func{Control}, string, string?, string?, EditorConfigOver?, Action{OptionRow}?)"/>)
     /// of an editor already made.</summary>
-    private Option Add(string page, string label, Control editor, string keywords, string? note = null, string? action = null, EditorConfigOver? over = null) =>
+    private Option Add(string page, Words label, Control editor, string keywords, Words? note = null, string? action = null, EditorConfigOver? over = null) =>
         Add(page, label, () => editor, keywords, note, action, over);
 
     /// <summary>An option's row: its label, what edits it, and a note under the editor when it needs saying what it
     /// does; a keymap row names its action, and one the folder's .editorconfig files may set the keys it is said over by.
-    /// Found by a search from its words alone, it is made, then given to <paramref name="made"/>, as its page is first shown.</summary>
-    private Option Add(string page, string label, Func<Control> editor, string keywords, string? note = null, string? action = null, EditorConfigOver? over = null,
+    /// Found by a search from its words alone, its label's in either language, it is made, then given to
+    /// <paramref name="made"/>, as its page is first shown.</summary>
+    private Option Add(string page, Words label, Func<Control> editor, string keywords, Words? note = null, string? action = null, EditorConfigOver? over = null,
         Action<OptionRow>? made = null)
     {
         // A row an .editorconfig says over is found by the keys that do, as a person reads them in the file.
@@ -637,14 +641,14 @@ public sealed partial class SettingsDialog : IdeWindow
             OptionRow row = Row(label, editor(), note, over);
             made?.Invoke(row);
             return row;
-        }, $"{page} {label} {keywords}{keys}", action);
+        }, $"{page} {label.English} {keywords}{keys}", action);
         options.Add(option);
         return option;
     }
 
     /// <summary>An option's row as its page first shows it: its label, its editor, its note, and what the folder's
     /// .editorconfig files set over it, as last read.</summary>
-    private OptionRow Row(string label, Control editor, string? note, EditorConfigOver? over)
+    private OptionRow Row(Words label, Control editor, Words? note, EditorConfigOver? over)
     {
         // Beside an editor of several lines the label stands level with its first line.
         double firstLine = editor switch
@@ -657,22 +661,26 @@ public sealed partial class SettingsDialog : IdeWindow
         };
         TextBlock name = new()
         {
-            Text = label,
             Padding = new Thickness(0, 0, Gaps.Group, 0),
             TextWrapping = TextWrapping.Wrap,
         };
+        ShownWords.Set(name, TextBlock.TextProperty, label);
         AutomationProperties.SetLabeledBy(editor, name);
         // The one field of an editor of several parts (a check box before it, its problem under it) is heard by the row's words.
         if (editor is not TextBox && editor.GetLogicalDescendants().OfType<TextBox>().ToList() is [{ } field] && AutomationProperties.GetName(field) is null or "")
         {
             AutomationProperties.SetLabeledBy(field, name);
         }
-        TextBlock? said = note is null ? null : new TextBlock { Text = note, TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left, Classes = { StyleClasses.Muted } };
+        TextBlock? said = note is null ? null : new TextBlock { TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left, Classes = { StyleClasses.Muted } };
+        if (said is not null)
+        {
+            ShownWords.Set(said, TextBlock.TextProperty, note);
+        }
         TextBlock? setOver = null;
         if (over is not null)
         {
             setOver = new TextBlock { TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false, Classes = { StyleClasses.SaidOver } };
-            saidOver.Add((label, over, setOver));
+            saidOver.Add((label.English, over, setOver));
             if (saidRead is { } read)
             {
                 Say(read, over, setOver);
@@ -690,13 +698,17 @@ public sealed partial class SettingsDialog : IdeWindow
 
     /// <summary>An option as a search finds it, by its page, label and words, its row made as its page is first shown
     /// (<see cref="Row"/>); whether the search keeps it.</summary>
-    private sealed class Option(string page, string label, Func<Control> make, string words, string? action = null)
+    private sealed class Option(string page, Words label, Func<Control> make, string words, string? action = null)
     {
         public string Page { get; } = page;
 
-        public string Label { get; } = label;
+        /// <summary>Its label's English, by which code and agents name it.</summary>
+        public string Label { get; } = label.English;
 
-        public string Words { get; set; } = words;
+        /// <summary>Its label as shown, which a search finds it by too.</summary>
+        public Words Shown { get; } = label;
+
+        public string Searched { get; set; } = words;
 
         public string? Action { get; } = action;
 

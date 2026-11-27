@@ -19,5 +19,7 @@
     <!-- A choice of names as Passenger says one, compiled in since netstandard2.0 takes no Passenger.Core. -->
     <Compile Include="../Passenger.Core/Plural.cs" Link="Plural.cs" />
     <Compile Include="../Passenger.Core/Numbers.cs" Link="Numbers.cs" />
+    <!-- A message's arguments as the words' resolution reads them, so a member's parameters are its message's. -->
+    <Compile Include="../Passenger.Core/MessagePattern.cs" Link="MessagePattern.cs" />
   </ItemGroup>
 </Project>

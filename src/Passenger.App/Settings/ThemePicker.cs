@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App.Settings;
 
@@ -55,7 +56,7 @@ public sealed class ThemePicker : StackPanel
         this.working = working;
         this.change = change;
         Spacing = Gaps.Tight;
-        AutomationProperties.SetName(Box, setting.Row?.Label);
+        ShownWords.Set(Box, AutomationProperties.NameProperty, setting.Row?.Label);
         ReusedRows.Use(Box, () =>
         {
             TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };

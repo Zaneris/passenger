@@ -59,6 +59,7 @@ public sealed class SettingsPreview : IDisposable
         Theme = Shown(from.Theme, to.Theme, saved.Theme),
         Look = Shown(from.Look, to.Look, saved.Look),
         WindowFontFamily = Shown(from.WindowFontFamily, to.WindowFontFamily, saved.WindowFontFamily),
+        DisplayLanguage = Shown(from.DisplayLanguage, to.DisplayLanguage, saved.DisplayLanguage),
         DisplayScale = Shown(from.DisplayScale, to.DisplayScale, saved.DisplayScale),
         EditorTabs = Shown(from.EditorTabs, to.EditorTabs, saved.EditorTabs),
         ToolWindowLook = Shown(from.ToolWindowLook, to.ToolWindowLook, saved.ToolWindowLook),

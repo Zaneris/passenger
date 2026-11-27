@@ -21,7 +21,8 @@
     <AvaloniaResource Include="Assets/Passenger.ico" />
     <!-- The mark About, the Welcome page, the first start and What's New show, drawn from Assets/passenger.svg. -->
     <AvaloniaResource Include="Assets/passenger.png" />
-    <!-- The window's typeface (Theme/WindowFonts.cs): Inter 4.1's hinted faces as rsms/inter's release gives them. -->
+    <!-- The window's typeface (Theme/WindowFonts.cs): Inter 4.1's hinted faces as rsms/inter's release gives them, and
+         Noto Sans Devanagari's and Gurmukhi's hinted faces for Hindi's and Punjabi's words, as notofonts' releases give them. -->
     <AvaloniaResource Include="Fonts/*.ttf" />
     <!-- The themes Passenger carries beside its own, a source in theme format 1 (Theme/BuiltInThemes.cs, docs/themes.md). -->
     <AvaloniaResource Include="Theme/BuiltIn/**/*.json;Theme/BuiltIn/**/*.png;Theme/BuiltIn/**/*.jpg;Theme/BuiltIn/**/*.jpeg;Theme/BuiltIn/**/*.webp" />
@@ -284,7 +285,7 @@
       <NoticesServerPackage Include="@(NoticesServer->WithMetadataValue('Kind', 'package'))" />
       <NoticeServerDeps Include="%(NoticesServerPackage.Folder)**/*.deps.json" />
       <NoticeWebStamp Include="@(NoticesWeb->'%(Stamp)')" />
-      <NoticeText Include="$(NoticesRepository)THIRD_PARTY_NOTICES.md;$(NoticesRepository)LICENSE;$(NoticesRepository)tools/Passenger.Notices/Licenses/*.txt;$(NoticesRepository)src/Passenger.Editor/Fonts/OFL.txt;$(NoticesRepository)src/Passenger.App/Fonts/OFL.txt" />
+      <NoticeText Include="$(NoticesRepository)THIRD_PARTY_NOTICES.md;$(NoticesRepository)LICENSE;$(NoticesRepository)tools/Passenger.Notices/Licenses/*.txt;$(NoticesRepository)src/Passenger.Editor/Fonts/OFL.txt;$(NoticesRepository)src/Passenger.App/Fonts/OFL.txt;$(NoticesRepository)src/Passenger.App/Fonts/NotoSans*-OFL.txt" />
     </ItemGroup>
     <RemoveDuplicates Inputs="@(NoticePackage)">
       <Output TaskParameter="Filtered" ItemName="NoticePackageOnce" />
@@ -307,6 +308,8 @@
       <NoticeLine Include="@(NoticesWeb->'node=%(Identity)node_modules')" />
       <NoticeLine Include="text=JetBrains Mono, the editor's typeface, is under the SIL Open Font License 1.1, as JetBrains Mono gives it|$(NoticesRepository)src/Passenger.Editor/Fonts/OFL.txt" />
       <NoticeLine Include="text=Inter, the window's typeface, is under the SIL Open Font License 1.1, as Inter gives it|$(NoticesRepository)src/Passenger.App/Fonts/OFL.txt" />
+      <NoticeLine Include="text=Noto Sans Devanagari, Hindi's typeface, is under the SIL Open Font License 1.1, as Noto gives it|$(NoticesRepository)src/Passenger.App/Fonts/NotoSansDevanagari-OFL.txt" />
+      <NoticeLine Include="text=Noto Sans Gurmukhi, Punjabi's typeface, is under the SIL Open Font License 1.1, as Noto gives it|$(NoticesRepository)src/Passenger.App/Fonts/NotoSansGurmukhi-OFL.txt" />
     </ItemGroup>
     <WriteLinesToFile File="$(NoticesArguments)" Lines="@(NoticeLine)" Overwrite="true" WriteOnlyWhenDifferent="true" />
   </Target>
