@@ -53,7 +53,8 @@ public sealed class EditingBehaviourTests
 
     /// <summary>Occurrences taken from a caret leave longer names holding the word alone, a brace typed above the one
     /// Enter wrote types over it unless a block around lacks its own, Tab steps over a closer the typing help wrote, Cyclic
-    /// Expand Word finishes a word begun as the text's words, and Paste as Plain Text pastes what Paste reindents as it is.</summary>
+    /// Expand Word finishes a word begun as the text's words, Paste as Plain Text pastes what Paste reindents as it is, and
+    /// a control character shows its mark two columns wide.</summary>
     [AvaloniaFact]
     public void Words_and_braces_typed_go_where_a_person_means()
     {
@@ -64,6 +65,22 @@ public sealed class EditingBehaviourTests
         Flow.StepApart<EditingBehaviourTests>("paste as plain text pastes the clipboard as it is where paste reindents it", t => t.Paste_as_plain_text_pastes_the_clipboard_as_it_is_where_paste_reindents_it());
         Flow.StepApart<EditingBehaviourTests>("statements and elements move by the syntax and unwrap takes a body out each one step of undo", t => t.Statements_and_elements_move_by_the_syntax_and_unwrap_takes_a_body_out_each_one_step_of_undo());
         Flow.StepApart<EditingBehaviourTests>("split line transpose delete to line ends overwrite and column mode act on their keys", t => t.Split_line_transpose_delete_to_line_ends_overwrite_and_column_mode_act_on_their_keys());
+        Flow.StepApart<EditingBehaviourTests>("a control character shows its mark two columns wide and its line goes on past it", t => t.A_control_character_shows_its_mark_two_columns_wide_and_its_line_goes_on_past_it());
+    }
+
+    /// <summary>A form feed is drawn as ^L, two columns, where it ended the line it stood on, the text after it unseen: the
+    /// letter after it stands where the next line's fourth letter does, the line's end past it, and Right steps over it whole.</summary>
+    private void A_control_character_shows_its_mark_two_columns_wide_and_its_line_goes_on_past_it()
+    {
+        EditorRig rig = new("a\fb\nabcd");
+        Ui.Settle();
+        double after = rig.Editor.PointOf(2).X;
+        double below = rig.Editor.PointOf(7).X;
+        Assert.True(Math.Abs(after - below) < 0.5, $"The b after a form feed stands at {after}, not at {below} where the fourth letter below does, so its mark is not two columns wide");
+        Assert.True(rig.Editor.PointOf(3).X > after + 1, "The line's end stands no further than the b after its form feed, so the line was drawn only to the form feed");
+        rig.PlaceCaret(1);
+        rig.Press("RIGHT");
+        Assert.True(rig.Caret == 2, $"Right from before the form feed left the caret at {rig.Caret}, not past the character whole");
     }
 
     /// <summary>Alt+/ after "to" finishes it as the words above, nearest first, then those below from the end; the word as

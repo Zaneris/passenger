@@ -18,15 +18,20 @@ public readonly record struct VimTarget(int Offset, VimMotionKind Kind);
 /// beep stops the command it was part of.</summary>
 public static class VimMotions
 {
-    /// <summary>The kind of the character at an offset for word motions: 0 blank or line break, 1 punctuation, 2 a
-    /// word's (<see cref="WordCharacters"/>), a mark or joiner taking the kind of the character it carries on; a WORD's
-    /// every non-blank is 2.</summary>
+    /// <summary>The kind of the character at an offset for word motions: 0 blank (<see cref="IsBlank"/>) or line break,
+    /// 1 punctuation, a control character among it, 2 a word's (<see cref="WordCharacters"/>), a mark or joiner taking the
+    /// kind of the character it carries on; a WORD's every non-blank is 2.</summary>
     public static int KindAt(TextSnapshot text, int offset, bool bigWord)
     {
         char c = text[offset];
         c = WordCharacters.Extends(c) ? text[WordCharacters.Base(text, offset)] : c;
-        return char.IsWhiteSpace(c) ? 0 : bigWord || WordCharacters.IsWord(c) ? 2 : 1;
+        bool lone = c == '\r' && (offset + 1 >= text.Length || text[offset + 1] != '\n');
+        return IsBlank(c) && !lone ? 0 : bigWord || WordCharacters.IsWord(c) ? 2 : 1;
     }
+
+    /// <summary>Whether a character is blank to words: white space but the control characters a line shows as marks (<see
+    /// cref="ControlCharacters"/>), with a tab and the line breaks.</summary>
+    public static bool IsBlank(char c) => c is '\t' or '\n' or '\r' || (char.IsWhiteSpace(c) && !char.IsControl(c));
 
     /// <summary>Where the character a run of one kind ends with begins: the start of its grapheme, so a word's end lands
     /// on the letter its marks carry on.</summary>

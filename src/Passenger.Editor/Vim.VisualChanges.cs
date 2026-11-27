@@ -71,9 +71,9 @@ public sealed partial class Vim
                 ? (overLines ? keptBlockLeft : 0,
                     stretch.Cursor >= stretch.Anchor || !lines ? CaretColumn(text, stretch.High, tab) : !overLines ? CaretColumn(text, stretch.Cursor, tab) : 0)
             : (TextNavigation.VisualColumn(text, stretch.Low, tab), CaretColumn(text, stretch.High, tab));
-        // A tab the block's edge cuts in two (r: any tab it takes) is first made the spaces it shows.
-        EditPlan? split = block && !lines && (op is "I" or "A" or "r" || basic is "d" or "c" or "y")
-            ? SplitTabs(text, top, bottom, left, right, tab, cutsLeft: op != "A", cutsRight: op != "I", inside: op == "r")
+        // A tab or other character of several columns the block's edge cuts in two (r: any it takes) is first made the spaces it shows.
+        EditPlan? split = block && !lines && (op is "I" or "A" or "r" or "p" or "P" or "<" || basic is "d" or "c" or "y")
+            ? SplitCells(text, top, bottom, left, right, tab, cutsLeft: op != "A", cutsRight: op is not ("I" or "<"), inside: op == "r")
             : null;
         return split is null ? Acted(text) : AfterSplit(split, Acted(text.Apply(split.Edits)), text, keepsText: basic == "y" && op is not ("I" or "A" or "r"), tab);
 
@@ -172,9 +172,10 @@ public sealed partial class Vim
         }
     }
 
-    /// <summary>The tabs of a block's lines that its left or right edge cuts in two (with <paramref name="inside"/>, every
-    /// tab it takes) made as many spaces as the cells they show; null where there are none.</summary>
-    private static EditPlan? SplitTabs(TextSnapshot text, int top, int bottom, int left, int right, int tab, bool cutsLeft, bool cutsRight, bool inside)
+    /// <summary>The tabs and other characters of several columns (wide ones, control characters' marks) of a block's
+    /// lines that its left or right edge cuts in two (with <paramref name="inside"/>, every such it takes) made as many
+    /// spaces as the cells they show; null where there are none.</summary>
+    private static EditPlan? SplitCells(TextSnapshot text, int top, int bottom, int left, int right, int tab, bool cutsLeft, bool cutsRight, bool inside)
     {
         List<TextEdit> edits = [];
         for (int line = top; line <= bottom; line++)
@@ -183,17 +184,13 @@ public sealed partial class Vim
             {
                 continue;
             }
-            for (int p = piece.Start; p < piece.End; p = TextNavigation.NextGrapheme(text, p))
+            for (int p = piece.Start, next, from = TextNavigation.VisualColumn(text, p, tab), to; p < piece.End; p = next, from = to)
             {
-                if (text[p] != '\t')
+                next = TextNavigation.NextGrapheme(text, p);
+                to = TextNavigation.ColumnAfter(text, p, next, from, tab);
+                if ((text[p] == '\t' || to - from > 1) && (inside || (cutsLeft && from < left) || (cutsRight && right != int.MaxValue && to > right + 1)))
                 {
-                    continue;
-                }
-                int from = TextNavigation.VisualColumn(text, p, tab);
-                int to = TextNavigation.VisualColumn(text, p + 1, tab);
-                if (inside || (cutsLeft && from < left) || (cutsRight && right != int.MaxValue && to > right + 1))
-                {
-                    edits.Add(new TextEdit(p, 1, new string(' ', to - from)));
+                    edits.Add(new TextEdit(p, next - p, new string(' ', to - from)));
                 }
             }
         }
@@ -350,8 +347,9 @@ public sealed partial class Vim
                 int column = CaretColumn(text, cursor, tab);
                 int aim = aimed >= 0 ? aimed : column;
                 LineSpan cursorLine = VimMotions.LineOf(text, cursor);
-                // On one line the cursor's own column counts, past a one-character line's end too.
+                // On one line the cursor's own column counts, past a one-character line's end too, a character of several columns its last.
                 bool onIt = cursorLine.Line == anchorLine.Line ? CaretColumn(text, r.Cursor, tab) == 0
+                        && (r.Cursor >= cursorLine.End || TextNavigation.ColumnAfter(text, r.Cursor, TextNavigation.NextGrapheme(text, r.Cursor), 0, tab) == 1)
                     : kept.Left <= TextNavigation.VisualColumn(text, cursorLine.End, tab) && (aim == kept.Left || (aim > kept.Left && column < kept.Left));
                 // Back over lines A passes the first character where the kept columns start past it, or after $ differ.
                 bool afterFirst = above && (aim == int.MaxValue ? kept.Left != kept.Right : kept.Left != 0) && anchorLine.Length > 0;

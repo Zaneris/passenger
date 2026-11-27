@@ -1044,6 +1044,7 @@ public sealed partial class CodeEditor : Control
         hintRun = null;
         runProperties.Clear();
         runLooks.Clear();
+        controlMarks = null;
         numberRuns = (
             RunWith(palette.LineNumberCurrent),
             RunWith(palette.LineNumber));

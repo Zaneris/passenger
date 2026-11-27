@@ -266,7 +266,9 @@ public sealed partial class Vim
             return (again.Left, toEnd ? int.MaxValue : again.Right);
         }
         int anchorEnd = anchor + Math.Max(1, CellsOf(text, r.Anchor, tab)) - 1;
-        int cursorEnd = cursor + Math.Max(1, CellsOf(text, VimMotions.OffsetAtColumn(text, text.GetLineFromOffset(r.Cursor), cursor, tab), tab)) - 1;
+        // The cursor's column takes the rest of the character it falls in, none of one a short line's end left it before.
+        int under = VimMotions.OffsetAtColumn(text, text.GetLineFromOffset(r.Cursor), cursor, tab);
+        int cursorEnd = Math.Max(cursor, TextNavigation.VisualColumn(text, under, tab) + Math.Max(1, CellsOf(text, under, tab)) - 1);
         return (Math.Min(anchor, cursor), toEnd ? int.MaxValue : Math.Max(anchorEnd, cursorEnd));
     }
 
@@ -664,7 +666,7 @@ public sealed partial class Vim
             {
                 at = empty.End + empty.BreakLength;
             }
-            while (at < end && char.IsWhiteSpace(text[at]) && VimMotions.LineOf(text, at).Length > 0)
+            while (at < end && VimMotions.IsBlank(text[at]) && VimMotions.LineOf(text, at).Length > 0)
             {
                 at++;
             }
@@ -1635,7 +1637,7 @@ public sealed partial class Vim
         bool white = VimMotions.LineOf(text, unit.Start).Length > 0;
         for (int p = unit.Start; p < unit.End && white; p++)
         {
-            white = char.IsWhiteSpace(text[p]);
+            white = VimMotions.IsBlank(text[p]);
         }
         return (unit.Start, white);
     }

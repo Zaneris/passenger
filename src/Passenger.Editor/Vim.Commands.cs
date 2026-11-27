@@ -578,7 +578,7 @@ public sealed partial class Vim
             // Words that end before their last place take an empty line's place no more than any other exclusive end.
             return (taken, landing, words && !VimTextObjects.WordsExclusive(text, caret, n, command.Name == "i", command.Argument == "W", breakEnds));
         }
-        if (op == "c" && command.Name is "w" or "W" && caret < text.Length && !char.IsWhiteSpace(text[caret]))
+        if (op == "c" && command.Name is "w" or "W" && caret < text.Length && VimMotions.KindAt(text, caret, bigWord: true) != 0)
         {
             // cw on a word changes to its end, not the white after it.
             bool big = command.Name == "W";

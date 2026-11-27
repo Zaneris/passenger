@@ -20,6 +20,10 @@ public sealed partial class CodeEditor
     private readonly FrameKept<(string Text, int Style), TextLine> labels = new();
     private readonly FrameKept<(int Number, bool Current), TextLine> numbers = new();
     private readonly Dictionary<TokenKind, TextRunProperties> runProperties = [];
+
+    /// <summary>The look control characters' marks are drawn in, upright in the comments' quiet colour, which every theme
+    /// gives readable on the editor's ground, made once per theme.</summary>
+    private TextRunProperties? controlMarks;
     private (TextRunProperties Current, TextRunProperties Other) numberRuns;
 
     /// <summary>The diff tints of the lines on screen, found again for each frame.</summary>
