@@ -443,13 +443,18 @@ public sealed partial class CodeEditor
     /// view, the thumb's least length aside.</summary>
     internal readonly record struct StripeScale(double Maximum, double Viewport, double RowHeight, double Thumb)
     {
-        /// <summary>How far down a track of a height the thumb's place for a height into the text is, kept on the track.</summary>
+        /// <summary>Maps text height to the scrollbar track. Rows that cannot reach the viewport's centre are
+        /// spread across the corresponding end of the thumb.</summary>
         public double At(double y, double track)
         {
-            double extent = Maximum + Viewport;
-            double at = Maximum > 0 && Thumb > 0 && Thumb < track
-                ? (Thumb / 2) + ((y - (Viewport / 2)) * (track - Thumb) / Maximum)
-                : y * track / Math.Max(extent, RowHeight);
+            if (Maximum <= 0 || Viewport <= 0 || Thumb <= 0 || Thumb >= track)
+            {
+                return Math.Clamp(y * track / Math.Max(Maximum + Viewport, RowHeight), 0, track);
+            }
+            double centre = y - (Viewport / 2);
+            double scroll = Math.Clamp(centre, 0, Maximum);
+            double edge = centre - scroll;
+            double at = (Thumb / 2) + (scroll * (track - Thumb) / Maximum) + (edge * Thumb / Viewport);
             return Math.Clamp(at, 0, track);
         }
     }

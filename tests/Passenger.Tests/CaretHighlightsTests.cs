@@ -64,6 +64,29 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
 
         """;
 
+    private static readonly string PricesController = """
+        sealed partial class PricesControllerV2
+        {
+            private readonly IMediator _mediator;
+
+            public PricesControllerV2(IMediator mediator)
+            {
+                _mediator = mediator;
+            }
+
+            // An unrelated _mediator in a different scope.
+            public string Preview(IMediator _mediator) => _mediator.Send("_mediator");
+        """ + new string('\n', 80) + """
+            public string ReadPrice() => _mediator.Send("price");
+        }
+
+        interface IMediator
+        {
+            string Send(string request);
+        }
+
+        """;
+
     private const string Words = "static class Words\n{\n    // The public count of a text's words, publicly said: Public in a title.\n"
         + "    public static int Count(string text)\n    {\n        int count = 0;\n        foreach (string word in text.Split(' '))\n        {\n"
         + "            count += 1;\n        }\n        return count;\n    }\n\n    public static readonly string Said = \"count every public word\";\n}\n";
@@ -85,6 +108,7 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
     {
         Flow.StepApart("resting the caret on a local highlights its writes and reads and marks them on the scrollbar", () => new CaretHighlightsTests(project), t => t.Resting_the_caret_on_a_local_highlights_its_writes_and_reads_and_marks_them_on_the_scrollbar());
         Flow.StepApart("selecting a property in either direction lights its own occurrences and makes them reachable from the scrollbar", () => new CaretHighlightsTests(project), t => t.Selecting_a_property_lights_its_own_occurrences_and_marks_them_on_the_scrollbar());
+        Flow.StepApart("selecting the _mediator field in its constructor assignment marks its declaration, write and off-screen read (#2387)", () => new CaretHighlightsTests(project), t => t.Selecting_the_mediator_field_marks_its_occurrences_in_this_file());
         Flow.StepApart("a selected C# identifier is never highlighted by spelling when no server can resolve it", () => new CaretHighlightsTests(project), t => t.A_selected_identifier_is_never_highlighted_by_spelling());
         Flow.StepApart("highlights answered before a file's first parse wait for it without holding the window's thread", () => new CaretHighlightsTests(project), t => t.Highlights_answered_before_a_files_first_parse_wait_for_it_without_holding_the_windows_thread());
         Flow.StepApart("moving the caret off a symbol takes its highlights away at once, and another symbol brings its own", () => new CaretHighlightsTests(project), t => t.Moving_the_caret_off_a_symbol_takes_its_highlights_away_at_once_and_another_symbol_brings_its_own());
@@ -179,6 +203,42 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         Ui.Settle();
         Assert.Empty(editor.UsageHighlights);
         Assert.DoesNotContain(editor.StripeMarks, m => m.Kind is StripeMarkKind.Usage or StripeMarkKind.WriteUsage);
+        window.Close();
+    }
+
+    private void Selecting_the_mediator_field_marks_its_occurrences_in_this_file()
+    {
+        MainWindow window = project.Open("PricesControllerV2.cs", height: 600);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        int declaration = PricesController.IndexOf("_mediator;", StringComparison.Ordinal);
+        int write = PricesController.IndexOf("_mediator = mediator", StringComparison.Ordinal);
+        int read = PricesController.IndexOf("_mediator.Send(\"price\")", StringComparison.Ordinal);
+        int length = "_mediator".Length;
+        TextRange[] occurrences = [new(declaration, length), new(write, length), new(read, length)];
+        int readLine = editor.Document.Snapshot.GetLineFromOffset(read);
+        Assert.True(readLine > editor.LinesShown.Last);
+
+        Ui.DoubleClick(editor, editor.PointOf(write + 2) + new Point(1, editor.LineHeight / 2));
+        Assert.Equal(occurrences[1], editor.Selections.Primary.Range);
+        Ui.WaitFor(() => editor.UsageHighlights.Count > 0, () => "the selected field's symbol highlights");
+        Assert.Equal(occurrences, editor.UsageHighlights.Select(use => use.Range));
+        Assert.All(editor.UsageHighlights, use => Assert.False(use.ByText));
+        Assert.Equal(Token(window, TokenKeys.Editor_UsageRead), Ui.Pixel(window, InBox(window, editor, declaration)));
+
+        CodeEditor.StripeMark[] marks = [.. editor.StripeMarks.Where(m => m.Kind is StripeMarkKind.Usage or StripeMarkKind.WriteUsage)];
+        Assert.Equal(occurrences.Select(range => range.Start), marks.Select(m => m.Offset));
+        Assert.Equal([StripeMarkKind.Usage, StripeMarkKind.WriteUsage, StripeMarkKind.Usage], marks.Select(m => m.Kind));
+        foreach (CodeEditor.StripeMark mark in marks)
+        {
+            string token = mark.Kind == StripeMarkKind.WriteUsage ? TokenKeys.Editor_UsageWriteMark : TokenKeys.Editor_UsageReadMark;
+            Assert.Equal(Token(window, token), Ui.Pixel(window, editor.TranslatePoint(editor.StripePoint(mark), window)!.Value));
+        }
+
+        Ui.Click(editor, editor.StripePoint(marks[2]));
+        Assert.Equal(read, editor.Selections.Primary.Caret);
+        Assert.InRange(readLine, editor.LinesShown.First, editor.LinesShown.Last);
+        Assert.Equal(occurrences, editor.UsageHighlights.Select(use => use.Range));
+        Assert.Equal(Token(window, TokenKeys.Editor_UsageRead), Ui.Pixel(window, InBox(window, editor, read)));
         window.Close();
     }
 
@@ -448,6 +508,13 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
                 $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Library</OutputType>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
             File.WriteAllText(PathOf("Totals.cs"), Totals);
             File.WriteAllText(PathOf("Properties.cs"), Properties);
+            File.WriteAllText(PathOf("PricesControllerV2.cs"), PricesController);
+            File.WriteAllText(PathOf("PricesControllerV2.Other.cs"), """
+                sealed partial class PricesControllerV2
+                {
+                    public string ReadFromAnotherFile() => _mediator.Send("other");
+                }
+                """);
             File.WriteAllText(PathOf("Braces.cs"), Braces);
             File.WriteAllText(PathOf("Words.cs"), Words);
             File.WriteAllText(PathOf("Shapes.cs"), Shapes);
