@@ -8,8 +8,9 @@ namespace Passenger.App.Testing;
 /// found from its GDScript, through GUT's command line (<see cref="GutRunner"/>), and a Godot C# game's GoDotTest tests,
 /// found from its code, in the game (<see cref="GoDotTestRunner"/>), each of those two taking the tests the code declares
 /// (<paramref name="declared"/>) and the game's where its run starts (<paramref name="goDotStart"/>), and a device test
-/// project's app on its target (<paramref name="devices"/>). So a solution of all of them shows them in one tree, and Run
-/// All runs them all.</summary>
+/// project's app on its target (<paramref name="devices"/>), an Android one's tests those its code declares, run through its
+/// instrumentation (<see cref="InstrumentationRunner"/>). So a solution of all of them shows them in one tree, and Run All
+/// runs them all.</summary>
 public sealed class TestRunners(string folder, Func<string, CancellationToken, Task<ITestRunner>>? startVsTest = null,
     Func<string, IReadOnlyList<TestItem>>? declared = null, Func<string, Task<GoDotTests.Start>>? goDotStart = null, DeviceTestHosts? devices = null) : ITestRunner
 {
@@ -30,6 +31,7 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
     private readonly TestingPlatformRunner platform = new() { Devices = devices };
     private readonly GutRunner gut = new(declared);
     private readonly GoDotTestRunner goDot = new(declared ?? (_ => []), goDotStart);
+    private readonly InstrumentationRunner? instrumented = devices is null ? null : new(declared ?? (_ => []), devices);
     private readonly Func<string, CancellationToken, Task<ITestRunner>> startVsTest = startVsTest ?? VsTestRunner.StartAsync;
     private ITestRunner? vsTest;
 
@@ -38,15 +40,23 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
 
     public bool IsUsable => vsTest?.IsUsable ?? true;
 
-    /// <summary>The tests in built test assemblies, each assembly asked of its runner, the two runners at once.</summary>
-    public async Task<FoundTests> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default)
+    /// <summary>The tests in built test assemblies, each assembly asked of its runner, the runners at once: an Android device
+    /// test project's of its instrumentation's, the rest of the platform's or VSTest's.</summary>
+    public async Task<FoundTests> DiscoverAsync(IReadOnlyList<TestAssembly> found, Action<string>? log = null, CancellationToken cancel = default)
     {
+        List<TestAssembly> onAndroid = instrumented is null ? [] : [.. found.Where(a => Run.Devices.DeviceTargets.PlatformOf(a.Framework) == Run.Devices.TargetPlatform.Android)];
+        FoundTests fromAndroid = onAndroid.Count > 0 ? await instrumented!.DiscoverAsync(onAndroid, log, cancel) : FoundTests.All([]);
+        foreach (TestAssembly assembly in onAndroid)
+        {
+            byAssembly[(assembly.Project.Path, assembly.Framework)] = instrumented!;
+        }
+        IReadOnlyList<TestAssembly> assemblies = [.. found.Except(onAndroid)];
         bool[] onPlatform = await BackgroundWork.Run(() => assemblies.Select(a => TestingPlatformRunner.IsApplication(a.Path)).ToArray(), cancel);
         List<TestAssembly> platformOnes = [.. assemblies.Where((_, at) => onPlatform[at])];
         List<TestAssembly> vsTestOnes = [.. assemblies.Where((_, at) => !onPlatform[at])];
         Task<FoundTests> fromPlatform = platformOnes.Count > 0 ? platform.DiscoverAsync(platformOnes, log, cancel) : Task.FromResult(FoundTests.All([]));
         Task<FoundTests> fromVsTest = vsTestOnes.Count > 0 ? DiscoverWithVsTest(vsTestOnes, log, cancel) : Task.FromResult(FoundTests.All([]));
-        FoundTests[] found = await Task.WhenAll(fromVsTest, fromPlatform);
+        FoundTests[] each = await Task.WhenAll(fromVsTest, fromPlatform);
         foreach (TestAssembly assembly in vsTestOnes)
         {
             byAssembly[(assembly.Project.Path, assembly.Framework)] = vsTest!;
@@ -55,7 +65,7 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
         {
             byAssembly[(assembly.Project.Path, assembly.Framework)] = platform;
         }
-        return new FoundTests([.. found[0].Tests, .. found[1].Tests], [.. found[0].Unfound, .. found[1].Unfound]);
+        return new FoundTests([.. each[0].Tests, .. each[1].Tests, .. fromAndroid.Tests], [.. each[0].Unfound, .. each[1].Unfound, .. fromAndroid.Unfound]);
     }
 
     private async Task<FoundTests> DiscoverWithVsTest(IReadOnlyList<TestAssembly> assemblies, Action<string>? log, CancellationToken cancel)
@@ -64,13 +74,13 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
         return await vsTest.DiscoverAsync(assemblies, log, cancel);
     }
 
-    /// <summary>Runs tests, VSTest's, the platform's, GUT's then GoDotTest's, each by the runner that found them; a run
-    /// stopped stops there.</summary>
+    /// <summary>Runs tests, VSTest's, the platform's, Android instrumentations', GUT's then GoDotTest's, each by the runner
+    /// that found them; a run stopped stops there.</summary>
     public async Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
         ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default)
     {
         RunSummary? summary = null;
-        foreach (ITestRunner runner in new ITestRunner?[] { vsTest, platform, gut, goDot }.OfType<ITestRunner>())
+        foreach (ITestRunner runner in new ITestRunner?[] { vsTest, platform, instrumented, gut, goDot }.OfType<ITestRunner>())
         {
             List<TestItem> its = [.. tests.Where(t => runner == gut ? t.Framework == GutScripts.Framework : runner == goDot ? t.Framework == GoDotTests.Framework
                 : byAssembly.TryGetValue((t.Project, t.Framework), out ITestRunner? by) && by == runner)];
@@ -92,6 +102,7 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
     {
         vsTest?.Dispose();
         platform.Dispose();
+        instrumented?.Dispose();
         gut.Dispose();
         goDot.Dispose();
     }

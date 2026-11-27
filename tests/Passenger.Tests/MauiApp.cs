@@ -58,7 +58,7 @@ internal static class MauiApp
             : $"{Name}'s {framework} head does not restore here from nuget.org: {restored.Output.Split('\n').FirstOrDefault(l => l.Contains(": error ", StringComparison.Ordinal))?.Trim() ?? restored.FirstLine}");
     }
 
-    /// <summary>A device test project a .NET template makes (<paramref name="template"/>: iostest, maccatalysttest) in a folder
+    /// <summary>A device test project a .NET template makes (<paramref name="template"/>: androidtest, iostest, maccatalysttest) in a folder
     /// of its own under <paramref name="folder"/>, restored from nuget.org: its project, and why it could not be made or
     /// restored here (no workload of its platform, no reach of nuget.org), or null. Its three tests pass, fail and skip.</summary>
     public static async Task<(string Project, string? Unmade)> CreateDeviceTestsAsync(string folder, string template)
