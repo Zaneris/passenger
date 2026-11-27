@@ -18,13 +18,9 @@ internal sealed partial class MarkdownTableEditing
 {
     private enum ToolbarRequest { Automatic, Shown, Dismissed }
 
+    private readonly List<(Button Button, Func<Spot, string?> Refusal)> restrictedTools = [];
     private Border toolbar = null!;
     private Border tableSection = null!;
-    private Grid tableTools = null!;
-    private Button editSource = null!;
-    private Button insertRowAbove = null!;
-    private Button deleteRow = null!;
-    private Button deleteColumn = null!;
     private ToolbarRequest toolbarRequest;
     private bool selecting;
     private bool toolbarQueued;
@@ -33,32 +29,12 @@ internal sealed partial class MarkdownTableEditing
 
     private void MakeToolbar()
     {
-        Button bold = FormatButton("B", "Bold", Key.B, bold: true);
-        Button italic = FormatButton("I", "Italic", Key.I, bold: false);
-        Button insert = TextButton("InsertTable", "Insert Table", "Insert Table", InsertTable);
-        editSource = TableButton("EditTableSource", "Edit Markdown", "Edit Table as Markdown", EditSource);
-        tableTools = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowDefinitions = new RowDefinitions("Auto,Auto,Auto") };
-        AddTableTools(0, "Rows",
-            insertRowAbove = TableButton("InsertRowAbove", "Add Above", "Insert Row Above", spot => AddRow(spot, above: true)),
-            TableButton("InsertRowBelow", "Add Below", "Insert Row Below", spot => AddRow(spot)),
-            deleteRow = TableButton("DeleteRow", "Delete", "Delete Row", DeleteRow));
-        AddTableTools(1, "Columns",
-            TableButton("InsertColumnBefore", "Add Before", "Insert Column Before", spot => ChangeColumn(spot, insert: true, after: false)),
-            TableButton("InsertColumnAfter", "Add After", "Insert Column After", spot => ChangeColumn(spot, insert: true, after: true)),
-            deleteColumn = TableButton("DeleteColumn", "Delete", "Delete Column", spot => ChangeColumn(spot, insert: false, after: false)));
-        AddTableTools(2, "Align",
-            TableButton("AlignLeft", "Left", "Align Column Left", spot => Align(spot, ":---")),
-            TableButton("AlignCenter", "Center", "Align Column Center", spot => Align(spot, ":---:")),
-            TableButton("AlignRight", "Right", "Align Column Right", spot => Align(spot, "---:")));
-
-        tableSection = new Border
-        {
-            BorderThickness = Hairlines.Above,
-            Margin = new Thickness(0, Gaps.Tight, 0, 0),
-            Padding = new Thickness(0, Gaps.Tight, 0, 0),
-            Child = tableTools,
-        };
-        tableSection.Bind(Border.BorderBrushProperty, tableSection.GetResourceObservable(TokenKeys.Separator));
+        WrapPanel generalTools = ButtonRow(
+            FormatButton("B", "Bold", Key.B, bold: true),
+            FormatButton("I", "Italic", Key.I, bold: false),
+            ToolbarButton("InsertTable", "Insert Table", new TextBlock { Text = "Insert Table" }, InsertTable));
+        generalTools.Name = "MarkdownGeneralTools";
+        tableSection = MakeTableSection();
 
         toolbar = new Border
         {
@@ -73,7 +49,7 @@ internal sealed partial class MarkdownTableEditing
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 Content = new StackPanel
                 {
-                    Children = { ButtonRow(bold, italic, insert, editSource), tableSection },
+                    Children = { generalTools, tableSection },
                 },
             },
         };
@@ -107,16 +83,52 @@ internal sealed partial class MarkdownTableEditing
         editor.PointerCaptureLost += (_, _) => EndSelectionDrag();
     }
 
-    private void AddTableTools(int row, string title, params Button[] buttons)
+    private Border MakeTableSection()
     {
+        Grid groups = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        AddToolGroup(groups, "Rows",
+            TableButton("InsertRowAbove", "Add Above", "Insert Row Above", spot => AddRow(spot, above: true), BodyRowRequired),
+            TableButton("InsertRowBelow", "Add Below", "Insert Row Below", spot => AddRow(spot)),
+            TableButton("DeleteRow", "Delete", "Delete Row", DeleteRow, BodyRowRequired));
+        AddToolGroup(groups, "Columns",
+            TableButton("InsertColumnBefore", "Add Before", "Insert Column Before", spot => ChangeColumn(spot, insert: true, after: false)),
+            TableButton("InsertColumnAfter", "Add After", "Insert Column After", spot => ChangeColumn(spot, insert: true, after: true)),
+            TableButton("DeleteColumn", "Delete", "Delete Column", spot => ChangeColumn(spot, insert: false, after: false),
+                spot => spot.Entry.Table.Aligns.Count == 1 ? "A table requires a column" : null));
+        AddToolGroup(groups, "Align",
+            TableButton("AlignLeft", "Left", "Align Column Left", spot => Align(spot, ":---")),
+            TableButton("AlignCenter", "Center", "Align Column Center", spot => Align(spot, ":---:")),
+            TableButton("AlignRight", "Right", "Align Column Right", spot => Align(spot, "---:")));
+
+        Border section = new()
+        {
+            Name = "MarkdownTableTools",
+            BorderThickness = Hairlines.Above,
+            Margin = new Thickness(0, Gaps.Tight, 0, 0),
+            Padding = new Thickness(0, Gaps.Tight, 0, 0),
+            Child = new StackPanel
+            {
+                Children = { groups, ButtonRow(TableButton("EditTableSource", "Edit Markdown", "Edit Table as Markdown", EditSource)) },
+            },
+        };
+        section.Bind(Border.BorderBrushProperty, section.GetResourceObservable(TokenKeys.Separator));
+        return section;
+
+        static string? BodyRowRequired(Spot spot) => spot.Row == 0 ? "The header row is required" : null;
+    }
+
+    private static void AddToolGroup(Grid groups, string title, params Button[] buttons)
+    {
+        int row = groups.RowDefinitions.Count;
+        groups.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
         TextBlock caption = MutedText.Of(title);
         caption.Margin = new Thickness(Gaps.Small, 0, Gaps.Tight, 0);
         WrapPanel words = ButtonRow(buttons);
         Grid.SetRow(caption, row);
         Grid.SetRow(words, row);
         Grid.SetColumn(words, 1);
-        tableTools.Children.Add(caption);
-        tableTools.Children.Add(words);
+        groups.Children.Add(caption);
+        groups.Children.Add(words);
     }
 
     private static WrapPanel ButtonRow(params Button[] buttons)
@@ -126,38 +138,48 @@ internal sealed partial class MarkdownTableEditing
         return row;
     }
 
-    private static Button TextButton(string name, string label, string title, Action run)
+    private static Button ToolbarButton(string name, string title, TextBlock mark, Action run, Key? key = null)
     {
-        Button button = ToolButtons.Of(new TextBlock { Text = label }, title, run);
+        Button button = ToolButtons.Of(mark, title, run);
         button.Name = "Markdown" + name;
-        button.Width = double.NaN;
-        button.Padding = new Thickness(Gaps.Small, 0);
+        if (key is { } shortcut)
+        {
+            ToolButtons.Tip(button, title, KeyWords.Of(new Keystroke(shortcut, Keystroke.Command)));
+        }
+        else
+        {
+            button.Width = double.NaN;
+            button.Padding = new Thickness(Gaps.Small, 0);
+        }
         return button;
     }
 
-    private Button TableButton(string name, string label, string title, Action<Spot> run) =>
-        TextButton(name, label, title, () =>
+    private Button TableButton(string name, string label, string title, Action<Spot> run, Func<Spot, string?>? refusal = null)
+    {
+        Button button = ToolbarButton(name, title, new TextBlock { Text = label }, () =>
         {
-            if (toolbar.IsVisible && editor.PresentsMarkdown && !editor.IsReadOnly && followed == editor.Document && AtCaret() is { } spot)
+            if (toolbar.IsVisible && CanEditInline && AtCaret() is { } spot && refusal?.Invoke(spot) is null)
             {
                 run(spot);
             }
         });
+        if (refusal is not null)
+        {
+            restrictedTools.Add((button, refusal));
+        }
+        return button;
+    }
 
     private void ShowTableTools(Spot? spot)
     {
-        tableSection.IsVisible = editSource.IsVisible = spot is not null;
+        tableSection.IsVisible = spot is not null;
         if (spot is null)
         {
             return;
         }
-        string? header = spot.Row == 0 ? "The header row is required" : null;
-        EnabledWhen(insertRowAbove, header);
-        EnabledWhen(deleteRow, header);
-        EnabledWhen(deleteColumn, spot.Entry.Table.Aligns.Count == 1 ? "A table requires a column" : null);
-
-        static void EnabledWhen(Button button, string? why)
+        foreach ((Button button, Func<Spot, string?> refusal) in restrictedTools)
         {
+            string? why = refusal(spot);
             if (button.IsEnabled != (why is null))
             {
                 ToolButtons.Grey(button, why);
@@ -177,10 +199,7 @@ internal sealed partial class MarkdownTableEditing
             FontStyle = bold ? FontStyle.Normal : FontStyle.Italic,
             Text = label,
         };
-        Button button = ToolButtons.Of(mark, name, () => Format(bold));
-        button.Name = "Markdown" + name;
-        ToolButtons.Tip(button, name, KeyWords.Of(new Keystroke(key, Keystroke.Command)));
-        return button;
+        return ToolbarButton(name, name, mark, () => Format(bold), key);
     }
 
     public void ShowToolbar()
@@ -215,6 +234,12 @@ internal sealed partial class MarkdownTableEditing
         toolbar.IsVisible = false;
     }
 
+    private void DismissToolbar()
+    {
+        toolbarRequest = ToolbarRequest.Dismissed;
+        toolbar.IsVisible = false;
+    }
+
     private void QueueToolbarPosition()
     {
         if (toolbarQueued)
@@ -231,8 +256,8 @@ internal sealed partial class MarkdownTableEditing
 
     private void PositionToolbar()
     {
-        if (followed is null || followed != editor.Document || editor.IsReadOnly || !editor.IsEffectivelyVisible
-            || !editor.IsKeyboardFocusWithin || selecting || toolbarRequest == ToolbarRequest.Dismissed)
+        if (!CanEditInline || !editor.IsEffectivelyVisible || !editor.IsKeyboardFocusWithin
+            || selecting || toolbarRequest == ToolbarRequest.Dismissed)
         {
             toolbar.IsVisible = false;
             return;

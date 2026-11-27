@@ -24,7 +24,7 @@ internal sealed partial class MarkdownTableEditing
 
     private void Open(Entry entry, int row, int column, Border host)
     {
-        if (editor.IsReadOnly)
+        if (!CanEditInline)
         {
             return;
         }
@@ -67,7 +67,7 @@ internal sealed partial class MarkdownTableEditing
 
     private void WriteCell(CellEditor cell)
     {
-        if (editor.IsReadOnly || followed != editor.Document)
+        if (!CanEditInline)
         {
             return;
         }

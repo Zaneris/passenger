@@ -21,6 +21,8 @@ internal sealed partial class MarkdownTableEditing
     private (int Start, int Row, int Column)? pending;
     private bool writesCell;
 
+    private bool CanEditInline => editor.PresentsMarkdown && followed == editor.Document && !editor.IsReadOnly;
+
     public MarkdownTableEditing(CodeEditor editor)
     {
         this.editor = editor;

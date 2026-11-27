@@ -11,7 +11,7 @@ internal sealed partial class MarkdownTableEditing
 
     public bool TakesKey(KeyEventArgs e)
     {
-        if (!editor.PresentsMarkdown || !editor.IsKeyboardFocusWithin || editor.IsReadOnly)
+        if (!CanEditInline || !editor.IsKeyboardFocusWithin)
         {
             return false;
         }
@@ -57,8 +57,7 @@ internal sealed partial class MarkdownTableEditing
             case Key.Escape:
                 CloseCell();
                 editor.Focus();
-                toolbarRequest = ToolbarRequest.Dismissed;
-                PositionToolbar();
+                DismissToolbar();
                 break;
             case Key.Z or Key.Y:
                 CloseCell();
@@ -81,7 +80,7 @@ internal sealed partial class MarkdownTableEditing
 
     private void Format(bool bold)
     {
-        if (editor.IsReadOnly)
+        if (!CanEditInline)
         {
             return;
         }
@@ -170,11 +169,12 @@ internal sealed partial class MarkdownTableEditing
         CloseCell();
         editor.Focus();
         editor.Select(source.Cell(spot.Row, spot.Column) ?? new TextRange(source.Line(spot.Row).End, 0));
+        DismissToolbar();
     }
 
     private void ApplyTableEdits(IReadOnlyList<TextEdit> edits, int start, int row, int column)
     {
-        if (editor.IsReadOnly || followed != editor.Document)
+        if (!CanEditInline)
         {
             return;
         }

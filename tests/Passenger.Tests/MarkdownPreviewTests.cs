@@ -435,12 +435,21 @@ public sealed class MarkdownPreviewTests
         Assert.True(Toolbar().TranslatePoint(default, cell)!.Value.X >= cell.Bounds.Width);
         string[] tableTools = ["InsertRowAbove", "InsertRowBelow", "DeleteRow", "InsertColumnBefore", "InsertColumnAfter",
             "DeleteColumn", "AlignLeft", "AlignCenter", "AlignRight", "EditTableSource"];
-        Assert.All(tableTools, name => Assert.True(Button("Markdown" + name).IsEffectivelyVisible));
+        Border toolbar = Toolbar();
+        WrapPanel general = toolbar.GetVisualDescendants().OfType<WrapPanel>().Single(row => row.Name == "MarkdownGeneralTools");
+        Border features = toolbar.GetVisualDescendants().OfType<Border>().Single(section => section.Name == "MarkdownTableTools");
+        Assert.Equal(["MarkdownBold", "MarkdownItalic", "MarkdownInsertTable"], general.Children.OfType<Button>().Select(button => button.Name));
+        Assert.All(tableTools, name =>
+        {
+            Button button = Button("Markdown" + name);
+            Assert.True(button.IsEffectivelyVisible && features.IsVisualAncestorOf(button));
+        });
         window.Width = MainWindow.SmallestWidth;
         Ui.Settle();
         Rect InEditor(Control control) => new(control.TranslatePoint(default, editor)!.Value, control.Bounds.Size);
         Assert.True(new Rect(editor.Bounds.Size).Contains(InEditor(Toolbar())));
         Assert.False(InEditor(Toolbar()).Intersects(InEditor(Assert.IsType<Grid>(cell.GetVisualParent()))));
+        Assert.True(InEditor(general).Bottom <= InEditor(features).Top);
         Assert.All(tableTools, name => Assert.True(InEditor(Toolbar()).Contains(InEditor(Button("Markdown" + name)))));
         window.Width = 1100;
         Ui.Settle();
@@ -480,6 +489,9 @@ public sealed class MarkdownPreviewTests
 
         ClickTableTool("EditTableSource");
         Assert.Null(Field());
+        Assert.False(Toolbar().IsEffectivelyVisible);
+        Selection sourceSelection = editor.Selections.Primary;
+        Assert.Equal("Pen \\| Pencil", editor.Document.Snapshot.GetText(sourceSelection.Start, sourceSelection.Length));
         Assert.Null(Cell("24"));
         Assert.NotNull(Cell("Ready"));
         Ui.Click(Assert.IsType<Border>(Cell("Ready")!.GetVisualParent()));
@@ -494,7 +506,7 @@ public sealed class MarkdownPreviewTests
         Ui.Press(window, showToolbar);
         Assert.True(Toolbar().IsEffectivelyVisible);
         Assert.True(Button("MarkdownInsertTable").IsEffectivelyVisible);
-        Assert.All(tableTools, name => Assert.False(Button("Markdown" + name).IsEffectivelyVisible));
+        Assert.False(features.IsEffectivelyVisible);
         Assert.Equal(line, editor.PointOf(words));
         Ui.Press(window, "ESCAPE");
         Assert.False(Toolbar().IsEffectivelyVisible);
