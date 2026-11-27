@@ -89,10 +89,6 @@ public sealed class UsageHighlighting
             {
                 return null;
             }
-            if (found.Count == 0)
-            {
-                return [];
-            }
             ParsedText? syntax = document.Syntax is { } parsing ? await parsing.CurrentAsync() : null;
             if (!StillShown(editor, document, text, cancel))
             {
@@ -144,17 +140,9 @@ public sealed class UsageHighlighting
                 return [];
             }
         }
-        IReadOnlyList<TextRange> places = await BackgroundWork.Run(() => TextSearch.PlacesOfWord(text, chosen));
-        if (!StillShown(editor, document, text, cancel))
-        {
-            return null;
-        }
-        List<UsageHighlight> found = new(places.Count);
-        foreach (TextRange place in places)
-        {
-            found.Add(new UsageHighlight(place, IsWrite: false, ByText: true));
-        }
-        return found;
+        List<UsageHighlight> places = await BackgroundWork.Run(() => TextSearch.PlacesOfWord(text, chosen)
+            .Select(static place => new UsageHighlight(place, IsWrite: false, ByText: true)).ToList());
+        return StillShown(editor, document, text, cancel) ? places : null;
     }
 
     private static bool StillShown(CodeEditor editor, OpenDocument document, TextSnapshot text, CancellationToken cancel) =>
@@ -298,19 +286,17 @@ public sealed class UsageHighlighting
             {
                 return;
             }
-            CancellationTokenSource cancel = Begin();
+            CancellationToken cancel = Begin().Token;
             TextRange target = editor.Selections.Primary.Range;
-            List<UsageHighlight>? uses = await owner.AskAsync(editor, document, target, cancel.Token);
-            if (uses is { Count: 0 } && Current())
+            List<UsageHighlight>? uses = await owner.AskAsync(editor, document, target, cancel);
+            if (uses is { Count: 0 } && !cancel.IsCancellationRequested)
             {
-                uses = await WordPlacesAsync(editor, document, target, cancel.Token);
+                uses = await WordPlacesAsync(editor, document, target, cancel);
             }
-            if (uses is not null && Current())
+            if (uses is not null && !cancel.IsCancellationRequested && !editor.UsagesKept)
             {
                 editor.SetUsageHighlights(uses);
             }
-
-            bool Current() => asking == cancel && !editor.UsagesKept;
         }
     }
 }

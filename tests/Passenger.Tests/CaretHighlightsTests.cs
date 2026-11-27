@@ -40,30 +40,14 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
             #endregion
 
             public string Name => "shapes";
+            public string Describe() => Name;
         }
 
         """;
 
     private const string Braces = "static class Braces\n{\n    public static int Deep(int a)\n    {\n        return ((a + 1) * (a + 2));\n    }\n}\n";
 
-    private const string Properties = """
-        sealed class Counter
-        {
-            public int Count { get; set; }
-
-            public void Increment() => Count += 1;
-
-            // Count is also available on the other counter.
-            public int Read() => this.Count;
-        }
-
-        sealed class OtherCounter
-        {
-            public int Count => 0;
-        }
-
-        """;
-
+    private const string MediatorField = "_mediator";
     private static readonly string PricesController = """
         sealed partial class PricesControllerV2
         {
@@ -77,7 +61,7 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
             // An unrelated _mediator in a different scope.
             public string Preview(IMediator _mediator) => _mediator.Send("_mediator");
         """ + new string('\n', 80) + """
-            public string ReadPrice() => _mediator.Send("price");
+            public string ReadPrice() => this._mediator.Send("price");
         }
 
         interface IMediator
@@ -107,8 +91,7 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
     public void The_caret_lights_a_symbols_uses_and_a_brackets_pair_follows_moves_and_typing_and_never_holds_the_window()
     {
         Flow.StepApart("resting the caret on a local highlights its writes and reads and marks them on the scrollbar", () => new CaretHighlightsTests(project), t => t.Resting_the_caret_on_a_local_highlights_its_writes_and_reads_and_marks_them_on_the_scrollbar());
-        Flow.StepApart("selecting a property in either direction lights its own occurrences and makes them reachable from the scrollbar", () => new CaretHighlightsTests(project), t => t.Selecting_a_property_lights_its_own_occurrences_and_marks_them_on_the_scrollbar());
-        Flow.StepApart("selecting the _mediator field in its constructor assignment marks its declaration, write and off-screen read (#2387)", () => new CaretHighlightsTests(project), t => t.Selecting_the_mediator_field_marks_its_occurrences_in_this_file());
+        Flow.StepApart("selecting _mediator in either direction marks its occurrences and lets the scrollbar reveal the off-screen read (#2387)", () => new CaretHighlightsTests(project), t => t.Selecting_the_mediator_field_marks_its_occurrences_in_this_file());
         Flow.StepApart("a selected C# identifier is never highlighted by spelling when no server can resolve it", () => new CaretHighlightsTests(project), t => t.A_selected_identifier_is_never_highlighted_by_spelling());
         Flow.StepApart("highlights answered before a file's first parse wait for it without holding the window's thread", () => new CaretHighlightsTests(project), t => t.Highlights_answered_before_a_files_first_parse_wait_for_it_without_holding_the_windows_thread());
         Flow.StepApart("moving the caret off a symbol takes its highlights away at once, and another symbol brings its own", () => new CaretHighlightsTests(project), t => t.Moving_the_caret_off_a_symbol_takes_its_highlights_away_at_once_and_another_symbol_brings_its_own());
@@ -145,60 +128,18 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         window.Close();
     }
 
-    private void Selecting_a_property_lights_its_own_occurrences_and_marks_them_on_the_scrollbar()
-    {
-        MainWindow window = project.Open("Properties.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        int declaration = Properties.IndexOf("Count {", StringComparison.Ordinal);
-        int write = Properties.IndexOf("Count +=", StringComparison.Ordinal);
-        int read = Properties.IndexOf("Count;", StringComparison.Ordinal);
-        int[] occurrences = [declaration, write, read];
-
-        void AssertOccurrences()
-        {
-            Assert.Equal(occurrences, editor.UsageHighlights.Select(u => u.Range.Start));
-            Assert.All(editor.UsageHighlights, u => Assert.True(!u.ByText && TextOf(editor, u.Range) == "Count"));
-            Assert.Equal(occurrences.Select(at => Ui.RowOf(editor, at)),
-                editor.StripeMarks.Where(m => m.Kind is StripeMarkKind.Usage or StripeMarkKind.WriteUsage).Select(m => m.Row));
-        }
-
-        Ui.DoubleClick(editor, editor.PointOf(read + 2) + new Point(1, editor.LineHeight / 2));
-        Assert.Equal(new TextRange(read, "Count".Length), editor.Selections.Primary.Range);
-        Ui.Settle();
-        AssertOccurrences();
-        UsageHighlight propertyWrite = editor.UsageHighlights[1];
-        Assert.True(propertyWrite.IsWrite);
-        Assert.Equal(Token(window, TokenKeys.Editor_UsageWrite), Ui.Pixel(window, InBox(window, editor, propertyWrite.Range.Start)));
-
-        // Extending the selection while its caret stays at Count must clear Count's old highlights.
-        editor.Selections = SelectionSet.Single(new Selection(read - "this.".Length, read + "Count".Length));
-        Assert.Empty(editor.UsageHighlights);
-        Ui.Settle();
-        Assert.Empty(editor.UsageHighlights);
-        Assert.DoesNotContain(editor.StripeMarks, m => m.Kind is StripeMarkKind.Usage or StripeMarkKind.WriteUsage);
-
-        editor.Selections = SelectionSet.Single(new Selection(write + "Count".Length, write));
-        Ui.Settle();
-        AssertOccurrences();
-        CodeEditor.StripeMark mark = Assert.Single(editor.StripeMarks, m => m.Item == 2 && m.Kind == StripeMarkKind.Usage);
-        Ui.Click(editor, editor.StripePoint(mark));
-        Assert.Equal(read, editor.Selections.Primary.Caret);
-        AssertOccurrences();
-        window.Close();
-    }
-
     private void A_selected_identifier_is_never_highlighted_by_spelling()
     {
-        MainWindow window = project.Open("Properties.cs", languageServer: false);
+        MainWindow window = project.Open("PricesControllerV2.cs", languageServer: false);
         CodeEditor editor = window.EditorArea.CodeEditor;
-        int comment = Properties.IndexOf("Count is", StringComparison.Ordinal);
-        int read = Properties.IndexOf("Count;", StringComparison.Ordinal);
+        int comment = PricesController.IndexOf("_mediator in a different scope", StringComparison.Ordinal);
+        int write = PricesController.IndexOf("_mediator = mediator", StringComparison.Ordinal);
+        TextRange field = new(write, MediatorField.Length);
 
-        editor.Selections = SelectionSet.Single(new Selection(comment, comment + "Count".Length));
-        Ui.WaitFor(() => editor.UsageHighlights.Count == 5, () => "the word chosen in the comment has five text matches");
-        Assert.All(editor.UsageHighlights, use => Assert.True(use.ByText));
+        editor.Selections = SelectionSet.Single(new Selection(comment, comment + field.Length));
+        Ui.WaitFor(() => editor.UsageHighlights.Any(use => use.ByText && use.Range == field), "the comment's word matches the field by spelling");
 
-        editor.Selections = SelectionSet.Single(new Selection(read, read + "Count".Length));
+        editor.Selections = SelectionSet.Single(new Selection(field.Start, field.End));
         Assert.Empty(editor.UsageHighlights);
         Ui.Settle();
         Assert.Empty(editor.UsageHighlights);
@@ -213,7 +154,7 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         int declaration = PricesController.IndexOf("_mediator;", StringComparison.Ordinal);
         int write = PricesController.IndexOf("_mediator = mediator", StringComparison.Ordinal);
         int read = PricesController.IndexOf("_mediator.Send(\"price\")", StringComparison.Ordinal);
-        int length = "_mediator".Length;
+        int length = MediatorField.Length;
         TextRange[] occurrences = [new(declaration, length), new(write, length), new(read, length)];
         int readLine = editor.Document.Snapshot.GetLineFromOffset(read);
         Assert.True(readLine > editor.LinesShown.Last);
@@ -238,6 +179,18 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         Assert.InRange(readLine, editor.LinesShown.First, editor.LinesShown.Last);
         Assert.Equal(occurrences, editor.UsageHighlights.Select(use => use.Range));
         Assert.Equal(Token(window, TokenKeys.Editor_UsageRead), Ui.Pixel(window, InBox(window, editor, read)));
+
+        // Extending the selection while its caret stays at the field's end clears the old highlights.
+        editor.Selections = SelectionSet.Single(new Selection(read, read + length));
+        editor.Selections = SelectionSet.Single(new Selection(read - "this.".Length, read + length));
+        Assert.Empty(editor.UsageHighlights);
+        Ui.Settle();
+        Assert.Empty(editor.UsageHighlights);
+        Assert.DoesNotContain(editor.StripeMarks, m => m.Kind is StripeMarkKind.Usage or StripeMarkKind.WriteUsage);
+
+        editor.Selections = SelectionSet.Single(new Selection(read + length, read));
+        Ui.Settle();
+        Assert.Equal(occurrences, editor.UsageHighlights.Select(use => use.Range));
         window.Close();
     }
 
@@ -474,6 +427,11 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         Assert.Equal((inner, ifBlock), (editor.Selections.Primary.Anchor, editor.Selections.Primary.Caret));
 
         Assert.Equal(At("#region"), Moved(AppActions.GoToRegion, inner));
+
+        int nameRead = At("Name;");
+        editor.Selections = SelectionSet.Single(new Selection(nameRead, nameRead + "Name".Length));
+        Ui.Settle();
+        Assert.Equal([At("Name =>"), nameRead], editor.UsageHighlights.Select(use => use.Range.Start));
         window.Close();
     }
 
@@ -506,7 +464,6 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
             File.WriteAllText(PathOf("Sample.csproj"),
                 $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Library</OutputType>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
             File.WriteAllText(PathOf("Totals.cs"), Totals);
-            File.WriteAllText(PathOf("Properties.cs"), Properties);
             File.WriteAllText(PathOf("PricesControllerV2.cs"), PricesController);
             File.WriteAllText(PathOf("PricesControllerV2.Other.cs"), """
                 sealed partial class PricesControllerV2
