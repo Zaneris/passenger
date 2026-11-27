@@ -303,6 +303,23 @@ public sealed record ProjectModel(
         "xunit.v3.core.mtp-off", "TUnit", "TUnit.Engine", "Microsoft.Testing.Platform.MSBuild",
     };
 
+    private readonly string path = Path;
+
+    /// <summary>Its project file, by its canonical path.</summary>
+    public string Path
+    {
+        get => path;
+        init
+        {
+            path = value;
+            Folder = System.IO.Path.GetDirectoryName(value)!;
+        }
+    }
+
+    /// <summary>The folder its file is in, taken from its path as it is made rather than at each read: the look-up of a
+    /// file's project at each key reads every project's.</summary>
+    public string Folder { get; private init; } = System.IO.Path.GetDirectoryName(Path)!;
+
     /// <summary>MSBuild's evaluation it was made from; null until there is one.</summary>
     public EvaluatedProject? Evaluated { get; init; }
 
@@ -311,8 +328,6 @@ public sealed record ProjectModel(
 
     /// <summary>Why MSBuild could not evaluate it, when it could not.</summary>
     public string? Problem => Evaluated?.Problem;
-
-    public string Folder => System.IO.Path.GetDirectoryName(Path)!;
 
     /// <summary>A property its evaluation carries (<see cref="CarriedProperties"/>) as MSBuild evaluated it, wherever it was
     /// set; null when it has no value, or before the project is evaluated.</summary>
@@ -493,13 +508,19 @@ public sealed record ProjectModel(
         };
 
     /// <summary>The project a file or folder belongs to: a file-based program whose files it is (<see cref="Holds"/>), else
-    /// of the projects whose folders hold it, the one nearest it, as a nested project's files are its own; null when none
-    /// does. Paths are canonical, as the projects' are.</summary>
-    public static ProjectModel? Owning(IEnumerable<ProjectModel> projects, string path)
+    /// of the projects whose folders hold it, the one nearest it, as a nested project's files are its own, those
+    /// <paramref name="passedOver"/> names (by path) left out; null when none does. Paths are canonical, as the projects'
+    /// are. Asked at each key, it makes nothing.</summary>
+    public static ProjectModel? Owning(IReadOnlyList<ProjectModel> projects, string path, ISet<string>? passedOver = null)
     {
         ProjectModel? owner = null;
-        foreach (ProjectModel project in projects)
+        for (int i = 0; i < projects.Count; i++)
         {
+            ProjectModel project = projects[i];
+            if (passedOver?.Contains(project.Path) == true)
+            {
+                continue;
+            }
             if (project.IsProgram)
             {
                 if (project.Holds(path))
@@ -602,8 +623,21 @@ public sealed record ProjectModel(
 
     /// <summary>Whether a program compiles a file: its own C# file, or one its directives include as its evaluation found
     /// them; for a project, whether its folder holds it.</summary>
-    public bool Holds(string path) => !IsProgram ? PathNames.Within(path, Folder)
-        : PathNames.Same(path, Path) || (Evaluated?.Items.Any(i => i.Type == MSBuildNames.Compile && PathNames.Same(i.Path, path)) ?? false);
+    public bool Holds(string path) => !IsProgram ? PathNames.Within(path, Folder) : PathNames.Same(path, Path) || Compiles(path);
+
+    /// <summary>Whether its evaluation compiles a file, asked at each key with nothing made.</summary>
+    private bool Compiles(string path)
+    {
+        IReadOnlyList<EvaluatedItem> items = Evaluated?.Items ?? [];
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (items[i].Type == MSBuildNames.Compile && PathNames.Same(items[i].Path, path))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /// <summary>The lock file its restore writes when it restores with one (<see cref="LockFileOf"/>).</summary>
     public string LockFile => LockFileOf(Path, Property(Host.CarriedProperties.NuGetLockFilePath), File.Exists);

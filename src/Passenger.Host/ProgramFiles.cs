@@ -12,7 +12,7 @@ public static class ProgramFiles
     private const int HeadLines = 400;
 
     /// <summary>Whether a project's path is a program's C# file rather than a project file.</summary>
-    public static bool IsProgram(string path) => Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase);
+    public static bool IsProgram(string path) => Path.GetExtension(path.AsSpan()).Equals(".cs", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The metadata the SDK puts on the reference a program's <c>#:ref</c> makes, naming the C# file referenced: the
     /// program whose project it is.</summary>
