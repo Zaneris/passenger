@@ -1128,6 +1128,52 @@ public static class TextEditing
         };
     }
 
+    /// <summary>Move Statement's edit into or out of a block: whole lines (<paramref name="moving"/>) taken out and put back
+    /// before another line outside them (<paramref name="before"/>), each moved in or out by the first's indentation becoming
+    /// <paramref name="indent"/>, one indented less than the first left as it is (a verbatim string's); the carets in them going
+    /// with them, where they stood in their code.</summary>
+    public static EditPlan MoveLines(TextSnapshot text, SelectionSet selections, (int First, int Last) moving, int before, string indent)
+    {
+        LineSpan top = text.GetLine(moving.First);
+        LineSpan bottom = text.GetLine(moving.Last);
+        string from = text.GetText(top.Start, TextNavigation.IndentEnd(text, top) - top.Start);
+        string lineBreak = bottom.BreakLength > 0 ? text.GetText(bottom.End, bottom.BreakLength) : "\n";
+        int insertAt = before < text.LineCount ? text.GetLine(before).Start : text.Length;
+        int removedLength = bottom.EndIncludingBreak - top.Start;
+        bool down = insertAt > top.Start;
+        int landsAt = down ? insertAt - removedLength : insertAt;
+        System.Text.StringBuilder written = new();
+        List<(int Start, bool Moved)> lines = [];
+        for (int number = moving.First; number <= moving.Last; number++)
+        {
+            LineSpan line = text.GetLine(number);
+            string content = text.GetText(line.Start, line.End - line.Start);
+            bool moved = content.Length > 0 && content.StartsWith(from, StringComparison.Ordinal);
+            lines.Add((written.Length, moved));
+            written.Append(moved ? indent + content[from.Length..] : content);
+            written.Append(number < moving.Last ? text.GetText(line.End, line.BreakLength) : lineBreak);
+        }
+        int Moved(int offset)
+        {
+            if (offset >= top.Start && offset <= bottom.End)
+            {
+                int number = text.GetLineFromOffset(offset);
+                int column = offset - text.GetLine(number).Start;
+                (int start, bool moved) = lines[number - moving.First];
+                int now = !moved ? column : column >= from.Length ? indent.Length + column - from.Length : Math.Min(column, indent.Length);
+                return landsAt + start + now;
+            }
+            if (down)
+            {
+                return offset < top.Start ? offset : offset < insertAt ? offset - removedLength : offset - removedLength + written.Length;
+            }
+            return offset < insertAt ? offset : offset < top.Start ? offset + written.Length : offset - removedLength + written.Length;
+        }
+        TextEdit taken = new(top.Start, removedLength, string.Empty);
+        TextEdit put = new(insertAt, 0, written.ToString());
+        return new EditPlan(down ? [taken, put] : [put, taken], selections.With(s => new Selection(Moved(s.Anchor), Moved(s.Caret), s.PreferredX)), EditKind.Other);
+    }
+
     /// <summary>Unwrap's edit: a statement's lines (<paramref name="whole"/>) replaced by the lines it holds
     /// (<paramref name="kept"/>; none takes it out whole), each moved out as far as the statement's first line by what the
     /// first of them stood further in, one indented less than that left as it is (a verbatim string's); the caret kept on its

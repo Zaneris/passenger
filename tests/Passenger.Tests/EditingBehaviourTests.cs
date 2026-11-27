@@ -489,12 +489,13 @@ public sealed class EditingBehaviourTests
 
     /// <summary>A C# file opened in the window, with no project: its colours are the window's own, read from its
     /// syntax.</summary>
-    /// <summary>Move Statement Down and Up move the statement at the caret past the one beside it in its block, its comment
-    /// with it and the blank line between staying; Move Element Right and Left move an argument past the one beside it, the
-    /// caret with it; Unwrap takes an if's body out one level; each one step of Undo, on the keymap's keys (#2308).</summary>
+    /// <summary>Move Statement moves a statement past the one beside it, its comment with it, and into and out of an if's
+    /// block; Move Element moves a C# argument, a JSON array's element and a XAML attribute; Unwrap takes out the if, or the
+    /// loop chosen around it; each one step of Undo, on the keymap's keys; and overwrite holds in each editor (#2308, #2388).</summary>
     private void Statements_and_elements_move_by_the_syntax_and_unwrap_takes_a_body_out_each_one_step_of_undo()
     {
-        const string Source = "class Shop\n{\n    void Sell(int a, int b)\n    {\n        // first\n        A();\n\n        B(a, b);\n        if (a > b)\n        {\n            C();\n        }\n    }\n}\n";
+        const string Source = "class Shop\n{\n    void Sell(int a, int b)\n    {\n        // first\n        A();\n\n        B(a, b);\n        if (a > b)\n        {\n            C();\n        }\n    }\n\n" +
+            "    void Count(int[] all)\n    {\n        foreach (int each in all)\n        {\n            if (each > 0)\n            {\n                D();\n            }\n        }\n    }\n}\n";
         (Passenger.App.MainWindow window, Passenger.Editor.CodeEditor editor) = OpenCSharp(Source);
         try
         {
@@ -522,6 +523,62 @@ public sealed class EditingBehaviourTests
             Assert.Equal(Source.Replace("        if (a > b)\n        {\n            C();\n        }\n", "        C();\n", StringComparison.Ordinal), editor.Document.Snapshot.ToString());
             Ui.Run(window, Passenger.Editor.EditorActions.Undo);
             Assert.Equal(Source, editor.Document.Snapshot.ToString());
+
+            const string Above = "        B(a, b);\n        if (a > b)\n        {\n            C();\n        }\n";
+            editor.Selections = SelectionSet.Single(Source.IndexOf("B(a, b)", StringComparison.Ordinal));
+            Ui.Run(window, Passenger.App.AppActions.MoveStatementDown);
+            string into = Source.Replace(Above, "        if (a > b)\n        {\n            B(a, b);\n            C();\n        }\n", StringComparison.Ordinal);
+            Assert.True(editor.Document.Snapshot.ToString() == into, $"Move Statement Down did not move B(a, b); into the if's block below it:\n{editor.Document.Snapshot}");
+            Ui.Run(window, Passenger.App.AppActions.MoveStatementDown);
+            Ui.Run(window, Passenger.App.AppActions.MoveStatementDown);
+            string outOf = Source.Replace(Above, "        if (a > b)\n        {\n            C();\n        }\n        B(a, b);\n", StringComparison.Ordinal);
+            Assert.True(editor.Document.Snapshot.ToString() == outOf, $"Move Statement Down did not move B(a, b); out of the if's block at its end:\n{editor.Document.Snapshot}");
+            Assert.Equal("B(a, b);", editor.Document.Snapshot.GetLineText(editor.Document.Snapshot.GetLineFromOffset(editor.Selections.Primary.Caret)).Trim());
+            Ui.Run(window, Passenger.App.AppActions.MoveStatementUp);
+            Assert.Equal(Source.Replace(Above, "        if (a > b)\n        {\n            C();\n            B(a, b);\n        }\n", StringComparison.Ordinal), editor.Document.Snapshot.ToString());
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Assert.Equal(Source, editor.Document.Snapshot.ToString());
+
+            editor.Selections = SelectionSet.Single(Source.IndexOf("D();", StringComparison.Ordinal));
+            Ui.Run(window, Passenger.App.AppActions.Unwrap);
+            Assert.Equal(["Unwrap 'if'", "Unwrap 'foreach'"], window.Assist.Offered);
+            Ui.Press(window, "DOWN");
+            Ui.Press(window, "ENTER");
+            Assert.Equal(Source.Replace("        foreach (int each in all)\n        {\n            if (each > 0)\n            {\n                D();\n            }\n        }\n",
+                "        if (each > 0)\n        {\n            D();\n        }\n", StringComparison.Ordinal), editor.Document.Snapshot.ToString());
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Assert.Equal(Source, editor.Document.Snapshot.ToString());
+
+            string folder = Path.GetDirectoryName(window.EditorArea.Active!.Path)!;
+            const string Json = "{ \"sizes\": [\"small, round\", 2, [3, 4]] }\n";
+            File.WriteAllText(Path.Combine(folder, "sizes.json"), Json);
+            window.OpenFile(Path.Combine(folder, "sizes.json"));
+            Ui.Settle();
+            CodeEditor json = window.EditorArea.CodeEditor;
+            json.Focus();
+            json.Selections = SelectionSet.Single(Json.IndexOf("small", StringComparison.Ordinal));
+            Ui.Run(window, Passenger.App.AppActions.MoveElementRight);
+            Assert.Equal("{ \"sizes\": [2, \"small, round\", [3, 4]] }\n", json.Document.Snapshot.ToString());
+            const string Xaml = "<StackPanel xmlns=\"https://github.com/avaloniaui\">\n    <Button Width=\"10\" Height=\"20\" />\n</StackPanel>\n";
+            File.WriteAllText(Path.Combine(folder, "Panel.axaml"), Xaml);
+            window.OpenFile(Path.Combine(folder, "Panel.axaml"));
+            Ui.Settle();
+            CodeEditor xaml = window.EditorArea.CodeEditor;
+            xaml.Focus();
+            xaml.Selections = SelectionSet.Single(Xaml.IndexOf("Width", StringComparison.Ordinal) + 2);
+            Ui.Run(window, Passenger.App.AppActions.MoveElementRight);
+            Assert.Equal(Xaml.Replace("Width=\"10\" Height=\"20\"", "Height=\"20\" Width=\"10\"", StringComparison.Ordinal), xaml.Document.Snapshot.ToString());
+
+            Assert.True(window.Perform(Passenger.App.AppActions.SplitRight));
+            Ui.Settle();
+            Ui.Run(window, Passenger.Editor.EditorActions.ToggleOverwrite);
+            Assert.True(window.EditorArea.Groups.Count == 2 && window.EditorArea.Groups.All(g => g.Editor.Overwrite),
+                "Insert turned overwrite on in the editor with the keys alone, where it is the window's");
+            Ui.Run(window, Passenger.Editor.EditorActions.ToggleOverwrite);
+            Assert.True(window.EditorArea.Groups.All(g => !g.Editor.Overwrite), "Insert again left overwrite on in an editor of the window");
         }
         finally
         {

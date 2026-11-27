@@ -66,6 +66,20 @@ public sealed class XmlTree
         return offset < comment.End || (open && offset == comment.End);
     }
 
+    /// <summary>The attribute of a start tag a caret is in, from its name to its closing quote, and the one beside it on the
+    /// left or right (Move Element's); null where the caret is in none, or it has none beside it that way.</summary>
+    public (TextRange Moving, TextRange Beside)? AttributeSpans(int caret, bool right)
+    {
+        if (ElementAt(caret) is not { } element || caret < element.NameEnd || caret > element.StartTagEnd)
+        {
+            return null;
+        }
+        List<TextRange> spans = [.. element.Attributes.Select(a => TextRange.FromBounds(a.NameStart, !a.HasValue ? a.NameEnd : a.IsValueClosed ? a.ValueEnd + 1 : a.ValueEnd))];
+        int at = spans.FindIndex(s => s.Start <= caret && caret <= s.End);
+        int other = right ? at + 1 : at - 1;
+        return at >= 0 && other >= 0 && other < spans.Count ? (spans[at], spans[other]) : null;
+    }
+
     /// <summary>The innermost element whose tags or content hold an offset: one a caret just after <c>&lt;</c> is in
     /// counts, one whose end tag's <c>&gt;</c> it is after does not.</summary>
     public XmlElement? ElementAt(int offset)

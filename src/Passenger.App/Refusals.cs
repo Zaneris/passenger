@@ -249,11 +249,13 @@ public static class Refusals
     /// <summary>VCS Operations where none of the Git menu's actions can run.</summary>
     public const string NoVcsOperations = "No Git action can run here";
 
-    /// <summary>Move Statement Up where nothing stands above the statement or member in its block, type or file.</summary>
-    public const string NoStatementAbove = "No statement or member is above it in its block";
+    /// <summary>Move Statement Up where nothing stands above the statement or member in its block, type or file, and no block
+    /// around it is one it moves out of (a member's body).</summary>
+    public const string NoStatementAbove = "No statement or member is above it in its block, nor a block around it to move out of";
 
-    /// <summary>Move Statement Down where nothing stands below the statement or member in its block, type or file.</summary>
-    public const string NoStatementBelow = "No statement or member is below it in its block";
+    /// <summary>Move Statement Down where nothing stands below the statement or member in its block, type or file, and no
+    /// block around it is one it moves out of (a member's body).</summary>
+    public const string NoStatementBelow = "No statement or member is below it in its block, nor a block around it to move out of";
 
     /// <summary>Move Element Left where the element at the caret is a list's first, or in no list.</summary>
     public const string NoElementLeft = "No element of a list is left of the caret's";

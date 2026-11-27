@@ -5,16 +5,27 @@ using Passenger.Text;
 
 namespace Passenger.Languages.CSharp;
 
+/// <summary>Where Move Statement takes lines (<see cref="CodeMoves.StatementMoveOf"/>): past the lines beside them, or, with
+/// none beside, before another line, each moved to an indentation.</summary>
+public sealed record StatementMove((int First, int Last) Moving, (int First, int Last)? Beside, int Before, string? Indent);
+
+/// <summary>A statement Unwrap may take out (<see cref="CodeMoves.UnwrapChoices"/>): its lines, the lines of the part the
+/// caret is in that take its place (none for an empty one), what it is called and its first line's code.</summary>
+public sealed record Unwrapping((int First, int Last) Whole, (int First, int Last)? Kept, string Name, string Header);
+
 /// <summary>Edits by a C# file's structure, from its one parse: the statements or members a selection covers moved past the
-/// one beside them in their block, type, namespace or file (Move Statement); an element of a list moved past the one
+/// one beside them in their block, type, namespace or file, statements into and out of blocks (Move Statement); an element of a list moved past the one
 /// beside it (Move Element: an argument, a parameter, a type argument, an attribute, an enum member, a collection's
-/// element, a base type, a declarator, an arm); and the body of a statement holding others taken out of it (Unwrap).</summary>
+/// element, a base type, a declarator, an arm); and the body of a statement holding others taken out of it, the person
+/// choosing which where several hold the caret (Unwrap).</summary>
 public static class CodeMoves
 {
-    /// <summary>The lines of the statements or members around a selection, and of the one beside them above or below in
-    /// their block, switch section, type, namespace or file, each with the comments right above it; null where none stands
-    /// beside them there, or one shares a line with code outside it.</summary>
-    public static ((int First, int Last) Moving, (int First, int Last) Beside)? StatementLines(ParsedText csharp, TextRange selection, bool up)
+    /// <summary>Where Move Statement takes the statements or members around a selection: past the one beside them above or
+    /// below in their block, switch section, type, namespace or file, each with the comments right above it; statements into
+    /// the block of the statement beside them (its first branch's start going down, its last's end going up), and out of the
+    /// block they begin or end, into the next or previous branch of its if or try, else past the statement holding it. Null
+    /// where none of these is there, or one shares a line with code outside it.</summary>
+    public static StatementMove? StatementMoveOf(ParsedText csharp, TextRange selection, bool up)
     {
         SyntaxNode root = csharp.Root;
         if (UnitAt(root, selection.Start) is not { } first)
@@ -28,20 +39,142 @@ public static class CodeMoves
             return null;
         }
         (first, last) = (inner, outer);
-        List<SyntaxNode> siblings = [.. first.Parent!.ChildNodes().Where(IsUnit)];
+        SyntaxNode list = first.Parent!;
+        List<SyntaxNode> siblings = [.. list.ChildNodes().Where(IsUnit)];
         int from = siblings.IndexOf(first);
         int to = siblings.IndexOf(last);
         if (from > to)
         {
             (from, to) = (to, from);
         }
-        int beside = up ? from - 1 : to + 1;
-        if (beside < 0 || beside >= siblings.Count || Lines(csharp.Text, siblings[from], siblings[to]) is not { } moving
-            || Lines(csharp.Text, siblings[beside], siblings[beside]) is not { } other)
+        TextSnapshot text = csharp.Text;
+        if (Lines(text, siblings[from], siblings[to]) is not { } moving)
         {
             return null;
         }
-        return (moving, other);
+        int beside = up ? from - 1 : to + 1;
+        bool statements = list is BlockSyntax or SwitchSectionSyntax;
+        if (beside >= 0 && beside < siblings.Count)
+        {
+            if (statements && Entered(siblings[beside], up) is { } block && Inside(text, block) is not null)
+            {
+                return Into(text, moving, block, up, Deeper(text, siblings[from], list));
+            }
+            return Lines(text, siblings[beside], siblings[beside]) is { } other ? new StatementMove(moving, other, 0, null) : null;
+        }
+        if (list is not BlockSyntax ending)
+        {
+            return null;
+        }
+        if (Branch(ending, up) is { } next && Inside(text, next) is not null && Inside(text, ending) is not null)
+        {
+            return Into(text, moving, next, up, IndentAt(text, siblings[from].SpanStart));
+        }
+        if (Holder(ending) is not { Parent: BlockSyntax or SwitchSectionSyntax } holder || Lines(text, holder, holder) is not { } around)
+        {
+            return null;
+        }
+        return new StatementMove(moving, null, up ? around.First : around.Last + 1, IndentAt(text, holder.SpanStart));
+    }
+
+    /// <summary>Statements put into a block: at its start going down, before its first statement's indentation, or at its end
+    /// going up; an empty one's taking <paramref name="deeper"/>.</summary>
+    private static StatementMove Into(TextSnapshot text, (int First, int Last) moving, BlockSyntax block, bool up, string deeper)
+    {
+        int open = text.GetLineFromOffset(block.OpenBraceToken.SpanStart);
+        int close = text.GetLineFromOffset(block.CloseBraceToken.SpanStart);
+        SyntaxNode? beside = up ? block.Statements.LastOrDefault() : block.Statements.FirstOrDefault();
+        return new StatementMove(moving, null, up ? close : open + 1, beside is null ? deeper : IndentAt(text, beside.SpanStart));
+    }
+
+    /// <summary>The block a statement beside those moving holds that they go into: its first branch's going down, its last's
+    /// going up; null for one that holds no block.</summary>
+    private static BlockSyntax? Entered(SyntaxNode statement, bool up) => statement switch
+    {
+        BlockSyntax block => block,
+        IfStatementSyntax chain when !up => chain.Statement as BlockSyntax,
+        IfStatementSyntax chain => LastBranch(chain),
+        TryStatementSyntax attempt => up ? attempt.Finally?.Block ?? attempt.Catches.LastOrDefault()?.Block ?? attempt.Block : attempt.Block,
+        WhileStatementSyntax loop => loop.Statement as BlockSyntax,
+        DoStatementSyntax loop => loop.Statement as BlockSyntax,
+        ForStatementSyntax loop => loop.Statement as BlockSyntax,
+        CommonForEachStatementSyntax loop => loop.Statement as BlockSyntax,
+        UsingStatementSyntax used => used.Statement as BlockSyntax,
+        LockStatementSyntax locked => locked.Statement as BlockSyntax,
+        FixedStatementSyntax fixedOne => fixedOne.Statement as BlockSyntax,
+        CheckedStatementSyntax check => check.Block,
+        UnsafeStatementSyntax unsafeOne => unsafeOne.Block,
+        _ => null,
+    };
+
+    private static BlockSyntax? LastBranch(IfStatementSyntax chain)
+    {
+        IfStatementSyntax at = chain;
+        while (at.Else?.Statement is IfStatementSyntax next)
+        {
+            at = next;
+        }
+        return (at.Else?.Statement ?? at.Statement) as BlockSyntax;
+    }
+
+    /// <summary>The block of an if's or a try's next branch after a block (going down) or the one before it (going up); null
+    /// where the block is no branch of one, or the first or last.</summary>
+    private static BlockSyntax? Branch(BlockSyntax block, bool up)
+    {
+        List<BlockSyntax?> branches = Holder(block) switch
+        {
+            IfStatementSyntax chain => [.. Branches(chain)],
+            TryStatementSyntax attempt => [attempt.Block, .. attempt.Catches.Select(c => c.Block), attempt.Finally?.Block],
+            _ => [],
+        };
+        int at = branches.IndexOf(block);
+        int next = up ? at - 1 : at + 1;
+        return at >= 0 && next >= 0 && next < branches.Count ? branches[next] : null;
+
+        static IEnumerable<BlockSyntax?> Branches(IfStatementSyntax chain)
+        {
+            for (IfStatementSyntax? at = chain; at is not null; at = at.Else?.Statement as IfStatementSyntax)
+            {
+                yield return at.Statement as BlockSyntax;
+                if (at.Else is { Statement: not IfStatementSyntax } last)
+                {
+                    yield return last.Statement as BlockSyntax;
+                }
+            }
+        }
+    }
+
+    /// <summary>The statement whose block a block is, its whole if chain for an if's or else's, its try for a try's, catch's
+    /// or finally's, itself for a block in a block; null for a member's, a lambda's or a local function's body.</summary>
+    private static StatementSyntax? Holder(BlockSyntax block)
+    {
+        SyntaxNode? owner = block.Parent switch
+        {
+            CatchClauseSyntax or FinallyClauseSyntax => block.Parent.Parent,
+            ElseClauseSyntax => block.Parent.Parent,
+            BlockSyntax or SwitchSectionSyntax => block,
+            StatementSyntax statement and not LocalFunctionStatementSyntax => statement,
+            _ => null,
+        };
+        while (owner is IfStatementSyntax { Parent: ElseClauseSyntax { Parent: IfStatementSyntax above } })
+        {
+            owner = above;
+        }
+        return owner as StatementSyntax;
+    }
+
+    /// <summary>The indentation of a statement a level deeper than one in a list: the list's own step past its brace or label.</summary>
+    private static string Deeper(TextSnapshot text, SyntaxNode statement, SyntaxNode list)
+    {
+        string own = IndentAt(text, statement.SpanStart);
+        string outer = IndentAt(text, list is BlockSyntax block ? block.OpenBraceToken.SpanStart : list.SpanStart);
+        return own + (own.Length > outer.Length && own.StartsWith(outer, StringComparison.Ordinal) ? own[outer.Length..] : "    ");
+    }
+
+    private static string IndentAt(TextSnapshot text, int offset)
+    {
+        LineSpan line = text.GetLine(text.GetLineFromOffset(offset));
+        return text.GetText(line.Start, TextNavigation.IndentEnd(text, line) - line.Start);
     }
 
     /// <summary>The element of a list at a caret and the one beside it on the left or right, innermost first, each without the
@@ -88,38 +221,38 @@ public static class CodeMoves
         return -1;
     }
 
-    /// <summary>Unwrap at a caret: the innermost statement around it holding others (an if and its else branches, a loop, a
-    /// using, lock, fixed, checked or unsafe statement, a try and its catches and finally, a block in a block) with the part
-    /// the caret is in: the statement's lines, and the lines of what that part holds, which take its place; null where the
-    /// caret is in none, or one of them shares a line with other code.</summary>
-    public static ((int First, int Last) Whole, (int First, int Last)? Kept, string Name)? UnwrapLines(ParsedText csharp, int caret)
+    /// <summary>What Unwrap may take out at a caret: each statement around it holding others (an if and its else branches, a
+    /// loop, a using, lock, fixed, checked or unsafe statement, a try and its catches and finally, a block in a block),
+    /// innermost first, up to the member, lambda or local function holding it, with the part the caret is in: the
+    /// statement's lines, the lines of what that part holds, which take its place, what it is called and its first line's
+    /// code. One that shares a line with other code is passed over.</summary>
+    public static IReadOnlyList<Unwrapping> UnwrapChoices(ParsedText csharp, int caret)
     {
         SyntaxNode root = csharp.Root;
         SyntaxToken token = root.FindToken(Math.Clamp(caret, 0, Math.Max(0, root.FullSpan.End - 1)));
-        // Inside a lambda, a local function or a member, what holds it there is no statement to take out.
+        List<Unwrapping> found = [];
         for (SyntaxNode? node = token.Parent; node is not null and not (MemberDeclarationSyntax or AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax);
             node = node.Parent)
         {
-            if (Wrapped(node, caret) is not ({ } whole, { } kept, { } name))
+            if (Wrapped(node, caret) is not ({ } whole, { } kept, { } name) || Lines(csharp.Text, whole, whole) is not { } around)
             {
                 continue;
             }
-            if (Lines(csharp.Text, whole, whole) is not { } around)
-            {
-                return null;
-            }
+            string header = csharp.Text.GetLineText(csharp.Text.GetLineFromOffset(whole.SpanStart)).Trim();
             if (kept is BlockSyntax block && Inside(csharp.Text, block) is { } between)
             {
-                return (around, between.First <= between.Last ? between : null, name);
+                found.Add(new Unwrapping(around, between.First <= between.Last ? between : null, name, header));
             }
-            if (kept is BlockSyntax { Statements.Count: 0 })
+            else if (kept is BlockSyntax { Statements.Count: 0 })
             {
-                return (around, null, name);
+                found.Add(new Unwrapping(around, null, name, header));
             }
-            (SyntaxNode first, SyntaxNode last) = kept is BlockSyntax statements ? (statements.Statements[0], statements.Statements[^1]) : (kept, kept);
-            return Lines(csharp.Text, first, last) is { } inside ? (around, inside, name) : null;
+            else if (Lines(csharp.Text, kept is BlockSyntax statements ? statements.Statements[0] : kept, kept is BlockSyntax many ? many.Statements[^1] : kept) is { } inside)
+            {
+                found.Add(new Unwrapping(around, inside, name, header));
+            }
         }
-        return null;
+        return found;
     }
 
     /// <summary>A statement a caret is in that Unwrap takes out (the whole if chain for an if or else), the statement whose
