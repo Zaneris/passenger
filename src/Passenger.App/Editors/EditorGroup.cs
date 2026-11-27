@@ -47,7 +47,7 @@ public sealed class EditorTab(OpenDocument document) : Observable
 /// <summary>One editor of a split: its tabs (the pinned ones first), its navigation bar, its find bar and its editor,
 /// which shows the active tab's file. A file may be open in two groups at once (Split Right on it), each with its own
 /// carets and scroll over the one text.</summary>
-public sealed class EditorGroup : DockPanel
+public sealed class EditorGroup : DockPanel, IOwnKeys
 {
     private readonly EditorArea area;
     private readonly ObservableCollection<EditorTab> tabs = [];
@@ -216,7 +216,10 @@ public sealed class EditorGroup : DockPanel
             }
         };
         AddHandler(PointerPressedEvent, (_, _) => area.SetActiveGroup(this), RoutingStrategies.Tunnel, handledEventsToo: true);
+        AddHandler(KeyDownEvent, (_, e) => markdownTableEditing?.KeyDown(e), RoutingStrategies.Tunnel);
     }
+
+    bool IOwnKeys.TakesKey(KeyEventArgs e) => markdownTableEditing?.TakesKey(e) == true;
 
     /// <summary>A layout's button on the tab strip of a file with a pane of its own (a Markdown file, a form's), asking for its
     /// kind's action as its keys do, pressed while its layout is in force.</summary>
@@ -353,9 +356,10 @@ public sealed class EditorGroup : DockPanel
             : (Markdown?.IsKeyboardFocusWithin == true || Side is WinForms.FormDesignPane { IsKeyboardFocusWithin: true })
                 && (layout.View == PaneView.Editor || inline);
         Editor.PresentsMarkdown = inline;
-        if (inline)
+        if (inline && markdownTableEditing is null)
         {
-            markdownTableEditing ??= new MarkdownTableEditing(Editor);
+            markdownTableEditing = new MarkdownTableEditing(Editor);
+            Children.Insert(Children.IndexOf(body), markdownTableEditing.Toolbar);
         }
         markdownTableEditing?.Show(inline ? document?.Text : null);
         Database.SqlConsole? console = document is not null && Database.SqlConsole.Speaks(document.Language) ? area.ConsoleOf?.Invoke(document) : null;
@@ -656,6 +660,7 @@ public sealed class EditorGroup : DockPanel
     {
         Editor.IsReadOnly = document.IsReadOnly;
         Editor.ReadOnlyWhy = document.ReadOnlyWhy;
+        markdownTableEditing?.FollowReadOnly();
     }
 
     /// <summary>Whether the editor shows the file, rather than a view of its own in the editor's place.</summary>

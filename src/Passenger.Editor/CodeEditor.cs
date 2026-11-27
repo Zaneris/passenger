@@ -117,7 +117,7 @@ public sealed partial class CodeEditor : Control
                 RefreshStyle();
             }
         };
-        AddHandler(TextInputMethodClientRequestedEvent, (_, e) => e.Client = InputMethod);
+        AddHandler(TextInputMethodClientRequestedEvent, (_, e) => e.Client ??= InputMethod);
         metrics = Metrics.Measure(Typeface, FontSize, LineSpacing);
         palette = Palette.Default;
         numberRuns = (
@@ -645,6 +645,9 @@ public sealed partial class CodeEditor : Control
     {
         SetSelections(SelectionSet.Single(new Selection(range.Start, range.End)), reveal: true);
     }
+
+    /// <summary>Scrolls an inline document control into view while leaving the source caret where it was.</summary>
+    public void RevealOffset(int offset) => Reveal(Math.Clamp(offset, 0, document.Snapshot.Length));
 
     /// <summary>Where an offset's caret would stand, as the top of its row, in this control's
     /// coordinates: what a popup anchors to, and where a click lands on that offset.</summary>

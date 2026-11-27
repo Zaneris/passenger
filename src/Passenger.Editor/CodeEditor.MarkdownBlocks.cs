@@ -6,7 +6,7 @@ using Passenger.Text;
 namespace Passenger.Editor;
 
 /// <summary>A block's source lines, excluding the end, and its document view once the current text has been parsed.</summary>
-public sealed record MarkdownEditorBlock(int FirstLine, int EndLine, Func<Control> Create, bool IsCurrent);
+public sealed record MarkdownEditorBlock(int FirstLine, int EndLine, Func<Control> Create, bool IsCurrent, bool IsEditing = false);
 
 public sealed partial class CodeEditor
 {
@@ -65,7 +65,8 @@ public sealed partial class CodeEditor
             for (; i < markdownBlocks.Count && markdownBlocks[i].FirstLine <= last; i++)
             {
                 MarkdownEditorBlock block = markdownBlocks[i];
-                if (block.IsCurrent && !IsHidden(block.FirstLine) && !IsHidden(block.EndLine - 1) && !SelectionIn(block, text))
+                if (!IsHidden(block.FirstLine) && !IsHidden(block.EndLine - 1)
+                    && (block.IsEditing || (block.IsCurrent && !SelectionIn(block, text))))
                 {
                     shownMarkdownBlocks.Add(block);
                 }

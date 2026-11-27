@@ -5,6 +5,7 @@ using Avalonia.Controls.Documents;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Styling;
@@ -129,8 +130,8 @@ public sealed class MarkdownPreviewTests
         Flow.Step(nameof(Inline_editing_formats_the_same_buffer_and_saves_only_the_edits),
             Inline_editing_formats_the_same_buffer_and_saves_only_the_edits);
         OpenWindows.CloseAll();
-        Flow.Step(nameof(An_inline_table_shows_a_grid_until_its_source_is_being_edited),
-            An_inline_table_shows_a_grid_until_its_source_is_being_edited);
+        Flow.Step(nameof(An_inline_table_edits_cells_and_grows_without_rewriting_other_text),
+            An_inline_table_edits_cells_and_grows_without_rewriting_other_text);
     }
 
     /// <summary>A README's headings nest by level in Structure and lead to their lines, and a typing pause in a long
@@ -394,7 +395,7 @@ public sealed class MarkdownPreviewTests
         window.Close();
     }
 
-    private static void An_inline_table_shows_a_grid_until_its_source_is_being_edited()
+    private static void An_inline_table_edits_cells_and_grows_without_rewriting_other_text()
     {
         string folder = TestFolders.Create("markdown-inline-table-");
         string file = Path.Combine(folder, "README.md");
@@ -402,35 +403,68 @@ public sealed class MarkdownPreviewTests
         File.WriteAllText(file, source);
         MainWindow window = Ui.OpenFolder(folder, width: 1100, height: 720, languageServer: false);
         Assert.Null(window.OpenFile(file));
-        CodeEditor editor = window.EditorArea.ActiveGroup.Editor;
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        CodeEditor editor = group.Editor;
         Assert.True(window.Perform(AppActions.MarkdownInlineEditing));
         MarkdownText? Cell(string words) => editor.GetVisualDescendants().OfType<MarkdownText>().FirstOrDefault(text => text.Shown == words);
+        TextBox? Field() => editor.GetVisualDescendants().OfType<TextBox>().FirstOrDefault(box => box.Name == "MarkdownTableCell");
+        Button Button(string name) => group.GetVisualDescendants().OfType<Button>().Single(button => button.Name == name);
+        void ChooseTable(string item)
+        {
+            Button menu = Button("MarkdownTableMenu");
+            Ui.Click(menu);
+            Ui.Choose(menu.ContextMenu, item);
+        }
+        string command = Keystroke.Command == KeyModifiers.Meta ? "meta" : "control";
         Ui.WaitFor(() => Cell("12") is not null && Cell("Ready") is not null, "both inactive Markdown tables drawn in the editor");
         Assert.Equal(TextAlignment.Right, Cell("12")!.TextAlignment);
 
         Ui.Click(Assert.IsType<Border>(Cell("12")!.GetVisualParent()));
-        Assert.Null(Cell("12"));
+        Assert.Equal("12", Field()!.Text);
+        Assert.Equal("12", Field()!.SelectedText);
+        Assert.NotNull(Cell("Item"));
         Assert.NotNull(Cell("Ready"));
-        int emphasis = source.IndexOf("**Item**", StringComparison.Ordinal);
-        Assert.True(editor.PointOf(emphasis + 2).X > editor.PointOf(emphasis).X, "The open table shows its Markdown emphasis marks");
-        int quantity = source.IndexOf("12", StringComparison.Ordinal);
-        Assert.Equal(new Selection(quantity, quantity + 2), editor.Selections.Primary);
         window.KeyTextInput("24");
         Ui.Settle();
-        Assert.Null(Cell("24"));
-        Assert.NotNull(Cell("Ready"));
         string edited = source.Replace("12", "24", StringComparison.Ordinal);
         Assert.Equal(edited, editor.Document.Snapshot.ToString());
-        Assert.Equal(source, File.ReadAllText(file));
+        Ui.Run(window, AppActions.Save);
+        Ui.WaitFor(() => File.ReadAllText(file) == edited, "saving while the grid cell has focus writes its edit");
+        Assert.Equal("24", Field()!.Text);
+        Ui.Press(window, "TAB");
+        Ui.WaitFor(() => Field()?.Text == "", "Tab from the last cell adds a row and opens its first cell");
+        window.KeyTextInput("Eraser");
+        Ui.Settle();
+        ChooseTable("Insert Column After");
+        Ui.WaitFor(() => Field()?.Text == "", "the inserted column is editable");
+        window.KeyTextInput("Stock");
+        Ui.Settle();
+        Assert.Contains("| Eraser | Stock |  |", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        ChooseTable("Align Center");
+        Ui.WaitFor(() => Field()?.Text == "Stock", "the aligned column's cell stays editable");
+        Assert.Contains("| :--- | :---: | ---: |", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        ChooseTable("Delete Column");
+        Ui.WaitFor(() => Field()?.Text == "", "the remaining column is editable");
+        Assert.DoesNotContain("Stock", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        ChooseTable("Delete Row");
+        Ui.WaitFor(() => Field()?.Text == "24", "the edited row remains after deleting the added row");
+        Assert.Equal(edited, editor.Document.Snapshot.ToString());
 
-        Ui.Press(window, "DOWN");
-        Ui.WaitFor(() => Cell("24") is not null, "the edited table drawn again after the caret left it");
-        Ui.Press(window, "UP");
+        ChooseTable("Edit Table as Markdown");
+        Assert.Null(Field());
         Assert.Null(Cell("24"));
         Assert.NotNull(Cell("Ready"));
-        Ui.Press(window, "DOWN");
-        Ui.Run(window, AppActions.Save);
-        Ui.WaitFor(() => Cell("24") is not null && File.ReadAllText(file) == edited, "the original Markdown table syntax saved with the new value");
+
+        int words = edited.IndexOf("Another table.", StringComparison.Ordinal);
+        editor.Select(new TextRange(words, "Another".Length));
+        Ui.Click(Button("MarkdownBold"));
+        Assert.Contains("**Another** table.", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Ui.Press(window, $"{command} B");
+        Assert.Equal(edited, editor.Document.Snapshot.ToString());
+        Ui.Press(window, $"{command} I");
+        Assert.Contains("_Another_ table.", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Ui.Press(window, $"{command} I");
+        Assert.Equal(edited, editor.Document.Snapshot.ToString());
         window.Close();
     }
 

@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Passenger.Core;
 using Passenger.Editor;
@@ -8,7 +9,7 @@ namespace Passenger.App.Editors;
 
 /// <summary>Gives the inline editor its table blocks, using the same reader and grid as the preview. A grid click
 /// selects that cell's source, so editing and saving use the ordinary editor and the original Markdown buffer.</summary>
-internal sealed class MarkdownTableEditing
+internal sealed partial class MarkdownTableEditing
 {
     private static readonly MarkdownPage Page = new(static _ => { });
     private readonly CodeEditor editor;
@@ -16,11 +17,15 @@ internal sealed class MarkdownTableEditing
     private TextDocument? document;
     private TextDocument? followed;
     private List<Entry> tables = [];
+    private CellEditor? active;
+    private (int Start, int Row, int Column)? pending;
+    private bool writesCell;
 
     public MarkdownTableEditing(CodeEditor editor)
     {
         this.editor = editor;
         reading = new Debounce(TypingPauses.Previews, ReadAsync);
+        MakeToolbar();
         editor.AttachedToVisualTree += (_, _) => Follow(document);
         editor.DetachedFromVisualTree += (_, _) => Follow(null);
     }
@@ -28,6 +33,8 @@ internal sealed class MarkdownTableEditing
     public void Show(TextDocument? next)
     {
         document = next;
+        Toolbar.IsVisible = next is not null;
+        FollowReadOnly();
         Follow(editor.IsAttachedToVisualTree() ? next : null);
     }
 
@@ -38,6 +45,8 @@ internal sealed class MarkdownTableEditing
             return;
         }
         reading.Stop();
+        pending = null;
+        CloseCell(present: false);
         if (followed is not null)
         {
             followed.Changed -= OnChanged;
@@ -54,11 +63,21 @@ internal sealed class MarkdownTableEditing
 
     private void OnChanged(object? sender, DocumentChangedEventArgs change)
     {
+        if (active is { } open && !writesCell && change.Edits.Any(edit => Touches(edit, open.Entry.Source)))
+        {
+            CloseCell(present: false);
+        }
         for (int i = tables.Count - 1; i >= 0; i--)
         {
             Entry entry = tables[i];
-            if (change.Edits.Any(edit => edit.Start <= entry.Source.End && edit.End >= entry.Source.Start
-                && (edit.Start <= entry.Source.Start || edit.End >= entry.Source.End)))
+            if (writesCell && active?.Entry == entry)
+            {
+                entry.Source = TextRange.FromBounds(TextEditing.MapOffset(entry.Source.Start, change.Edits, afterInsertions: false),
+                    TextEditing.MapOffset(entry.Source.End, change.Edits, afterInsertions: true));
+                entry.IsCurrent = false;
+                continue;
+            }
+            if (change.Edits.Any(edit => Touches(edit, entry.Source) && (edit.Start <= entry.Source.Start || edit.End >= entry.Source.End)))
             {
                 tables.RemoveAt(i);
                 continue;
@@ -66,9 +85,15 @@ internal sealed class MarkdownTableEditing
             entry.IsCurrent &= !change.Edits.Any(edit => edit.Start < entry.Source.End && edit.End > entry.Source.Start);
             entry.Source = TextEditing.MapRange(entry.Source, change.Edits);
         }
+        if (!writesCell && active is { Range: { } range } stays)
+        {
+            stays.Range = TextEditing.MapRange(range, change.Edits);
+        }
         Present(change.After);
         reading.Restart();
     }
+
+    private static bool Touches(TextEdit edit, TextRange source) => edit.Start <= source.End && edit.End >= source.Start;
 
     private async Task ReadAsync()
     {
@@ -90,10 +115,29 @@ internal sealed class MarkdownTableEditing
         tables = new List<Entry>(read.Count);
         foreach ((Markdown.Table table, TextRange source) in read)
         {
-            Entry entry = kept.TryGetValue(table, out Entry? existing) ? existing : new Entry(this, table);
+            Entry entry = active is { } open && open.Entry.Source.Start == source.Start
+                && open.Entry.Table.Rows.Count == table.Rows.Count && open.Entry.Table.Aligns.Count == table.Aligns.Count
+                ? open.Entry : kept.TryGetValue(table, out Entry? existing) ? existing : new Entry(this, table);
+            entry.Table = table;
             entry.Source = source;
             entry.IsCurrent = true;
             tables.Add(entry);
+        }
+        if (active is { } gone && !tables.Contains(gone.Entry))
+        {
+            CloseCell();
+        }
+        if (pending is { } next)
+        {
+            if (tables.FirstOrDefault(entry => entry.Source.Start == next.Start) is { } target)
+            {
+                MarkdownTableSource source = Source(target);
+                editor.RevealOffset(source.Line(Math.Clamp(next.Row, 0, source.Rows - 1)).Start);
+            }
+            else
+            {
+                pending = null;
+            }
         }
         Present(snapshot);
     }
@@ -120,19 +164,38 @@ internal sealed class MarkdownTableEditing
         return found;
     }
 
-    private void Present(TextSnapshot snapshot) => editor.ShowMarkdownBlocks(snapshot,
-        [.. tables.Select(entry => new MarkdownEditorBlock(snapshot.GetLineFromOffset(entry.Source.Start),
-            snapshot.GetLineFromOffset(entry.Source.End) + 1, entry.Create, entry.IsCurrent))]);
-
-    private void Edit(Entry entry, int row, int column)
+    private void Present(TextSnapshot snapshot)
     {
-        TextSnapshot snapshot = editor.Document.Snapshot;
-        int first = snapshot.GetLineFromOffset(entry.Source.Start);
-        LineSpan line = snapshot.GetLine(first + (row == 0 ? 0 : row + 1));
-        List<TextRange> cells = Markdown.CellRanges(snapshot.GetText(line.Start, line.Length));
-        TextRange cell = column < cells.Count ? cells[column] : new TextRange(line.Length, 0);
-        editor.Focus();
-        editor.Select(new TextRange(line.Start + cell.Start, cell.Length));
+        if (followed == editor.Document)
+        {
+            editor.ShowMarkdownBlocks(snapshot, [.. tables.Select(entry => new MarkdownEditorBlock(
+                snapshot.GetLineFromOffset(entry.Source.Start), snapshot.GetLineFromOffset(entry.Source.End) + 1,
+                entry.Create, entry.IsCurrent, active?.Entry == entry || (entry.IsCurrent && pending?.Start == entry.Source.Start)))]);
+        }
+    }
+
+    private MarkdownTableSource Source(Entry entry) => new(editor.Document.Snapshot,
+        editor.Document.Snapshot.GetLineFromOffset(entry.Source.Start), entry.Table.Rows.Count + 1, entry.Table.Aligns.Count);
+
+    private Control Make(Entry entry)
+    {
+        ScrollViewer table = Markdown.TableOf(entry.Table, Page, (row, column, cell) => Open(entry, row, column, cell), editor.LineHeight);
+        if (pending?.Start == entry.Source.Start)
+        {
+            Dispatcher.UIThread.Post(() => OpenPending(entry, table), DispatcherPriority.Loaded);
+        }
+        return table;
+    }
+
+    private void OpenPending(Entry entry, ScrollViewer table)
+    {
+        if (pending is not { } next || entry.Source.Start != next.Start || !table.IsAttachedToVisualTree())
+        {
+            return;
+        }
+        pending = null;
+        Grid grid = (Grid)((Border)table.Content!).Child!;
+        Open(entry, Math.Clamp(next.Row, 0, entry.Table.Rows.Count), Math.Clamp(next.Column, 0, entry.Table.Aligns.Count - 1), grid);
     }
 
     private sealed class Entry
@@ -140,10 +203,10 @@ internal sealed class MarkdownTableEditing
         public Entry(MarkdownTableEditing editor, Markdown.Table table)
         {
             Table = table;
-            Create = () => Markdown.TableOf(Table, Page, (row, column) => editor.Edit(this, row, column), editor.editor.LineHeight);
+            Create = () => editor.Make(this);
         }
 
-        public Markdown.Table Table { get; }
+        public Markdown.Table Table { get; set; }
         public TextRange Source { get; set; }
         public bool IsCurrent { get; set; }
         public Func<Control> Create { get; }

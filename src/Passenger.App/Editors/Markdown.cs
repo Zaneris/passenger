@@ -577,12 +577,18 @@ internal static partial class Markdown
             }
             if (c == '|' && code == 0)
             {
-                cells.Add(TextRange.Trimmed(row, TextRange.FromBounds(start, at)));
+                cells.Add(CellAt(start, at));
                 start = at + 1;
             }
         }
-        cells.Add(TextRange.Trimmed(row, TextRange.FromBounds(start, end)));
+        cells.Add(CellAt(start, end));
         return cells;
+
+        TextRange CellAt(int from, int to)
+        {
+            TextRange words = TextRange.Trimmed(row, TextRange.FromBounds(from, to));
+            return words.Length > 0 ? words : new TextRange(from + (to - from) / 2, 0);
+        }
     }
 
     /// <summary>A heading's words as a person reads them, of which its anchor is made.</summary>

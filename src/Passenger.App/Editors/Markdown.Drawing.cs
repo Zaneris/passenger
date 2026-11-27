@@ -183,7 +183,7 @@ internal static partial class Markdown
 
     /// <summary>A table's cells in a grid, each column as wide as its widest cell up to the most a cell is drawn, its words
     /// wrapping past that, the table scrolled across where the page is narrower than it.</summary>
-    internal static Control TableOf(Table table, MarkdownPage page, Action<int, int>? edit = null, double rowHeight = 0)
+    internal static ScrollViewer TableOf(Table table, MarkdownPage page, Action<int, int, Border>? edit = null, double rowHeight = 0)
     {
         int columns = table.Aligns.Count;
         Grid grid = new() { ColumnDefinitions = new ColumnDefinitions(string.Join(',', Enumerable.Repeat("Auto", columns))) };
@@ -193,13 +193,7 @@ internal static partial class Markdown
             grid.RowDefinitions.Add(new RowDefinition(edit is null ? GridLength.Auto : new GridLength(rowHeight)));
             for (int column = 0; column < columns; column++)
             {
-                MarkdownText words = MarkdownText.Of(Inlines(column < rows[row].Count ? rows[row][column] : ""), page, row == 0 ? StyleClasses.MdCellHead : StyleClasses.MdCellText);
-                words.TextAlignment = table.Aligns[column] switch
-                {
-                    Align.Center => TextAlignment.Center,
-                    Align.Right => TextAlignment.Right,
-                    _ => TextAlignment.Left,
-                };
+                MarkdownText words = CellWords(column < rows[row].Count ? rows[row][column] : "", page, table.Aligns[column], row == 0, edit is not null);
                 // The rules between cells only: the table's frame draws its edges.
                 bool beforeAnother = column < columns - 1, aboveAnother = row < rows.Count - 1;
                 Border cell = new()
@@ -215,10 +209,6 @@ internal static partial class Markdown
                 {
                     int sourceRow = row;
                     int sourceColumn = column;
-                    words.TextWrapping = TextWrapping.NoWrap;
-                    words.LineHeight = double.NaN;
-                    words.MaxWidth = double.PositiveInfinity;
-                    words.VerticalAlignment = VerticalAlignment.Center;
                     cell.Padding = new Thickness(Gaps.Normal, Gaps.Hair);
                     if (row != 0)
                     {
@@ -226,10 +216,10 @@ internal static partial class Markdown
                     }
                     cell.AddHandler(InputElement.PointerPressedEvent, (_, e) =>
                     {
-                        if (e.GetCurrentPoint(cell).Properties.IsLeftButtonPressed)
+                        if (cell.Child is MarkdownText && e.GetCurrentPoint(cell).Properties.IsLeftButtonPressed)
                         {
                             e.Handled = true;
-                            edit(sourceRow, sourceColumn);
+                            edit(sourceRow, sourceColumn, cell);
                         }
                     }, RoutingStrategies.Tunnel);
                 }
@@ -242,6 +232,25 @@ internal static partial class Markdown
             VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
             Content = new Border { Classes = { StyleClasses.Box, StyleClasses.MdTable }, HorizontalAlignment = HorizontalAlignment.Left, Child = grid },
         };
+    }
+
+    internal static MarkdownText CellWords(string text, MarkdownPage page, Align? alignment, bool header, bool inline)
+    {
+        MarkdownText words = MarkdownText.Of(Inlines(text), page, header ? StyleClasses.MdCellHead : StyleClasses.MdCellText);
+        words.TextAlignment = alignment switch
+        {
+            Align.Center => TextAlignment.Center,
+            Align.Right => TextAlignment.Right,
+            _ => TextAlignment.Left,
+        };
+        if (inline)
+        {
+            words.TextWrapping = TextWrapping.NoWrap;
+            words.LineHeight = double.NaN;
+            words.MaxWidth = double.PositiveInfinity;
+            words.VerticalAlignment = VerticalAlignment.Center;
+        }
+        return words;
     }
 }
 

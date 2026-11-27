@@ -244,7 +244,7 @@ public sealed partial class CodeEditor
 
     /// <summary>Applies edits made outside the keyboard (a replace, a fix from the language server)
     /// as one undo step, the carets carried through them or set to <paramref name="after"/>.</summary>
-    public void ApplyEdits(IReadOnlyList<TextEdit> edits, SelectionSet? after = null)
+    public void ApplyEdits(IReadOnlyList<TextEdit> edits, SelectionSet? after = null, bool reveal = true)
     {
         if (edits.Count == 0 || IsReadOnly)
         {
@@ -252,7 +252,7 @@ public sealed partial class CodeEditor
         }
         List<TextEdit> sorted = edits.OrderBy(e => e.Start).ToList();
         document.BreakUndoGroup();
-        Apply(new EditPlan(sorted, after ?? TextEditing.MapThrough(selections, sorted), EditKind.Other));
+        Apply(new EditPlan(sorted, after ?? TextEditing.MapThrough(selections, sorted), EditKind.Other), reveal);
         document.BreakUndoGroup();
     }
 
@@ -273,7 +273,7 @@ public sealed partial class CodeEditor
 
     private int PageLines => Math.Max(1, (int)(Viewport.Height / metrics.LineHeight) - 1);
 
-    private void Apply(EditPlan? plan)
+    private void Apply(EditPlan? plan, bool reveal = true)
     {
         if (plan is null || IsReadOnly)
         {
@@ -294,7 +294,7 @@ public sealed partial class CodeEditor
         FollowMoves(foldsBefore, plan);
         // A caret the edit leaves where a row wraps stands after the text it typed, at the end of the row before.
         nextWrapLeaning = CaretsAtWraps(plan.Selections);
-        SetSelections(plan.Selections, reveal: true);
+        SetSelections(plan.Selections, reveal);
     }
 
     private void Move(Func<Selection, int> to, bool extend)
