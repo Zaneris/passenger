@@ -1148,6 +1148,7 @@ public sealed partial class Vim
         bool landedAlone = false;
         // is owes a white it passes with the sentence before it: from an empty line text follows, and by turns at each line break alone it crosses.
         bool owed = false;
+        bool owesBefore = false;
         // An empty line in a run that ends the text passes no white: is takes the white before the sentence it steps to.
         int runLast = VimMotions.LineOf(text, at).Line;
         while (fromStart && runLast < VimMotions.LastLine(text, breakEnds) && text.GetLine(runLast + 1).Length == 0)
@@ -1176,10 +1177,18 @@ public sealed partial class Vim
             reached = fromEmpty && (reached || left < (begun ? n : n - 1));
             at = start;
             landedAlone = LoneEmpty(text, at);
-            if (!inner && (white || inside || here.White || reached) && at > 0 && SentenceUnit(text, VimMotions.StepBack(text, at)) is var before
+            bool owing = owesBefore;
+            bool wants = white || inside || here.White || reached || owing;
+            owesBefore = false;
+            if (!inner && wants && at > 0 && SentenceUnit(text, VimMotions.StepBack(text, at)) is var before
                 && before.White != white)
             {
                 at = before.Start;
+            }
+            else if (!inner && (inside || reached || owing) && !white && BreakAloneBefore(text, at))
+            {
+                // A sentence with no white after it taken and a line break alone before it has none to take: as takes the white before the next sentence instead.
+                owesBefore = true;
             }
             else if (!inner && landedAlone && begunInside && text.GetLine(text.GetLineFromOffset(at) - 1) is var above && WhiteEnding(text, above.Line) is var blanks
                 && blanks > above.Start && blanks < above.End)
