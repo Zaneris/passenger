@@ -32,7 +32,7 @@ public sealed class VimModeTests : IDisposable
 
     [AvaloniaFact]
     public void Ex_commands_save_and_change_every_file_as_one_command_of_undo() => Cases.All(
-        (":s is one step of undo, :m carries marks, :w saves, :e opens and :q closes", Ex_commands_substitute_as_one_step_save_open_and_close),
+        (":s is one step of undo, :m and J carry marks, :w saves, :e opens and :q closes", Ex_commands_substitute_as_one_step_save_open_and_close),
         (":bufdo and :windo change every file as one command of undo", Bufdo_and_windo_change_every_file_as_one_command_of_undo));
 
     /// <summary>The mappings file in the state folder is read as Vim mode comes on and again as it changes: its mappings
@@ -287,8 +287,9 @@ public sealed class VimModeTests : IDisposable
         }
     }
 
-    /// <summary>:s over a range is one step of undo, :m carries a line's mark with it, : in visual mode names its lines,
-    /// :w saves as Save does, :e opens a file and :q closes its tab as Close Tab does.</summary>
+    /// <summary>:s over a range is one step of undo, :m carries a line's mark with it, a mark J joins to the line above keeps
+    /// its column there whatever is taken before it, : in visual mode names its lines, :w saves as Save does, :e opens a
+    /// file and :q closes its tab as Close Tab does.</summary>
     private void Ex_commands_substitute_as_one_step_save_open_and_close()
     {
         string other = Path.Combine(folder, "Other.txt");
@@ -306,6 +307,10 @@ public sealed class VimModeTests : IDisposable
             Assert.Equal(("foo two\ntwo three\none two\n", "3:1"), (Text(editor), Status(window).Caret));
             Keys(window, "ugg");
             Ui.WaitFor(() => Text(editor) == "one two\nfoo two\ntwo three\n", () => $"u took back :m, leaving \"{Text(editor)}\"");
+            Keys(window, "jwmakJ0x`a");
+            Assert.Equal(("ne two foo two\ntwo three\n", "1:13"), (Text(editor), Status(window).Caret));
+            Keys(window, "uugg");
+            Ui.WaitFor(() => Text(editor) == "one two\nfoo two\ntwo three\n", () => $"u took back J and x, leaving \"{Text(editor)}\"");
             Keys(window, "Vj:");
             Assert.Equal((":'<,'>", "NORMAL"), (StatusWords(window), Status(window).Mode));
             Keys(window, "s/o/0/g<CR>");

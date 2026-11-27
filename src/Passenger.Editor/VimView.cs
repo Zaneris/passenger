@@ -106,18 +106,20 @@ public sealed class VimTextView(IndentOptions indent, string lineEnding = "\n", 
     public void EraseMark(char name) => marks.Remove(name);
 
     /// <summary>The marks carried through edits made to the text (sorted, in the old text's coordinates), as an editor's
-    /// anchors carry them: one in text taken out lands where it was taken.</summary>
-    public void Follow(IReadOnlyList<TextEdit> edits)
+    /// anchors carry them: one in text taken out lands where it was taken. Each then keeps the column it reached on a
+    /// line it was joined to (<see cref="VimMarks.Rebased"/>), in <paramref name="after"/>, the text the edits made.</summary>
+    public void Follow(IReadOnlyList<TextEdit> edits, TextSnapshot after)
     {
         foreach (char name in marks.Keys.ToList())
         {
             (int at, int lineStart, int column) = marks[name];
-            marks[name] = (TextEditing.MapOffset(at, edits, afterInsertions: false), TextEditing.MapOffset(lineStart, edits, afterInsertions: false), column);
+            (at, lineStart) = (TextEditing.MapOffset(at, edits, afterInsertions: false), TextEditing.MapOffset(lineStart, edits, afterInsertions: false));
+            marks[name] = VimMarks.Rebased(after, at, lineStart, column) is { } kept ? (at, kept.LineStart, kept.Column) : (at, lineStart, column);
         }
     }
 
     /// <summary>The marks carried through a plan, those on text it moves (<see cref="EditPlan.Moved"/>) going with it.</summary>
-    public void Follow(EditPlan plan)
+    public void Follow(EditPlan plan, TextSnapshot after)
     {
         Dictionary<char, (int, int, int)> moved = [];
         foreach ((char name, (int at, int lineStart, int column)) in marks)
@@ -127,7 +129,7 @@ public sealed class VimTextView(IndentOptions indent, string lineEnding = "\n", 
                 moved[name] = (to, VimMarks.MovedTo(lineStart, plan.Moved) ?? to, column);
             }
         }
-        Follow(plan.Edits);
+        Follow(plan.Edits, after);
         foreach ((char name, (int, int, int) held) in moved)
         {
             marks[name] = held;
@@ -150,6 +152,16 @@ internal static class VimMarks
             }
         }
         return null;
+    }
+
+    /// <summary>Where a mark's line start was carried into the middle of its line, as when that line is joined to the one
+    /// above, the line's own start and the column the mark reached there, which text later put or taken before it on the
+    /// line leaves as it is; null where its line start is its line's own or on another line.</summary>
+    public static (int LineStart, int Column)? Rebased(TextSnapshot text, int at, int lineStart, int column)
+    {
+        LineSpan line = VimMotions.LineOf(text, Math.Min(at, text.Length));
+        lineStart = Math.Min(lineStart, text.Length);
+        return lineStart > line.Start && VimMotions.LineOf(text, lineStart).Line == line.Line ? (line.Start, column + lineStart - line.Start) : null;
     }
 
     /// <summary>A mark's place from its character's offset and its line's start, each carried through the edits since it

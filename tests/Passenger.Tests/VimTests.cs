@@ -612,8 +612,8 @@ public sealed partial class VimTests
                 };
                 if (typed is not null)
                 {
-                    view.Follow(typed.Edits);
                     (text, carets) = (text.Apply(typed.Edits), typed.Selections);
+                    view.Follow(typed.Edits, text);
                 }
                 continue;
             }
@@ -653,8 +653,8 @@ public sealed partial class VimTests
     {
         foreach (EditPlan edit in result.Edits ?? [])
         {
-            view.Follow(edit);
             (text, carets) = (text.Apply(edit.Edits), edit.Selections);
+            view.Follow(edit, text);
         }
         return result.Edits is not { Count: > 0 } && result.Selections is { } moved ? (text, moved) : (text, carets);
     }
