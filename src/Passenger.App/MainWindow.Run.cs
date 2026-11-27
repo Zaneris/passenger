@@ -653,8 +653,10 @@ public partial class MainWindow
         string? why = chosen is null ? null : configurations.WhyNotHere(chosen);
         RunConfigName.Text = chosen is null ? "No configurations" : Shown(chosen);
         RunConfigName.Classes.Set(StyleClasses.Muted, why is not null);
-        ToolTip.SetTip(RunConfigButton, why is null ? "Run configuration" : $"{chosen!.Name} cannot run here: {why}");
+        ToolTip.SetTip(RunConfigButton, why is null ? "Run configuration" : RunConfigRefusal(chosen!.Name, why));
     }
+
+    private static string RunConfigRefusal(string name, string why) => $"{name} cannot run here: {why}";
 
     /// <summary>The run configurations to choose from, as a menu under the toolbar widget, and Edit Configurations
     /// below them: one that cannot launch here is listed greyed, with why beside it, and can still be chosen, so Run
@@ -699,9 +701,13 @@ public partial class MainWindow
             string name = each.Name;
             string? why = WhyNotHere(each);
             MenuItem item = MenuChoice.Of(why is null ? Shown(each) : Greyed(name, why), session.Configurations.Chosen?.Name == name, () => SelectConfiguration(name));
-            if (why is not null)
+            if (why is null)
             {
-                ToolTip.SetTip(item, $"{name} cannot run here: {why}");
+                TrimmedTip.AttachHeader(item, () => item.Header as string, () => name);
+            }
+            else
+            {
+                ToolTip.SetTip(item, RunConfigRefusal(name, why));
             }
             return item;
         }

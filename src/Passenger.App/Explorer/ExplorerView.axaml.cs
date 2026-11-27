@@ -662,12 +662,15 @@ public partial class ExplorerView : UserControl
         // How version control says the file changed, as its name's colour does (ChangedFileRow's letter).
         TextBlock change = new() { Classes = { StyleClasses.Caption, StyleClasses.Strong }, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Margin = new Thickness(Gaps.Normal, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { glyphs, name, change, detail } };
+        ShrinkingRow.SetKeepsWidth(glyphs, true);
+        ShrinkingRow.SetKeepsWidth(change, true);
+        ShrinkingRow row = new() { Height = ListRow.Height, Children = { glyphs, name, change, detail } };
+        TrimmedTip.Attach(row, name);
         return row.Showing<ExplorerNode>(node =>
         {
             row.Margin = node.Indent;
             row.Opacity = node.Opacity;
-            ToolTip.SetTip(row, node.Hover);
+            TrimmedTip.Describe(row, node.Hover);
             AutomationProperties.SetName(row, node.Said);
             glyphs.HasChevron = node.HasChildren;
             glyphs.Turned = node.IsExpanded;

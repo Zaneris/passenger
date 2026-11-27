@@ -1518,6 +1518,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock from = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         ShrinkingRow line = new() { Children = { name, from } };
+        TrimmedTip.Attach(line, name);
         return line.Showing<Entry>(entry =>
         {
             RunConfiguration row = entry.Configuration;
@@ -1528,7 +1529,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             bool changed = whyNot is null && entry.IsChanged;
             name.Classes.Set(StyleClasses.Muted, whyNot is not null);
             name.Classes.Set(StyleClasses.Changed, changed);
-            ToolTip.SetTip(line, whyNot is not null ? $"{row.Name} cannot run here: {whyNot}" : changed ? $"{row.Name} is changed here from what its {SourceName(row)} gives" : null);
+            TrimmedTip.Describe(line, whyNot is not null ? $"{row.Name} cannot run here: {whyNot}" : changed ? $"{row.Name} is changed here from what its {SourceName(row)} gives" : null);
             from.IsVisible = row.Generated || row.IsMultiple;
             from.Text = row.IsMultiple ? KeptIn(row) switch
             {

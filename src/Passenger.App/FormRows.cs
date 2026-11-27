@@ -66,11 +66,19 @@ public static class FormRows
 
     /// <summary>A field's note, under it in its row: muted, at the caption's size, wrapping, or for a path
     /// (<paramref name="path"/>) on one line, cut short by its folders.</summary>
-    public static TextBlock Note(string? words = null, bool path = false) => new()
+    public static TextBlock Note(string? words = null, bool path = false)
     {
-        Classes = { StyleClasses.Muted, StyleClasses.Caption },
-        Text = words,
-        TextWrapping = path ? TextWrapping.NoWrap : TextWrapping.Wrap,
-        TextTrimming = path ? TextTrimming.PathSegmentEllipsis : TextTrimming.None,
-    };
+        TextBlock note = new()
+        {
+            Classes = { StyleClasses.Muted, StyleClasses.Caption },
+            Text = words,
+            TextWrapping = path ? TextWrapping.NoWrap : TextWrapping.Wrap,
+            TextTrimming = path ? TextTrimming.PathSegmentEllipsis : TextTrimming.None,
+        };
+        if (path)
+        {
+            TrimmedTip.Attach(note);
+        }
+        return note;
+    }
 }

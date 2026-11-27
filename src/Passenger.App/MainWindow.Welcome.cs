@@ -212,7 +212,12 @@ public partial class MainWindow
             {
                 items.Add(ToolWindows.ListMenus.Heading(MainMenu.RecentSolutions));
             }
-            items.AddRange(recent.Select(r => ToolWindows.ListMenus.Item(r.Title, r.Open)));
+            foreach ((string title, Action open) in recent)
+            {
+                MenuItem item = ToolWindows.ListMenus.Item(title, open);
+                TrimmedTip.AttachHeader(item, () => title);
+                items.Add(item);
+            }
         }
         ContextMenu menu = new() { ItemsSource = items };
         Open(menu, ProjectButton);

@@ -24,6 +24,76 @@ namespace Passenger.Tests;
 /// editors but while a window is dragged.</summary>
 public sealed class SmallestWindowTests
 {
+    [AvaloniaFact]
+    public void Truncated_project_and_file_names_show_in_their_tooltips_and_keep_the_original_description()
+    {
+        string folder = TestFolders.Create($"trimmed-{new string('W', 56)}-");
+        string fileName = $"{new string('W', 72)}.cs";
+        string file = Path.Combine(folder, fileName);
+        TestFolders.Write(folder, $"{new string('W', 52)}.csproj", TestProjects.Console());
+        TestFolders.Write(folder, fileName, "System.Console.WriteLine(1);");
+        MainWindow window = Ui.OpenFolder(folder, width: 850, height: 550, languageServer: false, autosaves: false);
+        try
+        {
+            TextBlock project = (TextBlock)Named(window, "ProjectName");
+            Button projectButton = (Button)Named(window, "ProjectButton");
+            Ui.WaitFor(() => project.TextLayout.TextLines.Any(line => line.HasCollapsed), "the long project name to be truncated");
+            string description = Assert.IsType<string>(ToolTip.GetTip(projectButton));
+            Ui.Hover(projectButton);
+            Ui.WaitFor(() => ToolTip.GetIsOpen(projectButton), "the project tooltip");
+            Assert.Equal($"{project.Text}\n\n{description}", Assert.IsType<TextBlock>(ToolTip.GetTip(projectButton)).Text);
+
+            Ui.WaitFor(() => window.ExplorerView.Locate(file), "the long file to be shown in the Explorer");
+            Ui.Settle();
+            TextBlock label = window.ExplorerView.GetVisualDescendants().OfType<TextBlock>()
+                .Single(text => text.Text == fileName && text.IsEffectivelyVisible);
+            ShrinkingRow row = label.FindAncestorOfType<ShrinkingRow>()!;
+            Assert.Contains(label.TextLayout.TextLines, line => line.HasCollapsed);
+            Ui.Hover(label);
+            Ui.WaitFor(() => ToolTip.GetIsOpen(row) && !ToolTip.GetIsOpen(projectButton), "the Explorer tooltip to replace the project tooltip");
+            Assert.Contains(fileName, Assert.IsType<TextBlock>(ToolTip.GetTip(row)).Text, StringComparison.Ordinal);
+            Assert.Equal(description, ToolTip.GetTip(projectButton));
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_path_note_shows_its_full_path_only_while_truncated()
+    {
+        string path = Path.Combine("Workspace", new string('W', 60), "Project", "Output");
+        TextBlock note = FormRows.Note(path, path: true);
+        ToolTip.SetShowDelay(note, 0);
+        Button elsewhere = new() { Content = "Elsewhere" };
+        Window window = new() { Width = 220, Height = 200, Content = new StackPanel { Children = { note, elsewhere } } };
+        try
+        {
+            window.Show();
+            Ui.Settle();
+            Assert.Contains(note.TextLayout.TextLines, line => line.HasCollapsed);
+            Ui.Hover(note);
+            Ui.WaitFor(() => ToolTip.GetIsOpen(note), "the full path tooltip");
+            TextBlock tip = Assert.IsType<TextBlock>(ToolTip.GetTip(note));
+            Assert.Equal(path, tip.Text);
+            Assert.DoesNotContain(tip.TextLayout.TextLines, line => line.HasCollapsed);
+
+            Ui.Hover(elsewhere);
+            Ui.WaitFor(() => !ToolTip.GetIsOpen(note), "the path tooltip to close");
+            note.Text = "Output";
+            Ui.Settle();
+            Assert.DoesNotContain(note.TextLayout.TextLines, line => line.HasCollapsed);
+            Ui.Hover(note, new Point(6, note.Bounds.Height / 2));
+            Assert.False(ToolTip.GetIsOpen(note));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>At the smallest window the Welcome tiles, Find in Files, the toolbar, the status bar, a refusal and the
     /// Commit window's form stand inside it, uncovered and reachable, as one flow, each step the check one test made in
     /// an instance of its own.</summary>
