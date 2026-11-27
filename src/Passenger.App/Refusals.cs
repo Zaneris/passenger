@@ -742,6 +742,9 @@ public static class Refusals
     /// <summary>A service of a run of services (each named as it is shown) that the run has not started, or that has ended.</summary>
     public static string NotRunning(string service, string run) => $"{service} of {run} is not running";
 
+    /// <summary>A debugger asked of a Go program an AppHost runs, which Passenger has none for.</summary>
+    public static string NoGoDebugger(string name) => $"{name} is a Go program, and Passenger has no Go debugger";
+
     /// <summary>Hot Reload asked of a program the debugger no longer runs, or never ran.</summary>
     public const string ProgramNotRunning = "The program is not running";
 

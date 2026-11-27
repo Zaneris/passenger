@@ -1,6 +1,7 @@
 using Passenger.App.Aspire;
 using Passenger.App.Containers;
 using Passenger.App.Run;
+using Passenger.Core;
 
 namespace Passenger.App;
 
@@ -60,6 +61,10 @@ public partial class MainWindow
     {
         public AspireResourceRun? Start { get; init; }
 
+        /// <summary>The program a .NET service runs as, of an AppHost that runs outside Passenger (aspire run or aspire start
+        /// started it), which Attach attaches to as it runs; null for a service of a run of Passenger's.</summary>
+        public int? Elsewhere { get; init; }
+
         public static ServiceAim Refused(string why) => new(null, null, false, null, why);
     }
 
@@ -118,13 +123,18 @@ public partial class MainWindow
         {
             return ServiceAim.Refused("No resource is chosen in the Aspire window");
         }
-        if (session.Aspire.FindApp(chosen.AppHostPath) is not { IsTest: false, IsStopped: false } app)
+        if (session.Aspire.FindApp(chosen.AppHostPath) is not { } found)
+        {
+            return RunElsewhere(chosen);
+        }
+        if (found is not { IsTest: false, IsStopped: false } app)
         {
             return ServiceAim.Refused(NotRunHere(chosen.AppHostPath));
         }
         if (!chosen.Resource.IsProject)
         {
-            return ServiceAim.Refused($"{chosen.Resource.DisplayName} is not a .NET service of {app.Name}");
+            return ServiceAim.Refused(chosen.Resource.IsGoProgram ? Refusals.NoGoDebugger(chosen.Resource.DisplayName)
+                : $"{chosen.Resource.DisplayName} is not a .NET service of {app.Name}");
         }
         return session.Aspire.FindService(chosen) is { } running ? new(app, ((IRunService)running).Name, true, chosen, null) { Start = running }
             : new(app, app.UnstartedName(chosen.Resource) ?? chosen.Resource.DisplayName, false, chosen, null);
@@ -134,11 +144,27 @@ public partial class MainWindow
     private static string NotRunHere(string appHost) =>
         $"Passenger does not run {Path.GetFileNameWithoutExtension(appHost)}: Run, Debug or Profile its configuration first";
 
+    /// <summary>A resource of an AppHost that runs outside Passenger (as aspire run or aspire start runs one): a .NET service
+    /// that runs, which Attach reaches as it runs by the program its AppHost says it runs as, the other service actions
+    /// saying why not; else why there is none (a Go program, which Passenger has no debugger for, among them).</summary>
+    private static ServiceAim RunElsewhere(AspireSelection chosen)
+    {
+        AspireResource resource = chosen.Resource;
+        string host = Path.GetFileNameWithoutExtension(chosen.AppHostPath);
+        return resource.IsGoProgram ? ServiceAim.Refused(Refusals.NoGoDebugger(resource.DisplayName))
+            : !resource.IsProject ? ServiceAim.Refused($"{resource.DisplayName} is not a .NET service of {host}")
+            : resource.State != AspireStates.Running ? ServiceAim.Refused(Refusals.NotRunning(resource.DisplayName, host))
+            : AspireController.ProgramOf(resource) is not int program ? ServiceAim.Refused($"{host} says no program {resource.DisplayName} runs as")
+            : new ServiceAim(null, resource.DisplayName, true, chosen, null) { Elsewhere = program };
+    }
+
     /// <summary>Why a service action cannot act on what it aims at, or null: a service that runs as its run says
     /// (<see cref="BuildRunController.ServiceOf"/>); an AppHost's resource that does not run, Debug and Run without Debugger
     /// starting it where it advertises a start, Attach and Profile needing it running.</summary>
     private string? WhyNotOn(string id, ServiceAim aim) =>
-        aim.WhyNot ?? (aim.Runs ? buildRun.WhyNotOnService(id, aim.Name, aim.Run)
+        aim.WhyNot ?? (aim.Elsewhere is not null ? id == AppActions.ServiceAttach ? null
+                : $"{NotRunHere(aim.Resource!.AppHostPath)}, or Attach to Service debugs {aim.Name} as it runs"
+            : aim.Runs ? buildRun.WhyNotOnService(id, aim.Name, aim.Run)
             : id is not (AppActions.ServiceDebug or AppActions.ServiceRun)
                 ? aim.Name is { } named && aim.Run!.LeftUnstarted(named) ? aim.Run.WhyNotStarted(named) : $"{Refusals.NotRunning(aim.Name!, aim.Run!.Name)}: Debug Service starts it"
             : aim.Resource is { } chosen && StartOf(chosen.Resource) is null ? $"{aim.Name} of {aim.Run!.Name} advertises no start command"
@@ -159,6 +185,10 @@ public partial class MainWindow
         {
             status.Text = why;
             return why;
+        }
+        if (aim is { Elsewhere: int program, Resource: { } elsewhere })
+        {
+            return await AttachElsewhereAsync(elsewhere, program);
         }
         if (aim.Run is not AspireAppRun app)
         {
@@ -199,6 +229,22 @@ public partial class MainWindow
             }
             return words;
         }
+    }
+
+    /// <summary>Attach to a .NET service of an AppHost that runs outside Passenger, as it runs, never restarted: the debugger
+    /// attached to the program its AppHost says it runs as (<paramref name="program"/>), as Attach to Process attaches, its
+    /// session named for the resource and its AppHost. Null once attached, else why not (said too).</summary>
+    private async Task<string?> AttachElsewhereAsync(AspireSelection chosen, int program)
+    {
+        string name = $"{chosen.Resource.DisplayName} of {Path.GetFileNameWithoutExtension(chosen.AppHostPath)}";
+        DotnetProcess? found = await BackgroundWork.Run(() => DotnetProcesses.Find(program));
+        string? why = found is null ? Refusals.Unattached(name, $"its program ({program}) has ended, or is no .NET program a debugger can reach")
+            : await AttachAsync(found, name);
+        if (why is not null)
+        {
+            Say(why);
+        }
+        return why;
     }
 
     /// <summary>The service of the container run a row of the Containers window stands for (a service of its Compose
