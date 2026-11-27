@@ -389,6 +389,7 @@ public partial class MainWindow : IdeWindow
         DebugController.AddActions(actions!, () => session.Debug);
         AddFind();
         AddProblems();
+        AddErrorFiles();
         AddContextMenus();
         AddProjectWindows();
         AddMainMenu();

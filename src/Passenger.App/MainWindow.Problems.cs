@@ -73,8 +73,10 @@ public partial class MainWindow
             if (session.CSharp == service)
             {
                 ShowSolutionProblems(files);
+                FollowAnalysedErrors(service, files);
             }
         };
+        FollowAnalysedErrors(service, null);
         service.ProjectProblemsChanged += (_, _) =>
         {
             if (session.CSharp == service)

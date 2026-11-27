@@ -653,12 +653,16 @@ public partial class ExplorerView : UserControl
         }
     }
 
-    /// <summary>A row for whichever file or folder the list hands its container: its chevron, icon, name and detail.</summary>
+    /// <summary>What a screen reader hears of a row whose name the error's wave underlines.</summary>
+    private const string ErrorsWords = "Has errors";
+
+    /// <summary>A row for whichever file or folder the list hands its container: its chevron, icon, name (waved where it
+    /// has errors) and detail.</summary>
     private Control Row()
     {
         RowGlyphs glyphs = new();
         glyphs.ChevronPressed += OnChevronPressed;
-        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        ErrorName name = new() { VerticalAlignment = VerticalAlignment.Center };
         // How version control says the file changed, as its name's colour does (ChangedFileRow's letter).
         TextBlock change = new() { Classes = { StyleClasses.Caption, StyleClasses.Strong }, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Margin = new Thickness(Gaps.Normal, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -674,6 +678,8 @@ public partial class ExplorerView : UserControl
             glyphs.IconKey = node.IconKey;
             glyphs.IconBrushKey = node.IconBrushKey;
             name.Text = node.Name;
+            name.HasErrors = node.HasErrors;
+            AutomationProperties.SetHelpText(name, node.HasErrors ? ErrorsWords : null);
             foreach (TextBlock coloured in (TextBlock[])[name, change])
             {
                 coloured.Classes.Set(StyleClasses.VcsModified, node.IsVcsModified);

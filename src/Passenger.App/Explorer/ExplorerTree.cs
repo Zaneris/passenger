@@ -57,6 +57,22 @@ public sealed class ExplorerTree
 
     public TreeRows<ExplorerNode> Rows { get; } = [];
 
+    private ErrorFiles? errors;
+
+    /// <summary>Marks the files with errors and what holds them, as <paramref name="files"/> has them from now on: the rows
+    /// shown marked again only where a file came to have errors or no longer has.</summary>
+    public void FollowErrors(ErrorFiles files)
+    {
+        errors = files;
+        files.Changed += (_, _) =>
+        {
+            foreach (ExplorerNode row in Rows)
+            {
+                Mark(row);
+            }
+        };
+    }
+
     /// <summary>Colours the files version control says changed.</summary>
     public void SetChanges(IReadOnlyDictionary<string, ChangeKind> changed)
     {
@@ -70,6 +86,7 @@ public sealed class ExplorerTree
     private void Mark(ExplorerNode node)
     {
         node.Change = node.IsFile && node.Path is { } path && changes.TryGetValue(path, out ChangeKind kind) ? kind : null;
+        node.HasErrors = errors?.Marks(node) == true;
         node.IsCut = cut.Count > 0 && node.Kind is NodeKind.File or NodeKind.Folder && node.Path is { } at && IsCut(at);
     }
 
@@ -731,11 +748,15 @@ public sealed class ExplorerTree
     private ExplorerNode Entry(SolutionEntry entry, int depth, string? parent) => entry switch
     {
         SolutionFolder folder => new ExplorerNode(NodeKind.SolutionFolder, folder.Name, null, depth, false,
-            node => Entries(folder.Children, node.Depth + 1, folder.Path)) { SolutionPath = folder.Path },
+            node => Entries(folder.Children, node.Depth + 1, folder.Path)) { SolutionPath = folder.Path, Projects = [.. ProjectsIn(folder)] },
         ProjectModel project => Project(project, depth),
         SolutionItem item => new ExplorerNode(NodeKind.File, item.Name, item.Path, depth, !File.Exists(item.Path), null) { SolutionPath = parent },
         _ => throw new InvalidOperationException($"Unknown solution entry {entry}"),
     };
+
+    /// <summary>The projects a solution folder holds, at any depth, by their files.</summary>
+    private static IEnumerable<string> ProjectsIn(SolutionFolder folder) =>
+        folder.Children.SelectMany(IEnumerable<string> (child) => child switch { ProjectModel project => [project.Path], SolutionFolder inner => ProjectsIn(inner), _ => [] });
 
     /// <summary>The projects a row stands for: a project, or the loaded ones anywhere under a solution folder; never a shared
     /// project, which builds nothing of its own.</summary>
@@ -1480,6 +1501,18 @@ public sealed class ExplorerNode : Observable, ITreeRow
     }
 
     private ChangeKind? change;
+
+    /// <summary>Whether the row stands for a file with errors or what holds one (<see cref="ErrorFiles.Marks"/>).</summary>
+    public bool HasErrors
+    {
+        get => hasErrors;
+        set => Set(ref hasErrors, value);
+    }
+
+    private bool hasErrors;
+
+    /// <summary>A solution folder's projects at any depth, by their files; none for any other row.</summary>
+    public IReadOnlyList<string> Projects { get; init; } = [];
 
     public bool IsVcsModified => change is ChangeKind.Modified or ChangeKind.Renamed;
     public bool IsVcsAdded => change is ChangeKind.Added;

@@ -306,6 +306,7 @@ public partial class MainWindow
         next.Debug.RunDetach = new(runs.DetachesContainers, runs.WhyNotDetachContainers, runs.DetachContainersAsync);
         BindAspire(next);
         BindSoundCues(next);
+        BindErrorFiles(next);
         buildRun.RunningChanged += (_, _) =>
         {
             if (session == next)

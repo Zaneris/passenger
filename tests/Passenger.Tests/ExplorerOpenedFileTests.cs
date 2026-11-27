@@ -1,12 +1,15 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Explorer;
 using Passenger.App.Settings;
+using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.Tests;
 
@@ -44,8 +47,44 @@ public sealed class ExplorerOpenedFileTests : IDisposable
         Flow.StepApart<ExplorerOpenedFileTests>("Select opened file chooses the file shown again by its key with the keys and by its button leaving them", t => t.Select_opened_file_chooses_the_file_shown_again_by_its_key_with_the_keys_and_by_its_button_leaving_them());
         Flow.StepApart<ExplorerOpenedFileTests>("with always select opened file off the explorer keeps its row and turned on it chooses the file shown", t => t.With_always_select_opened_file_off_the_explorer_keeps_its_row_and_turned_on_it_chooses_the_file_shown());
         Flow.StepApart<ExplorerOpenedFileTests>("with open files with single click a plain click opens a file keeping the keys and no other click does", t => t.With_open_files_with_single_click_a_plain_click_opens_a_file_keeping_the_keys_and_no_other_click_does());
-        Flow.StepApart<ExplorerOpenedFileTests>("a double-click on a projects row opens its project file and with the setting off expands it", t => t.A_double_click_on_a_projects_row_opens_its_project_file_and_with_the_setting_off_expands_it());
+        Flow.StepApart<ExplorerOpenedFileTests>("a file with an error waves its name and every row holding it until the error is gone", t => t.A_file_with_an_error_waves_its_name_and_every_row_holding_it_until_the_error_is_gone());
     }
+
+    /// <summary>An error in an open file waves the name of its row and of its folder's, its project's and the solution's,
+    /// leaving the rows that hold no error plain, and the error taken away takes every wave with it.</summary>
+    private void A_file_with_an_error_waves_its_name_and_every_row_holding_it_until_the_error_is_gone()
+    {
+        string order = At("Shop.App/Models/Order.cs");
+        MainWindow window = Ui.OpenFolder(folder);
+        Ui.WaitFor(() => window.ExplorerView.Tree.IsSolutionView && window.ExplorerView.Tree.Rows.Any(r => r.Kind == NodeKind.Project), "the Solution view's projects");
+        window.OpenFile(order);
+        Ui.WaitFor(() => window.CSharpService is { IsReady: true }, "the language server");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        Ui.PlaceAfter(editor, "public class Order\n{");
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("int total = \"none\";");
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => document.Markers.Any(m => m.Kind == MarkerKind.Error), "the error typed marked");
+        Ui.Settle();
+        string[] waved = [.. Waved(window)];
+        Assert.True(waved.SequenceEqual(["Shop", "Shop.App", "Models", "Order.cs"]),
+            $"An error in Order.cs waved [{string.Join(", ", waved)}], where its name and its folder's, project's and solution's tell where it is");
+        Row(window, order);
+        Assert.True(NameOf(window, order).HasErrors, "Order.cs's row holds the error but its name draws no wave");
+
+        Ui.Press(window, "meta Z");
+        Ui.WaitFor(() => !document.Markers.Any(m => m.Kind == MarkerKind.Error), "the error undone unmarked");
+        Ui.Settle();
+        Assert.True(!Waved(window).Any(), $"With its error undone the Explorer still waves [{string.Join(", ", Waved(window))}]");
+    }
+
+    /// <summary>The names the Explorer's rows wave, in their order.</summary>
+    private static IEnumerable<string> Waved(MainWindow window) => window.ExplorerView.Tree.Rows.Where(r => r.HasErrors).Select(r => r.Name);
+
+    /// <summary>The name drawn on a file's row.</summary>
+    private static ErrorName NameOf(MainWindow window, string path) =>
+        window.ExplorerView.GetVisualDescendants().OfType<ErrorName>().First(n => n.Text == Path.GetFileName(path));
 
     private void Select_opened_file_chooses_the_file_shown_again_by_its_key_with_the_keys_and_by_its_button_leaving_them()
     {
