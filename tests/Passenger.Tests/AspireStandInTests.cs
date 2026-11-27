@@ -46,11 +46,11 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         Flow.StepApart("a service an AppHost adds by path beside the open folder starts lent its trust and one above it is refused saying why", () => new AspireStandInTests(project), t => t.A_service_an_AppHost_adds_by_path_beside_the_open_folder_starts_lent_its_trust_and_one_above_it_is_refused_saying_why());
     }
 
-    /// <summary>The Aspire window as one flow: a service's output told to DCP a line at a time, the console's overlapping
-    /// lines dropped and a new generation followed, a log landing at the cost of what it adds, a restart reading only its
-    /// own console, a resource's row, details, commands and console, a sensitive argument shown as dots, a database an
-    /// AppHost runs a connection while it runs, a service marked Don't start, the graph's edges, a resource waiting for
-    /// another, a JavaScript resource's folder and restart, a request duration charted while shown.</summary>
+    /// <summary>The Aspire window as one flow: a service's output to DCP a line at a time, the console's overlapping lines
+    /// dropped and a new generation followed, a log landing at the cost of what it adds, a restart reading its own console,
+    /// a resource's row, details, commands and console, a sensitive argument as dots, a database a connection while it runs,
+    /// a service marked Don't start, the graph's edges, a resource waiting for another, a JavaScript resource's folder and
+    /// restart, a request duration charted while shown, an AppHost told WSL Containers followed through wslc.</summary>
     [AvaloniaFact]
     public void The_Aspire_window_shows_each_resources_row_console_telemetry_and_graph_its_secrets_as_dots()
     {
@@ -66,6 +66,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         Flow.StepApart("a resource waiting for another says what for in its details with links both ways", () => new AspireStandInTests(project), t => t.A_resource_waiting_for_another_says_what_for_in_its_details_with_links_both_ways());
         Flow.StepApart("a javascript app resource goes to its folder and restarts from its row", () => new AspireStandInTests(project), t => t.A_javascript_app_resource_goes_to_its_folder_and_restarts_from_its_row());
         Flow.StepApart("a web services request duration is charted on its Stats tab while the tab is shown", () => new AspireStandInTests(project), t => t.A_web_services_request_duration_is_charted_on_its_Stats_tab_while_the_tab_is_shown());
+        Flow.StepApart("an AppHost told WSL Containers has its session container found listed followed and taken down through wslc", () => new AspireStandInTests(project), t => t.An_AppHost_told_WSL_Containers_has_its_session_container_found_listed_followed_and_taken_down_through_wslc());
     }
 
     /// <summary>Aspire services as one flow, each step one test's check in an instance of its own: a service started
@@ -3380,6 +3381,85 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>An AppHost told WSL Containers (ASPIRE_CONTAINER_RUNTIME=wslc) on a machine whose docker finds no engine
+    /// has its orchestrator's session container found through wslc, recorded as that runtime's, listed under its AppHost in
+    /// the Containers window with its Details read there and its events followed, and Stop takes it and its session network
+    /// down through wslc. A stand-in wslc, written from WSL's own source, answers as its CLI does; only a real one says how
+    /// Aspire's orchestrator and WSL's session take it.</summary>
+    private void An_AppHost_told_WSL_Containers_has_its_session_container_found_listed_followed_and_taken_down_through_wslc()
+    {
+        project.Reset();
+        string folder = TestFolders.Create("aspire-wslc-");
+        const string Network = "aspire-session-network-5a5d0c0f-cache";
+        WslcStandIn wslc = WslcStandIn.Write(folder, "5a5d0c0ffee8" + new string('0', 52), "cache-wslc", Network);
+        string? path = Environment.GetEnvironmentVariable("PATH");
+        Environment.SetEnvironmentVariable("PATH", folder + Path.PathSeparator + path);
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        backend.PushResource(new Resource
+        {
+            Name = "cache-wslc", DisplayName = "cache", Uid = "cache-wslc", ResourceType = "Container", State = "Running",
+            Properties =
+            {
+                new ResourceProperty { Name = "container.id", Value = Google.Protobuf.WellKnownTypes.Value.ForString(wslc.Id) },
+                new ResourceProperty { Name = "container.lifetime", Value = Google.Protobuf.WellKnownTypes.Value.ForString("Session") },
+            },
+        });
+        project.Serve(backend, runtime: Passenger.App.Containers.ContainerEngine.Wslc);
+        MainWindow window = new()
+        {
+            Width = 1200, Height = 800, Autosaves = false, WarmServer = project.Server, StartsLanguageServer = false,
+            Engine = new Passenger.App.Containers.ContainerEngine(search: false),
+        };
+        window.Show();
+        window.OpenFolder(project.Folder);
+        Ui.Settle();
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Name == StandInAppHost.Configuration), "the stand-in AppHost's Aspire configuration");
+            Assert.True(window.SelectConfiguration(StandInAppHost.Configuration));
+            Ui.Run(window, AppActions.RunProgram);
+            Ui.WaitFor(() => backend.Connected.Task.IsCompleted && window.AspireRuntime.Apps.Count == 1, $"the stand-in AppHost's start ({window.Status})");
+            string record = Path.Combine(window.StateFolder, "aspire-containers", "ownership.json");
+            Ui.WaitFor(() => File.Exists(record) && Ui.Shared(record).Contains(wslc.Id, StringComparison.Ordinal),
+                $"the session container recorded on WSL Containers (wslc was asked: {string.Join("; ", wslc.Calls)})");
+            using (JsonDocument recorded = JsonDocument.Parse(Ui.Shared(record)))
+            {
+                JsonElement entry = Assert.Single(recorded.RootElement.GetProperty("entries").EnumerateArray(), entry => entry.GetProperty("id").GetString() == wslc.Id);
+                Assert.True(entry.TryGetProperty("runtime", out JsonElement runtime) && runtime.GetString() == Passenger.App.Containers.ContainerEngine.Wslc
+                    && entry.TryGetProperty("network", out JsonElement network) && network.GetString() == Network,
+                    $"The session container was not recorded as on WSL Containers with its session network: {entry}");
+            }
+
+            window.ShowToolWindow(ToolWindowIds.Containers);
+            Passenger.App.Containers.ContainersView view = window.ContainersWindow;
+            Ui.WaitFor(() => view.Rows.Any(row => row.Kind == Passenger.App.Containers.ContainerRowKind.AppHost && row.Containers.Count == 1),
+                $"the AppHost's row over its container on WSL Containers, not [{string.Join(", ", view.Rows.Select(row => $"{row.Kind} {row.Label}"))}]");
+            Passenger.App.Containers.ContainerInfo listed = view.Rows.Single(row => row.Kind == Passenger.App.Containers.ContainerRowKind.AppHost).Containers.Single();
+            Assert.True(listed.Engine is { } engine && engine.Cli == wslc.Cli && engine.Known is { IsWslc: true, EngineName: Passenger.App.Containers.ContainerEngine.WslContainers },
+                $"{listed.Name} is not read from WSL Containers ({listed.Engine?.Cli})");
+            Assert.True(view.Choose(row => row.Container is { } container && Passenger.App.Containers.ContainerRow.SameId(wslc.Id, container.Id)), "The session container's row");
+            Ui.Settle();
+            view.ShowTab("Details");
+            Ui.WaitFor(() => view.Details.Details?.Id == wslc.Id, "the session container's Details, read through wslc");
+            Ui.WaitFor(() => wslc.Calls.Contains("events --format json"), "the Containers window to follow wslc's events");
+
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => window.AspireRuntime.Apps.Count == 0, "Stop to end the AppHost", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => !wslc.Holds && !wslc.HoldsNetwork, $"Stop to take the session container and its network down through wslc (it was asked: {string.Join("; ", wslc.Calls)})");
+            Assert.Contains($"rm -f -v {wslc.Id}", wslc.Calls);
+            Assert.Contains($"network rm {Network}", wslc.Calls);
+            Ui.WaitFor(() => !Ui.Shared(record).Contains(wslc.Id, StringComparison.Ordinal), "the taken-down container let go of in the record");
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", path);
+            wslc.Down();
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
     /// <summary>A window on the stand-in AppHost, run from its Aspire configuration as a person runs it, once the
     /// window has connected to the stand-in resource service its launch profile names; no C# language server, which
     /// nothing here asks.</summary>
@@ -4149,8 +4229,10 @@ public sealed class StandInAppHost : SharedProject
         ? $"{what} at {File.GetLastWriteTime(file).ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture)}" : $"never {what}";
 
     /// <summary>The AppHost's launch profile, naming the stand-in resource service's address, as an AppHost's names its own;
-    /// with <paramref name="https"/>, its dashboard served there as an https profile serves it, with no unsecured transport.</summary>
-    internal void Serve(AspireInteractionHost backend, string? https = null) => Write($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint, https));
+    /// with <paramref name="https"/>, its dashboard served there as an https profile serves it, with no unsecured transport;
+    /// with <paramref name="runtime"/>, its orchestrator told that container runtime.</summary>
+    internal void Serve(AspireInteractionHost backend, string? https = null, string? runtime = null) =>
+        Write($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint, https, runtime: runtime));
 
     /// <inheritdoc cref="Serve(AspireInteractionHost, string?)"/>
     internal Task ServeAsync(AspireInteractionHost backend) => WriteAsync($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint));
@@ -4164,12 +4246,16 @@ public sealed class StandInAppHost : SharedProject
     internal Task ServeAsync(AspireInteractionHost backend, Uri dashboard) =>
         WriteAsync($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint, applicationUrl: dashboard.AbsoluteUri.TrimEnd('/')));
 
-    private string Profile(Uri? resourceService, string? https = null, string? applicationUrl = null)
+    private string Profile(Uri? resourceService, string? https = null, string? applicationUrl = null, string? runtime = null)
     {
         Dictionary<string, string> environment = new()
         {
             ["PASSENGER_STAND_IN_KEY"] = KeyFile,
         };
+        if (runtime is not null)
+        {
+            environment[AspireVariables.ContainerRuntime] = runtime;
+        }
         if (https is null)
         {
             environment[AspireVariables.AllowUnsecuredTransport] = "true";

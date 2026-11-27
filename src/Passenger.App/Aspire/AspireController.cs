@@ -37,7 +37,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                     if (FindApp(made.AppHost) is { } app)
                     {
                         string said = $"{app.Configuration.Name}'s orchestrator made {Plural.Of(made.Containers, "container")} on an engine Passenger reaches "
-                            + "neither through docker nor through the runtime it was told or would find (docker, podman), so Passenger cannot list, "
+                            + $"neither through docker nor through the runtime it was told or would find ({string.Join(", ", AspireContainerOwnership.Runtimes)}), so Passenger cannot list, "
                             + $"follow or remove them: set {AspireVariables.ContainerRuntime} to the engine docker or podman reaches, or docker's context to DCP's";
                         app.Console.Append(said + "\n", error: true);
                         ContainersElsewhere?.Invoke(this, said);
