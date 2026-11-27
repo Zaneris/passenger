@@ -54,7 +54,7 @@ public sealed class EditingBehaviourTests
     /// <summary>Occurrences taken from a caret leave longer names holding the word alone, a brace typed above the one
     /// Enter wrote types over it unless a block around lacks its own, Tab steps over a closer the typing help wrote, Cyclic
     /// Expand Word finishes a word begun as the text's words, Paste as Plain Text pastes what Paste reindents as it is, and
-    /// a control character shows its mark two columns wide.</summary>
+    /// a control character shows its mark two columns wide, a line or paragraph separator its mark one.</summary>
     [AvaloniaFact]
     public void Words_and_braces_typed_go_where_a_person_means()
     {
@@ -65,14 +65,16 @@ public sealed class EditingBehaviourTests
         Flow.StepApart<EditingBehaviourTests>("paste as plain text pastes the clipboard as it is where paste reindents it", t => t.Paste_as_plain_text_pastes_the_clipboard_as_it_is_where_paste_reindents_it());
         Flow.StepApart<EditingBehaviourTests>("statements and elements move by the syntax and unwrap takes a body out each one step of undo", t => t.Statements_and_elements_move_by_the_syntax_and_unwrap_takes_a_body_out_each_one_step_of_undo());
         Flow.StepApart<EditingBehaviourTests>("split line transpose delete to line ends overwrite and column mode act on their keys", t => t.Split_line_transpose_delete_to_line_ends_overwrite_and_column_mode_act_on_their_keys());
-        Flow.StepApart<EditingBehaviourTests>("a control character shows its mark two columns wide and its line goes on past it", t => t.A_control_character_shows_its_mark_two_columns_wide_and_its_line_goes_on_past_it());
+        Flow.StepApart<EditingBehaviourTests>("a control character shows its mark two columns wide a separator typed its mark one and the line goes on past each", t => t.A_control_character_shows_its_mark_two_columns_wide_a_separator_typed_its_mark_one_and_the_line_goes_on_past_each());
     }
 
     /// <summary>A form feed is drawn as ^L, two columns, where it ended the line it stood on, the text after it unseen: the
-    /// letter after it stands where the next line's fourth letter does, the line's end past it, and Right steps over it whole.</summary>
-    private void A_control_character_shows_its_mark_two_columns_wide_and_its_line_goes_on_past_it()
+    /// letter after it stands where the next line's fourth letter does, the line's end past it, and Right steps over it whole.
+    /// A line separator and a paragraph separator typed between letters are drawn as one column each, where each ended the
+    /// line's drawing: the letters typed after them stand where the third and fifth letters below do, the line's end past them.</summary>
+    private void A_control_character_shows_its_mark_two_columns_wide_a_separator_typed_its_mark_one_and_the_line_goes_on_past_each()
     {
-        EditorRig rig = new("a\fb\nabcd");
+        EditorRig rig = new("a\fb\nabcd\n\nabcde");
         Ui.Settle();
         double after = rig.Editor.PointOf(2).X;
         double below = rig.Editor.PointOf(7).X;
@@ -81,6 +83,17 @@ public sealed class EditingBehaviourTests
         rig.PlaceCaret(1);
         rig.Press("RIGHT");
         Assert.True(rig.Caret == 2, $"Right from before the form feed left the caret at {rig.Caret}, not past the character whole");
+
+        rig.PlaceCaret(9);
+        rig.Type("a\u2028b\u2029c");
+        Assert.True(rig.Text == "a\fb\nabcd\na\u2028b\u2029c\nabcde", $"Typing letters and separators into the empty line left {System.Text.Json.JsonSerializer.Serialize(rig.Text)}");
+        foreach ((int typed, int under, string what) in new[] { (11, 17, "b after the line separator"), (13, 19, "c after the paragraph separator") })
+        {
+            double at = rig.Editor.PointOf(typed).X;
+            double letter = rig.Editor.PointOf(under).X;
+            Assert.True(Math.Abs(at - letter) < 0.5, $"The {what} stands at {at}, not at {letter} where the letter below of its column does, so the line was drawn only to a separator or its mark is not one column");
+        }
+        Assert.True(rig.Editor.PointOf(14).X > rig.Editor.PointOf(13).X + 1, "The line's end stands no further than the c typed after its paragraph separator, so the line was drawn only to a separator");
     }
 
     /// <summary>Alt+/ after "to" finishes it as the words above, nearest first, then those below from the end; the word as
