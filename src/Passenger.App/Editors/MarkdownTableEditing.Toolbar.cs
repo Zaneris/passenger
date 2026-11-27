@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -8,7 +9,6 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Passenger.App.CSharp;
-using Passenger.App.ToolWindows;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -19,10 +19,13 @@ internal sealed partial class MarkdownTableEditing
     private enum ToolbarRequest { Automatic, Shown, Dismissed }
 
     private Border toolbar = null!;
-    private readonly ContextMenu tableMenu = new() { Placement = PlacementMode.BottomEdgeAlignedLeft };
+    private Grid tableTools = null!;
+    private Button editSource = null!;
+    private Button insertRowAbove = null!;
+    private Button deleteRow = null!;
+    private Button deleteColumn = null!;
     private ToolbarRequest toolbarRequest;
     private bool selecting;
-    private bool openingMenu;
     private bool toolbarQueued;
 
     public Canvas ToolbarLayer { get; } = new() { ClipToBounds = true };
@@ -31,37 +34,37 @@ internal sealed partial class MarkdownTableEditing
     {
         Button bold = FormatButton("B", "Bold", Key.B, bold: true);
         Button italic = FormatButton("I", "Italic", Key.I, bold: false);
-        Button table = ToolButtons.Of(new TextBlock { Text = "Table…" }, "Table operations");
-        table.Name = "MarkdownTableMenu";
-        table.Width = double.NaN;
-        table.Padding = new Thickness(Gaps.Small, 0);
-        table.ContextMenu = tableMenu;
-        table.Click += (_, _) =>
-        {
-            FillTableMenu(tableMenu);
-            openingMenu = true;
-            try
-            {
-                tableMenu.Open(table);
-            }
-            finally
-            {
-                openingMenu = false;
-                QueueToolbarPosition();
-            }
-        };
-        tableMenu.Closed += (_, _) => QueueToolbarPosition();
+        Button insert = TextButton("InsertTable", "Insert Table", "Insert Table", InsertTable);
+        editSource = TableButton("EditTableSource", "Edit Markdown", "Edit Table as Markdown", EditSource);
+        tableTools = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowDefinitions = new RowDefinitions("Auto,Auto,Auto") };
+        AddTableTools(0, "Rows",
+            insertRowAbove = TableButton("InsertRowAbove", "Add Above", "Insert Row Above", spot => AddRow(spot, above: true)),
+            TableButton("InsertRowBelow", "Add Below", "Insert Row Below", spot => AddRow(spot)),
+            deleteRow = TableButton("DeleteRow", "Delete", "Delete Row", DeleteRow));
+        AddTableTools(1, "Columns",
+            TableButton("InsertColumnBefore", "Add Before", "Insert Column Before", spot => ChangeColumn(spot, insert: true, after: false)),
+            TableButton("InsertColumnAfter", "Add After", "Insert Column After", spot => ChangeColumn(spot, insert: true, after: true)),
+            deleteColumn = TableButton("DeleteColumn", "Delete", "Delete Column", spot => ChangeColumn(spot, insert: false, after: false)));
+        AddTableTools(2, "Align",
+            TableButton("AlignLeft", "Left", "Align Column Left", spot => Align(spot, ":---")),
+            TableButton("AlignCenter", "Center", "Align Column Center", spot => Align(spot, ":---:")),
+            TableButton("AlignRight", "Right", "Align Column Right", spot => Align(spot, "---:")));
+
         toolbar = new Border
         {
             Name = "MarkdownFormattingToolbar",
             Classes = { StyleClasses.Popup },
             Padding = new Thickness(Gaps.Small, Gaps.Hair),
             IsVisible = false,
-            Child = new StackPanel
+            Child = new ScrollViewer
             {
-                Orientation = Orientation.Horizontal,
-                Spacing = Gaps.Tight,
-                Children = { bold, italic, ToolBars.Rule(), table },
+                Focusable = false,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = new StackPanel
+                {
+                    Children = { ButtonRow(bold, italic, insert, editSource), tableTools },
+                },
             },
         };
         AutomationProperties.SetName(toolbar, "Markdown formatting");
@@ -74,7 +77,7 @@ internal sealed partial class MarkdownTableEditing
         {
             if (e.Property == InputElement.IsKeyboardFocusWithinProperty)
             {
-                if (e.NewValue is false && toolbarRequest == ToolbarRequest.Shown && !openingMenu && !tableMenu.IsOpen)
+                if (e.NewValue is false && toolbarRequest == ToolbarRequest.Shown)
                 {
                     toolbarRequest = ToolbarRequest.Automatic;
                 }
@@ -92,6 +95,64 @@ internal sealed partial class MarkdownTableEditing
         editor.AddHandler(InputElement.PointerReleasedEvent, (_, _) => EndSelectionDrag(),
             RoutingStrategies.Tunnel, handledEventsToo: true);
         editor.PointerCaptureLost += (_, _) => EndSelectionDrag();
+    }
+
+    private void AddTableTools(int row, string title, params Button[] buttons)
+    {
+        TextBlock caption = MutedText.Of(title);
+        caption.Margin = new Thickness(Gaps.Small, 0, Gaps.Tight, 0);
+        WrapPanel words = ButtonRow(buttons);
+        Grid.SetRow(caption, row);
+        Grid.SetRow(words, row);
+        Grid.SetColumn(words, 1);
+        tableTools.Children.Add(caption);
+        tableTools.Children.Add(words);
+    }
+
+    private static WrapPanel ButtonRow(params Button[] buttons)
+    {
+        WrapPanel row = new() { ItemSpacing = Gaps.Hair };
+        row.Children.AddRange(buttons);
+        return row;
+    }
+
+    private static Button TextButton(string name, string label, string title, Action run)
+    {
+        Button button = ToolButtons.Of(new TextBlock { Text = label }, title, run);
+        button.Name = "Markdown" + name;
+        button.Width = double.NaN;
+        button.Padding = new Thickness(Gaps.Small, 0);
+        return button;
+    }
+
+    private Button TableButton(string name, string label, string title, Action<Spot> run) =>
+        TextButton(name, label, title, () =>
+        {
+            if (toolbar.IsVisible && editor.PresentsMarkdown && !editor.IsReadOnly && followed == editor.Document && AtCaret() is { } spot)
+            {
+                run(spot);
+            }
+        });
+
+    private void ShowTableTools(Spot? spot)
+    {
+        tableTools.IsVisible = editSource.IsVisible = spot is not null;
+        if (spot is null)
+        {
+            return;
+        }
+        string? header = spot.Row == 0 ? "The header row is required" : null;
+        EnabledWhen(insertRowAbove, header);
+        EnabledWhen(deleteRow, header);
+        EnabledWhen(deleteColumn, spot.Entry.Table.Aligns.Count == 1 ? "A table requires a column" : null);
+
+        static void EnabledWhen(Button button, string? why)
+        {
+            if (button.IsEnabled != (why is null))
+            {
+                ToolButtons.Grey(button, why);
+            }
+        }
     }
 
     private Button FormatButton(string label, string name, Key key, bool bold)
@@ -141,7 +202,6 @@ internal sealed partial class MarkdownTableEditing
     {
         toolbarRequest = ToolbarRequest.Automatic;
         selecting = false;
-        tableMenu.Close();
         toolbar.IsVisible = false;
     }
 
@@ -161,11 +221,6 @@ internal sealed partial class MarkdownTableEditing
 
     private void PositionToolbar()
     {
-        // A table command still targets the cell at the time the menu opened, even while the menu has focus.
-        if (openingMenu || tableMenu.IsOpen)
-        {
-            return;
-        }
         if (followed is null || followed != editor.Document || editor.IsReadOnly || !editor.IsEffectivelyVisible
             || !editor.IsKeyboardFocusWithin || selecting || toolbarRequest == ToolbarRequest.Dismissed)
         {
@@ -174,13 +229,13 @@ internal sealed partial class MarkdownTableEditing
         }
         Rect viewport = new(ToolbarLayer.Bounds.Size);
         Rect? anchor;
-        double? beside = null;
+        Rect? tableBounds = null;
         if (active is { } cell)
         {
             anchor = cell.Host.TranslatePoint(default, ToolbarLayer) is { } point ? new Rect(point, cell.Host.Bounds.Size) : null;
-            if (cell.Host.GetVisualParent() is Grid table)
+            if (cell.Host.GetVisualParent() is Grid table && table.TranslatePoint(default, ToolbarLayer) is { } origin)
             {
-                beside = table.TranslatePoint(new Point(table.Bounds.Width, 0), ToolbarLayer)?.X;
+                tableBounds = new Rect(origin, table.Bounds.Size);
             }
         }
         else
@@ -189,7 +244,8 @@ internal sealed partial class MarkdownTableEditing
         }
         if (anchor is { } visible && viewport.Intersects(visible))
         {
-            PopupPlacement.PlaceFloatingToolbar(toolbar, ToolbarLayer, visible.Intersect(viewport), beside);
+            ShowTableTools(AtCaret());
+            PopupPlacement.PlaceFloatingToolbar(toolbar, ToolbarLayer, visible.Intersect(viewport), tableBounds);
         }
         else
         {

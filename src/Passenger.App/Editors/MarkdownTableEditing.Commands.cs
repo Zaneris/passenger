@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Avalonia.Input;
-using Passenger.App.ToolWindows;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -9,41 +8,6 @@ namespace Passenger.App.Editors;
 internal sealed partial class MarkdownTableEditing
 {
     private sealed record Spot(Entry Entry, int Row, int Column);
-
-    private void FillTableMenu(ContextMenu menu)
-    {
-        Spot? selected = AtCaret();
-        TextSnapshot snapshot = editor.Document.Snapshot;
-        menu.Items.Clear();
-        menu.Items.Add(Item("Insert Table", InsertTable, editor.IsReadOnly ? editor.ReadOnlyWhy : null));
-        if (selected is { } spot && !editor.IsReadOnly)
-        {
-            string? header = spot.Row == 0 ? "The header row is required" : null;
-            string? last = spot.Entry.Table.Aligns.Count == 1 ? "A table requires a column" : null;
-            menu.Items.Add(new Separator());
-            menu.Items.Add(Item("Insert Row Above", () => AddRow(spot, above: true), header));
-            menu.Items.Add(Item("Insert Row Below", () => AddRow(spot)));
-            menu.Items.Add(Item("Delete Row", () => DeleteRow(spot), header));
-            menu.Items.Add(new Separator());
-            menu.Items.Add(Item("Insert Column Before", () => ChangeColumn(spot, insert: true, after: false)));
-            menu.Items.Add(Item("Insert Column After", () => ChangeColumn(spot, insert: true, after: true)));
-            menu.Items.Add(Item("Delete Column", () => ChangeColumn(spot, insert: false, after: false), last));
-            menu.Items.Add(new Separator());
-            menu.Items.Add(Item("Align Left", () => Align(spot, ":---")));
-            menu.Items.Add(Item("Align Center", () => Align(spot, ":---:")));
-            menu.Items.Add(Item("Align Right", () => Align(spot, "---:")));
-            menu.Items.Add(new Separator());
-            menu.Items.Add(Item("Edit Table as Markdown", () => EditSource(spot)));
-        }
-
-        MenuItem Item(string title, Action run, string? refusal = null) => ListMenus.Item(title, () =>
-        {
-            if (editor.PresentsMarkdown && !editor.IsReadOnly && ReferenceEquals(editor.Document.Snapshot, snapshot))
-            {
-                run();
-            }
-        }, refusal);
-    }
 
     public bool TakesKey(KeyEventArgs e)
     {
@@ -167,7 +131,11 @@ internal sealed partial class MarkdownTableEditing
 
     private void AddRow(Spot spot, bool above = false)
     {
-        int after = above ? Math.Max(0, spot.Row - 1) : spot.Row;
+        if (above && spot.Row == 0)
+        {
+            return;
+        }
+        int after = above ? spot.Row - 1 : spot.Row;
         MarkdownTableSource source = Source(spot.Entry);
         ApplyTableEdits([source.AddRow(after, editor.Document.LineEnding)], spot.Entry.Source.Start, after + 1, 0);
     }

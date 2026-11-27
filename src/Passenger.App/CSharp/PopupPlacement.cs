@@ -141,23 +141,34 @@ internal sealed class PopupPlacement
     public void Place(Control popup, int offset, bool above) => Place(popup, Editor.PointOf(offset), above);
 
     /// <summary>Places compact controls beside a selection or cell in an editor's own layer.</summary>
-    public static void PlaceFloatingToolbar(Control popup, Canvas onto, Rect anchor, double? beside)
+    public static void PlaceFloatingToolbar(Control popup, Canvas onto, Rect anchor, Rect? table)
     {
+        Size room = onto.Bounds.Size;
+        popup.MaxWidth = room.Width;
+        popup.MaxHeight = room.Height;
         // An invisible control measures as empty. Reveal it before measuring, then use either side of the anchor.
         popup.IsVisible = true;
         popup.Measure(Size.Infinity);
         Size size = popup.DesiredSize;
-        Size room = onto.Bounds.Size;
         double left = anchor.Left;
-        double top = anchor.Top - Gaps.Tight - size.Height;
-        if (beside is { } right && right + Gaps.Small + size.Width <= room.Width)
+        double top;
+        if (table is { } grid && grid.Right + Gaps.Small + size.Width <= room.Width)
         {
-            left = right + Gaps.Small;
+            left = grid.Right + Gaps.Small;
             top = anchor.Center.Y - size.Height / 2;
         }
-        else if (top < 0)
+        else
         {
-            top = anchor.Bottom + Gaps.Tight;
+            Rect block = table?.Intersect(new Rect(room)) ?? anchor;
+            double above = block.Top - Gaps.Tight - size.Height;
+            double below = block.Bottom + Gaps.Tight;
+            top = above >= 0 ? above : below;
+            if (above < 0 && below + size.Height > room.Height)
+            {
+                // In a short pane a table can take most of the viewport. Keep the active cell in view when possible.
+                top = anchor.Top > room.Height - anchor.Bottom
+                    ? anchor.Top - Gaps.Tight - size.Height : anchor.Bottom + Gaps.Tight;
+            }
         }
         Canvas.SetLeft(popup, Math.Clamp(left, 0, Math.Max(0, room.Width - size.Width)));
         Canvas.SetTop(popup, Math.Clamp(top, 0, Math.Max(0, room.Height - size.Height)));

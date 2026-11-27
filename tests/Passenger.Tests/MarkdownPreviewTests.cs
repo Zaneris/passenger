@@ -410,12 +410,11 @@ public sealed class MarkdownPreviewTests
         TextBox? Field() => editor.GetVisualDescendants().OfType<TextBox>().FirstOrDefault(box => box.Name == "MarkdownTableCell");
         Button Button(string name) => group.GetVisualDescendants().OfType<Button>().Single(button => button.Name == name);
         Border Toolbar() => group.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "MarkdownFormattingToolbar");
-        void ChooseTable(string item)
+        void ClickTableTool(string name)
         {
-            Button menu = Button("MarkdownTableMenu");
-            Assert.True(menu.IsEffectivelyVisible);
-            Ui.Click(menu);
-            Ui.Choose(menu.ContextMenu, item);
+            Button button = Button("Markdown" + name);
+            Assert.True(button.IsEffectivelyVisible && button.IsEnabled);
+            Ui.Click(button);
         }
         string command = Keystroke.Command == KeyModifiers.Meta ? "meta" : "control";
         string showToolbar = $"{command} alt I";
@@ -423,12 +422,28 @@ public sealed class MarkdownPreviewTests
         Assert.Equal(TextAlignment.Right, Cell("12")!.TextAlignment);
         Assert.False(Toolbar().IsEffectivelyVisible);
 
+        Ui.Click(Assert.IsType<Border>(Cell("Item")!.GetVisualParent()));
+        Assert.False(Button("MarkdownInsertRowAbove").IsEnabled);
+        Assert.False(Button("MarkdownDeleteRow").IsEnabled);
+        Assert.True(Button("MarkdownInsertRowBelow").IsEnabled);
+
         Border cell = Assert.IsType<Border>(Cell("12")!.GetVisualParent());
         Ui.Click(cell);
         Assert.Equal("12", Field()!.Text);
         Assert.Equal("12", Field()!.SelectedText);
         Assert.True(Toolbar().IsEffectivelyVisible);
         Assert.True(Toolbar().TranslatePoint(default, cell)!.Value.X >= cell.Bounds.Width);
+        string[] tableTools = ["InsertRowAbove", "InsertRowBelow", "DeleteRow", "InsertColumnBefore", "InsertColumnAfter",
+            "DeleteColumn", "AlignLeft", "AlignCenter", "AlignRight", "EditTableSource"];
+        Assert.All(tableTools, name => Assert.True(Button("Markdown" + name).IsEffectivelyVisible));
+        window.Width = MainWindow.SmallestWidth;
+        Ui.Settle();
+        Rect InEditor(Control control) => new(control.TranslatePoint(default, editor)!.Value, control.Bounds.Size);
+        Assert.True(new Rect(editor.Bounds.Size).Contains(InEditor(Toolbar())));
+        Assert.False(InEditor(Toolbar()).Intersects(InEditor(Assert.IsType<Grid>(cell.GetVisualParent()))));
+        Assert.All(tableTools, name => Assert.True(InEditor(Toolbar()).Contains(InEditor(Button("Markdown" + name)))));
+        window.Width = 1100;
+        Ui.Settle();
         Assert.NotNull(Cell("Item"));
         Assert.NotNull(Cell("Ready"));
         window.KeyTextInput("24");
@@ -442,25 +457,34 @@ public sealed class MarkdownPreviewTests
         Ui.WaitFor(() => Field()?.Text == "", "Tab from the last cell adds a row and opens its first cell");
         window.KeyTextInput("Eraser");
         Ui.Settle();
-        ChooseTable("Insert Column After");
+        ClickTableTool("InsertColumnAfter");
         Ui.WaitFor(() => Field()?.Text == "", "the inserted column is editable");
         window.KeyTextInput("Stock");
         Ui.Settle();
         Assert.Contains("| Eraser | Stock |  |", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        ChooseTable("Align Center");
+        ClickTableTool("AlignCenter");
         Ui.WaitFor(() => Field()?.Text == "Stock", "the aligned column's cell stays editable");
         Assert.Contains("| :--- | :---: | ---: |", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        ChooseTable("Delete Column");
+        ClickTableTool("DeleteColumn");
         Ui.WaitFor(() => Field()?.Text == "", "the remaining column is editable");
         Assert.DoesNotContain("Stock", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        ChooseTable("Delete Row");
+        ClickTableTool("DeleteRow");
         Ui.WaitFor(() => Field()?.Text == "24", "the edited row remains after deleting the added row");
         Assert.Equal(edited, editor.Document.Snapshot.ToString());
 
-        ChooseTable("Edit Table as Markdown");
+        ClickTableTool("InsertRowBelow");
+        Ui.WaitFor(() => Field()?.Text == "", "the row button inserts an editable row");
+        ClickTableTool("DeleteRow");
+        Ui.WaitFor(() => Field()?.Text == "Pen \\| Pencil", "deleting the inserted row returns to the existing row");
+        Assert.Equal(edited, editor.Document.Snapshot.ToString());
+
+        ClickTableTool("EditTableSource");
         Assert.Null(Field());
         Assert.Null(Cell("24"));
         Assert.NotNull(Cell("Ready"));
+        Ui.Click(Assert.IsType<Border>(Cell("Ready")!.GetVisualParent()));
+        Assert.False(Button("MarkdownDeleteColumn").IsEnabled);
+        editor.Focus();
 
         int words = edited.IndexOf("Another table.", StringComparison.Ordinal);
         editor.Select(new TextRange(words, 0));
@@ -469,6 +493,8 @@ public sealed class MarkdownPreviewTests
         Point line = editor.PointOf(words);
         Ui.Press(window, showToolbar);
         Assert.True(Toolbar().IsEffectivelyVisible);
+        Assert.True(Button("MarkdownInsertTable").IsEffectivelyVisible);
+        Assert.All(tableTools, name => Assert.False(Button("Markdown" + name).IsEffectivelyVisible));
         Assert.Equal(line, editor.PointOf(words));
         Ui.Press(window, "ESCAPE");
         Assert.False(Toolbar().IsEffectivelyVisible);
@@ -493,8 +519,9 @@ public sealed class MarkdownPreviewTests
         Ui.Press(window, $"{command} I");
         Assert.Equal(edited, editor.Document.Snapshot.ToString());
         editor.Select(new TextRange(edited.Length, 0));
-        Assert.True(window.Perform(AppActions.InsertMarkdownTable));
-        Ui.WaitFor(() => Field()?.Text == "Column 1", "the Insert Markdown Table action opens its new header cell");
+        Ui.Press(window, showToolbar);
+        ClickTableTool("InsertTable");
+        Ui.WaitFor(() => Field()?.Text == "Column 1", "the Insert Table button opens its new header cell");
         Assert.StartsWith(edited, editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
         Assert.True(window.Perform(AppActions.MarkdownEditorOnly));
         Assert.False(Toolbar().IsEffectivelyVisible);
