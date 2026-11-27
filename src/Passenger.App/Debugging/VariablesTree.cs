@@ -90,7 +90,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
     /// <summary>The label of the marked object its value is ($1), which its row shows beside the value; null for any other.</summary>
     public string? Mark { get; init; }
 
-    /// <summary>The address a live pointer names for the Memory window.</summary>
+    /// <summary>The address a live pointer or managed reference names for the Memory window.</summary>
     public string? MemoryReference { get; init; }
 
     /// <summary>A snapshot's value, read as the program ran on, which has run on since: no expression reaches it now.</summary>

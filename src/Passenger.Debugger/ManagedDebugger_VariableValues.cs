@@ -510,8 +510,10 @@ public partial class ManagedDebugger
     }
 
     /// <summary>A pointer's address, as C# writes one in hexadecimal.</summary>
-    internal static string Address(ICorDebugReferenceValue pointer) =>
-        string.Create(System.Globalization.CultureInfo.InvariantCulture, $"0x{pointer.Value.Value:x16}");
+    internal static string Address(ICorDebugReferenceValue pointer) => Address(pointer.Value.Value);
+
+    private static string Address(ulong address) =>
+        string.Create(System.Globalization.CultureInfo.InvariantCulture, $"0x{address:x16}");
 
     internal static string GetCorDebugTypeFriendlyName(ICorDebugType corDebugType) => TypeName(corDebugType, global: false);
 

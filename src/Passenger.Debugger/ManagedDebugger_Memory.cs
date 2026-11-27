@@ -7,6 +7,13 @@ public partial class ManagedDebugger
 {
     public int MemoryPointerSize => CilValue.PointerSize;
 
+    /// <summary>The address a pointer or managed reference holds at this stop, zero for null and null if unavailable.</summary>
+    internal static ulong? ReferencedMemoryAddress(ICorDebugValue? value) =>
+        value is ICorDebugReferenceValue reference && reference.TryGetType(out CorElementType type) == Cor.S_OK
+        && type is CorElementType.PTR or CorElementType.CLASS or CorElementType.OBJECT or CorElementType.GENERICINST
+            or CorElementType.STRING or CorElementType.ARRAY or CorElementType.SZARRAY
+        && reference.TryGetValue(out CORDB_ADDRESS address) == Cor.S_OK ? address.Value : null;
+
     public Task<ulong> ResolveMemoryAsync(string expression, int frameId)
     {
         if (!_stopShown || EvalStatus.IsRunning || _expressionEvaluator is not { } evaluator)

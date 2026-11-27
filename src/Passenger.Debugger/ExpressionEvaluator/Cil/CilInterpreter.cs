@@ -28,7 +28,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         DecodedMethod decoded = compiled.GetDecodedMethod(compiled.EntryMethod);
         if (addressOnly && !decoded.Instructions.All(i => ReadsAddress(i.Code)))
         {
-            throw new InvalidOperationException("Use a pointer, a native integer or address arithmetic that can be read without running the program");
+            throw new InvalidOperationException("Use an address expression that can be read without running the program");
         }
         ICorDebugILFrame? frame = context.RootValue is null ? debugger.GetIlFrameForThreadIdAndStackDepth(context.ThreadId, context.StackDepth) : null;
         Func<ICorDebugILFrame> refind = () => debugger.GetIlFrameForThreadIdAndStackDepth(context.ThreadId, context.StackDepth);
@@ -49,11 +49,13 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             ResolvedCilType returned = resolver.ResolveMethodReturnType(compiled.EntryMethod);
             if (addressOnly)
             {
-                if (!returned.IsPointer && returned.Primitive is not (PrimitiveTypeCode.IntPtr or PrimitiveTypeCode.UIntPtr))
+                ulong? address = ManagedDebugger.ReferencedMemoryAddress(result.CorValue);
+                if (address is null && (returned.IsPointer || returned.Primitive is PrimitiveTypeCode.IntPtr or PrimitiveTypeCode.UIntPtr))
                 {
-                    throw new InvalidOperationException("The expression must evaluate to a pointer or a native integer (nint or nuint)");
+                    address = AddressOperand(result).AsUInt64();
                 }
-                return new CilInterpretationResult(null, null, Address: AddressOperand(result).AsUInt64());
+                return new CilInterpretationResult(null, null, Address: address
+                    ?? throw new InvalidOperationException("The expression must refer to an object or evaluate to a pointer or native integer (nint or nuint)"));
             }
             if (returned.Primitive is PrimitiveTypeCode.Void)
             {

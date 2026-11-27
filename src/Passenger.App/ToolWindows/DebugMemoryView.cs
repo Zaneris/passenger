@@ -16,8 +16,9 @@ namespace Passenger.App.ToolWindows;
 public sealed class DebugMemoryView : DockPanel
 {
     private const int PageSize = 256;
+    private const string AddressPrompt = "Enter a hexadecimal address or an address expression";
     private readonly DebugModel model;
-    private readonly TextBox address = new() { Name = "memoryAddress", PlaceholderText = "0x… or a pointer expression", VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBox address = new() { Name = "memoryAddress", PlaceholderText = "0x… or an address expression", VerticalAlignment = VerticalAlignment.Center };
     private readonly Button go = new() { Content = "Go" };
     private readonly CheckBox follow = new() { Content = "Follow", IsChecked = true, VerticalAlignment = VerticalAlignment.Center };
     private readonly Button previous = ToolButtons.Of(IconKeys.ArrowUp, "Previous 256 bytes");
@@ -92,18 +93,12 @@ public sealed class DebugMemoryView : DockPanel
         address.SelectAll();
     }
 
-    internal async Task OpenAsync(string reference, string? expression)
+    internal Task OpenAsync(string reference, string? expression)
     {
         UpdateStop(refresh: false);
-        if (location is not { } current || !MemoryAddresses.TryParse(reference, out ulong at))
-        {
-            return;
-        }
-        address.Text = current.Input = expression ?? reference;
-        current.Origin = current.Page = at;
-        current.Selected = 0;
-        MarkAutomatic();
-        await ReadAsync(resolve: false);
+        // A managed reference's target can move after the Variables row was read.
+        address.Text = expression ?? reference;
+        return GoAsync();
     }
 
     internal void UpdateStop() => UpdateStop(refresh: true);
@@ -127,7 +122,7 @@ public sealed class DebugMemoryView : DockPanel
             address.Text = location?.Input;
             follow.IsChecked = location?.Follow ?? true;
             choosing = false;
-            Say("Enter an address or a pointer expression");
+            Say(AddressPrompt);
             if (chosen is not null)
             {
                 chosen.StateChanged += OnSessionChanged;
@@ -144,7 +139,7 @@ public sealed class DebugMemoryView : DockPanel
         }
         if (location?.Input is not { Length: > 0 })
         {
-            Say("Enter an address or a pointer expression");
+            Say(AddressPrompt);
             return;
         }
         if (!refresh || !IsEffectivelyVisible || TopLevel.GetTopLevel(this) is null)
@@ -182,7 +177,7 @@ public sealed class DebugMemoryView : DockPanel
         _ => model.ShownSnapshot is null ? null : "Return to the live stop to inspect memory",
     };
 
-    private bool ShouldResolve() => location is { Input: { } input } current && !IsLiteral(input) && (current.Follow || current.Page is null);
+    private bool ShouldResolve() => location is { Input: { Length: > 0 } input } current && !IsLiteral(input) && (current.Follow || current.Page is null);
 
     private static bool IsLiteral(string input) => input.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
 
@@ -200,7 +195,7 @@ public sealed class DebugMemoryView : DockPanel
         current.Page = current.Origin = null;
         current.Selected = 0;
         MarkAutomatic();
-        await ReadAsync(resolve: current.Input is { } input && !IsLiteral(input));
+        await ReadAsync(ShouldResolve());
     }
 
     private Task MoveAsync(int distance)
@@ -229,41 +224,33 @@ public sealed class DebugMemoryView : DockPanel
         Say("Reading memory…");
         try
         {
-            ulong? origin = current.Origin;
+            string? input = current.Input;
             if (resolve)
             {
-                if (string.IsNullOrWhiteSpace(current.Input))
-                {
-                    Say("Enter an address or a pointer expression");
-                    return;
-                }
-                if (frame.Stop != stop || frame.Id is not int id)
+                if (frame.Stop != stop || frame.Id is not int id || input is null)
                 {
                     Say("Choose a live stack frame to resolve the address");
                     return;
                 }
-                ResolveMemoryResponse resolved = await paused.ResolveMemoryAsync(current.Input, id);
+                input = (await paused.ResolveMemoryAsync(input, id)).Address;
                 if (!StillCurrent())
                 {
                     return;
                 }
-                origin = MemoryAddresses.TryParse(resolved.Address, out ulong value) ? value : null;
             }
-            else if (origin is null && current.Input is { } literal && MemoryAddresses.TryParse(literal, out ulong value))
-            {
-                origin = value;
-            }
+            ulong? origin = !resolve && current.Origin is ulong known ? known
+                : MemoryAddresses.TryParse(input, out ulong parsed) ? parsed : null;
             if (origin is not ulong at)
             {
-                Say("Enter a hexadecimal address beginning with 0x, or a pointer expression");
+                Say(AddressPrompt);
                 return;
             }
-            if (current.Origin != origin || current.Page is null)
+            if (current.Origin != at || current.Page is null)
             {
                 current.Selected = 0;
                 current.Page = at;
             }
-            current.Origin = origin;
+            current.Origin = at;
             ulong page = current.Page.Value;
             string reference = MemoryAddresses.Show(page);
             ReadMemoryResponse reply = await paused.ReadMemoryAsync(reference, PageSize);

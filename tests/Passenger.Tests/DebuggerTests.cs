@@ -2557,14 +2557,17 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
                     pointer[0] = 42;
                     pointer[1] = 0x44434241;
                     pointer[64] = 0x55667788;
+                    byte[]? managed = [0xd1, 0xe2, 0xf3, 0xa4];
                     *pointer = 17;
                     pointer += 64;
+                    managed = null;
+                    GC.KeepAlive(managed);
                     Console.WriteLine($"pointed {*pointer} {pointer[0]}");
                 }
             }
             """);
         MainWindow window = Open();
-        window.EditorArea.CodeEditor.GoTo(new TextPosition(11, 8));
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(12, 8));
         Ui.Run(window, AppActions.ToggleBreakpoint);
         StartDebugging(window);
         WaitDebugging(window, () => Row(window, "pointer") is not null, "the stop before changing the number");
@@ -2650,6 +2653,20 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.True(window.Perform(AppActions.ShowDebugMemory), $"Memory did not show: {Ui.Said(window)}");
         Assert.True(window.BottomPanel.Debug.IsMemoryShown);
         Assert.StartsWith(following, TextAt(following), StringComparison.Ordinal);
+        Ui.Click(debuggerTab);
+        WaitDebugging(window, () => Row(window, "managed")?.MemoryReference is not null, "the managed array's address");
+        VariableNode managed = Row(window, "managed")!;
+        Assert.True(MemoryAddresses.TryParse(managed.MemoryReference, out ulong managedAddress));
+        variables.SelectedItem = managed;
+        Ui.ChooseFromMenu(variables, VariablesList.ViewMemory);
+        Assert.Equal("managed", address.Text);
+        Ui.WaitFor(() => TextAt(MemoryAddresses.Show(managedAddress)).Contains("D1 E2 F3 A4", StringComparison.Ordinal)
+            || TextAt(MemoryAddresses.Show(managedAddress + 16)).Contains("D1 E2 F3 A4", StringComparison.Ordinal), "the managed array's bytes");
+        Ui.Run(window, AppActions.StepOver);
+        WaitDebugging(window, () => window.Debugger.Session is { State: DebugState.Paused, Stops: 4 }, "the array reference to become null");
+        Ui.WaitFor(() => memory.GetVisualDescendants().OfType<EmptyState>().Any(e => e.IsEffectivelyVisible
+            && e.Text?.Contains("resolved to null", StringComparison.Ordinal) == true), "the previous array's bytes to give way to the null message");
+        Assert.Null(LineAt(MemoryAddresses.Show(managedAddress)));
         Ui.Click(debuggerTab);
         WaitDebugging(window, () => Row(window, "pointer")?.MemoryReference?.Equals(following, StringComparison.OrdinalIgnoreCase) == true, "the pointer at the new stop");
 

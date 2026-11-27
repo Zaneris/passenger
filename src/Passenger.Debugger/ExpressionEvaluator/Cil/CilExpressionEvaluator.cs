@@ -20,7 +20,7 @@ internal sealed class CilExpressionEvaluator(RuntimeAssemblyPrimitiveTypeClasses
         }
         Lazy<DelegateMaterializerAssembly> delegates = new(() => _compiler.GetDelegateMaterializer(context));
         CilInterpretationResult result = await _interpreter.InterpretAsync(compiled, context, delegates, addressOnly: true);
-        return result.Address is > 0 ? result.Address.Value : throw new InvalidOperationException("The address expression returned a null pointer");
+        return result.Address is > 0 ? result.Address.Value : throw new InvalidOperationException("The address expression resolved to null");
     }
 
     internal async Task<EvaluationResult> Evaluate(string expression, CompiledExpressionEvaluationContext context)
