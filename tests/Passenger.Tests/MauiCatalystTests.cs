@@ -171,9 +171,22 @@ public sealed class MauiCatalystTests : McpRig
             string carried = Carried(opened);
             Assert.True(Running(opened) is not null, $"No process runs {opened.Executable} while it is debugged");
 
-            Ui.Run(window, AppActions.StepOver);
+            // Breakpoints in the page's XAML bind in the code MAUI's source generator wrote of it; AppShell's, inflated as the app runs, say why they cannot.
+            (string xaml, int hello, int clickMe) = MauiApp.XamlBreakpoints(window, project);
+            string shell = Path.Combine(PathNames.Canonical(Path.GetDirectoryName(project)!), "AppShell.xaml");
+            window.OpenFile(shell);
+            Ui.Settle();
+            window.EditorArea.CodeEditor.GoTo(new TextPosition(Array.FindIndex(File.ReadAllLines(shell), l => l.TrimStart().StartsWith("<ShellContent", StringComparison.Ordinal)), 0));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            LineBreakpoint inShell = window.Debugger.Breakpoints.In(shell).Single();
+            Ui.WaitFor(() => inShell.Status == BreakpointStatus.Invalid && inShell.Message?.Contains("inflator", StringComparison.Ordinal) == true,
+                () => $"AppShell.xaml's breakpoint said not to bind, its page not source-generated; it is {inShell.Status}: {inShell.Message}", Slow);
+            Ui.Run(window, AppActions.Resume);
+            MauiApp.StopsInXaml(window, xaml, hello, clickMe, Slow);
+            Ui.Run(window, AppActions.StepOut);
             Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && Shown(window, "this") is { } shown && shown.Contains("ScrollView", StringComparison.Ordinal),
-                () => $"the step over InitializeComponent, the page's content shown made; this is {Shown(window, "this") ?? "not shown"}: {Ui.Said(window)}", Slow);
+                () => $"the step out of InitializeComponent, the page's content shown made; this is {Shown(window, "this") ?? "not shown"} at {MauiApp.Top(window)}: {Ui.Said(window)}", Slow);
+            window.OpenFile(page);
             Dap.EvaluateResponse count = Ui.Await(window.Debugger.Session!.EvaluateAsync("count + 41", window.BottomPanel.Debug.Frames[0].Id, Dap.EvaluateContexts.Watch),
                 "the page's count, evaluated where the app stopped", Slow);
             Assert.Equal("41", count.Result);
@@ -352,6 +365,12 @@ public sealed class MauiCatalystTests : McpRig
         if (whole)
         {
             File.WriteAllText(project, File.ReadAllText(project).Replace("</Project>", "\t<PropertyGroup>\n\t\t<MtouchLink>None</MtouchLink>\n\t</PropertyGroup>\n</Project>",
+                StringComparison.Ordinal));
+        }
+        else
+        {
+            // The shell inflated as the app runs, which MAUI's source generator writes no code of.
+            File.WriteAllText(project, File.ReadAllText(project).Replace("</Project>", "\t<ItemGroup>\n\t\t<MauiXaml Update=\"AppShell.xaml\" Inflator=\"Runtime\" />\n\t</ItemGroup>\n</Project>",
                 StringComparison.Ordinal));
         }
         return (folder, project);

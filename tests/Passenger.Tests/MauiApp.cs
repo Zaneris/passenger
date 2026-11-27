@@ -80,6 +80,48 @@ internal static class MauiApp
         ShowsButtonsText(window, app, "!", "the added label whose C# expression reads the button's text", "Click me");
     }
 
+    /// <summary>Breakpoints set in the main page's XAML: on the Hello label's line, and on the button's Text attribute; the
+    /// file, and those lines (from zero).</summary>
+    public static (string Xaml, int Hello, int ClickMe) XamlBreakpoints(MainWindow window, string project)
+    {
+        string xaml = Path.Combine(PathNames.Canonical(Path.GetDirectoryName(project)!), "MainPage.xaml");
+        string[] written = File.ReadAllLines(xaml);
+        int hello = Array.FindIndex(written, l => l.Contains("Text=\"Hello, World!\"", StringComparison.Ordinal)) - 1;
+        int clickMe = Array.FindIndex(written, l => l.Contains("Text=\"Click me\"", StringComparison.Ordinal));
+        window.OpenFile(xaml);
+        Ui.Settle();
+        window.EditorArea.CodeEditor.GoTo(new Passenger.Text.TextPosition(hello, written[hello].IndexOf('<', StringComparison.Ordinal)));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        window.EditorArea.CodeEditor.GoTo(new Passenger.Text.TextPosition(clickMe, written[clickMe].IndexOf("Text=", StringComparison.Ordinal) + 1));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        return (xaml, hello, clickMe);
+    }
+
+    /// <summary>The program, going on, stops at the label's line of the page's XAML where the label is made, the label in its
+    /// locals; Step Over goes on to the next element the page makes; Continue stops at the button's Text attribute.</summary>
+    public static void StopsInXaml(MainWindow window, string xaml, int hello, int clickMe, TimeSpan limit)
+    {
+        XamlStop(window, xaml, hello, "the Hello label's line, where the label is made", limit);
+        Ui.WaitFor(() => window.BottomPanel.Debug.Tree.Rows.FirstOrDefault(r => r.Depth == 0 && r.Name == "label")?.Value is { } made && made.Contains("Label", StringComparison.Ordinal),
+            () => $"the stop's locals to show the label made; they show {string.Join(", ", window.BottomPanel.Debug.Tree.Rows.Where(r => r.Depth == 0).Select(r => $"{r.Name} = {r.Value}"))}", limit);
+        Ui.Run(window, AppActions.StepOver);
+        Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames is [{ Source.Path: { } path, Line: int line }, ..]
+                && PathNames.Same(path, xaml) && line != hello + 1,
+            () => $"Step Over to the next element MainPage.xaml makes, at {Top(window)}: {Ui.Said(window)}", limit);
+        Ui.Run(window, AppActions.Resume);
+        XamlStop(window, xaml, clickMe, "the button's Text attribute, where its text is set", limit);
+    }
+
+    /// <summary>Waits for the program to stop at a line (from zero) of a XAML file, the stop shown there.</summary>
+    private static void XamlStop(MainWindow window, string xaml, int line, string what, TimeSpan limit) =>
+        Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames is [{ Source.Path: { } path, Line: int at }, ..]
+                && PathNames.Same(path, xaml) && at == line + 1,
+            () => $"the stop at {what}, line {line + 1} of {Path.GetFileName(xaml)}, shown at {Top(window)}: {Ui.Said(window)}", limit);
+
+    /// <summary>Where the stop shown is, for a failure's words.</summary>
+    public static string Top(MainWindow window) =>
+        window.BottomPanel.Debug.Frames is [var top, ..] ? $"{top.Name} {top.Source?.Path}:{top.Line}" : "no frame";
+
     /// <summary>Apply Hot Reload Changes for a XAML edit, which the app takes: MAUI patched its open page, or it was made again.</summary>
     public static void XamlApplied(MainWindow window, string what, TimeSpan limit)
     {

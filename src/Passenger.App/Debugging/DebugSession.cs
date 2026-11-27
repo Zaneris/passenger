@@ -356,6 +356,11 @@ public sealed class DebugSession
     /// <summary>The breakpoint in a WPF XAML file the program stopped at, as an element made from it joined its window.</summary>
     public LineBreakpoint? XamlStop { get; private set; }
 
+    /// <summary>A .NET MAUI program's XAML as its build's generated code, read as the session starts, with each XAML file's
+    /// text as the editor has it: a breakpoint in a .xaml file binds in that code (<see cref="MauiXamlCode"/>) and a frame
+    /// in it is shown at the XAML; null for any other program. Set before any breakpoint is sent.</summary>
+    public (Task<MauiXamlCode> Code, Func<string, TextSnapshot?> Texts)? MauiXaml { get; set; }
+
     /// <summary>Why no step goes on from the stop, while paused at one its debugger only continues from (a Godot script
     /// error); null where steps go on.</summary>
     public string? NoSteps { get; private set; }
@@ -1080,6 +1085,28 @@ public sealed class DebugSession
     public async Task<IReadOnlyList<DapStackFrame>> StackTraceAsync(int threadId)
     {
         List<DapStackFrame> frames = [.. (await connection.RequestAsync<StackTraceResponse>(DapCommands.StackTrace, new StackTraceArguments(threadId)).ConfigureAwait(false)).StackFrames.Select(Named)];
+        // A frame in the code MAUI's source generator wrote of a page is shown at the page's XAML.
+        if (MauiXaml is { } generated)
+        {
+            MauiXamlCode code = await generated.Code;
+            Dictionary<string, TextSnapshot?> texts = new(PathNames.Comparer);
+            for (int i = 0; i < frames.Count; i++)
+            {
+                if (frames[i].Source?.Path is not { } document || code.OfDocument(document) is not { } page)
+                {
+                    continue;
+                }
+                if (!texts.TryGetValue(page.Xaml, out TextSnapshot? text))
+                {
+                    // The editor's text is the window's thread's.
+                    texts[page.Xaml] = text = await UiThread.InvokeAsync(() => generated.Texts(page.Xaml));
+                }
+                if (page.Place(text, frames[i].Line) is { } place)
+                {
+                    frames[i] = frames[i] with { Source = new DapSource { Path = page.Xaml, Name = Path.GetFileName(page.Xaml) }, Line = place.Line + 1, Column = place.Column + 1 };
+                }
+            }
+        }
         // A stop at a breakpoint in WPF XAML is shown at its XAML, in place of the inspector's call it stopped in.
         if (XamlStop is { } xaml && threadId == StoppedThread && frames is [var call, ..] && call.Name.Contains(XamlCall, StringComparison.Ordinal))
         {
@@ -1253,6 +1280,11 @@ public sealed class DebugSession
     /// Cursor's line stops: its own breakpoint is sent there, or the one there held for it, its count going on.</summary>
     private async Task SendBreakpointsAsync(string path)
     {
+        if (MauiXaml is { } generated && IsRunTimeXaml(path))
+        {
+            await SendGeneratedAsync(path, await generated.Code, generated.Texts(path));
+            return;
+        }
         if (XamlAtRunTime && IsRunTimeXaml(path))
         {
             // Its breakpoints are function breakpoints, sent with the others, where the program reads this XAML as it runs.
@@ -1313,6 +1345,57 @@ public sealed class DebugSession
         breakpoints.Report(this, path,
             [.. response.Breakpoints.Take(built.Count).Select(b => Status(path, b)), .. unbuilt.Select(_ => (BreakpointStatus.Invalid, (string?)unbuiltWhy, (int?)null))],
             [.. built.Take(response.Breakpoints.Count), .. unbuilt]);
+    }
+
+    /// <summary>A .NET MAUI XAML file's breakpoints sent for the code MAUI's source generator wrote of it, each at the line
+    /// of that code its element or attribute binds to; one where the code makes or sets nothing, or a file of no code, said
+    /// why. Answered on the XAML, at its own lines.</summary>
+    private async Task SendGeneratedAsync(string path, MauiXamlCode code, TextSnapshot? text)
+    {
+        IEnumerable<LineBreakpoint> sending = breakpoints.Muted ? [] : breakpoints.In(path).Where(b => b.Enabled);
+        (MauiXamlPage? page, string? why) = code.Of(path);
+        List<(LineBreakpoint Breakpoint, int Line)> bound = [];
+        List<(LineBreakpoint Breakpoint, string Why)> unbound = [];
+        foreach (LineBreakpoint breakpoint in sending)
+        {
+            int built = lines.ToBuilt(path, breakpoint.Line);
+            if (page is not null && text is not null && page.Bind(text, built, breakpoint.Attribute, breakpoint.Column ?? breakpoint.AttributeColumn) is int line)
+            {
+                bound.Add((breakpoint, line));
+            }
+            else
+            {
+                unbound.Add((breakpoint, why ?? $"Line {breakpoint.Line + 1} of {Path.GetFileName(path)} makes no element and sets no property"));
+            }
+        }
+        sent[path] = Signature(path);
+        foreach (int id in byId.Where(p => p.Value.Path == path).Select(p => p.Key).ToList())
+        {
+            byId.Remove(id);
+        }
+        List<DapBreakpoint> answered = [];
+        if (page is not null)
+        {
+            SetBreakpointsResponse response = await connection.RequestAsync<SetBreakpointsResponse>(DapCommands.SetBreakpoints,
+                new SetBreakpointsArguments(new DapSource { Path = page.Document, Name = Path.GetFileName(page.Document) },
+                    [.. bound.Select(b => Request(path, b.Breakpoint) with { Line = b.Line, Column = null })]));
+            answered = [.. response.Breakpoints.Take(bound.Count)];
+            for (int i = 0; i < answered.Count; i++)
+            {
+                if (answered[i].Id is int id)
+                {
+                    byId[id] = bound[i].Breakpoint;
+                }
+            }
+        }
+        if (breakpoints.Muted)
+        {
+            breakpoints.Report(this, path, [.. breakpoints.In(path).Select(_ => (BreakpointStatus.Unknown, (string?)null, (int?)null))], breakpoints.In(path));
+            return;
+        }
+        breakpoints.Report(this, path,
+            [.. answered.Select(b => Status(path, b)), .. unbound.Select(u => (BreakpointStatus.Invalid, (string?)u.Why, (int?)null))],
+            [.. bound.Take(answered.Count).Select(b => b.Breakpoint), .. unbound.Select(u => u.Breakpoint)]);
     }
 
     /// <summary>A breakpoint as the debugger is asked for it (<see cref="Asked"/>), with its key, the key of the one it waits
@@ -1862,6 +1945,8 @@ public sealed class DebugSession
     private (BreakpointStatus, string?, int?) Status(string path, DapBreakpoint breakpoint)
     {
         (BreakpointStatus status, string? message, int? line) = Status(breakpoint);
+        // A MAUI XAML breakpoint binds in generated code, whose lines are not the XAML's.
+        line = MauiXaml is not null && IsRunTimeXaml(path) ? null : line;
         // A Blazor Web App's client code stops only where its server runs it, which the debugger cannot tell from the browser's.
         if (status != BreakpointStatus.Invalid && Engine == DebugEngine.Managed && BrowserProjectOf(path) is { } client && InBrowser is { } inBrowser)
         {

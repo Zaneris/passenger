@@ -1,8 +1,6 @@
 using System.Collections;
 using System.Collections.Immutable;
-using System.IO.Compression;
 using System.Reflection;
-using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -120,10 +118,14 @@ internal sealed partial class XamlPatchBaselines
     /// (XamlComponentRegistry.Register). Null where the PDB or that code is not there.</summary>
     private static (Dictionary<(int Line, int Column), string> Ids, int Next)? BuiltIds(Project project, string file)
     {
-        if (project.CompilationOutputInfo.AssemblyPath is not { } assembly || Path.ChangeExtension(assembly, ".pdb") is not { } pdb || !File.Exists(pdb)
+        if (project.CompilationOutputInfo.AssemblyPath is not { } assembly
             || project.AnalyzerOptions.AdditionalFiles.FirstOrDefault(a => PathNames.Same(a.Path, file)) is not { } text
-            || !project.AnalyzerOptions.AnalyzerConfigOptionsProvider.GetOptions(text).TryGetValue("build_metadata.additionalfiles.RelativePath", out string? relative)
-            || Embedded(pdb, GeneratedMarkup.HintOf(relative, project.AnalyzerOptions.AnalyzerConfigOptionsProvider.GetOptions(text), "xsg")) is not { } code)
+            || !project.AnalyzerOptions.AnalyzerConfigOptionsProvider.GetOptions(text).TryGetValue("build_metadata.additionalfiles.RelativePath", out string? relative))
+        {
+            return null;
+        }
+        string hint = GeneratedMarkup.HintOf(relative, project.AnalyzerOptions.AnalyzerConfigOptionsProvider.GetOptions(text), "xsg");
+        if (PortablePdbs.EmbeddedSources(Path.ChangeExtension(assembly, ".pdb"), name => Path.GetFileName(name) == hint) is not [(_, string code), ..])
         {
             return null;
         }
@@ -144,49 +146,6 @@ internal sealed partial class XamlPatchBaselines
         int next = Numbered().Matches(code).Select(m => int.TryParse(m.Groups["id"].Value, System.Globalization.CultureInfo.InvariantCulture, out int id) ? id + 1 : 0)
             .DefaultIfEmpty(0).Max();
         return (ids, next);
-    }
-
-    /// <summary>The text a PDB embeds of the document of that file name; null where it embeds none.</summary>
-    private static string? Embedded(string pdb, string name)
-    {
-        Guid source = new("0E8A571B-6926-466E-B4AD-8AB04611F5FE");
-        try
-        {
-            using FileStream stream = File.OpenRead(pdb);
-            using MetadataReaderProvider provider = MetadataReaderProvider.FromPortablePdbStream(stream);
-            MetadataReader reader = provider.GetMetadataReader();
-            foreach (DocumentHandle handle in reader.Documents)
-            {
-                if (Path.GetFileName(reader.GetString(reader.GetDocument(handle).Name)) != name)
-                {
-                    continue;
-                }
-                foreach (CustomDebugInformationHandle information in reader.GetCustomDebugInformation(handle))
-                {
-                    CustomDebugInformation embedded = reader.GetCustomDebugInformation(information);
-                    if (reader.GetGuid(embedded.Kind) == source)
-                    {
-                        byte[] blob = reader.GetBlobBytes(embedded.Value);
-                        return Encoding.UTF8.GetString(BitConverter.ToInt32(blob, 0) == 0 ? blob[4..] : Inflated(blob[4..]));
-                    }
-                }
-            }
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or BadImageFormatException or InvalidDataException)
-        {
-            // The build's PDB is being written again, or is no portable one: the generator's own ids stand.
-        }
-        return null;
-    }
-
-    private static byte[] Inflated(byte[] compressed)
-    {
-        using MemoryStream inflated = new();
-        using (DeflateStream deflate = new(new MemoryStream(compressed), CompressionMode.Decompress))
-        {
-            deflate.CopyTo(inflated);
-        }
-        return inflated.ToArray();
     }
 
     [GeneratedRegex("""RegisterSourceInfo\((?<name>[A-Za-z_][A-Za-z0-9_]*)!, new global::System\.Uri\(@"[^"]*", global::System\.UriKind\.Relative\), (?<line>\d+), (?<column>\d+)\)""")]

@@ -10,7 +10,8 @@ namespace Passenger.Tests;
 
 /// <summary>The app <c>dotnet new maui</c> makes, its Android head debugged on an emulator from the window: Passenger's
 /// MAUI inspector goes in beside the debugger's relay, and the Live Visual Tree shows the app's window down to its main
-/// page's labels and its button, named by its x:Name; the button's details give its type, its Text set on it and its box
+/// page's labels and its button, named by its x:Name, once its XAML's breakpoints stopped where the page is made; the
+/// button's details give its type, its Text set on it and its box
 /// in the window; the outline over the button chosen is drawn in the app where the platform lays the button out, a tap
 /// given through the inspector clicks it, and its main page's XAML edits reach it with Hot Reload, a property's patched by
 /// MAUI, a C# expression's with the page made again. Debug's end ends the app and leaves nothing of the inspector's in it.
@@ -58,7 +59,11 @@ internal static class MauiAndroidTests
             window.ChooseRunTarget(model, target);
             Ui.Settle();
 
+            // Breakpoints in the page's XAML, bound in the code MAUI's source generator wrote of it, stop as the page is made.
+            (string xaml, int hello, int clickMe) = MauiApp.XamlBreakpoints(window, project);
             Ui.Launched(window, window.DebugAsync(), "the build, the install and the debugged start on the emulator", Slow);
+            MauiApp.StopsInXaml(window, xaml, hello, clickMe, Slow);
+            Ui.Run(window, AppActions.Resume);
             LiveTreeView tree = window.LiveTree;
             Ui.WaitFor(() => tree.Rows.Any(r => r.Element is { Type: "Button", Name: "CounterBtn" }),
                 () => $"the main page's button in the Live Visual Tree; it shows {string.Join(", ", tree.Rows.Select(r => r.Element.Type))}; the inspector is "

@@ -124,7 +124,7 @@ public static class XamlBreakpoints
 
     /// <summary>Whether an attribute sets something as its element is made: not a namespace, nor a directive read only by
     /// the compiler or the designer, each known by the namespace its prefix is declared for, whatever the prefix.</summary>
-    private static bool Sets(XmlAttribute attribute) =>
+    internal static bool Sets(XmlAttribute attribute) =>
         attribute.Name != "xmlns" && attribute.Prefix != "xmlns"
         && (attribute.Prefix.Length == 0 || XamlFile.DeclaredUri(attribute.Owner, attribute.Prefix) switch
         {

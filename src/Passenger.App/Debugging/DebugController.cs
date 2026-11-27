@@ -1365,6 +1365,13 @@ public sealed partial class DebugController : IDisposable
                 RecordFromStart(made);
                 made.InBrowser = inBrowser ?? (plan is { InBrowser.Count: > 0, Project: { } project, Browser: null } ? (plan.InBrowser, project) : null);
                 made.XamlAtRunTime = tab.App?.Kind == LiveAppKind.Wpf;
+                // A MAUI app's XAML is code its build wrote, whether or not its inspector went in (a trimmed build takes none).
+                if (plan is { Built: { } program, Project: { } built } && (tab.App?.Kind == LiveAppKind.Maui
+                    || plan.Workspace?.Projects.FirstOrDefault(p => PathNames.Same(p.Path, built))?.Property(MSBuildNames.UseMaui) is { } maui
+                        && maui.Equals("true", StringComparison.OrdinalIgnoreCase)))
+                {
+                    made.MauiXaml = (BackgroundWork.Run(() => MauiXamlCode.Read(program, Path.GetDirectoryName(built)!)), path => CSharp.ServerPlaces.TextOf(editors, path));
+                }
                 made.XamlElementLine = (path, line, attribute, place) => CSharp.ServerPlaces.TextOf(editors, path) is { } text ? XamlBreakpoints.ElementLine(text, line, attribute, place) : null;
                 if (disposed || ending || tab.OpeningStopped || !view.Sessions.Contains(tab))
                 {
