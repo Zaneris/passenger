@@ -1042,6 +1042,7 @@ public sealed class EditorGroup : DockPanel
         Panel ends = new() { Width = 16, Height = 16, Children = { modified, close } };
         bool down = tabsPlace != EditorTabsPlace.Top;
         Border border = new() { Classes = { StyleClasses.Tab } };
+        TrimmedTip.Attach(border, name);
         // Down a side, the name takes the column's width left over, its close at the column's edge.
         ChosenMark.Hold(border, down
             ? new DockPanel

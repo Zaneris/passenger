@@ -56,6 +56,67 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         TestFolders.Delete(settings);
     }
 
+    [AvaloniaFact]
+    public void Hovering_shows_a_truncated_run_configurations_full_name_in_the_toolbar_and_its_menu()
+    {
+        string prefix = new('W', 96);
+        string first = $"Hello: {prefix}.First";
+        string second = $"Hello: {prefix}.Second";
+        const string Short = "Hello: Short";
+        Write("Hello/Properties/launchSettings.json", $$"""
+            { "profiles": {
+                "{{prefix}}.First": { "commandName": "Project" },
+                "{{prefix}}.Second": { "commandName": "Project" },
+                "Short": { "commandName": "Project" }
+            } }
+            """);
+        MainWindow window = Keeping();
+        try
+        {
+            Ui.WaitFor(() => Names(window).Contains(second), "the long launch profiles to become run configurations");
+            Button button = window.FindControl<Button>("RunConfigButton")!;
+            TextBlock label = window.FindControl<TextBlock>("RunConfigName")!;
+
+            foreach (string name in (string[])[first, second])
+            {
+                MenuItem item = Choice(name);
+                TextBlock row = item.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Text == name);
+                Assert.Contains(row.TextLayout.TextLines, line => line.HasCollapsed);
+                AssertFullTip(item, name);
+                Ui.Click(item);
+                Assert.Contains(label.TextLayout.TextLines, line => line.HasCollapsed);
+                AssertFullTip(button, $"{name}\n\nRun configuration");
+            }
+
+            Ui.Click(Choice(Short));
+            Assert.DoesNotContain(label.TextLayout.TextLines, line => line.HasCollapsed);
+            Ui.Hover(button);
+            Ui.WaitFor(() => ToolTip.GetIsOpen(button), "the short configuration's toolbar tooltip");
+            Assert.Equal("Run configuration", ToolTip.GetTip(button));
+
+            MenuItem Choice(string name)
+            {
+                Ui.Click(button);
+                ContextMenu menu = Assert.IsType<ContextMenu>(window.OpenContextMenu);
+                return menu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, name));
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static void AssertFullTip(Control target, string name)
+        {
+            Ui.Hover(target);
+            Ui.WaitFor(() => ToolTip.GetIsOpen(target), "the full configuration name's tooltip");
+            TextBlock tip = Assert.IsType<TextBlock>(ToolTip.GetTip(target));
+            Assert.Equal(name, tip.Text);
+            Assert.True(tip.TextLayout.TextLines.Count > 1, "The tooltip leaves the full name on one very long line");
+            Assert.DoesNotContain(tip.TextLayout.TextLines, line => line.HasCollapsed);
+        }
+    }
+
     /// <summary>The gate's seventeen checks of run configurations, as one flow: what runs and is kept, added, copied,
     /// changed, removed or refused in the dialog, written to and reset from a launch profile with its Undo, an older
     /// file and a file-based program's, a compose configuration, and what the toolbar shows.</summary>

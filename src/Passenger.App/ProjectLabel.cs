@@ -23,6 +23,7 @@ public sealed class ProjectLabel : DockPanel
         SetDock(icon, Dock.Left);
         Children.Add(icon);
         Children.Add(name);
+        TrimmedTip.Attach(this, name);
     }
 
     /// <summary>The words it shows.</summary>
