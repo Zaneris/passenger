@@ -1147,6 +1147,13 @@ public sealed partial class Vim
         }
         bool passWhite = false;
         bool landedAlone = false;
+        // An empty line in a run that ends the text passes no white: is takes the white before the sentence it steps to.
+        int runLast = VimMotions.LineOf(text, at).Line;
+        while (fromStart && runLast < VimMotions.LastLine(text, breakEnds) && text.GetLine(runLast + 1).Length == 0)
+        {
+            runLast++;
+        }
+        bool endsText = fromStart && runLast == VimMotions.LastLine(text, breakEnds);
         // A walk begun inside a sentence or the white after one's mark, short of its line's end.
         bool begunInside = SentenceUnit(text, at) is var begunIn && (begunIn.Start < at || begunIn.White) && at < VimMotions.LineOf(text, at).End;
         // A line break alone between two sentences is no white: each is a step of its own.
@@ -1161,7 +1168,7 @@ public sealed partial class Vim
             {
                 (start, white) = SentenceUnit(text, VimMotions.StepBack(text, start));
             }
-            passWhite = inner && fromEmpty && !white && fromStart;
+            passWhite = inner && fromEmpty && !white && fromStart && !endsText;
             fromStart = false;
             reached = fromEmpty && (reached || left < (begun ? n : n - 1));
             at = start;
