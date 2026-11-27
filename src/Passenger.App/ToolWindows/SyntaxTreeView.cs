@@ -28,8 +28,8 @@ internal sealed class SyntaxTreeView : Panel
     private readonly Action<ParsedText, TextSpan> selectSource;
     private readonly Debounce reveal;
     private ParsedText? shown;
-    private TextSpan? wanted;
-    private CancellationTokenSource? finding;
+    private TextSpan? editorSpan;
+    private CancellationTokenSource? activeReveal;
 
     internal SyntaxTreeView(Action<ParsedText, TextSpan> selectSource)
     {
@@ -72,10 +72,10 @@ internal sealed class SyntaxTreeView : Panel
             split.IsVisible = true;
         }
         TextSpan span = new(selection.Start, selection.Length);
-        if (wanted != span)
+        if (editorSpan != span)
         {
-            finding?.Cancel();
-            wanted = span;
+            CancelReveal();
+            editorSpan = span;
             reveal.Restart();
         }
     }
@@ -95,26 +95,26 @@ internal sealed class SyntaxTreeView : Panel
 
     internal void ClearChoice()
     {
-        StopRevealing();
+        CancelReveal();
+        editorSpan = null;
         list.SelectedItem = null;
     }
 
-    private void StopRevealing()
+    private void CancelReveal()
     {
         reveal.Stop();
-        finding?.Cancel();
-        wanted = null;
+        activeReveal?.Cancel();
     }
 
     private async Task RevealAsync()
     {
-        if (rows.Count == 0 || wanted is not { } span)
+        if (rows.Count == 0 || editorSpan is not { } span)
         {
             return;
         }
         Row root = rows[0];
         using CancellationTokenSource request = new();
-        finding = request;
+        activeReveal = request;
         try
         {
             List<Row>? path = await BackgroundWork.Run(() => PathTo(root, span, request.Token));
@@ -133,9 +133,9 @@ internal sealed class SyntaxTreeView : Panel
         }
         finally
         {
-            if (finding == request)
+            if (activeReveal == request)
             {
-                finding = null;
+                activeReveal = null;
             }
         }
     }
@@ -168,9 +168,9 @@ internal sealed class SyntaxTreeView : Panel
         {
             return;
         }
-        StopRevealing();
+        CancelReveal();
         // The tree's choice can share its span with a child. Keep the chosen row when the editor echoes that span.
-        wanted = row.Span;
+        editorSpan = row.Span;
         selectSource(parsed, row.Span);
     }
 

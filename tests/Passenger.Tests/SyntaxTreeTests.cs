@@ -46,6 +46,15 @@ public sealed class SyntaxTreeTests : IDisposable
             Ui.WaitFor(() => SelectedKind(tree, "IdentifierToken"), "the identifier token at the caret");
             Assert.Same(editor, window.FocusManager?.GetFocusedElement());
 
+            ListBoxItem identifierName = Assert.IsAssignableFrom<ListBoxItem>(tree.ContainerFromIndex(tree.SelectedIndex - 1));
+            Assert.Contains(identifierName.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "IdentifierName");
+            Ui.Click(identifierName);
+            Ui.WaitFor(() => editor.Selections.Primary.Range == new TextRange(start, "left".Length),
+                "the source span chosen from the identifier name");
+            Ui.Settle();
+            Assert.True(SelectedKind(tree, "IdentifierName"));
+
+            editor.Focus();
             editor.Selections = SelectionSet.Single(new Selection(start + "left + right".Length, start));
             Ui.WaitFor(() => SelectedKind(tree, "AddExpression"), "the addition covering the backward selection");
             Assert.Equal(start, editor.Selections.Primary.Caret);
