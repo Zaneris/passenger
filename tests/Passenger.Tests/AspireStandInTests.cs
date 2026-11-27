@@ -122,11 +122,11 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         Flow.StepApart("a file input the AppHost replaces refuses the upload under way and takes the file chosen again", () => new AspireStandInTests(project), t => t.A_file_input_the_AppHost_replaces_refuses_the_upload_under_way_and_takes_the_file_chosen_again());
     }
 
-    /// <summary>What the stand-in shell scripts answer as one flow, every step off Windows alone (Windows runs no shell
-    /// script), each in an instance of its own: an AppHost serving HTTPS with no trusted certificate asking once, Debug
-    /// while Run brings it up taking its place, Discover taking a CLI of 13.6 or later, an AppHost read through the CLI
-    /// with no credentials in its addresses and its failure masked, an engine stopping or down said once, and the
-    /// Containers window's AppHost row merging its containers.</summary>
+    /// <summary>What the stand-in shell scripts answer as one flow, off Windows alone (it runs no shell script), each step in
+    /// an instance of its own: HTTPS with no trusted certificate asked once, Debug taking Run's place, Discover taking a CLI
+    /// of 13.6 or later, an AppHost run outside read with no credentials and its service attached to, a Go AppHost run
+    /// through the CLI, an engine stopping or down said once, and the Containers window's AppHost row merging its
+    /// containers.</summary>
     [AvaloniaFact]
     public void An_AppHosts_certificate_CLI_and_container_engine_are_asked_and_said_as_each_answers()
     {
@@ -135,6 +135,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         Flow.StepApart("discover takes a CLI of 13 6 or later within 13 or of 17 and says why it will not take another", () => new AspireStandInTests(project), t => t.Discover_takes_a_CLI_of_13_6_or_later_within_13_or_of_17_and_says_why_it_will_not_take_another());
         Flow.StepApart("an AppHost read through the CLI shows its addresses without credentials and its failure masked", () => new AspireStandInTests(project), t => t.An_AppHost_read_through_the_CLI_shows_its_addresses_without_credentials_and_its_failure_masked());
         Flow.StepApart("a NET service of an AppHost run outside Passenger is attached to as it runs and a Go program is refused saying why", () => new AspireStandInTests(project), t => t.A_NET_service_of_an_AppHost_run_outside_Passenger_is_attached_to_as_it_runs_and_a_Go_program_is_refused_saying_why());
+        Flow.StepApart("a Go AppHost runs through the aspire CLI and its NET service is debugged and takes Hot Reload", () => new AspireStandInTests(project), t => t.A_Go_AppHost_runs_through_the_aspire_CLI_and_its_NET_service_is_debugged_and_takes_Hot_Reload());
         Flow.StepApart("a container engine that stops while an AppHost runs is said in the status bar and Problems as for a container run", () => new AspireStandInTests(project), t => t.A_container_engine_that_stops_while_an_AppHost_runs_is_said_in_the_status_bar_and_Problems_as_for_a_container_run());
         Flow.StepApart("an engine down as an AppHost starts is said once and its events ending leave the runs own words", () => new AspireStandInTests(project), t => t.An_engine_down_as_an_AppHost_starts_is_said_once_and_its_events_ending_leave_the_runs_own_words());
         Flow.StepApart("the Containers windows AppHost row merges its containers logs and stats", () => new AspireStandInTests(project), t => t.The_Containers_windows_AppHost_row_merges_its_containers_logs_and_stats());
@@ -3036,6 +3037,79 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         {
             window?.Close();
             ChildProcesses.Kill(api);
+        }
+    }
+
+    /// <summary>An AppHost of another language (a Go AppHost, as its aspire.config.json names it) has its configuration as the
+    /// folder opens, and Debug runs it as aspire run starts it, through the window's aspire CLI in its folder with the IDE's
+    /// debug session and the environment its config's https profile gives; the .NET service its orchestrator asks the IDE to
+    /// start runs debugged, and an edit made as it runs reaches it through Hot Reload, as a C# AppHost's service's does. The
+    /// stand-in CLI runs the stand-in AppHost, built here, as aspire run would run the AppHost.</summary>
+    private void A_Go_AppHost_runs_through_the_aspire_CLI_and_its_NET_service_is_debugged_and_takes_Hot_Reload()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in aspire CLI is a shell script, and Windows runs no shell script as a program");
+        project.Reset();
+        project.BuildApi();
+        ChildResult built = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", PathNames.Canonical(project.ProjectFile), "-nologo", "-v:q"]),
+            limit: TimeSpan.FromMinutes(3).Scaled()), "the stand-in AppHost's build");
+        Assert.True(built.Succeeded, $"The stand-in AppHost did not build: {built.Output}{built.Error}");
+        string appHost = Path.Combine(PathNames.Canonical(project.Folder), "GoHost", "apphost.go");
+        File.Delete(project.KeyFile);
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        TestFolders.Write(project.Folder, "GoHost/apphost.go", "package main\n\nfunc main() {}\n");
+        TestFolders.Write(project.Folder, "GoHost/aspire.config.json", JsonSerializer.Serialize(new
+        {
+            appHost = new { path = "apphost.go", language = "go" },
+            profiles = new Dictionary<string, object>
+            {
+                ["http"] = new { environmentVariables = new Dictionary<string, string> { ["PASSENGER_STAND_IN_KEY"] = "not this profile" } },
+                ["https"] = new
+                {
+                    environmentVariables = new Dictionary<string, string>
+                    {
+                        ["PASSENGER_STAND_IN_KEY"] = project.KeyFile,
+                        [AspireVariables.AllowUnsecuredTransport] = "true",
+                        [AspireVariables.ResourceServiceEndpoint] = backend.Endpoint.AbsoluteUri,
+                    },
+                },
+            },
+        }));
+        string cli = StandInCli();
+        string program = Path.Combine(project.PathOf(StandInAppHost.Name), "bin", "Debug", TestProjects.Framework, $"{StandInAppHost.Name}.dll");
+        File.WriteAllText(cli, $"#!/bin/sh\nprintf '%s\\n' \"$PWD\" \"$@\" > \"$(dirname \"$0\")/ran\"\nexec '{Dotnet.Host()}' '{program}'\n");
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, WarmServer = project.Server, AspireCliFrom = cli };
+        System.Net.WebSockets.ClientWebSocket? started = null;
+        try
+        {
+            window.Show();
+            window.OpenFolder(project.Folder);
+            Ui.WaitFor(() => window.CSharpService is { IsReady: true }, $"the language server to load the projects ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Aspire && PathNames.Same(configuration.Project, appHost)),
+                "the Go AppHost's Aspire configuration as its aspire.config.json names it");
+            Assert.True(window.SelectConfiguration(window.Configurations.First(configuration => PathNames.Same(configuration.Project, appHost)).Name));
+            window.ApplySettings(window.Settings with { HotReload = true });
+            Ui.Run(window, AppActions.Debug);
+            Ui.WaitFor(() => backend.Connected.Task.IsCompleted && window.AspireRuntime.Apps.Count == 1, $"the Go AppHost to come up through the aspire CLI ({window.Status}){project.StartSaid()}");
+            Assert.Equal([Path.GetDirectoryName(appHost)!, "run", "--apphost", appHost, "--non-interactive", "--nologo"],
+                File.ReadAllLines(Path.Combine(Path.GetDirectoryName(cli)!, "ran")).Select((line, index) => index == 0 ? PathNames.Canonical(line) : line));
+
+            (started, System.Net.HttpStatusCode answer) = project.AskToStartApi("apiservice", "Debug");
+            Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the Go AppHost's .NET service: {answer} ({window.Status})");
+            Ui.WaitFor(() => window.AspireRuntime.Apps.Single().Services.SingleOrDefault() is { ProcessId: > 0, DebugTab.IsLive: true },
+                $"the Go AppHost's .NET service debugged from its start ({window.Status})", TimeSpan.FromMinutes(1));
+            Assert.Null(window.OpenFile(project.PathOf($"{StandInAppHost.Api}/Program.cs")));
+            Typing.Replace(window, "\"The stand-in API is up\"", "\"The stand-in API is up, edited\"");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is null, $"Apply Hot Reload Changes to end ({window.Status})", TimeSpan.FromMinutes(2));
+            Assert.True(window.Debugger.LastApplied?.Result == Passenger.App.Debugging.HotReloadResult.Applied,
+                $"The edit did not reach the Go AppHost's .NET service: {window.Debugger.LastApplied?.Said}");
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            started?.Dispose();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
         }
     }
 

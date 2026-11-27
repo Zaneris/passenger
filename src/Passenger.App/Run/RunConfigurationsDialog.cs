@@ -99,7 +99,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         launchedAs = launches.ToDictionary(e => e, e => e.Configuration);
         this.solution = solution;
         this.projects = projects;
-        singleFileAppHosts = [.. generated.Concat(own).Where(c => c.Aspire && Path.GetExtension(c.Project).Equals(".cs", StringComparison.OrdinalIgnoreCase))
+        singleFileAppHosts = [.. generated.Concat(own).Where(c => c.Aspire && !c.IsContainer && c.Project.Length > 0 && !WorkspaceModel.IsProject(c.Project))
             .Select(c => c.Project).Distinct(StringComparer.Ordinal)];
         this.apply = apply;
         Title = "Run/Debug Configurations";

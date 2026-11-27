@@ -105,6 +105,10 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     public Func<string, string, bool?>? Chosen { get; set; }
     public Func<AspireAppRun, CancellationToken, Task<AspireInteractions?>>? ConnectInteractions { get; set; }
 
+    /// <summary>The aspire CLI an AppHost of another language runs through (<see cref="AspireAppHosts.RunsThroughCli"/>): the
+    /// window's (a test's stand-in), else the PATH's.</summary>
+    public string? Cli { get; set; }
+
     /// <summary>How long Profile of a configuration waits for the service it records to reach the profiler, counted from DCP's
     /// request to start that service (however long its AppHost takes to ask, which Stop ends): past it the start is given up,
     /// said as the time limit it is.</summary>
@@ -787,6 +791,10 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     private async Task<LaunchPlan> ResolveAppHostAsync(RunConfiguration configuration, WorkspaceModel? configured, Func<BuildStep, Task<BuildOutcome>> build,
         CancellationToken cancellation)
     {
+        if (AspireAppHosts.RunsThroughCli(configuration.Project))
+        {
+            return await ThroughCliAsync(configuration, cancellation);
+        }
         if (!Path.GetExtension(configuration.Project).Equals(".cs", StringComparison.OrdinalIgnoreCase))
         {
             if (configuration.Program.Length > 0)
@@ -849,6 +857,39 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             Environment = configuration.Environment.ToDictionary(variable => variable.Key, variable => Expand(variable.Value)),
             Project = configuration.Project,
             Built = target,
+        };
+    }
+
+    /// <summary>An AppHost of another language, started as aspire run starts it, which builds it and the .NET projects it adds:
+    /// the CLI in its folder, told the AppHost, never to ask, and the configuration's arguments for the AppHost, with what the
+    /// CLI gives it to run with (<see cref="AspireAppHosts.CliProfile"/>) and the configuration's own over it, so the
+    /// addresses Passenger reaches its resource service and dashboard at are those it serves on.</summary>
+    private async Task<LaunchPlan> ThroughCliAsync(RunConfiguration configuration, CancellationToken cancellation)
+    {
+        if (configuration.Program.Length > 0 || configuration.Framework.Length > 0 || configuration.LaunchProfile.Length > 0)
+        {
+            throw new LaunchException($"{Path.GetFileName(configuration.Project)} runs through the aspire CLI, which reads its launch profile itself: clear Exe path, Target framework and Launch profile");
+        }
+        string? given = Cli;
+        (string? cli, Dictionary<string, string> environment) = await BackgroundWork.Run(() => (given ?? Programs.Command("aspire"), AspireAppHosts.CliProfile(configuration.Project)),
+            cancellation);
+        if (cli is null)
+        {
+            throw new LaunchException(Refusals.NoAspireCli(Path.GetFileName(configuration.Project)));
+        }
+        foreach ((string name, string value) in configuration.Environment)
+        {
+            environment[name] = value;
+        }
+        IReadOnlyList<string> arguments = CommandLine.Split(configuration.Arguments);
+        return new LaunchPlan
+        {
+            Name = configuration.Name,
+            Program = cli,
+            Arguments = ["run", "--apphost", configuration.Project, "--non-interactive", "--nologo", .. arguments.Count > 0 ? ["--", .. arguments] : (string[])[]],
+            WorkingDirectory = Path.GetDirectoryName(configuration.Project)!,
+            Environment = environment,
+            Project = configuration.Project,
         };
     }
 

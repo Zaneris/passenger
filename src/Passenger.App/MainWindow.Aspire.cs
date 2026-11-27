@@ -166,6 +166,7 @@ public partial class MainWindow
                 ?? Task.FromResult<IReadOnlyList<AspireResource>>([])
             : null;
         model.ConsoleProvider = (selected, cancel) => next.Aspire.FindApp(selected.AppHostPath)?.Interactions?.WatchConsoleAsync(selected.Resource, cancel);
+        next.Aspire.Cli = AspireCliFrom;
         next.Aspire.ConnectInteractions = async (app, cancel) =>
         {
             if (app.ResourceServiceEndpoint is not { } endpoint)

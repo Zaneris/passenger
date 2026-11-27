@@ -742,6 +742,9 @@ public static class Refusals
     /// <summary>A service of a run of services (each named as it is shown) that the run has not started, or that has ended.</summary>
     public static string NotRunning(string service, string run) => $"{service} of {run} is not running";
 
+    /// <summary>An AppHost of another language than C#, which only the aspire CLI runs, where none is found.</summary>
+    public static string NoAspireCli(string appHost) => $"{appHost} runs through the aspire CLI, which is not on the PATH: install Aspire 17 or later";
+
     /// <summary>A debugger asked of a Go program an AppHost runs, which Passenger has none for.</summary>
     public static string NoGoDebugger(string name) => $"{name} is a Go program, and Passenger has no Go debugger";
 
