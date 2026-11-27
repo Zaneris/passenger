@@ -765,6 +765,7 @@ public static class AppActions
     public const string MarkdownEditorOnly = "app.editor.markdownEditorOnly";
     public const string MarkdownEditorAndPreview = "app.editor.markdownEditorAndPreview";
     public const string MarkdownPreviewOnly = "app.editor.markdownPreviewOnly";
+    public const string MarkdownInlineEditing = "app.editor.markdownInlineEditing";
 
     // A Windows Forms form's layouts, on its file's tab strip, View Designer under View too: Rider's OpenWinFormsCodeAction
     // and OpenWinFormsDesignerAction, F7 and Shift+F7 in its Visual Studio and Visual Studio OSX keymaps, where Shift+F7 is

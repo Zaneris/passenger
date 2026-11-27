@@ -153,7 +153,7 @@ public sealed partial class EditorArea : UserControl
     /// the preview stands beside the editor.</summary>
     public bool ShowsMarkdownPreview
     {
-        get => MarkdownLayout.View != PaneView.Editor;
+        get => MarkdownLayout.View is PaneView.Split or PaneView.Preview;
         set
         {
             if (value != ShowsMarkdownPreview)

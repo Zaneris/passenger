@@ -42,7 +42,7 @@ public sealed partial class CodeEditor : Control
     private const double GutterPadLeft = 14;
     private const double GutterPadRight = 22;
     /// <summary>The room between the gutter and the text, the theme's <c>Passenger.EditorTextPadding</c>.</summary>
-    private double TextPadLeft => palette.TextPadding;
+    private double TextPadLeft => presentsMarkdown ? Math.Max(24, palette.TextPadding) : palette.TextPadding;
 
     /// <summary>Drawn by the host's ScrollBar theme; "stripe" marks the bar that carries the error stripe.</summary>
     private readonly ScrollBar vertical = new() { Orientation = Orientation.Vertical, AllowAutoHide = false, Classes = { StyleClasses.Stripe } };
@@ -414,7 +414,13 @@ public sealed partial class CodeEditor : Control
         RoutedEvent.Register<CodeEditor, RoutedEventArgs>("TypingRefused", RoutingStrategies.Bubble);
 
     /// <summary>Whether the gutter shows line numbers; a console's output goes without.</summary>
-    public bool ShowLineNumbers { get; set; } = true;
+    public bool ShowLineNumbers
+    {
+        get => showLineNumbers && !presentsMarkdown;
+        set => showLineNumbers = value;
+    }
+
+    private bool showLineNumbers = true;
 
     /// <summary>Whether the scroll bars show when there is more to see; a few lines shown as a picture of a place go
     /// without, a long line cut at the edge.</summary>
@@ -733,7 +739,7 @@ public sealed partial class CodeEditor : Control
             // A zoom keeps the line at the top of the view there.
             KeepTopLine(() =>
             {
-                metrics = Metrics.Measure(Typeface, FontSize, LineSpacing);
+                metrics = MeasureRows();
                 RefreshStyle();
             });
         }
@@ -1044,6 +1050,7 @@ public sealed partial class CodeEditor : Control
         hintRun = null;
         runProperties.Clear();
         runLooks.Clear();
+        markdownRuns.Clear();
         numberRuns = (
             RunWith(palette.LineNumberCurrent),
             RunWith(palette.LineNumber));

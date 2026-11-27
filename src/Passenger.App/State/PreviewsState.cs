@@ -3,8 +3,8 @@ using System.Text.Json.Nodes;
 namespace Passenger.App.State;
 
 /// <summary>What a group shows of a file with a pane of its own (a Markdown file's preview, a form's design): its editor and
-/// the pane, its editor alone, or the pane alone.</summary>
-public enum PaneView { Split, Editor, Preview }
+/// the pane, its editor alone, the pane alone or (Markdown) its inline editor.</summary>
+public enum PaneView { Split, Editor, Preview, Inline }
 
 /// <summary>A kind of file's layout in every group: what it shows and, showing both, whether the pane stands under the
 /// editor (true) or beside it (false) whatever the group's shape, null as the shape stands them.</summary>
@@ -36,7 +36,7 @@ public sealed record PreviewsState : IStateDocument<PreviewsState>
     public PreviewsState Clamped() => this with
     {
         MarkdownLayout = Enum.IsDefined(MarkdownLayout.View) ? MarkdownLayout : default,
-        FormLayout = FormLayout is { } form && !Enum.IsDefined(form.View) ? null : FormLayout,
+        FormLayout = FormLayout is { } form && (!Enum.IsDefined(form.View) || form.View == PaneView.Inline) ? null : FormLayout,
     };
 
     /// <summary>Version 1 to 2: the Markdown preview kept off, before it had layouts, is the editor alone; kept on, the

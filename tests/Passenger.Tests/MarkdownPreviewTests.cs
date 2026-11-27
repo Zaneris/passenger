@@ -125,6 +125,9 @@ public sealed class MarkdownPreviewTests
         OpenWindows.CloseAll();
         Flow.Step(nameof(A_READMEs_layouts_show_its_editor_its_preview_or_both_turn_the_split_and_open_as_last_left),
             A_READMEs_layouts_show_its_editor_its_preview_or_both_turn_the_split_and_open_as_last_left);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Inline_editing_formats_the_same_buffer_and_saves_only_the_edits),
+            Inline_editing_formats_the_same_buffer_and_saves_only_the_edits);
     }
 
     /// <summary>A README's headings nest by level in Structure and lead to their lines, and a typing pause in a long
@@ -332,6 +335,59 @@ public sealed class MarkdownPreviewTests
         Ui.Settle();
         Assert.True(!Layout(AppActions.MarkdownPreviewOnly).IsEffectivelyVisible && !window.Perform(AppActions.MarkdownPreviewOnly),
             "A C# file's tab strip offers the README's layouts, or Preview Only ran on it");
+        window.Close();
+    }
+
+    private static void Inline_editing_formats_the_same_buffer_and_saves_only_the_edits()
+    {
+        string folder = TestFolders.Create("markdown-inline-");
+        string readme = Path.Combine(folder, "README.md");
+        const string source = "## Installation\r\n\r\n- Keep **the original** spelling.\r\n\r\n```text\r\n## Literal heading\r\n```\r\n";
+        File.WriteAllText(readme, source);
+        MainWindow window = Ui.OpenFolder(folder, width: 1100, height: 680, languageServer: false);
+        Assert.Null(window.OpenFile(readme));
+        Ui.Settle();
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        CodeEditor editor = group.Editor;
+        ToggleButton Layout(string action) => group.TabStrip.GetLogicalDescendants().OfType<ToggleButton>()
+            .Single(button => ActionTips.ActionOf(button) == action);
+        ToggleButton inline = Layout(AppActions.MarkdownInlineEditing);
+        TextDocument document = editor.Document;
+        Ui.Click(inline);
+        Ui.WaitFor(() => Math.Abs(editor.PointOf(0).X - editor.PointOf(3).X) < 1,
+            "the inline heading's source prefix collapsed into its first character");
+        Assert.True(inline.IsChecked == true && group.Markdown is null && editor.IsEffectivelyVisible);
+        int bold = source.IndexOf("**", StringComparison.Ordinal);
+        Assert.InRange(Math.Abs(editor.PointOf(bold).X - editor.PointOf(bold + 2).X), 0, 1);
+        int literal = source.IndexOf("## Literal", StringComparison.Ordinal);
+        Assert.True(editor.PointOf(literal + 3).X > editor.PointOf(literal).X, "A fenced code line lost its Markdown characters");
+
+        int click = source.IndexOf("ation", StringComparison.Ordinal);
+        Ui.Click(editor, editor.PointOf(click) + new Vector(0, editor.LineHeight / 2));
+        window.KeyTextInput("!");
+        string edited = source.Insert(click, "!");
+        Assert.Equal(edited, document.Snapshot.ToString());
+        Assert.Equal(source, File.ReadAllText(readme));
+
+        Ui.Click(Layout(AppActions.MarkdownEditorOnly));
+        Assert.Same(document, editor.Document);
+        Assert.False(editor.PresentsMarkdown);
+        Assert.Equal(edited, document.Snapshot.ToString());
+        Assert.True(editor.PointOf(3).X > editor.PointOf(0).X);
+        Assert.True(window.Perform(AppActions.MarkdownInlineEditing));
+        Ui.Settle();
+        Ui.Run(window, AppActions.Save);
+        Ui.WaitFor(() => File.ReadAllText(readme) == edited, "the edited Markdown saved with its original line endings and markup");
+
+        editor.Focus();
+        int end = editor.Document.Snapshot.Length;
+        editor.GoTo(editor.Document.Snapshot.GetPosition(end));
+        window.KeyTextInput("### New heading");
+        Ui.WaitFor(() => Math.Abs(editor.PointOf(end).X - editor.PointOf(end + 4).X) < 1,
+            "a heading typed directly in the inline editor formatted in place");
+        Ui.Run(window, AppActions.Save);
+        Ui.WaitFor(() => File.ReadAllText(readme) == edited + "### New heading",
+            "the new heading saved as Markdown");
         window.Close();
     }
 

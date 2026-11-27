@@ -153,8 +153,9 @@ public sealed partial class CodeEditor
                 RowSpan span = lines[k].Span;
                 LineRun[] runs = Runs(spans, ref index, span.Start, span.End);
                 string content = text.GetText(span.Start, span.Length);
-                FormatKey key = new(content, runs);
-                lines[k].Text = views.Formatted(key) ?? views.Add(key, Format(content, runs, null));
+                MarkdownLine markdown = presentsMarkdown ? ProjectMarkdown(content, runs, span.Start == text.GetLineStart(span.Line)) : default;
+                FormatKey key = new(content, runs, markdown);
+                lines[k].Text = views.Formatted(key) ?? views.Add(key, markdown.Text is null ? Format(content, runs, null) : FormatMarkdown(markdown, runs));
                 lines[k].Runs = runs;
                 lines[k].Use(views.Frame);
             }
@@ -255,7 +256,21 @@ public sealed partial class CodeEditor
     {
         TextRunProperties plain = only ?? Run(TokenKind.Text);
         ITextSource source = runs.Length == 0 ? new SingleRun(content, plain) : new ColouredRuns(content, runs, plain, Run);
-        CharactersFormatted += content.Length;
+        return FormatLine(source, plain, content.Length);
+    }
+
+    private TextLine FormatMarkdown(MarkdownLine markdown, LineRun[] runs)
+    {
+        string content = markdown.Text!;
+        TextRunProperties plain = MarkdownRun(TokenKind.Text, markdown.Scale);
+        ITextSource source = runs.Length == 0 ? new SingleRun(content, plain)
+            : new ColouredRuns(content, runs, plain, kind => MarkdownRun(kind, markdown.Scale));
+        return FormatLine(source, plain, content.Length);
+    }
+
+    private TextLine FormatLine(ITextSource source, TextRunProperties plain, int length)
+    {
+        CharactersFormatted += length;
         TextLine line = TextFormatter.Current.FormatLine(source, 0, double.PositiveInfinity, new LineProperties(plain, metrics.CharWidth * Indent.TabWidth))!;
         RunsFormatted += line.TextRuns.Count;
         return line;
@@ -287,12 +302,17 @@ public sealed partial class CodeEditor
     {
         private readonly int hash;
 
-        public FormatKey(string text, LineRun[] runs)
+        public FormatKey(string text, LineRun[] runs, MarkdownLine markdown = default)
         {
             Text = text;
             Runs = runs;
+            Markdown = markdown;
             HashCode combined = new();
             combined.Add(text);
+            if (markdown.Text is not null)
+            {
+                combined.Add(markdown);
+            }
             foreach (LineRun run in runs)
             {
                 combined.Add(run);
@@ -302,9 +322,11 @@ public sealed partial class CodeEditor
 
         public string Text { get; }
         public LineRun[] Runs { get; }
+        public MarkdownLine Markdown { get; }
 
         public bool Equals(FormatKey other) =>
             hash == other.hash
+            && Markdown == other.Markdown
             && (ReferenceEquals(Text, other.Text) || Text == other.Text)
             && (ReferenceEquals(Runs, other.Runs) || Runs.AsSpan().SequenceEqual(other.Runs));
 
@@ -325,6 +347,12 @@ public sealed partial class CodeEditor
         private Func<string, object?>? addressesBy;
 
         public TextLine Line { get; } = line;
+
+        public int ColumnOf(CharacterHit hit)
+        {
+            int column = hit.FirstCharacterIndex + hit.TrailingLength;
+            return Math.Max(column, key.Markdown.Leading);
+        }
 
         /// <summary>The addresses in the line's comments and strings, in its columns, as <paramref name="by"/> takes them:
         /// found the first time they are asked for.</summary>
@@ -434,7 +462,7 @@ public sealed partial class CodeEditor
             if (Long is null || (Text is not null && x >= X && x <= X + Text.Line.WidthIncludingTrailingWhitespace))
             {
                 CharacterHit hit = Text!.Line.GetCharacterHitFromDistance(x - X);
-                return From + hit.FirstCharacterIndex + hit.TrailingLength;
+                return From + Text.ColumnOf(hit);
             }
             return Long.ColumnAt(x);
         }

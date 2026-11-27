@@ -63,6 +63,7 @@ public sealed class EditorGroup : DockPanel
     private readonly ToggleButton markdownEditor;
     private readonly ToggleButton markdownSplit;
     private readonly ToggleButton markdownOnly;
+    private readonly ToggleButton markdownInline;
 
     /// <summary>Editor and Preview's mark, turned a quarter while the preview stands under the editor.</summary>
     private readonly PathIcon splitMark = new();
@@ -70,6 +71,7 @@ public sealed class EditorGroup : DockPanel
     private const string EditorOnly = "Editor Only";
     private const string EditorAndPreview = "Editor and Preview";
     private const string PreviewOnly = "Preview Only";
+    private const string InlineEditing = "Inline Markdown Editing";
 
     private readonly ItemsControl strip;
     private readonly ScrollViewer stripView;
@@ -128,10 +130,12 @@ public sealed class EditorGroup : DockPanel
         markdownEditor = MarkdownButton(ToolButtons.Toggle(IconKeys.DocumentText, EditorOnly), PaneView.Editor);
         markdownSplit = MarkdownButton(ToolButtons.Give(new ToggleButton(), splitMark, EditorAndPreview), PaneView.Split);
         markdownOnly = MarkdownButton(ToolButtons.Toggle(IconKeys.Preview, PreviewOnly), PaneView.Preview);
+        markdownInline = MarkdownButton(ToolButtons.Toggle(IconKeys.Edit, InlineEditing), PaneView.Inline);
+        markdownInline.Name = "MarkdownInlineEditing";
         markdownModes = new StackPanel
         {
             Orientation = Orientation.Horizontal, IsVisible = false, [DockProperty] = Dock.Right,
-            Children = { markdownEditor, markdownSplit, markdownOnly },
+            Children = { markdownEditor, markdownSplit, markdownOnly, markdownInline },
         };
         stripView = TabStrips.ScrollingAcross(strip);
         // A narrower strip may leave the active tab out of sight.
@@ -238,6 +242,7 @@ public sealed class EditorGroup : DockPanel
         (true, _) => (AppActions.FormDesignOnly, DesignOnly),
         (false, PaneView.Editor) => (AppActions.MarkdownEditorOnly, EditorOnly),
         (false, PaneView.Split) => (AppActions.MarkdownEditorAndPreview, EditorAndPreview),
+        (false, PaneView.Inline) => (AppActions.MarkdownInlineEditing, InlineEditing),
         _ => (AppActions.MarkdownPreviewOnly, PreviewOnly),
     };
 
@@ -249,7 +254,8 @@ public sealed class EditorGroup : DockPanel
     private void FollowSplitWords()
     {
         bool form = ShowsForm;
-        foreach ((ToggleButton button, PaneView view) in (ReadOnlySpan<(ToggleButton, PaneView)>)[(markdownEditor, PaneView.Editor), (markdownOnly, PaneView.Preview)])
+        foreach ((ToggleButton button, PaneView view) in (ReadOnlySpan<(ToggleButton, PaneView)>)[
+            (markdownEditor, PaneView.Editor), (markdownOnly, PaneView.Preview), (markdownInline, PaneView.Inline)])
         {
             (string action, string title) = PaneActions(view);
             ActionTips.Set(button, action, title);
@@ -341,11 +347,14 @@ public sealed class EditorGroup : DockPanel
         bool isForm = document is not null && area.Designs(document);
         PaneLayout layout = isForm ? area.FormLayout : area.MarkdownLayout;
         bool previewOnly = (isMarkdown || isForm) && layout.View == PaneView.Preview;
+        bool inline = isMarkdown && layout.View == PaneView.Inline;
         bool moveKeys = previewOnly ? Editor.IsKeyboardFocusWithin
-            : (Markdown?.IsKeyboardFocusWithin == true || Side is WinForms.FormDesignPane { IsKeyboardFocusWithin: true }) && layout.View == PaneView.Editor;
+            : (Markdown?.IsKeyboardFocusWithin == true || Side is WinForms.FormDesignPane { IsKeyboardFocusWithin: true })
+                && (layout.View == PaneView.Editor || inline);
+        Editor.PresentsMarkdown = inline;
         Database.SqlConsole? console = document is not null && Database.SqlConsole.Speaks(document.Language) ? area.ConsoleOf?.Invoke(document) : null;
         body.SetPresentation(isMarkdown || isForm ? layout.Stacked : console is not null ? true : null, previewOnly);
-        if (isMarkdown && layout.View != PaneView.Editor)
+        if (isMarkdown && layout.View is PaneView.Split or PaneView.Preview)
         {
             markdown ??= new MarkdownPreview(Editor, area);
             Side = markdown;
@@ -362,7 +371,7 @@ public sealed class EditorGroup : DockPanel
                 Side = null;
             }
             markdown?.Show(null);
-            if (area.MarkdownLayout.View == PaneView.Editor)
+            if (!area.ShowsMarkdownPreview)
             {
                 markdown?.Forget();
             }
@@ -442,6 +451,8 @@ public sealed class EditorGroup : DockPanel
         markdownEditor.IsChecked = view == PaneView.Editor;
         markdownSplit.IsChecked = view == PaneView.Split;
         markdownOnly.IsChecked = view == PaneView.Preview;
+        markdownInline.IsVisible = !form && markdownModes.IsVisible;
+        markdownInline.IsChecked = view == PaneView.Inline;
         FollowSplitWords();
         (string Action, string Title, bool On)? toggle = document is null ? null
             : EditorArea.IsSvg(document) ? (AppActions.SvgPreview, "SVG Preview", area.ShowsSvgPreview)
