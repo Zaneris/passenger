@@ -39,6 +39,7 @@ internal sealed class SyntaxTreeView : Panel
         this.selectSource = selectSource;
         reveal = new Debounce(TypingPauses.SyntaxTree, RevealAsync);
         list.ItemsSource = rows;
+        // A syntax tree goes deeper than the window is wide: a lambda's token in a query is twenty levels down.
         ScrollViewer.SetHorizontalScrollBarVisibility(list, ScrollBarVisibility.Auto);
         ReusedRows.Use(list, MakeRow);
         TreeKeys.Attach<Row>(list, Toggle, acts: new ListActs { Source = SelectChosenSource });
@@ -260,7 +261,7 @@ internal sealed class SyntaxTreeView : Panel
         };
         return line.Showing<Row>(row =>
         {
-            line.Margin = new Thickness(row.Depth * RowExpander.Column, 0, Gaps.Normal, 0);
+            line.Margin = new Thickness(row.Depth * Gaps.Indent, 0, Gaps.Normal, 0);
             glyphs.HasChevron = row.Expands;
             glyphs.Turned = row.IsExpanded;
             glyphs.IconKey = row.Icon;

@@ -84,7 +84,8 @@ public sealed class DebugMemoryView : DockPanel
         model.FramesShown += (_, _) => FrameShown(model.SelectedFrame?.Id);
         model.FrameChosen += (_, selected) => FrameShown(selected.Id);
         AttachedToVisualTree += (_, _) => UiThread.Post(UpdateStop);
-        Say("Start a .NET debug session to inspect memory");
+        empty.ActionRequested += (_, action) => model.Request(action);
+        Say(Refusals.NothingDebugged, offersDebug: true);
     }
 
     internal void FocusAddress()
@@ -134,7 +135,7 @@ public sealed class DebugMemoryView : DockPanel
         {
             automatic = null;
             version++;
-            Say(unavailable);
+            Say(unavailable, offersDebug: model.NotLive() is not null);
             return;
         }
         if (location?.Input is not { Length: > 0 })
@@ -168,14 +169,12 @@ public sealed class DebugMemoryView : DockPanel
         UpdateStop();
     }
 
-    private string? Unavailable => session switch
-    {
-        null or { State: DebugState.Ended } => "Start a .NET debug session to inspect memory",
-        { State: DebugState.Starting } => "The debugger is starting",
-        { ReadsMemory: false } => "Memory reads a .NET program's memory alone",
-        { State: not DebugState.Paused } => "Pause the program to inspect memory",
-        _ => model.ShownSnapshot is null ? null : "Return to the live stop to inspect memory",
-    };
+    /// <summary>Why the chosen program's memory is not read now, as every action of a stop says it, the debugger's kind
+    /// known once it has started.</summary>
+    private string? Unavailable => model.NotLive()
+        ?? (session is { State: not DebugState.Starting, ReadsMemory: false } ? Refusals.MemoryOfDotnet : null)
+        ?? model.NotPaused()
+        ?? (model.ShownSnapshot is null ? null : Refusals.PastMemory);
 
     private bool ShouldResolve() => location is { Input: { Length: > 0 } input } current && !IsLiteral(input) && (current.Follow || current.Page is null);
 
@@ -229,7 +228,7 @@ public sealed class DebugMemoryView : DockPanel
             {
                 if (frame.Stop != stop || frame.Id is not int id || input is null)
                 {
-                    Say("Choose a live stack frame to resolve the address");
+                    Say(Refusals.NoFrameToResolve);
                     return;
                 }
                 input = (await paused.ResolveMemoryAsync(input, id)).Address;
@@ -242,7 +241,7 @@ public sealed class DebugMemoryView : DockPanel
                 : MemoryAddresses.TryParse(input, out ulong parsed) ? parsed : null;
             if (origin is not ulong at)
             {
-                Say(AddressPrompt);
+                Say(input is { Length: > 0 } written ? Refusals.NotAnAddress(written) : AddressPrompt);
                 return;
             }
             if (current.Origin != at || current.Page is null)
@@ -262,7 +261,7 @@ public sealed class DebugMemoryView : DockPanel
             next.IsEnabled = MemoryAddresses.TryOffset(page, PageSize, out _);
             if (reply.Data.Length == 0)
             {
-                Say($"The debugger could not read memory at {reference}", leavePaging: true);
+                Say(Refusals.MemoryUnread(reference), leavePaging: true);
                 return;
             }
             shown = reply;
@@ -297,10 +296,13 @@ public sealed class DebugMemoryView : DockPanel
         }
     }
 
-    private void Say(string words, bool leavePaging = false)
+    /// <summary>Says words in place of the bytes, and offers Debug where the chosen program is not debugged, as the
+    /// Debugger tab does.</summary>
+    private void Say(string words, bool leavePaging = false, bool offersDebug = false)
     {
         shown = null;
         empty.Text = words;
+        empty.Offer(offersDebug ? AppActions.Debug : null, "Debug");
         empty.IsVisible = true;
         data.IsVisible = status.IsVisible = false;
         if (!leavePaging)

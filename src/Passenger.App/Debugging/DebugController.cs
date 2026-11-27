@@ -2248,16 +2248,14 @@ public sealed partial class DebugController : IDisposable
     }
 
     /// <summary>Why a step cannot go now: nothing is being debugged, or the program runs.</summary>
-    private string? NotPaused() => NotLive() ?? (Session!.State != DebugState.Paused ? "The program is not paused" : null);
+    private string? NotPaused() => view.NotPaused();
 
     /// <summary>Why no step goes on from the stop now: the program is not paused, or its debugger steps on from no stop of the
     /// kind it is at (a Godot script error's).</summary>
     private string? NotSteppable() => NotPaused() ?? Session!.NoSteps;
 
     /// <summary>Why the chosen session takes no action now: nothing is being debugged, or the tab chosen is one that ended.</summary>
-    private string? NotLive() => !IsDebugging ? Refusals.NothingDebugged
-        : Session is not { State: not DebugState.Ended } ? $"Debugging {name} has ended: choose a program that is debugged in the Debug window"
-        : null;
+    private string? NotLive() => view.NotLive();
 
     /// <summary>Sets the paused program going as an action asks, shown running at once; one the debugger refuses shows the
     /// stop again, and the reason in the status bar. Edits made while it was paused are applied first: one that needs a
@@ -3707,7 +3705,7 @@ public sealed partial class DebugController : IDisposable
         UiThread.Check();
         if (Session is not { State: DebugState.Paused } session || (within ?? frame) is not { } current)
         {
-            Message?.Invoke(this, $"{VariablesList.RunWithThreads}: {NotPaused() ?? "The program is not paused"}");
+            Message?.Invoke(this, $"{VariablesList.RunWithThreads}: {NotPaused() ?? Refusals.NotPaused}");
             return;
         }
         if (node.Expression is not { } expression)
@@ -3831,7 +3829,7 @@ public sealed partial class DebugController : IDisposable
     {
         if (Session is not { State: DebugState.Paused } session)
         {
-            return (null, NotPaused() ?? "The program is not paused");
+            return (null, NotPaused() ?? Refusals.NotPaused);
         }
         if (session.DataBreakpointsUnavailable is { } unavailable)
         {

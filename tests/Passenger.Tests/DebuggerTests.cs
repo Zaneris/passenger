@@ -286,10 +286,10 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     }
 
     /// <summary>Record Calls on before Debug, the program runs past a caught exception and Add(2, 3) to a breakpoint: Step Back
-    /// shows Add's return, Add at its end with 5 returned and its arguments 2 and 3, Variables saying which moment it is and
-    /// Set Value greyed; then its call at Add's first line above Main, its line showing a: 2, the Timeline tab listing both;
-    /// then the exception caught in Main, then thrown in Fail with its message; Step Forward four times comes back to the
-    /// live stop, which Step Forward says it is.</summary>
+    /// shows Add's return, Add at its end with 5 returned and its arguments 2 and 3, Variables saying which moment it is,
+    /// Set Value and Memory refusing it; then its call at Add's first line above Main, its line showing a: 2, the Timeline
+    /// tab listing both; then the exception caught in Main, then thrown in Fail with its message; Step Forward four times
+    /// comes back to the live stop, which Step Forward says it is.</summary>
     private void Record_calls_keeps_a_calls_arguments_and_its_return_and_step_back_shows_each_as_it_was()
     {
         Write("Program.cs", "try { Fail(); } catch (InvalidOperationException) { } int sum = Add(2, 3);\nConsole.WriteLine($\"sum {sum}\");\n\nint Add(int a, int b)\n{\n"
@@ -310,6 +310,12 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.Matches(@"^Recorded moment \d+: Add\(\) returned 5, at \d\d:\d\d:\d\d\.\d{3} on Main Thread\. Its arguments are as they were at its call\.$",
             view.GetVisualDescendants().OfType<Banner>().Select(b => b.Said).Single(said => said?.StartsWith("Recorded", StringComparison.Ordinal) == true)!);
         Assert.Equal(Refusals.SnapshotValue, Row(window, "a")!.NoSetting);
+        // Memory reads the program at its live stop: a recorded moment kept none of its bytes.
+        Assert.True(window.Perform(AppActions.ShowDebugMemory), $"Memory did not show: {Ui.Said(window)}");
+        EmptyState memorySaid = view.GetVisualDescendants().OfType<DebugMemoryView>().Single().GetVisualDescendants().OfType<EmptyState>().Single();
+        Ui.WaitFor(() => memorySaid.IsEffectivelyVisible && memorySaid.Text == Refusals.PastMemory,
+            () => $"Memory to say a past moment's memory was not kept, where it says {memorySaid.Text}");
+        Ui.Click(view.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(tab => Equals(tab.Content, "Debugger")));
 
         Assert.True(window.Perform(AppActions.StepBack), $"Step Back did not run: {Ui.Said(window)}");
         Ui.WaitFor(() => window.Debugger.MomentShown?.Kind == DapMomentKinds.Call, "Add's call shown as a past stop");
@@ -2541,7 +2547,8 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         return named[index];
     }
 
-    /// <summary>A pointer opens its memory as bytes, and its target takes a value set in the expanded row.</summary>
+    /// <summary>A pointer opens its memory as bytes, and its target takes a value set in the expanded row; Memory says why it
+    /// reads nothing in Refusals' words: an address unread or none, the program running, nothing debugged.</summary>
     private void A_value_set_on_what_a_pointer_points_at_is_the_one_the_program_goes_on_with()
     {
         Write("Sum.csproj", TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>", "<AllowUnsafeBlocks>true</AllowUnsafeBlocks>"));
@@ -2563,6 +2570,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
                     managed = null;
                     GC.KeepAlive(managed);
                     Console.WriteLine($"pointed {*pointer} {pointer[0]}");
+                    Console.ReadLine();
                 }
             }
             """);
@@ -2588,6 +2596,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             && text.Inlines?.OfType<Avalonia.Controls.Documents.Run>().FirstOrDefault()?.Text?.StartsWith(start, StringComparison.Ordinal) == true);
         string TextAt(string start) => string.Concat(LineAt(start)?.Inlines?.OfType<Avalonia.Controls.Documents.Run>().Select(run => run.Text) ?? []);
         bool Shows(string text) => memory.GetVisualDescendants().OfType<TextBlock>().Any(label => label.IsEffectivelyVisible && label.Text == text);
+        EmptyState said = memory.GetVisualDescendants().OfType<EmptyState>().Single();
         Ui.WaitFor(() => TextAt(beginning).StartsWith($"{beginning}  2A 00 00 00", StringComparison.Ordinal), "the pointer's bytes at its address");
         Assert.Contains("*...ABCD", TextAt(beginning), StringComparison.Ordinal);
         TextBlock first = LineAt(beginning)!;
@@ -2605,8 +2614,10 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
         address.Text = "0x0";
         Ui.Click(read);
-        Ui.WaitFor(() => memory.GetVisualDescendants().OfType<EmptyState>().Any(e => e.IsVisible
-            && e.Text?.StartsWith("The debugger could not read memory", StringComparison.Ordinal) == true), "an unreadable address to be reported");
+        Ui.WaitFor(() => said.IsVisible && said.Text == Refusals.MemoryUnread(MemoryAddresses.Show(0)), () => $"an unreadable address to be reported, where Memory says {said.Text}");
+        address.Text = "0xZZ";
+        Ui.Click(read);
+        Ui.WaitFor(() => said.IsVisible && said.Text == Refusals.NotAnAddress("0xZZ"), () => $"what is no address to be refused, where Memory says {said.Text}");
         address.Text = "pointer + 1";
         Ui.Click(read);
         string offset = MemoryAddresses.Show(pointerAddress + 4);
@@ -2664,8 +2675,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             || TextAt(MemoryAddresses.Show(managedAddress + 16)).Contains("D1 E2 F3 A4", StringComparison.Ordinal), "the managed array's bytes");
         Ui.Run(window, AppActions.StepOver);
         WaitDebugging(window, () => window.Debugger.Session is { State: DebugState.Paused, Stops: 4 }, "the array reference to become null");
-        Ui.WaitFor(() => memory.GetVisualDescendants().OfType<EmptyState>().Any(e => e.IsEffectivelyVisible
-            && e.Text?.Contains("resolved to null", StringComparison.Ordinal) == true), "the previous array's bytes to give way to the null message");
+        Ui.WaitFor(() => said.IsEffectivelyVisible && said.Text?.Contains("resolved to null", StringComparison.Ordinal) == true, "the previous array's bytes to give way to the null message");
         Assert.Null(LineAt(MemoryAddresses.Show(managedAddress)));
         Ui.Click(debuggerTab);
         WaitDebugging(window, () => Row(window, "pointer")?.MemoryReference?.Equals(following, StringComparison.OrdinalIgnoreCase) == true, "the pointer at the new stop");
@@ -2681,7 +2691,15 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         WaitDebugging(window, () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains("pointed ", StringComparison.Ordinal),
             "the program to write the number");
         Assert.Contains("pointed 7 7", window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
+
+        // Waiting for input, the program runs, and Memory says so as a step does; once it ends, that nothing is debugged.
+        Assert.True(window.Perform(AppActions.ShowDebugMemory), $"Memory did not show: {Ui.Said(window)}");
+        Ui.WaitFor(() => said.IsEffectivelyVisible && said.Text == Refusals.NotPaused && said.Offered is null,
+            () => $"Memory to say the running program is not paused, where it says {said.Text}, offering {said.Offered ?? "nothing"}");
+        Ui.Run(window, AppActions.Stop);
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        Ui.WaitFor(() => said.IsEffectivelyVisible && said.Text == Refusals.NothingDebugged && said.Offered?.StartsWith("Debug", StringComparison.Ordinal) == true,
+            () => $"Memory to say nothing is debugged and offer Debug, as the Debugger tab does, where it says {said.Text}, offering {said.Offered ?? "nothing"}");
         window.Close();
     }
 

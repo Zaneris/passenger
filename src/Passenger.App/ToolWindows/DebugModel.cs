@@ -259,6 +259,19 @@ public sealed class DebugModel
     /// <summary>The programs debugged, a tab each, in the order they started.</summary>
     public ObservableCollection<DebugTab> Sessions { get; } = [];
 
+    /// <summary>Why the chosen program takes no debugger action now: nothing is being debugged, or the tab chosen is one
+    /// that ended.</summary>
+    public string? NotLive() => !Sessions.Any(tab => tab.IsLive && tab.Session is not null) ? Refusals.NothingDebugged
+        : Chosen is not { Session.State: not DebugState.Ended } ? Refusals.DebuggingEnded(Chosen?.Name ?? string.Empty)
+        : null;
+
+    /// <summary>Why the chosen program takes no action of a stop now: it takes none (<see cref="NotLive"/>), or it runs or
+    /// is still starting.</summary>
+    public string? NotPaused() => NotLive() ?? (Chosen!.Session!.State != DebugState.Paused ? Refusals.NotPaused : null);
+
+    /// <summary>The tab shown, whose program's frames, values and console are the window's.</summary>
+    private DebugTab? Chosen => Sessions.FirstOrDefault(tab => tab.IsChosen);
+
     /// <summary>The most snapshots the window keeps of a folder: past them, the oldest go.</summary>
     public const int MostSnapshots = 500;
 
@@ -304,7 +317,7 @@ public sealed class DebugModel
     public bool IsTelemetryShown { get; private set; }
 
     /// <summary>The chosen program's run's dashboard, while it collects logs and traces; null for any other.</summary>
-    public Telemetry.RunDashboard? ChosenDashboard => Sessions.FirstOrDefault(tab => tab.IsChosen)?.Plan?.Dashboard is { IsStopped: false } dashboard ? dashboard : null;
+    public Telemetry.RunDashboard? ChosenDashboard => Chosen?.Plan?.Dashboard is { IsStopped: false } dashboard ? dashboard : null;
 
     /// <summary>What Variables says over its rows once every thread ran in an evaluation: that the values read before it
     /// may have moved; null while it says nothing.</summary>

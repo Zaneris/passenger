@@ -515,7 +515,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>The Syntax Tree window, at the right's top, shows the shown C# file's syntax as the window parsed it: the
     /// node, token or trivia the editor's selection is in is chosen a moment after it moves, the editor keeping the keys; a
     /// row clicked, or moved to by the keys, selects its code; a kind's description is its tip and its Properties' row;
-    /// unsaved edits and another file shown are followed, the divider kept where it was dragged; a file of no C# says so.</summary>
+    /// unsaved edits and another file shown are followed, the divider kept where it was dragged; a row deeper and longer
+    /// than the tree is wide reads whole once the tree is scrolled sideways to it; a file of no C# says so.</summary>
     private void The_syntax_tree_window_shows_the_shown_files_syntax_at_the_selection_follows_its_unsaved_edits_and_the_file_shown_and_a_row_chosen_selects_its_code()
     {
         const string code = "class Calculator\n{\n    int Combine(int left, int right)\n    {\n        // Combine the values.\n        return left + right;\n    }\n}\n";
@@ -610,6 +611,28 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             Assert.True(window.Perform(AppActions.ShowSyntaxTree));
             Ui.WaitFor(() => SelectedKind(tree, "ClassKeyword"), "the active file's syntax after reopening the pane");
             Assert.Equal(resizedTreeHeight, tree.Bounds.Height, precision: 1);
+
+            // A row deeper and longer than the narrowed tree is wide scrolls it sideways, and reads whole once scrolled to.
+            Passenger.App.Docking.DockLayout standing = window.DockHost.Capture();
+            window.DockHost.Apply(standing with { RightWidth = 200, Wide = null });
+            window.EditorArea.CodeEditor.Selections = SelectionSet.Single(comment);
+            Ui.WaitFor(() => SelectedKind(tree, "SingleLineCommentTrivia"), "the comment trivia at the caret in the narrowed tree");
+            TextBlock commentKind = tree.ContainerFromIndex(tree.SelectedIndex)!.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Text == "SingleLineCommentTrivia");
+            ScrollViewer rowsView = tree.GetVisualDescendants().OfType<ScrollViewer>().First();
+            Avalonia.Controls.Presenters.ScrollContentPresenter rowsShown = rowsView.GetVisualDescendants().OfType<Avalonia.Controls.Presenters.ScrollContentPresenter>().First();
+            Assert.True(rowsView.Extent.Width > rowsView.Viewport.Width + 0.5 && KindShown().Right > rowsShown.Bounds.Width + 0.5,
+                $"The tree's rows run {rowsView.Extent.Width:0.#} wide in its {rowsView.Viewport.Width:0.#}, the comment's kind at {KindShown()}, so its row is cut rather than scrolled to");
+            Point over = Ui.Centre(tree, window);
+            for (int turn = 0; turn < 20 && KindShown().Right > rowsShown.Bounds.Width + 0.5; turn++)
+            {
+                window.MouseWheel(over, new Vector(-1, 0));
+                Ui.Settle();
+            }
+            Assert.True(KindShown() is { Left: >= -0.5 } shown && shown.Right <= rowsShown.Bounds.Width + 0.5,
+                $"Scrolled sideways to {rowsView.Offset.X:0.#}, the comment's row shows its kind at {KindShown()} in the tree's {rowsShown.Bounds.Width:0.#}, not whole");
+            window.DockHost.Apply(standing);
+
+            Rect KindShown() => new(commentKind.TranslatePoint(default, rowsShown) ?? default, new Size(commentKind.TextLayout.Width, commentKind.Bounds.Height));
 
             window.OpenFile("Notes.txt");
             Ui.WaitFor(() => !tree.IsEffectivelyVisible && tree.ItemCount == 0, "the empty state for a non-C# file");

@@ -687,6 +687,12 @@ public static class Refusals
     /// <summary>A debugger's action asked for with no program debugged, as the debugger's own answer says it.</summary>
     public const string NothingDebugged = DebuggerWords.NothingDebugged;
 
+    /// <summary>A debugger's action asked of the chosen program while one is debugged, its own tab chosen after it ended.</summary>
+    public static string DebuggingEnded(string program) => $"Debugging {program} has ended: choose a program that is debugged in the Debug window";
+
+    /// <summary>An action of a stop (a step, an evaluation, Memory's read) asked of the chosen program while it runs or starts.</summary>
+    public const string NotPaused = "The program is not paused";
+
     /// <summary>Set Data Breakpoint asked of a row of Variables that is no member of a value, as the debugger's own answer
     /// says it.</summary>
     public const string DataBreakpointNotAMember = DebuggerWords.NotAMember;
@@ -1627,6 +1633,21 @@ public static class Refusals
 
     /// <summary>No snapshot point has taken a capture in the folder.</summary>
     public const string NoSnapshots = "No snapshot point has taken a snapshot yet";
+
+    /// <summary>Memory asked of a program whose debugger is not Passenger's .NET one (a page's WebAssembly, GDScript).</summary>
+    public const string MemoryOfDotnet = "A program's memory is read by Passenger's .NET debugger alone";
+
+    /// <summary>Memory asked while a snapshot or a recorded moment is shown as a past stop, of which no byte was kept.</summary>
+    public const string PastMemory = "A past moment is shown, a snapshot's or a recording's, and its memory was not kept: Memory reads the program at its live stop";
+
+    /// <summary>An address expression for Memory to resolve while the stop has no frame chosen (its frames not yet shown).</summary>
+    public const string NoFrameToResolve = NoFrameChosen + ": an address expression is resolved in the chosen frame of the stop";
+
+    /// <summary>What Memory was given to read at that is neither an address nor an expression the debugger resolved to one.</summary>
+    public static string NotAnAddress(string written) => $"{written} is no address: write one in hexadecimal after 0x, or an address expression";
+
+    /// <summary>Memory's read of a page none of whose bytes the program let the debugger read.</summary>
+    public static string MemoryUnread(string address) => $"The debugger could not read memory at {address}";
 
     /// <summary>A menu's list (the recent solutions) while it lists nothing.</summary>
     public const string NothingListed = "Nothing is listed here yet";

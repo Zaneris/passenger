@@ -374,7 +374,7 @@ public sealed class DebugSession
     /// <summary>Whether the debugger can move where a paused thread goes on (Set Next Statement): Godot's GDScript one cannot.</summary>
     public bool MovesNextStatement { get; private set; }
 
-    /// <summary>Whether its adapter can inspect the bytes of a paused local .NET program.</summary>
+    /// <summary>Whether its adapter reads the bytes of its paused .NET program, wherever the program runs.</summary>
     public bool ReadsMemory { get; private set; }
 
     private readonly List<DapModule> modules = [];

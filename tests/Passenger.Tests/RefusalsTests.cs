@@ -30,6 +30,9 @@ public sealed class RefusalsTests
         new(@"(?:^|: )\{\} changed as it was read$"),
         new(@"(?i:a) (?:file|folder) of the package \{\}, as NuGet restored it"),
         new(@"(?:\b(?:it was|they were)|\{\} was|,) edited meanwhile(?:$|,)"),
+        new(@"(?:^|: )Debugging \{\} has ended: "),
+        new(@"(?:^|: )\{\} is no address(?:$|\W)"),
+        new(@"(?:^|: )The debugger could not read memory at "),
     ];
 
     [Fact]
