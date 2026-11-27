@@ -893,6 +893,7 @@ public sealed partial class CodeEditor : Control
         FollowUsages();
         FollowLinkEdits();
         HideFoldPreview();
+        vimView?.Rebase(e.After);
         if (!editing)
         {
             leaning = [];

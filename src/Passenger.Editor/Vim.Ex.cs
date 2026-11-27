@@ -136,7 +136,7 @@ public sealed partial class Vim
                 return MovedOrCopied(name[0] == 'm', trimmed, first, end, caretLine, text, view);
             case "j" or "join":
                 // Equal ends join nothing, nor the last line: the caret goes to the range's line, in its column.
-                return (bothEnds && first == end ? null : Join(text, SelectionSet.Single(text.GetLineStart(first)), Math.Max(2, end - first + 1), spaced: !bang, Options.JoinSpaces)) is { } joined
+                return (bothEnds && first == end ? null : Join(text, SelectionSet.Single(text.GetLineStart(first)), Math.Max(2, end - first + 1), view, spaced: !bang, Options.JoinSpaces)) is { } joined
                     ? new VimResult(true, Edits: [OnFirstNonBlank(text, joined, first)])
                     : new VimResult(true, SelectionSet.Single(InColumn(text, first, selections.Primary.Caret)));
             case ">" or ">>" or ">>>" or "<" or "<<" or "<<<":

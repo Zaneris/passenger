@@ -560,6 +560,34 @@ public sealed partial class CodeEditor
             }
         }
 
+        /// <summary>The document's marks whose line was joined to the one above keep the column they reached there, in the
+        /// text a change made (<see cref="VimMarks.Rebased"/>).</summary>
+        public void Rebase(TextSnapshot text)
+        {
+            if (!Marks.TryGetValue(editor.document, out Dictionary<char, HeldMark>? held))
+            {
+                return;
+            }
+            List<(char Name, int LineStart, int Column)>? rebased = null;
+            foreach ((char name, HeldMark mark) in held)
+            {
+                if (mark.At.IsLive && VimMarks.Rebased(text, mark.At.Offset, mark.LineStart.Offset, mark.Column) is { } kept)
+                {
+                    (rebased ??= []).Add((name, kept.LineStart, kept.Column));
+                }
+            }
+            if (rebased is null)
+            {
+                return;
+            }
+            foreach ((char name, int lineStart, int column) in rebased)
+            {
+                HeldMark mark = held[name];
+                mark.LineStart.Remove();
+                held[name] = mark with { LineStart = editor.document.AnchorAt(lineStart, AnchorGravity.Before), Column = column };
+            }
+        }
+
         public void EraseMark(char name)
         {
             if (Marks.TryGetValue(editor.document, out Dictionary<char, HeldMark>? held) && held.Remove(name, out HeldMark? mark))

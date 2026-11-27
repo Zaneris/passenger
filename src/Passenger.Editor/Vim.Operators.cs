@@ -106,6 +106,9 @@ public sealed partial class Vim
     /// <summary>The marks a mark command sets, which a delete of their line erases.</summary>
     private const string Marked = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
+    /// <summary>The marks a join carries along: those a mark command sets and the visual stretch's.</summary>
+    private const string JoinedMarks = Marked + "'<>[]";
+
     /// <summary>The marks on lines a delete or change takes out whole erased, as Vim erases them: a stretch of lines its
     /// own (a change's but its first, which it keeps), any other the lines between its ends.</summary>
     private static void EraseMarks(TextSnapshot text, List<Stretch> stretches, bool change, IVimView view)
@@ -556,10 +559,20 @@ public sealed partial class Vim
 
     /// <summary>J: each caret's line joined with the <paramref name="n"/> - 1 after it (at least one): the next line's
     /// indent goes and <see cref="JoinSpace"/> comes between; gJ (<paramref name="spaced"/> false) joins them as they are.
-    /// The caret stands where the last join met.</summary>
-    private EditPlan? Join(TextSnapshot text, SelectionSet selections, int n, bool spaced = true, bool sentenceSpaces = false)
+    /// The caret stands where the last join met. A mark on a line whose indent goes stays on its character; one on that
+    /// indent goes where the line break was, or to the joined line's start where the line moves left at least as far.</summary>
+    private EditPlan? Join(TextSnapshot text, SelectionSet selections, int n, IVimView view, bool spaced = true, bool sentenceSpaces = false)
     {
         int lastLine = VimMotions.LastLine(text, breakEnds);
+        List<(char Name, int At)> marked = [];
+        foreach (char name in spaced ? JoinedMarks : string.Empty)
+        {
+            if (view.Mark(name, text) is { } at)
+            {
+                marked.Add((name, at));
+            }
+        }
+        List<(char Name, int At)> kept = [];
         List<TextEdit> edits = [];
         List<(int LineStart, int Landing)> landings = [];
         int reached = -1;
@@ -591,6 +604,18 @@ public sealed partial class Vim
                     space = JoinSpace(end, start, joinedLength > 0, sentenceSpaces);
                 }
                 edits.Add(new TextEdit(here.End, body - here.End, space));
+                int blanks = body - next.Start;
+                foreach ((char name, int at) in marked)
+                {
+                    if (blanks > 0 && at >= next.Start && at <= next.End)
+                    {
+                        // The line's start lands where the line break was: a column kept from there, or the joined line's start.
+                        int column = at - next.Start;
+                        int shift = joinedLength + space.Length - blanks;
+                        kept.Add((name, column >= blanks ? next.Start + column - blanks + space.Length
+                            : shift < 0 && column <= -shift ? text.GetLineStart(first) : next.Start));
+                    }
+                }
                 landing = joinedLength;
                 joinedLength += space.Length + (next.End - body);
                 joinedFrom = body;
@@ -601,6 +626,10 @@ public sealed partial class Vim
         if (edits.Count == 0)
         {
             return null;
+        }
+        foreach ((char name, int at) in kept)
+        {
+            view.SetMark(name, at, text);
         }
         TextSnapshot after = text.Apply(edits);
         List<Selection> carets = [.. landings.Select(at => Selection.At(Settled(after, Math.Min(TextEditing.MapOffset(at.LineStart, edits, false) + at.Landing, after.Length), breakEnds)))];
