@@ -89,12 +89,14 @@ public sealed class FindInFilesTests : IDisposable
     }
 
     /// <summary>Find in Files searches and replaces only in the scope chosen: a directory scope inside node_modules or
-    /// bin is searched though the folder's search passes over it, and the popup closed is let go with its preview and
-    /// the file it showed.</summary>
+    /// bin is searched though the folder's search passes over it, Find and Replace in Files turn the open popup to each
+    /// other keeping what it was asked and found, and the popup closed is let go with its preview and the file it
+    /// showed.</summary>
     [AvaloniaFact]
     public void Find_in_files_searches_and_replaces_only_in_the_scope_chosen_and_lets_go_once_closed()
     {
         Flow.StepApart<FindInFilesTests>("a directory scope inside node_modules or bin is searched and replaced in though the folder's search passes over it", t => t.A_directory_scope_inside_node_modules_or_bin_is_searched_and_replaced_in_though_the_folders_search_passes_over_it());
+        Flow.StepApart<FindInFilesTests>("Find and Replace in Files turn the open popup to each other keeping what it was asked and found", t => t.Find_and_replace_in_files_turn_the_open_popup_to_each_other_keeping_what_it_was_asked_and_found());
         Flow.StepApart<FindInFilesTests>("Find in Files closed is let go with its preview and the file it showed", t => t.Find_in_files_closed_is_let_go_with_its_preview_and_the_file_it_showed());
     }
 
@@ -1039,6 +1041,61 @@ public sealed class FindInFilesTests : IDisposable
     /// <summary>The files a popup's matches are in, from the folder, each once, in order.</summary>
     private static string[] Found(FindInFilesPopup popup, string root) =>
         [.. popup.Matches.Select(m => Path.GetRelativePath(root, m.Path)).Distinct().Order(StringComparer.Ordinal)];
+
+    /// <summary>Replace in Files' keys with Find in Files open turn the popup open to it in place: the query, its options,
+    /// the scope, the mask and the matches stay as they were, searched no more, the replacement row coming under the
+    /// query, which keeps the keys; Find in Files' keys take the row away, and back again it holds the replacement typed,
+    /// which Replace All puts in place of the matches kept (#2417).</summary>
+    private void Find_and_replace_in_files_turn_the_open_popup_to_each_other_keeping_what_it_was_asked_and_found()
+    {
+        MainWindow window = Open();
+        Ui.Press(window, Ui.Shortcut(AppActions.FindInFiles));
+        FindInFilesPopup popup = Assert.IsType<FindInFilesPopup>(window.Popup);
+        popup.Words = true;
+        popup.ScopeKind = SearchScopeKind.Directory;
+        popup.Directory = PathNames.Canonical(folder);
+        popup.Recursive = false;
+        popup.FileMask = "*.cs";
+        Ui.Search(popup, "count");
+        FilesFound found = popup.Found;
+        Assert.Equal("3 matches in 2 files", popup.Status);
+        Assert.False(Shown(popup, "Replacement"), "Find in Files opened with a replacement row");
+
+        Ui.Press(window, Ui.Shortcut(AppActions.ReplaceInFiles));
+        Assert.Same(popup, window.Popup);
+        Asked(popup, found, replacing: true);
+        popup.Replacement = "total";
+
+        Ui.Press(window, Ui.Shortcut(AppActions.FindInFiles));
+        Assert.Same(popup, window.Popup);
+        Asked(popup, found, replacing: false);
+
+        Ui.Press(window, Ui.Shortcut(AppActions.ReplaceInFiles));
+        Asked(popup, found, replacing: true);
+        Assert.Equal("total", popup.Replacement);
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        popup.RequestReplace();
+        Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, "the replacement of the matches kept");
+        Assert.Equal("Replaced 3 matches in 2 files", window.Status);
+        Assert.Equal("class Alpha\n{\n    int total;\n}\n", File.ReadAllText(Path.Combine(folder, "Alpha.cs")));
+        window.Close();
+
+        static void Asked(FindInFilesPopup popup, FilesFound found, bool replacing)
+        {
+            string mode = replacing ? "Replace in Files" : "Find in Files";
+            Assert.True(popup.Replacing == replacing && Shown(popup, "Replacement") == replacing,
+                $"{mode}'s keys left the open popup {(popup.Replacing ? "replacing" : "finding")}, its replacement row {(Shown(popup, "Replacement") ? "shown" : "hidden")}");
+            Assert.Contains(mode, popup.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text));
+            Assert.Equal(("count", true, SearchScopeKind.Directory, false, "*.cs"), (popup.Text, popup.Words, popup.ScopeKind, popup.Recursive, popup.FileMask));
+            Assert.True(ReferenceEquals(found, popup.Found), $"{mode}'s keys searched again, or let go of the matches found: the popup says '{popup.Status}'");
+            Assert.True(TopLevel.GetTopLevel(popup)?.FocusManager?.GetFocusedElement() is TextBox { Text: "count" } focused
+                && Avalonia.Automation.AutomationProperties.GetName(focused) == mode, $"{mode}'s keys left the query without the keys");
+        }
+    }
+
+    /// <summary>Whether the popup shows its box of this name.</summary>
+    private static bool Shown(FindInFilesPopup popup, string box) =>
+        popup.GetVisualDescendants().OfType<TextBox>().Any(b => Avalonia.Automation.AutomationProperties.GetName(b) == box && b.IsEffectivelyVisible);
 
     /// <summary>Find in Files closed with a match in its preview: the popup, its preview editor and the file it showed go,
     /// so each search made leaves nothing behind for the window's life.</summary>
