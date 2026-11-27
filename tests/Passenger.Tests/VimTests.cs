@@ -226,9 +226,10 @@ public sealed partial class VimTests
         ("A block's A, C or c whose edge cuts a character of several columns in two (a control character's mark, a wide one, "
             + "a tab) types as Vim's does by no rule found: A appends after it on the line the block began on and puts that "
             + "character before the typed text on the others (for a wide one U+FFFD), as the block was made top down or bottom "
-            + "up, and C and c type before the part they leave, where Vim mode makes the character the spaces it shows first",
+            + "up, and C and c type before the part they leave, where Vim mode makes the character the spaces it shows first; "
+            + "an I made again by . over such a character types part of the text again on the lines below",
             (vimCase, _, passenger) => vimCase.Commands.Any(command => command.Keys[0] == VimKeys.CtrlV && (command.Keys.Contains("A") || command.Keys.Contains("C")
-                || command.Keys.Contains("c"))) && passenger.Seen.Contains(HoldsControl)),
+                || command.Keys.Contains("c") || (command.Keys.Contains("I") && command.Keys.Contains(".")))) && passenger.Seen.Contains(HoldsControl)),
         ("A block's > or < over a control character's mark at its left edge shifts as Vim's does by no rule found: > before "
             + "the character where the block's column came by k onto it, after it where it came by b, and after it where the edge "
             + "cuts its second column, where Vim shifts a wide character cut so from before it; after < that makes the mark a "
@@ -240,9 +241,12 @@ public sealed partial class VimTests
             + "it does before a one-column one, and made again by . Vim's leaves the cursor a column further on",
             (vimCase, _, passenger) => vimCase.Commands.Any(command => command.Keys[0] is "v" or "V" && command.Keys.Contains("A"))
                 && passenger.Seen.Contains(HoldsControl)),
-        (") from the blanks opening the line below a line of a form feed alone goes back to that line in Vim, where from "
-            + "below a macro line, or a line of any other control character alone, it does not: the form feed's own way",
-            (vimCase, _, passenger) => vimCase.Keys.Contains(")") && passenger.Seen.Contains(FormFeedAlone)),
+        ("is, as, ( and ) about a line opening with a form feed alone or a form feed and a blank, which Vim's take by no rule "
+            + "found as the form feed's own, unlike a macro line's or another control character's: from the blanks opening the line "
+            + "below \"\\f\", is takes that line whole, from those below \"\\f \" the form feed alone, from the blank of "
+            + "\"\\f (\" below an empty line as takes that empty line, and ) goes back to the form feed",
+            (vimCase, _, passenger) => (vimCase.Uses(SentenceObject) || vimCase.Keys.Contains(")") || vimCase.Keys.Contains("("))
+                && passenger.Seen.Contains(FormFeedAlone)),
         ("A block's < leaves Vim's cursor at the block's top left even past the end of a top line nothing shifted, where no "
             + "normal-mode cursor of Vim mode stands: Passenger's settles on that line's last character, so a ~ pressed next, which "
             + "from past the end Vim's takes on to the next line toggling nothing, toggles that character",
@@ -267,7 +271,7 @@ public sealed partial class VimTests
     private const string CharwiseChange = "a visual change of a characterwise stretch";
     private const string VisualSentenceNearMacro = "is or as in visual mode within a line of a macro line";
     private const string HoldsControl = "a control character shown as a mark";
-    private const string FormFeedAlone = "a line of a form feed alone above a line opening with blanks";
+    private const string FormFeedAlone = "a line opening with a form feed alone or a form feed and a blank";
 
     /// <summary>A case of 1 to 6 lines and 1 to 4 commands, the cursor anywhere on a character; a visual stretch the
     /// keys leave is left only by the last command, the others' ended by Escape. A command beginning with [ or ] never
@@ -704,15 +708,16 @@ public sealed partial class VimTests
     private const string Asked = "asked the host";
 
     /// <summary>What Passenger's side came through that <see cref="Kept"/> may name: two lines in a row that each hold one
-    /// sentence's end mark or closer alone, a control character, a form feed's line above blanks, a text of end marks,
-    /// closers and white alone, a line of blanks opening the text or a paragraph, a word of end marks and closers alone.</summary>
+    /// sentence's end mark or closer alone, a control character, a line opening with a form feed alone or before a blank, a
+    /// text of end marks, closers and white alone, a line of blanks opening the text or a paragraph, a word of end marks and
+    /// closers alone.</summary>
     private static void Observe(TextSnapshot text, HashSet<string> seen)
     {
         seen.UnionWith(Enumerable.Range(1, Math.Max(0, text.LineCount - 1)).Any(line => LoneMark(text, line - 1) && LoneMark(text, line)) ? [LoneMarks] : []);
         string all = text.ToString();
         seen.UnionWith(all.Any(c => ControlCharacters.MarkOf(c) is not null) ? [HoldsControl] : []);
-        seen.UnionWith(all.Contains("\f\n ", StringComparison.Ordinal) && Enumerable.Range(1, Math.Max(0, text.LineCount - 1)).Any(line => text.GetLine(line - 1) is { Length: 1 } above
-            && text[above.Start] == '\f' && text.GetLine(line) is { Length: > 0 } opening && text[opening.Start] is ' ' or '\t') ? [FormFeedAlone] : []);
+        seen.UnionWith(Enumerable.Range(0, text.LineCount).Any(line => text.GetLine(line) is { Length: > 0 } feed && text[feed.Start] == '\f'
+            && (feed.Length == 1 || text[feed.Start + 1] is ' ' or '\t')) ? [FormFeedAlone] : []);
         seen.UnionWith(all.Any(c => c != '\n') && all.All(c => EndMark(c) || c is ' ' or '\t' or '\n') ? [MarksAlone] : []);
         seen.UnionWith(all.Split([' ', '\t', '\n']).Any(word => word.Length > 0 && word.All(EndMark)) ? [MarkWord] : []);
         seen.UnionWith(Enumerable.Range(0, text.LineCount).Any(line => text.GetLine(line) is { Length: > 0 } blanks && TextNavigation.IndentEnd(text, blanks) == blanks.End

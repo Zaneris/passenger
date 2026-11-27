@@ -261,8 +261,8 @@ public sealed partial class Vim
         LineSpan end = text.GetLine(line);
         if (extent.Lines == 0 && !extent.ToEnd)
         {
-            // As many cells on from the caret's character's last (a tab's), to the character holding the last of them.
-            int last = TextNavigation.VisualColumn(text, caret, tab) + CellsOf(text, caret, tab) - 1 + extent.Columns;
+            // As many cells on from the caret's column (a tab's last), to the character holding the last of them.
+            int last = TextNavigation.VisualColumn(text, caret, tab) + (caret < end.End && text[caret] == '\t' ? CellsOf(text, caret, tab) - 1 : 0) + extent.Columns;
             return new Region(caret, TextNavigation.VisualColumn(text, end.End, tab) <= last ? end.End : Math.Max(caret, VimMotions.OffsetAtColumn(text, line, last, tab)));
         }
         // Past the last line's end, the stretch takes its line break.
@@ -780,11 +780,18 @@ public sealed partial class Vim
                 else
                 {
                     at = span.Start;
+                    int cutAt = at;
                     while (at < span.End && TextNavigation.VisualColumn(text, at, tab) < column)
                     {
+                        cutAt = at;
                         at = TextNavigation.NextGrapheme(text, at);
                     }
                     (lead, followed) = (string.Empty, true);
+                    if (at <= span.End && TextNavigation.VisualColumn(text, at, tab) > column && text[cutAt] != '\t')
+                    {
+                        // A character of several columns the column cuts goes after the block whole, spaces before it to the column.
+                        (at, lead) = (cutAt, new string(' ', column - TextNavigation.VisualColumn(text, cutAt, tab)));
+                    }
                 }
             }
             string put = lead + string.Concat(Enumerable.Repeat(padded, times - 1)) + (followed ? padded : value.Parts[i]);
