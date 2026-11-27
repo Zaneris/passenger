@@ -861,7 +861,8 @@ internal static class AspireSource
     }
 
     /// <summary>Each AddParameter of a document that gives no value of its own (only a name, and whether it is a secret), so the
-    /// AppHost takes it from its configuration's Parameters:NAME, with where its name is written.</summary>
+    /// AppHost takes it from its configuration's Parameters:NAME, with where its name is written; one made optional
+    /// (<see cref="MadeOptional"/>) is left out, as its AppHost asks for none.</summary>
     public static async Task<AspireParametersFound> ParametersAsync(Document document, CancellationToken cancel)
     {
         SyntaxNode? root = await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false);
@@ -872,7 +873,8 @@ internal static class AspireSource
         }
         SourceText text = await document.GetTextAsync(cancel).ConfigureAwait(false);
         List<AspireParameter> found = [];
-        foreach (InvocationExpressionSyntax call in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        InvocationExpressionSyntax[] calls = [.. root.DescendantNodes().OfType<InvocationExpressionSyntax>()];
+        foreach (InvocationExpressionSyntax call in calls)
         {
             if (call.Expression is not MemberAccessExpressionSyntax { Name.Identifier.ValueText: "AddParameter" }
                 || model.GetSymbolInfo(call, cancel).Symbol is not IMethodSymbol { Name: "AddParameter" } method
@@ -901,7 +903,7 @@ internal static class AspireSource
                         break;
                 }
             }
-            if (name is not null && written is not null && !valued)
+            if (name is not null && written is not null && !valued && !MadeOptional(call, calls, model, cancel))
             {
                 TextSpan span = written is LiteralExpressionSyntax literal && NameSpan(literal) is { } exact ? exact : written.Span;
                 found.Add(new AspireParameter(name, secret, PlaceAt(text, span.Start), PlaceAt(text, span.End)));
@@ -909,6 +911,39 @@ internal static class AspireSource
         }
         return new AspireParametersFound(found);
     }
+
+    /// <summary>Whether the parameter an AddParameter adds is made optional: the last of Aspire's AsOptional and AsRequired
+    /// called on it, in the call's chain or, after, on the local it is kept in, is AsOptional.</summary>
+    private static bool MadeOptional(InvocationExpressionSyntax added, IReadOnlyList<InvocationExpressionSyntax> calls, SemanticModel model, CancellationToken cancel)
+    {
+        bool? optional = null;
+        ExpressionSyntax outer = added;
+        while (outer.Parent is MemberAccessExpressionSyntax access && access.Expression == outer && access.Parent is InvocationExpressionSyntax chained)
+        {
+            optional = Optionality(chained, model, cancel) ?? optional;
+            outer = chained;
+        }
+        if (outer.Parent is EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator }
+            && model.GetDeclaredSymbol(declarator, cancel) is ILocalSymbol local)
+        {
+            foreach (InvocationExpressionSyntax later in calls)
+            {
+                if (later.SpanStart > declarator.Span.End && later.Expression is MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax kept }
+                    && kept.Identifier.ValueText == local.Name && SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(kept, cancel).Symbol, local))
+                {
+                    optional = Optionality(later, model, cancel) ?? optional;
+                }
+            }
+        }
+        return optional == true;
+    }
+
+    /// <summary>What a call says of a parameter's need of a value: true for Aspire's AsOptional, false for its AsRequired,
+    /// null for any other call.</summary>
+    private static bool? Optionality(InvocationExpressionSyntax call, SemanticModel model, CancellationToken cancel) =>
+        call.Expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "AsOptional" or "AsRequired" }
+        && model.GetSymbolInfo(call, cancel).Symbol is IMethodSymbol { Name: "AsOptional" or "AsRequired" } method && method.ContainingAssembly.Name == "Aspire.Hosting"
+            ? method.Name == "AsOptional" : null;
 
     /// <summary>The stretch of a plain string literal that is its text, between its quotes; null for one written otherwise
     /// (escapes, verbatim, raw), whose text is not its characters one for one.</summary>

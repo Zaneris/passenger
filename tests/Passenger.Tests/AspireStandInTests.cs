@@ -2309,9 +2309,6 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
-    /// <summary>A resource waiting for another says so in its Details, what it waits for and references each a link to that
-    /// resource, whose own Details name it back as waiting for it and referencing it, a link that leads back; as the
-    /// AppHost's relationships say, and as the other resource's state stands.</summary>
     /// <summary>The AppHost's graph shows every resource at once, an edge for each wait and reference its relationships give,
     /// each resource right of those it waits for; a click on a node chooses its row.</summary>
     private void The_apphosts_graph_has_an_edge_for_each_wait_and_a_node_chooses_its_row()
@@ -2353,6 +2350,10 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>A resource waiting for another says so in its Details, what it waits for and references each a link to that
+    /// resource, whose own Details name it back as waiting for it and referencing it, a link that leads back; as the
+    /// AppHost's relationships say, and as the other resource's state stands. A parameter missing its value says what gives
+    /// one, and one made optional and left unset that what uses it gets none.</summary>
     private void A_resource_waiting_for_another_says_what_for_in_its_details_with_links_both_ways()
     {
         project.Reset();
@@ -2388,6 +2389,23 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
                 Relationships = { new ResourceRelationship { ResourceName = "cache", Type = "WaitFor" }, new ResourceRelationship { ResourceName = "cache", Type = "Reference" } },
             });
             Ui.WaitFor(() => !DetailsWords(details).Any(words => words.StartsWith("Waiting for", StringComparison.Ordinal)), "web's details to stop saying it waits once it runs");
+
+            // A parameter with no value its AppHost needs says what it waits for, and one made optional and left unset that it has none.
+            backend.PushResource(new Resource { Name = "password", DisplayName = "password", Uid = "password", ResourceType = "Parameter", State = AspireStates.ValueMissing });
+            backend.PushResource(new Resource { Name = "region", DisplayName = "region", Uid = "region", ResourceType = "Parameter", State = AspireStates.Running });
+            Resource valued = new() { Name = "mode", DisplayName = "mode", Uid = "mode", ResourceType = "Parameter", State = AspireStates.Running };
+            valued.Properties.Add(new ResourceProperty { Name = "Value", Value = Google.Protobuf.WellKnownTypes.Value.ForString("fast") });
+            backend.PushResource(valued);
+            Ui.WaitFor(() => window.Aspire.Rows.Count == 5, "the parameters' rows");
+            foreach ((string name, string? said) in (ReadOnlySpan<(string, string?)>)[
+                ("password", AspireDetailsPane.ValueMissingWhy), ("region", AspireDetailsPane.UnsetWhy), ("mode", null)])
+            {
+                Ui.Click(Words(Row(window, name), name));
+                Ui.WaitFor(() => details.Resource?.Name == name, $"{name}'s details");
+                string[] words = DetailsWords(details);
+                Assert.True(said is null ? !words.Contains(AspireDetailsPane.ValueMissingWhy) && !words.Contains(AspireDetailsPane.UnsetWhy) : words.Contains(said),
+                    $"{name}'s details said [{string.Join(" | ", words)}], where a person must read {said ?? "nothing of a missing or unset value"}");
+            }
             Assert.Empty(backend.Errors);
         }
         finally

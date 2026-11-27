@@ -584,7 +584,9 @@ public sealed class AspireView : DockPanel, IDisposable
             Expands = row.Expands,
             Expanded = row.Expanded,
             State = row.LeftUnstarted ? RunState.Stopped : StateOf(resource),
-            StateTip = row.LeftUnstarted ? $"{AspireAppRun.NotStarted}. {AspireAppRun.NotStartedWhy}" : resource.State ?? "Unknown state",
+            StateTip = row.LeftUnstarted ? $"{AspireAppRun.NotStarted}. {AspireAppRun.NotStartedWhy}"
+                : resource.State == AspireStates.ValueMissing ? $"Value missing. {AspireDetailsPane.ValueMissingWhy}"
+                : resource.IsUnsetParameter ? $"{resource.State}. {AspireDetailsPane.UnsetWhy}" : resource.State ?? "Unknown state",
             Health = AspireDetailsPane.Health(resource),
             Links = [.. AspireModel.Links(resource).Take(3).Select(url => new RunLink(url.Authority, url, url.AbsoluteUri))],
             Detail = resource.Source is { } source ? Path.IsPathFullyQualified(source) ? Path.GetFileName(source) : source

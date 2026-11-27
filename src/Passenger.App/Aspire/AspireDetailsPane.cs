@@ -62,6 +62,14 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open, A
         {
             about.Add(("Why", Words($"Waiting for {waiting}", brush: TokenKeys.TextMuted)));
         }
+        else if (resource.State == AspireStates.ValueMissing)
+        {
+            about.Add(("Why", Words(ValueMissingWhy, brush: TokenKeys.TextMuted)));
+        }
+        if (resource.IsUnsetParameter)
+        {
+            about.Add(("Value", Words(UnsetWhy, brush: TokenKeys.TextMuted)));
+        }
         if (resource.Source is { } source)
         {
             about.Add(("Source", Path.IsPathFullyQualified(source)
@@ -123,6 +131,13 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open, A
                 $"{JsonMembers.Text(v, "mountType")} {JsonMembers.Text(v, "source")}{(JsonMembers.Bool(v, "isReadOnly") is true ? " (read-only)" : string.Empty)}".Trim())))]);
         }
     }
+
+    /// <summary>What a parameter with no value its AppHost needs is waiting for.</summary>
+    public const string ValueMissingWhy = "Its value is missing, and what uses it waits for one: Set parameter gives it one for this run, "
+        + "and its AppHost's configuration (appsettings.json, user secrets, aspire secret set) for every run";
+
+    /// <summary>What a parameter that runs with no value gives what uses it.</summary>
+    public const string UnsetWhy = "Not set: it is optional, so its AppHost asks for none and what uses it gets none";
 
     /// <summary>The AppHost's kinds of relationship a resource has to another: it waits for it, references it, or is its child.</summary>
     private const string WaitFor = "WaitFor";

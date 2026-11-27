@@ -22,18 +22,55 @@ public sealed record AspireAppHostSettings(string AppHost, string? UserSecretsId
     public string LaunchSettings => Passenger.Host.ProgramFiles.IsProgram(AppHost) ? Run.LaunchProfile.FileSettingsPath(AppHost) : Run.LaunchProfile.SettingsIn(Folder);
 }
 
+/// <summary>Where Aspire keeps an AppHost's secrets for each environment it runs in, apart from its user secrets: what
+/// <c>aspire secret set</c> writes and the AppHost reads beside them, .aspire/secrets/ID/ENVIRONMENT.json in the person's
+/// home (by the AppHost's UserSecretsId), or under <see cref="Variable"/>'s folder in its place; an environment's file
+/// named in any letter case, as Aspire takes the name.</summary>
+public static class AspireSecrets
+{
+    /// <summary>The folder kept in place of the person's when set.</summary>
+    [IdentifierHome]
+    public const string Variable = "PASSENGER_ASPIRE_SECRETS";
+
+    public static string Root => Environment.GetEnvironmentVariable(Variable) is { Length: > 0 } given ? given
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aspire", "secrets");
+
+    /// <summary>The secrets files of an id that are there for the environments given; none for an id that names no folder.</summary>
+    public static IReadOnlyList<string> FilesOf(string? id, IReadOnlyList<string> environments)
+    {
+        string? folder = UserSecrets.NamesFolder(id) ? Path.Combine(Root, id!) : null;
+        if (folder is null || !Directory.Exists(folder))
+        {
+            return [];
+        }
+        try
+        {
+            return [.. Directory.EnumerateFiles(folder, "*.json").Where(file => environments.Contains(Path.GetFileNameWithoutExtension(file), StringComparer.OrdinalIgnoreCase))];
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+}
+
 /// <summary>An AppHost's parameters' values where Passenger can know them before it runs: <c>Parameters:NAME</c> in the
-/// settings files it reads in the environments its launch profiles run it in (<see cref="ConfigurationFiles.Environments"/>)
-/// and in its user secrets (an environment variable or the command line only a run has), and the change that sets one: in
-/// the user secrets for a secret, else in appsettings.json, every other character of the file kept. A value is never read
-/// back out of either, only whether it is there.</summary>
+/// settings files it reads in the environments its launch profiles run it in (<see cref="ConfigurationFiles.Environments"/>),
+/// in its user secrets and in Aspire's secrets of those environments (<see cref="AspireSecrets"/>) (an environment variable
+/// or the command line only a run has), and the change that sets one: in the user secrets for a secret, else in
+/// appsettings.json, every other character of the file kept. A value is never read back out of any, only whether it is there.</summary>
 public static class AspireParameters
 {
     /// <summary>Whether the AppHost's configuration gives a parameter a value, read from <paramref name="text"/> (an open
     /// file's text as it stands, else the disk's).</summary>
-    public static bool HasValue(AspireAppHostSettings host, string name, Func<string, string?> text) =>
-        AppSettingsFiles.Read(ConfigurationFiles.Environments(host.LaunchSettings, text)).Select(file => Path.Combine(host.Folder, file))
-            .Append(host.SecretsIn(text)).OfType<string>().Any(file => Holds(text(file), name));
+    public static bool HasValue(AspireAppHostSettings host, string name, Func<string, string?> text)
+    {
+        IReadOnlyList<string> environments = ConfigurationFiles.Environments(host.LaunchSettings, text);
+        return AppSettingsFiles.Read(environments).Select(file => Path.Combine(host.Folder, file))
+            .Append(host.SecretsIn(text)).OfType<string>()
+            .Concat(AspireSecrets.FilesOf(UserSecrets.Of(host.AppHost, host.UserSecretsId, text), environments))
+            .Any(file => Holds(text(file), name));
+    }
 
     /// <summary>Whether a configuration file's text gives Parameters:NAME a value, its keys read as .NET's configuration
     /// reads them (nested objects joined by ':', letter case aside), the name also with its dashes as underscores.</summary>

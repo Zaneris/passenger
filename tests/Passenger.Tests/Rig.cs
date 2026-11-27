@@ -95,6 +95,10 @@ public sealed class TestRun : IAsyncDisposable
     /// what a container run mounts.</summary>
     public static string UserSecrets => Path.Combine(Root, "usersecrets");
 
+    /// <summary>Where the run's IDE finds Aspire's secrets of each environment (what <c>aspire secret set</c> writes) in place
+    /// of the person's own, an AppHost's folder there by its UserSecretsId.</summary>
+    public static string AspireSecrets => Path.Combine(Root, "aspire-secrets");
+
     /// <summary>What every wall-clock limit of a test is multiplied by (<see cref="Limits.Scaled"/>): <c>PASSENGER_TEST_TIME_SCALE</c>,
     /// read once, 1 when unset, as on a developer's machine, for whose times each limit is written; CI sets it for each
     /// system from how much slower its runners are. A value that is no number above 0 fails every test of the run, saying
@@ -242,6 +246,7 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable(UserEnvironment.PathNowVariable, ";");
         // Nor the person's user secrets: a container run mounts a project's from the run's own folder, which a test writes.
         Environment.SetEnvironmentVariable(Passenger.App.Containers.ContainerPlans.UserSecretsVariable, UserSecrets);
+        Environment.SetEnvironmentVariable(Passenger.App.Aspire.AspireSecrets.Variable, AspireSecrets);
         // Nor the person's Passenger: an agent's call with no window to join starts this build headless, in the run's state.
         Environment.SetEnvironmentVariable(Passenger.App.Mcp.McpProxy.StartVariable, "headless");
         // Nor the person's Discord: a window without a stand-in of its own looks where nothing listens.
