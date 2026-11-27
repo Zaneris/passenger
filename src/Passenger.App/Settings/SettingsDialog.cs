@@ -475,6 +475,11 @@ public sealed partial class SettingsDialog : IdeWindow
         AddCodeQualityTools();
         Add(Declared.DownloadJsonSchemas);
         Add(Declared.DownloadStylesheets);
+        // WSL Containers is Windows' alone, so elsewhere the engine is always docker's.
+        if (OperatingSystem.IsWindows())
+        {
+            Add(Declared.ContainerEngine);
+        }
         Add(Declared.DockerHubTags);
         Add(Declared.BuildKitChecks);
         Add(Declared.GodotExecutable);

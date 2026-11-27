@@ -83,7 +83,9 @@ public sealed record ContainerDetails
         JsonElement? settings = JsonMembers.Object(said, "NetworkSettings");
         List<ContainerPort> ports = [];
         List<string> unpublished = [];
-        foreach (JsonProperty port in JsonMembers.Properties(settings, "Ports").OrderBy(p => int.TryParse(p.Name.Split('/')[0], CultureInfo.InvariantCulture, out int n) ? n : 0))
+        // WSL Containers' wslc gives a container's ports beside its network settings, Docker and Podman inside them.
+        JsonElement? published = JsonMembers.Object(settings, "Ports") is not null ? settings : said;
+        foreach (JsonProperty port in JsonMembers.Properties(published, "Ports").OrderBy(p => int.TryParse(p.Name.Split('/')[0], CultureInfo.InvariantCulture, out int n) ? n : 0))
         {
             string[] inside = port.Name.Split('/');
             string protocol = inside.Length > 1 ? inside[1] : "tcp";

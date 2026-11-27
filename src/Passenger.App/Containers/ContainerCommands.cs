@@ -8,12 +8,16 @@ public static class ContainerCommands
     /// <summary>The actions an agent may name, and what each runs.</summary>
     public static readonly IReadOnlyList<string> AgentActions = ["start", "stop", "restart", "remove"];
 
-    /// <summary>The words for an action on a row, or why it cannot run there.</summary>
-    public static (IReadOnlyList<string>? Words, string? WhyNot) For(string action, ContainerRow? row)
+    /// <summary>The words for an action on a row, or why it cannot run there, on the engine as it last answered.</summary>
+    public static (IReadOnlyList<string>? Words, string? WhyNot) For(string action, ContainerRow? row, EngineState? engine = null)
     {
         if (row is null || row.Kind == ContainerRowKind.Group)
         {
             return (null, "No container, project, image, volume or network is chosen in the Containers window");
+        }
+        if (action == "pause" && engine is { IsWslc: true })
+        {
+            return (null, Refusals.WslcNoPause);
         }
         // No container yet: its Start goes through the run that left it unstarted, which starts it.
         if (row.LeftUnstarted && action != "start")

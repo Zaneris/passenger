@@ -786,6 +786,24 @@ public static class Refusals
     /// <summary>The container engine's CLI answers, but its engine does not, and it gave no words of its own.</summary>
     public const string EngineNotRunning = "The container engine is not running";
 
+    /// <summary>A Compose file run, or Compose's own checks, on WSL Containers, whose wslc has no Compose.</summary>
+    public const string WslcNoCompose = "WSL Containers has no Compose: a Compose file runs on Docker or Podman";
+
+    /// <summary>A Dockerfile's BuildKit checks on WSL Containers, whose wslc has no Buildx to run them with.</summary>
+    public const string WslcNoBuildKit = "Dockerfiles are not checked with BuildKit on WSL Containers: its wslc has no Buildx";
+
+    /// <summary>Docker Scout asked of WSL Containers, whose wslc has no scout.</summary>
+    public const string WslcNoScout = "WSL Containers has no Docker Scout: an image's known vulnerabilities are asked through Docker's CLI";
+
+    /// <summary>Pause or Unpause of a container on WSL Containers, whose wslc has neither.</summary>
+    public const string WslcNoPause = "WSL Containers cannot pause a container";
+
+    /// <summary>A test using Testcontainers on WSL Containers: Testcontainers reaches an engine through Docker's API alone.</summary>
+    public const string WslcNoDockerApi = "Testcontainers reaches its engine through Docker's API, which WSL Containers does not serve";
+
+    /// <summary>A container image published into the engine on WSL Containers: the .NET SDK loads one into Docker or Podman alone.</summary>
+    public const string WslcNoImageLoad = "the .NET SDK loads an image into Docker or Podman, not WSL Containers: publish it to a registry, then pull it with wslc";
+
     /// <summary>An image built for x86-64 alone (SQL Server's, <see cref="BackingService.X64Only"/>) on an Arm engine without
     /// Rosetta: one that runs no x86-64 image, or emulates x86-64 otherwise (QEMU), under which SQL Server fails as it starts.
     /// Docker Desktop and Podman are told how they would use Rosetta.</summary>

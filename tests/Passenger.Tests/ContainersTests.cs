@@ -494,6 +494,7 @@ public sealed class ContainersTests
         Flow.StepApart<ContainersTests>("the status bar and problems say when there is no docker or its engine is not running", t => t.The_status_bar_and_problems_say_when_there_is_no_docker_or_its_engine_is_not_running());
         Flow.StepApart<ContainersTests>("a choice to leave containers running is on disk once made and another Passengers stays beside it", t => t.A_choice_to_leave_containers_running_is_on_disk_once_made_and_another_Passengers_stays_beside_it());
         Flow.StepApart<ContainersTests>("find Action reaches each of the Containers windows tabs and its logs Find", t => t.Find_Action_reaches_each_of_the_Containers_windows_tabs_and_its_logs_Find());
+        Flow.StepApart<ContainersTests>("WSL Containers chosen lists and reads its containers through wslc and greys what it has no command for", t => t.WSL_Containers_chosen_lists_and_reads_its_containers_through_wslc_and_greys_what_it_has_no_command_for());
     }
 
     /// <summary>The Containers window over a stand-in engine as one flow, every step off Windows alone (the stand-in is
@@ -1268,6 +1269,55 @@ public sealed class ContainersTests
         Assert.Equal(EngineState.DesktopApp is null ? "see it in Problems, Containers" : "start Docker Desktop", down.StatusPlace?.Name);
         Assert.Single(down.BottomPanel.Problems.ContainerProblems);
         down.Close();
+    }
+
+    /// <summary>WSL Containers chosen as the engine (Settings' choice, the PATH's wslc) serves with no Compose, said in
+    /// Problems in Refusals' words; its containers are listed through wslc, a container's Details read with the ports wslc
+    /// gives beside its network settings, its Stats read again as wslc answers once, and Pause and Testcontainers greyed
+    /// saying why. A stand-in wslc written from WSL's own source answers; only a real one says how WSL's session takes it.</summary>
+    private void WSL_Containers_chosen_lists_and_reads_its_containers_through_wslc_and_greys_what_it_has_no_command_for()
+    {
+        string folder = TestFolders.Create("ctr-wslc-");
+        WslcStandIn wslc = WslcStandIn.Write(folder, "5a5d0c0ffee9" + new string('0', 52), "cache-wslc", "aspire-session-network-wslc");
+        string? path = Environment.GetEnvironmentVariable("PATH");
+        Environment.SetEnvironmentVariable("PATH", folder + Path.PathSeparator + path);
+        ContainerEngine engine = new();
+        engine.Choose(EngineCli.Wslc);
+        MainWindow window = new() { Width = 1200, Height = 800, Engine = engine };
+        try
+        {
+            Assert.True(Ui.AwaitPumped(Waiting.Apart(() => Task.FromResult(engine.Cli)), "the chosen engine's CLI") is { } cli && PathNames.Same(cli, wslc.Cli),
+                $"WSL Containers chosen did not find the PATH's wslc ({engine.Cli})");
+            window.Show();
+            window.OpenFolder(TestFolders.Create("ctr-wslc-folder-"));
+            Ui.Settle();
+            ContainersView view = Shown(window);
+            Ui.WaitFor(() => view.HasRead && view.Rows.Any(row => row.Container is { } container && ContainerRow.SameId(wslc.Id, container.Id)),
+                $"the container listed through wslc, not [{string.Join(", ", view.Rows.Select(row => row.Label))}] ({view.State?.Problem}; wslc was asked: {string.Join("; ", wslc.Calls)})");
+            Assert.True(view.State is { Status: EngineStatus.NoCompose, IsWslc: true, EngineName: ContainerEngine.WslContainers, ServerVersion: "2.7.3.0" },
+                $"The engine's state is not WSL Containers' serving with no Compose: {view.State}");
+            Assert.Contains(window.BottomPanel.Problems.ContainerProblems, problem => problem.Message == Refusals.WslcNoCompose);
+            Assert.True(view.Choose(row => row.Container is { } container && ContainerRow.SameId(wslc.Id, container.Id)), "The container's row");
+            Ui.Settle();
+            Assert.Equal(Refusals.WslcNoPause, window.Actions.WhyNot(AppActions.ContainerPause, window.Actions.Context()));
+            Assert.Null(window.Actions.WhyNot(AppActions.ContainerStop, window.Actions.Context()));
+            (string? why, string? endpoint) = Ui.AwaitPumped(window.Session.Tests.ContainerEngine!(CancellationToken.None), "the engine Testcontainers would reach");
+            Assert.True(why == Refusals.WslcNoDockerApi && endpoint is null, $"Testcontainers was offered WSL Containers: {why}, {endpoint}");
+
+            view.ShowTab("Details");
+            Ui.WaitFor(() => view.Details.Details is { } details && details.Id == wslc.Id && details.Ports.Any(port => port.HostPort == "50379"),
+                $"the container's Details with its port, read through wslc ({view.Details.Details?.Ports.Count} ports)");
+            view.ShowTab(RunWindows.StatsTab);
+            Ui.WaitFor(() => view.Stats.Latest.Any(sample => sample.Name == "cache-wslc" && sample.Cpu == 1.5), $"the container's stats through wslc ({view.Stats.Said})");
+            Ui.WaitFor(() => wslc.Calls.Count(call => call.StartsWith("stats ", StringComparison.Ordinal)) >= 2 && view.Stats.Said is null,
+                $"wslc's stats, which answers once, asked again while shown ({view.Stats.Said})");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", path);
+            wslc.Down();
+            window.Close();
+        }
     }
 
     private void The_window_follows_an_engine_that_starts_stops_and_starts_again_and_lists_compose_projects_by_their_labels_with_no_compose()

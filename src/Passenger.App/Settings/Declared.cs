@@ -672,6 +672,15 @@ public static class Declared
             + "As the folder's lockfile says, a folder with a bun.lock (or a packageManager field naming Bun) runs them on Bun, one "
             + "with a deno.lock on Deno, any other on Node.js. Bun and Deno are the first on the PATH."));
 
+    public static readonly ChoiceSetting<Containers.EngineCli> ContainerEngine = new(s => s.ContainerEngine, (s, v) => s with { ContainerEngine = v },
+        [(Containers.EngineCli.Automatic, "Docker's CLI, else WSL Containers"), (Containers.EngineCli.Docker, "Docker's CLI (docker)"),
+            (Containers.EngineCli.Wslc, "WSL Containers (wslc)")],
+        new(D.DockerPage, "Container engine", "container engine docker podman wsl wslc wsl containers windows cli context runtime compose",
+            "The CLI the Containers window, container runs, Testcontainers and Dockerfile checks reach the engine through: Docker's "
+            + "docker, through its context (Docker Desktop, Rancher Desktop, Podman), or WSL Containers' wslc, which comes with WSL. "
+            + "WSL Containers has no Compose, Buildx or Docker Scout, so a Compose run, BuildKit's checks and an image's "
+            + "vulnerabilities need Docker or Podman. Docker's CLI, else WSL Containers, takes docker where it is found."));
+
     public static readonly ToggleSetting DockerHubTags = new(s => s.DockerHubTags, (s, v) => s with { DockerHubTags = v },
         new(D.DockerPage, "Complete image tags from Docker Hub",
             "docker hub dockerfile containerfile image images tag tags from completion registry remote download web network",

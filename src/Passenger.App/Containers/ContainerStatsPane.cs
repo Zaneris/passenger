@@ -14,10 +14,12 @@ namespace Passenger.App.Containers;
 /// in the engine's own words.</summary>
 public sealed record ContainerStatsSample(string Name, double Cpu, double MemoryPercent, string Memory, string Network, string Disk, string Processes)
 {
-    /// <param name="names">The containers' names by the ids they were asked by (Docker's Container is the id asked).</param>
+    /// <param name="names">The containers' names by the ids they were asked by (Docker's Container is the id asked, WSL
+    /// Containers' ID).</param>
     internal static ContainerStatsSample? Read(JsonElement row, IReadOnlyDictionary<string, string>? names = null)
     {
-        string? name = JsonMembers.Scalar(row, "Container") is { } asked && names?.GetValueOrDefault(asked) is { } known ? known : JsonMembers.Scalar(row, "Name");
+        string? name = (JsonMembers.Scalar(row, "Container") ?? JsonMembers.Scalar(row, "ID")) is { } asked && names?.GetValueOrDefault(asked) is { } known
+            ? known : JsonMembers.Scalar(row, "Name")?.TrimStart('/');
         if (name is null)
         {
             return null;
@@ -104,26 +106,35 @@ public sealed class ContainerStatsPane : DockPanel
         }
         // Each reading named by the container it was asked of: Docker's CLI on Podman's socket cuts a name's first letter.
         Dictionary<string, string> names = row!.Containers.Where(c => c.IsRunning).ToDictionary(c => c.Id, c => c.Name, StringComparer.Ordinal);
+        ContainerEngine asked = engine();
+        ProcessStartInfo Asked()
+        {
+            // Podman's own stats writes its JSON over several lines, under its own names: a line of Docker's names asked of it.
+            ProcessStartInfo start = asked.Command(["stats", "--format", asked.Known is { PodmanCli: true } ? PodmanLine : "json", .. running]);
+            start.RedirectStandardOutput = true;
+            start.RedirectStandardError = true;
+            return start;
+        }
         ProcessStartInfo start;
         try
         {
-            // Podman's own stats writes its JSON over several lines, under its own names: a line of Docker's names asked of it.
-            string format = engine().Known is { PodmanCli: true } ? PodmanLine : "json";
-            start = engine().Command(["stats", "--format", format, .. running]);
-            start.RedirectStandardOutput = true;
-            start.RedirectStandardError = true;
+            start = Asked();
         }
         catch (FileNotFoundException failed)
         {
             waiting.Text = failed.Message;
             return;
         }
-        IdeErrors.Observe(StreamAsync(start, names, ++streams));
+        // WSL Containers' stats answers once, where Docker's and Podman's stream.
+        IdeErrors.Observe(StreamAsync(start, names, ++streams, asked.Known is { IsWslc: true } ? Asked : null));
     }
 
+    /// <summary>How long a stats that answers once is let be before it is asked again: docker's stream's time between readings.</summary>
+    private static readonly TimeSpan AskedAgain = TimeSpan.FromSeconds(1);
+
     /// <summary>Starts a stream, its fork off the window's thread (#441); one let go of as it started (another row chosen,
-    /// the tab left) is ended as it comes.</summary>
-    private async Task StreamAsync(ProcessStartInfo start, Dictionary<string, string> names, int stream)
+    /// the tab left) is ended as it comes. One that answers once and ends well is started <paramref name="again"/>.</summary>
+    private async Task StreamAsync(ProcessStartInfo start, Dictionary<string, string> names, int stream, Func<ProcessStartInfo>? again = null)
     {
         Process process;
         forking = true;
@@ -170,6 +181,12 @@ public sealed class ContainerStatsPane : DockPanel
                     }
                 });
                 await process.WaitForExitAsync();
+                if (again is not null && process.ExitCode == 0)
+                {
+                    await Task.Delay(AskedAgain);
+                    UiThread.Post(() => AskAgain(process, names, stream, again));
+                    return;
+                }
                 // What it said last, unless something it left holds its errors open.
                 string? said = await Task.WhenAny(errors, Task.Delay(TimeSpan.FromSeconds(2))) == errors ? last : null;
                 string why = said is null ? $"docker stats ended with {ExitCodes.Said(process.ExitCode)}" : $"docker stats ended: {ContainerSecrets.InSaid(said)}";
@@ -180,6 +197,28 @@ public sealed class ContainerStatsPane : DockPanel
                 // Stopped meanwhile, its process let go of.
             }
         }));
+    }
+
+    /// <summary>A stats that answers once asked again, while what it answered is still the pane's.</summary>
+    private void AskAgain(Process from, Dictionary<string, string> names, int stream, Func<ProcessStartInfo> again)
+    {
+        if (streaming != from || stream != streams)
+        {
+            return;
+        }
+        ProcessStartInfo start;
+        try
+        {
+            start = again();
+        }
+        catch (FileNotFoundException failed)
+        {
+            Ended(from, failed.Message);
+            return;
+        }
+        streaming = null;
+        from.Dispose();
+        IdeErrors.Observe(StreamAsync(start, names, stream, again));
     }
 
     /// <summary>The stream ended while still the pane's: its numbers, which no longer change, give way to why.</summary>

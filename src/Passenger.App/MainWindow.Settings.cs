@@ -231,6 +231,12 @@ public partial class MainWindow
             session.Stylesheets.DownloadsChanged();
         }
         session.Web?.Checks.UseBuildKit(next.BuildKitChecks);
+        if (next.ContainerEngine != before.ContainerEngine)
+        {
+            // The engine's CLI chosen anew (SettingsStore's): what the window says of it is read again through it.
+            CheckEngineFor(session.Folder);
+            containersView?.EngineChosen();
+        }
         ListenForAgents(next.McpServer);
         FollowAgentFolders(before, next);
         WatchUpdates(next.CheckForUpdates);

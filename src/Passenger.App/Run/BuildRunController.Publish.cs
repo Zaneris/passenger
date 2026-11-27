@@ -118,9 +118,9 @@ public sealed partial class BuildRunController
             {
                 work.Say("Asking the container engine…");
                 EngineState state = await engine.StateAsync(cancel: work.Stopping);
-                if (!state.IsReady)
+                if (state.IsWslc || !state.IsReady)
                 {
-                    return (null, $"{request.Shown} cannot be published into the engine: {state.Problem}");
+                    return (null, $"{request.Shown} cannot be published into the engine: {(state.IsWslc ? Refusals.WslcNoImageLoad : state.Problem)}");
                 }
                 request = request with { LocalRegistry = state.LocalRegistry };
             }

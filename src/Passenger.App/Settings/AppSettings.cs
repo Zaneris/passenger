@@ -440,6 +440,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// allows it, so a page's links are never fetched unasked.</summary>
     public bool DownloadStylesheets { get; init; }
 
+    /// <summary>"Container engine": the CLI the Containers window, container runs and checks reach the engine through
+    /// (<see cref="Containers.EngineCli"/>); Automatically, Docker's where one is found, else on Windows WSL Containers'.</summary>
+    public Containers.EngineCli ContainerEngine { get; init; }
+
     /// <summary>"Complete image tags from Docker Hub": the Dockerfile server asks Docker Hub for an image's tags, naming the
     /// image, as <c>FROM image:</c> is completed. Off, it asks Docker Hub nothing and offers no tags.</summary>
     public bool DockerHubTags { get; init; } = true;

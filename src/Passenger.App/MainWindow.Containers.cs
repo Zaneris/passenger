@@ -36,7 +36,8 @@ public partial class MainWindow
         {
             actions!.Add(new IdeAction(id, title, "Containers", context => IdeErrors.Observe(id == AppActions.ContainerRemove ? RemoveAsync(Chosen()!) : ContainerActAsync(id, action, Chosen()!)))
             {
-                WhyNot = _ => ContainerCommands.For(action, Chosen()) is { Words: null } refused ? refused.WhyNot ?? $"{Chosen()?.Name} cannot {action}" : null,
+                WhyNot = _ => ContainerCommands.For(action, Chosen(), (containersView?.EngineOf(Chosen()) ?? Engine).Known) is { Words: null } refused
+                    ? refused.WhyNot ?? $"{Chosen()?.Name} cannot {action}" : null,
                 Works = id,
             });
         }
@@ -63,7 +64,8 @@ public partial class MainWindow
         })
         {
             WhyNot = _ => Editors.Active is not { } file ? Refusals.NoFile
-                : Languages.Language.ForPath(file.Path) != Languages.Language.Dockerfile ? "The file shown is not a Dockerfile" : null,
+                : Languages.Language.ForPath(file.Path) != Languages.Language.Dockerfile ? "The file shown is not a Dockerfile"
+                : Engine.Known is { IsWslc: true } ? Refusals.WslcNoScout : null,
             Words = ["docker scout", "CVE", "Vulnerabilities", "Base Image"],
         });
         actions.Add(new IdeAction(AppActions.ContainerInspect, "Inspect", "Containers", context => IdeErrors.Observe(InspectAsync(Chosen()!)))
@@ -217,7 +219,7 @@ public partial class MainWindow
     /// <summary>Where a click on the engine's problem goes: Docker Desktop started, where it is installed and Docker is
     /// not running; otherwise Problems' Containers tab, which says what to do.</summary>
     private StatusPlace EnginePlace(EngineState state) =>
-        state is { Status: EngineStatus.NotRunning, IsPodman: false } && EngineState.DesktopApp is { } desktop
+        state is { Status: EngineStatus.NotRunning, IsPodman: false, IsWslc: false } && EngineState.DesktopApp is { } desktop
             ? new StatusPlace("start Docker Desktop", () => StartDesktop(desktop))
             : StatusPlace.Problems(Dock, Bottom.Problems, ProblemsTab.Containers);
 
@@ -275,7 +277,8 @@ public partial class MainWindow
                     ShowEngine(state);
                 }
             });
-            return state.Status is EngineStatus.Ready or EngineStatus.NoCompose ? (null, state.Endpoint) : (state.Problem, null);
+            return state.IsWslc ? (Refusals.WslcNoDockerApi, null)
+                : state.Status is EngineStatus.Ready or EngineStatus.NoCompose ? (null, state.Endpoint) : (state.Problem, null);
         };
         CheckEngineFor(next.Folder);
         buildRun.RunningChanged += (_, _) =>

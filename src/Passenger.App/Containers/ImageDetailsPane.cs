@@ -71,7 +71,11 @@ public sealed class ImageDetailsPane : DetailsTables
                 about.Add(("Size", Words(shown.Detail)));
             }
             Section("Image", about);
-            if (checking == shown.Name)
+            if (engine().Known is { IsWslc: true })
+            {
+                Section("Vulnerabilities", [("Docker Scout", Words(Refusals.WslcNoScout))]);
+            }
+            else if (checking == shown.Name)
             {
                 Section("Vulnerabilities", [("Docker Scout", Words($"Checking {shown.Name}…"))]);
             }

@@ -267,6 +267,10 @@ public sealed class SettingsStore : IDisposable
             AppActions.Choose(after.Keymap, after.OwnShortcuts());
         }
         LogsInForce(before, after);
+        if (before is null || before.ContainerEngine != after.ContainerEngine)
+        {
+            Containers.ContainerEngine.Shared.Choose(after.ContainerEngine);
+        }
     }
 
     private static void LogsInForce(AppSettings? before, AppSettings after)
