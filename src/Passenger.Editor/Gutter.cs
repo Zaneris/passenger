@@ -72,7 +72,11 @@ public readonly record struct GutterPress(GutterClick Click, double X, double Wi
 
 /// <summary>A line on screen as a column draws beside it: the line (from zero) and the top of its first row, from the top
 /// of the row drawn.</summary>
-public readonly record struct GutterLine(int Line, double Top);
+public readonly record struct GutterLine(int Line, double Top)
+{
+    /// <summary>Whether the pointer is over this line's number.</summary>
+    public bool NumberHovered { get; init; }
+}
 
 /// <summary>What a column draws with, one row of the gutter at a time: the drawing context, its strip of the gutter, the
 /// line beside the row, where any line is from the row's top, and the look's brushes and labels in the editor's font.

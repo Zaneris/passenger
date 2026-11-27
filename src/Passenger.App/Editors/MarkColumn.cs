@@ -166,12 +166,15 @@ public sealed class MarkColumn : IGutterColumn
             {
                 Testing.StepMarks.Draw(frame, step, left, top);
             }
-            if (debug.TryBreakpoint(line, out LineMark mark))
+            bool preview = !debug.TryBreakpoint(line, out LineMark mark);
+            if (preview && (!shown.NumberHovered || file.Document is null))
             {
-                // Over the number, which gives way.
-                frame.Cover(line);
-                DebugMarks.DrawBreakpoint(frame, mark, left - frame.CharWidth, top + frame.LineHeight / 2);
+                continue;
             }
+            frame.Cover(line);
+            using DrawingContext.PushedState opacity = preview ? frame.Context.PushOpacity(0.5) : default;
+            DebugMarks.DrawBreakpoint(frame, preview ? new LineMark(line, LineMarkKind.Breakpoint) : mark,
+                left - frame.CharWidth, top + frame.LineHeight / 2);
         }
     }
 
