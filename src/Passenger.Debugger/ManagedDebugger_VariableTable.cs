@@ -1,4 +1,3 @@
-using System.Reflection.Metadata;
 using Passenger.Dap;
 using Passenger.Debugger.ExpressionEvaluator.Cil;
 using Passenger.Debugger.Interop;
@@ -6,12 +5,9 @@ using Passenger.Debugger.Models.Response;
 
 namespace Passenger.Debugger;
 
-public sealed record VariableTableValues(IReadOnlyList<string> Tables, IReadOnlyList<string> Columns, int RowCount,
-    IReadOnlyList<IReadOnlyList<VariableInfo>> Rows);
-
 public partial class ManagedDebugger
 {
-    public async Task<VariableTableValues> ReadVariableTableAsync(VariableTableArguments request)
+    public async Task<VariableTableResponse> ReadVariableTableAsync(VariableTableArguments request)
     {
         RequireStop();
         if (request.Start < 0 || request.Count is < 1 or > VariableTableArguments.PageLimit || request.TableIndex < 0)
@@ -25,13 +21,13 @@ public partial class ManagedDebugger
         ICorDebugValue actual = value.UnwrapDebugValue();
         if (actual is ICorDebugArrayValue { Rank: 1 } array)
         {
-            return await ReadCollectionTable(array, checked((int)array.Count), array.ExactType.FirstTypeParameter, reference, request);
+            return await ReadCollectionTable(checked((int)array.Count), array.ExactType.FirstTypeParameter, reference, request);
         }
         if (actual is ICorDebugObjectValue obj)
         {
             if (StoredOf(obj) is { Kind: StoredKind.List } list)
             {
-                return await ReadCollectionTable(list.Items, list.Count, obj.ExactType.FirstTypeParameter, reference, request);
+                return await ReadCollectionTable(list.Count, obj.ExactType.FirstTypeParameter, reference, request);
             }
             if (AdoType(obj.ExactType) is { } kind)
             {
@@ -41,26 +37,24 @@ public partial class ManagedDebugger
         throw new InvalidOperationException("The debugger cannot show this value as a table");
     }
 
-    private async Task<VariableTableValues> ReadCollectionTable(ICorDebugArrayValue? array, int total, ICorDebugType element,
+    private async Task<VariableTableResponse> ReadCollectionTable(int total, ICorDebugType element,
         VariablesReference reference, VariableTableArguments request)
     {
         (ICorDebugType Type, IMetaDataImport Metadata, mdProperty Property, string Name)[] properties = [.. TableProperties(element)];
         int length = Math.Clamp(total - request.Start, 0, request.Count);
-        uint first = array is not null && array.HasBaseIndicies() ? array.GetBaseIndicies(1)[0] : 0;
-        List<IReadOnlyList<VariableInfo>> rows = new(length);
-        for (int index = 0; index < length; index++)
+        List<IReadOnlyList<string>> rows = new(length);
+        for (int row = request.Start; row < request.Start + length; row++)
         {
-            uint row = first + checked((uint)(request.Start + index));
             ICorDebugValue item = ItemAt(row);
             if (properties.Length == 0)
             {
-                rows.Add([await TableCell("Value", item, reference.ThreadId, reference.FrameStackDepth)]);
+                rows.Add([await TableCell(item, reference.ThreadId, reference.FrameStackDepth)]);
                 continue;
             }
-            VariableInfo[] cells = new VariableInfo[properties.Length];
+            string[] cells = new string[properties.Length];
             if (item is ICorDebugReferenceValue { IsNull: true })
             {
-                Array.Fill(cells, new VariableInfo { Name = string.Empty, Type = null, Value = "null", VariablesReference = 0 });
+                Array.Fill(cells, "null");
             }
             else
             {
@@ -70,23 +64,23 @@ public partial class ManagedDebugger
                 List<VariableInfo> found = [];
                 for (int column = 0; column < properties.Length; column++)
                 {
-                    (ICorDebugType type, IMetaDataImport metadata, mdProperty property, string name) = properties[column];
+                    (ICorDebugType type, IMetaDataImport metadata, mdProperty property, _) = properties[column];
                     found.Clear();
                     await AddProperties([property], metadata, type, reference.ThreadId, reference.FrameStackDepth,
                         pinned ?? (column == 0 ? item : ItemAt(row)), found, table: true);
-                    cells[column] = found.FirstOrDefault() ?? new VariableInfo { Name = name, Type = null, Value = string.Empty, VariablesReference = 0 };
+                    cells[column] = found.FirstOrDefault()?.Value ?? string.Empty;
                 }
             }
             rows.Add(cells);
         }
-        return new VariableTableValues([], properties.Length == 0 ? ["Value"] : [.. properties.Select(property => property.Name)], total, rows);
+        return new VariableTableResponse([], properties.Length == 0 ? ["Value"] : [.. properties.Select(property => property.Name)], total, rows);
 
-        ICorDebugValue ItemAt(uint row)
+        ICorDebugValue ItemAt(int row)
         {
             ICorDebugValue root = reference.ObjectValue!;
             ICorDebugArrayValue source = root.UnwrapDebugValue() is ICorDebugArrayValue direct ? direct
                 : StoredOf(root.UnwrapDebugValueToObject())?.Items ?? throw new InvalidOperationException("The list's items are no longer available");
-            return source.GetElement(1, [row]);
+            return source.GetElementAtPosition(row);
         }
     }
 
@@ -126,7 +120,7 @@ public partial class ManagedDebugger
         return null;
     }
 
-    private async Task<VariableTableValues> ReadAdoTable(ICorDebugValue source, string kind, VariablesReference reference, VariableTableArguments request)
+    private async Task<VariableTableResponse> ReadAdoTable(ICorDebugValue source, string kind, VariablesReference reference, VariableTableArguments request)
     {
         using EvaluationHandleScope held = new();
         bool wasExplicit = EvalStatus.Explicit;
@@ -141,7 +135,7 @@ public partial class ManagedDebugger
                 int count = await Count(children);
                 if (count == 0)
                 {
-                    return new VariableTableValues([], [], 0, []);
+                    return new VariableTableResponse([], [], 0, []);
                 }
                 int selected = Math.Min(request.TableIndex, count - 1);
                 for (int index = 0; index < count; index++)
@@ -164,27 +158,27 @@ public partial class ManagedDebugger
             ICorDebugValue rowList = await Read(table, "get_Rows");
             int total = await Count(rowList);
             int length = Math.Clamp(total - request.Start, 0, request.Count);
-            List<IReadOnlyList<VariableInfo>> rows = new(length);
+            List<IReadOnlyList<string>> rows = new(length);
             for (int offset = 0; offset < length; offset++)
             {
                 ICorDebugValue row = await Read(rowList, "get_Item", request.Start + offset);
                 try
                 {
                     ICorDebugValue cells = await Read(row, "get_ItemArray");
-                    List<VariableInfo> values = new(width);
+                    string[] values = new string[width];
                     for (int column = 0; column < width; column++)
                     {
                         ICorDebugArrayValue array = (ICorDebugArrayValue)cells.UnwrapDebugValue();
-                        values.Add(await TableCell(columns[column], array.GetElementAtPosition(column), reference.ThreadId, reference.FrameStackDepth));
+                        values[column] = await TableCell(array.GetElementAtPosition(column), reference.ThreadId, reference.FrameStackDepth);
                     }
                     rows.Add(values);
                 }
                 catch (Exception error) when (error is EvalException || Failures.OfRuntime(error))
                 {
-                    rows.Add(width > 0 ? [FailedRow(columns[0], error.Message)] : []);
+                    rows.Add(width > 0 ? [error.Message] : []);
                 }
             }
-            return new VariableTableValues(tables, columns, total, rows);
+            return new VariableTableResponse(tables, columns, total, rows);
         }
         finally
         {
@@ -198,50 +192,27 @@ public partial class ManagedDebugger
 
         async Task<ICorDebugValue> Read(ICorDebugValue value, string getter, int? index = null)
         {
-            ICorDebugFunction function = TableGetter(value.UnwrapDebugValue().ExactType, getter, index.HasValue);
             ICorDebugEval eval = _process!.GetThread(reference.ThreadId.Value).CreateEval();
-            ICorDebugValue[] arguments = [value];
+            ICorDebugValue[] parameters = [];
             if (index is { } ordinal)
             {
-                ICorDebugValue argument = eval.CreateValue(CorElementType.I4, null);
-                ((ICorDebugGenericValue)argument).SetValue(BitConverter.GetBytes(ordinal));
-                arguments = [value, argument];
+                ICorDebugGenericValue argument = (ICorDebugGenericValue)eval.CreateValue(CorElementType.I4, null);
+                argument.SetValue(BitConverter.GetBytes(ordinal));
+                parameters = [argument];
             }
-            return held.Track(await eval.CallParameterizedFunctionAsync(ProcessRuntimeEventsUntilEvalEvent, EvalStatus, function, 0, [], arguments.Length, arguments, throwOnException: true))
+            ICorDebugType type = value.UnwrapDebugValue().ExactType;
+            ICorDebugFunction function = FindMethodOnType(type, getter, parameters, searchStatic: false, idsEmpty: false)
+                ?? throw new InvalidOperationException($"The runtime did not provide {getter}");
+            ICorDebugType[] typeArguments = DeclaringTypeOf(type, function).TypeParameters;
+            return held.Track(await eval.CallParameterizedFunctionAsync(ProcessRuntimeEventsUntilEvalEvent, EvalStatus, function,
+                typeArguments.Length, typeArguments, 1 + parameters.Length, [value, .. parameters], throwOnException: true))
                 ?? throw new InvalidOperationException($"{getter} returned no value");
         }
     }
 
-    private static unsafe ICorDebugFunction TableGetter(ICorDebugType type, string name, bool indexed)
-    {
-        for (ICorDebugType? current = type; current is not null; current = current.Base)
-        {
-            ICorDebugClass cls = current.Class;
-            IMetaDataImport metadata = cls.Module.GetMetaDataInterface<IMetaDataImport>();
-            foreach (mdMethodDef method in metadata.EnumMethodsWithName(cls.Token, name))
-            {
-                (_, _, _, nint blob, int length, _, _) = metadata.GetMethodProps(method);
-                BlobReader signature = new((byte*)blob, length);
-                signature.ReadSignatureHeader();
-                if (signature.ReadCompressedInteger() == (indexed ? 1 : 0)
-                    && (!indexed || ((byte*)blob)[length - 1] == (byte)CorElementType.I4))
-                {
-                    return cls.Module.GetFunctionFromToken(method);
-                }
-            }
-        }
-        throw new InvalidOperationException($"The runtime did not provide {name}");
-    }
-
-    private async Task<VariableInfo> TableCell(string name, ICorDebugValue value, ThreadId thread, FrameStackDepth frame)
+    private async Task<string> TableCell(ICorDebugValue value, ThreadId thread, FrameStackDepth frame)
     {
         FormattedValue shown = await FormatCorDebugValueAsync(ResolveCorDebugValue(value), thread, frame, escapeStringValue: true);
-        return shown.ResultIsError ? FailedRow(name, shown.Value) : new VariableInfo
-        {
-            Name = name,
-            Type = shown.FriendlyTypeName,
-            Value = shown.FriendlyTypeName == "System.DBNull" ? "DBNull" : shown.Value,
-            VariablesReference = 0,
-        };
+        return shown is { ResultIsError: false, FriendlyTypeName: "System.DBNull" } ? "DBNull" : shown.Value;
     }
 }

@@ -120,7 +120,7 @@ internal sealed class VariableTableWindow : IdeWindow
         {
             reading = false;
             tables.IsEnabled = true;
-            detail.IsEnabled = grid.SelectedCell is not null;
+            detail.IsEnabled = grid.Table is { RowCount: > 0, ColumnCount: > 0 };
             previous.IsEnabled = start > 0;
             next.IsEnabled = grid.Table is { RowCount: > 0 } shown && start + shown.RowCount < totalRows;
         }
@@ -128,29 +128,23 @@ internal sealed class VariableTableWindow : IdeWindow
 
     private void ShowCell()
     {
-        if (reading || grid.Table is not { } table || grid.SelectedCell is not { } selected)
+        if (reading || grid.Table is not { RowCount: > 0, ColumnCount: > 0 } table)
         {
             return;
         }
         cell?.Close();
-        VariableTextWindow viewer = new($"{table.Header(selected.Column)} · row {table.RowLabel(selected.Row)}",
-            table.ValueAt(selected.Row, selected.Column)?.ToString() ?? string.Empty);
+        (int row, int column) = grid.Caret;
+        VariableTextWindow viewer = new($"{table.Header(column)} · row {table.RowLabel(row)}",
+            table.ValueAt(row, column)?.ToString() ?? string.Empty);
         cell = viewer;
         viewer.Closed += (_, _) => cell = null;
         viewer.Show(this);
     }
 
-    private sealed class DebugRows : Table
+    private sealed class DebugRows(VariableTableResponse page, int start) : Table
     {
-        private readonly int start;
-        private readonly TextRows rows;
-
-        public DebugRows(VariableTableResponse page, int start)
-        {
-            this.start = start;
-            rows = new TextRows(page.Columns,
-                [.. page.Rows.Select(row => row.Select(value => DebugController.StringValue(value.Value) ?? value.Value).ToArray())]);
-        }
+        private readonly TextRows rows = new(page.Columns,
+            [.. page.Rows.Select(row => row.Select(value => DebugController.StringValue(value) ?? value).ToArray())]);
 
         public override int RowCount => rows.RowCount;
         public override int ColumnCount => rows.ColumnCount;

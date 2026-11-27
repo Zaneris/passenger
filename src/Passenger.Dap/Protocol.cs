@@ -387,7 +387,7 @@ public sealed record VariableTableArguments(int VariablesReference, int Start, i
 }
 
 public sealed record VariableTableResponse(IReadOnlyList<string> Tables, IReadOnlyList<string> Columns, int RowCount,
-    IReadOnlyList<IReadOnlyList<DapVariable>> Rows);
+    IReadOnlyList<IReadOnlyList<string>> Rows);
 
 public sealed record DapVariable
 {

@@ -716,7 +716,7 @@ public partial class ManagedDebugger
                     {
                         ICorDebugValue stored = isStatic ? await GetStaticFieldValueAsync(declaringType, backing, threadId, stackDepth)
                             : corDebugValue.UnwrapDebugValueToObject().GetFieldValue(corDebugClass, backing);
-                        VariableInfo kept = table ? await TableCell(propertyName, stored, threadId, stackDepth)
+                        VariableInfo kept = table ? new VariableInfo { Name = propertyName, Value = await TableCell(stored, threadId, stackDepth), Type = null, VariablesReference = 0 }
                             : await ValueRow(propertyName, null, stored, threadId, stackDepth, DeclaredProperty(corDebugClass, mdProperty), displayed: true, namesPointee: false);
                         kept.Member = propertyName;
                         result.Add(kept);
@@ -747,7 +747,7 @@ public partial class ManagedDebugger
                 {
                     if (table)
                     {
-                        result.Add(await TableCell(propertyName, returnValue, threadId, stackDepth));
+                        result.Add(new VariableInfo { Name = propertyName, Value = await TableCell(returnValue, threadId, stackDepth), Type = null, VariablesReference = 0 });
                         return;
                     }
                     if (debuggerBrowsableRootHidden)

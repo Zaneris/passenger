@@ -115,8 +115,6 @@ public sealed class CellGrid : Control, IOwnKeys
 
     public event EventHandler? CellReadRequested;
 
-    public (int Row, int Column)? SelectedCell => table is { RowCount: > 0, ColumnCount: > 0 } ? caret : null;
-
     /// <summary>A cell written, for the file to take: the table shown as its writing began, the cell's row in the file's
     /// order, its column and its new text.</summary>
     public event EventHandler<CellWrite>? CellWritten;
