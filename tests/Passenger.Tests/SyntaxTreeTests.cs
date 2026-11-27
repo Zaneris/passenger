@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
@@ -5,6 +6,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Docking;
+using Passenger.App.ToolWindows;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -38,6 +40,8 @@ public sealed class SyntaxTreeTests : IDisposable
             Ui.Settle();
             Assert.Equal(Selection.At(start + 1), editor.Selections.Primary);
             TreeList tree = Assert.Single(tool.Content.GetVisualDescendants().OfType<TreeList>());
+            PaneSplit panes = Assert.Single(tool.Content.GetVisualDescendants().OfType<PaneSplit>());
+            Assert.True(panes.IsStacked);
             editor.Focus();
             Ui.WaitFor(() => SelectedKind(tree, "IdentifierToken"), "the identifier token at the caret");
             Assert.Same(editor, window.FocusManager?.GetFocusedElement());
@@ -57,6 +61,12 @@ public sealed class SyntaxTreeTests : IDisposable
                 "the plus operator selected in the editor from the tree");
             Assert.True(SelectedKind(tree, "PlusToken"));
 
+            double initialTreeHeight = tree.Bounds.Height;
+            Point divider = Ui.Centre(panes.Divider.Splitter, window);
+            Ui.Drag(window, divider, divider - new Vector(0, 60));
+            Ui.WaitFor(() => tree.Bounds.Height < initialTreeHeight - 40, "the lower property pane made taller by dragging");
+            double resizedTreeHeight = tree.Bounds.Height;
+
             int comment = code.IndexOf("Combine the values", StringComparison.Ordinal);
             editor.Selections = SelectionSet.Single(comment);
             Ui.WaitFor(() => SelectedKind(tree, "SingleLineCommentTrivia"), "the comment trivia at the caret");
@@ -75,9 +85,10 @@ public sealed class SyntaxTreeTests : IDisposable
             Ui.WaitFor(() => SelectedKind(tree, "RecordKeyword"), "the record keyword in the newly active file");
             Ui.Settle();
             Assert.True(SelectedKind(tree, "RecordKeyword"));
+            Assert.Equal(resizedTreeHeight, tree.Bounds.Height, precision: 1);
 
             window.OpenFile("Notes.txt");
-            Ui.WaitFor(() => !tree.IsVisible && tree.ItemCount == 0, "the empty state for a non-C# file");
+            Ui.WaitFor(() => !tree.IsEffectivelyVisible && tree.ItemCount == 0, "the empty state for a non-C# file");
         }
         finally
         {

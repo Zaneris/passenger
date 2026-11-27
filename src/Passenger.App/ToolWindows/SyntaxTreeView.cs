@@ -16,18 +16,13 @@ using Passenger.Text;
 
 namespace Passenger.App.ToolWindows;
 
-internal sealed class SyntaxTreeView : DockPanel
+internal sealed class SyntaxTreeView : Panel
 {
     private readonly TreeList list = new() { Classes = { StyleClasses.Tree } };
     private readonly TreeRows<Row> rows = [];
     private readonly EmptyState message = new("Open a C# file to see its syntax tree.");
-    private readonly Border details = new() { IsVisible = false, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(Gaps.Normal) };
-    private readonly TextBlock syntaxKind = Value();
-    private readonly TextBlock roslynType = Value();
-    private readonly TextBlock sourceSpan = Value();
-    private readonly TextBlock fullSpan = Value();
-    private readonly TextBlock sourceText = Value();
-    private readonly TextBlock diagnostic = new() { TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 2 };
+    private readonly DetailsTables details = new();
+    private readonly PaneSplit split;
     private readonly Action<ParsedText, TextSpan> selectSource;
     private readonly Debounce reveal;
     private ParsedText? shown;
@@ -40,7 +35,6 @@ internal sealed class SyntaxTreeView : DockPanel
         this.selectSource = selectSource;
         reveal = new Debounce(TypingPauses.SyntaxTree, RevealAsync);
         list.ItemsSource = rows;
-        list.IsVisible = false;
         ScrollViewer.SetHorizontalScrollBarVisibility(list, ScrollBarVisibility.Auto);
         ReusedRows.Use(list, MakeRow);
         TreeKeys.Attach<Row>(list, Toggle);
@@ -53,10 +47,12 @@ internal sealed class SyntaxTreeView : DockPanel
                 SelectSource(row);
             }
         }, RoutingStrategies.Bubble, handledEventsToo: true);
-        MakeDetails();
-        SetDock(details, Dock.Bottom);
-        Children.Add(details);
-        Children.Add(new Panel { Children = { list, message } });
+        split = new PaneSplit(list, details, "4*,1,*") { IsVisible = false };
+        split.SetPresentation(stack: true, onlySecond: false);
+        split.RowDefinitions[0].MinHeight = ListRow.Height * 2;
+        split.RowDefinitions[2].MinHeight = ListRow.Height * 2;
+        Children.Add(split);
+        Children.Add(message);
     }
 
     internal void Follow(ParsedText parsed, Selection selection)
@@ -74,7 +70,7 @@ internal sealed class SyntaxTreeView : DockPanel
             root = new Row(parsed.Root, 0);
             rows.Show([root]);
             message.IsVisible = false;
-            list.IsVisible = true;
+            split.IsVisible = true;
         }
         TextSpan span = TextSpan.FromBounds(selection.Start, selection.End);
         if (wanted != span)
@@ -95,7 +91,7 @@ internal sealed class SyntaxTreeView : DockPanel
         {
             rows.Clear();
         }
-        list.IsVisible = false;
+        split.IsVisible = false;
         message.Text = text;
         message.IsVisible = true;
     }
@@ -154,17 +150,22 @@ internal sealed class SyntaxTreeView : DockPanel
     {
         if (list.SelectedItem is not Row row || shown is not { } parsed)
         {
-            details.IsVisible = false;
+            details.Say("Select a syntax item to see its details.");
             return;
         }
-        syntaxKind.Text = row.Kind.ToString();
-        roslynType.Text = row.RoslynType;
-        sourceSpan.Text = row.Span.ToString();
-        fullSpan.Text = row.FullSpan.ToString();
-        sourceText.Text = Preview(parsed.Text, row.Span);
-        diagnostic.Text = row.IsMissing ? "Missing from source" : row.Diagnostic;
-        diagnostic.IsVisible = diagnostic.Text is not null;
-        details.IsVisible = true;
+        List<(string Name, Control Value)> properties =
+        [
+            ("Kind", DetailsTables.Words(row.Kind.ToString(), code: true)),
+            ("Roslyn type", DetailsTables.Words(row.RoslynType, code: true)),
+            ("Span", DetailsTables.Words(row.Span.ToString(), code: true)),
+            ("Full span", DetailsTables.Words(row.FullSpan.ToString(), code: true)),
+            ("Source", DetailsTables.Words(Preview(parsed.Text, row.Span), code: true)),
+        ];
+        if ((row.IsMissing ? "Missing from source" : row.Diagnostic) is { } diagnostic)
+        {
+            properties.Add(("Syntax", DetailsTables.Words(diagnostic)));
+        }
+        details.Show(() => details.Section("Properties", properties));
     }
 
     private void SelectSource(Row row)
@@ -178,30 +179,6 @@ internal sealed class SyntaxTreeView : DockPanel
         wanted = row.Span;
         selectSource(parsed, row.Span);
     }
-
-    private void MakeDetails()
-    {
-        Grid fields = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = Gaps.Normal, RowSpacing = Gaps.Hair };
-        (string Label, TextBlock Value)[] entries =
-        [
-            ("Kind", syntaxKind), ("Roslyn type", roslynType), ("Span", sourceSpan), ("Full span", fullSpan), ("Source", sourceText),
-        ];
-        for (int index = 0; index < entries.Length; index++)
-        {
-            fields.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-            (string label, TextBlock value) = entries[index];
-            TextBlock heading = MutedText.Of(label);
-            Grid.SetRow(heading, index);
-            Grid.SetRow(value, index);
-            Grid.SetColumn(value, 1);
-            fields.Children.Add(heading);
-            fields.Children.Add(value);
-        }
-        details.Bind(Border.BorderBrushProperty, details.GetResourceObservable(TokenKeys.Divider));
-        details.Child = new StackPanel { Spacing = Gaps.Small, Children = { fields, diagnostic } };
-    }
-
-    private static TextBlock Value() => new() { Classes = { StyleClasses.Code }, TextTrimming = TextTrimming.CharacterEllipsis };
 
     private static string Preview(TextSnapshot text, TextSpan span)
     {
