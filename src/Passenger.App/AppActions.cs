@@ -715,6 +715,7 @@ public static class AppActions
     // The Dependency Map window at the caret, the Explorer's row or the solution, which Rider's keymaps give no keys.
     public const string ShowDependencyMap = "app.showDependencyMap";
     public const string ShowStructure = "app.showStructure";
+    public const string ShowSyntaxTree = "app.showSyntaxTree";
 
     // Continuous testing, turned on and off for the folder's repository.
     public const string ContinuousTesting = "app.tests.continuous";
