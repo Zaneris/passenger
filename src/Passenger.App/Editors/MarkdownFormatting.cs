@@ -25,6 +25,17 @@ internal static partial class MarkdownFormatting
             return null;
         }
         string value = text[words.Start..words.End];
+        if (value.Contains('\r') || value.Contains('\n'))
+        {
+            return ToggleLines(value, words, marker, bold);
+        }
+        return Remove(text, words, bold)
+            ?? (new TextEdit(words.Start, words.Length, marker + value + marker), new TextRange(words.Start + marker.Length, words.Length));
+    }
+
+    private static (TextEdit Edit, TextRange Selection)? Remove(string text, TextRange words, bool bold)
+    {
+        string value = text[words.Start..words.End];
         foreach (string mark in bold ? (string[])["**", "__"] : ["_", "*"])
         {
             if (Around(text, words, mark))
@@ -38,21 +49,36 @@ internal static partial class MarkdownFormatting
                 return (new TextEdit(words.Start, words.Length, inner), new TextRange(words.Start, inner.Length));
             }
         }
-        if (value.Contains('\r') || value.Contains('\n'))
+        return null;
+    }
+
+    private static (TextEdit Edit, TextRange Selection) ToggleLines(string value, TextRange words, string marker, bool bold)
+    {
+        string[] parts = LineBreaks().Split(value);
+        List<(int Index, TextRange Words, TextEdit? Removal)> lines = [];
+        for (int i = 0; i < parts.Length; i += 2)
         {
-            string[] parts = LineBreaks().Split(value);
-            for (int i = 0; i < parts.Length; i += 2)
+            TextRange line = TextRange.Trimmed(parts[i], new TextRange(0, parts[i].Length));
+            if (line.Length > 0)
             {
-                TextRange line = TextRange.Trimmed(parts[i], new TextRange(0, parts[i].Length));
-                if (line.Length > 0)
-                {
-                    parts[i] = parts[i].Insert(line.End, marker).Insert(line.Start, marker);
-                }
+                lines.Add((i, line, Remove(parts[i], line, bold)?.Edit));
             }
-            string formatted = string.Concat(parts);
-            return (new TextEdit(words.Start, words.Length, formatted), new TextRange(words.Start, formatted.Length));
         }
-        return (new TextEdit(words.Start, words.Length, marker + value + marker), new TextRange(words.Start + marker.Length, words.Length));
+        bool allFormatted = lines.All(line => line.Removal is not null);
+        foreach ((int index, TextRange line, TextEdit? removal) in lines)
+        {
+            string part = parts[index];
+            if (allFormatted && removal is { } edit)
+            {
+                parts[index] = part[..edit.Start] + edit.Text + part[edit.End..];
+            }
+            else if (removal is null)
+            {
+                parts[index] = part.Insert(line.End, marker).Insert(line.Start, marker);
+            }
+        }
+        string formatted = string.Concat(parts);
+        return (new TextEdit(words.Start, words.Length, formatted), new TextRange(words.Start, formatted.Length));
     }
 
     private static bool Around(string text, TextRange range, string mark) =>

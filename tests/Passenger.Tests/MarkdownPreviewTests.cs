@@ -346,7 +346,8 @@ public sealed class MarkdownPreviewTests
     {
         string folder = TestFolders.Create("markdown-inline-");
         string readme = Path.Combine(folder, "README.md");
-        const string source = "## Installation\r\n\r\n- Keep **the original** spelling.\r\n\r\n```text\r\n## Literal heading\r\n```\r\n";
+        const string paragraphs = "First paragraph.\r\n\r\nSecond paragraph.";
+        const string source = "## Installation\r\n\r\n- Keep **the original** spelling.\r\n\r\n```text\r\n## Literal heading\r\n```\r\n\r\n" + paragraphs + "\r\n";
         File.WriteAllText(readme, source);
         MainWindow window = Ui.OpenFolder(folder, width: 1100, height: 680, languageServer: false);
         Assert.Null(window.OpenFile(readme));
@@ -365,6 +366,18 @@ public sealed class MarkdownPreviewTests
         Assert.InRange(Math.Abs(editor.PointOf(bold).X - editor.PointOf(bold + 2).X), 0, 1);
         int literal = source.IndexOf("## Literal", StringComparison.Ordinal);
         Assert.True(editor.PointOf(literal + 3).X > editor.PointOf(literal).X, "A fenced code line lost its Markdown characters");
+
+        editor.Focus();
+        editor.Select(new TextRange(source.IndexOf(paragraphs, StringComparison.Ordinal), paragraphs.Length));
+        string command = Keystroke.Command == KeyModifiers.Meta ? "meta" : "control";
+        foreach ((string key, string mark) in new[] { ("B", "**"), ("I", "_") })
+        {
+            Ui.Press(window, $"{command} {key}");
+            string formatted = $"{mark}First paragraph.{mark}\r\n\r\n{mark}Second paragraph.{mark}";
+            Assert.Equal(source.Replace(paragraphs, formatted, StringComparison.Ordinal), document.Snapshot.ToString());
+            Ui.Press(window, $"{command} {key}");
+            Assert.Equal(source, document.Snapshot.ToString());
+        }
 
         int click = source.IndexOf("ation", StringComparison.Ordinal);
         Ui.Click(editor, editor.PointOf(click) + new Vector(0, editor.LineHeight / 2));
