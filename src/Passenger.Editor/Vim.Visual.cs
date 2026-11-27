@@ -831,6 +831,20 @@ public sealed partial class Vim
             // Over empty lines alone before a macro line ending the text, the cursor goes to the last of them, the mode kept.
             return r with { Cursor = text.GetLineStart(last - 1) };
         }
+        if (last > 1 && r.Anchor == r.Cursor && text.GetLine(last) is { Length: > 0 } macro && VimMotions.Bound(text, last)
+            && VimMotions.LineOf(text, r.Cursor) is { Length: 0 } onEmpty && Enumerable.Range(onEmpty.Line, last - onEmpty.Line).All(line => VimMotions.Blank(text, line)))
+        {
+            // Above a macro line ending the text, its last two empty lines and three units take the last, else back to the text.
+            bool back = onEmpty.Line <= last - 3 && (inner ? n : 2 * n) <= 2;
+            return r with { Cursor = back ? LastWrittenBefore(text, onEmpty.Start) ?? 0 : text.GetLineStart(last - 1) };
+        }
+        if (inner && n % 2 == 1 && last > 0 && r.Anchor == r.Cursor && text.GetLine(last) is { Length: > 0 } lastMacro && VimMotions.Bound(text, last)
+            && r.Cursor > lastMacro.Start)
+        {
+            // Past its first character, an odd count of is reaches back as one more from that character does, the stretch begun there.
+            Region? from = SentencesOver(text, new Region(lastMacro.Start, lastMacro.Start), inner, n + 1, ref keeps);
+            return from is { } back ? new Region(lastMacro.Start, back.Cursor) : null;
+        }
         if (last > 0 && text.GetLine(last) is { Length: > 0 } ending && VimMotions.Bound(text, last)
             && r.Anchor <= ending.Start && (r.Cursor <= ending.Start || (r.Anchor < ending.Start && r.Cursor < VimMotions.StepBack(text, ending.End))))
         {
