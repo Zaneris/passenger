@@ -206,8 +206,9 @@ public sealed class MethodBreakpoint(string name, string? path = null, int line 
 }
 
 /// <summary>A CLR exception breakpoint: an exception type by its full name, or "Any exception", which every folder has
-/// and none removes, and the scenarios it stops in. "Any exception" stops on what the user's code leaves unhandled; a
-/// breakpoint on a type added since stops wherever it is thrown.</summary>
+/// and none removes, and the scenarios it stops in. "Any exception" stops on what the user's code leaves unhandled but a
+/// test framework's outcome signals (<see cref="Testing.TestOutcomeSignals"/>); a breakpoint on a type added since stops
+/// wherever it is thrown.</summary>
 public sealed class ExceptionBreakpoint(string? type) : Breakpoint
 {
     /// <summary>The name of the breakpoint on every exception.</summary>

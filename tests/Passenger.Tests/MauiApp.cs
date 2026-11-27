@@ -324,8 +324,9 @@ internal static class MauiApp
 
     /// <summary>A device test project's tests debugged from the Tests window where its project runs: its first test, empty as
     /// the template makes it, given a local and a breakpoint after it, the run stopping there with the local shown, then going
-    /// on to its end, each test told; the failing and skipped tests run beside it, so their exceptions may stop it before or
-    /// after, and it goes on past each. The window has the project open, its target chosen.</summary>
+    /// on to its end, each test told; the failing test runs beside it, so its failed assertion may stop it before or after, and
+    /// it goes on past that, but the skipped test's Assert.Inconclusive never stops it, as Any exception passes over a test
+    /// framework's outcome signals. The window has the project open, its target chosen.</summary>
     public static void DebugDeviceTests(MainWindow window, string project, string where, TimeSpan limit)
     {
         string tests = PathNames.Canonical(Path.Combine(Path.GetDirectoryName(project)!, "Test1.cs"));
@@ -352,6 +353,7 @@ internal static class MauiApp
             {
                 break;
             }
+            NotAtASkip(window, where);
             Assert.True(stops < 4, $"The debugged run {where} stopped at its tests' exceptions {stops + 1} times, never at TestMethod1's breakpoint:\n{DebugConsole(window)}");
             int seen = window.Debugger.Session!.Stops;
             Ui.Run(window, AppActions.Resume);
@@ -364,6 +366,7 @@ internal static class MauiApp
             Ui.Run(window, AppActions.Resume);
             Ui.WaitFor(() => debugged.IsCompleted || window.Debugger.Session?.State == Passenger.App.Debugging.DebugState.Paused,
                 () => $"the debugged run {where} to go on to its end: {window.BottomPanel.Tests.Status}\n{DebugConsole(window)}", limit);
+            NotAtASkip(window, where);
         }
         Ui.Launched(window, debugged, $"the debugged run's end {where}", limit);
         Assert.True(System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, $" in {SaidWhile.Pattern}$", string.Empty) == DeviceTestsRan,
@@ -371,6 +374,11 @@ internal static class MauiApp
         Ui.WaitFor(() => !window.Debugger.IsDebugging, $"the debug session {where} to end with the run", TimeSpan.FromMinutes(1));
 
         static string DebugConsole(MainWindow window) => window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
+
+        static void NotAtASkip(MainWindow window, string where) =>
+            Assert.False(window.Debugger.Session?.State == Passenger.App.Debugging.DebugState.Paused && window.Debugger.Stop?.Exception is { } exception
+                    && exception.Contains("AssertInconclusiveException", StringComparison.Ordinal),
+                $"The debugged run {where} stopped at the skipped test's Assert.Inconclusive, an outcome MSTest tells, at {Top(window)}");
     }
 
     /// <summary>The device or emulator to run on, of those listed: the one adb's ANDROID_SERIAL names, as adb itself takes

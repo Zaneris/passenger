@@ -408,14 +408,20 @@ public sealed class TestingPlatformDebuggingTests : TestingPlatformFolders, ICla
     public TestingPlatformDebuggingTests(RestoredFolders restored)
         : base(restored) => this.restored = restored;
 
-    /// <summary>Debug Tests at the caret stops at a breakpoint inside a test on the Testing Platform, and Stop as a
-    /// debugged run's test host starts leaves no test running and says why.</summary>
+    /// <summary>Debug Tests at the caret stops at a breakpoint inside a test on the Testing Platform, a debugged run stops at a
+    /// test's breakpoint and its own exception but never at a skip, and Stop as a debugged run's test host starts leaves no
+    /// test running and says why.</summary>
     [AvaloniaFact]
     public void Debug_Tests_on_the_Testing_Platform_stops_inside_a_test_and_Stop_as_its_host_starts_leaves_none_running()
     {
         Flow.StepApart<TestingPlatformDebuggingTests>("debug tests at the caret stops at a breakpoint inside a test on the platform", () => new TestingPlatformDebuggingTests(restored), t =>
         {
             t.Debug_tests_at_the_caret_stops_at_a_breakpoint_inside_a_test_on_the_platform();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<TestingPlatformDebuggingTests>("a debugged run stops at a test's breakpoint and its own exception but never at a skip", () => new TestingPlatformDebuggingTests(restored), t =>
+        {
+            t.A_debugged_run_stops_at_a_tests_breakpoint_and_its_own_exception_but_never_at_a_skip();
             OpenWindows.CloseAll();
         });
         Flow.StepApart<TestingPlatformDebuggingTests>("stop as a debugged run's test host starts leaves no test running and says why", () => new TestingPlatformDebuggingTests(restored), t =>
@@ -442,6 +448,51 @@ public sealed class TestingPlatformDebuggingTests : TestingPlatformFolders, ICla
         Assert.Equal(TestState.Passed, Method(window, "Two_and_two_make_four")!.State);
         Assert.Equal(TestState.NotRun, Method(window, "Two_and_two_make_five")!.State);
         Ui.WaitFor(() => window.Debugger.Session is null || window.Debugger.Session.State == DebugState.Ended, "the test host to end once its run was done");
+        window.Close();
+    }
+
+    /// <summary>A class's tests debugged with Any exception on, as every folder has it, in whatever order xUnit runs them: the
+    /// run stops at one's breakpoint and at the exception another's own code leaves to xUnit, each once, and never at a third's
+    /// Assert.Skip, which xUnit catches to tell the test skipped (TestOutcomeSignals); then the run ends, each test told.</summary>
+    private void A_debugged_run_stops_at_a_tests_breakpoint_and_its_own_exception_but_never_at_a_skip()
+    {
+        string tests = Write(folder, "OutcomeTests.cs", "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class OutcomeTests\n{\n" +
+            "    [Fact]\n    public void Skips_as_it_runs() => Assert.Skip(\"not on this machine\");\n\n" +
+            "    [Fact]\n    public void Throws_its_own() => throw new InvalidOperationException(\"its own\");\n\n" +
+            "    [Fact]\n    public void Stops_at_its_breakpoint()\n    {\n        int reached = 1;\n        Assert.Equal(1, reached);\n    }\n}\n");
+        MainWindow window = Open();
+        window.OpenFile(tests);
+        Ui.Settle();
+        Ui.WaitFor(() => Method(window, "Skips_as_it_runs") is not null, "the outcome tests read from the code");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(15, 8));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        editor.GoTo(new TextPosition(4, 13));
+        Ui.Run(window, AppActions.DebugTests);
+        List<string> stops = [];
+        // The stops taken so far, counted as each is taken: the next may come while Resume settles.
+        int taken = 0;
+        while (true)
+        {
+            Ui.WaitFor(() => !window.Tests.IsBusy || (window.Debugger.Session is { State: DebugState.Paused, Stops: int now } && now > taken && window.Debugger.Stop is not null),
+                () => $"the debugged run to stop or end after {(stops.Count == 0 ? "no stop" : Plural.Listed(stops))}: {window.BottomPanel.Tests.Status}\n{Ui.Said(window)}", TimeSpan.FromSeconds(180));
+            if (!window.Tests.IsBusy)
+            {
+                break;
+            }
+            taken = window.Debugger.Session!.Stops;
+            string top = window.Debugger.Stop!.Top?.Name ?? "no frame";
+            stops.Add(window.Debugger.Session!.StopReason == "exception" ? $"{window.Debugger.Stop.Exception} in {top}" : $"{window.Debugger.Session.StopReason} in {top}");
+            Assert.True(stops.Count <= 2 && !top.Contains("Skips_as_it_runs", StringComparison.Ordinal),
+                $"The debugged run stopped at {Plural.Listed(stops)}, where it stops at the breakpoint and the test's own exception alone, never at a skip xUnit tells");
+            Ui.Run(window, AppActions.Resume);
+        }
+        Assert.True(stops.Count == 2 && stops.Any(s => s.StartsWith("breakpoint in ", StringComparison.Ordinal) && s.Contains("Stops_at_its_breakpoint", StringComparison.Ordinal))
+                && stops.Any(s => s.Contains("InvalidOperationException", StringComparison.Ordinal) && s.Contains("Throws_its_own", StringComparison.Ordinal)),
+            $"The debugged run stopped at {Plural.Listed(stops)}, not once at the breakpoint and once at the test's own exception");
+        Assert.True(Method(window, "Skips_as_it_runs")!.State == TestState.Skipped, $"The test that skips as it runs is {Method(window, "Skips_as_it_runs")!.State}, not skipped");
+        Assert.Equal(TestState.Failed, Method(window, "Throws_its_own")!.State);
+        Assert.Equal(TestState.Passed, Method(window, "Stops_at_its_breakpoint")!.State);
         window.Close();
     }
 

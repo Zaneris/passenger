@@ -50,7 +50,10 @@ Data and property breakpoints belong to one debugging session and are never writ
   left out, from 1 to 10,000), its later hits passing by.
 - An exception breakpoint's `type` is its full name, or `Any exception`. `scenarios` lists where it stops, as
   `breakpoint_set` takes them: `thrownInUserCode`, `thrownInExternalCode`, `handledInUserCode`, `handledInExternalCode`,
-  `unhandled`; left out, a type's stops in all of them.
+  `unhandled`; left out, a type's stops in all of them. `Any exception` passes over the exceptions a test framework
+  throws to end a test without failing it (MSTest's `Assert.Inconclusive`, NUnit's `Assert.Inconclusive`, `Assert.Ignore`
+  and `Assert.Pass`, xUnit's `Assert.Skip`, TUnit's `Skip.Test`), stopping at a failed assertion as at any exception a
+  test leaves to its framework; a breakpoint on one of those types stops at it.
 - What a breakpoint does by default is left out of an exported file. Comments and trailing commas are read.
 
 ## Snapshot points

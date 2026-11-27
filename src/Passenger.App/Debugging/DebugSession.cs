@@ -1529,10 +1529,11 @@ public sealed class DebugSession
 
     /// <summary>The exception breakpoints that are on, as the protocol's exception options, but those whose scenarios never stop
     /// (<see cref="ExceptionBreakpoint.Inactive"/>), which no debugger is to stop at; none while muted, so no exception stops
-    /// the program, not even one left unhandled.</summary>
+    /// the program, not even one left unhandled. Any exception is every type but a test framework's outcome signals
+    /// (<see cref="Testing.TestOutcomeSignals"/>).</summary>
     private List<(ExceptionBreakpoint Breakpoint, DapExceptionOptions Option)> ExceptionOptions() => breakpoints.Muted ? [] :
         [.. breakpoints.Exceptions.Where(e => e.Enabled && e.Inactive is null).Select(e => (e, new DapExceptionOptions(
-            e.Type is { } type ? [new DapExceptionPathSegment(["CLR"]), new DapExceptionPathSegment([type])] : [new DapExceptionPathSegment(["CLR"])],
+            [new DapExceptionPathSegment(["CLR"]), e.Type is { } type ? new DapExceptionPathSegment([type]) : new DapExceptionPathSegment(Testing.TestOutcomeSignals.Exceptions, Negate: true)],
             e.Scenarios.HasFlag(ExceptionScenarios.HandledInUserCode) ? DapBreakModes.Always
                 : e.Scenarios.HasFlag(ExceptionScenarios.HandledInExternalCode) ? DapBreakModes.UserUnhandled : DapBreakModes.Unhandled)
         {
