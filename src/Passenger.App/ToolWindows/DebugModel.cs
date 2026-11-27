@@ -298,6 +298,7 @@ public sealed class DebugModel
 
     /// <summary>Whether the Console tab is shown, rather than the Debugger's.</summary>
     public bool IsConsoleShown { get; private set; }
+    public bool IsMemoryShown { get; private set; }
 
     /// <summary>Whether the Telemetry tab is shown, the chosen program's logs and traces, rather than the Debugger's or its console.</summary>
     public bool IsTelemetryShown { get; private set; }
@@ -477,18 +478,22 @@ public sealed class DebugModel
         EvaluateFocused?.Invoke(this, EventArgs.Empty);
     }
 
-    public void ShowTab(bool console)
+    public void ShowTab(bool console, bool memory = false)
     {
-        IsConsoleShown = console;
+        IsConsoleShown = console && !memory;
+        IsMemoryShown = memory;
         IsTelemetryShown = false;
         IsSnapshotsShown = false;
         IsTimelineShown = false;
         TabShown?.Invoke(this, EventArgs.Empty);
     }
 
+    public void ShowMemory() => ShowTab(console: false, memory: true);
+
     /// <summary>Shows the Telemetry tab, where the chosen program's run collects logs and traces.</summary>
     public void ShowTelemetry()
     {
+        IsMemoryShown = false;
         IsConsoleShown = false;
         IsTelemetryShown = true;
         IsSnapshotsShown = false;
@@ -499,6 +504,7 @@ public sealed class DebugModel
     /// <summary>Shows the Snapshots tab, the folder's snapshot points' captures.</summary>
     public void ShowSnapshots()
     {
+        IsMemoryShown = false;
         IsConsoleShown = false;
         IsTelemetryShown = false;
         IsSnapshotsShown = true;
@@ -509,6 +515,7 @@ public sealed class DebugModel
     /// <summary>Shows the Timeline tab, the chosen program's recorded moments, read anew.</summary>
     public void ShowTimelineTab()
     {
+        IsMemoryShown = false;
         IsConsoleShown = false;
         IsTelemetryShown = false;
         IsSnapshotsShown = false;
@@ -590,6 +597,7 @@ public sealed class DebugModel
     internal void ToggleDataBreakpoint(VariableNode node) => DataBreakpointRequested?.Invoke(this, node);
 
     internal void OpenText(VariableNode node) => TextOpened?.Invoke(this, node);
+
 
     internal void Choose(DebugTab tab) => SessionChosen?.Invoke(this, tab);
 

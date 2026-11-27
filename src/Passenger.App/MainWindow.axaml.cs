@@ -763,7 +763,10 @@ public partial class MainWindow : IdeWindow
     {
         NavigateTo(path, position);
         ShowToolWindow(ToolWindowIds.Debug);
-        Bottom.Debug.ShowTab(console: false);
+        if (!Bottom.Debug.IsMemoryShown)
+        {
+            Bottom.Debug.ShowTab(console: false);
+        }
     }
 
     /// <summary>Stop can be clicked while there is something to stop: a debug session, a program Run or Profile

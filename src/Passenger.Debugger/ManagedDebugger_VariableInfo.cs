@@ -933,6 +933,7 @@ public partial class ManagedDebugger
             Type = type,
             PresentationHint = failed ? FailedHint(shown) : null,
             VariablesReference = GetVariablesReference(opens?.Invoke() ?? value, threadId, stackDepth, proxy, namesPointee ? name : null, declared, expression),
+            MemoryReference = !failed && ReferencedMemoryAddress(value) is ulong address && address != 0 ? Address(address) : null,
             Mark = MarkOf(value),
         };
     }

@@ -128,6 +128,13 @@ public sealed class VariablesList : TreeList
     /// <summary>Mark Object on a row, or Unmark Object on a marked one; offered only where it is heard.</summary>
     public event EventHandler<VariableNode>? MarkRequested;
 
+    public const string ViewMemory = "View Memory";
+
+    /// <summary>Opens a live pointer's address in the Memory window, where the list offers it.</summary>
+    public event EventHandler<(string Address, string? Expression)>? MemoryRequested;
+
+    internal Func<bool> CanReadMemory { get; set; } = () => false;
+
     /// <summary>Why the debugger whose values the rows are marks no object, where it cannot; Mark Object greys saying so.</summary>
     public Func<string?> MarksWhyNot { get; set; } = () => null;
 
@@ -200,6 +207,10 @@ public sealed class VariablesList : TreeList
         if (PinRequested is not null)
         {
             items.Add(ListMenus.Item(DebugController.PinToLineTitle, () => PinRequested?.Invoke(this, node), node.NoExpression));
+        }
+        if (MemoryRequested is not null && node is { Captured: false, MemoryReference: { } address } && CanReadMemory())
+        {
+            items.Add(ListMenus.Item(ViewMemory, () => MemoryRequested?.Invoke(this, (address, node.Expression))));
         }
         if (MarkRequested is not null)
         {

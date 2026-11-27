@@ -20,6 +20,7 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         await Flow.StepApartAsync("an exception wrapping another reports the inner one", () => new VariablesCasesTests(testOutputHelper), t => t.An_exception_wrapping_another_reports_the_inner_one());
         await Flow.StepApartAsync("a union shows the value it holds as that values type opening to its members", () => new VariablesCasesTests(testOutputHelper), t => t.A_union_shows_the_value_it_holds_as_that_values_type_opening_to_its_members());
         await Flow.StepApartAsync("a pointer shows its address and type and opens to what it points at", () => new VariablesCasesTests(testOutputHelper), t => t.A_pointer_shows_its_address_and_type_and_opens_to_what_it_points_at());
+        await Flow.StepApartAsync("the Memory tab can follow a managed reference and read objects, arrays and strings", () => new VariablesCasesTests(testOutputHelper), t => t.A_managed_reference_leads_to_the_bytes_of_its_current_object());
         await Flow.StepApartAsync("DebuggerDisplay renders as Visual Studio does", () => new VariablesCasesTests(testOutputHelper), t => t.DebuggerDisplay_renders_as_Visual_Studio_does());
         await Flow.StepApartAsync("a value whose ToString throws shows its type and opens to its members", () => new VariablesCasesTests(testOutputHelper), t => t.A_value_whose_ToString_throws_shows_its_type_and_opens_to_its_members());
     }
@@ -106,8 +107,69 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
         EvaluateResponse address = await host.EvaluateAsync(frame, "pointer");
         Assert.Equal((pointer.Value, "int*"), (address.Result, address.Type));
+        Assert.Equal(pointer.Value, pointer.MemoryReference);
+        Assert.Equal(pointer.MemoryReference, address.MemoryReference);
+        ReadMemoryResponse memory = await host.RequestAsync<ReadMemoryResponse>(DapCommands.ReadMemory,
+            new ReadMemoryArguments(pointer.MemoryReference!, sizeof(int)));
+        Assert.Equal(BitConverter.GetBytes(42), memory.Data);
+        Assert.Null(memory.UnreadableBytes);
+        Assert.True(MemoryAddresses.TryParse(memory.Address, out ulong start));
+        Assert.Equal(MemoryAddresses.Show(start), (await host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("pointer", frame))).Address);
+        Assert.Equal(MemoryAddresses.Show(start + sizeof(int)), (await host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("pointer + 1", frame))).Address);
+        Assert.Equal(MemoryAddresses.Show(start), (await host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("(nuint)pointer", frame))).Address);
+        Assert.Equal(MemoryAddresses.Show(start), (await host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("&number", frame))).Address);
+        await Assert.ThrowsAsync<DapException>(() => host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("pointer++", frame)));
         EvaluateResponse read = await host.EvaluateAsync(frame, "*pointer");
         Assert.Equal(("42", "int"), (read.Result, read.Type));
+    }
+
+    private async Task A_managed_reference_leads_to_the_bytes_of_its_current_object()
+    {
+        int line = Debuggees.Line("PassengerCases", "Console.WriteLine($\"managed memory");
+        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", line, []);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        Assert.Equal(line, stop.ReadStopInfo().line);
+        int thread = stop.ThreadId!.Value;
+        int frame = (await host.TopFrameAsync(thread)).Id;
+        List<DapVariable> locals = await host.LocalsAsync(stop);
+        string? ReferenceOf(string name) => Assert.Single(locals, row => row.Name == name).MemoryReference;
+        async Task<string> AddressOf(string expression) =>
+            (await host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments(expression, frame))).Address;
+        Task<ReadMemoryResponse> Read(string address, int count = 40) =>
+            host.RequestAsync<ReadMemoryResponse>(DapCommands.ReadMemory, new ReadMemoryArguments(address, count));
+
+        string first = await AddressOf("item");
+        Assert.Equal(ReferenceOf("item"), first, ignoreCase: true);
+        Assert.True((await Read(first)).Data.AsSpan().IndexOf(BitConverter.GetBytes(0x12345678)) >= 0);
+
+        string buffer = await AddressOf("buffer");
+        Assert.Equal(ReferenceOf("buffer"), buffer, ignoreCase: true);
+        byte[] known = [0xd1, 0xe2, 0xf3, 0xa4];
+        Assert.True((await Read(buffer)).Data.AsSpan().IndexOf(known) >= 0);
+        Assert.Equal(known, (await Read(await AddressOf("data"), known.Length)).Data);
+
+        string label = await AddressOf("label");
+        Assert.Equal(ReferenceOf("label"), label, ignoreCase: true);
+        ReadMemoryResponse text = await Read(label, 64);
+        System.Text.Encoding encoding = text.LittleEndian ? System.Text.Encoding.Unicode : System.Text.Encoding.BigEndianUnicode;
+        Assert.True(text.Data.AsSpan().IndexOf(encoding.GetBytes("managed memory")) >= 0);
+
+        stop = await host.StepOverAsync(thread).WaitForStoppedEvent();
+        Assert.Equal(Debuggees.Line("PassengerCases", "item = replacement;"), stop.ReadStopInfo().line);
+        stop = await host.StepOverAsync(thread).WaitForStoppedEvent();
+        Assert.Equal(Debuggees.Line("PassengerCases", "item = null;"), stop.ReadStopInfo().line);
+        frame = (await host.TopFrameAsync(thread)).Id;
+        string second = await AddressOf("item");
+        Assert.NotEqual(first, second);
+        Assert.Equal(await AddressOf("replacement"), second);
+        Assert.True((await Read(second)).Data.AsSpan().IndexOf(BitConverter.GetBytes(0x23456789)) >= 0);
+
+        stop = await host.StepOverAsync(thread).WaitForStoppedEvent();
+        frame = (await host.TopFrameAsync(thread)).Id;
+        locals = await host.LocalsAsync(stop);
+        Assert.Null(ReferenceOf("item"));
+        DapException nullAddress = await Assert.ThrowsAsync<DapException>(() => AddressOf("item"));
+        Assert.Contains("resolved to null", nullAddress.Reason, StringComparison.Ordinal);
     }
 
     private async Task DebuggerDisplay_renders_as_Visual_Studio_does()

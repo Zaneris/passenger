@@ -12,19 +12,24 @@ namespace Passenger.Debugger.ExpressionEvaluator.Cil;
 /// <summary>An expression's value in the program, or a string the evaluation made that the program could not be given
 /// (<see cref="Text"/>: it runs no code where it is stopped), with no value in the program, or none at all where it is a
 /// call that returns nothing (<see cref="Void"/>).</summary>
-internal readonly record struct CilInterpretationResult(ICorDebugValue? Value, ICorDebugHandleValue? OwnedResultHandle, string? Text = null, bool Void = false);
+internal readonly record struct CilInterpretationResult(ICorDebugValue? Value, ICorDebugHandleValue? OwnedResultHandle, string? Text = null, bool Void = false, ulong? Address = null);
 
 internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPrimitiveTypeClasses primitiveTypes)
 {
     /// <summary>What an expression stopped before it finished says.</summary>
     internal const string TookTooLong = "The expression took too long to evaluate";
 
-    public async Task<CilInterpretationResult> InterpretAsync(CompiledEvaluationMethod compiled, CompiledExpressionEvaluationContext context, Lazy<DelegateMaterializerAssembly> delegateMaterializer)
+    public async Task<CilInterpretationResult> InterpretAsync(CompiledEvaluationMethod compiled, CompiledExpressionEvaluationContext context, Lazy<DelegateMaterializerAssembly> delegateMaterializer,
+        bool addressOnly = false)
     {
         using EvaluationHandleScope handles = new EvaluationHandleScope();
         MethodDefinition method = compiled.MetadataReader.GetMethodDefinition(compiled.EntryMethod);
         MethodBodyBlock body = compiled.PeReader.GetMethodBody(method.RelativeVirtualAddress);
         DecodedMethod decoded = compiled.GetDecodedMethod(compiled.EntryMethod);
+        if (addressOnly && !decoded.Instructions.All(i => ReadsAddress(i.Code)))
+        {
+            throw new InvalidOperationException("Use an address expression that can be read without running the program");
+        }
         ICorDebugILFrame? frame = context.RootValue is null ? debugger.GetIlFrameForThreadIdAndStackDepth(context.ThreadId, context.StackDepth) : null;
         Func<ICorDebugILFrame> refind = () => debugger.GetIlFrameForThreadIdAndStackDepth(context.ThreadId, context.StackDepth);
         EvaluationMetadataResolver resolver = CreateResolver(compiled, context, frame);
@@ -32,16 +37,27 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         ICilLocation[] locals = CreateLocals(compiled, resolver, frame, body.LocalSignature, context.RootValue is not null, refind, debugger.LocalCountOf);
         ExpressionTime time = new ExpressionTime(Deadline.In(Extensions.EvaluationTimeout));
         await using DebuggeeDelegateAssemblyLoader delegateAssemblyLoader = new DebuggeeDelegateAssemblyLoader(debugger, compiled, resolver, context, handles, delegateMaterializer, time);
-        Interpretation run = new Interpretation(compiled, resolver, context, handles, delegateAssemblyLoader, time, Stopwatch.GetTimestamp(), debugger.EvalStatus.Leaving);
+        Interpretation run = new Interpretation(compiled, resolver, context, handles, delegateAssemblyLoader, time, Stopwatch.GetTimestamp(), debugger.EvalStatus.Leaving, addressOnly);
         debugger.EvalStatus.Expression = time;
         try
         {
-            if (resolver.NamesTypesOfItsOwn())
+            if (!addressOnly && resolver.NamesTypesOfItsOwn())
             {
                 await delegateAssemblyLoader.LoadOwnTypesAsync();
             }
             CilValue result = await InterpretAsync(run, decoded, arguments, locals);
-            if (resolver.ResolveMethodReturnType(compiled.EntryMethod).Primitive is PrimitiveTypeCode.Void)
+            ResolvedCilType returned = resolver.ResolveMethodReturnType(compiled.EntryMethod);
+            if (addressOnly)
+            {
+                ulong? address = ManagedDebugger.ReferencedMemoryAddress(result.CorValue);
+                if (address is null && (returned.IsPointer || returned.Primitive is PrimitiveTypeCode.IntPtr or PrimitiveTypeCode.UIntPtr))
+                {
+                    address = AddressOperand(result).AsUInt64();
+                }
+                return new CilInterpretationResult(null, null, Address: address
+                    ?? throw new InvalidOperationException("The expression must refer to an object or evaluate to a pointer or native integer (nint or nuint)"));
+            }
+            if (returned.Primitive is PrimitiveTypeCode.Void)
             {
                 return new CilInterpretationResult(null, null, Void: true);
             }
@@ -50,7 +66,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             {
                 value = result.Value is EvaluationDelegate
                     ? await MaterializeDelegateAsync(result, compiled, resolver, delegateAssemblyLoader, context, handles)
-                    : await MaterializeAsync(result, context, handles, resolver.ResolveMethodReturnType(compiled.EntryMethod), resolver);
+                    : await MaterializeAsync(result, context, handles, returned, resolver);
             }
             catch (ManagedDebugger.EvalRefusedException) when (result is { Value: string, CorValue: null })
             {
@@ -64,6 +80,38 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         }
     }
 
+    /// <summary>Only instructions that read existing values or compute an address may run for the Memory tab.</summary>
+    private static bool ReadsAddress(ILOpCode code) => code is ILOpCode.Nop or ILOpCode.Ret
+        or >= ILOpCode.Ldarg_0 and <= ILOpCode.Ldloc_3
+        or ILOpCode.Ldarg or ILOpCode.Ldarg_s or ILOpCode.Ldarga or ILOpCode.Ldarga_s
+        or ILOpCode.Ldloc or ILOpCode.Ldloc_s or ILOpCode.Ldloca or ILOpCode.Ldloca_s
+        or >= ILOpCode.Ldc_i4_m1 and <= ILOpCode.Ldc_i8
+        or ILOpCode.Ldfld or ILOpCode.Ldflda or ILOpCode.Sizeof
+        or ILOpCode.Add or ILOpCode.Sub or ILOpCode.Mul or ILOpCode.Neg
+        or ILOpCode.Conv_i or ILOpCode.Conv_u or ILOpCode.Conv_i4 or ILOpCode.Conv_u4 or ILOpCode.Conv_i8 or ILOpCode.Conv_u8;
+
+    private static CilValue AddressOperand(CilValue value)
+    {
+        ulong address;
+        if (value.CorValue is ICorDebugReferenceValue { Type: CorElementType.PTR } pointer)
+        {
+            address = pointer.Value.Value;
+        }
+        else if (value.Location is { } location)
+        {
+            if (location is not IDebuggeeLocation storage || storage.Value.TryGetAddress(out CORDB_ADDRESS at) != Cor.S_OK || at.Value == 0)
+            {
+                throw new InvalidOperationException("This value has no address in the paused program");
+            }
+            address = at.Value;
+        }
+        else
+        {
+            return value;
+        }
+        return CilValue.FromPrimitive(CilValue.PointerSize == 4 ? (object)(uint)address : address);
+    }
+
     /// <summary>One expression's interpretation, shared by the evaluation methods it calls: what it has made, and when it
     /// is given up (its <see cref="ExpressionTime.Due"/>, or a request that leaves the stop), so a loop it runs never holds
     /// the engine's lock for good. <paramref name="Began"/> is a <see cref="Stopwatch"/> timestamp.</summary>
@@ -75,7 +123,8 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         DebuggeeDelegateAssemblyLoader Delegates,
         ExpressionTime Time,
         long Began,
-        CancellationToken Leaving)
+        CancellationToken Leaving,
+        bool AddressOnly)
     {
         public Dictionary<string, ICilLocation> SyntheticVariables { get; } = new(StringComparer.Ordinal);
         public Dictionary<FieldDefinitionHandle, ICilLocation> StaticFields { get; } = [];
@@ -299,7 +348,9 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                         or ILOpCode.Add_ovf or ILOpCode.Add_ovf_un or ILOpCode.Sub_ovf or ILOpCode.Sub_ovf_un or ILOpCode.Mul_ovf or ILOpCode.Mul_ovf_un:
                     {
                         CilValue right = stack.Pop();
-                        stack.Push(CilNumerics.Binary(instruction.Code, stack.Pop(), right));
+                        CilValue left = stack.Pop();
+                        stack.Push(run.AddressOnly ? CilNumerics.Binary(instruction.Code, AddressOperand(left), AddressOperand(right))
+                            : CilNumerics.Binary(instruction.Code, left, right));
                         break;
                     }
                     case ILOpCode.Ceq or ILOpCode.Cgt or ILOpCode.Cgt_un or ILOpCode.Clt or ILOpCode.Clt_un:
@@ -311,8 +362,11 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                     case >= ILOpCode.Conv_i1 and <= ILOpCode.Conv_u8 or ILOpCode.Conv_r_un or >= ILOpCode.Conv_ovf_i1_un and <= ILOpCode.Conv_ovf_u_un
                         or >= ILOpCode.Conv_ovf_i1 and <= ILOpCode.Conv_ovf_u8 or ILOpCode.Conv_u2 or ILOpCode.Conv_u1 or ILOpCode.Conv_i
                         or ILOpCode.Conv_ovf_i or ILOpCode.Conv_ovf_u or ILOpCode.Conv_u:
-                        stack.Push(CilNumerics.Convert(instruction.Code, stack.Pop()));
+                    {
+                        CilValue value = stack.Pop();
+                        stack.Push(CilNumerics.Convert(instruction.Code, run.AddressOnly ? AddressOperand(value) : value));
                         break;
+                    }
                     case ILOpCode.Br or ILOpCode.Br_s:
                         index = offsets[instruction.Target];
                         break;

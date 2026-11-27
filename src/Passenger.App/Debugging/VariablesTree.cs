@@ -90,6 +90,9 @@ public sealed class VariableNode(string name, string value, string? type, int re
     /// <summary>The label of the marked object its value is ($1), which its row shows beside the value; null for any other.</summary>
     public string? Mark { get; init; }
 
+    /// <summary>The address a live pointer or managed reference names for the Memory window.</summary>
+    public string? MemoryReference { get; init; }
+
     /// <summary>A snapshot's value, read as the program ran on, which has run on since: no expression reaches it now.</summary>
     public bool Captured { get; init; }
 
@@ -152,6 +155,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
             NeedsThreads = SaysNeedsThreads(variable.PresentationHint),
             Unsettable = variable.Unsettable,
             Mark = variable.Mark,
+            MemoryReference = variable.MemoryReference,
         };
 
     /// <summary>A lazy row as what it read: the debugger's one variable in its place, by its name, or why it read none.</summary>
@@ -166,6 +170,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
             WasRead = true,
             NeedsThreads = SaysNeedsThreads(read?.PresentationHint),
             Mark = read?.Mark,
+            MemoryReference = read?.MemoryReference,
         };
 
     /// <summary>A row as its expression read again with every thread let go, in its place: a watch stays a watch.</summary>
@@ -179,6 +184,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
             IsCopy = row.IsCopy,
             NeedsThreads = SaysNeedsThreads(read.PresentationHint),
             Mark = read.Mark,
+            MemoryReference = read.MemoryReference,
         };
 }
 
