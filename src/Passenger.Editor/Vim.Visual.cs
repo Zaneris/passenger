@@ -79,6 +79,10 @@ public sealed partial class Vim
     /// <summary>The spaces a block's A padded each line it inserts on with, top to bottom, for the session to remember.</summary>
     private int[]? blockPads;
 
+    /// <summary>The spaces a block's I put before a character its edge cut, each line top to bottom, taken away again where
+    /// the session types nothing.</summary>
+    private int[]? blockCutPads;
+
     /// <summary>A block's insert session as it began: the text then, each caret's line, top to bottom, and the spaces
     /// padding it, for what it types with a line break to go on the first line alone.</summary>
     private (TextSnapshot Text, int[] Lines, int[] Pads)? blockStart;

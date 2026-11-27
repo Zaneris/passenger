@@ -384,6 +384,7 @@ public sealed partial class Vim
         List<TextEdit> pads = [];
         List<int> places = [];
         List<int> padded = [];
+        List<int> cutPads = [];
         for (int line = top; line <= bottom; line++)
         {
             LineSpan span = text.GetLine(line);
@@ -394,13 +395,21 @@ public sealed partial class Vim
                 if (width >= left)
                 {
                     int place = width == left ? span.End : BlockPiece(text, line, left, right, tab)!.Value.Start;
-                    if (place < span.End && TextNavigation.VisualColumn(text, place, tab) is var cut && cut < left)
+                    int cutPad = place < span.End && TextNavigation.VisualColumn(text, place, tab) is var cut && cut < left ? left - cut : 0;
+                    if (cutPad > 0 && line == top)
+                    {
+                        // Where it cuts one on its first line, the text goes before that character there alone.
+                        (places, padded, cutPads) = ([place], [0], [0]);
+                        break;
+                    }
+                    if (cutPad > 0)
                     {
                         // A character of several columns the block's edge cuts stays whole after the text, spaces before it to the edge.
-                        pads.Add(new TextEdit(place, 0, new string(' ', left - cut)));
+                        pads.Add(new TextEdit(place, 0, new string(' ', cutPad)));
                     }
                     places.Add(place);
                     padded.Add(0);
+                    cutPads.Add(cutPad);
                 }
                 continue;
             }
@@ -430,6 +439,7 @@ public sealed partial class Vim
         }
         blockCorner = BlockPiece(text, top, left, right, tab)?.Start ?? text.GetLine(top).End;
         blockPads = [.. padded];
+        blockCutPads = cutPads.Any(pad => pad > 0) ? [.. cutPads] : null;
         if (pads.Count == 0)
         {
             return Insert(text, SelectionSet.Create([.. places.Select(Selection.At)], 0), command, how);

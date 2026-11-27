@@ -135,10 +135,11 @@ public sealed partial class Vim
             case "m" or "mo" or "move" or "t" or "co" or "cop" or "copy":
                 return MovedOrCopied(name[0] == 'm', trimmed, first, end, caretLine, text, view);
             case "j" or "join":
-                // Equal ends join nothing, nor the last line: the caret goes to the range's line, in its column.
+                // Equal ends join nothing, nor the last line: the caret goes to the range's line, in its column, j and k's kept where it stays.
                 return (bothEnds && first == end ? null : Join(text, SelectionSet.Single(text.GetLineStart(first)), Math.Max(2, end - first + 1), view, spaced: !bang, Options.JoinSpaces)) is { } joined
                     ? new VimResult(true, Edits: [OnFirstNonBlank(text, joined, first)])
-                    : new VimResult(true, SelectionSet.Single(InColumn(text, first, selections.Primary.Caret)));
+                    : InColumn(text, first, selections.Primary.Caret) is var stays && stays == selections.Primary.Caret
+                        ? new VimResult(true) : new VimResult(true, SelectionSet.Single(stays));
             case ">" or ">>" or ">>>" or "<" or "<<" or "<<<":
                 Stretch shifted = Whole(text, first, end, text.GetLineStart(first));
                 VimResult moved = Shift(text, SelectionSet.Single(text.GetLineStart(first)), [shifted], name[0] == '>', view, name.Length);

@@ -512,6 +512,15 @@ public sealed partial class Vim(VimRegisters registers)
             plans.Add(kept);
             (text, selections) = (text.Apply(kept.Edits), kept.Selections);
         }
+        if (blockCutPads is { } cuts && typed is "" && selections.Count == cuts.Length)
+        {
+            // A block's I that typed nothing leaves no spaces before the characters its edge cut.
+            List<TextEdit> uncut = [.. selections.Items.Select((c, i) => (c.Caret, Pad: cuts[i])).Where(p => p.Pad > 0).Select(p => new TextEdit(p.Caret - p.Pad, p.Pad, string.Empty))];
+            EditPlan kept = new(uncut, TextEditing.MapThrough(selections, uncut), EditKind.Joined);
+            plans.Add(kept);
+            (text, selections) = (text.Apply(kept.Edits), kept.Selections);
+        }
+        blockCutPads = null;
         blockStart = null;
         if (typingIntoEmptied && typed is "" && text.Length == view.LineEnding.Length && text.GetText(0, text.Length) == view.LineEnding)
         {
