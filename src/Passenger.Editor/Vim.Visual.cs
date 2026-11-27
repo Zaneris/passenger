@@ -835,8 +835,9 @@ public sealed partial class Vim
             // Over empty lines alone before a macro line ending the text, the cursor goes to the last of them, the mode kept.
             return r with { Cursor = text.GetLineStart(last - 1) };
         }
-        if (last > 1 && r.Anchor == r.Cursor && text.GetLine(last) is { Length: > 0 } macro && VimMotions.Bound(text, last)
-            && VimMotions.LineOf(text, r.Cursor) is { Length: 0 } onEmpty && Enumerable.Range(onEmpty.Line, last - onEmpty.Line).All(line => VimMotions.Blank(text, line)))
+        if (last > 1 && r.Anchor <= r.Cursor && text.GetLine(last) is { Length: > 0 } macro && VimMotions.Bound(text, last)
+            && VimMotions.LineOf(text, r.Cursor) is { Length: 0 } onEmpty && Enumerable.Range(onEmpty.Line, last - onEmpty.Line).All(line => VimMotions.Blank(text, line))
+            && (r.Anchor == r.Cursor || onEmpty.Line > last - 3 || (inner ? n : 2 * n) > 2))
         {
             // Above a macro line ending the text, its last two empty lines and three units take the last, else back to the text.
             bool back = onEmpty.Line <= last - 3 && (inner ? n : 2 * n) <= 2;

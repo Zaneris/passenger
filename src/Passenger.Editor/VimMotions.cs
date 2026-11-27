@@ -971,9 +971,9 @@ public static class VimMotions
             {
                 int sentence = next;
                 if (MacroStart(text, last, sentence) && LineOf(text, sentence) is var macroLine && text.GetLine(macroLine.Line + 1).Start is var below
-                    && WhiteEnd(text, last, sentence, below) is var linesWhite && WrittenIn(text, below, linesWhite))
+                    && WhiteEnd(text, last, sentence, below) is var linesWhite && WrittenIn(text, below, linesWhite) && text[below] is not (' ' or '\t'))
                 {
-                    // A macro line after the white is a sentence whose white, the next line's sentence, goes with it.
+                    // A macro line after the white is a sentence whose white, an unindented next line's sentence, goes with it.
                     (to, next, toEmpty) = (linesWhite, linesWhite, false);
                     continue;
                 }
