@@ -111,7 +111,7 @@ public sealed class UpdateHandlerHook : IDisposable
             IdeErrors.Write($"Hot Reload could not listen for {name}'s update handlers on its device, so they are not called: {error.Message}");
             return null;
         }
-        string socket = $"passenger-handlers-{Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant()}";
+        string socket = Run.Devices.DeviceSockets.Named("handlers");
         DeviceReach reach = new(socket, ((IPEndPoint)listener.LocalEndPoint!).Port, Convert.ToHexString(RandomNumberGenerator.GetBytes(16)));
         return new UpdateHandlerHook(null, listener, reach);
     }

@@ -155,6 +155,7 @@ public static class DeviceLaunches
         {
             IdeLog.Write(IdeLog.Ide, $"What an earlier start left in {app.Package} on {target.Name} may not all be out: {unleft.Said}");
         }
+        await TakeOutLeftRulesAsync(app);
         return (plan with
         {
             Program = app.Adb,
@@ -274,7 +275,7 @@ public static class DeviceLaunches
             return (null, null, $"{app.Package} is not a Debug build Passenger can {(relayed ? "debug" : "inspect")}: its build left no environment for {abi} ({built})");
         }
         string token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
-        string socket = $"passenger-debug-{Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant()}";
+        string socket = DeviceSockets.Named("debug");
         IReadOnlyList<KeyValuePair<string, string>> variables = AndroidEnvironment.Read(await File.ReadAllBytesAsync(built, cancel));
         if (relayed)
         {
@@ -361,13 +362,15 @@ public static class DeviceLaunches
             }
             if (handlers is not null)
             {
-                // Named before adb is asked, so a stop as it makes the reverse takes it out too.
+                // Named before adb is asked, so a stop as it makes the reverse takes it out too, as does the watchdog.
                 placed = placed with { Reversed = [handlers.Socket] };
-                ChildResult reversed = await AndroidDevices.AdbAsync(app.Adb, app.On("reverse", $"localabstract:{handlers.Socket}", $"tcp:{handlers.Port}"), cancel);
+                Making(app, Reverse, $"{DeviceSockets.Address}{handlers.Socket}", made: true);
+                ChildResult reversed = await AndroidDevices.AdbAsync(app.Adb, app.On(Reverse, $"{DeviceSockets.Address}{handlers.Socket}", $"tcp:{handlers.Port}"), cancel);
                 if (!reversed.Succeeded)
                 {
                     // Where the reverse fails, the hook reaches nothing and the app runs on, its update handlers uncalled.
                     placed = placed with { Reversed = [] };
+                    Making(app, Reverse, $"{DeviceSockets.Address}{handlers.Socket}", made: false);
                     IdeLog.Write(IdeLog.Ide, $"adb could not reverse {handlers.Socket} on {app.Serial} to the update handlers' hook: {reversed.Said}");
                 }
             }
@@ -401,10 +404,14 @@ public static class DeviceLaunches
     /// the start is stopped, so the port is known to take out again.</summary>
     private static async Task<int?> ForwardAsync(AndroidApp app, string socket)
     {
-        ChildResult forward = await AndroidDevices.AdbAsync(app.Adb, app.On("forward", "tcp:0", $"localabstract:{socket}"), CancellationToken.None);
+        ChildResult forward = await AndroidDevices.AdbAsync(app.Adb, app.On(Forward, "tcp:0", $"{DeviceSockets.Address}{socket}"), CancellationToken.None);
         int? port = int.TryParse(forward.Output.Trim(), System.Globalization.CultureInfo.InvariantCulture, out int made) ? made : null;
-        IdeLog.Write(IdeLog.Ide, port is null ? $"adb could not forward a port to localabstract:{socket} on {app.Serial}: {forward.Said}"
-            : $"adb forwarded tcp:{port} to localabstract:{socket} on {app.Serial}");
+        IdeLog.Write(IdeLog.Ide, port is null ? $"adb could not forward a port to {DeviceSockets.Address}{socket} on {app.Serial}: {forward.Said}"
+            : $"adb forwarded tcp:{port} to {DeviceSockets.Address}{socket} on {app.Serial}");
+        if (port is not null)
+        {
+            Making(app, Forward, $"tcp:{port}", made: true);
+        }
         return port;
     }
 
@@ -433,14 +440,14 @@ public static class DeviceLaunches
             }
             foreach (int port in put.Ports)
             {
-                if (Gone(app, await RemoveAsync(app, "forward", $"tcp:{port}")))
+                if (Gone(app, await RemoveAsync(app, Forward, $"tcp:{port}")))
                 {
                     return;
                 }
             }
             foreach (string socket in put.Reversed)
             {
-                if (Gone(app, await RemoveAsync(app, "reverse", $"localabstract:{socket}")))
+                if (Gone(app, await RemoveAsync(app, Reverse, $"{DeviceSockets.Address}{socket}")))
                 {
                     return;
                 }
@@ -478,13 +485,19 @@ public static class DeviceLaunches
     /// nothing more of an end can reach it, which the log says.</summary>
     private static bool Gone(AndroidApp app, ChildResult answer)
     {
-        string words = answer.Error + answer.Output;
-        if (answer.Succeeded || !words.Contains($"device '{app.Serial}' not found", StringComparison.Ordinal) && !words.Contains("device offline", StringComparison.Ordinal))
+        if (!Unreached(app, answer))
         {
             return false;
         }
         IdeLog.Write(IdeLog.Ide, $"{app.Serial} was gone before {app.Package}'s end there was done, so nothing more of it was taken out: {answer.Said}");
         return true;
+    }
+
+    /// <summary>Whether adb answered that the app's device is no longer there.</summary>
+    private static bool Unreached(AndroidApp app, ChildResult answer)
+    {
+        string words = answer.Error + answer.Output;
+        return !answer.Succeeded && (words.Contains($"device '{app.Serial}' not found", StringComparison.Ordinal) || words.Contains("device offline", StringComparison.Ordinal));
     }
 
     /// <summary>A forward or a reverse a start made taken out, adb's answer in the log whatever it was, so one left behind
@@ -494,6 +507,64 @@ public static class DeviceLaunches
         ChildResult removed = await AndroidDevices.AdbAsync(app.Adb, app.On(kind, "--remove", what), CancellationToken.None);
         IdeLog.Write(IdeLog.Ide, removed.Succeeded ? $"adb took out the {kind} of {what} on {app.Serial}"
             : $"adb did not take out the {kind} of {what} on {app.Serial}: {removed.Said}");
+        if (removed.Succeeded || Unreached(app, removed))
+        {
+            Making(app, kind, what, made: false);
+        }
         return removed;
+    }
+
+    private const string Forward = "forward";
+    private const string Reverse = "reverse";
+
+    /// <summary>The forwards (by their port here) and reverses (by their socket there) this process's starts have made and not
+    /// yet taken out, by adb and device: the watchdog takes them out however Passenger ends (<see cref="ChildProcesses.AtIdeEnd"/>).</summary>
+    private static readonly HashSet<(string Adb, string Serial, string Kind, string What)> Made = [];
+
+    /// <summary>A forward or reverse made, or taken out, told to the watchdog where that changes what it takes out. Any thread.</summary>
+    private static void Making(AndroidApp app, string kind, string what, bool made)
+    {
+        lock (Made)
+        {
+            if (made ? Made.Add((app.Adb, app.Serial, kind, what)) : Made.Remove((app.Adb, app.Serial, kind, what)))
+            {
+                ChildProcesses.AtIdeEnd(nameof(DeviceLaunches), Made.Count == 0 ? null : string.Join("; ", Made.Select(m =>
+                    string.Join(' ', ((string[])[m.Adb, "-s", m.Serial, m.Kind, "--remove", m.What]).Select(word => global::Passenger.Terminal.ShellWords.Quoted(word, ShellKind.Posix))))));
+            }
+        }
+    }
+
+    /// <summary>The forwards and reverses on the app's device to a socket a Passenger no longer running named
+    /// (<see cref="DeviceSockets.LeftBehind"/>) taken out, as one killed, or one on a system with no watchdog, leaves them:
+    /// never another program's, nor a running Passenger's. What adb could not list or take out is said in the log.</summary>
+    private static async Task TakeOutLeftRulesAsync(AndroidApp app)
+    {
+        // adb lists every device's forwards, each line the device's serial, the port here and the socket there.
+        foreach (string[] rule in Rules(await AndroidDevices.AdbAsync(app.Adb, app.On(Forward, "--list"), CancellationToken.None)))
+        {
+            if (rule is [var serial, var local, var remote] && serial == app.Serial && DeviceSockets.LeftBehind(remote))
+            {
+                await RemoveAsync(app, Forward, local);
+            }
+        }
+        // The device's own reverses, each line its transport, the socket there and the port here.
+        foreach (string[] rule in Rules(await AndroidDevices.AdbAsync(app.Adb, app.On(Reverse, "--list"), CancellationToken.None)))
+        {
+            if (rule is [_, var remote, _] && DeviceSockets.LeftBehind(remote))
+            {
+                await RemoveAsync(app, Reverse, remote);
+            }
+        }
+
+        IEnumerable<string[]> Rules(ChildResult listed)
+        {
+            if (!listed.Succeeded)
+            {
+                IdeLog.Write(IdeLog.Ide, $"adb's rules on {app.Serial} could not be listed, so none an earlier Passenger left was taken out: {listed.Said}");
+                return [];
+            }
+            return listed.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        }
     }
 }
