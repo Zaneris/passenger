@@ -352,8 +352,9 @@
 
   <!-- How a language server's messages are followed for the protocol trace, from their bytes alone, how a test host's
        conversation is written, whether two of its URIs name one document, from their paths, what an HTML server is
-       sent of Razor's files, against a stand-in, how a completion answer is read, from its JSON alone, and a text's
-       lines as the server counts them, against Roslyn's own, compiled in since their project carries the servers. -->
+       sent of Razor's files, against a stand-in, how a completion answer is read, from its JSON alone, a text's lines as
+       the server counts them, against Roslyn's own, and what a server registered, by what it costs, compiled in since
+       their project carries the servers. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.Lsp/TracedStream.cs" Link="Lsp/TracedStream.cs" />
     <Compile Include="../../src/Passenger.Lsp/EnvelopeFormatter.cs" Link="Lsp/EnvelopeFormatter.cs" />
@@ -364,6 +365,7 @@
     <Compile Include="../../src/Passenger.Lsp/LanguageServerFailed.cs" Link="Lsp/LanguageServerFailed.cs" />
     <Compile Include="../../src/Passenger.Lsp/Protocol.cs" Link="Lsp/Protocol.cs" />
     <Compile Include="../../src/Passenger.Lsp/ServerLines.cs" Link="Lsp/ServerLines.cs" />
+    <Compile Include="../../src/Passenger.Lsp/Registrations.cs" Link="Lsp/Registrations.cs" />
     <Compile Include="../../src/Passenger.Roslyn.Extension/CompletionPriorities.cs" Link="Lsp/CompletionPriorities.cs" />
     <Compile Include="../../src/Passenger.Roslyn.Extension/CompletionKinds.cs" Link="Lsp/CompletionKinds.cs" />
     <Compile Include="../../src/Passenger.Roslyn.Extension/CompletionOrder.cs" Link="Lsp/CompletionOrder.cs" />

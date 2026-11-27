@@ -22,7 +22,7 @@ public sealed class WatchedFiles
     private const int KeptLimit = 100_000;
 
     private readonly Lock gate = new();
-    private readonly Dictionary<string, IReadOnlyList<FileWatch>> registered = new(StringComparer.Ordinal);
+    private readonly Registrations<FileWatch> registered = new();
 
     /// <summary>The latest change of each file no watcher covered as it was told, kept until one does.</summary>
     private readonly Dictionary<string, FileChangeType> kept = new(PathNames.Comparer);
@@ -48,7 +48,6 @@ public sealed class WatchedFiles
     /// <summary>Whether changed files were let go past <see cref="KeptLimit"/>, said once until they are fewer.</summary>
     private bool changesOverflowed;
     private readonly LanguageServer server;
-    private IReadOnlyList<FileWatch> watches = [];
 
     /// <summary>Whether changes were let go past <see cref="KeptLimit"/>, said once until fewer are kept.</summary>
     private bool overflowed;
@@ -94,7 +93,7 @@ public sealed class WatchedFiles
         {
             lock (gate)
             {
-                return watches;
+                return registered.All;
             }
         }
     }
@@ -159,8 +158,7 @@ public sealed class WatchedFiles
         List<FileEvent> waited;
         lock (gate)
         {
-            registered[id] = read;
-            watches = [.. registered.Values.SelectMany(w => w)];
+            registered.Set(id, read);
             waited = [.. kept.Select(k => new FileEvent(k.Key, k.Value)).Where(change => read.Any(watch => watch.Covers(change)))];
             foreach (FileEvent change in waited)
             {
@@ -181,7 +179,6 @@ public sealed class WatchedFiles
             {
                 return;
             }
-            watches = [.. registered.Values.SelectMany(w => w)];
             server.Note($"Files no longer watched for the server, registration {id}");
         }
         Changed?.Invoke(this, EventArgs.Empty);
@@ -391,6 +388,7 @@ public sealed class WatchedFiles
         List<FileEvent> covered = [];
         lock (gate)
         {
+            IReadOnlyList<FileWatch> watches = registered.All;
             foreach (FileEvent change in events)
             {
                 if (watches.Any(watch => watch.Covers(change)))
