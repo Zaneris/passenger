@@ -52,6 +52,8 @@ public sealed partial class CodeEditor
     /// <summary>The scroll the rows were last placed for.</summary>
     private double frameScrollY = double.NaN;
 
+    private int frameHoveredNumberLine = -1;
+
     /// <summary>The top of the gutter's row being drawn, in the text's rows: where the columns' frame measures a line from.</summary>
     private double gutterTop;
 
@@ -122,7 +124,8 @@ public sealed partial class CodeEditor
         bool focused = IsFocused;
         (Size, double, double, bool, Palette?, Metrics, bool, bool) drawing = (size, gutter, scroll.X, focused, palette, metrics, overGutter, ShowLineNumbers);
         bool stale = rowsStale || drawing != drawnWith;
-        bool moved = frameText is null || scroll.Y != frameScrollY || rowsChanged;
+        int hoveredNumberLine = HoveredNumberLine();
+        bool moved = frameText is null || scroll.Y != frameScrollY || rowsChanged || hoveredNumberLine != frameHoveredNumberLine;
         if (!stale && !moved)
         {
             // The carets' blink or the fold preview: the rows and what they were drawn with stand.
@@ -139,6 +142,7 @@ public sealed partial class CodeEditor
         overlayStale = false;
         drawnWith = drawing;
         frameScrollY = scroll.Y;
+        frameHoveredNumberLine = hoveredNumberLine;
         Frames++;
         int row = Math.Max(0, (int)(scroll.Y / lineHeight));
         long now = ++frameNumber;
@@ -470,6 +474,7 @@ public sealed partial class CodeEditor
         int line = span.Line;
         key.Add(line);
         key.Add(span.Row);
+        key.Add(span.Row == 0 && line == frameHoveredNumberLine);
         key.Add(span.Length);
         key.Add(span.IsLast);
         key.Add(span.Indent);

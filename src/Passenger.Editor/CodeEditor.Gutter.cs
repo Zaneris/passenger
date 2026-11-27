@@ -162,6 +162,25 @@ public sealed partial class CodeEditor
 
     internal bool GutterHides(int line) => IsHidden(line);
 
+    private void RefreshNumberHover()
+    {
+        if (HoveredNumberLine() != frameHoveredNumberLine)
+        {
+            RequestFrame();
+        }
+    }
+
+    private int HoveredNumberLine()
+    {
+        if (!ShowLineNumbers || drag.Mode != DragMode.None || pointer is not { } at
+            || at.X < columnRoom.Left || at.X >= NumbersRight || at.Y < 0 || at.Y >= Bounds.Height)
+        {
+            return -1;
+        }
+        (int line, int row) = Rows.LineOfRow(RowAtY(at.Y));
+        return row == 0 && line < document.Snapshot.LineCount ? line : -1;
+    }
+
     /// <summary>A token's brush in the look in force, immutable, kept until the look changes; transparent for one the look
     /// lacks.</summary>
     internal IBrush GutterBrush(string key)
@@ -274,7 +293,7 @@ public sealed partial class CodeEditor
         frame.Begin(context, right, lineHeight, lineHeight, metrics.CharWidth, line, line, frameText!.LineCount);
         if (firstRow)
         {
-            frame.Shown.Add(new GutterLine(line, 0));
+            frame.Shown.Add(new GutterLine(line, 0) { NumberHovered = line == frameHoveredNumberLine });
         }
         GutterFont font = new(metrics.CharWidth, lineHeight);
         double x = right + columnRoom.Right;

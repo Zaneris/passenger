@@ -347,6 +347,7 @@ public sealed partial class CodeEditor
         FollowLinks(position, drag.Mode != DragMode.None && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed);
         FollowAbove(position);
         pointer = position;
+        RefreshNumberHover();
         FollowGesture(e.KeyModifiers);
         bool inGutter = position.X < GutterWidth;
         if (inGutter != overGutter)
@@ -403,6 +404,7 @@ public sealed partial class CodeEditor
         Drag released = drag;
         drag = default;
         e.Pointer.Capture(null);
+        RefreshNumberHover();
         if (released.Clicked is { } clicked && Stayed(released.Start, e.GetPosition(this)))
         {
             Click(released, clicked);

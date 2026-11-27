@@ -35,6 +35,7 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         Flow.StepApart<ActiveEditorTests>("a click on a wrapped row puts the caret on the character clicked and one past a row's end at that end", t => t.A_click_on_a_wrapped_row_puts_the_caret_on_the_character_clicked_and_one_past_a_rows_end_at_that_end());
         Flow.StepApart<ActiveEditorTests>("a narrower window wraps the text again at its width and keeps the line at the top", t => t.A_narrower_window_wraps_the_text_again_at_its_width_and_keeps_the_line_at_the_top());
         Flow.StepApart<ActiveEditorTests>("folding and a breakpoint stay on their lines with wrapped lines above and among them", t => t.Folding_and_a_breakpoint_stay_on_their_lines_with_wrapped_lines_above_and_among_them());
+        Flow.StepApart<ActiveEditorTests>("a breakpoint preview follows the hovered line number and a click sets the breakpoint", t => t.A_breakpoint_preview_follows_the_hovered_line_number_and_a_click_sets_the_breakpoint());
         Flow.StepApart<ActiveEditorTests>("rows above lines are passed by keys clicks column selections folds Vim and a screen reader and go with their lines", t => t.Rows_above_lines_are_passed_by_keys_clicks_column_selections_folds_Vim_and_a_screen_reader_and_go_with_their_lines());
     }
 
@@ -279,6 +280,47 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         Assert.True(GutterBeside(window, editor, sum.Start).Contains(dot), "The breakpoint left its line's first row as the method unfolded.");
         window.Close();
     }
+
+    private void A_breakpoint_preview_follows_the_hovered_line_number_and_a_click_sets_the_breakpoint()
+    {
+        MainWindow window = Open("Counter.cs", "int count = 0;\ncount++;\nConsole.WriteLine(count);\n");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        MarkColumn marks = editor.Gutter!.Marks;
+        double inset = (MarkColumn.StripWidth / 2) + CharWidth(editor, 0);
+        Point first = editor.GutterColumnPoint(marks, 0) - new Point(inset, 0);
+        Point second = editor.GutterColumnPoint(marks, 1) - new Point(inset, 0);
+        Point firstOnWindow = editor.TranslatePoint(first, window)!.Value;
+        Point secondOnWindow = editor.TranslatePoint(second, window)!.Value;
+        Color firstBefore = Ui.Pixel(window, firstOnWindow);
+        Color secondBefore = Ui.Pixel(window, secondOnWindow);
+        Color dot = Token(window, TokenKeys.Editor_Breakpoint);
+        Color gutter = Token(window, TokenKeys.Editor_Gutter);
+
+        Ui.Hover(editor, first);
+        Color preview = Ui.Pixel(window, firstOnWindow);
+        Assert.InRange(Math.Abs(preview.R - ((dot.R + gutter.R) / 2)), 0, 2);
+        Assert.InRange(Math.Abs(preview.G - ((dot.G + gutter.G) / 2)), 0, 2);
+        Assert.InRange(Math.Abs(preview.B - ((dot.B + gutter.B) / 2)), 0, 2);
+
+        Ui.Hover(editor, second);
+        Assert.Equal(firstBefore, Ui.Pixel(window, firstOnWindow));
+        Assert.Equal(preview, Ui.Pixel(window, secondOnWindow));
+        Assert.Empty(editor.LineMarks);
+
+        Ui.Hover(editor, editor.GutterColumnPoint(marks, 1));
+        Assert.Equal(secondBefore, Ui.Pixel(window, secondOnWindow));
+        Ui.Hover(editor, second);
+        window.MouseMove(new Point(5, 5));
+        Ui.Settle();
+        Assert.Equal(secondBefore, Ui.Pixel(window, secondOnWindow));
+
+        Ui.Hover(editor, second);
+        Ui.Click(editor, second);
+        Assert.Equal(1, Assert.Single(editor.LineMarks).Line);
+        Assert.Equal(dot, Ui.Pixel(window, secondOnWindow));
+        window.Close();
+    }
+
     private void Rows_above_lines_are_passed_by_keys_clicks_column_selections_folds_Vim_and_a_screen_reader_and_go_with_their_lines()
     {
         StringBuilder code = new("class Rows\n{\n");
