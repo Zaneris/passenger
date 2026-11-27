@@ -244,9 +244,11 @@ public sealed partial class VimTests
             + "below a macro line, or a line of any other control character alone, it does not: the form feed's own way",
             (vimCase, _, passenger) => vimCase.Keys.Contains(")") && passenger.Seen.Contains(FormFeedAlone)),
         ("A block's < leaves Vim's cursor at the block's top left even past the end of a top line nothing shifted, where no "
-            + "normal-mode cursor of Vim mode stands: Passenger's settles on that line's last character",
-            (vimCase, vim, _) => vimCase.Commands.Any(command => command.Keys[0] == VimKeys.CtrlV && command.Keys.Contains("<"))
-                && vim.Cursor.Column > Math.Max(1, vim.Lines[vim.Cursor.Line - 1].Length)),
+            + "normal-mode cursor of Vim mode stands: Passenger's settles on that line's last character, so a ~ pressed next, which "
+            + "from past the end Vim's takes on to the next line toggling nothing, toggles that character",
+            (vimCase, vim, _) => vimCase.Commands.Select((command, at) => (command, at)).Any(made => made.command.Keys[0] == VimKeys.CtrlV
+                && made.command.Keys.Contains("<") && (vim.Cursor.Column > Math.Max(1, vim.Lines[vim.Cursor.Line - 1].Length)
+                    || vimCase.Commands.Skip(made.at).SelectMany(command => command.Keys).SkipWhile(key => key != "<").Contains("~")))),
         ("d, c and y with ]] from past the first column of a last line beginning with }, from which ]] goes nowhere, leave Vim's "
             + "unnamed and small delete registers empty, as though they took a text of nothing, where Vim's d and c over nothing "
             + "elsewhere leave them as they were, as Passenger's do there too",

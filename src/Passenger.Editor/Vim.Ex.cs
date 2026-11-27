@@ -676,7 +676,8 @@ public sealed partial class Vim
         int at = op == "y" ? caret : text.GetLineStart(first);
         VimResult result = Act(new Command([], 0, register, op, "line", null), op, [Whole(text, first, end, at) with { Landing = at }], text, SelectionSet.Single(at), view);
         lastChange = keep;
-        return result;
+        // :y places no caret, so the column j and k aim for is kept.
+        return op == "y" ? result with { Selections = null } : result;
     }
 
     /// <summary>:m and :t: the lines named moved, or copied, below the line the address after them names (0 for above the
