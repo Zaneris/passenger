@@ -10,7 +10,8 @@ namespace Passenger.App.Run;
 /// UI thread, its colour codes read into its colours, standard error in the error colour. A program run (not a build)
 /// reads what the person types into the console and is told it may write its colours there; a build's input is closed,
 /// so a step that reads ends rather than waits. Stopping kills the whole process tree, and a runner of builds the MSBuild
-/// nodes its builds left with what they run (<see cref="Stop"/>).
+/// nodes its builds left with what they run (<see cref="Stop"/>); let go of, a runner of builds asks its nodes to end
+/// first (<see cref="EndNodesAsync"/>).
 /// The console is the window's; a runner lets go of it when disposed, its folder left, and another folder's runner writes
 /// there.</summary>
 public sealed class ProcessRunner : IDisposable, IRunningProgram
@@ -25,14 +26,24 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
     private Task reading = Task.CompletedTask;
     private Task? deferredStop;
 
-    /// <summary>What a runner of builds adds, on macOS and Linux, to the MSBuild handshake salt of each dotnet command it
-    /// starts, so that only its own later commands, which run one at a time, take up the nodes its commands leave in their
-    /// process groups; null for any other runner, and on Windows, where no group holds them.</summary>
+    /// <summary>What a runner of builds adds to the MSBuild handshake salt of each dotnet command it starts, so that only its
+    /// own later commands, which run one at a time, take up the nodes its commands leave (on macOS and Linux in their
+    /// process groups), and only those are asked to end with it (<see cref="EndNodesAsync"/>); null for any other runner.</summary>
     private readonly string? ownNodes;
 
-    /// <summary>Each command a runner of builds has started, by id, whose process group may still hold the nodes it left
-    /// for the next and what they run for it: the groups Stop and the runner's end kill.</summary>
+    /// <summary>Each command a runner of builds has started on macOS and Linux, by id, whose process group may still hold the
+    /// nodes it left for the next and what they run for it: the groups Stop and the runner's end kill.</summary>
     private readonly List<int> builds = [];
+
+    /// <summary>The dotnet a runner of builds' last command ran (whose MSBuild the nodes' handshake names), the folder it ran
+    /// in and the salt it ran under: what asks its nodes to end (<see cref="EndNodesAsync"/>); null before one.</summary>
+    private (string Host, string Folder, string Salt)? nodesOf;
+
+    /// <summary>The end of what a runner of builds' commands left, once its owner let it go (<see cref="EndNodesAsync"/>).</summary>
+    private Task? nodesEnded;
+
+    /// <summary>How long the nodes are given to end as asked before what is left is killed.</summary>
+    private static readonly TimeSpan NodesEndFor = TimeSpan.FromSeconds(10);
 
     private static int runnersOfBuilds;
 
@@ -50,7 +61,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
     {
         this.console = console;
         this.takesInput = takesInput;
-        ownNodes = builds && !OperatingSystem.IsWindows() ? $"-builds-{Interlocked.Increment(ref runnersOfBuilds)}" : null;
+        ownNodes = builds ? $"-builds-{Interlocked.Increment(ref runnersOfBuilds)}" : null;
         tellLine = line => Line?.Invoke(this, line);
         console.Written += OnWritten;
     }
@@ -70,11 +81,56 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
     }
 
     /// <summary>Lets go of the console, its process stopped first: nothing more it reads is taken as its lines. The nodes its
-    /// builds left end, as no other command takes them up.</summary>
+    /// builds left end, as no other command takes them up: killed here, unless their end was asked for already.</summary>
     public void Dispose()
     {
         console.Written -= OnWritten;
-        EndBuilds();
+        if (nodesEnded is null)
+        {
+            EndBuilds();
+        }
+    }
+
+    /// <summary>Ends what the commands of a runner of builds left, as its owner lets it go: the MSBuild nodes under its salt
+    /// asked to end as MSBuild's own shutdown asks (dotnet build-server shutdown --msbuild), so each takes its temporary
+    /// folder with it, which a kill leaves for good; then what is left in their groups killed. Begun once, on the window's
+    /// thread; one that started nothing asks nothing.</summary>
+    public Task EndNodesAsync()
+    {
+        UiThread.Check();
+        if (nodesEnded is null)
+        {
+            int[] left = [.. builds.Where(ChildProcesses.Leaves)];
+            builds.Clear();
+            ProcessStartInfo? shutdown = null;
+            if (nodesOf is { } nodes && (left.Length > 0 || OperatingSystem.IsWindows()))
+            {
+                shutdown = ChildProcesses.DotnetCommand(nodes.Host, ["build-server", "shutdown", "--msbuild"], nodes.Folder);
+                shutdown.Environment[MSBuildNames.NodeHandshakeSalt] = nodes.Salt;
+            }
+            nodesOf = null;
+            nodesEnded = EndingNodesAsync(shutdown, left);
+        }
+        return nodesEnded;
+    }
+
+    private static async Task EndingNodesAsync(ProcessStartInfo? shutdown, int[] left)
+    {
+        if (shutdown is not null)
+        {
+            try
+            {
+                await ChildProcesses.RunAsync(shutdown, limit: NodesEndFor);
+            }
+            catch (Exception unasked) when (unasked is TimeoutException || ChildFailures.Of(unasked))
+            {
+                // What did not end as asked is killed with the rest.
+            }
+        }
+        foreach (int build in left)
+        {
+            ChildProcesses.KillLeft(build);
+        }
     }
 
     /// <summary>Kills what is left in the groups of the commands a runner of builds started: the nodes they left for the
@@ -142,6 +198,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
             console.Append($"{missing.Message}\n", error: true);
             return missing.Message;
         }
+        KeepNodesEnd(start);
         return Start(start, environment, after);
     }
 
@@ -155,6 +212,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         {
             start = ChildProcesses.DotnetCommand(arguments, folder);
             start = placed?.Invoke(start) ?? start;
+            KeepNodesEnd(start);
         }
         catch (FileNotFoundException missing)
         {
@@ -162,6 +220,16 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
             return Task.FromResult<string?>(missing.Message);
         }
         return StartAsync(start, environment);
+    }
+
+    /// <summary>For a runner of builds, what asks the nodes a dotnet command of its leaves to end: that command's dotnet and
+    /// folder, and the salt it runs with (<see cref="Prepare"/>).</summary>
+    private void KeepNodesEnd(ProcessStartInfo command)
+    {
+        if (ownNodes is not null && command.Environment.TryGetValue(MSBuildNames.NodeHandshakeSalt, out string? salt) && salt is not null)
+        {
+            nodesOf = (command.FileName, command.WorkingDirectory, salt + ownNodes);
+        }
     }
 
     /// <summary>Starts a program; why it could not (a working folder gone, a missing program), or null once it runs.</summary>
@@ -324,7 +392,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
     {
         process = started;
         running = true;
-        if (ownNodes is not null)
+        if (ownNodes is not null && !OperatingSystem.IsWindows())
         {
             builds.RemoveAll(build => !ChildProcesses.Leaves(build));
             builds.Add(started.Id);

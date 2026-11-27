@@ -2300,6 +2300,7 @@ public sealed class ProjectSession : IAsyncDisposable
         parts.Add(("git", Vcs.EndGitAsync()));
         RunProgram.Stop();
         Builder.Stop();
+        parts.Add(("the builds' MSBuild nodes", Builder.EndNodesAsync()));
         Packages.Stop();
         ProfileStarting?.Cancel();
         foreach (Run.StartUnderWay start in Starting.ToList())

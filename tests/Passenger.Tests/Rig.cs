@@ -52,31 +52,13 @@ public sealed class TestRun : IAsyncDisposable
     public static string Root { get; } = Path.Combine(Path.GetTempPath(), Prefix + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture) + Unindexed);
 
     /// <summary>The temporary folder the run started with: the person's own.</summary>
-    public static string PersonsTemporary { get; } = Path.GetTempPath();
-
-    private const string TemporaryPrefix = "prun-";
+    public static string PersonsTemporary => RunTemporary.Persons;
 
     /// <summary>The temporary folder (TMPDIR) the run's programs are given on macOS and Linux: each .NET program's runtime
     /// makes its diagnostic socket and its debugger's pipes there, which one killed leaves, so the run's go with the run and
-    /// never stay in <see cref="PersonsTemporary"/>. Named short, as a socket's path holds 103 bytes; the person's own where
-    /// no folder is short enough, and on Windows, whose pipes go with their process.</summary>
-    public static string Temporary { get; } = RunTemporary();
-
-    /// <summary>In the person's temporary folder, else the system's (macOS's per-user one is too long), the first where the
-    /// longest socket name made there fits a socket's path: a stand-in diagnostics router's, for a 7-digit id and a 10-digit
-    /// start.</summary>
-    private static string RunTemporary()
-    {
-        const int Longest = 52;
-        string own = TemporaryPrefix + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        return OperatingSystem.IsWindows() ? PersonsTemporary
-            : TemporaryBases().Select(under => Path.Combine(under, own)).FirstOrDefault(folder => folder.Length + 1 + Longest <= 103) ?? PersonsTemporary;
-    }
-
-    /// <summary>Where a run's folders are made: the person's temporary folder, then, on macOS and Linux, the system's, as its
-    /// real path names it.</summary>
-    private static IEnumerable<string> TemporaryBases() =>
-        OperatingSystem.IsWindows() ? [PersonsTemporary] : [PersonsTemporary, OperatingSystem.IsMacOS() ? "/private/tmp" : "/tmp"];
+    /// never stay in <see cref="PersonsTemporary"/>. Named short (<see cref="RunTemporary"/>); the person's own where no
+    /// folder is short enough, and on Windows, whose pipes go with their process.</summary>
+    public static string Temporary { get; } = OperatingSystem.IsWindows() ? PersonsTemporary : RunTemporary.Own() ?? PersonsTemporary;
 
     /// <summary>Why the daemon of Biome's <paramref name="version"/> cannot listen in the run's Biome home, or null where it
     /// can: on macOS its socket lies under that home's Library/Caches, whose path may pass the 103 bytes a socket's path
@@ -147,12 +129,12 @@ public sealed class TestRun : IAsyncDisposable
         // Every folder a test opens is trusted, but one it holds to the person's answer (WorkspaceTrust.Ask).
         Passenger.Core.WorkspaceTrust.TrustEverything();
         List<string> ended = [];
-        foreach (string left in TemporaryBases().Select(Path.TrimEndingDirectorySeparator).Distinct(StringComparer.Ordinal).SelectMany(under => Directory.EnumerateDirectories(under, "p*")))
+        foreach (string left in RunTemporary.Bases().Select(Path.TrimEndingDirectorySeparator).Distinct(StringComparer.Ordinal).SelectMany(under => Directory.EnumerateDirectories(under, "p*")))
         {
             // A run still going has its process; one killed has none, and only an id reused since keeps its folder.
             string name = Path.GetFileName(left);
             string? number = name.StartsWith(Prefix, StringComparison.Ordinal) ? name[Prefix.Length..].Replace(Unindexed, string.Empty, StringComparison.Ordinal)
-                : name.StartsWith(TemporaryPrefix, StringComparison.Ordinal) ? name[TemporaryPrefix.Length..]
+                : name.StartsWith(RunTemporary.Prefix, StringComparison.Ordinal) ? name[RunTemporary.Prefix.Length..]
                 : null;
             if (int.TryParse(number, out int id) && (id == Environment.ProcessId || !Processes.IsRunning(id)))
             {
