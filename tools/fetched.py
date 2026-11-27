@@ -7,9 +7,9 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Godot 4.8 beta 5's commit (godotengine/godot-builds names it), the one GDScript's analyzer and Godot's shader checker
+# Godot 4.8 RC 1's commit (godotengine/godot-builds names it), the one GDScript's analyzer and Godot's shader checker
 # are ported from: its renames, shader types and default theme are read there too.
-GODOT_COMMIT = "a661dfdbccc664ccca57ad76c2bb5dcd8f3fc768"
+GODOT_COMMIT = "7c97c297793ce4711679491d34693a5719a79ebe"
 
 
 def cached(url, path):

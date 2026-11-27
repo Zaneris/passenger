@@ -558,7 +558,7 @@ SOFTWARE.
 `src/Passenger.Workspace/GDScript/` (`GDScriptToken.cs`, `GDScriptTokenizer.cs`, `GDScriptNodes.cs` and the
 `GDScriptParser` files) is a port to C# of the Godot Engine's GDScript tokenizer and parser,
 `modules/gdscript/gdscript_tokenizer.cpp`, `gdscript_tokenizer.h`, `gdscript_parser.cpp` and `gdscript_parser.h` at
-commit a661dfdbccc664ccca57ad76c2bb5dcd8f3fc768 (4.8 beta 5) of https://github.com/godotengine/godot: their tokens,
+commit 7c97c297793ce4711679491d34693a5719a79ebe (4.8 RC 1) of https://github.com/godotengine/godot: their tokens,
 nodes, parse rules and error messages, kept as Godot words them. `GDScriptAnalyzer` (with `GDScriptType`,
 `GDScriptAnalysis` and `GodotEngineApi`) ports the typing of `modules/gdscript/gdscript_analyzer.cpp` and
 `gdscript_analyzer.h` at the same commit (its data types, how a declaration, an override's return and each expression
@@ -1100,7 +1100,7 @@ SOFTWARE.
 
 `src/Passenger.Workspace/GodotShaderTypes.json` is a table of Godot's shading language, written by `just godot-shader-types`
 (`tools/godot-shader-types.py`) from two files of the Godot Engine (https://github.com/godotengine/godot) at commit
-a661dfdbccc664ccca57ad76c2bb5dcd8f3fc768, which Godot 4.8 beta 5 was built from: `servers/rendering/shader_types.cpp`
+7c97c297793ce4711679491d34693a5719a79ebe, which Godot 4.8 RC 1 was built from: `servers/rendering/shader_types.cpp`
 (each shader type's processor functions, the built-ins each offers, the stage functions each may call, its render and
 stencil modes) and `servers/rendering/shader_language.cpp` (the uniform hints of its keyword list, its built-in
 functions with their arguments' names, and every entry of its built-in function table in order, constructors too). The
@@ -1117,7 +1117,7 @@ complete, check and describe the theme items a Godot game's C# names.
 `src/Passenger.Workspace/GodotShader/` is a port to C# of the Godot Engine's shader language front end, by which
 Passenger checks a shader as Godot reads it: `GodotShaderPreprocessor.cs` ports `servers/rendering/shader_preprocessor.cpp`
 and `shader_preprocessor.h` (its directives, macro expansion, includes and error messages, with 4.7.2-stable's reading of
-line continuations, at commit ed1daf0bf001b61586d9930840f2f1394092c079, beside 4.8 beta 5's); `GodotShaderExpression.cs`
+line continuations, at commit ed1daf0bf001b61586d9930840f2f1394092c079, beside 4.8 RC 1's); `GodotShaderExpression.cs`
 ports the tokenizer of `servers/rendering/shader_expression.cpp` and the parser of `core/math/expression.cpp` it runs
 on; `GodotPathStrings.cs` ports `simplify_path`, `is_absolute_path`, `get_base_dir` and `path_join` of
 `core/string/ustring.cpp`; the `GodotShaderLanguage` files and `GodotShaderNodes.cs` port
@@ -1127,7 +1127,7 @@ ports `servers/rendering/shader_warnings.cpp` and `shader_warnings.h`; `GodotSha
 `editor/shader/shader_text_editor.cpp`'s validation of a shader and an include; and
 `src/Passenger.App/Godot/GodotShaderChecker.cs` ports `uniform_to_property_info` of `shader_language.cpp` and `rtos`'s
 writing of a number (`String::num` of `core/string/ustring.cpp`); all at commit
-a661dfdbccc664ccca57ad76c2bb5dcd8f3fc768 (4.8 beta 5), their words kept as Godot words them.
+7c97c297793ce4711679491d34693a5719a79ebe (4.8 RC 1), their words kept as Godot words them.
 
 ```
 Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md).
