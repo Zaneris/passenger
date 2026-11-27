@@ -176,7 +176,8 @@ public sealed class ExplorerFilesTests : IDisposable
 
     /// <summary>New Folder in a project keeps the folder in its project file by a Folder item, as Visual Studio does, and a
     /// folder made inside it takes its place; a class made in it, or the folder deleted, takes the item out, a rename takes it
-    /// along, and each is one command Undo takes back whole, the folder made with it (#2297).</summary>
+    /// along, and each is one command Undo takes back whole, the folder made with it; a file another program writes into it
+    /// takes the item out too (#2297, #2388).</summary>
     private void A_folder_made_in_a_project_keeps_its_item_until_it_holds_a_file_or_goes_each_one_command_of_Undo()
     {
         string project = Path.Combine(folder, "Shop.csproj");
@@ -226,6 +227,10 @@ public sealed class ExplorerFilesTests : IDisposable
         Step(EditorActions.Undo, "Undone");
         Assert.True(File.Exists(notes) && Kept("Summaries") == File.ReadAllText(project), $"Undo of the move did not put Notes.txt and Summaries' item back: {window.Status}");
         Assert.Equal(["Undo", "Redo", "Undo", "Undo", "Delete", "Undo", "Undo"], asked);
+
+        // Another program's file in a kept folder, which the watcher hears, lets its item go too.
+        File.WriteAllText(Path.Combine(summaries, "draft.txt"), "draft\n");
+        Ui.WaitFor(() => written == File.ReadAllText(project), () => $"Summaries' item to go once another program wrote a file into it:\n{File.ReadAllText(project)}");
         window.Close();
 
         // The project's text keeping one folder, as Visual Studio writes it.

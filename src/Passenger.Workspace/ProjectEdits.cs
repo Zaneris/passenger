@@ -362,11 +362,11 @@ public static class ProjectEdits
         return true;
     }
 
-    /// <summary>A project file's text keeping empty folders as Visual Studio keeps them, each by an item of its own
-    /// (<c>&lt;Folder Include="Models\Old\" /&gt;</c>, relative with backslashes, escaped as MSBuild reads it): those
-    /// <paramref name="letGo"/> says no longer need theirs taken out (a group left empty with them), then one written for
-    /// each folder of <paramref name="keep"/> none keeps yet, after the project's last such item, else in an item group of
-    /// its own before &lt;/Project&gt;. Null where nothing changed or the text is no project.</summary>
+    /// <summary>A project file's or a shared items file's text keeping empty folders as Visual Studio does, each by an item of
+    /// its own (<c>&lt;Folder Include="Models\Old\" /&gt;</c>, relative with backslashes, an items file's from its own folder,
+    /// escaped as MSBuild reads it): those <paramref name="letGo"/> says no longer need theirs taken out (a group left empty
+    /// with them), then one for each folder of <paramref name="keep"/> none keeps yet, after the last such item, else in an
+    /// item group of its own before &lt;/Project&gt;. Null where nothing changed or the text is no project.</summary>
     public static string? WithFoldersKept(string text, string project, IReadOnlyCollection<string> keep, Func<string, bool> letGo)
     {
         if (Read(text) is not { Root.Name.LocalName: "Project" } xml)
@@ -387,7 +387,8 @@ public static class ProjectEdits
             {
                 continue;
             }
-            string include = ItemPaths.Named(Path.GetRelativePath(folder, kept).Replace('/', '\\')) + "\\";
+            // A shared project's items file names its own folder, as Visual Studio writes its items there.
+            string include = (SharedProjects.IsItemsFile(project) ? ProjectItems.ThisFolder : string.Empty) + ItemPaths.Named(Path.GetRelativePath(folder, kept).Replace('/', '\\')) + "\\";
             string element = $"<{MSBuildNames.Folder} Include=\"{XmlEntities.Encode(include, '"')}\" />";
             if (items.LastOrDefault().Element is { } last)
             {

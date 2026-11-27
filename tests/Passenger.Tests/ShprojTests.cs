@@ -201,6 +201,16 @@ public sealed class ShprojTests : IDisposable
             Assert.Equal(["Undo", "Undo", "Delete", "Undo"], asked);
             Assert.True(File.ReadAllText(Path.Combine(folder, "Shop.Api", "Shop.Api.csproj")).EndsWith("Label=\"Shared\" />\n</Project>\n", StringComparison.Ordinal),
                 "An importing project's file was written");
+
+            string reports = Path.Combine(Shared, "Reports");
+            Assert.Null(Ui.Await(window.CreateFolderAsync(Shared, "Reports"), "New Folder"));
+            string kept = Items.Replace("</Project>", "  <ItemGroup>\n    <Folder Include=\"$(MSBuildThisFileDirectory)Reports\\\" />\n  </ItemGroup>\n</Project>", StringComparison.Ordinal);
+            Assert.True(kept == File.ReadAllText(ItemsFile), $"New Folder in the shared project did not keep Reports in its items file:\n{File.ReadAllText(ItemsFile)}");
+            Assert.Null(window.CreateClass(reports, "Summary"));
+            Assert.Equal(Items.Replace("Models\\Order.cs\" />", "Models\\Order.cs\" />\n    <Compile Include=\"$(MSBuildThisFileDirectory)Reports\\Summary.cs\" />", StringComparison.Ordinal),
+                File.ReadAllText(ItemsFile));
+            Undo(window, reports);
+            Assert.Equal(kept, File.ReadAllText(ItemsFile));
         }
         finally
         {

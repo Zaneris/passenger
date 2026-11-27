@@ -323,6 +323,7 @@ public partial class MainWindow
             }
         };
         BindTests(next);
+        next.FilesCameOrWent += (_, paths) => FollowFolderItems(next, paths);
         BindCoverage(next);
         BindContinuous(next);
         BindDebug(next);

@@ -1701,6 +1701,9 @@ public sealed class ProjectSession : IAsyncDisposable
         }
     }
 
+    /// <summary>Files or folders were made, moved or deleted, by the IDE or another program (<see cref="CameOrWent"/>).</summary>
+    public event EventHandler<IReadOnlyCollection<string>>? FilesCameOrWent;
+
     /// <summary>Files or folders made, moved or deleted, by the IDE or another program, followed: what was kept of a project
     /// that could not be evaluated where one came is let go (<see cref="ProjectModels.Came"/>), the solution is read again
     /// given <paramref name="readAgain"/>, a project shown missing whose file stands there now is taken as it is, and each
@@ -1711,6 +1714,7 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             return;
         }
+        FilesCameOrWent?.Invoke(this, paths);
         Models.Came(paths);
         if (readAgain)
         {
