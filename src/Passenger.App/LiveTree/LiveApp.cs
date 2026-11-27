@@ -573,7 +573,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
 
     /// <summary>A XAML file's text applied to what the app made from it (XAML Hot Reload), answered with what it came to.</summary>
     public async Task<XamlReloaded> ReloadAsync(XamlChange change) =>
-        (await AskAsync(new Request(0, Wire.Reload) { Change = change }, limit: ReloadLimit)).Reloaded ?? throw new LiveAppException($"{Name} did not say what the XAML came to");
+        (await AskAsync(new Request(0, Wire.Reload) { Change = change }, running: ReloadLimit)).Reloaded ?? throw new LiveAppException($"{Name} did not say what the XAML came to");
 
     /// <summary>How many updates a .NET MAUI app's XAML Incremental Hot Reload has heard: asked before an update its XAML's
     /// code goes in, whose next one the reload of the XAML answers of.</summary>
@@ -582,11 +582,47 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
 
     /// <summary>A Windows Forms form's designer code run in the forms of its class the app has open (its Hot Reload).</summary>
     public async Task<XamlReloaded> DesignedAsync(DesignedChange change) =>
-        (await AskAsync(new Request(0, Wire.Designed) { Designed = change }, limit: ReloadLimit)).Reloaded ?? throw new LiveAppException($"{Name} did not say what the designer code came to");
+        (await AskAsync(new Request(0, Wire.Designed) { Designed = change }, running: ReloadLimit)).Reloaded ?? throw new LiveAppException($"{Name} did not say what the designer code came to");
 
-    /// <summary>How long the app may take to apply a XAML file: its first compiles Avalonia's XAML compiler itself, slower
-    /// again under the debugger.</summary>
+    /// <summary>How long the app may run before it says what a XAML file came to: its first compiles Avalonia's XAML compiler
+    /// itself, slower again under the debugger, whose stops (<see cref="Held"/>) are left out, as one in the code that
+    /// applies the change holds its answer for as long as the person looks.</summary>
     public static TimeSpan ReloadLimit => Waits.Of(TimeSpan.FromSeconds(30));
+
+    /// <summary>Whether the debugger holds the program at a stop, as the session debugging it says: the app answers nothing
+    /// meanwhile, so a wait limited to its running time (<see cref="ReloadLimit"/>) waits on.</summary>
+    public bool Held
+    {
+        get => held;
+        set
+        {
+            UiThread.Check();
+            if (held != value)
+            {
+                held = value;
+                CancellationTokenSource told = heldChanged;
+                heldChanged = new();
+                told.Cancel();
+                told.Dispose();
+            }
+        }
+    }
+
+    private bool held;
+
+    /// <summary>Cancelled as <see cref="Held"/> changes, which a wait on the program's running time takes up again.</summary>
+    private CancellationTokenSource heldChanged = new();
+
+    /// <summary>How many requests wait on the app's answer within its running time.</summary>
+    private int awaitingRunning;
+
+    /// <summary>Whether a request waits on the app's answer within its running time (<see cref="ReloadLimit"/>): a change the
+    /// app takes, through only once a program the debugger holds goes on.</summary>
+    public bool AwaitsRunning => awaitingRunning > 0;
+
+    /// <summary>A request waiting on the app's answer within its running time found the debugger holding the program: told
+    /// once a request, the answer to come only once it goes on.</summary>
+    public event EventHandler? AnswerHeld;
 
     /// <summary>Its XAML Hot Reload, given by the session that launched it; null for Passenger's own windows.</summary>
     public XamlHotReload? Xaml { get; set; }
@@ -595,9 +631,10 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     public async Task<InputDone> InputAsync(InputAction input, CancellationToken giveUp = default) =>
         (await AskAsync(new Request(0, Wire.Input) { Input = input }, giveUp)).Done ?? throw new LiveAppException($"{Name} did not say what the input did");
 
-    /// <summary>A request's answer within <see cref="AnswerLimit"/> or <paramref name="limit"/>; <paramref name="giveUp"/> stops
-    /// the wait for it (the app paused under the debugger before it could answer), its answer then forgotten.</summary>
-    private async Task<Reply> AskAsync(Request request, CancellationToken giveUp = default, TimeSpan? limit = null)
+    /// <summary>A request's answer within <see cref="AnswerLimit"/>, or within <paramref name="running"/> of the time the program
+    /// runs (<see cref="Held"/>); <paramref name="giveUp"/> stops the wait for it (the app paused under the debugger before
+    /// it could answer), its answer then forgotten.</summary>
+    private async Task<Reply> AskAsync(Request request, CancellationToken giveUp = default, TimeSpan? running = null)
     {
         if (State != LiveAppState.Connected || stream is not { } open)
         {
@@ -627,7 +664,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         Reply reply;
         try
         {
-            reply = await answer.WaitAsync(limit ?? AnswerLimit, giveUp);
+            reply = running is { } limit ? await WhileRunningAsync(answer, limit, giveUp) : await answer.WaitAsync(AnswerLimit, giveUp);
         }
         catch (OperationCanceledException) when (giveUp.IsCancellationRequested)
         {
@@ -638,9 +675,50 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         {
             // Forgotten, so its answer, if it ever comes, finds no one waiting.
             asked.Forget(id, answer);
-            throw new LiveAppException(limit is { } longer ? $"{Name} did not answer within {Durations.Said(longer)}" : NotAnswered(Name));
+            throw new LiveAppException(running is { } longer ? $"{Name} did not answer within {Durations.Said(longer)} of running" : NotAnswered(Name));
         }
         return reply.Error is { } why ? throw new LiveAppException(why) : reply;
+    }
+
+    /// <summary>An answer within <paramref name="limit"/> of the time the program runs: the clock stands while the debugger
+    /// holds it (<see cref="Held"/>), and goes on as it runs again.</summary>
+    private async Task<Reply> WhileRunningAsync(Task<Reply> answer, TimeSpan limit, CancellationToken giveUp)
+    {
+        UiThread.Check();
+        awaitingRunning++;
+        try
+        {
+            TimeSpan left = limit;
+            bool told = false;
+            while (true)
+            {
+                bool stood = held;
+                if (stood && !told)
+                {
+                    told = true;
+                    AnswerHeld?.Invoke(this, EventArgs.Empty);
+                }
+                long from = System.Diagnostics.Stopwatch.GetTimestamp();
+                using CancellationTokenSource woken = CancellationTokenSource.CreateLinkedTokenSource(giveUp, heldChanged.Token);
+                try
+                {
+                    return stood ? await answer.WaitAsync(woken.Token) : await answer.WaitAsync(left, woken.Token);
+                }
+                catch (OperationCanceledException) when (!giveUp.IsCancellationRequested && !answer.IsCanceled)
+                {
+                    if (answer.IsCompleted)
+                    {
+                        return await answer;
+                    }
+                    TimeSpan ran = stood ? TimeSpan.Zero : System.Diagnostics.Stopwatch.GetElapsedTime(from);
+                    left = ran < left ? left - ran : TimeSpan.Zero;
+                }
+            }
+        }
+        finally
+        {
+            awaitingRunning--;
+        }
     }
 
     /// <summary>How long the app may take to answer: its UI thread busy, or the app paused under the debugger.</summary>

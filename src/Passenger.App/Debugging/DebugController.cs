@@ -636,7 +636,7 @@ public sealed partial class DebugController : IDisposable
             foreach (IHotReloadTarget target in targets)
             {
                 DebugSession? session = (target as DebugTab)?.Session;
-                each.Add((target, session, await ApplyTargetAsync(target, xamlOnly)));
+                each.Add((target, session, await HeldByStopsAsync(target, ApplyTargetAsync(target, xamlOnly))));
             }
             tabs = [.. each.Where(e => !e.Target.Quiet).Select(e => ((DebugTab)e.Target, e.Session, e.Outcome))];
             foreach ((DebugTab tab, DebugSession? session, HotReloadOutcome its) in tabs)
@@ -687,6 +687,40 @@ public sealed partial class DebugController : IDisposable
 
         static bool Unapplied(HotReloadOutcome its) => its.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply);
     }
+
+    /// <summary>A target's apply, said once to wait for its program where the program stops while its app is to say what the
+    /// changes came to: the app says it only once the program goes on, the wait counting only its running time
+    /// (<see cref="LiveTree.LiveApp.Held"/>).</summary>
+    private async Task<HotReloadOutcome> HeldByStopsAsync(IHotReloadTarget target, Task<HotReloadOutcome> apply)
+    {
+        if ((target as DebugTab)?.App is not { } app || apply.IsCompleted)
+        {
+            return await apply;
+        }
+        bool said = false;
+        void Held(object? sender, EventArgs e)
+        {
+            if (!said && !apply.IsCompleted)
+            {
+                said = true;
+                string held = HeldApply(target.Name);
+                target.Say(held, false);
+                Message?.Invoke(this, held);
+            }
+        }
+        app.AnswerHeld += Held;
+        try
+        {
+            return await apply;
+        }
+        finally
+        {
+            app.AnswerHeld -= Held;
+        }
+    }
+
+    /// <summary>What an apply says as its program stops before it is through.</summary>
+    public static string HeldApply(string name) => $"Hot Reload: {name} stopped as it takes the changes: what they came to is said once it goes on";
 
     /// <summary>A program's edits applied: its C# first (with edits of its own, or nothing else to apply), so a handler or field
     /// its XAML names is there, then its app's XAML (<see cref="LiveTree.XamlHotReload"/>); a .NET MAUI app's in one.</summary>
@@ -2194,6 +2228,12 @@ public sealed partial class DebugController : IDisposable
     {
         if (HotReload is { Changed: true } && WhyNotApply() is null && session.State == DebugState.Paused)
         {
+            // An apply waiting on the program's answer is through only once it goes on: the edits since apply after it.
+            if (applying is not null && Reloaded?.App is { AwaitsRunning: true })
+            {
+                IdeErrors.Observe(ApplyAsync(Debugged(), SettingsRestart));
+                return true;
+            }
             if ((await ApplyAsync(Debugged(), SettingsRestart)).Restarted)
             {
                 return false;
@@ -2825,6 +2865,10 @@ public sealed partial class DebugController : IDisposable
         if (disposed || tab.Session is not { } session || !view.Sessions.Contains(tab))
         {
             return;
+        }
+        if (tab.App is { } app)
+        {
+            app.Held = session.State == DebugState.Paused;
         }
         // What the program wrote before it stopped or ended is shown before the stop or the end is.
         if (session.State == DebugState.Ended)

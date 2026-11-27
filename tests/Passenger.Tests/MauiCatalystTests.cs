@@ -181,7 +181,7 @@ public sealed class MauiCatalystTests : McpRig
             Ui.WaitFor(() => window.LiveApp is { State: LiveAppState.Connected },
                 () => $"the debugged app's inspector to connect; it is {window.LiveApp?.State.ToString() ?? "not made"} ({window.LiveApp?.Problem}): {Ui.Said(window)}\n{Console(window)}", Slow);
             MauiApp.StopsInEditedHandler(window, window.LiveApp!, project, Slow);
-            MauiApp.TakesXamlEdits(window, window.LiveApp!, project, (xaml, hello, clickMe), Slow);
+            MauiApp.TakesXamlEdits(window, window.LiveApp!, project, (xaml, hello, clickMe), Slow, heldPastLimit: true);
 
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));

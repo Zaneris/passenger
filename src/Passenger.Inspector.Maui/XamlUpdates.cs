@@ -16,6 +16,10 @@ internal sealed class XamlUpdates : IDisposable
     /// <summary>How long MAUI may take to say what an update came to once it was applied: it patches on the UI thread.</summary>
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(20);
 
+    /// <summary>The steps the wait for MAUI counts its time in: a debugger's stop (in the patch, say) holds the threads that
+    /// count them, so however long the program stands stopped counts as one step, the limit only the time it runs.</summary>
+    private static readonly TimeSpan Step = TimeSpan.FromMilliseconds(100);
+
     private readonly Lock gate = new();
     private readonly List<Update> heard = [];
 
@@ -58,8 +62,8 @@ internal sealed class XamlUpdates : IDisposable
                 + "so only what it makes from now shows the change");
         }
         Update? update = null;
-        using CancellationTokenSource limit = new(Limit);
-        while (update is null)
+        TimeSpan waited = TimeSpan.Zero;
+        while (update is not { Ended.Task.IsCompleted: true })
         {
             Task next;
             lock (gate)
@@ -69,11 +73,15 @@ internal sealed class XamlUpdates : IDisposable
             }
             try
             {
-                await next.WaitAsync(limit.Token);
+                await next.WaitAsync(Step);
             }
-            catch (OperationCanceledException)
+            catch (TimeoutException)
             {
-                return Refused($"{file} went into the app's code, but MAUI did not say within {Limit.TotalSeconds:0} s what it made of it");
+                waited += Step;
+                if (waited >= Limit)
+                {
+                    return Refused($"{file} went into the app's code, but MAUI did not say within {Limit.TotalSeconds:0} s of running what it made of it");
+                }
             }
         }
         Type? type = TypeOf(change, update.Updated);

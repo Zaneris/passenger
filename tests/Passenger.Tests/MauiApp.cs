@@ -62,12 +62,12 @@ internal static class MauiApp
             : $"{Name}'s {framework} head does not restore here from nuget.org: {restored.Output.Split('\n').FirstOrDefault(l => l.Contains(": error ", StringComparison.Ordinal))?.Trim() ?? restored.FirstLine}");
     }
 
-    /// <summary>The main page's XAML edited while the debugged app runs with Hot Reload, its breakpoints at
-    /// <see cref="XamlBreakpoints"/>' lines (<paramref name="set"/>): its label's text, which MAUI patches into the open page,
-    /// stopping at none; a label added, a breakpoint on its line first, where the program stops as MAUI's patch makes it; then
-    /// a label of a C# expression of the button's text, for which the page is made again by the update's InitializeComponent,
-    /// stopping at each breakpoint as it makes its element or sets its property; each read back from the app.</summary>
-    public static void TakesXamlEdits(MainWindow window, LiveApp app, string project, (string Xaml, int Hello, int ClickMe) set, TimeSpan limit)
+    /// <summary>The main page's XAML edited while the debugged app runs with Hot Reload, its breakpoints at <see cref="XamlBreakpoints"/>'
+    /// lines (<paramref name="set"/>): a label's text MAUI patches, stopping at none; a label added with a breakpoint, stopping
+    /// as MAUI's patch makes it (held past the app's limit where <paramref name="heldPastLimit"/>); then a label of a C#
+    /// expression, the page made again by the update's InitializeComponent, stopping at each breakpoint as it makes its element
+    /// or sets its property; each read back from the app.</summary>
+    public static void TakesXamlEdits(MainWindow window, LiveApp app, string project, (string Xaml, int Hello, int ClickMe) set, TimeSpan limit, bool heldPastLimit = false)
     {
         window.OpenFile(Path.Combine(PathNames.Canonical(Path.GetDirectoryName(project)!), "MainPage.xaml"));
         Typing.Replace(window, "Text=\"Hello, World!\"", "Text=\"Hello, Passenger!\"");
@@ -84,7 +84,7 @@ internal static class MauiApp
         LineBreakpoint onAdded = window.Debugger.Breakpoints.In(set.Xaml).Single(b => b.Line == added);
         Ui.WaitFor(() => onAdded.Status == BreakpointStatus.Invalid,
             () => $"the breakpoint on the label written since the app's code was made to say it cannot stop yet; it is {onAdded.Status}: {onAdded.Message}", limit);
-        XamlApplied(window, "an added element", limit, set.Xaml, (added, "UpdateComponent", "the added label's line, where MAUI's patch makes it"));
+        XamlApplied(window, "an added element", limit, set.Xaml, heldPastLimit, (added, "UpdateComponent", "the added label's line, where MAUI's patch makes it"));
         Assert.True(onAdded.Status == BreakpointStatus.Bound, $"The added label's breakpoint is {onAdded.Status} once the update made it: {onAdded.Message}");
         Shows(window, app, "Added by Hot Reload", "the added label");
 
@@ -186,7 +186,13 @@ internal static class MauiApp
 
     /// <summary>Apply Hot Reload Changes for a XAML edit, which the app takes, the program stopping on the way at each of
     /// <paramref name="stops"/> (a line of <paramref name="xaml"/> from zero, in a method of that name) and going on.</summary>
-    public static void XamlApplied(MainWindow window, string what, TimeSpan limit, string xaml, params (int Line, string In, string What)[] stops)
+    public static void XamlApplied(MainWindow window, string what, TimeSpan limit, string xaml, params (int Line, string In, string What)[] stops) =>
+        XamlApplied(window, what, limit, xaml, heldPastLimit: false, stops);
+
+    /// <summary>As <see cref="XamlApplied(MainWindow, string, TimeSpan, string, (int, string, string)[])"/>; <paramref name="heldPastLimit"/>,
+    /// the first stop is held past the app's limit (<see cref="LiveApp.ReloadLimit"/>), which counts only its running time:
+    /// the apply says it waits for the program and nothing of what it came to until the program goes on.</summary>
+    public static void XamlApplied(MainWindow window, string what, TimeSpan limit, string xaml, bool heldPastLimit, params (int Line, string In, string What)[] stops)
     {
         HotReloadOutcome? before = window.Debugger.LastApplied;
         // The apply waits for the program, which stops in its code: the IDE is quiet, as a settled wait asks, only once it went on.
@@ -200,6 +206,15 @@ internal static class MauiApp
             Assert.True(window.BottomPanel.Debug.Frames[0].Name.Contains(method, StringComparison.Ordinal),
                 $"The stop at {where} is in {window.BottomPanel.Debug.Frames[0].Name}, not {method}");
             seen = window.Debugger.Session!.Stops;
+            if (heldPastLimit && line == stops[0].Line)
+            {
+                string held = DebugController.HeldApply(window.Debugger.Tabs.First(t => t.IsLive).Name);
+                Assert.True(Ui.Pumped(() => window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains(held, StringComparison.Ordinal), limit),
+                    $"The apply did not say it waits for the program stopped in its code: {window.BottomPanel.Debug.Console.Document.Snapshot}");
+                Ui.Hold(LiveApp.ReloadLimit + TimeSpan.FromSeconds(5), "the stop held past the app's limit on what the changes came to, which counts only its running time");
+                Assert.True(window.Debugger.LastApplied == before && window.Debugger.Session is { State: DebugState.Paused },
+                    $"The apply ended while the program stood stopped in its code: {window.Debugger.LastApplied?.Said}");
+            }
             Ui.Run(window, AppActions.Resume, settle: false);
         }
         Ui.WaitFor(() => window.Debugger.LastApplied != before, () => $"Hot Reload to say what it made of {what}: {Ui.Said(window)}", limit);
