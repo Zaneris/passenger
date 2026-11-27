@@ -753,14 +753,14 @@ public static class VimMotions
                 if (i == 0 && sentenceLine.Length == 0 && EmptyRunEnd(text, last, sentenceLine.Line) is var runEnd && runEnd < last
                     && text.GetLine(runEnd + 1) is var textLine && TextNavigation.IndentEnd(text, textLine) == textLine.Start)
                 {
-                    // From white ending a paragraph: to the last empty line's start past one; counted, the sentence after too.
+                    // From white ending a paragraph: to the last empty line's start past one; counted, a sentence after for each more.
                     if (n == 1)
                     {
                         // White opening its line (blanks alone) takes the lines to the last empty one whole.
                         return runEnd > sentenceLine.Line && from == LineOf(text, from).Start ? new VimSpan(from, text.GetLine(runEnd).Start, true)
                             : new VimSpan(from, runEnd > sentenceLine.Line ? text.GetLine(runEnd).Start : from, false, EndKept: true);
                     }
-                    (to, next, i, toEmpty) = (text.GetLine(runEnd).Start, textLine.Start, n - 2, true);
+                    (to, next, toEmpty) = (text.GetLine(runEnd).Start, textLine.Start, true);
                     continue;
                 }
                 int textUntil = SentenceEnd(text, last, sentence);
