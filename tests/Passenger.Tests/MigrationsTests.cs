@@ -50,6 +50,9 @@ public sealed class MigrationsTests
         Flow.Step(nameof(A_provider_alignment_whose_restore_fails_puts_the_project_back_as_it_was_and_says_so),
             A_provider_alignment_whose_restore_fails_puts_the_project_back_as_it_was_and_says_so);
         OpenWindows.CloseAll();
+        Flow.Step(nameof(A_provider_version_within_its_feeds_minimum_publish_age_is_never_what_brings_it_into_step),
+            A_provider_version_within_its_feeds_minimum_publish_age_is_never_what_brings_it_into_step);
+        OpenWindows.CloseAll();
         Flow.Step(nameof(The_environment_chosen_beside_the_startup_project_is_the_one_dotnet_ef_runs_in_kept_with_the_folder_and_a_typed_one_taken),
             The_environment_chosen_beside_the_startup_project_is_the_one_dotnet_ef_runs_in_kept_with_the_folder_and_a_typed_one_taken);
         OpenWindows.CloseAll();
@@ -342,6 +345,35 @@ public sealed class MigrationsTests
             UndoFromExplorer(window, Path.Combine(folder, "Shop.csproj"));
             Assert.Contains($"Microsoft.EntityFrameworkCore.Sqlite\" Version=\"{ShopApp.Version}\"", File.ReadAllText(project), StringComparison.Ordinal);
             Assert.Contains($"Microsoft.EntityFrameworkCore.Design\" Version=\"{ShopApp.Version}\"", File.ReadAllText(project), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The provider's 5.0.0 supports the project's EF Core, but its feed published it within the 72 hours its
+    /// minPublishAgeHours asks (#2341): bringing the provider into step leaves it at 1.0.0 and moves EF Core to what that
+    /// supports, as with no newer provider at all, where without the age it would have taken the provider to 5.0.0.</summary>
+    private void A_provider_version_within_its_feeds_minimum_publish_age_is_never_what_brings_it_into_step()
+    {
+        string folder = ShopApp.Make(design: true, tool: ShopApp.Version, provider: "1.0.0", providers: [("1.0.0", $"[{ShopApp.Older}]"), ("5.0.0", $"[{ShopApp.Version}]")],
+            young: "5.0.0");
+        string project = Path.Combine(folder, "Shop.csproj");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Migrations);
+            string said = $"{ShopApp.Provider} 1.0.0 supports EF Core {ShopApp.Older}";
+            Ui.WaitFor(() => Gaps(window).Contains(said, StringComparison.Ordinal) && window.Migrations.Busy is null, $"the provider behind ({Gaps(window)})", Slow);
+            EfFix align = window.Migrations.Gaps.SelectMany(g => g.Fixes).First(f => f.Kind == EfFixKind.AlignProvider);
+            Task<string?> fixing = window.Migrations.FixAsync(align);
+            Ui.ClickButton(Asked<ChoiceDialog>(window, "the fix's question"), align.Title);
+            string? why = Ui.Await(fixing, "the alignment's end", Slow);
+            string written = File.ReadAllText(project);
+            Assert.True(why is null && written.Contains($"{ShopApp.Provider}\" Version=\"1.0.0\"", StringComparison.Ordinal)
+                && written.Contains($"Microsoft.EntityFrameworkCore.Sqlite\" Version=\"{ShopApp.Older}\"", StringComparison.Ordinal),
+                $"Bringing the provider into step with 5.0.0 too new for its feed said \"{why}\" and left the project as:\n{written}");
         }
         finally
         {
@@ -1021,14 +1053,15 @@ internal static class ShopApp
     public static string Provider { get; } = $"Passenger.EntityFrameworkCore.StandIn.Ef{Older.Replace('.', '_')}.Ef{Version.Replace('.', '_')}";
 
     /// <summary>The app in a folder of its own: the Design package and the relational one or not, the local tool at a version or
-    /// none, the stand-in provider at a version (in a feed of the test's own, with the <paramref name="fed"/> packages of the
-    /// cache, each version with the range of EF Core it supports, the <paramref name="unrestorable"/> one needing a package no
-    /// feed holds), and the test's Program.cs; restored from the UI thread (a window test's body), its loop running. <paramref name="central"/>
-    /// keeps the versions in a Directory.Packages.props, with EF Core's relational package for a Reports library beside.</summary>
+    /// none, the stand-in provider at a version (in a feed of the test's own, with the <paramref name="fed"/> packages of the cache,
+    /// each version with the range of EF Core it supports, the <paramref name="unrestorable"/> one needing a package no feed holds,
+    /// the feed asking 72 hours of age, <paramref name="young"/> alone younger), and the test's Program.cs; restored from the UI thread,
+    /// its loop running. <paramref name="central"/> keeps the versions in a Directory.Packages.props, with a Reports library beside.</summary>
     public static string Make(bool design, string? tool, string? provider = null, IReadOnlyList<(string Version, string Range)>? providers = null, string? program = null,
-        string? ef = null, string? unrestorable = null, bool central = false, bool relational = false, IReadOnlyList<(string Id, string Version)>? fed = null)
+        string? ef = null, string? unrestorable = null, bool central = false, bool relational = false, IReadOnlyList<(string Id, string Version)>? fed = null,
+        string? young = null)
     {
-        string folder = Write(design, tool, provider, providers, program, ef, unrestorable, central, relational, fed);
+        string folder = Write(design, tool, provider, providers, program, ef, unrestorable, central, relational, fed, young);
         Restore.Run(Path.Combine(folder, "Shop.csproj"));
         return folder;
     }
@@ -1043,7 +1076,7 @@ internal static class ShopApp
     }
 
     private static string Write(bool design, string? tool, string? provider, IReadOnlyList<(string Version, string Range)>? providers, string? program, string? ef,
-        string? unrestorable, bool central, bool relational, IReadOnlyList<(string Id, string Version)>? fed)
+        string? unrestorable, bool central, bool relational, IReadOnlyList<(string Id, string Version)>? fed, string? young = null)
     {
         ef ??= Version;
         string folder = TestFolders.Create("shop");
@@ -1052,6 +1085,10 @@ internal static class ShopApp
         foreach ((string version, string range) in providers ?? [])
         {
             StandIn(standIns, version, range, version == unrestorable);
+            if (young is not null && version != young)
+            {
+                File.SetLastWriteTimeUtc(Path.Combine(standIns, $"{Provider}.{version}.nupkg"), new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+            }
         }
         CopyInto(standIns, [.. fed ?? []]);
         File.WriteAllText(Path.Combine(folder, "nuget.config"), $"""
@@ -1060,7 +1097,7 @@ internal static class ShopApp
               <packageSources>
                 <clear />
                 <add key="feed" value="{System.Security.SecurityElement.Escape(AvaloniaApp.Feed)}" />
-                <add key="standins" value="{System.Security.SecurityElement.Escape(standIns)}" />
+                <add key="standins" value="{System.Security.SecurityElement.Escape(standIns)}"{(young is null ? string.Empty : " minPublishAgeHours=\"72\"")} />
               </packageSources>
             </configuration>
             """);

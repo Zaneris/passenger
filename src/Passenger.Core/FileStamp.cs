@@ -13,7 +13,7 @@ public readonly record struct FileStamp(long Length, DateTime Written)
         FileInfo file = new(path);
         try
         {
-            if (file.Exists && (file.Attributes & FileAttributes.ReparsePoint) != 0 && file.ResolveLinkTarget(returnFinalTarget: true) is FileInfo target)
+            if (FileLinks.Is(file) && file.ResolveLinkTarget(returnFinalTarget: true) is FileInfo target)
             {
                 file = target;
             }

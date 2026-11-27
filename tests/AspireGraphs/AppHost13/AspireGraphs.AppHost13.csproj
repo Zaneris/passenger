@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The graph of an AppHost of Aspire 13's SDK (Aspire13Version), which adds its AppHost package and, from that
+       package's own, its dashboard and orchestrator (Passenger.Tests.csproj downloads those where PassengerAspireRuntime
+       is true); none of the package's assets, whose build targets are an AppHost's. -->
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.AppHost" VersionOverride="$(Aspire13Version)" ExcludeAssets="all" />
+  </ItemGroup>
+</Project>

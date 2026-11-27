@@ -41,6 +41,11 @@
          obsolete from 17, is the one the tests' AppHosts written with it name. Every C# AppHost of it takes its dashboard
          and orchestrator from the CLI's bundle. -->
     <AspireTemplatesVersion>17.0.0</AspireTemplatesVersion>
+    <!-- And Aspire 13's AppHost SDK and AppHost package, kept while people use 13 far more than 17 (#2345): one test runs
+         an AppHost of that SDK, adding a service with AddProject, whose dashboard and orchestrator come from its packages
+         (Passenger.Tests.csproj downloads them where PassengerAspireRuntime is true), not the CLI's bundle. Dropped once
+         Aspire 17 overtakes 13 in use. -->
+    <Aspire13Version>13.6.5</Aspire13Version>
     <!-- The Azure Functions app (.NET isolated worker) the Aspire tests write: its MSBuild SDK, downloaded for the tests'
          local feed, and its worker and HTTP triggers, whose graph tests/AspireGraphs restores. -->
     <AzureFunctionsSdkVersion>1.1.0</AzureFunctionsSdkVersion>

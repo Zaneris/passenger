@@ -78,6 +78,96 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         Flow.StepApart("canceling a window start ends the pending AppHost and its owned endpoint", () => new AspireTests(project), t => t.Canceling_a_window_start_ends_the_pending_AppHost_and_its_owned_endpoint());
     }
 
+    /// <summary>An AppHost of Aspire 13's SDK, kept while people use 13 (#2345, dropped once 17 overtakes it), its dashboard
+    /// and orchestrator from its packages, never the CLI's bundle, and its web service added with AddProject: Run lists the
+    /// service running with its console and its answer; Debug stops at a breakpoint in the service as a request reaches it.</summary>
+    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
+    public void An_Aspire_13_AppHost_of_its_SDK_runs_and_debugs_the_service_it_adds_with_AddProject()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("aspire13-"));
+        try
+        {
+            string host = Ui.AwaitPumped(Waiting.Apart(() => AspireApp.Make13Async(folder)), $"Aspire {AspireApp.Version13}'s AppHost and its service, restored",
+                TimeSpan.FromMinutes(5));
+            string service = PathNames.Canonical(Path.Combine(folder, AspireApp.Service13, "Program.cs"));
+            Flow.Step("Run lists an Aspire 13 AppHost's AddProject service running, with its console and its answer",
+                () => Aspire_13_run_lists_its_service_running_with_its_console_and_its_answer(folder, host));
+            Flow.Step("Debug of an Aspire 13 AppHost stops at a breakpoint in its AddProject service as a request reaches it",
+                () => Aspire_13_debug_stops_at_a_breakpoint_in_its_service_as_a_request_reaches_it(folder, host, service));
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    private static void Aspire_13_run_lists_its_service_running_with_its_console_and_its_answer(string folder, string host)
+    {
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        int[] owned = [];
+        try
+        {
+            Choose13(window, host);
+            Ui.Run(window, AppActions.RunProgram);
+            AspireResource api = Wait13(window, host);
+            Assert.True(window.AspireRuntime.FindService(new(host, api)) is { ProcessId: > 0 }, "The service added with AddProject is no process Passenger started for DCP");
+            FindAction(window, "Show Aspire Log");
+            Ui.WaitFor(() => window.AspireWindow.Console.Document.Snapshot.ToString() is { } said && said.Contains($"[{AspireApp.Resource13}]", StringComparison.Ordinal)
+                && said.Contains(AspireApp.Started13, StringComparison.Ordinal), () => $"the service's console in the Aspire window:\n{window.AspireWindow.Console.Document.Snapshot}");
+            using HttpClient http = Client();
+            Assert.Equal(AspireApp.Answer13, Ui.Await(http.GetStringAsync(HttpUrl(api)), "the service's answer at its endpoint"));
+            owned = OwnedPids(window);
+        }
+        finally
+        {
+            window.Close();
+        }
+        Ui.WaitFor(() => owned.All(pid => !Processes.IsRunning(pid)), "closing the window to end the Aspire 13 AppHost and its service");
+    }
+
+    private static void Aspire_13_debug_stops_at_a_breakpoint_in_its_service_as_a_request_reaches_it(string folder, string host, string service)
+    {
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        int[] owned = [];
+        try
+        {
+            int line = BreakAt(window, service, "string answer");
+            Choose13(window, host);
+            Ui.Launched(window, window.DebugAsync(), "the Aspire 13 AppHost's debugged start", TimeSpan.FromMinutes(3));
+            AspireResource api = Wait13(window, host);
+            DebugTab tab = Assert.IsType<DebugTab>(Assert.IsType<AspireResourceRun>(window.AspireRuntime.FindService(new(host, api))).DebugTab);
+            using HttpClient http = Client();
+            Task<string> request = http.GetStringAsync(HttpUrl(api));
+            WaitStopped(tab, service, line);
+            Ui.WaitFor(() => window.BottomPanel.Debug.Tree.Rows.Any(row => row.Name == "answer"), "the service's local where it stopped");
+            window.Perform(AppActions.Resume);
+            Assert.Equal(AspireApp.Answer13, Ui.AwaitPumped(request, "the request the breakpoint held, once resumed"));
+            owned = OwnedPids(window);
+        }
+        finally
+        {
+            window.Close();
+        }
+        Ui.WaitFor(() => owned.All(pid => !Processes.IsRunning(pid)), "closing the window to end the debugged Aspire 13 AppHost and its service");
+    }
+
+    /// <summary>The Aspire 13 AppHost's generated HTTP configuration chosen.</summary>
+    private static void Choose13(MainWindow window, string host)
+    {
+        Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Aspire && PathNames.Same(configuration.Project, host) && configuration.LaunchProfile == "http"),
+            () => $"the Aspire 13 AppHost's HTTP configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}", TimeSpan.FromMinutes(2));
+        Assert.True(window.SelectConfiguration($"Aspire: {AspireApp.Host13}: http"));
+    }
+
+    /// <summary>The Aspire 13 AppHost's service, once its resource runs as a process Passenger started for DCP.</summary>
+    private static AspireResource Wait13(MainWindow window, string host)
+    {
+        window.ShowToolWindow(ToolWindowIds.Aspire);
+        RefreshUntil(window, () => window.Aspire.ResourceSnapshots.Any(resource => resource.DisplayName == AspireApp.Resource13 && resource.State == AspireStates.Running
+            && window.AspireRuntime.FindService(new(host, resource))?.ProcessId is > 0), $"the Aspire 13 AppHost's {AspireApp.Resource13} running");
+        return Resource(window, AspireApp.Resource13);
+    }
+
     private void Run_with_Hot_Reload_applies_to_both_quiet_sessions_and_a_rude_edit_restarts_only_its_service()
     {
         MainWindow window = project.OpenHost();

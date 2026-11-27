@@ -1,8 +1,10 @@
+using Aspire.Hosting.Dotnet;
+
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
 
-IResourceBuilder<ProjectResource> api = builder.AddProject<Projects.Greenhouse_Api>("api");
+IResourceBuilder<DotnetProjectResource> api = builder.AddDotnetProject("api", "../Greenhouse.Api/Greenhouse.Api.csproj");
 
-builder.AddProject<Projects.Greenhouse_Sensors>("sensors")
+builder.AddDotnetProject("sensors", "../Greenhouse.Sensors/Greenhouse.Sensors.csproj")
     .WithReference(api)
     .WaitFor(api);
 

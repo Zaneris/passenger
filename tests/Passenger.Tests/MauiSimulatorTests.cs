@@ -3,6 +3,7 @@ using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Run.Devices;
+using Passenger.App.Testing;
 using Passenger.Core;
 using Passenger.Text;
 using Passenger.Workspace;
@@ -15,9 +16,10 @@ namespace Passenger.Tests;
 /// with Passenger's relay carried into its data container, stops in its main page and at breakpoints in its XAML, steps,
 /// shows, evaluates and takes a Hot Reload edit, whose update handler is called once the app goes on, then XAML edits, one
 /// MAUI patches and one for which the page is made again; Stop ends the app and takes out what was carried, and a simulator
-/// the window booted is shut down as it closes. Skips, saying why, off a Mac, without MAUI's and iOS's workloads, Xcode or
-/// an iPhone simulator, or the simulator's relay. Debugged through the window, so alone; its waits end within the run's
-/// limit on a test (<see cref="Limits.WithinHang"/>).</summary>
+/// the window booted is shut down as it closes. First, the tests of the project <c>dotnet new iostest</c> makes run in its
+/// app on the simulator chosen beside its configuration. Skips, saying why, off a Mac, without MAUI's and iOS's workloads,
+/// Xcode or an iPhone simulator, or the simulator's relay. Debugged through the window, so alone; its waits end within the
+/// run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
 [Collection(Alone.Name)]
 [AboutMacOS]
 public sealed class MauiSimulatorTests
@@ -28,9 +30,63 @@ public sealed class MauiSimulatorTests
     private const string Handled = "Update handler called for MainPage";
 
     [AvaloniaFact]
-    public void A_maui_apps_ios_head_debugged_on_a_simulator_stops_steps_evaluates_and_takes_a_hot_reload_edit()
+    public void A_device_test_projects_tests_run_on_a_simulator_and_a_maui_apps_ios_head_debugged_there_stops_steps_evaluates_and_takes_a_hot_reload_edit()
     {
         using IDisposable hang = Limits.BeginHang();
+        Flow.Step("an iostest project's tests run in its app on the simulator chosen beside its configuration, each told, and the app ends there",
+            An_iostest_projects_tests_run_in_its_app_on_the_simulator_chosen_beside_its_configuration_each_told_and_the_app_ends_there);
+        Flow.Step("a MAUI app's iOS head debugged on a simulator stops, steps, evaluates and takes a Hot Reload edit",
+            A_maui_apps_ios_head_debugged_on_a_simulator_stops_steps_evaluates_and_takes_a_hot_reload_edit);
+    }
+
+    /// <summary>The template's three tests run as the Tests window's Run All runs them: built for the simulator, the app
+    /// installed and started there for each test host, which connects to Passenger's client on this Mac's loopback.</summary>
+    private static void An_iostest_projects_tests_run_in_its_app_on_the_simulator_chosen_beside_its_configuration_each_told_and_the_app_ends_there()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip(Refusals.IosOnMacAlone);
+        }
+        string folder = PathNames.Canonical(TestFolders.Create("ios-device-tests"));
+        try
+        {
+            (string project, string? unmade) = Ui.AwaitPumped(Waiting.Apart(() => MauiApp.CreateDeviceTestsAsync(folder, "iostest")), "dotnet new iostest and its restore", Slow);
+            if (unmade is not null)
+            {
+                Assert.Skip(unmade);
+            }
+            (DeviceTarget target, AppleTools tools) = Listed(project);
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            try
+            {
+                Choose(window, project, target, MauiApp.DeviceTests);
+                Assert.True(window.Perform(AppActions.RunAllTests));
+                Ui.WaitFor(() => !window.Tests.IsBusy && window.Tests.Tree.Roots.SelectMany(r => r.Methods).Any(m => m.State != TestState.NotRun),
+                    () => $"the run of the tests in their app on {target.Name}: {window.BottomPanel.Tests.Status}\n{Ui.Said(window)}", Slow);
+                Assert.True(System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, $" in {SaidWhile.Pattern}$", string.Empty) == MauiApp.DeviceTestsRan,
+                    $"The tests did not run in their app on {target.Name}, each told: {window.BottomPanel.Tests.Status}");
+                TestNode failed = window.Tests.Tree.Roots.SelectMany(r => r.Methods).Single(m => m.State == TestState.Failed);
+                Assert.Contains("This test is expected to fail", failed.Details, StringComparison.Ordinal);
+                Ui.WaitFor(() => !AppRuns(target), () => $"the tests' app to end on {target.Name} once their run was over", TimeSpan.FromSeconds(30));
+            }
+            finally
+            {
+                window.Close();
+            }
+            LeftAsFound(target, tools);
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>Whether a process of this Mac runs the device test project's app installed on the simulator.</summary>
+    private static bool AppRuns(DeviceTarget target) => Processes.Listed().Values
+        .Any(l => l.Contains($"/Devices/{target.Id}/", StringComparison.Ordinal) && l.Contains($"/{MauiApp.DeviceTests}.app/", StringComparison.Ordinal));
+
+    private static void A_maui_apps_ios_head_debugged_on_a_simulator_stops_steps_evaluates_and_takes_a_hot_reload_edit()
+    {
         (string folder, string project, DeviceTarget target, AppleTools tools) = Prepared("maui-ios-debug");
         MainWindow window = Ui.OpenFolder(folder);
         window.ApplySettings(window.Settings with { HotReload = true });
@@ -120,6 +176,14 @@ public sealed class MauiSimulatorTests
                 public static void UpdateApplication(Type[]? types) => Console.WriteLine($"{{Handled[..^"MainPage".Length]}}{string.Join(", ", (types ?? []).Select(t => t.Name))}");
             }
             """);
+        (DeviceTarget target, AppleTools tools) = Listed(project);
+        return (folder, project, target, tools);
+    }
+
+    /// <summary>The simulator a project of iOS runs on (<see cref="Target"/>) and the Xcode the workload lists it with, or a
+    /// skip saying why there is none.</summary>
+    private static (DeviceTarget Target, AppleTools Tools) Listed(string project)
+    {
         (IReadOnlyList<DeviceTarget> targets, AppleTools? tools, string? problem) = Ui.Await(Waiting.Apart(() =>
             AppleSimulators.ListAsync(project, MauiApp.Ios, new Dictionary<string, string>(), CancellationToken.None)), "the iOS workload's simulators", Slow);
         if (tools is null)
@@ -131,7 +195,7 @@ public sealed class MauiSimulatorTests
             Assert.Skip("The iOS workload lists no iPhone simulator: add one in Xcode, with its iOS simulator runtime");
             return default;
         }
-        return (folder, project, target, tools);
+        return (target, tools);
     }
 
     /// <summary>The simulator to run on: an iPhone simulator already booted, else the first shut down, which the window boots;
@@ -140,15 +204,15 @@ public sealed class MauiSimulatorTests
         targets.Where(t => t is { Platform: TargetPlatform.Ios, Kind: TargetKind.Simulator } && t.Name.StartsWith("iPhone", StringComparison.Ordinal))
             .OrderBy(t => t.Running ? 0 : 1).FirstOrDefault();
 
-    private static void Choose(MainWindow window, string project, DeviceTarget target)
+    private static void Choose(MainWindow window, string project, DeviceTarget target, string name = MauiApp.Name)
     {
-        Ui.WaitFor(() => window.Configurations.Any(c => c.Name == MauiApp.Name), () => $"{MauiApp.Name}'s run configuration; the window has configurations "
+        Ui.WaitFor(() => window.Configurations.Any(c => c.Name == name), () => $"{name}'s run configuration; the window has configurations "
             + $"{string.Join(", ", window.Configurations.Select(c => c.Name))}: {Ui.Said(window)}", Slow);
-        Assert.True(window.SelectConfiguration(MauiApp.Name));
+        Assert.True(window.SelectConfiguration(name));
         ProjectModel model = window.Session.Projects.Single(p => PathNames.Same(p.Path, project));
         window.ChooseRunTarget(model, target);
         Ui.Settle();
-        Assert.True(window.Session.Targets.Of(model)?.Key == target.Key, $"{target.Name} was not kept as where {MauiApp.Name} runs");
+        Assert.True(window.Session.Targets.Of(model)?.Key == target.Key, $"{target.Name} was not kept as where {name} runs");
     }
 
     /// <summary>The app's process as simctl said it launched it, in a console's text; null until it has.</summary>

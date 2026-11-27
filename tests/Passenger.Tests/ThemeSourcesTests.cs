@@ -39,6 +39,65 @@ public sealed class ThemeSourcesTests : IDisposable
         Flow.StepApart<ThemeSourcesTests>("an address source is read through its index and a theme chosen from it draws at the next start with the address gone", t => t.An_address_source_is_read_through_its_index_and_a_theme_chosen_from_it_draws_at_the_next_start_with_the_address_gone());
         Flow.StepApart<ThemeSourcesTests>("a source or a file that cannot be read says why and changes nothing", t => t.A_source_or_a_file_that_cannot_be_read_says_why_and_changes_nothing());
         Flow.StepApart<ThemeSourcesTests>("a theme chosen in 0 3 is the same from the themes repository said while it is fetched and one out of reach is said never dropped", t => t.A_theme_chosen_in_0_3_is_the_same_from_the_themes_repository_said_while_it_is_fetched_and_one_out_of_reach_is_said_never_dropped());
+        Flow.StepApart<ThemeSourcesTests>("the theme list costs what its rows cost however many themes are kept", t => t.The_theme_list_costs_what_its_rows_cost_however_many_themes_are_kept());
+    }
+
+    /// <summary>The most a row of the theme list may cost as the list is made again: a theme read anew costs tens of KB.</summary>
+    private const long RowBytes = 2_048;
+
+    /// <summary>Settings' theme list made again with forty themes kept costs about what it costs with two, their rows apart:
+    /// what is kept is read off the window's thread as Settings opens, and again only where a file's stamp moved, so making
+    /// the list again reads no kept theme, where each time it read and parsed every one.</summary>
+    private void The_theme_list_costs_what_its_rows_cost_however_many_themes_are_kept()
+    {
+        MainWindow window = Open();
+        List<string> made = [];
+        try
+        {
+            long few = Filled(window, made, 2);
+            long many = Filled(window, made, 40);
+            Assert.True(many - few < 38 * RowBytes, $"The theme list made again with 40 themes kept allocated {many:N0} bytes on the window's thread, against "
+                + $"{few:N0} with 2: more than {RowBytes:N0} bytes for each of the 38 more rows, so it reads kept themes again each time it is made");
+        }
+        finally
+        {
+            foreach (string name in made)
+            {
+                Directory.Delete(Path.GetDirectoryName(KeptThemes.PathOf(ThemeSource.Added, false, name))!, recursive: true);
+            }
+            window.Close();
+        }
+
+        // Themes kept as added from a file until there are count of them, Settings opened on them, and the least its theme list
+        // made again allocated on the window's thread of three times.
+        static long Filled(MainWindow window, List<string> made, int count)
+        {
+            byte[] moss = File.ReadAllBytes(Path.Combine(CarriedThemes.Folder, "Moss.json"));
+            while (made.Count < count)
+            {
+                string name = $"Kept {made.Count:00} {Guid.NewGuid():N}";
+                JsonObject theme = (JsonObject)JsonNode.Parse(moss)!;
+                theme["name"] = name;
+                Assert.Null(KeptThemes.Keep(ThemeSource.Added, false, name, System.Text.Encoding.UTF8.GetBytes(theme.ToJsonString())));
+                made.Add(name);
+            }
+            SettingsDialog dialog = window.ShowSettings();
+            Ui.Settle();
+            ThemePicker picker = dialog.ThemePicker;
+            Assert.True(made.All(name => picker.Listed.Contains($"{name} ({ThemeSource.Added.Shown})")),
+                $"Settings lists not every theme kept as added once it read them: it lists {string.Join(", ", picker.Listed)}");
+            long least = long.MaxValue;
+            for (int i = 0; i < 3; i++)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                picker.Refill();
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+                Ui.Settle();
+            }
+            dialog.Close();
+            Ui.Settle();
+            return least;
+        }
     }
 
     private void A_folder_source_added_in_Settings_lists_its_themes_by_name_and_source_and_one_chosen_is_kept_drawn_before_Apply_and_taken_anew_only_on_Refresh()

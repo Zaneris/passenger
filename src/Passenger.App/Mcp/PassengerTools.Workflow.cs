@@ -609,12 +609,7 @@ public sealed partial class PassengerTools
         }
         AgentCall.Say($"Finding {id} on the folder's feeds");
         IPackageFeed feeds = await Session.Packages.FeedAsync(null);
-        FeedVersions? found = version is not null ? null
-            : feeds is FeedSet set ? await set.VersionsEachAsync(id, prerelease: false, cancel) : new FeedVersions(await feeds.VersionsAsync(id, prerelease: false, cancel), []);
-        if (found is { Versions.Count: 0, Failed.Count: > 0 })
-        {
-            throw new HttpRequestException(string.Join("; ", found.Failed.Select(f => $"{f.Feed}: {f.Problem}")));
-        }
+        FeedVersions? found = version is not null ? null : (await feeds.VersionsEachAsync(id, prerelease: false, cancel)).Answered();
         IReadOnlyList<string>? offered = found?.Chosen;
         string at = version ?? offered?.FirstOrDefault()
             ?? (found?.Versions.FirstOrDefault() is { } young

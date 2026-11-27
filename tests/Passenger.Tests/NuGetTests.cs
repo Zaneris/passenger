@@ -359,10 +359,10 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A feed of a minimum publish age (nuget.config's minPublishAgeHours, 72 hours here) has the Updates tab hold
-    /// back a version it published two hours ago, the row's "held back" tag saying when and the feed's age, and the package
-    /// chosen offering what the project has, while a package its minPublishAgeExceptions name is offered that new version
-    /// at once, as NuGet's own choice of a version reads them.</summary>
+    /// <summary>A feed of a minimum publish age (nuget.config's minPublishAgeHours, 72 hours here) has a search list and the
+    /// Updates tab hold back a version it published two hours ago, the row's "held back" tag saying when and the feed's age,
+    /// and the package chosen offering what the project has, while a package its minPublishAgeExceptions name is offered
+    /// that new version at once, as NuGet's own choice of a version reads them.</summary>
     private void Updates_holds_back_a_version_published_within_the_feeds_minimum_publish_age_saying_why_and_offers_an_excepted_packages()
     {
         const string Young = "Passenger.Young";
@@ -381,12 +381,23 @@ public sealed class NuGetTests : IDisposable
         Restore.Run(lib);
         MainWindow window = Open();
         NuGetView nuget = window.NuGet;
+        const string YoungHeld = "1.1.0 was published 2 hours ago, within stand-in's minimum publish age of 72 hours";
+
+        // Searched for, each is listed at the newest version it may be given, the young one's 1.1.0 held back saying why.
+        nuget.Query = "Passenger.";
+        Task searched = nuget.RefreshAsync();
+        Ui.Landed(() => searched.IsCompleted && nuget.Rows.Any(r => r.Id == Young), $"the search of the feed: {nuget.Status}");
+        string Listed(string id) => nuget.Rows.Single(r => r.Id == id) is var row ? $"{row.Version} ({row.HeldBack ?? "nothing held back"})" : string.Empty;
+        Assert.Equal(($"1.0.0 ({YoungHeld})", "1.1.0 (nothing held back)"), (Listed(Young), Listed(Excepted)));
+        nuget.Query = string.Empty;
+        Ui.Settle();
+
         Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().SingleOrDefault(b => Equals(b.Content, "Updates"))
             ?? throw new Xunit.Sdk.XunitException("NuGet has no Updates tab"));
         Ui.Landed(() => nuget.CanUpdateAll || nuget.Status.StartsWith("No updates", StringComparison.Ordinal), $"the check for updates: {nuget.Status}");
         string Said(PackageRow row) => $"{row.Id} {row.Version} -> {row.MovesTo ?? "none"} ({row.HeldBack ?? "nothing held back"})";
         Assert.Equal([$"{Excepted} 1.0.0 -> 1.1.0 (nothing held back)",
-            $"{Young} 1.0.0 -> none (1.1.0 was published 2 hours ago, within stand-in's minimum publish age of 72 hours)"], nuget.Rows.Select(Said));
+            $"{Young} 1.0.0 -> none ({YoungHeld})"], nuget.Rows.Select(Said));
         Assert.True(nuget.Status == "1 update available", $"With {Young} 1.1.0 too new and {Excepted} excepted, the Updates tab says \"{nuget.Status}\"");
 
         PackageRow young = nuget.Rows.Single(r => r.Id == Young);

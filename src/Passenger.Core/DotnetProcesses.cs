@@ -594,22 +594,55 @@ public static partial class DotnetProcesses
 
     /// <summary>Each process whose runtime has its files (<see cref="RuntimeFiles"/>) in this process's temporary folder, its
     /// diagnostic socket or its debugger's pipe, with the start they are named for: asked by those names, as
-    /// <see cref="Candidates"/> asks, so the folder's other files are never read. None on Windows.</summary>
-    internal static IEnumerable<(int Id, long Started)> WithRuntimeFiles()
+    /// <see cref="Candidates"/> asks, so the folder's other files are never read, and of each process only while it is new
+    /// to the looks (<see cref="RuntimeFileLooks"/>), so a look costs the listing alone. None on Windows.</summary>
+    internal static IReadOnlyList<(int Id, long Started)> WithRuntimeFiles()
     {
         if (OperatingSystem.IsWindows())
         {
-            yield break;
+            return [];
         }
-        string folder = Path.GetTempPath();
-        foreach (int id in Listed())
+        List<(int Id, long Started)> found = [];
+        lock (FileLooks)
         {
-            if (StartKey(id) is long started
-                && (File.Exists(Path.Combine(folder, string.Create(CultureInfo.InvariantCulture, $"dotnet-diagnostic-{id}-{started}-socket")))
-                    || File.Exists(Path.Combine(folder, string.Create(CultureInfo.InvariantCulture, $"clr-debug-pipe-{id}-{started}-in")))))
-            {
-                yield return (id, started);
-            }
+            FileLooks.Look(ListedInto(ref listing), found);
+        }
+        return found;
+    }
+
+    private static readonly RuntimeFileLooks FileLooks = new(StartKey, HoldsRuntimeFiles);
+
+    /// <summary>The buffer each look lists the processes into, made larger as the machine runs more (under <see cref="FileLooks"/>).</summary>
+    private static int[] listing = [];
+
+    /// <summary>Whether a process's runtime has its diagnostic socket or its debugger's pipe in the temporary folder.</summary>
+    private static bool HoldsRuntimeFiles(int id, long started)
+    {
+        string folder = Path.GetTempPath();
+        return File.Exists(Path.Combine(folder, string.Create(CultureInfo.InvariantCulture, $"dotnet-diagnostic-{id}-{started}-socket")))
+            || File.Exists(Path.Combine(folder, string.Create(CultureInfo.InvariantCulture, $"clr-debug-pipe-{id}-{started}-in")));
+    }
+
+    /// <summary>Every process the system lists now, on macOS and Linux, in <paramref name="into"/>, made larger where it
+    /// cannot hold them; on macOS the listing makes nothing once it can.</summary>
+    private static unsafe ReadOnlySpan<int> ListedInto(ref int[] into)
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            into = [.. Listed()];
+            return into;
+        }
+        const int AllProcesses = 1;
+        // Room for those started since the system said how many there are.
+        int needed = ProcListPids(AllProcesses, 0, null, 0) / sizeof(int) + 64;
+        if (into.Length < needed)
+        {
+            into = new int[needed * 2];
+        }
+        fixed (int* buffer = into)
+        {
+            int bytes = ProcListPids(AllProcesses, 0, buffer, into.Length * sizeof(int));
+            return bytes <= 0 ? [] : into.AsSpan(0, Math.Min(bytes / sizeof(int), into.Length));
         }
     }
 

@@ -13,15 +13,25 @@ public static class BuiltInThemes
     /// <summary>The built-in source's index, as read.</summary>
     public static ThemeRead<ThemeIndex> Index => index.Value;
 
-    /// <summary>The built-in source as a source read: every file it lists, its tokens read against <paramref name="kinds"/>.</summary>
+    /// <summary>The built-in source as a source read: every file it lists, its tokens read against <paramref name="kinds"/>, read
+    /// once for a table of kinds and kept, as what the app carries never changes while it runs.</summary>
     public static SourceRead Listed(IReadOnlyDictionary<string, ThemeTokenKind> kinds)
     {
-        if (Index.Read is not { } listed)
+        if (Volatile.Read(ref listing) is { } kept && ReferenceEquals(kept.Kinds, kinds))
         {
-            return new SourceRead(ThemeSource.BuiltIn, Index.Refused, [], Index.Problems);
+            return kept.Read;
         }
-        return new SourceRead(ThemeSource.BuiltIn, null, [.. listed.Themes.Select(p => File(p, false, kinds)).Concat(listed.CodeColours.Select(p => File(p, true, kinds)))], Index.Problems);
+        SourceRead read = Index.Read is not { } listed
+            ? new SourceRead(ThemeSource.BuiltIn, Index.Refused, [], Index.Problems)
+            : new SourceRead(ThemeSource.BuiltIn, null, [.. listed.Themes.Select(p => File(p, false, kinds)).Concat(listed.CodeColours.Select(p => File(p, true, kinds)))], Index.Problems);
+        Volatile.Write(ref listing, new Listing(kinds, read));
+        return read;
     }
+
+    /// <summary>The source as last read, with the table of kinds it was read against.</summary>
+    private sealed record Listing(IReadOnlyDictionary<string, ThemeTokenKind> Kinds, SourceRead Read);
+
+    private static Listing? listing;
 
     /// <summary>The file of a built-in theme or scheme of a name, or null where none is carried.</summary>
     public static byte[]? Bytes(bool code, string name) =>

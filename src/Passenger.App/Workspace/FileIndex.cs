@@ -499,7 +499,7 @@ public sealed class FileIndex
             {
                 // Made, the listing opens the folder.
                 FileSystemEnumerable<(string Name, bool Folder, bool Link)> entries = new(folder,
-                    static (ref FileSystemEntry entry) => (entry.FileName.ToString(), entry.IsDirectory, entry.IsDirectory && (entry.Attributes & FileAttributes.ReparsePoint) != 0),
+                    static (ref FileSystemEntry entry) => (entry.FileName.ToString(), entry.IsDirectory, entry.IsDirectory && FileLinks.Is(ref entry)),
                     Options)
                 {
                     ShouldIncludePredicate = (ref FileSystemEntry entry) => asked.Contains(entry.FileName),

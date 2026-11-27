@@ -93,9 +93,7 @@ public sealed partial class NuGetView
                 {
                     try
                     {
-                        FeedVersions answer = feed is FeedSet set
-                            ? await set.VersionsEachAsync(package.Key, preview, cancel.Token)
-                            : new FeedVersions(await feed.VersionsAsync(package.Key, preview, cancel.Token), []);
+                        FeedVersions answer = await feed.VersionsEachAsync(package.Key, preview, cancel.Token);
                         List<string> failed = [.. answer.Failed.Select(f => $"{package.Key}: {f.Feed}: {f.Problem}")];
                         InstalledVersion[] at = [.. package.Value.Values.SelectMany(v => v)];
                         if (at.Any(v => v.Version is null))
@@ -227,7 +225,7 @@ public sealed partial class NuGetView
             {
                 if (offered.Count == 0)
                 {
-                    FeedVersions answer = feed is FeedSet set ? await set.VersionsEachAsync(id, preview, cancel) : new FeedVersions(await feed.VersionsAsync(id, preview, cancel), []);
+                    FeedVersions answer = await feed.VersionsEachAsync(id, preview, cancel);
                     problems.AddRange(answer.Failed.Select(f => $"{id}: {f.Feed}: {f.Problem}"));
                     offered = answer.Versions;
                     tooNew = answer.TooNew;

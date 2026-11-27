@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 using Passenger.Text;
 using Passenger.Xaml.Dialects;
 using Passenger.Xaml.Syntax;
@@ -122,9 +123,14 @@ public static class Colours
     }
 
     /// <summary>A C# file's colours: <c>Color.Parse("#…")</c> (and a brush's), <c>Color.FromRgb</c>, <c>Color.FromArgb</c>
-    /// and <c>Color.FromUInt32</c> of constants, <c>Colors.Name</c> and <c>Brushes.Name</c>.</summary>
+    /// and <c>Color.FromUInt32</c> of constants, <c>Colors.Name</c> and <c>Brushes.Name</c>; none, with nothing walked or
+    /// made, in a file whose text names no colour or brush type.</summary>
     public static IReadOnlyList<ColourUse> InCSharp(SyntaxNode root)
     {
+        if (root.SyntaxTree.TryGetText(out SourceText? text) && !NamesColours(text))
+        {
+            return [];
+        }
         List<ColourUse> found = [];
         foreach (SyntaxNode node in root.DescendantNodes())
         {
@@ -143,11 +149,60 @@ public static class Colours
         return found;
     }
 
+    /// <summary>The words every colour <see cref="InCSharp"/> finds is written with: each colour or brush type's name holds one.</summary>
+    private static readonly string[] ColourWords = ["Color", "Brush"];
+
+    /// <summary>How much of a text <see cref="NamesColours"/> reads at a time, each piece after the first beginning
+    /// <see cref="Overlap"/> before the last ended, a word's length less one, so no word is cut in two.</summary>
+    private const int Piece = 4096;
+
+    private const int Overlap = 4;
+
+    [ThreadStatic]
+    private static char[]? piece;
+
+    /// <summary>Whether a text holds a colour or brush type's name, read a piece at a time into this thread's own buffer.</summary>
+    private static bool NamesColours(SourceText text)
+    {
+        char[] read = piece ??= new char[Piece];
+        for (int start = 0; start < text.Length; start += Piece - Overlap)
+        {
+            int count = Math.Min(Piece, text.Length - start);
+            text.CopyTo(start, read, 0, count);
+            ReadOnlySpan<char> written = read.AsSpan(0, count);
+            foreach (string word in ColourWords)
+            {
+                if (written.Contains(word, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            if (start + count == text.Length)
+            {
+                break;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>The last name of what a member is asked of (<c>Color</c> of <c>Avalonia.Media.Color</c>), read from the syntax
+    /// with no string made; null for anything else.</summary>
+    private static string? LastName(ExpressionSyntax receiver) => receiver switch
+    {
+        IdentifierNameSyntax name => name.Identifier.ValueText,
+        MemberAccessExpressionSyntax member => member.Name.Identifier.ValueText,
+        AliasQualifiedNameSyntax alias => alias.Name.Identifier.ValueText,
+        QualifiedNameSyntax qualified => qualified.Right.Identifier.ValueText,
+        _ => null,
+    };
+
     private static void Call(InvocationExpressionSyntax call, MemberAccessExpressionSyntax access, List<ColourUse> found)
     {
-        string method = access.Name.Identifier.Text;
-        string receiver = access.Expression.ToString();
-        string type = receiver[(receiver.LastIndexOf('.') + 1)..];
+        string method = access.Name.Identifier.ValueText;
+        if (method is not ("Parse" or "FromRgb" or "FromArgb" or "FromUInt32") || LastName(access.Expression) is not { } type)
+        {
+            return;
+        }
         SeparatedSyntaxList<ArgumentSyntax> arguments = call.ArgumentList.Arguments;
         if (method == "Parse" && type is "Color" or "Brush" or "SolidColorBrush" && arguments.Count == 1
             && arguments[0].Expression is LiteralExpressionSyntax { Token.Value: string written } literal && KnownColours.Parse(written) is { } parsed)
@@ -168,7 +223,7 @@ public static class Colours
                 Argb colour = method == "FromRgb"
                     ? new Argb(255, (byte)values[0], (byte)values[1], (byte)values[2])
                     : new Argb((byte)values[0], (byte)values[1], (byte)values[2], (byte)values[3]);
-                found.Add(new ColourUse(call.SpanStart, colour, null, new TextRange(call.SpanStart, call.Span.Length), ColourForm.Call, receiver));
+                found.Add(new ColourUse(call.SpanStart, colour, null, new TextRange(call.SpanStart, call.Span.Length), ColourForm.Call, access.Expression.ToString()));
             }
             return;
         }

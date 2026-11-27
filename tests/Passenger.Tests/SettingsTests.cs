@@ -73,7 +73,7 @@ public sealed class SettingsTests : IDisposable
         Flow.StepApart<SettingsTests>("a shortcut set in the keymap runs its action and one taken from another action leaves it", t => t.A_shortcut_set_in_the_keymap_runs_its_action_and_one_taken_from_another_action_leaves_it());
         Flow.StepApart<SettingsTests>("a shortcut kept under an actions former id stays reset once reset and read again", t => t.A_shortcut_kept_under_an_actions_former_id_stays_reset_once_reset_and_read_again());
         Flow.StepApart<SettingsTests>("a shell path naming no program is refused in settings and a terminal tab met with it says why", t => t.A_shell_path_naming_no_program_is_refused_in_settings_and_a_terminal_tab_met_with_it_says_why());
-        Flow.StepApart<SettingsTests>("the browser kept for debugging is the browser settings shows and keeps under its name", t => t.The_browser_kept_for_debugging_is_the_browser_settings_shows_and_keeps_under_its_name());
+        Flow.StepApart<SettingsTests>("the browser kept for debugging is the browser settings shows and keeps under its name and no program row looks on the windows thread", t => t.The_browser_kept_for_debugging_is_the_browser_settings_shows_and_keeps_under_its_name_and_no_program_row_looks_on_the_windows_thread());
     }
 
     /// <summary>Every page of Settings at its least width and smallest size cuts no word and runs no row under its
@@ -801,8 +801,9 @@ public sealed class SettingsTests : IDisposable
 
     /// <summary>The browser debugging was given, kept as debugBrowser, is Settings' Browser, the one pages open and are
     /// debugged in: Settings › Run shows it there, the system's default browser said where it is empty, and a change to it is
-    /// kept under browser alone.</summary>
-    private void The_browser_kept_for_debugging_is_the_browser_settings_shows_and_keeps_under_its_name()
+    /// kept under browser alone. The program a row runs when empty is looked for off the window's thread: Settings opens
+    /// without a search for Godot there, and shows the Godot found once looked for.</summary>
+    private void The_browser_kept_for_debugging_is_the_browser_settings_shows_and_keeps_under_its_name_and_no_program_row_looks_on_the_windows_thread()
     {
         string file = Path.Combine(settings, StateStore.SettingsFile);
         string line = $"\"{Path.Combine(folder, "Chrome Dev", "chrome")}\" --lang=fr";
@@ -812,8 +813,15 @@ public sealed class SettingsTests : IDisposable
         {
             window.KeepSettings();
             Assert.Equal(line, window.Settings.Browser);
+            int searched = Passenger.Core.GodotExecutables.SearchedOnThisThread;
             SettingsDialog dialog = window.ShowSettings();
             Ui.Settle();
+            dialog.Page = SettingsDialog.GodotPage;
+            Ui.Settle();
+            Assert.True(Passenger.Core.GodotExecutables.SearchedOnThisThread == searched, "Settings looked for Godot on the window's thread as it opened, "
+                + "which walks every PATH folder and the Applications folders while the window draws nothing");
+            string godot = GodotLaunch.Found(null) is { Exists: true } found ? found.Executable : "Not found";
+            Assert.Equal(godot, Editor<TextBox>(dialog, Declared.GodotExecutable.Row!.Label).PlaceholderText);
             dialog.Page = SettingsDialog.RunPage;
             Ui.Settle();
             TextBox browser = Editor<TextBox>(dialog, PageBrowsers.Row);

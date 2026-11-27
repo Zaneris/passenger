@@ -47,6 +47,7 @@
     <Compile Include="../Passenger.Core/OwnEnvironment.cs" Link="OwnEnvironment.cs" />
     <Compile Include="../Passenger.Core/PathNames.cs" Link="PathNames.cs" />
     <Compile Include="../Passenger.Core/Kernel32.cs" Link="Kernel32.cs" />
+    <Compile Include="../Passenger.Core/FileLinks.cs" Link="FileLinks.cs" />
     <Compile Include="../Passenger.Core/PathComparer.cs" Link="PathComparer.cs" />
     <Compile Include="../Passenger.Core/SocketFolders.Limit.cs" Link="SocketFolders.Limit.cs" />
     <Compile Include="../Passenger.Core/Deadline.cs" Link="Deadline.cs" />

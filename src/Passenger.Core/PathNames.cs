@@ -158,17 +158,17 @@ public static partial class PathNames
 
     /// <summary>A folder and the folders under it that <paramref name="enters"/> lets the walk into, nearest first,
     /// each once by its canonical path whatever links reach it (named as first reached), and none a link goes up to
-    /// (the first folder or one above it), which would have the walk go round the tree for good. A folder that cannot
-    /// be read is passed over.</summary>
-    public static IEnumerable<string> FoldersUnder(string start, Func<string, bool> enters) =>
-        Walk(start, (sub, _) => enters(sub), inside: false, named: null).Select(f => f.At);
+    /// (the first folder or one above it), which would have the walk go round the tree for good; none a link leads to
+    /// unless <paramref name="throughLinks"/>. A folder that cannot be read is passed over.</summary>
+    public static IEnumerable<string> FoldersUnder(string start, Func<string, bool> enters, bool throughLinks = true) =>
+        Walk(start, (sub, _) => enters(sub), inside: false, named: null, throughLinks).Select(f => f.At);
 
     /// <summary>The files in a folder and in the folders under it that <paramref name="enters"/> lets the walk into (asked of
     /// each by its canonical path), folder by folder, nearest first, all by their canonical paths: each folder once
     /// whatever links reach it and none a link leads to outside the first, so no walk loops or leaves it; the system's own
     /// files (<see cref="IsSystemFile"/>) passed over.</summary>
     public static IEnumerable<(string Folder, IReadOnlyList<string> Files)> FilesUnder(string start, Func<string, bool> enters, FileNamed? named = null) =>
-        Walk(start, (_, canonical) => enters(canonical), inside: true, named ?? Joined).Select(f => (f.Canonical, f.Files));
+        Walk(start, (_, canonical) => enters(canonical), inside: true, named ?? Joined, throughLinks: true).Select(f => (f.Canonical, f.Files));
 
     /// <summary>How a walk names a file of a folder it reached (by the folder's canonical path): its name after a part the
     /// folder's files share, so they sort as their names do; null passes the file over.</summary>
@@ -217,8 +217,10 @@ public static partial class PathNames
 
     /// <summary>The walk under <see cref="FoldersUnder"/> and <see cref="FilesUnder"/>, breadth first, each folder's folders
     /// and files in the order of their names, read from the system's entries without an object for each; files only where
-    /// <paramref name="named"/> names them, and <paramref name="inside"/> enters no folder outside the first.</summary>
-    private static IEnumerable<(string At, string Canonical, IReadOnlyList<string> Files)> Walk(string start, Func<string, string, bool> enters, bool inside, FileNamed? named)
+    /// <paramref name="named"/> names them, <paramref name="inside"/> enters no folder outside the first, and no link
+    /// unless <paramref name="throughLinks"/>.</summary>
+    private static IEnumerable<(string At, string Canonical, IReadOnlyList<string> Files)> Walk(string start, Func<string, string, bool> enters, bool inside, FileNamed? named,
+        bool throughLinks)
     {
         string root = Canonical(start);
         HashSet<string> walked = new(Comparer) { root };
@@ -252,6 +254,10 @@ public static partial class PathNames
             subs.Sort(static (a, b) => string.CompareOrdinal(a.At, b.At));
             foreach ((string at, bool link) in subs)
             {
+                if (link && !throughLinks)
+                {
+                    continue;
+                }
                 // Only a link (or another reparse point) is asked where it leads: any other folder is its name in its parent.
                 string canonical = link ? Canonical(at) : string.Equals(folder.At, folder.Canonical, StringComparison.Ordinal) ? at : Path.Join(folder.Canonical, Path.GetFileName(at.AsSpan()));
                 if ((inside ? IsUnder(canonical, root) : !Within(root, canonical)) && Enters(at, canonical) && walked.Add(canonical))
@@ -279,7 +285,7 @@ public static partial class PathNames
     /// names it (null for one passed over, the system's own files among them); no files without it.</summary>
     private static FileSystemEnumerable<(string? Path, bool Folder, bool Link)> Entries(string at, string canonical, FileNamed? named) =>
         new(at, (ref FileSystemEntry entry) => entry.IsDirectory
-            ? (entry.ToFullPath(), true, (entry.Attributes & FileAttributes.ReparsePoint) != 0)
+            ? (entry.ToFullPath(), true, FileLinks.Is(ref entry))
             : (named is null || IsSystemFile(entry.FileName) ? null : named(canonical, entry.FileName), false, false), Listing)
         {
             ShouldIncludePredicate = named is null ? static (ref FileSystemEntry entry) => entry.IsDirectory : null,

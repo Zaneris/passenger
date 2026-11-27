@@ -28,6 +28,8 @@
     <Compile Include="../Passenger.Core/PathNames.cs" Link="PathNames.cs" />
     <!-- The Windows calls PathNames and SessionProcesses make, declared once. -->
     <Compile Include="../Passenger.Core/Kernel32.cs" Link="Kernel32.cs" />
+    <!-- How PathNames tells a link apart as a walk meets one, as the rest of Passenger does. -->
+    <Compile Include="../Passenger.Core/FileLinks.cs" Link="FileLinks.cs" />
     <!-- How long a session's end waits for the processes it started to be gone. -->
     <Compile Include="../Passenger.Core/Deadline.cs" Link="Deadline.cs" />
     <Compile Include="../Passenger.Core/PathComparer.cs" Link="PathComparer.cs" />

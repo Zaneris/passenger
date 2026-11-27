@@ -4,15 +4,37 @@ namespace Passenger.App;
 
 /// <summary>What each theme source lists, as last read in this process: read when a person looks at its themes in Settings
 /// (once, until a refresh asks again), never at a start; the built-in source read from the app and the added themes from
-/// where they are kept, never from the web. A refresh reads every source again and takes the newer copy of each theme kept
-/// from it. UI thread only.</summary>
+/// where they are kept, never from the web, each kept one read off the window's thread and again only once its file's stamp
+/// moved. A refresh reads every source again and takes the newer copy of each theme kept from it. UI thread only.</summary>
 public static class ThemeListing
 {
     private static readonly Dictionary<ThemeSource, SourceRead> reads = [];
     private static readonly Dictionary<ThemeSource, Task<SourceRead>> reading = [];
 
-    /// <summary>A source was read, or began to be.</summary>
+    /// <summary>The themes and schemes kept from each source as last read, by source and kind, with the stamps of their files then.</summary>
+    private static readonly Dictionary<(ThemeSource Source, bool Code), KeptRead> kept = [];
+
+    /// <summary>The sources whose kept themes are to be looked at by the look under way (<see cref="keptLook"/>), once it is
+    /// done with those it took.</summary>
+    private static readonly HashSet<ThemeSource> keptWanted = [];
+
+    private static Task keptLook = Task.CompletedTask;
+    private static bool keptLooking;
+
+    /// <summary>A source's kept themes or schemes as read, and the stamps of the files they were read from.</summary>
+    private sealed record KeptRead(IReadOnlyList<ThemeFile> Files, IReadOnlyList<(string Name, FileStamp? Stamp)> Stamps);
+
+    /// <summary>A source was read, or began to be, or what is kept from one came, went or changed.</summary>
     public static event EventHandler? Changed;
+
+    /// <summary>How many times <see cref="Changed"/> was raised: a list made at one count shows what the next would.</summary>
+    public static int Version { get; private set; }
+
+    private static void Change()
+    {
+        Version++;
+        Changed?.Invoke(null, EventArgs.Empty);
+    }
 
     /// <summary>What a source listed when last read in this process; null before it was.</summary>
     public static SourceRead? Read(ThemeSource source) => reads.GetValueOrDefault(source);
@@ -43,7 +65,7 @@ public static class ThemeListing
         if (!read.IsCompleted)
         {
             reading[source] = read;
-            Changed?.Invoke(null, EventArgs.Empty);
+            Change();
         }
         return read;
     }
@@ -61,7 +83,7 @@ public static class ThemeListing
             reading.Remove(source);
         }
         reads[source] = read;
-        Changed?.Invoke(null, EventArgs.Empty);
+        Change();
         return read;
     }
 
@@ -82,6 +104,7 @@ public static class ThemeListing
             }
         }
         ThemeSource[] keeping = [.. sources, ThemeSource.Added, ThemeSource.OpenVsx];
+        await LookKeptAsync(keeping);
         List<(ThemeSource Source, bool Code, string Name, VsCodeBase Base)> bases = [.. keeping.SelectMany(source => ((bool[])[false, true])
             .SelectMany(code => Kept(source, code).Where(file => file.Base is { Id: not null }).Select(file => (source, code, file.Name, file.Base!))))];
         List<(ThemeSource Source, string Name, VsCodeBase IconTheme)> iconSets = [.. keeping.SelectMany(source => Kept(source, false)
@@ -140,7 +163,8 @@ public static class ThemeListing
             IdeErrors.Write($"Themes: {why}");
         }
         Themes.Reload();
-        Changed?.Invoke(null, EventArgs.Empty);
+        await LookKeptAsync(keeping);
+        Change();
         return refused.Count(r => r is null);
 
         // A read under way began before the refresh was asked, so the source is read once more after it.
@@ -184,6 +208,7 @@ public static class ThemeListing
         }
         else
         {
+            await LookKeptAsync([source]);
             names = source == ThemeSource.BuiltIn ? BuiltInThemes.Listed(ThemeResources.Kinds).Listed.Where(l => l.Code == code).Select(l => l.Read.Read?.Name)
                 : Kept(source, code).Select(f => f.Name);
         }
@@ -194,17 +219,82 @@ public static class ThemeListing
     }
 
     /// <summary>A theme or scheme a source listed, kept from what was read of it with its pictures and its VS Code base, so
-    /// it is worn at once; why not where they cannot be had.</summary>
-    public static Task<string?> KeepAsync(ListedTheme listed, string name) => BackgroundWork.Run(async () =>
+    /// it is worn at once, and what is kept from the source looked at again; why not where they cannot be had.</summary>
+    public static async Task<string?> KeepAsync(ListedTheme listed, string name)
     {
-        (Dictionary<string, byte[]> images, string? unseen) = await ThemeSourceReads.ImagesAsync(listed, listed.Source.Reached, CancellationToken.None);
-        return unseen ?? (listed.Read.Read is { } file ? await VsCodeBases.KeepAsync(listed.Source, listed.Code, name, file, CancellationToken.None)
-            ?? await VsCodeIconSets.KeepAsync(listed.Source, listed.Code, name, file, CancellationToken.None) : null)
-            ?? KeptThemes.Keep(listed.Source, listed.Code, name, listed.Bytes!, images);
-    });
+        string? why = await BackgroundWork.Run(async () =>
+        {
+            (Dictionary<string, byte[]> images, string? unseen) = await ThemeSourceReads.ImagesAsync(listed, listed.Source.Reached, CancellationToken.None);
+            return unseen ?? (listed.Read.Read is { } file ? await VsCodeBases.KeepAsync(listed.Source, listed.Code, name, file, CancellationToken.None)
+                ?? await VsCodeIconSets.KeepAsync(listed.Source, listed.Code, name, file, CancellationToken.None) : null)
+                ?? KeptThemes.Keep(listed.Source, listed.Code, name, listed.Bytes!, images);
+        });
+        await LookKeptAsync([listed.Source]);
+        return why;
+    }
 
-    /// <summary>The themes or schemes kept from a source, each as read, for a list made without reading the source.</summary>
-    public static IReadOnlyList<ThemeFile> Kept(ThemeSource source, bool code) =>
-        [.. KeptThemes.Of(source, code).Select(bytes => code ? ThemeFiles.ReadCodeColours(source.Shown, bytes, ThemeResources.Kinds) : ThemeFiles.ReadTheme(source.Shown, bytes, ThemeResources.Kinds))
-            .Select(r => r.Read).OfType<ThemeFile>()];
+    /// <summary>The themes or schemes kept from a source as last read (<see cref="LookKeptAsync"/>), for a list made without
+    /// reading the source or the disk: none before the first look at it has landed.</summary>
+    public static IReadOnlyList<ThemeFile> Kept(ThemeSource source, bool code) => kept.GetValueOrDefault((source, code))?.Files ?? [];
+
+    /// <summary>Whether what is kept from a source has been read in this process (<see cref="Kept"/>).</summary>
+    public static bool KnowsKept(ThemeSource source) => kept.ContainsKey((source, false));
+
+    /// <summary>The themes and schemes kept from each source read again off the window's thread where the stamps of their
+    /// files moved since the last read, <see cref="Changed"/> raised once as the look lands where any came, went or changed;
+    /// one look at a time, the sources asked for meanwhile looked at once it is done with its own. Done with them all.</summary>
+    public static Task LookKeptAsync(IEnumerable<ThemeSource> sources)
+    {
+        keptWanted.UnionWith(sources);
+        if (!keptLooking)
+        {
+            keptLooking = true;
+            keptLook = LookKeptAgainAsync();
+        }
+        return keptLook;
+    }
+
+    private static async Task LookKeptAgainAsync()
+    {
+        try
+        {
+            bool changed = false;
+            while (keptWanted.Count > 0)
+            {
+                IReadOnlyDictionary<string, ThemeTokenKind> kinds = ThemeResources.Kinds;
+                (ThemeSource Source, bool Code, KeptRead? Was)[] looked = [.. keptWanted.SelectMany(source => ((bool[])[false, true]).Select(code => (source, code, kept.GetValueOrDefault((source, code)))))];
+                keptWanted.Clear();
+                KeptRead[] read = await BackgroundWork.Run(() => looked.Select(l => ReadKept(l.Source, l.Code, l.Was, kinds)).ToArray());
+                for (int i = 0; i < looked.Length; i++)
+                {
+                    if (!ReferenceEquals(read[i], looked[i].Was))
+                    {
+                        kept[(looked[i].Source, looked[i].Code)] = read[i];
+                        changed = true;
+                    }
+                }
+            }
+            if (changed)
+            {
+                Change();
+            }
+        }
+        finally
+        {
+            keptLooking = false;
+        }
+    }
+
+    /// <summary>A source's kept themes or schemes as they stand: <paramref name="was"/> where no file's stamp moved since it
+    /// was read, else each read anew, the stamps taken first, so a file written meanwhile is read again by the next look.</summary>
+    private static KeptRead ReadKept(ThemeSource source, bool code, KeptRead? was, IReadOnlyDictionary<string, ThemeTokenKind> kinds)
+    {
+        IReadOnlyList<(string Name, FileStamp? Stamp)> stamps = KeptThemes.Stamps(source, code);
+        if (was is not null && was.Stamps.SequenceEqual(stamps))
+        {
+            return was;
+        }
+        return new KeptRead([.. KeptThemes.Of(source, code).Select(bytes => code ? ThemeFiles.ReadCodeColours(source.Shown, bytes, kinds) : ThemeFiles.ReadTheme(source.Shown, bytes, kinds))
+            .Select(r => r.Read).OfType<ThemeFile>()], stamps);
+    }
 }

@@ -68,6 +68,8 @@
     <Compile Include="../Passenger.Core/PathNames.cs" Link="PathNames.cs" />
     <!-- The Windows calls PathNames makes, declared once. -->
     <Compile Include="../Passenger.Core/Kernel32.cs" Link="Kernel32.cs" />
+    <!-- How PathNames tells a link apart as a walk meets one, as the rest of Passenger does. -->
+    <Compile Include="../Passenger.Core/FileLinks.cs" Link="FileLinks.cs" />
     <Compile Include="../Passenger.Core/PathComparer.cs" Link="PathComparer.cs" />
     <!-- A socket's path checked against what a Unix socket's address holds, as Passenger checks the paths it makes. -->
     <Compile Include="../Passenger.Core/SocketFolders.Limit.cs" Link="SocketFolders.Limit.cs" />

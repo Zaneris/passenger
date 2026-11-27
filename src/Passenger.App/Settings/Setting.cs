@@ -358,8 +358,8 @@ public sealed class VimKeysSetting(string property, Func<AppSettings, string> ge
 }
 
 /// <summary>A program to start and its arguments, written as one command line (<see cref="Run.CommandLine"/>), or null for
-/// the one Passenger finds, <paramref name="found"/>'s, which an empty box shows; a line naming no program (quotes round
-/// nothing) is refused, saying why under the box. Where it is given <paramref name="described"/>, what the line in force
+/// the one Passenger finds, <paramref name="found"/>'s, which an empty box shows once found off the UI thread; a line naming
+/// no program (quotes round nothing) is refused, saying why under the box. Where it is given <paramref name="described"/>, what the line in force
 /// runs (its version, say) is said under the box as it is typed, once found off the UI thread.</summary>
 public sealed class ProgramSetting(Func<AppSettings, string?> get, Func<AppSettings, string?, AppSettings> set, Func<string> found, SettingRow row,
     Func<string?, Task<string>>? described = null) : Setting(row)
@@ -369,11 +369,12 @@ public sealed class ProgramSetting(Func<AppSettings, string?> get, Func<AppSetti
 
     public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change)
     {
-        TextBox line = new() { Text = get(now) ?? string.Empty, PlaceholderText = found() };
+        TextBox line = new() { Text = get(now) ?? string.Empty };
         TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left };
         problem.Classes.Add(StyleClasses.Error);
         TextBlock runs = new() { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = described is not null };
         int asked = 0;
+        IdeErrors.Observe(FoundAsync());
         Said();
         line.TextChanged += (_, _) =>
         {
@@ -381,6 +382,9 @@ public sealed class ProgramSetting(Func<AppSettings, string?> get, Func<AppSetti
             Said();
         };
         return new StackPanel { Spacing = Gaps.Tight, MaxWidth = OptionRow.EditorWidth, Children = { line, problem, runs } };
+
+        // The program an empty line runs, looked for off the window's thread: a search may walk every PATH folder.
+        async Task FoundAsync() => line.PlaceholderText = await BackgroundWork.Run(found);
 
         // What the line runs, the last asked winning.
         async Task DescribeAsync(string? typed)

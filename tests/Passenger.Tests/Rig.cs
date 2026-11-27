@@ -900,7 +900,9 @@ public static class RunFiles
         {
             return;
         }
-        foreach (string program in Directory.EnumerateFiles(folder, "*.cs", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true }))
+        // Links passed over: one to a folder above (a test of a walk going round the tree) has the walk go round for good.
+        EnumerationOptions under = new() { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint };
+        foreach (string program in Directory.EnumerateFiles(folder, "*.cs", under))
         {
             string name = $"{Path.GetFileNameWithoutExtension(program)}-{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(program.ToUpperInvariant())))}";
             if (made.Contains(name))

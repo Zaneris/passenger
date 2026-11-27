@@ -217,10 +217,18 @@ public static partial class GodotExecutables
     /// downloads' (<see cref="Downloaded"/>).</summary>
     private static readonly string[] Names = ["godot", "godot4", "godot-mono", "godot4-mono", "godot-dotnet", "godot4-dotnet"];
 
+    /// <summary>How many times this thread looked for Godot as this computer has it (<see cref="Find((string, string)?)"/>),
+    /// each a walk of the PATH's folders and the Applications folders: read to hold the window's thread to none.</summary>
+    public static int SearchedOnThisThread => searchedOnThread;
+
+    [ThreadStatic]
+    private static int searchedOnThread;
+
     /// <summary>Godot as this computer has it: <paramref name="chosen"/> (a path, with the words for where it is chosen) when
     /// given, else as GODOT or GODOT4, the PATH and Applications offer it; null when nothing does.</summary>
     public static GodotFound? Find((string Path, string From)? chosen)
     {
+        searchedOnThread++;
         ShellEnvironment.Ready();
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return Find(chosen, Named(Environment.GetEnvironmentVariable(Variable), Environment.GetEnvironmentVariable(Variable4)),

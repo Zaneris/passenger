@@ -366,10 +366,10 @@ public sealed record RunConfiguration
     }
 
     /// <summary>The configurations the folder's projects make: one per launch profile, "Project: profile", and the project
-    /// itself when none runs it here (a Godot project's game), a library's profiles starting a program of their own alone
-    /// (<see cref="LaunchProfile.OfLibrary"/>), a Godot project's editor beside it ("Project: Godot Editor"), the workspace's
-    /// Godot projects of GDScript alone among them (<see cref="WorkspaceModel.ScriptGames"/>); then single-file AppHosts, the
-    /// container ones (<see cref="Containers.ContainerConfigurations"/>), and each Node package's scripts (<see cref="OfScript"/>).</summary>
+    /// itself when none runs it here (a Godot project's game, a device test project's app), a library's profiles starting a
+    /// program of their own alone (<see cref="LaunchProfile.OfLibrary"/>), a Godot project's editor ("Project: Godot Editor"),
+    /// the workspace's Godot projects of GDScript alone (<see cref="WorkspaceModel.ScriptGames"/>); then single-file AppHosts,
+    /// the container ones (<see cref="Containers.ContainerConfigurations"/>), and each Node package's scripts (<see cref="OfScript"/>).</summary>
     public static IReadOnlyList<RunConfiguration> Generate(IEnumerable<ProjectModel> projects, WorkspaceModel? workspace = null,
         IEnumerable<string>? singleFileAppHosts = null, IEnumerable<NodePackage>? packages = null)
     {
@@ -380,7 +380,7 @@ public sealed record RunConfiguration
             bool godot = project.Godot() is not null;
             // A library runs only as its profiles start a program loading it.
             IReadOnlyList<LaunchProfile> ofLibrary = Run.LaunchProfile.OfLibrary(project);
-            if (!project.IsRunnable && !godot && ofLibrary.Count == 0)
+            if (!project.IsRunnable && !godot && ofLibrary.Count == 0 && !Devices.DeviceTargets.TestsInApp(project))
             {
                 continue;
             }

@@ -289,7 +289,7 @@ public static class WatchLag
         {
             // Made again where the system's clean-up of its temporary folder took it.
             Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-            AtomicFile.Write(file, System.Text.Encoding.ASCII.GetBytes(count.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            MarkerFiles.Write(file, System.Text.Encoding.ASCII.GetBytes(count.ToString(System.Globalization.CultureInfo.InvariantCulture)));
             Interlocked.Increment(ref beats);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)

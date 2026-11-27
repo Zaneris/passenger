@@ -33,6 +33,9 @@ public sealed partial record MacCatalystApp(string Bundle, string Executable)
     /// where its sandbox keeps it there (<see cref="ContainerTemporary"/>), else one of Passenger's own.</summary>
     public string Carried { get; init; } = string.Empty;
 
+    /// <summary>Whether its signature gives it the App Sandbox, which keeps it in its container.</summary>
+    public bool InSandbox { get; init; }
+
     /// <summary>The folder the opener makes for the pipes it hands the app its output through, a start's own, which the
     /// start's end takes out however the opener ended (<see cref="MacCatalystApps.Opener"/>).</summary>
     public string Pipes { get; init; } = string.Empty;
@@ -126,8 +129,10 @@ public static partial class MacCatalystApps
 
     /// <summary>The shell's arguments that open <paramref name="app"/> afresh, a new instance however many run, with the
     /// app's own <paramref name="arguments"/>, its output through FIFOs in its start's <see cref="MacCatalystApp.Pipes"/>;
-    /// hidden and behind every window, opening none it kept, where <paramref name="unseen"/>. How many come before the app's
-    /// own is their count less the app's.</summary>
-    public static IReadOnlyList<string> Opening(MacCatalystApp app, bool unseen, IReadOnlyList<string> arguments) =>
-        ["-c", Opener, "sh", app.Pipes, "-n", "-W", .. unseen ? (string[])["-g", "-j"] : [], "-a", app.Bundle, "--args", .. unseen ? IgnoringKeptWindows : [], .. arguments];
+    /// hidden and behind every window, opening none it kept, where <paramref name="unseen"/>, but a test app's (not
+    /// <paramref name="appKit"/>), which hands every argument to the Testing Platform, refusing AppKit's. How many come
+    /// before the app's own is their count less the app's.</summary>
+    public static IReadOnlyList<string> Opening(MacCatalystApp app, bool unseen, IReadOnlyList<string> arguments, bool appKit = true) =>
+        ["-c", Opener, "sh", app.Pipes, "-n", "-W", .. unseen ? (string[])["-g", "-j"] : [], "-a", app.Bundle, "--args", .. unseen && appKit ? IgnoringKeptWindows : [],
+            .. arguments];
 }

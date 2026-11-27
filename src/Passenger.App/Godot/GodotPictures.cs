@@ -37,7 +37,7 @@ public static class GodotPictures
             return $"which is not in the temporary folder Godot was given, {temporary}";
         }
         FileInfo file = new(full);
-        if (file.LinkTarget is not null || file.Exists && file.Attributes.HasFlag(FileAttributes.ReparsePoint))
+        if (FileLinks.Is(file))
         {
             return "which is a link";
         }

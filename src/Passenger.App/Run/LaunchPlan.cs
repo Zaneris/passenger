@@ -356,7 +356,7 @@ public sealed partial record LaunchPlan
         }
         if (configuration.Program.Length == 0 && platform == Devices.TargetPlatform.MacCatalyst && !OperatingSystem.IsMacOS())
         {
-            throw new LaunchException($"{configuration.Name} cannot run here: a Mac Catalyst app runs only on a Mac");
+            throw new LaunchException($"{configuration.Name} cannot run here: {Refusals.MacCatalystOnMacAlone}");
         }
         // The project's own configuration, named for no platform, runs its platform's profile where the target is of that platform.
         if (platform is { } on && configuration is { LaunchProfile.Length: 0, Program.Length: 0 } && Devices.DeviceTargets.ProfileFor(LaunchProfile.Read(project), on) is { } tied)

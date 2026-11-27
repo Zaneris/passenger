@@ -57,7 +57,7 @@
     <PackageDownload Include="Avalonia.Templates" Version="[$(AvaloniaTemplatesVersion)]" />
     <PackageDownload Include="CommunityToolkit.Mvvm" Version="[$(CommunityToolkitMvvmVersion)]" />
     <PackageDownload Include="Aspire.ProjectTemplates" Version="[$(AspireTemplatesVersion)]" />
-    <PackageDownload Include="Aspire.AppHost.Sdk" Version="[$(AspireTemplatesVersion)]" />
+    <PackageDownload Include="Aspire.AppHost.Sdk" Version="[$(AspireTemplatesVersion)];[$(Aspire13Version)]" />
     <AssemblyMetadata Include="NuGetPackageRoot" Value="$(NuGetPackageRoot)" />
     <AssemblyMetadata Include="AvaloniaTemplatesVersion" Value="$(AvaloniaTemplatesVersion)" />
     <AssemblyMetadata Include="AvaloniaOlderVersion" Value="$(AvaloniaOlderVersion)" />
@@ -66,6 +66,7 @@
     <AssemblyMetadata Include="ReactiveUiVersion" Value="$(ReactiveUiVersion)" />
     <AssemblyMetadata Include="ReactiveUiGeneratorsVersion" Value="$(ReactiveUiGeneratorsVersion)" />
     <AssemblyMetadata Include="AspireTemplatesVersion" Value="$(AspireTemplatesVersion)" />
+    <AssemblyMetadata Include="Aspire13Version" Value="$(Aspire13Version)" />
   </ItemGroup>
 
   <!-- The aspire CLI of the run's own for this machine (about 360 MB in the package cache), whose bundle holds the
@@ -81,6 +82,9 @@
   </PropertyGroup>
   <ItemGroup Condition="'$(PassengerAspireRuntime)' == 'true' and !$([MSBuild]::IsOSPlatform('Windows'))">
     <PackageDownload Include="Aspire.Cli.$(NETCoreSdkRuntimeIdentifier)" Version="[$(AspireTemplatesVersion)]" />
+    <!-- Aspire 13's dashboard and orchestrator for this machine (about 900 MB more), which its AppHost's SDK references. -->
+    <PackageDownload Include="Aspire.Dashboard.Sdk.$(NETCoreSdkRuntimeIdentifier)" Version="[$(Aspire13Version)]" />
+    <PackageDownload Include="Aspire.Hosting.Orchestration.$(NETCoreSdkRuntimeIdentifier)" Version="[$(Aspire13Version)]" />
     <AssemblyMetadata Include="AspireCli" Value="$(NuGetPackageRoot)aspire.cli.$(NETCoreSdkRuntimeIdentifier.ToLowerInvariant())/$(AspireTemplatesVersion)/tools/any/$(NETCoreSdkRuntimeIdentifier)/aspire" />
   </ItemGroup>
   <ItemGroup>
@@ -91,6 +95,7 @@
        package cache before they run (tests/AspireGraphs): restored and built first, never linked. -->
   <ItemGroup>
     <ProjectReference Include="../AspireGraphs/AppHost/AspireGraphs.AppHost.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../AspireGraphs/AppHost13/AspireGraphs.AppHost13.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../AspireGraphs/FileAppHost/AspireGraphs.FileAppHost.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../AspireGraphs/ServiceDefaults/AspireGraphs.ServiceDefaults.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../AspireGraphs/ApiService/AspireGraphs.ApiService.csproj" ReferenceOutputAssembly="false" />

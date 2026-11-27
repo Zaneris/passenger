@@ -58,7 +58,8 @@ public sealed class TestController : IAsyncDisposable
         this.projects = projects;
         this.workspaceModel = workspaceModel;
         this.log = log;
-        this.startRunner = startRunner ?? ((workspace, _) => Task.FromResult<ITestRunner>(new TestRunners(workspace, declared: Declared, goDotStart: GoDotStartAsync)));
+        this.startRunner = startRunner
+            ?? ((workspace, _) => Task.FromResult<ITestRunner>(new TestRunners(workspace, declared: Declared, goDotStart: GoDotStartAsync, devices: Devices)));
         Finder.Changed += (_, found) =>
         {
             code = found;
@@ -220,6 +221,10 @@ public sealed class TestController : IAsyncDisposable
     /// <summary>Ends only the test hosts debugged by this run.</summary>
     public Func<Task>? EndDebugging { get; set; }
 
+    /// <summary>Where a device test project's tests run, on the target its project runs on; null, where .NET starts every
+    /// test host here. Given before the first run, which makes the runner.</summary>
+    public DeviceTestHosts? Devices { get; init; }
+
     internal CancellationToken RunCancellation => stopping?.Token ?? CancellationToken.None;
 
     /// <summary>Opens a folder's tests, or the same folder's again after its projects were read again: its test projects'
@@ -264,6 +269,7 @@ public sealed class TestController : IAsyncDisposable
         IsBusy = true;
         BackgroundWork.Begin();
         using CancellationTokenSource stop = Begin();
+        Devices?.Begin(projects(), _ => { });
         try
         {
             return await DiscoverCore(workspace, build: true, stop.Token);
@@ -367,6 +373,7 @@ public sealed class TestController : IAsyncDisposable
         using CancellationTokenSource stop = Begin();
         working = Work?.Begin(AppActions.RunTests, build ? "Building the test projects…" : "Finding the tests…");
         using CancellationTokenRegistration stopped = working?.Stopping.Register(stop.Cancel) ?? default;
+        Devices?.Begin(projects(), UiThread.Marshal<string>(stage => working?.Say(stage)));
         // What the run came to, told as its work ends: the tally, or why it did not run.
         (bool Ran, string Said)? came = null;
         string? Came(string? problem)

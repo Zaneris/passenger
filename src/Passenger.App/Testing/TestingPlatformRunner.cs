@@ -43,6 +43,10 @@ public sealed class TestingPlatformRunner : ITestRunner
     /// end, as a loaded machine may hand the two over (a test's); a host that does not end is then never connected.</summary>
     public bool HoldsConnectionsUntilEnded { get; init; }
 
+    /// <summary>Where a device test project's app runs its test hosts (<see cref="Run.Devices.DeviceTargets.RunsElsewhere"/>);
+    /// null, where .NET starts every test host here.</summary>
+    public DeviceTestHosts? Devices { get; init; }
+
     /// <summary>Whether a built assembly is a Testing Platform application, whose own program finds and runs its tests: the
     /// platform's build says so in the assembly (since 1.8); one built by an older platform is a program that references it.</summary>
     public static bool IsApplication(string assembly)
@@ -66,7 +70,8 @@ public sealed class TestingPlatformRunner : ITestRunner
     /// program fails to start or answer is said in the log and told unfound; canceled, every one is ended.</summary>
     public async Task<FoundTests> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default)
     {
-        (TestAssembly Assembly, IReadOnlyList<PlatformNode> Nodes, string? Failed)[] asked = await Task.WhenAll(assemblies.Select(a => DiscoverIn(a, log, HoldsConnectionsUntilEnded, cancel)));
+        (TestAssembly Assembly, IReadOnlyList<PlatformNode> Nodes, string? Failed)[] asked =
+            await Task.WhenAll(assemblies.Select(a => DiscoverIn(a, log, HoldsConnectionsUntilEnded, Devices, cancel)));
         cancel.ThrowIfCancellationRequested();
         IReadOnlyList<TestItem> tests = await BackgroundWork.Run(() => Tell([.. asked.Select(a => (a.Assembly, a.Nodes))]));
         return new FoundTests(tests, [.. asked.Where(a => a.Failed is not null).Select(a => UnfoundTests.Of(a.Assembly, a.Failed!))]);
@@ -77,13 +82,14 @@ public sealed class TestingPlatformRunner : ITestRunner
     private static IReadOnlyDictionary<string, string>? HostEnvironment(TestAssembly assembly, bool looking, IReadOnlyDictionary<string, string>? environment, Action<string>? log) =>
         PlatformRunSettings.Given(assembly.RunSettings is { } file ? TestAssemblies.ReadRunSettings(file, log) : null, looking, environment, Environment.GetEnvironmentVariable);
 
-    private static async Task<(TestAssembly, IReadOnlyList<PlatformNode>, string?)> DiscoverIn(TestAssembly assembly, Action<string>? log, bool held, CancellationToken cancel)
+    private static async Task<(TestAssembly, IReadOnlyList<PlatformNode>, string?)> DiscoverIn(TestAssembly assembly, Action<string>? log, bool held, DeviceTestHosts? devices,
+        CancellationToken cancel)
     {
         List<PlatformNode> nodes = [];
         try
         {
             IReadOnlyDictionary<string, string>? given = await BackgroundWork.Run(() => HostEnvironment(assembly, looking: true, null, log), cancel);
-            await using Host host = await Host.StartAsync(assembly, given, null, null, log, held, cancel);
+            await using Host host = await Host.StartAsync(assembly, given, null, null, log, held, devices, cancel);
             bool asked = await host.RequestAsync("testing/discoverTests", null, changed =>
             {
                 lock (nodes)
@@ -125,7 +131,7 @@ public sealed class TestingPlatformRunner : ITestRunner
                 break;
             }
             (Dictionary<string, TestItem> byUid, List<Found> chosen) = Asked(tests, assembly.Path);
-            RunSummary part = await RunIn(assembly, byUid, chosen, outcomes, log, debugger, environment, HoldsConnectionsUntilEnded, coverage, cancel);
+            RunSummary part = await RunIn(assembly, byUid, chosen, outcomes, log, debugger, environment, HoldsConnectionsUntilEnded, Devices, coverage, cancel);
             summary = summary.And(part);
             if (part.Canceled)
             {
@@ -155,7 +161,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             try
             {
                 IReadOnlyDictionary<string, string>? given = await BackgroundWork.Run(() => HostEnvironment(assembly, looking: false, environment, log), cancel);
-                await using Host host = await Host.StartAsync(assembly, given, null, byUid, log, HoldsConnectionsUntilEnded, cancel);
+                await using Host host = await Host.StartAsync(assembly, given, null, byUid, log, HoldsConnectionsUntilEnded, Devices, cancel);
                 await started();
                 bool stopped = false;
                 foreach (Found test in chosen)
@@ -258,14 +264,15 @@ public sealed class TestingPlatformRunner : ITestRunner
 
     /// <summary>Runs an assembly's tests, the host's updates read by the tests asked for (<see cref="TestUpdate.ReaderOf"/>).</summary>
     private static async Task<RunSummary> RunIn(TestAssembly assembly, Dictionary<string, TestItem> byUid, List<Found> chosen, Action<IReadOnlyList<TestOutcome>> outcomes,
-        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string>? environment, bool held, CoverageRun? coverage, CancellationToken cancel)
+        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string>? environment, bool held, DeviceTestHosts? devices, CoverageRun? coverage,
+        CancellationToken cancel)
     {
         List<TestOutcome> all = new(chosen.Count);
         long began = Stopwatch.GetTimestamp();
         try
         {
             IReadOnlyDictionary<string, string>? given = await BackgroundWork.Run(() => HostEnvironment(assembly, looking: false, environment, log), cancel);
-            await using Host host = await Host.StartAsync(assembly, given, debugger, byUid, log, held, cancel, coverage);
+            await using Host host = await Host.StartAsync(assembly, given, debugger, byUid, log, held, devices, cancel, coverage);
             bool ran = await host.RequestAsync("testing/runTests", chosen, changed => Told(changed, byUid, all, outcomes), cancel);
             return Summary(!ran, null);
         }
@@ -415,20 +422,32 @@ public sealed class TestingPlatformRunner : ITestRunner
 
         /// <summary>Starts an assembly's program as a server that connects to a port of the IDE's own, and initializes it; its
         /// updates read by the tests a run asks for, by uid, if any; its connection held until it ends where
-        /// <paramref name="held"/> (<see cref="HoldsConnectionsUntilEnded"/>); under Coverlet's console where a run's coverage
-        /// is measured, which a debugged host's never is.</summary>
+        /// <paramref name="held"/> (<see cref="HoldsConnectionsUntilEnded"/>). A device test project's app is started where
+        /// its project runs (<paramref name="devices"/>), and ended there as its start ends, killed or not; any other under
+        /// Coverlet's console where a run's coverage is measured, which a debugged host's never is.</summary>
         public static async Task<Host> StartAsync(TestAssembly assembly, IReadOnlyDictionary<string, string>? environment, ITestDebugLauncher? debugger,
-            Dictionary<string, TestItem>? asked, Action<string>? log, bool held, CancellationToken cancel, CoverageRun? coverage = null)
+            Dictionary<string, TestItem>? asked, Action<string>? log, bool held, DeviceTestHosts? devices, CancellationToken cancel, CoverageRun? coverage = null)
         {
             string name = $"{Path.GetFileNameWithoutExtension(assembly.Path)} ({assembly.Framework})";
+            DeviceTestApp? onDevice = null;
+            if (devices is not null && Run.Devices.DeviceTargets.RunsElsewhere(assembly.Framework))
+            {
+                if (debugger is not null)
+                {
+                    throw new TestHostFailed(Refusals.DeviceTestsNotDebugged(assembly.Project.Name));
+                }
+                (onDevice, string? unready) = await devices.ReadyAsync(assembly, cancel);
+                cancel.ThrowIfCancellationRequested();
+                if (onDevice is null)
+                {
+                    throw new TestHostFailed($"{name} could not start: {unready}");
+                }
+            }
             using TcpListener listener = new(IPAddress.Loopback, 0);
             listener.Start();
-            List<string> arguments =
-            [
-                "exec", assembly.Path, "--server",
-                "--client-host", IPAddress.Loopback.ToString(),
-                "--client-port", ((IPEndPoint)listener.LocalEndpoint).Port.ToString(CultureInfo.InvariantCulture),
-            ];
+            string[] server =
+                ["--server", "--client-host", IPAddress.Loopback.ToString(), "--client-port", ((IPEndPoint)listener.LocalEndpoint).Port.ToString(CultureInfo.InvariantCulture)];
+            List<string> arguments = ["exec", assembly.Path, .. server];
             string folder = Path.GetDirectoryName(assembly.Path)!;
             // A test program, debugged or not, sends no telemetry the person has not asked for.
             environment = ChildProcesses.SendingNoTelemetry(environment);
@@ -441,30 +460,44 @@ public sealed class TestingPlatformRunner : ITestRunner
             {
                 coverage.Missed("A debugged run's coverage is not measured");
             }
+            else if (coverage is not null && onDevice is not null)
+            {
+                coverage.Missed("A device test project's tests run in its app, where coverage is not measured");
+            }
             if (debugger is null)
             {
+                Func<Task, Task>? follow = null;
                 ProcessStartInfo start;
-                if (coverage is not null)
-                {
-                    start = coverage.Wrapped(assembly.Path, assembly.Framework ?? "default", Dotnet.Host(folder), arguments, folder, environment, out string report);
-                    measured = (coverage, report);
-                }
-                else
-                {
-                    start = ChildProcesses.Command(Dotnet.Host(folder), arguments, folder, environment);
-                }
-                start.RedirectStandardOutput = true;
-                start.RedirectStandardError = true;
                 try
                 {
+                    if (onDevice is null && coverage is not null)
+                    {
+                        start = coverage.Wrapped(assembly.Path, assembly.Framework ?? "default", Dotnet.Host(folder), arguments, folder, environment, out string report);
+                        measured = (coverage, report);
+                    }
+                    else if (onDevice is null)
+                    {
+                        start = ChildProcesses.Command(Dotnet.Host(folder), arguments, folder, environment);
+                    }
+                    else
+                    {
+                        (start, follow) = onDevice.Start(server, environment);
+                    }
+                    start.RedirectStandardOutput = true;
+                    start.RedirectStandardError = true;
                     process = await ChildProcesses.StartAsync(start);
                 }
-                catch (System.ComponentModel.Win32Exception failed)
+                catch (Exception failed) when (failed is System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
                 {
                     throw new TestHostFailed($"{name} could not start: {failed.Message}");
                 }
                 heard = ChildProcesses.Hear(process, line => Keep(said, line), line => Keep(said, line));
                 IdeErrors.Observe(heard);
+                if (follow is not null)
+                {
+                    // Its output ends as it does, killed or not, however long the Process object lasts.
+                    IdeErrors.Observe(follow(heard));
+                }
                 id = process.Id;
             }
             else

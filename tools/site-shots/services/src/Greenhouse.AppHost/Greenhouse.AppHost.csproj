@@ -1,15 +1,9 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.6.5">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <!-- Aspire's orchestrator and dashboard from their packages, not the aspire command's bundle. -->
-    <AspireUseCliBundle>false</AspireUseCliBundle>
-    <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.AppHost" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="../Greenhouse.Api/Greenhouse.Api.csproj" />
-    <ProjectReference Include="../Greenhouse.Sensors/Greenhouse.Sensors.csproj" />
+    <PackageReference Include="Aspire.Hosting.Dotnet" />
   </ItemGroup>
 </Project>

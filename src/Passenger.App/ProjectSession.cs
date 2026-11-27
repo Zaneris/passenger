@@ -136,6 +136,15 @@ public sealed class ProjectSession : IAsyncDisposable
             GodotVariables = cancel => BackgroundWork.Run(() => GodotTestRuns.Variables(setup.Settings().GodotExecutable,
                 setup.GodotEnvironment ?? new Dictionary<string, string>(), setup.Settings().GodotTestsWindowed && !setup.Unseen), cancel),
             GodotFolders = () => [.. Workspace?.GodotGames ?? [], .. Projects.Select(p => p.NamedGodotFolder).OfType<string>()],
+            // A device test project's app runs where Run runs its project, a simulator it boots shut down with the folder.
+            Devices = new DeviceTestHosts(project => Targets.InForce(project), project => ProjectModels.Properties(Workspace, project), setup.Unseen, Booted,
+                (project, platform, targets) => UiThread.Post(() =>
+                {
+                    if (!IsEnded)
+                    {
+                        Targets.List(project, platform, targets);
+                    }
+                })),
         };
         Tests.Finder.StateFolder = setup.StateFolder;
         Continuous = new ContinuousTests(Tests, () => Projects, () => Workspace, line => setup.Views.Build.Append($"{line}\n"))
@@ -642,7 +651,7 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>The loaded project a file or folder (a canonical path) belongs to, the nearest one holding it; null outside
     /// them all.</summary>
-    public ProjectModel? ProjectOf(string path) => Workspace is null ? null : ProjectModel.Owning(Workspace.Projects.Where(p => !Unloaded.Contains(p.Path)), path);
+    public ProjectModel? ProjectOf(string path) => Workspace is null ? null : ProjectModel.Owning(Workspace.Projects, path, Unloaded);
 
     /// <summary>The evaluated output assembly for the requested framework, or the outer evaluation's for a single target.</summary>
     internal static string? BuildOutputOf(ProjectModel project, string? framework) => framework is null || project.TargetFrameworks.Count < 2

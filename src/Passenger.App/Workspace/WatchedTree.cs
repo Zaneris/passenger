@@ -945,7 +945,7 @@ public abstract class WatchedTree : IDisposable
         try
         {
             FileSystemEnumerable<Entry> entries = new(at, (ref FileSystemEntry entry) => new Entry(entry.FileName.ToString(), entry.IsDirectory,
-                entry.IsDirectory && (entry.Attributes & FileAttributes.ReparsePoint) != 0, written && !entry.IsDirectory ? entry.LastWriteTimeUtc.UtcDateTime : default,
+                entry.IsDirectory && FileLinks.Is(ref entry), written && !entry.IsDirectory ? entry.LastWriteTimeUtc.UtcDateTime : default,
                 since is null || Passes(entry.FileName, entry.IsDirectory)), Everything)
             {
                 ShouldIncludePredicate = (ref FileSystemEntry entry) => !PathNames.IsSystemFile(entry.FileName) && !FolderWalk.IsMomentary(entry.FileName)
