@@ -556,7 +556,7 @@ public sealed class ServerWatches : IDisposable
     /// Godot.NET.Sdk's .godot/mono/temp. Neither version control's and other IDEs' (hidden) nor dependencies' (node_modules),
     /// which hold no project's files and would take a watch for each of their many folders on Linux.</summary>
     private static List<string> BuildOutput(string at, Func<string, bool> leaving) =>
-        [.. PathNames.FoldersUnder(at, sub => !IgnoredFolders.Is(sub) && !leaving(sub) && (File.GetAttributes(sub) & FileAttributes.ReparsePoint) == 0)
+        [.. PathNames.FoldersUnder(at, sub => !IgnoredFolders.Is(sub) && !leaving(sub), throughLinks: false)
             .SelectMany(folder => BuildOutputIn(folder, registered: PathNames.Same(folder, at)))];
 
     /// <summary>The build output in one folder the folder's watcher hears (<see cref="BuildOutput"/>): in the folder

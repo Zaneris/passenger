@@ -95,7 +95,7 @@ public static partial class FileHolders
             {
                 looked.AddRange(new FileSystemEnumerable<(string, bool)>(path, (ref FileSystemEntry entry) => (entry.ToFullPath(), entry.IsDirectory), Everything)
                 {
-                    ShouldRecursePredicate = (ref FileSystemEntry entry) => (entry.Attributes & FileAttributes.ReparsePoint) == 0,
+                    ShouldRecursePredicate = (ref FileSystemEntry entry) => !FileLinks.Is(ref entry),
                 }.Take(MostLooked));
             }
             catch (Exception unlisted) when (unlisted is IOException or UnauthorizedAccessException)

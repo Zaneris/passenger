@@ -24,7 +24,8 @@ public class PathNamesTests
         ("A path not there yet keeps its missing names below the canonical folder that is", A_path_not_there_yet_keeps_its_missing_names_below_the_canonical_folder_that_is),
         ("A files canonical path and its name in a walk follow links and a renamed folder", A_files_canonical_path_and_its_name_in_a_walk_follow_links_and_a_renamed_folder),
         ("A path already canonical is made canonical and walked with no copy", A_path_already_canonical_is_made_canonical_and_walked_with_no_copy),
-        ("A walk gives each folders files by name nearest folder first leaving out the systems files and folders not entered", A_walk_gives_each_folders_files_by_name_nearest_folder_first_leaving_out_the_systems_files_and_folders_not_entered));
+        ("A walk gives each folders files by name nearest folder first leaving out the systems files and folders not entered", A_walk_gives_each_folders_files_by_name_nearest_folder_first_leaving_out_the_systems_files_and_folders_not_entered),
+        ("A walk of folders goes through a link to a folder outside it unless told not to", A_walk_of_folders_goes_through_a_link_to_a_folder_outside_it_unless_told_not_to));
 
     private void A_path_is_under_a_folder_only_past_a_separator_after_its_whole_name()
     {
@@ -181,6 +182,20 @@ public class PathNamesTests
             PathNames.FilesUnder(folder.Path, f => Path.GetFileName(f) != "skip").Select(f => $"{Shown(f.Folder)}: {string.Join(' ', f.Files.Select(Shown))}"));
         Assert.Equal([folder.Path, Path.Join(folder.Path, "also"), Path.Join(folder.Path, "sub"), Path.Join(folder.Path, "sub", "deeper")],
             PathNames.FoldersUnder(folder.Path, f => Path.GetFileName(f) != "skip"));
+    }
+
+    /// <summary>A walk of folders the build output is found by passes over links, told apart as a listing reaches them
+    /// without their attributes: a link taken for a folder would be walked into.</summary>
+    private void A_walk_of_folders_goes_through_a_link_to_a_folder_outside_it_unless_told_not_to()
+    {
+        using Folder folder = new();
+        using Folder outside = new();
+        folder.Write(Path.Join("sub", "c.txt"));
+        outside.Write(Path.Join("deeper", "d.txt"));
+        Link(() => Directory.CreateSymbolicLink(Path.Join(folder.Path, "far"), outside.Path));
+        Assert.Equal([folder.Path, Path.Join(folder.Path, "far"), Path.Join(folder.Path, "sub"), Path.Join(folder.Path, "far", "deeper")],
+            PathNames.FoldersUnder(folder.Path, _ => true));
+        Assert.Equal([folder.Path, Path.Join(folder.Path, "sub")], PathNames.FoldersUnder(folder.Path, _ => true, throughLinks: false));
     }
 
     private static string At(params string[] names) => Path.Join([Root, .. names]);

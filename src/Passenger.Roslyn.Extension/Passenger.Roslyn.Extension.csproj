@@ -19,6 +19,8 @@
     <Compile Include="../Passenger.Core/PathNames.cs" Link="PathNames.cs" />
     <!-- The Windows calls PathNames makes, declared once. -->
     <Compile Include="../Passenger.Core/Kernel32.cs" Link="Kernel32.cs" />
+    <!-- How PathNames tells a link apart as a walk meets one, as the rest of Passenger does. -->
+    <Compile Include="../Passenger.Core/FileLinks.cs" Link="FileLinks.cs" />
     <Compile Include="../Passenger.Core/PathComparer.cs" Link="PathComparer.cs" />
     <Compile Include="../Passenger.Core/RazorFiles.cs" Link="RazorFiles.cs" />
     <Compile Include="../Passenger.Core/Plural.cs" Link="Plural.cs" />
