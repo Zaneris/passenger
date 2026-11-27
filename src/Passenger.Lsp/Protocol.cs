@@ -356,7 +356,7 @@ public sealed record CodeActionParams(TextDocumentIdentifier TextDocument, LspRa
 
 public sealed class CodeAction
 {
-    public string Title { get; init; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
     public string? Kind { get; init; }
     public bool? IsPreferred { get; init; }
     public JsonElement? Disabled { get; init; }

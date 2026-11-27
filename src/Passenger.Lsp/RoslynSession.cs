@@ -1005,7 +1005,12 @@ public sealed class LspDocument : IDisposable
     {
         JsonElement result = await Read(Server.RequestAsync<JsonElement>(LspMethods.CodeAction,
             new CodeActionParams(Identifier, RangeOf(Trimmed(Text.Snapshot, range)), new CodeActionContext(diagnostics, TriggerKind: CodeActionTriggerKind.Invoked)), cancel));
-        return Shapes.CodeActions(result);
+        List<CodeAction> actions = Shapes.CodeActions(result);
+        if (LanguageId == LanguageIds.CSharp)
+        {
+            ClientCommands.UsePrimaryConstructor(actions);
+        }
+        return actions;
     }
 
     /// <summary>A range without the white space at its ends; one of nothing else is left as it is.</summary>

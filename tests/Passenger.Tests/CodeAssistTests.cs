@@ -191,7 +191,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     [AvaloniaFact]
     public void Fixes_context_actions_templates_and_selection_do_what_they_offer_and_take_back_whole()
     {
-        Flow.StepApart("primary constructor conversion offers removal of redundant fields first", () => new CodeAssistTests(project), t => t.Primary_constructor_conversion_offers_removal_of_redundant_fields_first());
+        Flow.StepApart("Use primary constructor and its Fix All remove redundant fields", () => new CodeAssistTests(project), t => t.The_primary_constructor_fix_removes_redundant_fields());
         Flow.StepApart("Fix All in the solution reaching a file not open is undone in every file it changed at once", () => new CodeAssistTests(project), t => t.Fix_all_in_the_solution_reaching_a_file_not_open_is_undone_in_every_file_it_changed_at_once());
         Flow.StepApart("a fix the language server will not make, once chosen, says why in the status bar", () => new CodeAssistTests(project), t => t.A_fix_the_language_server_will_not_make_once_chosen_says_why_in_the_status_bar());
         Flow.StepApart("a call bound only to another receiver's extension method is offered the using of one that takes its own", () => new CodeAssistTests(project), t => t.A_call_bound_only_to_another_receivers_extension_method_is_offered_the_using_of_one_that_takes_its_own());
@@ -2804,7 +2804,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    private void Primary_constructor_conversion_offers_removal_of_redundant_fields_first()
+    private void The_primary_constructor_fix_removes_redundant_fields()
     {
         MainWindow window = project.Open("PrimaryConstructors.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -2814,30 +2814,33 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             "Roslyn to offer primary constructors for both classes");
 
         const string convert = "Use primary constructor";
-        const string remove = "Use primary constructor (and remove fields)";
+        const string fixAll = $"Fix All: {convert}";
         Ui.PlaceAfter(editor, "public Handler");
         Ui.Run(window, AppActions.QuickFix);
-        Ui.WaitFor(() => window.Assist.Offered.Contains(convert), "the primary constructor conversion");
-        Assert.Equal([remove, $"Fix All: {remove}", convert, $"Fix All: {convert}"], window.Assist.Offered
-            .Where(title => title.StartsWith(convert, StringComparison.Ordinal) || title.StartsWith($"Fix All: {convert}", StringComparison.Ordinal)));
-        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => window.Assist.Offered.Contains(convert), "the primary constructor fix");
+        Assert.Equal([convert, fixAll], window.Assist.Offered.Where(title => title.Contains(convert, StringComparison.Ordinal)));
+        Choose(window, convert);
         Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("class Handler(string mediator)", StringComparison.Ordinal),
             "the primary constructor to be written");
-        string after = editor.Document.Snapshot.ToString();
-        Assert.DoesNotContain("_mediator", after, StringComparison.Ordinal);
-        Assert.Contains("=> mediator;", after, StringComparison.Ordinal);
+        string converted = editor.Document.Snapshot.ToString();
+        Assert.DoesNotContain("_mediator", converted, StringComparison.Ordinal);
+        Assert.Contains("=> mediator;", converted, StringComparison.Ordinal);
+        Assert.Contains("private readonly int _length = mediator.Length;", converted, StringComparison.Ordinal);
         editor.Focus();
         Ui.Run(window, EditorActions.Undo);
         Assert.Equal(before, editor.Document.Snapshot.ToString());
 
-        Ui.PlaceAfter(editor, "public Measured");
+        Ui.PlaceAfter(editor, "public Handler");
         Ui.Run(window, AppActions.QuickFix);
-        Ui.WaitFor(() => window.Assist.Offered.Contains(convert), "the field-preserving primary constructor conversion");
-        Assert.DoesNotContain(remove, window.Assist.Offered);
-        Choose(window, convert);
+        Ui.WaitFor(() => window.Assist.Offered.Contains(fixAll), "Fix All for primary constructors");
+        Choose(window, fixAll);
+        Ui.WaitFor(() => window.Assist.Offered.Contains("Document"), "the primary constructor Fix All scopes");
+        Choose(window, "Document");
         Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("class Measured(string label)", StringComparison.Ordinal),
-            "the primary constructor with the original field to be written");
-        Assert.Contains("private readonly int _length = label.Length;", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+            "Fix All to convert both constructors");
+        string all = editor.Document.Snapshot.ToString();
+        Assert.DoesNotContain("_mediator", all, StringComparison.Ordinal);
+        Assert.Contains("private readonly int _width = label.Length;", all, StringComparison.Ordinal);
         window.Close();
     }
 
@@ -4187,25 +4190,23 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 sealed class Handler
                 {
                     private readonly string _mediator;
+                    private readonly int _length;
 
                     public Handler(string mediator)
                     {
                         _mediator = mediator;
+                        _length = mediator.Length;
                     }
 
                     public string Mediator() => this._mediator;
+                    public int Length() => _length;
                 }
 
                 sealed class Measured
                 {
-                    private readonly int _length;
-
-                    public Measured(string label)
-                    {
-                        _length = label.Length;
-                    }
-
-                    public int Length() => _length;
+                    private readonly int _width;
+                    public Measured(string label) { _width = label.Length; }
+                    public int Width() => _width;
                 }
                 """);
             File.WriteAllText(PathOf("RenameOffers.cs"), """

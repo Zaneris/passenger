@@ -54,7 +54,7 @@ public static class Shapes
         return hints;
     }
 
-    public static IReadOnlyList<CodeAction> CodeActions(JsonElement result)
+    public static List<CodeAction> CodeActions(JsonElement result)
     {
         if (result.ValueKind != JsonValueKind.Array)
         {
