@@ -701,15 +701,8 @@ public partial class MainWindow
             string name = each.Name;
             string? why = WhyNotHere(each);
             MenuItem item = MenuChoice.Of(why is null ? Shown(each) : Greyed(name, why), session.Configurations.Chosen?.Name == name, () => SelectConfiguration(name));
-            if (why is null)
-            {
-                TrimmedTip.AttachHeader(item, () => item.Header as string, () => name);
-            }
-            else
-            {
-                ToolTip.SetTip(item, RunConfigRefusal(name, why));
-            }
-            return item;
+            TrimmedTip.Describe(item, why is null ? null : RunConfigRefusal(name, why));
+            return TrimmedTip.Attach(item, name);
         }
 
         static StackPanel Greyed(string name, string why) => new()

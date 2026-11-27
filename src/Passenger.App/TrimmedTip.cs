@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Data;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 
@@ -13,8 +14,16 @@ internal static class TrimmedTip
     public static void Attach(Control owner, TextBlock label, Func<string?>? fullName = null) =>
         Attach(owner, () => label, fullName);
 
+    public static MenuItem Attach(MenuItem item, string? fullName = null)
+    {
+        AttachHeader(item, () => item.Header as string, () => fullName);
+        return item;
+    }
+
     public static void AttachHeader(Control owner, Func<string?> header, Func<string?>? fullName = null) =>
-        Attach(owner, () => owner.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(text => text.Text == header()), fullName);
+        Attach(owner, () => header() is { } words
+            ? owner.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(text => text.Text == words)
+            : null, fullName);
 
     private static void Attach(Control owner, Func<TextBlock?> label, Func<string?>? fullName)
     {
@@ -23,7 +32,7 @@ internal static class TrimmedTip
         {
             Describe(owner, null);
         }
-        (string Previous, object Shown)? expanded = null;
+        IDisposable? expanded = null;
         ToolTip.AddToolTipOpeningHandler(owner, (_, opening) =>
         {
             if (opening.Cancel || ToolTip.GetTip(owner) is not string usual)
@@ -42,20 +51,16 @@ internal static class TrimmedTip
             }
             else if (!ReferenceEquals(tip, usual))
             {
-                expanded = (usual, tip);
-                owner.SetCurrentValue(ToolTip.TipProperty, tip);
+                // A disposable value lets the original description keep changing underneath the open tip.
+                expanded = owner.SetValue(ToolTip.TipProperty, tip, BindingPriority.Animation);
             }
         });
         owner.PropertyChanged += (_, change) =>
         {
-            // A reused row may already have a different description by the time its tooltip closes.
-            if (change.Property == ToolTip.IsOpenProperty && !ToolTip.GetIsOpen(owner) && expanded is { } tip)
+            if (change.Property == ToolTip.IsOpenProperty && !ToolTip.GetIsOpen(owner))
             {
+                expanded?.Dispose();
                 expanded = null;
-                if (ReferenceEquals(ToolTip.GetTip(owner), tip.Shown))
-                {
-                    owner.SetCurrentValue(ToolTip.TipProperty, tip.Previous);
-                }
             }
         };
     }

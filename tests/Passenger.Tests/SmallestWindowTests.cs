@@ -25,43 +25,6 @@ namespace Passenger.Tests;
 public sealed class SmallestWindowTests
 {
     [AvaloniaFact]
-    public void Truncated_project_and_file_names_show_in_their_tooltips_and_keep_the_original_description()
-    {
-        string folder = TestFolders.Create($"trimmed-{new string('W', 56)}-");
-        string fileName = $"{new string('W', 72)}.cs";
-        string file = Path.Combine(folder, fileName);
-        TestFolders.Write(folder, $"{new string('W', 52)}.csproj", TestProjects.Console());
-        TestFolders.Write(folder, fileName, "System.Console.WriteLine(1);");
-        MainWindow window = Ui.OpenFolder(folder, width: 850, height: 550, languageServer: false, autosaves: false);
-        try
-        {
-            TextBlock project = (TextBlock)Named(window, "ProjectName");
-            Button projectButton = (Button)Named(window, "ProjectButton");
-            Ui.WaitFor(() => project.TextLayout.TextLines.Any(line => line.HasCollapsed), "the long project name to be truncated");
-            string description = Assert.IsType<string>(ToolTip.GetTip(projectButton));
-            Ui.Hover(projectButton);
-            Ui.WaitFor(() => ToolTip.GetIsOpen(projectButton), "the project tooltip");
-            Assert.Equal($"{project.Text}\n\n{description}", Assert.IsType<TextBlock>(ToolTip.GetTip(projectButton)).Text);
-
-            Ui.WaitFor(() => window.ExplorerView.Locate(file), "the long file to be shown in the Explorer");
-            Ui.Settle();
-            TextBlock label = window.ExplorerView.GetVisualDescendants().OfType<TextBlock>()
-                .Single(text => text.Text == fileName && text.IsEffectivelyVisible);
-            ShrinkingRow row = label.FindAncestorOfType<ShrinkingRow>()!;
-            Assert.Contains(label.TextLayout.TextLines, line => line.HasCollapsed);
-            Ui.Hover(label);
-            Ui.WaitFor(() => ToolTip.GetIsOpen(row) && !ToolTip.GetIsOpen(projectButton), "the Explorer tooltip to replace the project tooltip");
-            Assert.Contains(fileName, Assert.IsType<TextBlock>(ToolTip.GetTip(row)).Text, StringComparison.Ordinal);
-            Assert.Equal(description, ToolTip.GetTip(projectButton));
-        }
-        finally
-        {
-            window.Close();
-            TestFolders.Delete(folder);
-        }
-    }
-
-    [AvaloniaFact]
     public void A_path_note_shows_its_full_path_only_while_truncated()
     {
         string path = Path.Combine("Workspace", new string('W', 60), "Project", "Output");
@@ -166,9 +129,11 @@ public sealed class SmallestWindowTests
 
     private void At_the_smallest_widths_the_toolbars_long_names_end_in_an_ellipsis_and_nothing_on_it_draws_over_anything()
     {
-        string folder = TestFolders.Create("smallest-toolbar-");
+        string folder = TestFolders.Create($"smallest-toolbar-{new string('W', 56)}-");
+        string fileName = $"{new string('W', 72)}.cs";
+        string file = Path.Combine(folder, fileName);
         File.WriteAllText(Path.Combine(folder, "Contoso.Inventory.Management.Service.Api.csproj"), TestProjects.Console());
-        File.WriteAllText(Path.Combine(folder, "Program.cs"), "System.Console.WriteLine(1);\n");
+        File.WriteAllText(file, "System.Console.WriteLine(1);\n");
         TestGit.Init(folder);
         TestGit.Run(folder, "checkout", "-q", "-b", "feature/JIRA-12345-rework-the-inventory-reconciliation-pipeline");
         MainWindow window = Ui.OpenFolder(folder, width: 720, height: MainWindow.SmallestHeight, languageServer: false, autosaves: false);
@@ -198,6 +163,27 @@ public sealed class SmallestWindowTests
                         $"At {width} wide the toolbar's {name} has {words.Bounds.Width:0.#} units: '{words.Text}' vanishes with no ellipsis");
                 }
             }
+
+            window.Width = 850;
+            Ui.Settle();
+            TextBlock project = (TextBlock)Named(window, "ProjectName");
+            Button projectButton = (Button)Named(window, "ProjectButton");
+            Assert.Contains(project.TextLayout.TextLines, line => line.HasCollapsed);
+            string description = Assert.IsType<string>(ToolTip.GetTip(projectButton));
+            Ui.Hover(projectButton);
+            Ui.WaitFor(() => ToolTip.GetIsOpen(projectButton), "the project tooltip");
+            Assert.Equal($"{project.Text}\n\n{description}", Assert.IsType<TextBlock>(ToolTip.GetTip(projectButton)).Text);
+
+            Ui.WaitFor(() => window.ExplorerView.Locate(file), "the long file to be shown in the Explorer");
+            Ui.Settle();
+            TextBlock label = window.ExplorerView.GetVisualDescendants().OfType<TextBlock>()
+                .Single(text => text.Text == fileName && text.IsEffectivelyVisible);
+            ShrinkingRow row = label.FindAncestorOfType<ShrinkingRow>()!;
+            Assert.Contains(label.TextLayout.TextLines, line => line.HasCollapsed);
+            Ui.Hover(label);
+            Ui.WaitFor(() => ToolTip.GetIsOpen(row) && !ToolTip.GetIsOpen(projectButton), "the Explorer tooltip to replace the project tooltip");
+            Assert.Contains(fileName, Assert.IsType<TextBlock>(ToolTip.GetTip(row)).Text, StringComparison.Ordinal);
+            Assert.Equal(description, ToolTip.GetTip(projectButton));
         }
         finally
         {
