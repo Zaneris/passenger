@@ -191,6 +191,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     [AvaloniaFact]
     public void Fixes_context_actions_templates_and_selection_do_what_they_offer_and_take_back_whole()
     {
+        Flow.StepApart("primary constructor conversion offers removal of redundant fields first", () => new CodeAssistTests(project), t => t.Primary_constructor_conversion_offers_removal_of_redundant_fields_first());
         Flow.StepApart("Fix All in the solution reaching a file not open is undone in every file it changed at once", () => new CodeAssistTests(project), t => t.Fix_all_in_the_solution_reaching_a_file_not_open_is_undone_in_every_file_it_changed_at_once());
         Flow.StepApart("a fix the language server will not make, once chosen, says why in the status bar", () => new CodeAssistTests(project), t => t.A_fix_the_language_server_will_not_make_once_chosen_says_why_in_the_status_bar());
         Flow.StepApart("a call bound only to another receiver's extension method is offered the using of one that takes its own", () => new CodeAssistTests(project), t => t.A_call_bound_only_to_another_receivers_extension_method_is_offered_the_using_of_one_that_takes_its_own());
@@ -2803,6 +2804,43 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    private void Primary_constructor_conversion_offers_removal_of_redundant_fields_first()
+    {
+        MainWindow window = project.Open("PrimaryConstructors.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument file = window.EditorArea.Active!;
+        string before = editor.Document.Snapshot.ToString();
+        Ui.WaitFor(() => window.CSharpService!.For(file)!.Diagnostics.Count(d => d.Code?.ToString() == "IDE0290") == 2,
+            "Roslyn to offer primary constructors for both classes");
+
+        const string convert = "Use primary constructor";
+        const string remove = "Use primary constructor (and remove fields)";
+        Ui.PlaceAfter(editor, "public Handler");
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Contains(convert), "the primary constructor conversion");
+        Assert.Equal([remove, $"Fix All: {remove}", convert, $"Fix All: {convert}"], window.Assist.Offered
+            .Where(title => title.StartsWith(convert, StringComparison.Ordinal) || title.StartsWith($"Fix All: {convert}", StringComparison.Ordinal)));
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("class Handler(string mediator)", StringComparison.Ordinal),
+            "the primary constructor to be written");
+        string after = editor.Document.Snapshot.ToString();
+        Assert.DoesNotContain("_mediator", after, StringComparison.Ordinal);
+        Assert.Contains("=> mediator;", after, StringComparison.Ordinal);
+        editor.Focus();
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal(before, editor.Document.Snapshot.ToString());
+
+        Ui.PlaceAfter(editor, "public Measured");
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Contains(convert), "the field-preserving primary constructor conversion");
+        Assert.DoesNotContain(remove, window.Assist.Offered);
+        Choose(window, convert);
+        Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("class Measured(string label)", StringComparison.Ordinal),
+            "the primary constructor with the original field to be written");
+        Assert.Contains("private readonly int _length = label.Length;", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
     private void A_fix_the_language_server_will_not_make_once_chosen_says_why_in_the_status_bar()
     {
         MainWindow window = project.Open("Program.cs");
@@ -4132,6 +4170,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf(".editorconfig"), """
                 root = true
 
+                [PrimaryConstructors.cs]
+                csharp_style_prefer_primary_constructors = true:suggestion
+                dotnet_diagnostic.IDE0290.severity = suggestion
+
                 [RenameOffers.cs]
                 dotnet_naming_rule.static_fields.symbols = static_fields
                 dotnet_naming_rule.static_fields.style = static_style
@@ -4140,6 +4182,31 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 dotnet_naming_symbols.static_fields.required_modifiers = static
                 dotnet_naming_style.static_style.required_prefix = s_
                 dotnet_naming_style.static_style.capitalization = camel_case
+                """);
+            File.WriteAllText(PathOf("PrimaryConstructors.cs"), """
+                sealed class Handler
+                {
+                    private readonly string _mediator;
+
+                    public Handler(string mediator)
+                    {
+                        _mediator = mediator;
+                    }
+
+                    public string Mediator() => this._mediator;
+                }
+
+                sealed class Measured
+                {
+                    private readonly int _length;
+
+                    public Measured(string label)
+                    {
+                        _length = label.Length;
+                    }
+
+                    public int Length() => _length;
+                }
                 """);
             File.WriteAllText(PathOf("RenameOffers.cs"), """
                 using System.Collections.Generic;

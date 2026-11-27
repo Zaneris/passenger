@@ -201,7 +201,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         Selection primary = Editor.Selections.Primary;
         IReadOnlyList<LintFix> linted = [];
-        IReadOnlyList<CodeAction> actions = [];
+        List<CodeAction> actions = [];
         List<OwnRefactoring> listed = [];
         if (context.Ask(own.Count > 0 ? null : what) is { } lsp && context.Current is { } current)
         {
@@ -229,8 +229,12 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
                 return;
             }
             // Passenger's own refactorings are C#'s, never a Razor file's.
-            listed = csharp ? [.. refactorings.Where(r => r.Servers is not ({ } made, true) || actions.Any(made))] : [];
-            actions = [.. actions.Where(a => !listed.Any(r => r.Servers?.Actions(a) == true))];
+            if (csharp)
+            {
+                listed = [.. refactorings.Where(r => r.Servers is not ({ } made, true) || actions.Any(made))];
+                actions.RemoveAll(a => listed.Any(r => r.Servers?.Actions(a) == true));
+                PreferPrimaryConstructorWithoutFields(actions);
+            }
         }
         else if (own.Count == 0)
         {
@@ -263,6 +267,26 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
                     return Task.CompletedTask;
             }
         });
+    }
+
+    /// <summary>When Roslyn can remove redundant fields, make that conversion the first choice and keep its Fix All beside it.</summary>
+    private static void PreferPrimaryConstructorWithoutFields(List<CodeAction> actions)
+    {
+        int keep = actions.FindIndex(a => a.Title == "Use primary constructor");
+        if (keep < 0)
+        {
+            return;
+        }
+        int remove = actions.FindIndex(keep + 1, a => a.Title is "Use primary constructor (and remove fields)"
+            or "Use primary constructor (and remove members)");
+        if (remove < 0)
+        {
+            return;
+        }
+        int count = remove + 1 < actions.Count && actions[remove + 1].Title == $"Fix All: {actions[remove].Title}" ? 2 : 1;
+        List<CodeAction> preferred = actions.GetRange(remove, count);
+        actions.RemoveRange(remove, count);
+        actions.InsertRange(keep, preferred);
     }
 
     private static readonly Task<IReadOnlyList<EditorFix>> NoFixes = Task.FromResult<IReadOnlyList<EditorFix>>([]);
