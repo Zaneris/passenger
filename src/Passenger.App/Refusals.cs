@@ -871,6 +871,17 @@ public static class Refusals
     /// <summary>An iOS app's simulators asked for on a system other than macOS.</summary>
     public const string IosOnMacAlone = "iOS apps run on simulators only on a Mac, with Xcode";
 
+    /// <summary>A Mac Catalyst app run on a system other than macOS.</summary>
+    public const string MacCatalystOnMacAlone = "a Mac Catalyst app runs only on a Mac";
+
+    /// <summary>An Android device test project's tests asked to run, which Passenger does not run on a device yet.</summary>
+    public static string AndroidTestsNotYet(string project) =>
+        $"Passenger does not run {project}'s tests on Android devices and emulators yet: it runs a device test project's tests on iOS simulators and as a Mac Catalyst app";
+
+    /// <summary>A device test project's tests asked to be debugged, which Passenger runs on their target undebugged.</summary>
+    public static string DeviceTestsNotDebugged(string project) =>
+        $"Passenger does not debug {project}'s tests where they run, on a device, a simulator or as a Mac Catalyst app, yet: Run Tests runs them there";
+
     /// <summary>The iOS workload could not list simulators (no workload, no Xcode), with how to get them.</summary>
     public static string NoIos(string problem) =>
         $"iOS's simulators could not be listed ({problem}): iOS apps need the .NET ios workload (dotnet workload install ios) and the Xcode it names, "

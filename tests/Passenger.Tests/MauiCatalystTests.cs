@@ -93,12 +93,15 @@ public sealed class MauiCatalystTests : McpRig
         }
     }
 
-    /// <summary>The MAUI app's Mac Catalyst head as the template builds it, debugged on this Mac, its trimmed assemblies said;
-    /// then debugged and run at once, each instance ended alone, from the one build.</summary>
+    /// <summary>The tests of the project <c>dotnet new maccatalysttest</c> makes run in its app on this Mac; then the MAUI app's
+    /// Mac Catalyst head as the template builds it, debugged on this Mac, its trimmed assemblies said; then debugged and run at
+    /// once, each instance ended alone, from the one build.</summary>
     [AvaloniaFact]
-    public void A_maui_apps_mac_catalyst_head_is_debugged_as_the_template_builds_it_and_beside_a_run_each_ending_alone()
+    public void A_device_test_projects_tests_run_as_a_mac_catalyst_app_and_a_maui_apps_head_is_debugged_as_the_template_builds_it_and_beside_a_run_each_ending_alone()
     {
         using IDisposable hang = Limits.BeginHang();
+        Flow.Step("a maccatalysttest project's tests run in its app hidden on this Mac, each told, its results beside its build, and the app ends",
+            A_maccatalysttest_projects_tests_run_in_its_app_hidden_on_this_mac_each_told_its_results_beside_its_build_and_the_app_ends);
         (string folder, string project) = Prepared("maui-catalyst-debug", whole: false);
         try
         {
@@ -106,6 +109,48 @@ public sealed class MauiCatalystTests : McpRig
                 () => A_maui_apps_mac_catalyst_head_built_as_the_template_has_it_is_debugged_its_assemblies_trimmed_said_and_takes_a_hot_reload_edit(folder, project));
             Flow.Step("a MAUI app's Mac Catalyst head debugged and run at once ends each instance alone with its own start",
                 () => A_maui_apps_mac_catalyst_head_debugged_and_run_at_once_ends_each_instance_alone_with_its_own_start(folder));
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>The template's three tests run as the Tests window's Run All runs them: the app opened hidden for each test
+    /// host, which connects to Passenger's client on this Mac's loopback, its results written beside its build rather than
+    /// in the person's Documents.</summary>
+    private static void A_maccatalysttest_projects_tests_run_in_its_app_hidden_on_this_mac_each_told_its_results_beside_its_build_and_the_app_ends()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip($"A Mac Catalyst test project cannot run here: {Refusals.MacCatalystOnMacAlone}");
+        }
+        string folder = PathNames.Canonical(TestFolders.Create("catalyst-device-tests"));
+        try
+        {
+            (string project, string? unmade) = Ui.AwaitPumped(Waiting.Apart(() => MauiApp.CreateDeviceTestsAsync(folder, "maccatalysttest")),
+                "dotnet new maccatalysttest and its restore", Slow);
+            if (unmade is not null)
+            {
+                Assert.Skip(unmade);
+            }
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            try
+            {
+                Assert.True(window.Perform(AppActions.RunAllTests));
+                Ui.WaitFor(() => !window.Tests.IsBusy && window.Tests.Tree.Roots.SelectMany(r => r.Methods).Any(m => m.State != Passenger.App.Testing.TestState.NotRun),
+                    () => $"the run of the tests in their app on this Mac: {window.BottomPanel.Tests.Status}\n{Ui.Said(window)}", Slow);
+                Assert.True(System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, $" in {SaidWhile.Pattern}$", string.Empty) == MauiApp.DeviceTestsRan,
+                    $"The tests did not run in their app on this Mac, each told: {window.BottomPanel.Tests.Status}");
+                string built = Path.Combine(Path.GetDirectoryName(project)!, "bin");
+                Assert.True(Directory.EnumerateFiles(built, "*.trx", SearchOption.AllDirectories).Any(), $"The tests' results were not written beside their build in {built}");
+                Ui.WaitFor(() => !Processes.Listed().Values.Any(p => p.Contains($"/{MauiApp.DeviceTests}.app/Contents/MacOS/", StringComparison.Ordinal)),
+                    "the tests' app to end once their run was over", TimeSpan.FromSeconds(30));
+            }
+            finally
+            {
+                window.Close();
+            }
         }
         finally
         {

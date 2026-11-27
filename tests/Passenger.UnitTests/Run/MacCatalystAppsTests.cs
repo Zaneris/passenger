@@ -19,6 +19,7 @@ public class MacCatalystAppsTests
     public void A_Mac_Catalyst_app_opens_as_the_system_opens_one_its_start_carried_into_its_own_container_folder() => Cases.All(
         ("an app nobody sees opens hidden behind every window none it kept reopened with its own arguments after opens", An_app_nobody_sees_opens_hidden_behind_every_window_none_it_kept_reopened_with_its_own_arguments_after_opens),
         ("an app a person sees opens in front as it last ended with its own arguments after opens", An_app_a_person_sees_opens_in_front_as_it_last_ended_with_its_own_arguments_after_opens),
+        ("a test app nobody sees opens hidden with the testing platforms arguments alone after opens", A_test_app_nobody_sees_opens_hidden_with_the_testing_platforms_arguments_alone_after_opens),
         ("a sandboxed apps start carries into a folder of its own in the containers temporary folder", A_sandboxed_apps_start_carries_into_a_folder_of_its_own_in_the_containers_temporary_folder),
         ("the sockets in a containers folder fit a sockets address for a long home and the templates bundle identifier", The_sockets_in_a_containers_folder_fit_a_sockets_address_for_a_long_home_and_the_templates_bundle_identifier),
         ("a debugged apps relay is loaded from its container and listens at a socket there for the sessions token", A_debugged_apps_relay_is_loaded_from_its_container_and_listens_at_a_socket_there_for_the_sessions_token),
@@ -36,6 +37,13 @@ public class MacCatalystAppsTests
         IReadOnlyList<string> opening = MacCatalystApps.Opening(App, unseen: false, ["--verbose"]);
 
         Assert.Equal(["-c", MacCatalystApps.Opener, "sh", App.Pipes, "-n", "-W", "-a", App.Bundle, "--args", "--verbose"], opening);
+    }
+
+    private void A_test_app_nobody_sees_opens_hidden_with_the_testing_platforms_arguments_alone_after_opens()
+    {
+        IReadOnlyList<string> opening = MacCatalystApps.Opening(App, unseen: true, ["--server", "--client-port", "5000"], appKit: false);
+
+        Assert.Equal(["-c", MacCatalystApps.Opener, "sh", App.Pipes, "-n", "-W", "-g", "-j", "-a", App.Bundle, "--args", "--server", "--client-port", "5000"], opening);
     }
 
     private void A_sandboxed_apps_start_carries_into_a_folder_of_its_own_in_the_containers_temporary_folder()

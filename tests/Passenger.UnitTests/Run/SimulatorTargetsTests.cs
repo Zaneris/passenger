@@ -33,7 +33,7 @@ public class SimulatorTargetsTests
     [Fact]
     public void An_iOS_simulators_app_is_listed_by_its_udid_launched_and_found_by_its_installed_bundle() => Cases.All(
         ("the ios workloads simulators are listed by their udids a shut down one said not running", The_ios_workloads_simulators_are_listed_by_their_udids_a_shut_down_one_said_not_running),
-        ("Run launches the app afresh on its simulator with its output on simctls own", Run_launches_the_app_afresh_on_its_simulator_with_its_output_on_simctls_own),
+        ("Run launches the app afresh on its simulator with its output on simctls own and its own arguments as its launcher takes them", Run_launches_the_app_afresh_on_its_simulator_with_its_output_on_simctls_own_and_its_own_arguments_as_its_launcher_takes_them),
         ("the apps process is the one running its bundles copy installed on its own simulator", The_apps_process_is_the_one_running_its_bundles_copy_installed_on_its_own_simulator),
         ("the apps variables go to simctl under its prefix and simctl says its launch at once", The_apps_variables_go_to_simctl_under_its_prefix_and_simctl_says_its_launch_at_once),
         ("a debug start gives the app the relay as its profiler listening on a port of this mac", A_debug_start_gives_the_app_the_relay_as_its_profiler_listening_on_a_port_of_this_mac));
@@ -49,10 +49,11 @@ public class SimulatorTargetsTests
         Assert.All(targets, t => Assert.Equal(TargetPlatform.Ios, t.Platform));
     }
 
-    private void Run_launches_the_app_afresh_on_its_simulator_with_its_output_on_simctls_own()
+    private void Run_launches_the_app_afresh_on_its_simulator_with_its_output_on_simctls_own_and_its_own_arguments_as_its_launcher_takes_them()
     {
         Assert.Equal(["launch", "--console", "--terminate-running-process", "B7339FFC-A65B-4992-9FF7-440A256F2635", "com.companyname.mauiapp1"], App.Launch());
         Assert.Equal(["terminate", "B7339FFC-A65B-4992-9FF7-440A256F2635", "com.companyname.mauiapp1"], App.Terminate());
+        Assert.Equal(["-app-arg=--server", "-app-arg=--client-host", "-app-arg=127.0.0.1"], ((string[])["--server", "--client-host", "127.0.0.1"]).Select(SimulatorApp.AppArgument));
     }
 
     private void The_apps_process_is_the_one_running_its_bundles_copy_installed_on_its_own_simulator()

@@ -58,6 +58,30 @@ internal static class MauiApp
             : $"{Name}'s {framework} head does not restore here from nuget.org: {restored.Output.Split('\n').FirstOrDefault(l => l.Contains(": error ", StringComparison.Ordinal))?.Trim() ?? restored.FirstLine}");
     }
 
+    /// <summary>A device test project a .NET template makes (<paramref name="template"/>: iostest, maccatalysttest) in a folder
+    /// of its own under <paramref name="folder"/>, restored from nuget.org: its project, and why it could not be made or
+    /// restored here (no workload of its platform, no reach of nuget.org), or null. Its three tests pass, fail and skip.</summary>
+    public static async Task<(string Project, string? Unmade)> CreateDeviceTestsAsync(string folder, string template)
+    {
+        string tests = Path.Combine(folder, DeviceTests);
+        string project = Path.Combine(tests, $"{DeviceTests}.csproj");
+        ChildResult made = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["new", template, "--output", tests, "--name", DeviceTests], folder), limit: Limit);
+        if (!made.Succeeded)
+        {
+            return (project, $"This .NET has no {template} template, so it lacks its platform's workload: {made.FirstLine}");
+        }
+        TestFolders.Write(folder, "nuget.config", TestRun.FromNuGetOrg);
+        ChildResult restored = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["restore", project], tests), limit: Limit);
+        return (project, restored.Succeeded ? null
+            : $"{DeviceTests} does not restore here from nuget.org: {restored.Output.Split('\n').FirstOrDefault(l => l.Contains(": error ", StringComparison.Ordinal))?.Trim() ?? restored.FirstLine}");
+    }
+
+    /// <summary>A device test project's name, its run configuration's too.</summary>
+    public const string DeviceTests = "DeviceTests";
+
+    /// <summary>What the Tests window says once a device test project's three tests have run, its time left out.</summary>
+    public const string DeviceTestsRan = "Tests passed: 1, failed: 1, skipped: 1 of 3";
+
     /// <summary>The device or emulator to run on, of those listed: the one adb's ANDROID_SERIAL names, as adb itself takes
     /// it where several are connected, else the first running, else the first emulator to start; null for none.</summary>
     public static DeviceTarget? Target(IReadOnlyList<DeviceTarget> targets) =>

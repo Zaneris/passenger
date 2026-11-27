@@ -56,7 +56,7 @@ public static partial class MacCatalystApps
         {
             return (null, $"Could not run {name}: Passenger has no folder of its own to carry its inspector into: {unowned.Message}");
         }
-        app = app with { Carried = into, Pipes = pipes };
+        app = app with { Carried = into, Pipes = pipes, InSandbox = sandboxed };
         IReadOnlyList<string> opening = Opening(app, plan.Unseen, [.. plan.OwnArguments]);
         return (plan with
         {
@@ -70,6 +70,14 @@ public static partial class MacCatalystApps
 
     /// <summary>The folders this process has carried into for apps, which number each one's name apart.</summary>
     private static int carried;
+
+    /// <summary>The app made ready as it is, for a start of its own: its own pipes' folder and its own token, so each start
+    /// finds and ends its own instance however many run.</summary>
+    public static MacCatalystApp Afresh(MacCatalystApp app) => app with
+    {
+        Pipes = Path.Combine(SocketFolders.Own(State.StateStore.DefaultRoot), MacCatalystApp.PipesName(Environment.ProcessId, Interlocked.Increment(ref carried))),
+        Process = new AppProcess(),
+    };
 
     /// <summary>Whether the app's signature gives it the App Sandbox, as codesign reads it from the bundle: a sandboxed app runs
     /// in its container, the only place it reads Passenger's files and listens on sockets.</summary>

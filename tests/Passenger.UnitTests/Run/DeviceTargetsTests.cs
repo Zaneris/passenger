@@ -38,7 +38,8 @@ public class DeviceTargetsTests
         ("Debug puts the relay in the apps own folder and takes it out putting back the builds link", Debug_puts_the_relay_in_the_apps_own_folder_and_takes_it_out_putting_back_the_builds_link),
         ("what an end that never reached the device left is taken out the builds environment linked back where a start left its own", What_an_end_that_never_reached_the_device_left_is_taken_out_the_builds_environment_linked_back_where_a_start_left_its_own),
         ("the debug environment keeps the builds variables and adds the relays profiler and token", The_debug_environment_keeps_the_builds_variables_and_adds_the_relays_profiler_and_token),
-        ("an android app is runnable though its sdk makes its output a library", An_android_app_is_runnable_though_its_sdk_makes_its_output_a_library));
+        ("an android app is runnable though its sdk makes its output a library", An_android_app_is_runnable_though_its_sdk_makes_its_output_a_library),
+        ("a device test project is told apart by the app its tests run in", A_device_test_project_is_told_apart_by_the_app_its_tests_run_in));
 
     private void The_workloads_devices_are_listed_an_emulator_kept_by_its_avd_and_one_not_running_said_so()
     {
@@ -183,5 +184,15 @@ public class DeviceTargetsTests
         Assert.True(Evaluated("Library", "True").IsRunnable);
         Assert.False(Evaluated("Library", null).IsRunnable);
         Assert.False(Evaluated("Library", "false").IsRunnable);
+    }
+
+    private void A_device_test_project_is_told_apart_by_the_app_its_tests_run_in()
+    {
+        ProjectModel Tests(string framework, string output) => new($"/src/{framework}/Tests.csproj", "Tests", output, [framework], [("MSTest", "4.5.1")], [], true);
+
+        Assert.True(DeviceTargets.TestsInApp(Tests("net11.0-ios", "Exe")));
+        Assert.True(DeviceTargets.TestsInApp(Tests("net11.0-maccatalyst", "Exe")));
+        Assert.False(DeviceTargets.TestsInApp(Tests("net11.0", "Exe")));
+        Assert.False(DeviceTargets.TestsInApp(Tests("net11.0-ios", "Library")));
     }
 }

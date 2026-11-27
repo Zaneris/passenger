@@ -133,6 +133,15 @@ public sealed class ProjectSession : IAsyncDisposable
             GodotVariables = cancel => BackgroundWork.Run(() => GodotTestRuns.Variables(setup.Settings().GodotExecutable,
                 setup.GodotEnvironment ?? new Dictionary<string, string>(), setup.Settings().GodotTestsWindowed && !setup.Unseen), cancel),
             GodotFolders = () => [.. Workspace?.GodotGames ?? [], .. Projects.Select(p => p.NamedGodotFolder).OfType<string>()],
+            // A device test project's app runs where Run runs its project, a simulator it boots shut down with the folder.
+            Devices = new DeviceTestHosts(project => Targets.InForce(project), project => ProjectModels.Properties(Workspace, project), setup.Unseen, Booted,
+                (project, platform, targets) => UiThread.Post(() =>
+                {
+                    if (!IsEnded)
+                    {
+                        Targets.List(project, platform, targets);
+                    }
+                })),
         };
         Tests.Finder.StateFolder = setup.StateFolder;
         Containers = new Containers.FolderContainers(folder, setup.Engine());

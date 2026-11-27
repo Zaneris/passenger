@@ -106,8 +106,17 @@ public static partial class DeviceTargets
 
     /// <summary>Whether a project runs only through a target of its platforms: every framework it has names one of
     /// Android, iOS or Mac Catalyst (a Windows framework runs here as it is).</summary>
-    public static bool RunsOnlyElsewhere(IReadOnlyCollection<string> frameworks) =>
-        frameworks.Count > 0 && frameworks.All(f => PlatformOf(f) is TargetPlatform.Android or TargetPlatform.Ios or TargetPlatform.MacCatalyst);
+    public static bool RunsOnlyElsewhere(IReadOnlyCollection<string> frameworks) => frameworks.Count > 0 && frameworks.All(RunsElsewhere);
+
+    /// <summary>Whether what a framework builds runs only through a target of its platform: Android's, iOS's or Mac
+    /// Catalyst's app, never a program .NET starts here.</summary>
+    public static bool RunsElsewhere(string framework) => PlatformOf(framework) is TargetPlatform.Android or TargetPlatform.Ios or TargetPlatform.MacCatalyst;
+
+    /// <summary>Whether a project is a device test project (.NET's androidtest, iostest and maccatalysttest make one): a test
+    /// project building an app that runs through a target of its platform, its tests in it, so it has a run configuration of
+    /// its own, which chooses where its tests run.</summary>
+    public static bool TestsInApp(ProjectModel project) => project.IsTestProject && project.TargetFrameworks.Any(RunsElsewhere)
+        && (string.Equals(project.OutputType, "Exe", StringComparison.OrdinalIgnoreCase) || project.IsAndroidApp);
 
     /// <summary>The targets a workload's <c>ComputeAvailableDevices</c> answered (<c>-getItem:Devices</c>: each one's
     /// Identity, Description, Type, Status, and an emulator's AvdName). One with no Identity is passed over.</summary>
