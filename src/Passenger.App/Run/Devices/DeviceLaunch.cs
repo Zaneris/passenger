@@ -33,6 +33,11 @@ public interface IDeviceApp
 
     /// <summary>The build's environment back in the app once it has read the one a start put in. Never throws.</summary>
     Task PutBackEnvironmentAsync(DevicePut put);
+
+    /// <summary>A one-line shell command ending what a start of the app leaves on its device where Passenger ends before the
+    /// start is out (its app, once <paramref name="started"/>; what it marked there, as <paramref name="put"/> says), which
+    /// the watchdog runs (<see cref="DeviceStart"/>); null where nothing is a command's to end.</summary>
+    string? LeftEnd(DevicePut? put, bool started);
 }
 
 /// <summary>A Debug start's relay in an app on a device: the local address it is reached at (adb's forward to its socket, a

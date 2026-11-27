@@ -132,4 +132,7 @@ public sealed partial record SimulatorApp : IDeviceApp
 
     /// <summary>Nothing to put back: the app's environment is its start's alone.</summary>
     public Task PutBackEnvironmentAsync(DevicePut put) => Task.CompletedTask;
+
+    /// <summary>Nothing: the watchdog shuts down a simulator Passenger booted (<see cref="AppleSimulators.Booting"/>).</summary>
+    public string? LeftEnd(DevicePut? put, bool started) => null;
 }
