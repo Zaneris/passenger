@@ -82,7 +82,8 @@ internal static class CodeCards
 }
 
 /// <summary><see cref="ExtensionMethods.Hover"/>: textDocument/hover as the server's own answers a client without Visual
-/// Studio's extensions, its quick info's sections one after another, with the parts of its blocks of code.</summary>
+/// Studio's extensions, its quick info's sections one after another, with the parts of its blocks of code, and in C# the
+/// words naming a symbol links to it (<see cref="HoverLinks"/>).</summary>
 [Method(ExtensionMethods.Hover)]
 internal sealed class CodedHoverHandler(IGlobalOptionService options) : ILspServiceDocumentRequestHandler<TextDocumentPositionParams, CodedHover?>
 {
@@ -109,8 +110,10 @@ internal sealed class CodedHoverHandler(IGlobalOptionService options) : ILspServ
         {
             return null;
         }
-        ImmutableArray<QuickInfoSection> sections = document.Project.Language == LanguageNames.CSharp
-            ? await HoverAttributes.AnnotateAsync(document, info, cancellationToken).ConfigureAwait(false) : info.Sections;
+        ImmutableArray<QuickInfoSection> sections = csharp
+            ? await HoverLinks.LinkAsync(document, info, await HoverAttributes.AnnotateAsync(document, info, cancellationToken).ConfigureAwait(false), cancellationToken)
+                .ConfigureAwait(false)
+            : info.Sections;
         // A line break after each section, as the server's own sets them apart.
         ImmutableArray<TaggedText> tags = [.. sections.SelectMany(s => s.TaggedParts.Add(new TaggedText(TextTags.LineBreak, Environment.NewLine)))];
         SourceText text = await document.GetValueTextAsync(cancellationToken).ConfigureAwait(false);
