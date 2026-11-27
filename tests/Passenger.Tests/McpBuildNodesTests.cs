@@ -16,6 +16,7 @@ namespace Passenger.Tests;
 /// project host writes stays in its temporary folder. MSBuild keeps a node only while the machine's count of nodes allows,
 /// which other builds beside it would take, so the class runs alone.</summary>
 [Collection(Alone.Name)]
+[AboutMacOS]
 public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
 {
     /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>
