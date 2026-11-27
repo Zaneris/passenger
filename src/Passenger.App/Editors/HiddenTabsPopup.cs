@@ -42,8 +42,6 @@ public sealed class HiddenTabsPopup : SearchPopup<HiddenTab>
         RowIcon icon = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Normal, 0), [DockPanel.DockProperty] = Dock.Left };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         TextBlock after = ListRow.DetailText();
-        TrimmedTip.Attach(name);
-        TrimmedTip.Attach(after);
         DockPanel row = new() { Height = ListRow.Height, Children = { icon, after, name } };
         return row.Showing<T>(item => show(item, icon, name, after));
     }

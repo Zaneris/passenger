@@ -56,67 +56,6 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         TestFolders.Delete(settings);
     }
 
-    [AvaloniaFact]
-    public void Hovering_shows_a_truncated_run_configurations_full_name_in_the_toolbar_and_its_menu()
-    {
-        string prefix = new('W', 96);
-        string first = $"Hello: {prefix}.First";
-        string second = $"Hello: {prefix}.Second";
-        const string Short = "Hello: Short";
-        Write("Hello/Properties/launchSettings.json", $$"""
-            { "profiles": {
-                "{{prefix}}.First": { "commandName": "Project" },
-                "{{prefix}}.Second": { "commandName": "Project" },
-                "Short": { "commandName": "Project" }
-            } }
-            """);
-        MainWindow window = Keeping();
-        try
-        {
-            Ui.WaitFor(() => Names(window).Contains(second), "the long launch profiles to become run configurations");
-            Button button = window.FindControl<Button>("RunConfigButton")!;
-            TextBlock label = window.FindControl<TextBlock>("RunConfigName")!;
-
-            foreach (string name in (string[])[first, second])
-            {
-                MenuItem item = Choice(name);
-                TextBlock row = item.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Text == name);
-                Assert.Contains(row.TextLayout.TextLines, line => line.HasCollapsed);
-                AssertFullTip(item, name);
-                Ui.Click(item);
-                Assert.Contains(label.TextLayout.TextLines, line => line.HasCollapsed);
-                AssertFullTip(button, $"{name}\n\nRun configuration");
-            }
-
-            Ui.Click(Choice(Short));
-            Assert.DoesNotContain(label.TextLayout.TextLines, line => line.HasCollapsed);
-            Ui.Hover(button);
-            Ui.WaitFor(() => ToolTip.GetIsOpen(button), "the short configuration's toolbar tooltip");
-            Assert.Equal("Run configuration", ToolTip.GetTip(button));
-
-            MenuItem Choice(string name)
-            {
-                Ui.Click(button);
-                ContextMenu menu = Assert.IsType<ContextMenu>(window.OpenContextMenu);
-                return menu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, name));
-            }
-        }
-        finally
-        {
-            window.Close();
-        }
-
-        static void AssertFullTip(Control target, string name)
-        {
-            Ui.Hover(target);
-            Ui.WaitFor(() => ToolTip.GetIsOpen(target), "the full configuration name's tooltip");
-            TextBlock tip = Assert.IsType<TextBlock>(ToolTip.GetTip(target));
-            Assert.Equal(name, tip.Text);
-            Assert.True(tip.TextLayout.TextLines.Count > 1, "The tooltip leaves the full name on one very long line");
-            Assert.DoesNotContain(tip.TextLayout.TextLines, line => line.HasCollapsed);
-        }
-    }
-
     /// <summary>The gate's seventeen checks of run configurations, as one flow: what runs and is kept, added, copied,
     /// changed, removed or refused in the dialog, written to and reset from a launch profile with its Undo, an older
     /// file and a file-based program's, a compose configuration, and what the toolbar shows.</summary>
@@ -146,7 +85,8 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     /// <summary>An AppHost's configuration first, a launch profile run in its working directory, an agent's logs kept,
     /// a launch profile made without the watcher, a terminal program generated to run there, a web page opened in the
     /// browser named, a plain project beside a Godot game, several projects' profile written as Visual Studio writes it,
-    /// and a library's profile starting a host, as one flow, each step the check one test made in an instance of its own.</summary>
+    /// a library's profile starting a host, and a name cut short shown whole in a tip, as one flow, each step the check one
+    /// test made in an instance of its own.</summary>
     [AvaloniaFact]
     public void Run_configurations_are_chosen_and_run_as_their_projects_and_launch_profiles_make_them()
     {
@@ -160,6 +100,68 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         Flow.StepApart("a launch profile of several projects is changed made and removed in the dialog and written as Visual Studio writes it", () => new RunConfigurationsTests(folders), t => t.A_launch_profile_of_several_projects_is_changed_made_and_removed_in_the_dialog_and_written_as_Visual_Studio_writes_it());
         Flow.StepApart("a run given a command is kept whole in passenger runs json and goes back to slnLaunch once it holds projects alone", () => new RunConfigurationsTests(folders), t => t.A_run_given_a_command_is_kept_whole_in_passenger_runs_json_and_goes_back_to_slnLaunch_once_it_holds_projects_alone());
         Flow.StepApart("a librarys launch profile starting a host is a configuration that builds the library and runs the host", () => new RunConfigurationsTests(folders), t => t.A_librarys_launch_profile_starting_a_host_is_a_configuration_that_builds_the_library_and_runs_the_host());
+        Flow.StepApart("a run configurations name cut short shows whole in a tip in the toolbar and its chooser and a short one keeps the toolbars words", () => new RunConfigurationsTests(folders), t => t.A_run_configurations_name_cut_short_shows_whole_in_a_tip_in_the_toolbar_and_its_chooser_and_a_short_one_keeps_the_toolbars_words());
+    }
+
+    /// <summary>Two run configurations named alike past the toolbar's width are told apart by a tip: hovering the toolbar's
+    /// name, cut short, shows it whole above the toolbar's own words, and hovering either in the chooser shows it whole,
+    /// each wrapping inside the tip; one short enough to show whole keeps the toolbar's words alone.</summary>
+    private void A_run_configurations_name_cut_short_shows_whole_in_a_tip_in_the_toolbar_and_its_chooser_and_a_short_one_keeps_the_toolbars_words()
+    {
+        string prefix = new('W', 96);
+        string first = $"Hello: {prefix}.First";
+        string second = $"Hello: {prefix}.Second";
+        const string Short = "Hello: Short";
+        Write("Hello/Properties/launchSettings.json", $$"""
+            { "profiles": {
+                "{{prefix}}.First": { "commandName": "Project" },
+                "{{prefix}}.Second": { "commandName": "Project" },
+                "Short": { "commandName": "Project" }
+            } }
+            """);
+        MainWindow window = Keeping();
+        try
+        {
+            Ui.WaitFor(() => Names(window).Contains(second), "the long launch profiles to become run configurations");
+            Button button = window.FindControl<Button>("RunConfigButton")!;
+            TextBlock label = window.FindControl<TextBlock>("RunConfigName")!;
+            foreach (string name in (string[])[first, second])
+            {
+                MenuItem item = Choice(name);
+                TextBlock row = item.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Text == name);
+                Assert.True(TrimmedTip.IsCutShort(row), $"The chooser shows {name} whole, so nothing here is cut short");
+                WholeIn(row, TrimmedTip.Parted(name));
+                Ui.Click(item);
+                Assert.True(TrimmedTip.IsCutShort(label), $"The toolbar shows {name} whole, so nothing here is cut short");
+                WholeIn(button, $"{TrimmedTip.Parted(name)}\n\nRun configuration");
+            }
+            Ui.Click(Choice(Short));
+            Assert.False(TrimmedTip.IsCutShort(label), "The toolbar cuts the short configuration's name short");
+            Ui.Hover(button);
+            Ui.WaitFor(() => ToolTip.GetIsOpen(button), "the short configuration's toolbar tip");
+            Assert.Equal("Run configuration", Ui.TipWords(button).Text);
+
+            MenuItem Choice(string name)
+            {
+                Ui.Click(button);
+                ContextMenu menu = Assert.IsType<ContextMenu>(window.OpenContextMenu);
+                return menu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, name));
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static void WholeIn(Control target, string words)
+        {
+            Ui.Hover(target);
+            Ui.WaitFor(() => ToolTip.GetIsOpen(target), () => $"the tip saying {words} whole");
+            TextBlock shown = Ui.TipWords(target);
+            Assert.Equal(words, shown.Text);
+            Assert.True(shown.TextLayout.TextLines.Count > 1 && !shown.TextLayout.TextLines.Any(line => line.HasCollapsed),
+                "The tip cuts the whole name short or leaves it on one line wider than the tip");
+        }
     }
 
     private void A_generated_Aspire_override_keeps_linked_AppHost_paths_relative_in_storage()

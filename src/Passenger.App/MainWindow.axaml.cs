@@ -73,8 +73,6 @@ public partial class MainWindow : IdeWindow
     {
         UiThread.Own();
         InitializeComponent();
-        TrimmedTip.Attach(RunConfigButton, RunConfigName, () => Configuration?.Name);
-        TrimmedTip.Attach(ProjectButton, ProjectName);
         GiveToolbarButtons();
         session = ProjectSession.None(Setup());
         announcer = new Announcer(this, Root);

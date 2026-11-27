@@ -55,7 +55,6 @@ public sealed class TrustedFoldersTable : EditableTable
     {
         TextBlock name = new() { Text = folder, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), TextTrimming = TextTrimming.PathSegmentEllipsis };
         ToolTip.SetTip(name, folder);
-        TrimmedTip.Attach(name);
         CheckBox box = CheckRows.Box();
         box.IsChecked = trusted;
         Avalonia.Automation.AutomationProperties.SetLabeledBy(box, name);

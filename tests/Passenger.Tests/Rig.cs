@@ -1795,6 +1795,15 @@ public static class Ui
         Settle();
     }
 
+    /// <summary>The words a control's open tip shows, as the tip lays them out; fails where none of its is open.</summary>
+    public static TextBlock TipWords(Control control)
+    {
+        TopLevel top = TopLevel.GetTopLevel(control) ?? throw new Xunit.Sdk.XunitException($"{Named(control)} is in no window, so it shows no tip");
+        ToolTip tip = top.GetVisualDescendants().OfType<ToolTip>().FirstOrDefault(t => t.Parent is Avalonia.Controls.Primitives.Popup { PlacementTarget: { } owner } && owner == control)
+            ?? throw new Xunit.Sdk.XunitException($"{Named(control)} shows no tip");
+        return tip.Content as TextBlock ?? tip.GetVisualDescendants().OfType<TextBlock>().Single();
+    }
+
     /// <summary>A right click as <see cref="Click(Control, Point?, RawInputModifiers, bool)"/> makes a click, which opens
     /// the menu of what is there.</summary>
     public static void RightClick(Control control, Point? at = null) => Click(control, at, MouseButton.Right, RawInputModifiers.None, settle: true);

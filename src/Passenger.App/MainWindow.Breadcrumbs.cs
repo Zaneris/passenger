@@ -215,7 +215,6 @@ public partial class MainWindow
         int index = crumbButtons.Count;
         TextBlock between = new() { Text = "›", Classes = { StyleClasses.Status }, Margin = new Avalonia.Thickness(4, 0), VerticalAlignment = VerticalAlignment.Center };
         Button crumb = new() { Classes = { StyleClasses.Crumb } };
-        TrimmedTip.AttachHeader(crumb, () => crumb.Content as string);
         crumb.Click += (_, _) =>
         {
             if (index >= shownCrumbs.Count)

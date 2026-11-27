@@ -669,12 +669,11 @@ public partial class ExplorerView : UserControl
         ShrinkingRow.SetKeepsWidth(glyphs, true);
         ShrinkingRow.SetKeepsWidth(change, true);
         ShrinkingRow row = new() { Height = ListRow.Height, Children = { glyphs, name, change, detail } };
-        TrimmedTip.Attach(row, name);
         return row.Showing<ExplorerNode>(node =>
         {
             row.Margin = node.Indent;
             row.Opacity = node.Opacity;
-            TrimmedTip.Describe(row, node.Hover);
+            ToolTip.SetTip(row, node.Hover);
             AutomationProperties.SetName(row, node.Said);
             glyphs.HasChevron = node.HasChildren;
             glyphs.Turned = node.IsExpanded;

@@ -276,8 +276,6 @@ public sealed class WelcomeView : UserControl
         TextBlock name = new() { Classes = { StyleClasses.WelcomeRowName }, TextTrimming = TextTrimming.CharacterEllipsis };
         TextBlock where = new() { Classes = { StyleClasses.Muted, StyleClasses.WelcomeRowPath }, TextTrimming = TextTrimming.PathSegmentEllipsis };
         DockPanel line = new() { Classes = { StyleClasses.WelcomeRow } };
-        TrimmedTip.Attach(name);
-        TrimmedTip.Attach(where, where, () => (line.DataContext as RecentRow)?.Path);
         DockPanel.SetDock(badge, Dock.Left);
         line.Children.Add(badge);
         TextBlock gone = ListRow.DetailText();

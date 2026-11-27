@@ -17,49 +17,16 @@ namespace Passenger.Tests;
 
 /// <summary>At the smallest window (MainWindow.SmallestWidth wide and SmallestHeight tall) everything shown can be read
 /// and reached: the Welcome page scrolls to each of its tiles, Find in Files stands inside the window, the toolbar's long
-/// names give way with an ellipsis and never draw over each other or the window's buttons, what the status bar says
-/// stands whole in front of the file's path, the Commit window sharing its column draws nothing over its form, the empty
-/// editors' words stand inside them, editor tabs down a side leave the code its room, a Markdown file's preview stands
-/// under its file, a tool window dropped on the editors is a tab there, and a stripe with no icon gives its room to the
-/// editors but while a window is dragged.</summary>
+/// names give way with an ellipsis, shown whole in a tip, and never draw over each other or the window's buttons, what
+/// the status bar says stands whole in front of the file's path, the Commit window sharing its column draws nothing over
+/// its form, the empty editors' words stand inside them, editor tabs down a side leave the code its room, a Markdown
+/// file's preview stands under its file, a tool window dropped on the editors is a tab there, and a stripe with no icon
+/// gives its room to the editors but while a window is dragged.</summary>
 public sealed class SmallestWindowTests
 {
-    [AvaloniaFact]
-    public void A_path_note_shows_its_full_path_only_while_truncated()
-    {
-        string path = Path.Combine("Workspace", new string('W', 60), "Project", "Output");
-        TextBlock note = FormRows.Note(path, path: true);
-        ToolTip.SetShowDelay(note, 0);
-        Button elsewhere = new() { Content = "Elsewhere" };
-        Window window = new() { Width = 220, Height = 200, Content = new StackPanel { Children = { note, elsewhere } } };
-        try
-        {
-            window.Show();
-            Ui.Settle();
-            Assert.Contains(note.TextLayout.TextLines, line => line.HasCollapsed);
-            Ui.Hover(note);
-            Ui.WaitFor(() => ToolTip.GetIsOpen(note), "the full path tooltip");
-            TextBlock tip = Assert.IsType<TextBlock>(ToolTip.GetTip(note));
-            Assert.Equal(path, tip.Text);
-            Assert.DoesNotContain(tip.TextLayout.TextLines, line => line.HasCollapsed);
-
-            Ui.Hover(elsewhere);
-            Ui.WaitFor(() => !ToolTip.GetIsOpen(note), "the path tooltip to close");
-            note.Text = "Output";
-            Ui.Settle();
-            Assert.DoesNotContain(note.TextLayout.TextLines, line => line.HasCollapsed);
-            Ui.Hover(note, new Point(6, note.Bounds.Height / 2));
-            Assert.False(ToolTip.GetIsOpen(note));
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>At the smallest window the Welcome tiles, Find in Files, the toolbar, the status bar, a refusal and the
-    /// Commit window's form stand inside it, uncovered and reachable, as one flow, each step the check one test made in
-    /// an instance of its own.</summary>
+    /// Commit window's form stand inside it, uncovered and reachable, and words cut short show whole in a tip, as one
+    /// flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
     public void At_the_smallest_window_what_a_person_must_reach_stands_inside_it_and_takes_a_click()
     {
@@ -69,6 +36,54 @@ public sealed class SmallestWindowTests
         Flow.StepApart<SmallestWindowTests>("at the smallest width a choices count keeps the status bars widgets inside the window", t => t.At_the_smallest_width_a_choices_count_keeps_the_status_bars_widgets_inside_the_window());
         Flow.StepApart<SmallestWindowTests>("at the smallest width a refusal stands whole in front of a deep files path", t => t.At_the_smallest_width_a_refusal_stands_whole_in_front_of_a_deep_files_path());
         Flow.StepApart<SmallestWindowTests>("at the smallest window the commit windows empty state never draws over its form which scrolls to commit", t => t.At_the_smallest_window_the_commit_windows_empty_state_never_draws_over_its_form_which_scrolls_to_commit());
+        Flow.StepApart<SmallestWindowTests>("a path cut short shows whole in a tip only while cut short and a control over it keeps a tip of its own", t => t.A_path_cut_short_shows_whole_in_a_tip_only_while_cut_short_and_a_control_over_it_keeps_a_tip_of_its_own());
+    }
+
+    /// <summary>A field's path note cut short shows its whole path in a tip, wrapping inside it after a separator, never
+    /// inside a part, and none once its path is short enough to show whole; one under a control whose tip is no words (a
+    /// card of its own) shows that tip as it is.</summary>
+    private void A_path_cut_short_shows_whole_in_a_tip_only_while_cut_short_and_a_control_over_it_keeps_a_tip_of_its_own()
+    {
+        string path = Path.Combine("Workspace", "Contoso.Inventory.Management", "Reconciliation", "Service.Api", "Output");
+        TextBlock note = FormRows.Note(path, path: true);
+        TextBlock carded = FormRows.Note(path, path: true);
+        TextBlock card = new() { Text = "A card of its own" };
+        Border holder = new() { Child = carded };
+        ToolTip.SetTip(holder, card);
+        Button elsewhere = new() { Content = "Elsewhere" };
+        Window window = new() { Width = 220, Height = 200, Content = new StackPanel { Children = { note, holder, elsewhere } } };
+        try
+        {
+            window.Show();
+            Ui.Settle();
+            Assert.True(TrimmedTip.IsCutShort(note) && TrimmedTip.IsCutShort(carded), "The notes show the long path whole, so nothing here is cut short");
+            Ui.Hover(note);
+            Ui.WaitFor(() => ToolTip.GetIsOpen(note), "the whole path's tip");
+            TextBlock shown = Ui.TipWords(note);
+            string said = shown.Text ?? string.Empty;
+            Assert.True(said == TrimmedTip.Parted(path) && !shown.TextLayout.TextLines.Any(line => line.HasCollapsed), $"The tip of the cut path says '{said}', not the whole path");
+            string[] lines = [.. shown.TextLayout.TextLines.Select(line => said[line.FirstTextSourceIndex..Math.Min(said.Length, line.FirstTextSourceIndex + line.Length)])];
+            Assert.True(lines.Length > 1 && lines[..^1].All(line => line.EndsWith(TrimmedTip.PartBreak)),
+                $"The tip's path wraps inside a part rather than after a separator: {string.Join(" | ", lines)}");
+
+            Ui.Hover(carded);
+            Ui.WaitFor(() => ToolTip.GetIsOpen(holder), "the card over the cut path");
+            Assert.Same(card, ToolTip.GetTip(holder));
+            Assert.Null(ToolTip.GetTip(carded));
+
+            Ui.Hover(elsewhere);
+            Ui.WaitFor(() => !ToolTip.GetIsOpen(note) && !ToolTip.GetIsOpen(holder), "the tips to close");
+            Assert.Null(ToolTip.GetTip(note));
+            note.Text = "Output";
+            Ui.Settle();
+            Assert.False(TrimmedTip.IsCutShort(note), "A note of one short folder is cut short");
+            Ui.Hover(note, new Point(6, note.Bounds.Height / 2));
+            Assert.Null(ToolTip.GetTip(note));
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     private void At_the_smallest_window_every_Welcome_tile_scrolls_into_view_uncovered_and_takes_a_click()
@@ -168,21 +183,20 @@ public sealed class SmallestWindowTests
             Ui.Settle();
             TextBlock project = (TextBlock)Named(window, "ProjectName");
             Button projectButton = (Button)Named(window, "ProjectButton");
-            Assert.Contains(project.TextLayout.TextLines, line => line.HasCollapsed);
+            Assert.True(TrimmedTip.IsCutShort(project), $"The toolbar shows the project's name '{project.Text}' whole at 850 wide, so nothing here is cut short");
             string description = Assert.IsType<string>(ToolTip.GetTip(projectButton));
             Ui.Hover(projectButton);
-            Ui.WaitFor(() => ToolTip.GetIsOpen(projectButton), "the project tooltip");
-            Assert.Equal($"{project.Text}\n\n{description}", Assert.IsType<TextBlock>(ToolTip.GetTip(projectButton)).Text);
+            Ui.WaitFor(() => ToolTip.GetIsOpen(projectButton), "the project's tip");
+            Assert.Equal($"{TrimmedTip.Parted(project.Text!)}\n\n{description}", Ui.TipWords(projectButton).Text);
 
             Ui.WaitFor(() => window.ExplorerView.Locate(file), "the long file to be shown in the Explorer");
             Ui.Settle();
             TextBlock label = window.ExplorerView.GetVisualDescendants().OfType<TextBlock>()
                 .Single(text => text.Text == fileName && text.IsEffectivelyVisible);
-            ShrinkingRow row = label.FindAncestorOfType<ShrinkingRow>()!;
-            Assert.Contains(label.TextLayout.TextLines, line => line.HasCollapsed);
+            Assert.True(TrimmedTip.IsCutShort(label), "The Explorer shows the long file's name whole, so nothing here is cut short");
             Ui.Hover(label);
-            Ui.WaitFor(() => ToolTip.GetIsOpen(row) && !ToolTip.GetIsOpen(projectButton), "the Explorer tooltip to replace the project tooltip");
-            Assert.Contains(fileName, Assert.IsType<TextBlock>(ToolTip.GetTip(row)).Text, StringComparison.Ordinal);
+            Ui.WaitFor(() => ToolTip.GetIsOpen(label) && !ToolTip.GetIsOpen(projectButton), "the Explorer name's tip to replace the project's");
+            Assert.Equal(TrimmedTip.Parted(fileName), Ui.TipWords(label).Text);
             Assert.Equal(description, ToolTip.GetTip(projectButton));
         }
         finally

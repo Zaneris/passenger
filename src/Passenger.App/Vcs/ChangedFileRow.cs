@@ -37,9 +37,6 @@ public sealed class ChangedFileRow
         }
         came.IsVisible = false;
         ShrinkingRow.SetKeepsWidth(letter, true);
-        TrimmedTip.Attach(name);
-        TrimmedTip.Attach(folder);
-        TrimmedTip.Attach(came);
         Line = new ShrinkingRow { Height = ListRow.Height, Margin = new Thickness(Inset, 0, 0, 0), Children = { icon, name, letter, came, folder } };
     }
 
@@ -61,7 +58,7 @@ public sealed class ChangedFileRow
         AutomationProperties.SetName(letter, WordOf(kind));
         folder.Text = where;
         came.IsVisible = false;
-        TrimmedTip.Describe(came, null);
+        ToolTip.SetTip(came, null);
     }
 
     /// <summary>Shows a changed file of a repository, its folder from the repository's top (<paramref name="why"/> in its

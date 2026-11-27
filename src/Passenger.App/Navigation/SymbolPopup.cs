@@ -129,8 +129,6 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
         TextBlock where = ListRow.DetailText();
         where.MaxWidth = 260;
         TextBlock name = new() { [DockPanel.DockProperty] = Dock.Left, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        TrimmedTip.Attach(name);
-        TrimmedTip.Attach(where);
         // A member's type follows its name close, as "Sum(int): decimal"; a container stands apart.
         TextBlock detail = new()
         {
