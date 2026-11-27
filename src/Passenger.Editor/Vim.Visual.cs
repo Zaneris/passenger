@@ -911,7 +911,8 @@ public sealed partial class Vim
         }
         if (!inner && n == 2 && VimMotions.LineOf(text, r.Cursor) is { Length: > 0 } beyond && r.Cursor == beyond.End
             && beyond.EndIncludingBreak < text.Length && text[beyond.EndIncludingBreak] is ' ' or '\t'
-            && VimTextObjects.Of(text, LastOpeningBlank(text, beyond.EndIncludingBreak) + 1, "s", inner: true, 1, breakEnds) is { } closing
+            && LastOpeningBlank(text, beyond.EndIncludingBreak) + 1 is var opens && opens < text.Length && text[opens] is not ('\n' or '\r')
+            && VimTextObjects.Of(text, opens, "s", inner: true, 1, breakEnds) is { } closing
             && VimMotions.LineOf(text, VimMotions.StepBack(text, OwnLine(text, closing).End)).Line is var closes
             && OwnLine(text, closing).End >= text.GetLine(closes).End && closes < VimMotions.LastLine(text, breakEnds) && VimMotions.Blank(text, closes + 1))
         {
@@ -1058,7 +1059,7 @@ public sealed partial class Vim
             return stays != r.Cursor ? r with { Cursor = stays } : null;
         }
         if (last > 1 && VimMotions.Blank(text, last) && VimMotions.Blank(text, last - 1) && text.GetLineStart(last - 1) is var before
-            && (r.Cursor == before || on.Line == last || (on.Length > 0 && r.Cursor < on.End)))
+            && (r.Cursor == before || on.Line == last || (on.Length > 0 && (r.Cursor < on.End || (!inner && n > 1)))))
         {
             return r.Cursor == before ? null : r with { Cursor = before };
         }
