@@ -109,13 +109,16 @@ public sealed class HangReportsAttribute : BeforeAfterTestAttribute
                 : $"Running:\n{string.Join('\n', running.Select(r => $"  {r.Name}, for {Durations.Said(Stopwatch.GetElapsedTime(r.Began))}"))}\n"));
         foreach (int id in Processes.Descendants(Environment.ProcessId))
         {
-            Append(file, () => ManagedStacks.Describe(Processes.Describe(id), id));
+            Append(file, () => Stacks(id));
         }
         foreach (Func<string> part in Ui.StoodParts())
         {
             Append(file, part);
         }
     }
+
+    /// <summary>Where the managed threads of a .NET program under the tests stood, said only in a hang's report.</summary>
+    private static string Stacks(int id) => ManagedStacks.Describe(Processes.Describe(id), id);
 
     /// <summary>A part read as it comes, its failure written in its place: a part that never comes leaves those before it.</summary>
     private static void Append(string file, Func<string> part)
