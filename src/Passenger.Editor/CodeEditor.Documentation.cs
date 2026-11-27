@@ -1,7 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Editor;
@@ -10,6 +12,13 @@ namespace Passenger.Editor;
 public sealed partial class CodeEditor
 {
     private AnchoredRange? documentationEdit;
+    private readonly DocumentationLayer documentationLayer = new() { ClipToBounds = true };
+    private readonly Dictionary<int, DocumentationCard> documentationCards = [];
+    private readonly Dictionary<(string Xml, int Indent), int> documentationHeights = [];
+    private (double Width, double Gutter, Metrics Metrics, int TabWidth) documentationLayout;
+
+    /// <summary>Makes the host's rich view of a written documentation block.</summary>
+    public Func<string, Control>? DocumentationView { get; init; }
 
     private int DocumentationEditLine(TextSnapshot text) => documentationEdit is { } edit && edit.End > edit.Start
         ? text.GetLineFromOffset(edit.Start) : -1;
@@ -61,34 +70,37 @@ public sealed partial class CodeEditor
             return false;
         }
         TextSnapshot text = document.Snapshot;
-        bool rendered = Folding.Documentation.TryGetValue(line, out int index);
-        bool editing = line == DocumentationEditLine(text);
-        if (!rendered && !editing)
+        if (Folding.Documentation.ContainsKey(line))
+        {
+            return true;
+        }
+        if (line != DocumentationEditLine(text) || documentationEdit is not { } edit
+            || !DocumentationButton(Bounds.Width, TopOf(line) - scroll.Y).Contains(at))
         {
             return false;
         }
-        double y = TopOf(line) - scroll.Y;
-        if (!DocumentationButton(Bounds.Width, y).Contains(at))
-        {
-            return rendered;
-        }
-        ClearDocumentationTip();
         document.BreakUndoGroup();
-        if (rendered)
-        {
-            EditDocumentation(text, line, FoldRegions[index]);
-            int source = DocumentationStart(text, line);
-            SetSelections(SelectionSet.Single(Math.Min(source + 4, text.GetLine(line).End)), reveal: false);
-        }
-        else if (documentationEdit is { } edit)
-        {
-            int last = text.GetLineFromOffset(edit.Range.End);
-            int next = last + 1 < text.LineCount ? text.GetLineStart(last + 1) : text.GetLineStart(line);
-            SetSelections(SelectionSet.Single(next), reveal: false);
-            ForgetDocumentationEdit();
-        }
+        int last = text.GetLineFromOffset(edit.End);
+        int next = last + 1 < text.LineCount ? text.GetLineStart(last + 1) : text.GetLineStart(line);
+        SetSelections(SelectionSet.Single(next), reveal: false);
+        ForgetDocumentationEdit();
         DocumentationRowsChanged();
         return true;
+    }
+
+    private void OpenDocumentationSource(int line)
+    {
+        if (!Folding.Documentation.TryGetValue(line, out int index))
+        {
+            return;
+        }
+        TextSnapshot text = document.Snapshot;
+        Focus();
+        document.BreakUndoGroup();
+        EditDocumentation(text, line, FoldRegions[index]);
+        int source = DocumentationStart(text, line);
+        SetSelections(SelectionSet.Single(Math.Min(source + 4, text.GetLine(line).End)), reveal: false);
+        DocumentationRowsChanged();
     }
 
     private static int DocumentationStart(TextSnapshot text, int line)
@@ -109,27 +121,6 @@ public sealed partial class CodeEditor
         return new Rect(left, y + 1, Math.Max(0, right - left), metrics.LineHeight - 2);
     }
 
-    private void DrawDocumentation(DrawingContext context, RowSpan span, LineView view, string text)
-    {
-        double lineHeight = metrics.LineHeight;
-        Rect button = DocumentationButton(frameSize.Width, 0);
-        double indent = view.DistanceOf(DocumentationStart(frameText!, span.Line) - span.Start);
-        double x = Math.Clamp(TextLeft - scroll.X + indent, frameGutter, Math.Max(frameGutter, button.Left - 12));
-        double right = Math.Max(x, button.Right);
-        Rect background = new(x, 1, right - x, lineHeight - 2);
-        context.FillRectangle(palette.InlayHintBack, background, 3);
-        context.FillRectangle(palette.Annotation, new Rect(x, 3, 2, lineHeight - 6), 1);
-        double start = x + metrics.CharWidth;
-        double room = button.Left - start - metrics.CharWidth;
-        if (room > 0)
-        {
-            using TextLayout layout = new(text, Typeface, FontSize, palette.Text,
-                textTrimming: TextTrimming.CharacterEllipsis, maxWidth: room, maxLines: 1);
-            layout.Draw(context, new Point(start, (lineHeight - layout.Height) / 2));
-        }
-        DrawDocumentationButton(context, button, IsReadOnly ? "Source" : "Edit");
-    }
-
     private void DrawDocumentationButton(DrawingContext context, Rect box, string text)
     {
         if (box.Width <= 0)
@@ -147,15 +138,132 @@ public sealed partial class CodeEditor
         }
     }
 
-    private void PointAtDocumentation(Point at)
+    private void ResetDocumentationCards()
     {
-        int line = LineAtY(at.Y);
-        string? text = at.X >= GutterWidth && Folding.Documentation.TryGetValue(line, out int index) ? FoldRegions[index].Documentation : null;
-        if (!Equals(ToolTip.GetTip(this), text))
+        documentationCards.Clear();
+        documentationLayer.Children.Clear();
+        documentationHeights.Clear();
+        rowMap = null;
+    }
+
+    private int DocumentationIndent(TextSnapshot text, int line)
+    {
+        int column = 0;
+        int end = DocumentationStart(text, line);
+        for (int at = text.GetLineStart(line); at < end; at++)
         {
-            ToolTip.SetTip(this, text);
+            column += text[at] == '\t' ? Indent.TabWidth - column % Indent.TabWidth : 1;
+        }
+        return column;
+    }
+
+    private int DocumentationHeight(TextSnapshot text, int line, string xml) =>
+        documentationHeights.GetValueOrDefault((xml, DocumentationIndent(text, line)), 1);
+
+    /// <summary>Measures cards as they enter the view. Only the measured row counts are retained when a card scrolls away.</summary>
+    private void PrepareDocumentation(TextSnapshot text, Size size)
+    {
+        if (DocumentationView is not { } make)
+        {
+            return;
+        }
+        double width = Math.Max(1, size.Width - vertical.DesiredSize.Width - metrics.CharWidth);
+        (double, double, Metrics, int) layout = (width, GutterWidth, metrics, Indent.TabWidth);
+        if (documentationLayout != layout)
+        {
+            documentationLayout = layout;
+            documentationHeights.Clear();
+            rowMap = null;
+        }
+        RowMap before = Rows;
+        int firstRow = Math.Max(0, RowAtY(0));
+        int firstLine = before.LineOfRow(firstRow).Line;
+        int lastLine = before.LineOfRow(Math.Max(firstRow, RowAtY(size.Height))).Line;
+        int[] lines = before.Folds.DocumentationLines;
+        int from = Sorted.FirstAtOrAfter(lines, static line => line, firstLine);
+        int to = Sorted.FirstAfter(lines, static line => line, lastLine);
+        foreach (int line in documentationCards.Keys.Where(line => line < firstLine || line > lastLine
+            || !before.Folds.Documentation.ContainsKey(line)).ToArray())
+        {
+            Drop(line);
+        }
+        bool measured = false;
+        for (int i = from; i < to; i++)
+        {
+            int line = lines[i];
+            string xml = FoldRegions[before.Folds.Documentation[line]].Documentation!;
+            if (!documentationCards.TryGetValue(line, out DocumentationCard? card) || card.Xml != xml)
+            {
+                Drop(line);
+                card = MakeDocumentationCard(line, xml, make(xml));
+                documentationCards.Add(line, card);
+                documentationLayer.Children.Add(card.Box);
+            }
+            card.Action.Content = IsReadOnly ? "Source" : "Edit";
+            card.Box.Background = palette.InlayHintBack;
+            card.Box.BorderBrush = palette.Annotation;
+            int indent = DocumentationIndent(text, line);
+            double left = Math.Clamp(TextLeft + indent * metrics.CharWidth, GutterWidth, Math.Max(GutterWidth, width - 100));
+            card.Left = left;
+            card.Width = Math.Max(1, width - left);
+            card.Box.Measure(new Size(card.Width, double.PositiveInfinity));
+            int rows = Math.Max(1, (int)Math.Ceiling((card.Box.DesiredSize.Height + 4) / metrics.LineHeight));
+            if (documentationHeights.GetValueOrDefault((xml, indent), 1) != rows)
+            {
+                documentationHeights[(xml, indent)] = rows;
+                measured = true;
+            }
+        }
+        if (measured)
+        {
+            rowMap = null;
+            Avalonia.Threading.Dispatcher.UIThread.Post(UpdateScrollBars);
+        }
+        RowMap after = Rows;
+        foreach ((int line, DocumentationCard card) in documentationCards)
+        {
+            double y = (after.RowOf(line) * metrics.LineHeight) - scroll.Y;
+            card.Box.Arrange(new Rect(card.Left, y + 2, card.Width, card.Box.DesiredSize.Height));
+        }
+        if (measured && after.LineOfRow(Math.Max(firstRow, RowAtY(size.Height))).Line > lastLine)
+        {
+            RedrawChanged();
+        }
+
+        void Drop(int line)
+        {
+            if (documentationCards.Remove(line, out DocumentationCard? card))
+            {
+                documentationLayer.Children.Remove(card.Box);
+            }
         }
     }
 
-    private void ClearDocumentationTip() => ToolTip.SetTip(this, null);
+    private DocumentationCard MakeDocumentationCard(int line, string xml, Control content)
+    {
+        Button edit = new() { VerticalAlignment = VerticalAlignment.Top, Padding = new Thickness(9, 2), [Grid.ColumnProperty] = 1 };
+        edit.Click += (_, _) => OpenDocumentationSource(line);
+        content.Margin = new Thickness(0, 0, 10, 0);
+        Grid parts = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { content, edit } };
+        Border box = new()
+        {
+            CornerRadius = new CornerRadius(4),
+            BorderThickness = new Thickness(2, 0, 0, 0),
+            Padding = new Thickness(9, 5),
+            Child = parts,
+        };
+        return new DocumentationCard(xml, box, edit);
+    }
+
+    private sealed class DocumentationLayer : Panel
+    {
+        protected override Size MeasureOverride(Size availableSize) => default;
+        protected override Size ArrangeOverride(Size finalSize) => finalSize;
+    }
+
+    private sealed record DocumentationCard(string Xml, Border Box, Button Action)
+    {
+        public double Left { get; set; }
+        public double Width { get; set; }
+    }
 }

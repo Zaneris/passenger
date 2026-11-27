@@ -5,7 +5,9 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
+using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Editors;
 using Passenger.App.Settings;
 using Passenger.Editor;
 using Passenger.Languages.CSharp;
@@ -63,6 +65,13 @@ public sealed class FoldingTests : IDisposable
             {
                 /// <summary>
                 /// Returns the <see cref="Count"/> &amp; keeps stock available.
+                /// Read the &lt;see href=&quot;https://example.test/guide&quot;&gt;guide&lt;/see&gt;.
+                /// <list type="bullet"><item><description>Check the total.</description></item></list>
+                /// <list type="table">
+                /// <listheader><term>Quantity</term><description>Meaning</description></listheader>
+                /// <item><term><c>42</c></term><description>Items on hand</description></item>
+                /// </list>
+                /// <code>int count = 42;</code>
                 /// </summary>
                 public int Count => 42;
 
@@ -75,44 +84,38 @@ public sealed class FoldingTests : IDisposable
         MainWindow window = Ui.OpenFolder(folder, width: 1000);
         window.OpenFile(path);
         CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.WaitFor(() => window.EditorArea.Active!.FoldsFound, "the C# documentation blocks");
         editor.SoftWrap = true;
-        Ui.Settle();
 
-        double Y(int line) => editor.PointOf(editor.Document.Snapshot.GetLineStart(line)).Y;
-        Point OnRow(double x, int line) => new(x, Y(line) + editor.LineHeight / 2);
-        void ShowText(int line, string words)
-        {
-            Ui.Hover(editor, OnRow(editor.Bounds.Width / 2, line));
-            Assert.Equal(words, ToolTip.GetTip(editor));
-        }
+        MarkdownText[] Words() => [.. editor.GetVisualDescendants().OfType<MarkdownText>()];
+        Uri target = new("https://example.test/guide");
+        Ui.WaitFor(() => Words().Any(words => words.Links.Contains(("guide", target))), "the rendered C# documentation");
+        MarkdownText paragraph = Assert.Single(Words(), words => words.Links.Contains(("guide", target)));
+        Assert.Contains("Returns the Count & keeps stock available.", paragraph.Shown, StringComparison.Ordinal);
+        Assert.Contains("Quantity", Words().Select(words => words.Shown));
+        Assert.Contains("Items on hand", Words().Select(words => words.Shown));
+        Assert.Contains(editor.GetVisualDescendants().OfType<TextBlock>(), mark => mark.Text == "•");
+        Assert.Contains(editor.GetVisualDescendants().OfType<ColouredCode>(), code =>
+            code.Code == "int count = 42;" && code.Language == Passenger.Languages.Language.CSharp.Name);
+        Ui.Click(paragraph, paragraph.PointOf(target));
+        Assert.Equal(target, window.Browsed.LastOrDefault());
 
-        Assert.Equal(editor.LineHeight, Y(5) - Y(2), 1);
-        ShowText(2, "Returns the Count & keeps stock available.");
-        ShowText(7, "Checks stock.");
-        Ui.Click(editor, OnRow(editor.Bounds.Width / 2, 2));
-        Assert.Equal(editor.LineHeight, Y(5) - Y(2), 1);
-
-        Ui.Click(editor, OnRow(editor.Bounds.Width - 40, 2));
-        Assert.True(Y(5) - Y(2) >= 3 * editor.LineHeight, "All source lines are visible while editing");
-        ShowText(7, "Checks stock.");
+        Ui.Click(editor.GetVisualDescendants().OfType<Button>().First(button => Equals(button.Content, "Edit")));
+        Ui.WaitFor(() => !Words().Any(words => words.Links.Any()), "the original XML in the first block");
+        Assert.Contains("Checks stock.", Words().Select(words => words.Shown));
         string old = "available";
         int at = source.IndexOf(old, StringComparison.Ordinal);
         editor.Selections = SelectionSet.Single(new Selection(at, at + old.Length));
         window.KeyTextInput("ready");
 
-        Ui.Click(editor, OnRow(editor.Bounds.Width - 40, 2));
-        Assert.Equal(editor.LineHeight, Y(5) - Y(2), 1);
-        Ui.WaitFor(() => editor.FoldRegions.Any(r => r.Documentation == "Returns the Count & keeps stock ready."), "the edited summary");
-        ShowText(2, "Returns the Count & keeps stock ready.");
+        double header = editor.PointOf(editor.Document.Snapshot.GetLineStart(2)).Y;
+        Ui.Click(editor, new Point(editor.Bounds.Width - 40, header + editor.LineHeight / 2));
+        Ui.WaitFor(() => Words().Any(words => words.Shown.Contains("keeps stock ready", StringComparison.Ordinal)), "the edited summary");
         Assert.True(window.EditorArea.SaveAll());
         Assert.Equal(source.Replace(old, "ready", StringComparison.Ordinal), File.ReadAllText(path));
         Assert.True(window.EditorArea.CloseTab(window.EditorArea.ActiveGroup, window.EditorArea.Active!));
         window.OpenFile(path);
-        Ui.WaitFor(() => window.EditorArea.Active!.FoldsFound, "the saved summaries on reopen");
-        Ui.Settle();
-        Assert.Equal(editor.LineHeight, Y(5) - Y(2), 1);
-        ShowText(2, "Returns the Count & keeps stock ready.");
+        Ui.WaitFor(() => Words().Any(words => words.Shown.Contains("keeps stock ready", StringComparison.Ordinal)
+            && words.Links.Contains(("guide", target))), "the saved rich summary on reopen");
         window.Close();
     }
 

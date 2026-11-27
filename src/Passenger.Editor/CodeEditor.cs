@@ -469,6 +469,7 @@ public sealed partial class CodeEditor : Control
         ForgetSplitBlocks();
         ForgetTypedClosers();
         ForgetDocumentationEdit();
+        ResetDocumentationCards();
         document = value;
         document.ChangedFirst += OnChangedFirst;
         document.Changed += OnDocumentChanged;
@@ -696,6 +697,7 @@ public sealed partial class CodeEditor : Control
 
     protected override Size MeasureOverride(Size availableSize)
     {
+        documentationLayer.Measure(availableSize);
         vertical.Measure(availableSize);
         horizontal.Measure(availableSize);
         double width = double.IsInfinity(availableSize.Width) ? 600 : availableSize.Width;
@@ -705,6 +707,7 @@ public sealed partial class CodeEditor : Control
 
     protected override Size ArrangeOverride(Size finalSize)
     {
+        documentationLayer.Arrange(new Rect(finalSize));
         double barWidth = vertical.DesiredSize.Width;
         double barHeight = horizontal.DesiredSize.Height;
         Rect bar = new(finalSize.Width - barWidth, 0, barWidth, Math.Max(0, finalSize.Height - barHeight));

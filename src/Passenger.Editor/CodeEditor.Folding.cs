@@ -40,7 +40,7 @@ public sealed partial class CodeEditor
             if (foldLines is not { } known || !ReferenceEquals(known.Text, text) || !ReferenceEquals(known.Folds, FoldRegions)
                 || known.EditingDocumentation != editingDocumentation)
             {
-                foldLines = known = new FoldLines(text, FoldRegions, editingDocumentation);
+                foldLines = known = new FoldLines(text, FoldRegions, editingDocumentation, DocumentationView is not null);
             }
             return known;
         }
@@ -506,7 +506,7 @@ public sealed partial class CodeEditor
     /// others' lines are found when one is drawn or asked for.</summary>
     private sealed class FoldLines
     {
-        public FoldLines(TextSnapshot text, IReadOnlyList<FoldRegion> folds, int editingDocumentation)
+        public FoldLines(TextSnapshot text, IReadOnlyList<FoldRegion> folds, int editingDocumentation, bool showDocumentation)
         {
             Text = text;
             Folds = folds;
@@ -527,7 +527,7 @@ public sealed partial class CodeEditor
                 {
                     continue;
                 }
-                bool rendered = region.Documentation is not null && (!region.Folded || last == start) && start != editingDocumentation;
+                bool rendered = showDocumentation && region.Documentation is not null && (!region.Folded || last == start) && start != editingDocumentation;
                 if (rendered && !Placeholders.ContainsKey(start))
                 {
                     Documentation[start] = i;
@@ -555,6 +555,7 @@ public sealed partial class CodeEditor
                 }
             }
             Hidden = [.. ranges];
+            DocumentationLines = [.. Documentation.Keys.Where(line => !IsHidden(line)).Order()];
             HiddenBefore = new int[Hidden.Length + 1];
             for (int k = 0; k < Hidden.Length; k++)
             {
@@ -567,6 +568,7 @@ public sealed partial class CodeEditor
         public IReadOnlyList<FoldRegion> Folds { get; }
         public int EditingDocumentation { get; }
         public Dictionary<int, int> Documentation { get; } = [];
+        public int[] DocumentationLines { get; }
 
         public (int First, int Last)[] Hidden { get; }
 

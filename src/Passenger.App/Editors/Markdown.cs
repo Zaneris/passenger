@@ -40,6 +40,8 @@ internal static partial class Markdown
     /// <summary>GitHub's table: each column's alignment (null for none), the header's cells and each row's, as written.</summary>
     internal sealed record Table(IReadOnlyList<Align?> Aligns, IReadOnlyList<string> Header, IReadOnlyList<IReadOnlyList<string>> Rows) : Block;
 
+    internal sealed record RichTable(IReadOnlyList<IReadOnlyList<IReadOnlyList<Inline>>> Rows, bool HasHeader) : Block;
+
     internal sealed record Quote(IReadOnlyList<Block> Blocks) : Block;
 
     internal sealed record Rule : Block;

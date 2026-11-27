@@ -1,4 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <!-- Read escaped documentation tags as the Roslyn server does. -->
+    <Compile Include="../Passenger.Roslyn.Extension/EscapedDocumentationTags.cs" Link="CSharp/EscapedDocumentationTags.cs" />
+  </ItemGroup>
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <AssemblyName>Passenger</AssemblyName>

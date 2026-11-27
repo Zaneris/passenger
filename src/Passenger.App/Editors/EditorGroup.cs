@@ -105,7 +105,8 @@ public sealed class EditorGroup : DockPanel
     public EditorGroup(EditorArea area)
     {
         this.area = area;
-        Editor = new CodeEditor { IsVisible = false };
+        MarkdownPage documentation = new(area.Browse);
+        Editor = new CodeEditor { IsVisible = false, DocumentationView = xml => CSharp.DocumentationView.Inline(xml, documentation) };
         Gutter = new EditorGutter(Editor);
         Find = new FindBar { [DockProperty] = Dock.Top };
         strip = new ItemsControl

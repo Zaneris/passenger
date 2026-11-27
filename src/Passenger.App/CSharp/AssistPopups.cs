@@ -10,8 +10,6 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.App.Editors;
 using Passenger.Editor;
 using Passenger.Text;
@@ -326,7 +324,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
                 int at = unused.FindIndex(p => Languages.CSharp.ServerCode.SameCode(Languages.CSharp.ServerCode.Of(p).Text, text));
                 if (at < 0 && rich && info == "text")
                 {
-                    parts.Children.Add(ColouredCode.Of(text, IsCSharpExample(text) ? Languages.Language.CSharp : null));
+                    DocumentationView.Add(parts, new Markdown.Code(text, info), documentationPage);
                     continue;
                 }
                 AddServed(text, at < 0 ? null : unused[at], ColouredCode.LanguageOf(info));
@@ -337,28 +335,13 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
             }
             else if (rich)
             {
-                MarkdownText words = MarkdownText.Of(Markdown.Inlines(HoverMarkdown.Dataless(text)), documentationPage, StyleClasses.Caption);
-                if (words.Shown.Length > 0)
-                {
-                    words.Foreground = Brush(TokenKeys.TextMuted);
-                    parts.Children.Add(words);
-                }
+                DocumentationView.Add(parts, new Markdown.Phrase(Markdown.Inlines(HoverMarkdown.Dataless(text))), documentationPage);
             }
             else
             {
                 AddText(text);
             }
         }
-    }
-
-    /// <summary>Whether a documentation comment's code example, which comes fenced as text, reads as C#: parsed without an
-    /// error and declaring something (a using, a namespace, a type, a variable of a type or of <c>var</c>), as a log's
-    /// line or a lone call of words does not.</summary>
-    private static bool IsCSharpExample(string code)
-    {
-        SyntaxNode root = Languages.CSharp.CSharpParsing.Parse(code).GetRoot();
-        return !root.ContainsDiagnostics && root.DescendantNodes().Any(node => node is PredefinedTypeSyntax or UsingDirectiveSyntax
-            or BaseNamespaceDeclarationSyntax or BaseTypeDeclarationSyntax or VariableDeclarationSyntax { Type.IsVar: true });
     }
 
     internal static IBrush Brush(string key) =>

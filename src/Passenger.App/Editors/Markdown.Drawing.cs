@@ -42,6 +42,7 @@ internal static partial class Markdown
         Code code => ColouredCode.Of(code.Text, ColouredCode.LanguageOf(code.Info)),
         Quote quote => QuoteOf(quote, page, depth),
         Table table => TableOf(table, page),
+        RichTable table => TableOf([null, null], table.Rows, page, table.HasHeader),
         _ => new Border { Classes = { StyleClasses.MdRule } },
     };
 
@@ -181,18 +182,22 @@ internal static partial class Markdown
 
     /// <summary>A table's cells in a grid, each column as wide as its widest cell up to the most a cell is drawn, its words
     /// wrapping past that, the table scrolled across where the page is narrower than it.</summary>
-    private static Control TableOf(Table table, MarkdownPage page)
+    private static Control TableOf(Table table, MarkdownPage page) => TableOf(table.Aligns,
+        [.. new[] { table.Header }.Concat(table.Rows).Select(row => (IReadOnlyList<IReadOnlyList<Inline>>)[.. row.Select(cell => Inlines(cell))])],
+        page, hasHeader: true);
+
+    private static Control TableOf(IReadOnlyList<Align?> aligns, IReadOnlyList<IReadOnlyList<IReadOnlyList<Inline>>> rows, MarkdownPage page, bool hasHeader)
     {
-        int columns = table.Aligns.Count;
+        int columns = aligns.Count;
         Grid grid = new() { ColumnDefinitions = new ColumnDefinitions(string.Join(',', Enumerable.Repeat("Auto", columns))) };
-        IReadOnlyList<IReadOnlyList<string>> rows = [table.Header, .. table.Rows];
         for (int row = 0; row < rows.Count; row++)
         {
+            bool header = hasHeader && row == 0;
             grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
             for (int column = 0; column < columns; column++)
             {
-                MarkdownText words = MarkdownText.Of(Inlines(column < rows[row].Count ? rows[row][column] : ""), page, row == 0 ? StyleClasses.MdCellHead : StyleClasses.MdCellText);
-                words.TextAlignment = table.Aligns[column] switch
+                MarkdownText words = MarkdownText.Of(column < rows[row].Count ? rows[row][column] : [], page, header ? StyleClasses.MdCellHead : StyleClasses.MdCellText);
+                words.TextAlignment = aligns[column] switch
                 {
                     Align.Center => TextAlignment.Center,
                     Align.Right => TextAlignment.Right,
@@ -208,7 +213,7 @@ internal static partial class Markdown
                     [Grid.RowProperty] = row,
                     [Grid.ColumnProperty] = column,
                 };
-                cell.Classes.Set(StyleClasses.Head, row == 0);
+                cell.Classes.Set(StyleClasses.Head, header);
                 grid.Children.Add(cell);
             }
         }

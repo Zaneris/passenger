@@ -63,6 +63,8 @@ public sealed partial class CodeEditor
     {
         VisualChildren.Insert(0, rowsLayer);
         VisualChildren.Insert(1, overlay);
+        VisualChildren.Insert(2, documentationLayer);
+        LogicalChildren.Add(documentationLayer);
     }
 
     /// <summary>Asks the next frame to draw every row again: what a change to what they show needs.</summary>
@@ -140,6 +142,7 @@ public sealed partial class CodeEditor
         drawnWith = drawing;
         frameScrollY = scroll.Y;
         Frames++;
+        PrepareDocumentation(text, size);
         int row = Math.Max(0, (int)(scroll.Y / lineHeight));
         long now = ++frameNumber;
         long keepFrom = now;
@@ -320,9 +323,8 @@ public sealed partial class CodeEditor
         LineView view = frameViews[slot.Index];
         const double y = 0;
         double from = TextLeft - scroll.X + span.Indent;
-        if (Folding.Documentation.TryGetValue(line, out int documentation))
+        if (Folding.Documentation.ContainsKey(line))
         {
-            DrawDocumentation(context, span, view, FoldRegions[documentation].Documentation!);
             return;
         }
         Gap[] gaps = GapsOn(span);

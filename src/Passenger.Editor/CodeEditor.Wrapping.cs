@@ -86,7 +86,7 @@ public sealed partial class CodeEditor
         FoldLines folds = Folding;
         RowAboveList above = decorations.RowsAbove;
         return rowMap is { } map && ReferenceEquals(map.Folds, folds) && ReferenceEquals(map.Wraps, wrapped) && ReferenceEquals(map.Above, above)
-            ? map : new RowMap(folds, wrapped, above);
+            ? map : new RowMap(folds, wrapped, above, DocumentationHeight);
     }
 
     /// <summary>Where the text's lines wrap at the view's width now, or null while soft wrap is off or the view has no width
@@ -259,10 +259,14 @@ public sealed partial class CodeEditor
         RowMap map = Rows;
         int target = map.TextRowOf(row) + rows;
         int direction = Math.Sign(rows);
-        while (direction != 0 && target >= 0 && target < map.TextCount
-            && map.Folds.Documentation.ContainsKey(map.LineOfRow(map.RowOfText(target)).Line))
+        while (direction != 0 && target >= 0 && target < map.TextCount)
         {
-            target += direction;
+            (int line, int sub) = map.LineOfRow(map.RowOfText(target));
+            if (!map.Folds.Documentation.ContainsKey(line))
+            {
+                break;
+            }
+            target += direction > 0 ? map.RowsOf(line) - sub : -1 - sub;
         }
         return map.RowOfText(target);
     }
@@ -389,9 +393,13 @@ public sealed partial class CodeEditor
                 continue;
             }
             LineWrap? wrap = map.WrapOn(line);
-            shown.Add(RowSpan.Of(span, wrap, sub));
-            at.Add(row);
-            if (wrap is not null && sub < wrap.Starts.Length)
+            bool documentation = folds.Documentation.ContainsKey(line);
+            if (!documentation || sub == 0)
+            {
+                shown.Add(RowSpan.Of(span, wrap, sub));
+                at.Add(row);
+            }
+            if (documentation ? sub + 1 < map.RowsOf(line) : wrap is not null && sub < wrap.Starts.Length)
             {
                 sub++;
                 continue;
@@ -1389,9 +1397,10 @@ public sealed partial class CodeEditor
         /// <summary>The rows above the lines the folded ranges before each hide; one more than the ranges.</summary>
         private readonly int[] hiddenAbove = NoneHidden;
         private readonly int[] renderedLines = [];
+        private readonly int[] renderedSizes = [];
         private readonly int[] renderedExtra = NoneHidden;
 
-        public RowMap(FoldLines folds, WrapMap? wraps, RowAboveList above)
+        public RowMap(FoldLines folds, WrapMap? wraps, RowAboveList above, Func<TextSnapshot, int, string, int> documentationHeight)
         {
             Folds = folds;
             Wraps = wraps;
@@ -1408,16 +1417,20 @@ public sealed partial class CodeEditor
                     (int first, int last) = folds.Hidden[k];
                     hiddenExtra[k + 1] = hiddenExtra[k] + wraps.ExtraBefore(last + 1) - wraps.ExtraBefore(first);
                 }
-                if (folds.Documentation.Count > 0)
+                Count += wraps.ExtraRows - hiddenExtra[^1];
+            }
+            if (folds.DocumentationLines.Length > 0)
+            {
+                renderedLines = folds.DocumentationLines;
+                renderedSizes = new int[renderedLines.Length];
+                renderedExtra = new int[renderedLines.Length + 1];
+                for (int k = 0; k < renderedLines.Length; k++)
                 {
-                    renderedLines = [.. folds.Documentation.Keys.Where(line => !folds.IsHidden(line)).Order()];
-                    renderedExtra = new int[renderedLines.Length + 1];
-                    for (int k = 0; k < renderedLines.Length; k++)
-                    {
-                        renderedExtra[k + 1] = renderedExtra[k] + (wraps[renderedLines[k]]?.Breaks ?? 0);
-                    }
+                    int line = renderedLines[k];
+                    renderedSizes[k] = documentationHeight(folds.Text, line, folds.Folds[folds.Documentation[line]].Documentation!);
+                    renderedExtra[k + 1] = renderedExtra[k] + renderedSizes[k] - 1 - (wraps?[line]?.Breaks ?? 0);
                 }
-                Count += wraps.ExtraRows - hiddenExtra[^1] - renderedExtra[^1];
+                Count += renderedExtra[^1];
             }
             if (above.Count > 0)
             {
@@ -1453,7 +1466,7 @@ public sealed partial class CodeEditor
         public int RowOf(int line)
         {
             line = Folds.Shown(line);
-            if (Wraps is null && AboveCount == 0)
+            if (Wraps is null && AboveCount == 0 && renderedExtra[^1] == 0)
             {
                 return Folds.RowOf(line);
             }
@@ -1461,8 +1474,9 @@ public sealed partial class CodeEditor
             int row = Folds.RowOf(line);
             if (Wraps is not null)
             {
-                row += Wraps.ExtraBefore(line) - hiddenExtra[k] - renderedExtra[Sorted.FirstAtOrAfter(renderedLines, static i => i, line)];
+                row += Wraps.ExtraBefore(line) - hiddenExtra[k];
             }
+            row += renderedExtra[Sorted.FirstAtOrAfter(renderedLines, static i => i, line)];
             if (AboveCount > 0)
             {
                 row += AboveBefore(line + 1) - hiddenAbove[k];
@@ -1471,8 +1485,11 @@ public sealed partial class CodeEditor
         }
 
         /// <summary>How many rows of text a line takes: one for a folded one, which shares its fold's.</summary>
-        public int RowsOf(int line) =>
-            Folds.IsHidden(line) ? 1 : 1 + (WrapOn(line)?.Breaks ?? 0);
+        public int RowsOf(int line)
+        {
+            int documentation = Array.BinarySearch(renderedLines, line);
+            return documentation >= 0 ? renderedSizes[documentation] : Folds.IsHidden(line) ? 1 : 1 + (WrapOn(line)?.Breaks ?? 0);
+        }
 
         public LineWrap? WrapOn(int line) => Wraps is { } wraps && line < wraps.LineCount && !Folds.Documentation.ContainsKey(line) ? wraps[line] : null;
 
@@ -1487,7 +1504,7 @@ public sealed partial class CodeEditor
         /// past the last row, the lines past the end.</summary>
         public (int Line, int Row) LineOfRow(int row)
         {
-            if ((Wraps is null && AboveCount == 0) || row < 0)
+            if ((Wraps is null && AboveCount == 0 && renderedExtra[^1] == 0) || row < 0)
             {
                 return (Folds.LineOfRow(row), 0);
             }

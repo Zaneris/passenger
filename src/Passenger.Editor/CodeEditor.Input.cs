@@ -171,6 +171,10 @@ public sealed partial class CodeEditor
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
+        if (e.Source is Visual source && source.FindAncestorOfType<DocumentationLayer>(includeSelf: true) is not null)
+        {
+            return;
+        }
         // A press on a scrollbar that its thumb and track leave (beside the thumb) is the bar's, not the text's under it.
         if ((e.Source as Visual)?.FindAncestorOfType<ScrollBar>(includeSelf: true) is { } bar && (bar == vertical || bar == horizontal))
         {
@@ -347,7 +351,6 @@ public sealed partial class CodeEditor
         bool documentation = Folding.Documentation.ContainsKey(line) || line == DocumentationEditLine(document.Snapshot)
             && DocumentationButton(Bounds.Width, TopOf(line) - scroll.Y).Contains(position);
         Cursor = position.X < GutterWidth || drag.Mode == DragMode.Gutter || documentation ? Cursor.Default : IbeamCursor;
-        PointAtDocumentation(position);
         FollowLinks(position, drag.Mode != DragMode.None && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed);
         FollowAbove(position);
         pointer = position;
@@ -432,7 +435,6 @@ public sealed partial class CodeEditor
     protected override void OnPointerExited(PointerEventArgs e)
     {
         base.OnPointerExited(e);
-        ClearDocumentationTip();
         if (overGutter)
         {
             overGutter = false;
