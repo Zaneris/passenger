@@ -1110,12 +1110,18 @@ public static class VimMotions
 
     /// <summary>Where the white after the sentence from <paramref name="start"/> to <paramref name="end"/> ends, where the
     /// next sentence begins; after a macro line's own sentence, where the next line's sentence ends unless that line is a
-    /// bounding one (<see cref="Bound"/>) or the macro line's text ends a sentence itself, as is and as count what follows it.</summary>
+    /// bounding one (<see cref="Bound"/>), or the blanks after it where the macro line's text ends a sentence itself, as is
+    /// and as count what follows it.</summary>
     private static int WhiteEnd(TextSnapshot text, int last, int start, int end)
     {
         if (BoundAt(text, start) && LineOf(text, start) is { Length: > 0 } macro)
         {
-            return macro.Line < last && !Bound(text, macro.Line + 1) && !OwnSentence(text, macro) ? Math.Max(end, Forward(text, last, text.GetLine(macro.Line + 1).Start)) : end;
+            if (macro.Line < last && OwnSentence(text, macro))
+            {
+                // A macro line ending its own sentence has the blanks after it as white, as any sentence's end.
+                return Math.Max(end, FirstText(text, last, text.GetLine(macro.Line + 1).Start));
+            }
+            return macro.Line < last && !Bound(text, macro.Line + 1) ? Math.Max(end, Forward(text, last, text.GetLine(macro.Line + 1).Start)) : end;
         }
         return Math.Max(end, Forward(text, last, start));
     }
