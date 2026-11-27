@@ -897,6 +897,14 @@ public sealed partial class Vim
                 int to = n == 1 ? blanksAt : SentencesBack(text, blanksAt, inner, n - 1);
                 return to != r.Cursor ? r with { Cursor = to } : null;
             }
+            if (!inner && n > 1 && on.Length > 0 && r.Cursor == on.End && on.Line < lastLine && !VimMotions.Blank(text, on.Line + 1)
+                && WhiteEnding(text, on.Line) is var tail && tail > on.Start && tail < on.End
+                && SentencesBack(text, tail, inner: true, 2 * n - 1) is var sentencesFrom && sentencesFrom != r.Cursor
+                && Enumerable.Range(VimMotions.LineOf(text, sentencesFrom).Line, on.Line - VimMotions.LineOf(text, sentencesFrom).Line + 1).All(line => !VimMotions.Blank(text, line)))
+            {
+                // Past the end of a line ending in blanks after its text, above text, a count of as takes sentences with the white after each, to the last one's start, within its paragraph.
+                return r with { Cursor = sentencesFrom };
+            }
             if ((inner || n == 1) && on.Length > 0 && r.Cursor == on.End && WhiteEnding(text, on.Line) is var ending && ending > on.Start && ending < on.End)
             {
                 // Past the end of a line ending in blanks after its text, is takes those blanks first, then goes on back; as the sentence they end.
