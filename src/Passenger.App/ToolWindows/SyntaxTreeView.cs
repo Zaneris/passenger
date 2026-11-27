@@ -147,19 +147,23 @@ internal sealed class SyntaxTreeView : Panel
             details.Say("Select a syntax item to see its details.");
             return;
         }
-        List<(string Name, Control Value)> properties =
-        [
-            ("Kind", DetailsTables.Words(row.Kind.ToString(), code: true)),
-            ("Roslyn type", DetailsTables.Words(row.RoslynType, code: true)),
-            ("Span", DetailsTables.Words(row.Span.ToString(), code: true)),
-            ("Full span", DetailsTables.Words(row.FullSpan.ToString(), code: true)),
-            ("Source", DetailsTables.Words(Preview(parsed.Text, row.Span), code: true)),
-        ];
-        if ((row.IsMissing ? "Missing from source" : row.Diagnostic) is { } diagnostic)
-        {
-            properties.Add(("Syntax", DetailsTables.Words(diagnostic)));
-        }
+        List<(string Name, Control Value)> properties = [];
+        Add("Kind", row.Kind.ToString(), code: true);
+        Add("Description", row.Description);
+        Add("Roslyn type", row.RoslynType, code: true);
+        Add("Span", row.Span.ToString(), code: true);
+        Add("Full span", row.FullSpan.ToString(), code: true);
+        Add("Source", Preview(parsed.Text, row.Span), code: true);
+        Add("Syntax", row.IsMissing ? "Missing from source" : row.Diagnostic);
         details.Show(() => details.Section("Properties", properties));
+
+        void Add(string name, string? value, bool code = false)
+        {
+            if (value is not null)
+            {
+                properties.Add((name, DetailsTables.Words(value, code)));
+            }
+        }
     }
 
     private void SelectSource(Row row)
@@ -242,7 +246,8 @@ internal sealed class SyntaxTreeView : Panel
             glyphs.Turned = row.IsExpanded;
             glyphs.IconKey = row.Icon;
             kind.Text = row.Kind.ToString();
-            ToolTip.SetTip(line, row.Span.ToString());
+            string span = row.Span.ToString();
+            ToolTip.SetTip(line, row.Description is { } description ? $"{description}\n{span}" : span);
         });
     }
 
@@ -257,6 +262,35 @@ internal sealed class SyntaxTreeView : Panel
         public bool Expands => IsTrivia ? trivia.HasStructure : syntax.IsNode
             ? syntax.ChildNodesAndTokens().Count > 0 : syntax.HasLeadingTrivia || syntax.HasTrailingTrivia;
         public SyntaxKind Kind => IsTrivia ? trivia.Kind() : syntax.Kind();
+        public string? Description => Kind switch
+        {
+            SyntaxKind.CompilationUnit => "The root of a C# source file.",
+            SyntaxKind.NamespaceDeclaration or SyntaxKind.FileScopedNamespaceDeclaration => "Declares a namespace for the enclosed code.",
+            SyntaxKind.ClassDeclaration => "Declares a class type.",
+            SyntaxKind.MethodDeclaration => "Declares a method, its parameters, and any body.",
+            SyntaxKind.LocalDeclarationStatement => "Declares one or more local variables or constants.",
+            SyntaxKind.Block => "A group of statements enclosed in braces.",
+            SyntaxKind.IfStatement => "Runs a statement when a condition is true, with an optional else branch.",
+            SyntaxKind.ReturnStatement => "Exits a function, optionally returning a value.",
+            SyntaxKind.IdentifierName => "Refers to a name written as an identifier.",
+            SyntaxKind.InvocationExpression => "Invokes a callable expression with an argument list.",
+            SyntaxKind.SimpleMemberAccessExpression => "Accesses a named member with a dot.",
+            SyntaxKind.ObjectCreationExpression or SyntaxKind.ImplicitObjectCreationExpression => "Creates a new instance with the new keyword.",
+            SyntaxKind.ParenthesizedExpression => "An expression enclosed in parentheses.",
+            SyntaxKind.ConditionalExpression => "Chooses a value using the conditional ? : operator.",
+            SyntaxKind.SimpleAssignmentExpression => "Assigns the right operand to the left operand.",
+            SyntaxKind.AddExpression => "A binary + expression.",
+            SyntaxKind.SubtractExpression => "A binary - expression.",
+            SyntaxKind.MultiplyExpression => "A binary * expression.",
+            SyntaxKind.DivideExpression => "A binary / expression.",
+            SyntaxKind.EqualsExpression => "An equality comparison using ==.",
+            SyntaxKind.NotEqualsExpression => "An inequality comparison using !=.",
+            SyntaxKind.LogicalAndExpression => "A conditional AND expression using &&.",
+            SyntaxKind.LogicalOrExpression => "A conditional OR expression using ||.",
+            SyntaxKind.CoalesceExpression => "A null-coalescing expression using ??.",
+            SyntaxKind.SimpleLambdaExpression or SyntaxKind.ParenthesizedLambdaExpression => "An anonymous function written with =>.",
+            _ => null,
+        };
         public TextSpan Span => IsTrivia ? trivia.Span : syntax.Span;
         public TextSpan FullSpan => IsTrivia ? trivia.FullSpan : syntax.FullSpan;
         public string Icon => IsTrivia ? IconKeys.Edit : syntax.IsNode ? IconKeys.Structure : IconKeys.Reference;

@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
+using Microsoft.CodeAnalysis.Text;
 using Passenger.App;
 using Passenger.App.Docking;
 using Passenger.App.ToolWindows;
@@ -22,6 +23,7 @@ public sealed class SyntaxTreeTests : IDisposable
     public void The_right_syntax_tree_follows_the_active_CSharp_editors_selection_and_unsaved_edits()
     {
         const string code = "class Calculator\n{\n    int Combine(int left, int right)\n    {\n        // Combine the values.\n        return left + right;\n    }\n}\n";
+        const string expression = "left + right";
         string source = TestFolders.Write(folder, "Calculator.cs", code);
         TestFolders.Write(folder, "Other.cs", "record Other;\n");
         TestFolders.Write(folder, "Notes.txt", "plain text");
@@ -34,7 +36,7 @@ public sealed class SyntaxTreeTests : IDisposable
             Assert.Equal(ToolAnchor.RightTop, tool.Anchor);
             Assert.Single(window.DockHost.GetVisualDescendants().OfType<ToggleButton>(), b => Equals(b.Tag, tool.Id));
             CodeEditor editor = window.EditorArea.CodeEditor;
-            int start = code.IndexOf("left + right", StringComparison.Ordinal);
+            int start = code.IndexOf(expression, StringComparison.Ordinal);
             editor.Selections = SelectionSet.Single(start + 1);
             Assert.True(window.Perform(AppActions.ShowSyntaxTree));
             Ui.Settle();
@@ -55,11 +57,15 @@ public sealed class SyntaxTreeTests : IDisposable
             Assert.True(SelectedKind(tree, "IdentifierName"));
 
             editor.Focus();
-            editor.Selections = SelectionSet.Single(new Selection(start + "left + right".Length, start));
+            editor.Selections = SelectionSet.Single(new Selection(start + expression.Length, start));
             Ui.WaitFor(() => SelectedKind(tree, "AddExpression"), "the addition covering the backward selection");
             Assert.Equal(start, editor.Selections.Primary.Caret);
             Assert.Contains(tool.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "BinaryExpressionSyntax");
-            Assert.Contains(tool.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "left + right");
+            Assert.Contains(tool.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == expression);
+            const string description = "A binary + expression.";
+            Assert.Contains(tool.Content.GetVisualDescendants().OfType<SelectableWords>(), text => text.Text == description);
+            ListBoxItem addition = Assert.IsAssignableFrom<ListBoxItem>(tree.ContainerFromIndex(tree.SelectedIndex));
+            AssertTooltip(addition, $"{description}\n{new TextSpan(start, expression.Length)}");
             Assert.True(tree.ContainerFromIndex(0)?.GetVisualDescendants().OfType<RowGlyphs>().Single().Turned);
 
             int operation = start + "left ".Length;
@@ -69,6 +75,8 @@ public sealed class SyntaxTreeTests : IDisposable
             Ui.WaitFor(() => editor.Selections.Primary.Start == operation && editor.Selections.Primary.Length == 1,
                 "the plus operator selected in the editor from the tree");
             Assert.True(SelectedKind(tree, "PlusToken"));
+            Assert.DoesNotContain(tool.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Description");
+            AssertTooltip(plus, new TextSpan(operation, 1).ToString());
 
             double initialTreeHeight = tree.Bounds.Height;
             Point divider = Ui.Centre(panes.Divider.Splitter, window);
@@ -85,6 +93,7 @@ public sealed class SyntaxTreeTests : IDisposable
             window.KeyTextInput("*");
             editor.Selections = SelectionSet.Single(new Selection(start, start + "left * right".Length));
             Ui.WaitFor(() => SelectedKind(tree, "MultiplyExpression"), "multiplication before saving");
+            Assert.Contains(tool.Content.GetVisualDescendants().OfType<SelectableWords>(), text => text.Text == "A binary * expression.");
             Assert.Equal(code, File.ReadAllText(source));
 
             window.KeyTextInput("0");
@@ -112,6 +121,9 @@ public sealed class SyntaxTreeTests : IDisposable
             window.Close();
         }
     }
+
+    private static void AssertTooltip(Control row, string text) =>
+        Assert.Contains(row.GetVisualDescendants().OfType<Control>(), child => Equals(ToolTip.GetTip(child), text));
 
     private static bool SelectedKind(TreeList tree, string kind) =>
         tree.SelectedIndex >= 0 && tree.ContainerFromIndex(tree.SelectedIndex)?.GetVisualDescendants()
