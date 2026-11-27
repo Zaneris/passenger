@@ -30,6 +30,9 @@ ICONS = [
     ("Run", "Play", "20_filled"),
     ("Debug", "Bug", "20_regular"),
     ("Search", "Search", "20_regular"),
+    # Back and Forward through the places left, on the title bar.
+    ("Back", "Arrow Left", "20_regular"),
+    ("Forward", "Arrow Right", "20_regular"),
     ("Terminal", "Window Console", "20_regular"),
     ("Problems", "Warning", "20_regular"),
     ("Notifications", "Alert", "20_regular"),

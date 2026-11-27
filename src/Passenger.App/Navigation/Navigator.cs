@@ -38,6 +38,8 @@ public sealed class Navigator
 
     private const string NoEditBefore = "No earlier edit location";
     private const string NoEditAfter = "No later edit location";
+    private const string NoPlaceBefore = "No place to go back to";
+    private const string NoPlaceAfter = "No place to go forward to";
 
     private readonly NavigatorParts parts;
     private OpenDocument? shownLast;
@@ -165,6 +167,9 @@ public sealed class Navigator
             Editors.CodeEditor.GoTo(active.Text.Snapshot.GetPosition(Math.Min(target.Offset, active.Text.Snapshot.Length)));
         }
     }
+
+    /// <summary>Why Back (a step of -1) or Forward (1) cannot go now: no place that way.</summary>
+    public string? WhyNotStepHistory(int step) => Places.CanStep(step, Here(), Reachable) ? null : step < 0 ? NoPlaceBefore : NoPlaceAfter;
 
     /// <summary>Back or Forward to a diff's tab: shown again, or opened afresh where it has closed, its file's side's caret
     /// put back where it was.</summary>

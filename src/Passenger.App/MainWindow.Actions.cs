@@ -152,6 +152,15 @@ public partial class MainWindow
         ToolButtons.Give(StopButton, IconKeys.Stop, "Stop", keys: true, mark: StyleClasses.ToolbarStop);
         ToolButtons.Give(SearchButton, IconKeys.Search, "Search everywhere", keys: true);
         ToolButtons.Give(SettingsButton, IconKeys.Settings, "Settings", keys: true);
+        ToolButtons.Give(BackButton, IconKeys.Back, "Back", keys: true);
+        ToolButtons.Give(ForwardButton, IconKeys.Forward, "Forward", keys: true);
+    }
+
+    /// <summary>The toolbar's Back and Forward greyed where there is no place that way, saying why, as their actions grey.</summary>
+    private void GreyNavigationButtons()
+    {
+        ToolButtons.Grey(BackButton, navigator.WhyNotStepHistory(-1), ActionTips.Of(BackButton));
+        ToolButtons.Grey(ForwardButton, navigator.WhyNotStepHistory(1), ActionTips.Of(ForwardButton));
     }
 
     /// <summary>The window's own actions; each feature's partial or controller adds its own beside them.</summary>
@@ -162,10 +171,16 @@ public partial class MainWindow
         Dock.Actions = actions;
         Dock.Request = Request;
         foreach ((Button button, string id) in (ReadOnlySpan<(Button, string)>)[(BuildButton, A.Build), (RunButton, A.RunProgram), (DebugButton, A.Debug),
-            (ProfileButton, A.Profile), (HotReloadButton, A.ApplyHotReloadChanges), (StopButton, A.Stop), (SearchButton, A.GoToEverything), (SettingsButton, A.ShowSettings)])
+            (ProfileButton, A.Profile), (HotReloadButton, A.ApplyHotReloadChanges), (StopButton, A.Stop), (SearchButton, A.GoToEverything), (SettingsButton, A.ShowSettings),
+            (BackButton, A.Back), (ForwardButton, A.Forward)])
         {
             ActionButtons.Bind(button, id, actions, action => Request(action));
         }
+        // Following the caret and the file shown a frame after the editor's own change, as the history moves with them.
+        FrameApart navigationButtons = new(this, GreyNavigationButtons);
+        Editors.CaretMoved += (_, _) => navigationButtons.Ask();
+        Editors.ActiveChanged += (_, _) => navigationButtons.Ask();
+        GreyNavigationButtons();
         work.Changed += (_, change) =>
         {
             status.ShowWork(change, work.Latest);
@@ -283,8 +298,8 @@ public partial class MainWindow
         Add(A.ShowFilePath, "Show File Path", "Navigate", _ => Assist.ShowFilePath(TitleOf(A.ShowFilePath), Editors.Active!, ShowInFileManager), Refusals.NeedsFile,
             words: ["Reveal", "Folder"]);
 
-        Add(A.Back, "Back", "Navigate", _ => navigator.StepHistory(-1), menu: ("Navigate", 0, 0));
-        Add(A.Forward, "Forward", "Navigate", _ => navigator.StepHistory(1), menu: ("Navigate", 0, 1));
+        Add(A.Back, "Back", "Navigate", _ => navigator.StepHistory(-1), _ => navigator.WhyNotStepHistory(-1), ("Navigate", 0, 0));
+        Add(A.Forward, "Forward", "Navigate", _ => navigator.StepHistory(1), _ => navigator.WhyNotStepHistory(1), ("Navigate", 0, 1));
         Add(A.GoToEverything, "Search Everywhere", "Navigate", _ => navigator.ShowGoToEverything(), NeedsFolder, ("Navigate", 1, 0));
         Add(A.GoToFile, "Go to File", "Navigate", _ => navigator.ShowGoToFile(), NeedsFolder, ("Navigate", 1, 1));
         Add(A.GoToSymbol, "Go to Symbol", "Navigate", _ => navigator.ShowGoToSymbol(), NeedsFolder, ("Navigate", 1, 2));

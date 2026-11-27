@@ -119,6 +119,10 @@
                             <TextBlock Name="BranchName" Text="Version control" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                         </DockPanel>
                     </Button>
+                    <!-- Back and Forward through the places left, greyed where there is none that way; where the bar has
+                         no room for them they go whole, still in the Navigate menu and on their keys. -->
+                    <Button Name="BackButton" app:ShrinkingRow.GoesWhole="True" />
+                    <Button Name="ForwardButton" app:ShrinkingRow.GoesWhole="True" />
                 </app:ShrinkingRow>
             </app:ToolbarRow>
             <app:ThemeBackdrop Place="Frame" />
