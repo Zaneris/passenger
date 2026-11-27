@@ -18,12 +18,12 @@ namespace Passenger.Tests;
 /// chosen runs it, which the system opens hidden and never in front, none of the windows it kept reopened, as nobody sees
 /// this window: Passenger's relay is carried into the sandboxed app's container, where it listens on a Unix socket. Built
 /// with .NET's assemblies whole, Run with Hot Reload carries the inspector and the update handlers' hook in too, so its tree
-/// is the app's window, a tap reaches its button's centre, an edit lands and its update handler is called; built as the
-/// template has it, which trims them, Debug says they stay out, and stops in its main page, which its interpreter runs,
-/// steps, shows, evaluates and takes an edit. Stop ends the app and takes out what was carried, its start's own instance
-/// alone where it is debugged and run at once; an agent's Passenger killed with its tree ends the app it opened too. Skips,
-/// saying why, off a Mac, without MAUI's and Mac Catalyst's workloads or Xcode, or the Mac Catalyst relay. Debugged through
-/// the window, so alone; each test's waits end within the run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
+/// is the app's window, a tap reaches its button's centre, a C# edit lands and its update handler is called, and XAML edits
+/// show, patched or the page made again; built as the template has it, which trims them, Debug says they stay out, and stops
+/// in its main page, which its interpreter runs, steps, shows, evaluates and takes an edit. Stop ends the app and takes out
+/// what was carried, its start's own instance alone where it is debugged and run at once; an agent's Passenger killed with
+/// its tree ends the app it opened too. Skips, saying why, off a Mac, without MAUI's and Mac Catalyst's workloads or Xcode,
+/// or the Mac Catalyst relay. Debugged through the window, so alone; waits end within the run's limit (<see cref="Limits.WithinHang"/>).</summary>
 [Collection(Alone.Name)]
 [AboutMacOS]
 public sealed class MauiCatalystTests : McpRig
@@ -33,7 +33,7 @@ public sealed class MauiCatalystTests : McpRig
     /// <summary>What the update handler the test adds to the app writes once Hot Reload has applied an edit.</summary>
     private const string Handled = "Update handler called for MainPage";
 
-    /// <summary>The MAUI app's Mac Catalyst head built whole, run on this Mac with Hot Reload: its tree, a tap and an edit.</summary>
+    /// <summary>The MAUI app's Mac Catalyst head built whole, run on this Mac with Hot Reload: its tree, a tap, a C# edit and XAML edits.</summary>
     [AvaloniaFact]
     public void A_maui_apps_mac_catalyst_head_run_with_hot_reload_shows_its_tree_takes_a_tap_and_an_edit_and_ends_with_stop()
     {
@@ -78,6 +78,39 @@ public sealed class MauiCatalystTests : McpRig
                 () => $"the app's update handler to be called with the type the edit changed: {Ui.Said(window)}\n{Output(window)}", TimeSpan.FromMinutes(1));
             InputDone again = Ui.AwaitPumped(app.InputAsync(new InputAction(InputKinds.Click) { Element = button.Id }), "a tap on the button after the edit", TimeSpan.FromMinutes(1));
             Assert.True(again.Shows == "Tapped 2 times", $"The button's click ran as built, not as edited: it shows \"{again.Shows}\"");
+
+            // The page's XAML, whose code MAUI's source generator writes: in the program's update, then patched into the open page by MAUI.
+            window.OpenFile(Path.Combine(PathNames.Canonical(Path.GetDirectoryName(project)!), "MainPage.xaml"));
+            Typing.Replace(window, "Text=\"Hello, World!\"", "Text=\"Hello, Passenger!\"");
+            MauiApp.XamlApplied(window, "a property's edit", Slow);
+            MauiApp.Shows(window, app, "Hello, Passenger!", "the edited label's text");
+            Assert.True(Ui.AwaitPumped(app.InputAsync(new InputAction(InputKinds.Click) { Element = button.Id }), "a tap on the button after the XAML edit",
+                TimeSpan.FromMinutes(1)).Shows == "Tapped 3 times", "The page was made again rather than patched: its button lost its count");
+            Typing.Replace(window, "            <Button", "            <Label Text=\"Added by Hot Reload\" />\n\n            <Button");
+            MauiApp.XamlApplied(window, "an added element", Slow);
+            MauiApp.Shows(window, app, "Added by Hot Reload", "the added label");
+            Typing.Replace(window, "Style=\"{StaticResource SubHeadline}\"", "Style=\"{StaticResource Headline}\"");
+            MauiApp.XamlApplied(window, "a style's edit", Slow);
+            MauiApp.Shows(window, app, "Welcome to \n.NET Multi-platform App UI", "the welcome label in the headline's size", ("FontSize", "32"));
+            // A binding's and a C# expression's edits, which MAUI's patch may pass over: the page is made again from its XAML.
+            Typing.Replace(window, "<Label Text=\"Added by Hot Reload\" />", "<Label Text=\"{Binding Text, Source={x:Reference CounterBtn}}\" />");
+            MauiApp.XamlApplied(window, "a binding to the button's text", Slow);
+            Assert.True(window.Debugger.LastApplied!.Said.Contains("MainPage made again", StringComparison.Ordinal),
+                $"The page was not made again for a binding's edit: {window.Debugger.LastApplied.Said}");
+            MauiApp.ShowsButtonsText(window, app, string.Empty, "the label bound to the button's text, made again with the page", "Click me");
+            Ui.AwaitPumped(app.InputAsync(new InputAction(InputKinds.Click) { Element = MauiApp.Button(app).Id }), "a tap on the page's button made again", TimeSpan.FromMinutes(1));
+            MauiApp.ShowsButtonsText(window, app, string.Empty, "the label bound to the button's text after a tap", "Tapped 4 times");
+            Typing.Replace(window, "HorizontalOptions=\"Fill\" />", "HorizontalOptions=\"Fill\" />\n\n<Label Text=\"{CounterBtn.Text + '!'}\" />");
+            MauiApp.XamlApplied(window, "an element with a C# expression of the button's text", Slow);
+            MauiApp.ShowsButtonsText(window, app, "!", "the added label whose C# expression reads the button's text", "Click me");
+            Typing.Replace(window, "Text=\"Hello, Passenger!\"", "Txt=\"Hello, Passenger!\"");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            HotReloadOutcome? refused = null;
+            Ui.WaitFor(() => (refused = window.Debugger.LastApplied) is { Result: not HotReloadResult.Applied }, () => $"Hot Reload to refuse a property the label lacks: {Ui.Said(window)}", Slow);
+            Assert.True(refused!.Result == HotReloadResult.Errors && refused.Problems.Any(p => p.Path is { } path && path.EndsWith("MainPage.xaml", StringComparison.Ordinal)),
+                $"An edit naming a property the label lacks was not refused at its place in the XAML: {refused.Result}, {refused.Said}");
+            MauiApp.Shows(window, app, "Hello, Passenger!", "the label as it was before the refused edit");
+            Typing.Replace(window, "Txt=\"Hello, Passenger!\"", "Text=\"Hello, Passenger!\"");
 
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the run to end once stopped");

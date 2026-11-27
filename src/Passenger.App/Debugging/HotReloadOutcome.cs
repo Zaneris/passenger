@@ -40,6 +40,13 @@ public sealed record HotReloadOutcome(HotReloadResult Result, string Said)
     /// <summary>How many methods the update replaced or added.</summary>
     public int Methods { get; init; }
 
+    /// <summary>Whether the program's update handlers were told of the update as it landed, before its XAML was said: a .NET
+    /// MAUI app's, whose handler patches its pages.</summary>
+    public bool HandlersTold { get; init; }
+
+    /// <summary>A .NET MAUI app's XAML files whose open pages MAUI's patch does not bring to the text, so each is made again.</summary>
+    public IReadOnlyList<string> Remade { get; init; } = [];
+
     public TimeSpan Took { get; init; }
 
     /// <summary>Of several programs' apply (a container run's services), those whose edits need them restarted, by name.</summary>

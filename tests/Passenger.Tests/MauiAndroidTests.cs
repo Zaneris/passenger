@@ -11,8 +11,9 @@ namespace Passenger.Tests;
 /// <summary>The app <c>dotnet new maui</c> makes, its Android head debugged on an emulator from the window: Passenger's
 /// MAUI inspector goes in beside the debugger's relay, and the Live Visual Tree shows the app's window down to its main
 /// page's labels and its button, named by its x:Name; the button's details give its type, its Text set on it and its box
-/// in the window; the outline over the button chosen is drawn in the app where the platform lays the button out, and a
-/// tap given through the inspector clicks it. Debug's end ends the app and leaves nothing of the inspector's in it.
+/// in the window; the outline over the button chosen is drawn in the app where the platform lays the button out, a tap
+/// given through the inspector clicks it, and its main page's XAML edits reach it with Hot Reload, a property's patched by
+/// MAUI, a C# expression's with the page made again. Debug's end ends the app and leaves nothing of the inspector's in it.
 /// Skips, saying why, without MAUI's workload, the Android SDK's platform and Java, an emulator, or the relays.
 /// Steps of <see cref="AndroidDeviceTests"/>' flow, which runs alone.</summary>
 internal static class MauiAndroidTests
@@ -46,7 +47,8 @@ internal static class MauiAndroidTests
         {
             Assert.Skip("This build carries no Android debug relay, which `just debug-relay android` makes before a build carries it");
         }
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        MainWindow window = Ui.OpenFolder(folder);
+        window.ApplySettings(window.Settings with { HotReload = true });
         try
         {
             Ui.WaitFor(() => window.Configurations.Any(c => c.Name == MauiApp.Name), () => $"{MauiApp.Name}'s run configuration; the window has configurations "
@@ -95,6 +97,7 @@ internal static class MauiAndroidTests
 
             InputDone tapped = Ui.AwaitPumped(app.InputAsync(new InputAction(InputKinds.Click) { Element = button.Id }), "a tap on the button", TimeSpan.FromMinutes(1));
             Assert.True(tapped.Target == button.Id && tapped.Shows == "Clicked 1 time", $"The tap reached {tapped.TargetName}, which shows \"{tapped.Shows}\", not the button counting it");
+            MauiApp.TakesXamlEdits(window, app, project, Slow);
 
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));

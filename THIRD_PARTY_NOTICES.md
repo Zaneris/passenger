@@ -739,6 +739,39 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## .NET MAUI's XAML generator's file names
+
+The names Passenger finds what .NET MAUI's XAML source generator wrote of a XAML file by, its InitializeComponent and its
+Hot Reload patch (`GeneratedMarkup.HintOf` in `src/Passenger.Roslyn.Extension/GeneratedMarkup.cs`), are made as that
+generator's own `GetHintName` makes them, ported from `src/Controls/src/SourceGen/XamlGenerator.cs` in
+https://github.com/dotnet/maui at tag 11.0.0 (commit d153424cc4c11f1825691857b2b9cedb7fc90e5f), under the MIT License below.
+
+```
+The MIT License (MIT)
+
+Copyright (c) .NET Foundation and Contributors
+
+All rights reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## WinUI's XAML diagnostics
 
 The declarations through which Passenger's WinUI inspector calls WinUI's XAML diagnostics in a WinUI app

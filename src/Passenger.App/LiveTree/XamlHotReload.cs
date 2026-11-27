@@ -1,10 +1,12 @@
 using System.Text.Json;
+using System.Xml;
 using Passenger.App.Debugging;
 using Passenger.App.Editors;
 using Passenger.App.Run;
 using Passenger.Core;
 using Passenger.Inspector;
 using Passenger.Languages.WinForms;
+using Passenger.Roslyn.Extension;
 using Passenger.Text;
 using Passenger.Xaml;
 
@@ -26,12 +28,17 @@ public sealed class XamlHotReload(LiveApp app, Func<string, TextSnapshot?> texts
     /// <summary>The text each file was last heard written on disk with.</summary>
     private readonly Dictionary<string, string> written = new(PathNames.Comparer);
 
-    /// <summary>Whether it is a file of the app's framework: an Avalonia app's .axaml (or .xaml), a WPF app's .xaml, a Windows
-    /// Forms app's designer code (.Designer.cs); none of a MAUI app's, which XAML Hot Reload does not reach yet, or a WinUI
-    /// app's, whose XAML is compiled into it.</summary>
+    /// <summary>The files whose edits the app took since its launch: a .NET MAUI app's go with each update of its code.</summary>
+    private readonly HashSet<string> taken = new(PathNames.Comparer);
+
+    /// <summary>How many edits each file had when its text went into a .NET MAUI app's update.</summary>
+    private readonly Dictionary<string, int> sent = new(PathNames.Comparer);
+
+    /// <summary>Whether it is a file of the app's framework: an Avalonia app's .axaml (or .xaml), a WPF or .NET MAUI app's .xaml,
+    /// a Windows Forms app's designer code (.Designer.cs); none of a WinUI app's, whose XAML is compiled into it.</summary>
     public bool Takes(string path) => Path.GetExtension(path).ToLowerInvariant() switch
     {
-        ".xaml" => app.Kind is LiveAppKind.Avalonia or LiveAppKind.Wpf,
+        ".xaml" => app.Kind is LiveAppKind.Avalonia or LiveAppKind.Wpf or LiveAppKind.Maui,
         ".axaml" or ".paml" => app.Kind == LiveAppKind.Avalonia,
         ".cs" => app.Kind == LiveAppKind.WinForms && IsDesigner(path),
         _ => false,
@@ -44,6 +51,10 @@ public sealed class XamlHotReload(LiveApp app, Func<string, TextSnapshot?> texts
 
     /// <summary>What the files' changes are called where Hot Reload says what they came to: design changes for designer code alone.</summary>
     private static string Changes(IEnumerable<string> files) => files.All(IsDesigner) ? "Design changes" : "XAML changes";
+
+    /// <summary>Whether its XAML reaches the app as code: a .NET MAUI app's, whose code MAUI's source generator writes, taken in
+    /// with the program's C# update and patched into its open pages by MAUI's own XAML Incremental Hot Reload.</summary>
+    public bool ThroughCode => app.Kind == LiveAppKind.Maui;
 
     /// <summary>Whether a XAML file has been edited since the app last took it.</summary>
     public bool Changed => edited.Count > 0;
@@ -111,6 +122,10 @@ public sealed class XamlHotReload(LiveApp app, Func<string, TextSnapshot?> texts
         }
         string named = string.Join(", ", files.Select(Path.GetFileName));
         string changes = Changes(files);
+        if (ThroughCode)
+        {
+            return new HotReloadOutcome(HotReloadResult.Failed, $"{changes} to {named} reach {app.Name} as code, through the debugger: Run it with Hot Reload on, or Debug it");
+        }
         if (paused)
         {
             Waiting = true;
@@ -136,6 +151,209 @@ public sealed class XamlHotReload(LiveApp app, Func<string, TextSnapshot?> texts
             }
         }
         return Outcome(done);
+    }
+
+    /// <summary>For a .NET MAUI app's update of its code: each XAML file it took edits of or has edits for, as the editor has
+    /// it (as the app holds it while the program is <paramref name="paused"/>, whose pages take it once it runs on), with
+    /// the text the app holds; the edits each has had are kept, so one made as the update is made is the next's.</summary>
+    public IReadOnlyList<HotReloadMarkup> Markup(bool paused)
+    {
+        UiThread.Check();
+        List<HotReloadMarkup> files = [];
+        sent.Clear();
+        foreach (string file in taken.Union(edited.Keys, PathNames.Comparer).Order(PathNames.Comparer))
+        {
+            if (texts(file) is { } text && held.GetValueOrDefault(file) is { } before)
+            {
+                files.Add(new HotReloadMarkup(file, paused ? before : text.ToString(), before));
+                sent[file] = edited.GetValueOrDefault(file);
+            }
+        }
+        return files;
+    }
+
+    /// <summary>How many updates MAUI's XAML Incremental Hot Reload has heard in the app, asked before one its XAML goes in;
+    /// null where its inspector cannot say.</summary>
+    public async Task<int?> UpdatesHeardAsync()
+    {
+        UiThread.Check();
+        if (app.State != LiveAppState.Connected)
+        {
+            return null;
+        }
+        try
+        {
+            return await app.UpdatesHeardAsync();
+        }
+        catch (LiveAppException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>What a .NET MAUI app's XAML edits came to once the update of its code (<paramref name="code"/>) was made of
+    /// <paramref name="markup"/>: each file's open pages as MAUI patched them, said by its inspector from the update after the
+    /// <paramref name="heard"/> ones; nothing to say where no file was edited or the update was not taken (its errors, the
+    /// update's own, keep the edits for the next).</summary>
+    public async Task<HotReloadOutcome?> UpdatedAsync(HotReloadOutcome code, IReadOnlyList<HotReloadMarkup> markup, int? heard, bool paused)
+    {
+        UiThread.Check();
+        List<HotReloadMarkup> files = [.. markup.Where(m => edited.ContainsKey(m.Path))];
+        if (files.Count == 0 || code.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply))
+        {
+            return null;
+        }
+        string named = string.Join(", ", files.Select(f => Path.GetFileName(f.Path)));
+        Waiting = paused;
+        if (paused)
+        {
+            // The update kept the XAML as the app holds it: the edits go in with the next, once the program runs on.
+            return new HotReloadOutcome(HotReloadResult.NothingToApply, $"XAML changes to {named} apply once the program runs on");
+        }
+        foreach (HotReloadMarkup file in markup)
+        {
+            Took(file);
+        }
+        if (code.Result == HotReloadResult.NothingToApply)
+        {
+            return null;
+        }
+        if (heard is not int before)
+        {
+            return new HotReloadOutcome(HotReloadResult.Failed, $"XAML changes to {named} went into {app.Name}'s code, but it cannot say what MAUI made of them: {app.Problem ?? "its inspector is not connected"}");
+        }
+        // MAUI patches nothing of a change of comments or of the white space between tags alone, which shows as it is.
+        List<HotReloadMarkup> patched = [.. files.Where(f => !ReadsSame(f.Before, f.Text))];
+        if (patched.Count == 0)
+        {
+            return new HotReloadOutcome(HotReloadResult.NothingToApply, $"XAML changes to {named} change nothing {app.Name} shows") { Files = [.. files.Select(f => f.Path)] };
+        }
+        List<(string File, XamlReloaded Reloaded, TextSnapshot Text)> done = [];
+        foreach (HotReloadMarkup file in patched)
+        {
+            TextSnapshot text = new TextDocument(file.Text).Snapshot;
+            XamlProject? project = await projects(file.Path);
+            // As MAUI's loader reads it, its implicit namespaces declared.
+            string declared = Passenger.Xaml.Features.MauiPreviewText.Declared(file.Text);
+            // Its path in the project, by which MAUI's build names what it made of the file.
+            string relative = project is null ? Path.GetFileName(file.Path) : PathNames.Relative(file.Path, project.Folder) ?? Path.GetFileName(file.Path);
+            XamlChange change = new(file.Path, declared, Passenger.Xaml.Features.MauiPreviewText.Declared(file.Before), project?.AssemblyName ?? string.Empty, relative)
+            {
+                Heard = before,
+                Class = XamlFile.ClassAttribute(Passenger.Xaml.Syntax.XmlTree.Parse(declared))?.Value,
+                Whole = code.Remade.Contains(file.Path, PathNames.Comparer) || MarkupChanged(file.Before, file.Text) ? true : null,
+            };
+            try
+            {
+                done.Add((file.Path, await app.ReloadAsync(change), text));
+            }
+            catch (LiveAppException failed)
+            {
+                done.Add((file.Path, new XamlReloaded([], $"{Path.GetFileName(file.Path)} went into {app.Name}'s code, but it could not say what MAUI made of it: {failed.Message}", []), text));
+            }
+        }
+        return Outcome(done);
+    }
+
+    /// <summary>Whether two texts of a .NET MAUI XAML file read the same as XML but for comments and the white space between
+    /// tags, each element's attributes in any order; false for a text that does not read.</summary>
+    private static bool ReadsSame(string before, string now)
+    {
+        try
+        {
+            using XmlReader was = MauiReader(before);
+            using XmlReader read = MauiReader(now);
+            while (true)
+            {
+                bool more = was.Read();
+                if (more != read.Read())
+                {
+                    return false;
+                }
+                if (!more)
+                {
+                    return true;
+                }
+                if (was.NodeType != read.NodeType || was.Name != read.Name || was.Value != read.Value || !Attributes(was).SequenceEqual(Attributes(read)))
+                {
+                    return false;
+                }
+            }
+        }
+        catch (XmlException)
+        {
+            return false;
+        }
+
+        static XmlReader MauiReader(string text) => XmlReader.Create(new StringReader(Passenger.Xaml.Features.MauiPreviewText.Declared(text)),
+            new XmlReaderSettings { IgnoreComments = true, IgnoreWhitespace = true, DtdProcessing = DtdProcessing.Prohibit });
+
+        static List<(string, string)> Attributes(XmlReader reader)
+        {
+            List<(string, string)> attributes = [];
+            for (bool at = reader.MoveToFirstAttribute(); at; at = reader.MoveToNextAttribute())
+            {
+                attributes.Add((reader.Name, reader.Value));
+            }
+            reader.MoveToElement();
+            return [.. attributes.Order()];
+        }
+    }
+
+    /// <summary>Whether a .NET MAUI XAML file's change reaches a markup extension, a C# expression or a property written as
+    /// an element, any of which MAUI's patch of an open page may pass over without a word, so the page is made again.</summary>
+    private static bool MarkupChanged(string before, string now)
+    {
+        try
+        {
+            return !Markup(before).SequenceEqual(Markup(now));
+        }
+        catch (XmlException)
+        {
+            return true;
+        }
+
+        static List<string> Markup(string text)
+        {
+            List<string> found = [];
+            using XmlReader reader = XmlReader.Create(new StringReader(Passenger.Xaml.Features.MauiPreviewText.Declared(text)),
+                new XmlReaderSettings { IgnoreComments = true, IgnoreWhitespace = true, DtdProcessing = DtdProcessing.Prohibit });
+            reader.MoveToContent();
+            while (!reader.EOF)
+            {
+                if (reader.NodeType == XmlNodeType.Element && reader.LocalName.Contains('.', StringComparison.Ordinal))
+                {
+                    found.Add(reader.ReadOuterXml());
+                    continue;
+                }
+                if (reader.NodeType == XmlNodeType.Element)
+                {
+                    string element = reader.Name;
+                    for (bool at = reader.MoveToFirstAttribute(); at; at = reader.MoveToNextAttribute())
+                    {
+                        if (reader.Value.TrimStart().StartsWith('{') && !reader.Value.TrimStart().StartsWith("{}", StringComparison.Ordinal))
+                        {
+                            found.Add($"{element} {reader.Name}={reader.Value}");
+                        }
+                    }
+                    reader.MoveToElement();
+                }
+                reader.Read();
+            }
+            found.Sort(StringComparer.Ordinal);
+            return found;
+        }
+    }
+
+    /// <summary>A file's text in a .NET MAUI app's update the app took: what it holds from now, its edits since the next's.</summary>
+    private void Took(HotReloadMarkup file)
+    {
+        held[file.Path] = file.Text;
+        taken.Add(file.Path);
+        if (sent.TryGetValue(file.Path, out int edits) && edited.GetValueOrDefault(file.Path) == edits)
+        {
+            edited.Remove(file.Path);
+        }
     }
 
     /// <summary>One file's text applied, or null when it is gone, is no XAML of a project Passenger reads, or is designer code

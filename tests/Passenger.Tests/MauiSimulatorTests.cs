@@ -13,7 +13,8 @@ namespace Passenger.Tests;
 /// configuration, as the iOS workload lists them, the iOS head's debug path (<see cref="AvaloniaSimulatorTests"/> holds its
 /// run path): Debug builds it for the simulator, boots one that is shut down with no window, installs and starts the app
 /// with Passenger's relay carried into its data container, stops in its main page, steps, shows, evaluates and takes a Hot
-/// Reload edit, whose update handler is called once the app goes on; Stop ends the app and takes out what was carried, and a
+/// Reload edit, whose update handler is called once the app goes on, then its main page's XAML edits, a property's MAUI
+/// patches and a C# expression's for which the page is made again; Stop ends the app and takes out what was carried, and a
 /// simulator the window booted is shut down as it closes. Skips, saying why, off a Mac, without MAUI's and iOS's workloads,
 /// Xcode or an iPhone simulator, or the simulator's relay. Debugged through the window, so alone; its waits end within the
 /// run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
@@ -71,6 +72,7 @@ public sealed class MauiSimulatorTests
             Ui.Run(window, AppActions.Resume);
             Ui.WaitFor(() => Console(window).Contains(Handled, StringComparison.Ordinal),
                 () => $"the app's update handler to be called once the app went on: {Ui.Said(window)}\n{Console(window)}", TimeSpan.FromMinutes(1));
+            MauiApp.TakesXamlEdits(window, window.LiveApp ?? throw new Xunit.Sdk.XunitException($"The debugged app has no inspector: {Ui.Said(window)}"), project, Slow);
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
             Assert.True(started is not null, $"simctl did not say the app's process in the Debug console:\n{Console(window)}");

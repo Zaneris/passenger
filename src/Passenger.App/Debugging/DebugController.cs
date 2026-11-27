@@ -582,7 +582,7 @@ public sealed partial class DebugController : IDisposable
         }
         if (before is not null)
         {
-            targets = [.. targets.Where(target => (!xamlOnly && target.HotReload is { Changed: true }) || target is DebugTab { App.Xaml.Changed: true })];
+            targets = [.. targets.Where(target => (!xamlOnly && target.HotReload is { Changed: true }) || target is DebugTab { App.Xaml.Changed: true } or RunningReload { App.Xaml.Changed: true })];
             if (targets.Count == 0)
             {
                 return new HotReloadApplied(before.Outcome, false);
@@ -664,7 +664,7 @@ public sealed partial class DebugController : IDisposable
         foreach ((IHotReloadTarget target, HotReloadOutcome its) in quiet)
         {
             target.Say($"Hot Reload: {its.Said}", Unapplied(its));
-            if (its.Code.Result == HotReloadResult.Applied && target is RunningReload run)
+            if (its.Code is { Result: HotReloadResult.Applied, HandlersTold: false } && target is RunningReload run)
             {
                 ToldHandlers(run, its.Code);
             }
@@ -689,16 +689,43 @@ public sealed partial class DebugController : IDisposable
     }
 
     /// <summary>A program's edits applied: its C# first (with edits of its own, or nothing else to apply), so a handler or field
-    /// its XAML names is there, then its app's XAML (<see cref="LiveTree.XamlHotReload"/>).</summary>
-    private static async Task<HotReloadOutcome> ApplyTargetAsync(IHotReloadTarget target, bool xamlOnly)
+    /// its XAML names is there, then its app's XAML (<see cref="LiveTree.XamlHotReload"/>); a .NET MAUI app's in one.</summary>
+    private async Task<HotReloadOutcome> ApplyTargetAsync(IHotReloadTarget target, bool xamlOnly)
     {
         LiveTree.XamlHotReload? xaml = (target as DebugTab)?.App?.Xaml ?? (target as RunningReload)?.App?.Xaml;
+        if (xaml is { ThroughCode: true } generated && target.HotReload is { } withCode)
+        {
+            return await ApplyGeneratedAsync(target, generated, withCode);
+        }
         xaml = xaml is { Changed: true } ? xaml : null;
         HotReloadOutcome? code = !xamlOnly && target.HotReload is { } reload && (xaml is null || (reload.Changed && reload.WhyNot is null))
             ? await reload.ApplyAsync()
             : null;
         HotReloadOutcome? markup = xaml is null ? null : await xaml.ApplyAsync(paused: (target as DebugTab)?.Session?.State == DebugState.Paused);
         return HotReloadOutcome.Both(code, markup) ?? new HotReloadOutcome(HotReloadResult.Failed, $"{target.Name} is not debugged with Hot Reload");
+    }
+
+    /// <summary>A .NET MAUI app's edits applied, its XAML with its C# in one update (MAUI's source generator writes the XAML's
+    /// code), its update handlers told as it lands, so MAUI's patches the open pages, which its inspector then says.</summary>
+    private async Task<HotReloadOutcome> ApplyGeneratedAsync(IHotReloadTarget target, LiveTree.XamlHotReload xaml, HotReload reload)
+    {
+        bool paused = (target as DebugTab)?.Session?.State == DebugState.Paused;
+        int? heard = xaml.Changed && !paused ? await xaml.UpdatesHeardAsync() : null;
+        IReadOnlyList<Passenger.Roslyn.Extension.HotReloadMarkup> markup = xaml.Markup(paused);
+        HotReloadOutcome code = await reload.ApplyAsync(markup);
+        if (code.Result == HotReloadResult.Applied && code.Modules.Count > 0)
+        {
+            if (target is RunningReload run)
+            {
+                ToldHandlers(run, code);
+            }
+            else if (target is DebugTab { Session: { } session } tab)
+            {
+                ToldHandlers(tab, session, code);
+            }
+            code = code with { HandlersTold = true };
+        }
+        return HotReloadOutcome.Both(code, await xaml.UpdatedAsync(code, markup, heard, paused)) ?? code;
     }
 
     /// <summary>The update handlers of a program run with Hot Reload told of an update it took (<see cref="ToldHandlers(DebugTab, DebugSession, HotReloadOutcome)"/>).</summary>
@@ -769,7 +796,7 @@ public sealed partial class DebugController : IDisposable
         }
         await session.SendBreakpointsAgainAsync(files);
         // An update of code alone: XAML Hot Reload changes no module.
-        if (its.Result == HotReloadResult.Applied && its.Modules.Count > 0)
+        if (its.Result == HotReloadResult.Applied && its.Modules.Count > 0 && !its.HandlersTold)
         {
             ToldHandlers(tab, session, its);
             tab.Browser?.Updated();
@@ -1466,7 +1493,8 @@ public sealed partial class DebugController : IDisposable
         /// <summary>The SDK's browser refresh of its pages, a web service's; null for any other.</summary>
         internal BrowserRefresh? Browser { get; init; }
 
-        /// <summary>The Avalonia or WPF app it is, its inspector in it, whose XAML edits apply after its C#; null for any other.</summary>
+        /// <summary>The Avalonia, WPF or .NET MAUI app it is, its inspector in it, whose XAML edits apply after its C# (a MAUI app's with
+        /// it); null for any other.</summary>
         internal LiveTree.LiveApp? App { get; init; }
 
         HotReload? IHotReloadTarget.HotReload => Reload;

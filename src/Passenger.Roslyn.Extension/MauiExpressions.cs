@@ -192,7 +192,24 @@ public sealed class MauiXamlChecks : IExtensionWorkspaceMessageHandler<MauiCheck
         Project project = solution.GetProject(projectId)!;
         List<MauiCheck> checks = [];
         string folder = Path.GetDirectoryName(project.FilePath) ?? string.Empty;
-        foreach (Diagnostic diagnostic in await solution.CompilationState.GetSourceGeneratorDiagnosticsAsync(project.State, cancellationToken).ConfigureAwait(false))
+        ImmutableArray<Diagnostic> generated;
+        MauiExpressionDocument? made = null;
+        SemanticModel? model = null;
+        // The generator's runs on the editor's text move the text a Hot Reload patch is made from: never during an update's.
+        await GeneratedMarkup.Generating.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            generated = await solution.CompilationState.GetSourceGeneratorDiagnosticsAsync(project.State, cancellationToken).ConfigureAwait(false);
+            if (message.Expressions.Count > 0 && (made = await MauiExpressionDocument.MakeAsync(project, message.Expressions, null, cancellationToken).ConfigureAwait(false)) is not null)
+            {
+                model = await made.Document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            GeneratedMarkup.Generating.Release();
+        }
+        foreach (Diagnostic diagnostic in generated)
         {
             FileLinePositionSpan place = diagnostic.Location.GetLineSpan();
             if (diagnostic.Severity is DiagnosticSeverity.Hidden || diagnostic.IsSuppressed || !place.IsValid || place.Path.Length == 0
@@ -203,8 +220,7 @@ public sealed class MauiXamlChecks : IExtensionWorkspaceMessageHandler<MauiCheck
             checks.Add(new MauiCheck(-1, SyntaxReads.PlaceOf(place.StartLinePosition), 0, 0,
                 diagnostic.Severity == DiagnosticSeverity.Error, diagnostic.Id, diagnostic.GetMessage(CultureInfo.InvariantCulture)));
         }
-        if (message.Expressions.Count > 0 && await MauiExpressionDocument.MakeAsync(project, message.Expressions, null, cancellationToken).ConfigureAwait(false) is { } made
-            && await made.Document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false) is { } model)
+        if (made is not null && model is not null)
         {
             foreach (Diagnostic diagnostic in model.GetDiagnostics(cancellationToken: cancellationToken))
             {

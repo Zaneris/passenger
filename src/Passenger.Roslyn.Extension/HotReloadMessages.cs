@@ -49,7 +49,9 @@ public sealed record HotReloadActiveStatement(
 
 /// <summary>What the edits since the session's start (or its last update taken) come to: the program paused, or running and
 /// held stopped for the update, or running; the edits its runtime can take (as it says them now), the modules it has
-/// loaded whose code can be edited (by their MVIDs) and, paused or held, the statements its threads are in.</summary>
+/// loaded whose code can be edited (by their MVIDs) and, paused or held, the statements its threads are in. A .NET MAUI
+/// app's carries its XAML files' texts (<see cref="Markup"/>, empty while none was edited), whose code MAUI's source
+/// generator writes; any other program's, none.</summary>
 public sealed record HotReloadEmit(
     [property: JsonPropertyName("session")] int Session,
     [property: JsonPropertyName("paused")] bool Paused,
@@ -58,7 +60,15 @@ public sealed record HotReloadEmit(
     [property: JsonPropertyName("modules")] IReadOnlyList<Guid> Modules,
     [property: JsonPropertyName("activeStatements")] IReadOnlyList<HotReloadActiveStatement> ActiveStatements,
     [property: JsonPropertyName("locked")] IReadOnlyList<HotReloadLockedModule> Locked,
-    [property: JsonPropertyName("originals")] IReadOnlyList<HotReloadOriginal> Originals);
+    [property: JsonPropertyName("originals")] IReadOnlyList<HotReloadOriginal> Originals,
+    [property: JsonPropertyName("markup")] IReadOnlyList<HotReloadMarkup>? Markup = null);
+
+/// <summary>A XAML file of a .NET MAUI app, whose code MAUI's source generator writes: its text as the editor has it, and the
+/// text the app holds, which MAUI's patch of its open pages is made from.</summary>
+public sealed record HotReloadMarkup(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("before")] string Before);
 
 /// <summary>A module the program has loaded whose code its runtime will not let be edited, and why (optimized code).</summary>
 public sealed record HotReloadLockedModule(
@@ -134,7 +144,12 @@ public sealed record HotReloadEmitted(
     [property: JsonPropertyName("status")] string Status,
     [property: JsonPropertyName("updates")] IReadOnlyList<HotReloadModuleUpdate> Updates,
     [property: JsonPropertyName("problems")] IReadOnlyList<HotReloadProblem> Problems,
-    [property: JsonPropertyName("changedDocuments")] IReadOnlyList<string> ChangedDocuments);
+    [property: JsonPropertyName("changedDocuments")] IReadOnlyList<string> ChangedDocuments)
+{
+    /// <summary>A .NET MAUI app's XAML files whose open pages MAUI's patch does not bring to the text, so each is made again.</summary>
+    [JsonPropertyName("remade")]
+    public IReadOnlyList<string>? Remade { get; init; }
+}
 
 /// <summary>A message about a session alone: commit, discard or end.</summary>
 public sealed record HotReloadSessionMessage([property: JsonPropertyName("session")] int Session);

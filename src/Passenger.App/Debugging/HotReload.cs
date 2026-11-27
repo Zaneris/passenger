@@ -202,12 +202,12 @@ public sealed class HotReload
         }
     }
 
-    /// <summary>Applies the edits made since the launch or the last update: Roslyn emits them against the program's code and
-    /// the debugger applies them; an edit the runtime cannot take, or code that does not compile, stops it, and nothing is
-    /// applied. A running program is held stopped from the reading of its threads' statements to the update's end, so
-    /// Roslyn places every frame in a method the update changes. An edit made once Roslyn is asked waits for the next update,
-    /// the built lines keeping the text Roslyn compiled apart from it until <see cref="Over"/>.</summary>
-    public async Task<HotReloadOutcome> ApplyAsync()
+    /// <summary>Applies the edits made since the launch or the last update (a .NET MAUI app's XAML with them, <paramref name="markup"/>):
+    /// Roslyn emits them against the program's code and the debugger applies them; an edit the runtime cannot take, or code
+    /// that does not compile, stops it, and nothing is applied. A running program is held stopped from the reading of its
+    /// threads' statements to the update's end, so Roslyn places every frame in a method the update changes. An edit made
+    /// once Roslyn is asked waits for the next update, the built lines keeping the text Roslyn compiled until <see cref="Over"/>.</summary>
+    public async Task<HotReloadOutcome> ApplyAsync(IReadOnlyList<HotReloadMarkup>? markup = null)
     {
         UiThread.Check();
         Stopwatch took = Stopwatch.StartNew();
@@ -260,7 +260,7 @@ public sealed class HotReload
         }
         try
         {
-            return await ApplyAsync(program, state, session, roslyn, took);
+            return await ApplyAsync(program, state, session, roslyn, took, markup);
         }
         finally
         {
@@ -284,7 +284,8 @@ public sealed class HotReload
         }
     }
 
-    private async Task<HotReloadOutcome> ApplyAsync(DebugSession program, HotReloadStateResponse state, int session, RoslynSession roslyn, Stopwatch took)
+    private async Task<HotReloadOutcome> ApplyAsync(DebugSession program, HotReloadStateResponse state, int session, RoslynSession roslyn, Stopwatch took,
+        IReadOnlyList<HotReloadMarkup>? markup)
     {
         if (state.Capabilities is not { } capabilities)
         {
@@ -302,7 +303,7 @@ public sealed class HotReload
                 [.. state.ActiveStatements.Select(s => new HotReloadActiveStatement(s.Module, s.Token, s.Version, s.ILOffset, s.Document,
                     s.StartLine, s.StartColumn, s.EndLine, s.EndColumn, s.Flags))],
                 [.. state.Modules.Where(m => !m.Editable).Select(m => new HotReloadLockedModule(m.Mvid, m.WhyNot ?? $"{m.Name} cannot be edited"))],
-                Ungiven()));
+                Ungiven(), markup));
         }
         catch (LanguageServerFailed failed)
         {
@@ -371,6 +372,7 @@ public sealed class HotReload
             UpdatedTypes = emitted.Updates.ToDictionary(u => u.Module, u => u.UpdatedTypes),
             Methods = methods,
             Took = took.Elapsed,
+            Remade = [.. (emitted.Remade ?? []).Select(PathNames.Canonical)],
         };
     }
 

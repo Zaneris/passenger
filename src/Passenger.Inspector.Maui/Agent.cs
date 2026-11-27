@@ -134,6 +134,16 @@ public static class Agent
             {
                 return await ui.DispatchAsync(() => served.CaptureAsync(request));
             }
+            // Answered off the UI thread, on which MAUI patches the pages an update changed.
+            if (request.Method == Wire.Updates)
+            {
+                return new Reply { Id = request.Id, Updates = served.Updates.Heard };
+            }
+            if (request.Method == Wire.Reload)
+            {
+                XamlChange change = request.Change ?? throw new InvalidOperationException("No XAML file was given");
+                return new Reply { Id = request.Id, Reloaded = await served.Updates.ReloadedAsync(change, (type, remade) => ui.DispatchAsync(() => served.Took(type, remade))) };
+            }
             Reply reply = await ui.DispatchAsync(() => served.Handle(request));
             if (request.Method == Wire.Input && reply.Done is { } done)
             {

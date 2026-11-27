@@ -78,6 +78,7 @@ public static class Wire
     public const string Designed = "designed";
     public const string Made = "made";
     public const string Placed = "placed";
+    public const string Updates = "updates";
 
     /// <summary>Avalonia's renderer debug overlays, by the names of its RendererDebugOverlays flags, in its order.</summary>
     public static readonly IReadOnlyList<string> OverlayNames = ["Fps", "DirtyRects", "LayoutTimeGraph", "RenderTimeGraph"];
@@ -167,11 +168,21 @@ public sealed record DesignedChange(string File, string Class, IReadOnlyList<str
 
 /// <summary>A XAML file's text to apply to what the app made from it (XAML Hot Reload): the file's path as the disk names
 /// it, its text now and as the app has it (the build's, or the text last applied), the assembly its build compiled it
-/// into, the URI its build gave it (avares://Assembly/Folder/File.axaml, a pack URI in WPF), and whether a binding in it
-/// compiles unless it says otherwise (Avalonia's project setting).</summary>
+/// into, the URI its build gave it (avares://Assembly/Folder/File.axaml, a pack URI in WPF, a .NET MAUI app's path in its
+/// project, Folder/File.xaml), and whether a binding in it compiles unless it says otherwise (Avalonia's project setting).</summary>
 public sealed record XamlChange(string File, string Text, string? Before, string Assembly, string Uri)
 {
     public bool? CompiledBindings { get; init; }
+
+    /// <summary>A .NET MAUI app's, whose code went into the program's C# update: how many updates MAUI's XAML Incremental Hot
+    /// Reload had heard before it (<see cref="Wire.Updates"/>), whose next one says what the change came to.</summary>
+    public int? Heard { get; init; }
+
+    /// <summary>A .NET MAUI app's: the type its root's x:Class names, whose open pages MAUI patches.</summary>
+    public string? Class { get; init; }
+
+    /// <summary>A .NET MAUI app's whose open pages MAUI's patch does not bring to the text: each made again from it.</summary>
+    public bool? Whole { get; init; }
 }
 
 /// <summary>What a XAML file's text came to in the app: the objects that took it (Type#Name), each made again from it, or
@@ -348,6 +359,9 @@ public sealed record Reply
 
     /// <summary>What a XAML file's text came to, with Reload.</summary>
     public XamlReloaded? Reloaded { get; init; }
+
+    /// <summary>How many updates a .NET MAUI app's XAML Incremental Hot Reload has heard, with Updates.</summary>
+    public int? Updates { get; init; }
 
     /// <summary>Where the app shows each element of a XAML file it made, with Placed.</summary>
     public IReadOnlyList<PlacedBox>? Placed { get; init; }

@@ -575,6 +575,11 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     public async Task<XamlReloaded> ReloadAsync(XamlChange change) =>
         (await AskAsync(new Request(0, Wire.Reload) { Change = change }, limit: ReloadLimit)).Reloaded ?? throw new LiveAppException($"{Name} did not say what the XAML came to");
 
+    /// <summary>How many updates a .NET MAUI app's XAML Incremental Hot Reload has heard: asked before an update its XAML's
+    /// code goes in, whose next one the reload of the XAML answers of.</summary>
+    public async Task<int> UpdatesHeardAsync() =>
+        (await AskAsync(new Request(0, Wire.Updates))).Updates ?? throw new LiveAppException($"{Name} did not say how many XAML updates it has heard");
+
     /// <summary>A Windows Forms form's designer code run in the forms of its class the app has open (its Hot Reload).</summary>
     public async Task<XamlReloaded> DesignedAsync(DesignedChange change) =>
         (await AskAsync(new Request(0, Wire.Designed) { Designed = change }, limit: ReloadLimit)).Reloaded ?? throw new LiveAppException($"{Name} did not say what the designer code came to");

@@ -1,5 +1,9 @@
+using Passenger.App;
+using Passenger.App.Debugging;
+using Passenger.App.LiveTree;
 using Passenger.App.Run.Devices;
 using Passenger.Core;
+using Passenger.Inspector;
 
 namespace Passenger.Tests;
 
@@ -57,6 +61,66 @@ internal static class MauiApp
         return (project, restored.Succeeded ? null
             : $"{Name}'s {framework} head does not restore here from nuget.org: {restored.Output.Split('\n').FirstOrDefault(l => l.Contains(": error ", StringComparison.Ordinal))?.Trim() ?? restored.FirstLine}");
     }
+
+    /// <summary>The main page's XAML edited while the app runs with Hot Reload: its label's text, which MAUI patches into the
+    /// open page, then a label of a C# expression of the button's text, for which the page is made again; each read back
+    /// from the app.</summary>
+    public static void TakesXamlEdits(MainWindow window, LiveApp app, string project, TimeSpan limit)
+    {
+        window.OpenFile(Path.Combine(PathNames.Canonical(Path.GetDirectoryName(project)!), "MainPage.xaml"));
+        Typing.Replace(window, "Text=\"Hello, World!\"", "Text=\"Hello, Passenger!\"");
+        XamlApplied(window, "a property's edit", limit);
+        Assert.False(window.Debugger.LastApplied!.Said.Contains("made again", StringComparison.Ordinal),
+            $"The page was made again for a property's edit, which MAUI patches: {window.Debugger.LastApplied.Said}");
+        Shows(window, app, "Hello, Passenger!", "the edited label's text");
+        Typing.Replace(window, "HorizontalOptions=\"Fill\" />", "HorizontalOptions=\"Fill\" />\n\n<Label Text=\"{CounterBtn.Text + '!'}\" />");
+        XamlApplied(window, "an element with a C# expression of the button's text", limit);
+        Assert.True(window.Debugger.LastApplied!.Said.Contains("MainPage made again", StringComparison.Ordinal),
+            $"The page was not made again for a C# expression, which MAUI's patch passes over: {window.Debugger.LastApplied.Said}");
+        ShowsButtonsText(window, app, "!", "the added label whose C# expression reads the button's text", "Click me");
+    }
+
+    /// <summary>Apply Hot Reload Changes for a XAML edit, which the app takes: MAUI patched its open page, or it was made again.</summary>
+    public static void XamlApplied(MainWindow window, string what, TimeSpan limit)
+    {
+        HotReloadOutcome? before = window.Debugger.LastApplied;
+        Ui.Run(window, AppActions.ApplyHotReloadChanges);
+        Ui.WaitFor(() => window.Debugger.LastApplied != before, () => $"Hot Reload to say what it made of {what}: {Ui.Said(window)}", limit);
+        HotReloadOutcome applied = window.Debugger.LastApplied!;
+        Assert.True(applied.Result == HotReloadResult.Applied && applied.Said.Contains("XAML changes applied: MainPage.xaml (MainPage", StringComparison.Ordinal),
+            $"The app did not take {what}: {applied.Result}, {applied.Said}");
+    }
+
+    /// <summary>Waits until an element of the app shows <paramref name="text"/>, its type or a property's value as <paramref name="with"/> says.</summary>
+    public static void Shows(MainWindow window, LiveApp app, string text, string what, (string Property, string Value)? with = null)
+    {
+        AppTree tree = new([]);
+        string[] asked = with is { Property: not "Type" } property ? [property.Property] : [];
+        Ui.WaitFor(() => AppTree.Walk((tree = Ui.AwaitPumped(app.AgentTreeAsync(asked), "the app's tree with what each element shows", TimeSpan.FromMinutes(1))).Roots)
+            .Any(e => e.Element.Text == text && (with is not { } also || (also.Property == "Type" ? e.Element.Type : e.Element.Values?.GetValueOrDefault(also.Property)) == also.Value)),
+            () => $"{what} to show \"{text}\" in the app, which shows {Shown(tree)} after Hot Reload said {window.Debugger.LastApplied?.Said} of\n"
+                + window.EditorArea.CodeEditor.Document.Snapshot, TimeSpan.FromSeconds(30));
+    }
+
+    /// <summary>The page's button, as the app's tree has it now.</summary>
+    public static Element Button(LiveApp app) =>
+        AppTree.Walk(Ui.AwaitPumped(app.TreeAsync(), "the app's tree", TimeSpan.FromMinutes(1)).Roots).Select(e => e.Element).First(e => e is { Type: "Button", Name: "CounterBtn" });
+
+    /// <summary>Waits until a label of the app shows the button's text (<paramref name="shown"/> where named), then <paramref name="after"/>.</summary>
+    public static void ShowsButtonsText(MainWindow window, LiveApp app, string after, string what, string? shown = null)
+    {
+        AppTree tree = new([]);
+        Ui.WaitFor(() =>
+        {
+            tree = Ui.AwaitPumped(app.AgentTreeAsync([]), "the app's tree with what each element shows", TimeSpan.FromMinutes(1));
+            string? button = AppTree.Walk(tree.Roots).Select(e => e.Element).FirstOrDefault(e => e is { Type: "Button", Name: "CounterBtn" })?.Text;
+            return button is not null && (shown is null || button == shown) && AppTree.Walk(tree.Roots).Any(e => e.Element is { Type: "Label" } label && label.Text == button + after);
+        }, () => $"{what}: the app shows {Shown(tree)} after Hot Reload said {window.Debugger.LastApplied?.Said}", TimeSpan.FromSeconds(30));
+    }
+
+    /// <summary>What each element of a tree is and shows, for a failure's words.</summary>
+    private static string Shown(AppTree tree) =>
+        string.Join(", ", AppTree.Walk(tree.Roots).Select(e => $"{e.Element.Type} {e.Element.Text} {string.Join(' ', e.Element.Values ?? new Dictionary<string, string>())}".TrimEnd()).Take(40));
 
     /// <summary>The device or emulator to run on, of those listed: the one adb's ANDROID_SERIAL names, as adb itself takes
     /// it where several are connected, else the first running, else the first emulator to start; null for none.</summary>

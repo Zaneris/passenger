@@ -36,7 +36,7 @@ public sealed class AndroidDeviceTests
     {
         Flow.Step("an Avalonia app's Android head runs and stops at a breakpoint in its shared code on an emulator",
             AvaloniaAndroidTests.An_avalonia_apps_android_head_runs_and_stops_at_a_breakpoint_in_its_shared_code_on_an_emulator);
-        Flow.Step("a MAUI app's Android head debugged on an emulator shows its main page's label and button in the live tree",
+        Flow.Step("a MAUI app's Android head debugged on an emulator shows its main page's label and button in the live tree and takes its XAML's edits",
             MauiAndroidTests.A_maui_apps_android_head_debugged_on_an_emulator_shows_its_main_pages_label_and_button_in_the_live_tree);
         Flow.Step("an Android app runs and stops at a breakpoint on an emulator chosen beside its configuration",
             An_android_app_runs_and_stops_at_a_breakpoint_on_an_emulator_chosen_beside_its_configuration);
