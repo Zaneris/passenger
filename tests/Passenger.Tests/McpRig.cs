@@ -103,7 +103,7 @@ public abstract class McpRig : IDisposable
         {
             TestFolders.Delete(sum);
         }
-        // The folders of the test's state in the person's own temporary folder: its agents' sockets, its language servers' temporary folders.
+        // The folders of the test's state in the person's own temporary folder: its agents' sockets, its language servers' and the SDK's temporary folders.
         UserTemporary.LetGoOf([OwnState, Path.Combine(OwnState, "cache")]);
         TestFolders.Delete(OwnState);
         foreach (string folder in made)

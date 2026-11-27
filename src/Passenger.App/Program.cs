@@ -48,6 +48,8 @@ internal static class Program
         }
         // Before anything reads the state folder, or leaves the folder a relative PASSENGER_SETTINGS is read from.
         State.StateStore.NameWhole();
+        // What the IDE runs of the .NET SDK keeps its temporary files in the state's own folder for this process, named as first asked.
+        SdkTemporary.State = () => State.StateStore.DefaultRoot;
         // Before anything of the IDE starts, so a start that fails before its log is set up still leaves why.
         CrashFile.Watch();
         // First, as Velopack asks; an update never installs as a second Passenger starts, which would end the first.

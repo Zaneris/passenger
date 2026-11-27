@@ -14,7 +14,8 @@ public class UserTemporaryTests
         ("A states folders are in the users temporary folder its kinds named beside its own", A_states_folders_are_in_the_users_temporary_folder_its_kinds_named_beside_its_own),
         ("Two states have folders of their own and one state spelled two ways has one", Two_states_have_folders_of_their_own_and_one_state_spelled_two_ways_has_one),
         ("A folder made the users own is theirs alone and a link in its place is refused", A_folder_made_the_users_own_is_theirs_alone_and_a_link_in_its_place_is_refused),
-        ("A state let go of takes its own folders and those of its kinds and leaves anothers", A_state_let_go_of_takes_its_own_folders_and_those_of_its_kinds_and_leaves_anothers));
+        ("A state let go of takes its own folders and those of its kinds and leaves anothers", A_state_let_go_of_takes_its_own_folders_and_those_of_its_kinds_and_leaves_anothers),
+        ("The folders of a process no longer running go and this ones and the rest stay", The_folders_of_a_process_no_longer_running_go_and_this_ones_and_the_rest_stay));
 
     private void A_states_folders_are_in_the_users_temporary_folder_its_kinds_named_beside_its_own()
     {
@@ -80,6 +81,33 @@ public class UserTemporaryTests
         finally
         {
             UserTemporary.LetGoOf([state, cache, other]);
+        }
+    }
+
+    /// <summary>In a state's folder of a kind, what a Passenger no longer running made for itself (its id, with or without
+    /// what follows a dash) goes as another Passenger makes its own, so a killed one's builds' leftovers go with it; this
+    /// process's own stays, and so does what no process names.</summary>
+    private void The_folders_of_a_process_no_longer_running_go_and_this_ones_and_the_rest_stay()
+    {
+        // Past any system's largest process id, so no process runs by it.
+        const string Gone = "2000000000";
+        string kept = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
+        try
+        {
+            string[] going = [Path.Combine(kept, Gone), Path.Combine(kept, $"{Gone}-2")];
+            string[] staying = [Path.Combine(kept, $"{Environment.ProcessId}-1"), Path.Combine(kept, "MetadataAsSource"), Path.Combine(kept, "-3")];
+            foreach (string folder in going.Concat(staying))
+            {
+                Directory.CreateDirectory(Path.Combine(folder, "MSBuildTemp1a2b3c"));
+            }
+            UserTemporary.LetGoOfGone(kept);
+            Assert.True(going.All(folder => !Directory.Exists(folder)),
+                $"A Passenger no longer running left {string.Join(", ", going.Where(Directory.Exists))} in its state's folder, which nothing would take now");
+            Assert.True(staying.All(Directory.Exists), $"Another Passenger's look took {string.Join(", ", staying.Where(folder => !Directory.Exists(folder)))}, which no Passenger gone made");
+        }
+        finally
+        {
+            Directory.Delete(kept, recursive: true);
         }
     }
 }

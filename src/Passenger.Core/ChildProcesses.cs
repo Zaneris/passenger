@@ -103,15 +103,15 @@ public static class ChildProcesses
         }
     }
 
-    /// <summary>The .NET command line (<see cref="Dotnet.Host"/>, the one the folder's projects take) with these arguments,
-    /// in English (the IDE reads what it says) and with no first-run banner; an SDK's command (<see cref="RunsSdk"/>) sending
-    /// no telemetry the person has not asked for (<see cref="SendingNoTelemetry(ProcessStartInfo)"/>). It builds in its own
-    /// process and worker nodes, never in MSBuild's server, which would outlive it; a node left for the next build is the
-    /// IDE's alone, so it ends with the IDE (<see cref="Lifeline"/>). A <see cref="FileNotFoundException"/> when there is none.</summary>
+    /// <summary>The .NET command line (<see cref="Dotnet.Host"/>, the folder's projects') with these arguments, in English (the
+    /// IDE reads it), no first-run banner; an SDK's command (<see cref="RunsSdk"/>) sending no telemetry unasked
+    /// (<see cref="SendingNoTelemetry(ProcessStartInfo)"/>), in Passenger's own temporary folder where it builds nothing of
+    /// the person's (<see cref="SdkTemporary"/>). It builds in its own process and nodes, never MSBuild's server; a node left
+    /// is the IDE's alone, ending with it (<see cref="Lifeline"/>). A <see cref="FileNotFoundException"/> where none is.</summary>
     public static ProcessStartInfo DotnetCommand(IEnumerable<string> arguments, string? folder = null)
     {
         string[] given = [.. arguments];
-        return TakingDotnet(AsDotnet(Command(Dotnet.Host(folder), given, DotnetFolder(given, folder)), RunsSdk(given)), folder);
+        return TakingDotnet(InOwnTemporary(AsDotnet(Command(Dotnet.Host(folder), given, DotnetFolder(given, folder)), RunsSdk(given)), given), folder);
     }
 
     /// <summary><see cref="DotnetCommand(IEnumerable{string}, string?)"/> of the dotnet at <paramref name="host"/>, an
@@ -119,8 +119,13 @@ public static class ChildProcesses
     public static ProcessStartInfo DotnetCommand(string host, IEnumerable<string> arguments, string? folder)
     {
         string[] given = [.. arguments];
-        return AsDotnet(Command(host, given, DotnetFolder(given, folder)), RunsSdk(given));
+        return InOwnTemporary(AsDotnet(Command(host, given, DotnetFolder(given, folder)), RunsSdk(given)), given);
     }
+
+    /// <summary>A start of dotnet given Passenger's own temporary folder where its command builds nothing of the person's
+    /// (<see cref="SdkTemporary.Takes"/>).</summary>
+    private static ProcessStartInfo InOwnTemporary(ProcessStartInfo start, IReadOnlyList<string> arguments) =>
+        SdkTemporary.Takes(arguments) ? SdkTemporary.Give(start) : start;
 
     /// <summary>A start of a .NET or Avalonia tool run for a folder's code given each of <see cref="TelemetryOptOuts.All"/>
     /// its environment lacks: a value the person set stands, whatever it says. Never a program's own run, nor the terminal's

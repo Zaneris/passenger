@@ -183,6 +183,8 @@ public sealed class TestRun : IAsyncDisposable
         string gitConfig = Path.Combine(Root, "gitconfig");
         File.WriteAllText(gitConfig, string.Empty);
         Environment.SetEnvironmentVariable(StateStore.Variable, Settings);
+        // As Passenger's Main has it, which no test's window runs.
+        SdkTemporary.State = () => StateStore.DefaultRoot;
         Environment.SetEnvironmentVariable("GIT_CONFIG_GLOBAL", gitConfig);
         Environment.SetEnvironmentVariable("GIT_CONFIG_NOSYSTEM", "1");
         // Configuration git takes from the environment, over the files' or (git config's) in place of them.
@@ -437,7 +439,7 @@ public sealed class TestRun : IAsyncDisposable
     /// tries each once.</summary>
     private static void End(bool waiting)
     {
-        // The windows' agent sockets and the language servers' temporary folders are named for each state, outside the run's folder.
+        // The windows' agent sockets and the language servers' and the SDK's temporary folders are named for each state, outside the run's folder.
         UserTemporary.LetGoOf(states ??= StatesUnder(Root));
         foreach (string folder in (string[])[Root, .. Temporary == PersonsTemporary ? (string[])[] : [Temporary], AspireCli.Home])
         {

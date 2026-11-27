@@ -8,7 +8,7 @@ namespace Passenger.UnitTests.Core;
 /// names the SDK that runs; a program's own run (by its path, or after exec) works in the folder, which no global.json
 /// chooses anything for. And what a tool's start is told of telemetry: an SDK's command, a helper running the person's
 /// MSBuild and Godot's editor send none the person has not asked for, where a program's own run is left with the person's
-/// environment.</summary>
+/// environment; and of its temporary folder, Passenger's own for an SDK's command that builds nothing.</summary>
 public sealed class DotnetFolderTests
 {
     private static readonly string Host = Path.GetFullPath(Path.Combine(Path.DirectorySeparatorChar.ToString(), "dotnet-folder-tests", "dotnet"));
@@ -23,7 +23,9 @@ public sealed class DotnetFolderTests
         ("a programs own run works in its folder and an sdks command for a folder holding home on the disks root", A_programs_own_run_works_in_its_folder_and_an_sdks_command_for_a_folder_holding_home_on_the_disks_root),
         ("a trusted folder takes only a global json in a folder trusted too", A_trusted_folder_takes_only_a_global_json_in_a_folder_trusted_too),
         ("a tools start sends no telemetry the person has not asked for and a programs own run is left as the person has it",
-            A_tools_start_sends_no_telemetry_the_person_has_not_asked_for_and_a_programs_own_run_is_left_as_the_person_has_it));
+            A_tools_start_sends_no_telemetry_the_person_has_not_asked_for_and_a_programs_own_run_is_left_as_the_person_has_it),
+        ("an sdks command building nothing of the persons takes passengers own temporary folder and a build or a programs run the persons",
+            An_sdks_command_building_nothing_of_the_persons_takes_passengers_own_temporary_folder_and_a_build_or_a_programs_run_the_persons));
 
     private void An_sdks_command_for_a_folder_not_trusted_works_in_the_persons_home()
     {
@@ -91,6 +93,35 @@ public sealed class DotnetFolderTests
 
         static ProcessStartInfo Godot(string[] arguments) =>
             ChildProcesses.Command(Path.Combine(Path.GetDirectoryName(Host)!, "godot"), arguments, null, GodotExecutables.EnvironmentOf(arguments, new Dictionary<string, string>()));
+    }
+
+    /// <summary>An SDK's command that builds nothing of the person's (a template, a workload, a solution, a package reference)
+    /// works in Passenger's own temporary folder, which takes what the .NET CLI leaves there, NuGet's scratch staying the one
+    /// every restore shares; a build, a restore, a publish or a question of MSBuild keeps the person's, where its compiler
+    /// server meets theirs, and so does a program's run (dotnet run, watch, test, exec, a tool), where a debugger and the
+    /// diagnostics tools look for its runtime's socket and pipes.</summary>
+    private void An_sdks_command_building_nothing_of_the_persons_takes_passengers_own_temporary_folder_and_a_build_or_a_programs_run_the_persons()
+    {
+        foreach (string[] arguments in (string[][])[["new", "console"], ["workload", "install", "android"], ["sln", "add", "App.csproj"], ["add", "package", "Humanizer"], ["package", "list"], ["--info"]])
+        {
+            Assert.True(SdkTemporary.Takes(arguments), $"dotnet {string.Join(' ', arguments)} builds nothing of the person's but keeps the person's temporary folder, where it leaves a folder as it ends");
+        }
+        foreach (string[] arguments in (string[][])[["build", "App.csproj"], ["restore"], ["publish"], ["pack"], ["clean"], ["msbuild", "App.csproj", "-getProperty:TargetPath"], ["format"]])
+        {
+            Assert.False(SdkTemporary.Takes(arguments), $"dotnet {string.Join(' ', arguments)} runs MSBuild over the person's projects but takes Passenger's own temporary folder, where on macOS its compiler server would take over the person's builds' pipe");
+        }
+        foreach (string[] arguments in (string[][])[["run", "--project", "App.csproj"], ["watch", "run"], ["test"], ["exec", "App.dll"], [Path.Combine(Repository, "Tool.dll")], ["tool", "run", "dotnet-ef"], ["ef", "database", "update"], []])
+        {
+            Assert.False(SdkTemporary.Takes(arguments), $"dotnet {string.Join(' ', arguments)} runs a program of the person's, whose runtime a debugger or the diagnostics tools look for in the person's temporary folder, but takes Passenger's own");
+        }
+        string own = Path.Combine(Path.DirectorySeparatorChar + "dotnet-folder-tests", "own");
+        ProcessStartInfo given = SdkTemporary.Give(new ProcessStartInfo(Host), own);
+        foreach (string variable in OperatingSystem.IsWindows() ? (string[])["TMP", "TEMP"] : ["TMPDIR"])
+        {
+            Assert.True(given.Environment.TryGetValue(variable, out string? named) && named == own, $"An SDK's command given Passenger's own temporary folder has {variable} {named ?? "unset"}, not {own}");
+        }
+        Assert.True(given.Environment.TryGetValue(NuGetScratch.Variable, out string? scratch) && scratch == NuGetScratch.Shared(),
+            $"An SDK's command given Passenger's own temporary folder has NuGet's scratch {scratch ?? "unset"}, where its restore would take extraction locks no other restore sees");
     }
 
     /// <summary>A trusted folder takes what the host reads there only where the nearest global.json over it, whose sdk.paths

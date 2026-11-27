@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -57,6 +58,37 @@ public static partial class UserTemporary
         }
     }
 
+    /// <summary>A folder of this process's own in <paramref name="kept"/> (a state's own folder of a kind, made the user's by
+    /// <see cref="Own"/>): named for its id, then <paramref name="suffix"/>, and made the user's alone. Those there of a
+    /// process no longer running are removed as it is made (<see cref="LetGoOfGone"/>), and this process's by the watchdog
+    /// once Passenger and what it started have ended (<see cref="ChildProcesses.AtIdeEnd"/>; on Windows, which has none, as
+    /// the next Passenger makes its own). An <see cref="IOException"/> where it cannot be the user's own.</summary>
+    public static string OfThisProcess(string kept, string suffix = "")
+    {
+        LetGoOfGone(kept);
+        string id = Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
+        string own = Own(Path.Combine(kept, id + suffix));
+        string named = Path.Combine(kept, id);
+        ChildProcesses.AtIdeEnd($"{nameof(UserTemporary)} {kept}", $"rm -rf -- {Quoted(named)} {Quoted(named)}-*");
+        return own;
+    }
+
+    /// <summary>Removes each folder in <paramref name="kept"/> named for a process (its id, then a dash or nothing) that is no
+    /// longer running, nor this one: what a Passenger killed, or one on Windows, left of its own (<see cref="OfThisProcess"/>).</summary>
+    internal static void LetGoOfGone(string kept)
+    {
+        foreach (string left in Directory.EnumerateDirectories(kept))
+        {
+            ReadOnlySpan<char> name = Path.GetFileName(left.AsSpan());
+            int dash = name.IndexOf('-');
+            if (int.TryParse(dash < 0 ? name : name[..dash], NumberStyles.None, CultureInfo.InvariantCulture, out int owner)
+                && owner != Environment.ProcessId && !DotnetProcesses.Runs(owner))
+            {
+                Remove(left);
+            }
+        }
+    }
+
     private static void Remove(string folder)
     {
         try
@@ -68,6 +100,9 @@ public static partial class UserTemporary
             PassengerLog.Write($"A temporary folder Passenger no longer needs stays, {folder}: {error.Message}");
         }
     }
+
+    /// <summary>A path as one word of a POSIX shell's command line.</summary>
+    private static string Quoted(string path) => $"'{path.Replace("'", "'\\''", StringComparison.Ordinal)}'";
 
     /// <summary><paramref name="folder"/> made the user's alone (mode 0700), or an <see cref="IOException"/> saying why not:
     /// a link, or one another user made first (on Linux's shared /tmp), whose mode only its owner may set. On Windows the
