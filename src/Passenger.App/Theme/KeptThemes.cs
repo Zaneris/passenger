@@ -17,8 +17,7 @@ public static class KeptThemes
     public static string Folder => Path.Combine(State.StateStore.DefaultRoot, "themes");
 
     /// <summary>Where a theme of a source and a name is kept.</summary>
-    public static string PathOf(ThemeSource source, bool code, string name) =>
-        Path.Combine(Folder, source.KeptFolder, code ? "codeColours" : "themes", ThemeSource.KeptName(name), FileName);
+    public static string PathOf(ThemeSource source, bool code, string name) => Path.Combine(KindFolder(source, code), ThemeSource.KeptName(name), FileName);
 
     /// <summary>A kept theme's file, or null where none is kept or it cannot be read.</summary>
     public static byte[]? Bytes(ThemeSource source, bool code, string name)
@@ -178,10 +177,30 @@ public static class KeptThemes
             ? KeepBase(source, code, name, files) ?? Keep(source, code, name, ThemeFiles.Wrapping(name, based))
             : Keep(source, code, name, ThemeFiles.Wrapping(name, based), BaseBeside(files));
 
+    /// <summary>What tells the themes or schemes kept from a source from themselves as they stood, without reading one: each
+    /// one's folder by its name with its file's stamp, in the order <see cref="Of"/> reads them; none where none can be listed.</summary>
+    public static IReadOnlyList<(string Name, FileStamp? Stamp)> Stamps(ThemeSource source, bool code)
+    {
+        string folder = KindFolder(source, code);
+        try
+        {
+            return Directory.Exists(folder)
+                ? [.. Directory.EnumerateDirectories(folder).Order(StringComparer.Ordinal).Select(named => (Path.GetFileName(named), FileStamp.Of(Path.Combine(named, FileName))))]
+                : [];
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>The folder a source's kept themes, or its schemes, are each in a folder of their own under.</summary>
+    private static string KindFolder(ThemeSource source, bool code) => Path.Combine(Folder, source.KeptFolder, code ? "codeColours" : "themes");
+
     /// <summary>The file of every theme or scheme of a source kept here, for the list Settings shows without the source.</summary>
     public static IReadOnlyList<byte[]> Of(ThemeSource source, bool code)
     {
-        string folder = Path.Combine(Folder, source.KeptFolder, code ? "codeColours" : "themes");
+        string folder = KindFolder(source, code);
         List<byte[]> kept = [];
         try
         {
