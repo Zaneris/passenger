@@ -10,7 +10,8 @@ namespace Passenger.Tests;
 /// <summary>The app <c>dotnet new maui</c> makes, as one head alone (its Android, iOS or Mac Catalyst head): the template's other heads
 /// taken out of its frameworks, so its restore and build need that platform's workload and no other, restored from
 /// nuget.org, as no restore of the solution's brings MAUI's mobile packages (so a test of it is never one of the gate's). The
-/// template's main page has a label "Hello, World!" and a button named CounterBtn, "Click me", which counts its clicks.</summary>
+/// template's main page has a label "Hello, World!" and a button named CounterBtn, "Click me", which counts its clicks; beside
+/// it, a generic method of the test's own, <c>Kept.Of</c>, returns what it is given.</summary>
 internal static class MauiApp
 {
     /// <summary>The app's project, run configuration and Android application id (its iOS bundle identifier too).</summary>
@@ -26,6 +27,9 @@ internal static class MauiApp
 
     /// <summary>The framework the Mac Catalyst head is built for, of the same .NET as the others.</summary>
     public static readonly string MacCatalyst = $"net{Passenger.App.Mobile.MobilePlatforms.FirstOnCoreClr}.0-maccatalyst";
+
+    /// <summary>The file of the generic method the app's code is given beside the template's.</summary>
+    private const string KeptFile = "Kept.cs";
 
     /// <summary>The longest dotnet new and the restore may each take.</summary>
     private static readonly TimeSpan Limit = TimeSpan.FromMinutes(6);
@@ -52,6 +56,17 @@ internal static class MauiApp
             return (project, $"This .NET makes no .NET MAUI app, so it lacks MAUI's workload (dotnet workload install maui): {made.FirstLine}");
         }
         TestFolders.Write(folder, "nuget.config", TestRun.FromNuGetOrg);
+        TestFolders.Write(app, KeptFile, """
+            namespace MauiApp1;
+
+            internal static class Kept
+            {
+                public static T Of<T>(T item)
+                {
+                    return item;
+                }
+            }
+            """);
         string[] lines = File.ReadAllLines(project);
         Assert.True(lines.Count(l => l.Trim() == $"<TargetFrameworks>{Android}</TargetFrameworks>") == 1,
             $"The template's project no longer names {Android} alone first among its frameworks:\n{string.Join('\n', lines)}");
@@ -98,31 +113,42 @@ internal static class MauiApp
         ShowsButtonsText(window, app, "!", "the added label whose C# expression reads the button's text", "Click me");
     }
 
-    /// <summary>The page's click handler edited while the debugged app runs, a local and a statement added above its last,
-    /// which takes a breakpoint: a tap runs the handler's new code, where the program stops, shown at the breakpoint's line
-    /// with the added local in its Variables and evaluated there, and Step Over goes on to the handler's closing brace, as the
-    /// new code has them; then the breakpoint goes and the program goes on, its button showing what the new code wrote (the
-    /// tap itself unanswered past the inspector's limit while the program was stopped).</summary>
+    /// <summary>The click handler edited as the debugged app runs (a local added, the count kept through Kept.Of, whose edit adds
+    /// locals of its type parameter), breakpoints on both new last lines: a tap stops in Kept.Of's new code, its locals shown
+    /// and evaluated as its int instantiation types them, then in the handler's, its added local shown and evaluated, and Step
+    /// Over goes to the closing brace; the program goes on, its button showing what the new code wrote (the tap unanswered past
+    /// the inspector's limit while stopped).</summary>
     public static void StopsInEditedHandler(MainWindow window, LiveApp app, string project, TimeSpan limit)
     {
-        string page = Path.Combine(PathNames.Canonical(Path.GetDirectoryName(project)!), "MainPage.xaml.cs");
-        window.OpenFile(page);
+        string folder = PathNames.Canonical(Path.GetDirectoryName(project)!);
+        string page = Path.Combine(folder, "MainPage.xaml.cs");
+        string kept = Path.Combine(folder, KeptFile);
+        window.OpenFile(kept);
         HotReloadOutcome? before = window.Debugger.LastApplied;
-        Typing.Replace(window, "SemanticScreenReader.Announce(CounterBtn.Text);", "string edited = \" (edited)\";\nCounterBtn.Text += edited;\nSemanticScreenReader.Announce(CounterBtn.Text);");
+        Typing.Replace(window, "return item;", "List<T> items = new() { item };\nT first = items[0];\nreturn first;");
+        window.OpenFile(page);
+        Typing.Replace(window, "SemanticScreenReader.Announce(CounterBtn.Text);", "count = Kept.Of(count);\nstring edited = \" (edited)\";\nCounterBtn.Text += edited;\nSemanticScreenReader.Announce(CounterBtn.Text);");
         Ui.Run(window, AppActions.ApplyHotReloadChanges);
-        Ui.WaitFor(() => window.Debugger.LastApplied != before, () => $"Hot Reload to say what it made of the click handler's edit: {Ui.Said(window)}", limit);
-        Assert.True(window.Debugger.LastApplied!.Result == HotReloadResult.Applied, $"The app did not take the click handler's edit: {window.Debugger.LastApplied.Said}");
-        string[] written = window.EditorArea.CodeEditor.Document.Snapshot.ToString().Split('\n');
-        int announce = Array.FindIndex(written, l => l.Contains("SemanticScreenReader.Announce", StringComparison.Ordinal));
-        window.EditorArea.CodeEditor.GoTo(new Passenger.Text.TextPosition(announce, written[announce].IndexOf('S', StringComparison.Ordinal)));
-        Ui.Run(window, AppActions.ToggleBreakpoint);
+        Ui.WaitFor(() => window.Debugger.LastApplied != before, () => $"Hot Reload to say what it made of the click handler's and Kept.Of's edits: {Ui.Said(window)}", limit);
+        Assert.True(window.Debugger.LastApplied!.Result == HotReloadResult.Applied, $"The app did not take the click handler's and Kept.Of's edits: {window.Debugger.LastApplied.Said}");
+        int returned = BreakpointAt(window, kept, "return first;");
+        int announce = BreakpointAt(window, page, "SemanticScreenReader.Announce");
         LineBreakpoint onAnnounce = window.Debugger.Breakpoints.In(page).Single(b => b.Line == announce);
         Task<InputDone> tapped = app.InputAsync(new InputAction(InputKinds.Click) { Element = Button(app).Id });
         Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames is [{ Source.Path: { } path, Line: int line }, ..]
+                && PathNames.Same(path, kept) && line == returned + 1,
+            () => $"the stop in Kept.Of's new code at its return, line {returned + 1}, shown at {Top(window)}: {Ui.Said(window)}", limit);
+        Ui.WaitFor(() => Shown(window, "item") is { } item && int.TryParse(item, out _) && Shown(window, "first") == item && Shown(window, "items") is { } items && items.Contains("Count = 1", StringComparison.Ordinal),
+            () => $"the stop's Variables to show the locals Kept.Of's edit added, typed by its type parameter, as its int instantiation has them; they show {Rows(window)}", limit);
+        Dap.EvaluateResponse instantiated = Ui.Await(window.Debugger.Session!.EvaluateAsync("items.Count == 1 && items.Contains(first) && first.Equals(item)", window.BottomPanel.Debug.Frames[0].Id, Dap.EvaluateContexts.Watch),
+            "Kept.Of's locals, evaluated in its new code", limit);
+        Assert.True(instantiated.Result == "true", $"Kept.Of's locals evaluated in its new code came to {instantiated.Result}, not true");
+        window.Debugger.Breakpoints.Remove(window.Debugger.Breakpoints.In(kept).Single(b => b.Line == returned));
+        Ui.Run(window, AppActions.Resume);
+        Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames is [{ Source.Path: { } path, Line: int line }, ..]
                 && PathNames.Same(path, page) && line == announce + 1,
             () => $"the stop in the click handler's new code at its last statement, line {announce + 1}, shown at {Top(window)}: {Ui.Said(window)}", limit);
-        Ui.WaitFor(() => window.BottomPanel.Debug.Tree.Rows.FirstOrDefault(r => r.Depth == 0 && r.Name == "edited")?.Value == "\" (edited)\"",
-            () => $"the stop's Variables to show the local the edit added; they show {string.Join(", ", window.BottomPanel.Debug.Tree.Rows.Where(r => r.Depth == 0).Select(r => $"{r.Name} = {r.Value}"))}", limit);
+        Ui.WaitFor(() => Shown(window, "edited") == "\" (edited)\"", () => $"the stop's Variables to show the local the edit added; they show {Rows(window)}", limit);
         Dap.EvaluateResponse counted = Ui.Await(window.Debugger.Session!.EvaluateAsync("count > 0 && edited.Length == 9", window.BottomPanel.Debug.Frames[0].Id, Dap.EvaluateContexts.Watch),
             "the page's count and the added local, evaluated in the handler's new code", limit);
         Assert.Equal("true", counted.Result);
@@ -138,6 +164,24 @@ internal static class MauiApp
                 .Select(e => e.Element).FirstOrDefault(e => e is { Type: "Button", Name: "CounterBtn" })?.Text)?.EndsWith(" (edited)", StringComparison.Ordinal) == true,
             () => $"the button to show what the click handler's new code wrote; it shows \"{shown}\", the tap {tapped.Exception?.InnerException?.Message ?? "answered"}", limit);
     }
+
+    /// <summary>A breakpoint set in a file on the first line holding some code, at that code: the line, from zero.</summary>
+    private static int BreakpointAt(MainWindow window, string file, string code)
+    {
+        window.OpenFile(file);
+        string[] written = window.EditorArea.CodeEditor.Document.Snapshot.ToString().Split('\n');
+        int line = Array.FindIndex(written, l => l.Contains(code, StringComparison.Ordinal));
+        Assert.True(line >= 0, $"{Path.GetFileName(file)} has no line holding {code}:\n{string.Join('\n', written)}");
+        window.EditorArea.CodeEditor.GoTo(new Passenger.Text.TextPosition(line, written[line].IndexOf(code, StringComparison.Ordinal)));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        return line;
+    }
+
+    /// <summary>The value the Variables of the stop shown give a top row of a name, null where none is.</summary>
+    private static string? Shown(MainWindow window, string name) => window.BottomPanel.Debug.Tree.Rows.FirstOrDefault(r => r.Depth == 0 && r.Name == name)?.Value;
+
+    /// <summary>The Variables' top rows, for a failure's words.</summary>
+    private static string Rows(MainWindow window) => string.Join(", ", window.BottomPanel.Debug.Tree.Rows.Where(r => r.Depth == 0).Select(r => $"{r.Name} = {r.Value}"));
 
     /// <summary>Breakpoints set in the main page's XAML: on the Hello label's line, and on the button's Text attribute; the
     /// file, and those lines (from zero).</summary>
@@ -161,8 +205,8 @@ internal static class MauiApp
     public static void StopsInXaml(MainWindow window, string xaml, int hello, int clickMe, TimeSpan limit)
     {
         XamlStop(window, xaml, hello, "the Hello label's line, where the label is made", limit);
-        Ui.WaitFor(() => window.BottomPanel.Debug.Tree.Rows.FirstOrDefault(r => r.Depth == 0 && r.Name == "label")?.Value is { } made && made.Contains("Label", StringComparison.Ordinal),
-            () => $"the stop's locals to show the label made; they show {string.Join(", ", window.BottomPanel.Debug.Tree.Rows.Where(r => r.Depth == 0).Select(r => $"{r.Name} = {r.Value}"))}", limit);
+        Ui.WaitFor(() => Shown(window, "label") is { } made && made.Contains("Label", StringComparison.Ordinal),
+            () => $"the stop's locals to show the label made; they show {Rows(window)}", limit);
         Ui.Run(window, AppActions.StepOver);
         Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames is [{ Source.Path: { } path, Line: int line }, ..]
                 && PathNames.Same(path, xaml) && line != hello + 1,
@@ -325,8 +369,6 @@ internal static class MauiApp
         Assert.True(System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, $" in {SaidWhile.Pattern}$", string.Empty) == DeviceTestsRan,
             $"The debugged tests {where} were not each told: {window.BottomPanel.Tests.Status}\n{DebugConsole(window)}");
         Ui.WaitFor(() => !window.Debugger.IsDebugging, $"the debug session {where} to end with the run", TimeSpan.FromMinutes(1));
-
-        static string? Shown(MainWindow window, string name) => window.BottomPanel.Debug.Tree.Rows.FirstOrDefault(r => r.Depth == 0 && r.Name == name)?.Value;
 
         static string DebugConsole(MainWindow window) => window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
     }

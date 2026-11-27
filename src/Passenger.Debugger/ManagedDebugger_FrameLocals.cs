@@ -1,5 +1,8 @@
 using System.Collections.Immutable;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
 using System.Runtime.InteropServices;
+using Passenger.Debugger.ExpressionEvaluator.Cil;
 using Passenger.Debugger.Interop;
 using Passenger.Debugger.Interop.Extensions;
 
@@ -93,13 +96,137 @@ public partial class ManagedDebugger
                 homes.Add(new RunningLocals.Home((int)slot, start, end, kind, register, home.TryGetOffset(out int offset) is Cor.S_OK ? offset : 0));
             }
         }
-        return new RunningLocals(native, ip, module.MetadataReader.LocalTypeSignatures(frame.Function.Token, version), homes);
+        return new RunningLocals(native, ip, module.MetadataReader.LocalTypeSignatures(frame.Function.Token, version), homes, Instantiating(frame, module));
+    }
+
+    /// <summary>A local's signature as the frame's instantiation types it: each type parameter it names written as the frame's
+    /// type argument for it, as the frame's module writes that type (<see cref="SignatureIn"/>), the arguments read once.</summary>
+    private Func<byte[], byte[]> Instantiating(ICorDebugILFrame frame, ModuleInfo module)
+    {
+        (ICorDebugType[] OfClass, ICorDebugType[] OfMethod)? arguments = null;
+        return type => InstantiatedSignature.Of(type, (method, number) =>
+        {
+            arguments ??= CilInterpreter.SplitFrameTypeParameters(this, frame);
+            ICorDebugType[] given = method ? arguments.Value.OfMethod : arguments.Value.OfClass;
+            if (number >= given.Length)
+            {
+                throw new InvalidOperationException("The runtime does not say the frame's type arguments, which the local's type names");
+            }
+            return SignatureIn(given[number], module)
+                ?? throw new InvalidOperationException($"The local's type argument {GetCorDebugTypeFriendlyName(given[number])} has no name in the frame's module");
+        });
+    }
+
+    /// <summary>A type as a signature in a module writes it, its classes by the module's names for them (<see
+    /// cref="TypeIn"/>); a reference type the module has no name for as object, its value's own type the object's to say. Null
+    /// for a value type the module has no name for.</summary>
+    private byte[]? SignatureIn(ICorDebugType type, ModuleInfo module)
+    {
+        CorElementType kind = type.Type;
+        byte[] reference = [(byte)CorElementType.OBJECT];
+        switch (kind)
+        {
+            case CorElementType.CLASS or CorElementType.VALUETYPE:
+            {
+                bool isClass = kind is CorElementType.CLASS;
+                if (TypeIn(type.Class, module) is not { } named)
+                {
+                    return isClass ? reference : null;
+                }
+                ICorDebugType[] arguments = type.TypeParameters;
+                BlobBuilder written = new();
+                if (arguments.Length > 0)
+                {
+                    written.WriteByte((byte)CorElementType.GENERICINST);
+                }
+                written.WriteByte((byte)kind);
+                written.WriteCompressedInteger(CodedIndex.TypeDefOrRefOrSpec(named));
+                if (arguments.Length > 0)
+                {
+                    written.WriteCompressedInteger(arguments.Length);
+                    foreach (ICorDebugType argument in arguments)
+                    {
+                        if (SignatureIn(argument, module) is not { } inner)
+                        {
+                            return isClass ? reference : null;
+                        }
+                        written.WriteBytes(inner);
+                    }
+                }
+                return written.ToArray();
+            }
+            case CorElementType.SZARRAY or CorElementType.ARRAY:
+            {
+                if (SignatureIn(type.FirstTypeParameter, module) is not { } element)
+                {
+                    return reference;
+                }
+                BlobBuilder written = new();
+                written.WriteByte((byte)kind);
+                written.WriteBytes(element);
+                if (kind is CorElementType.ARRAY)
+                {
+                    // Its rank, then no sizes and no lower bounds.
+                    written.WriteCompressedInteger(type.Rank);
+                    written.WriteCompressedInteger(0);
+                    written.WriteCompressedInteger(0);
+                }
+                return written.ToArray();
+            }
+            case CorElementType.PTR or CorElementType.BYREF:
+                return SignatureIn(type.FirstTypeParameter, module) is { } pointed ? [(byte)kind, .. pointed] : null;
+            case CorElementType.FNPTR:
+                return null;
+            default:
+                return [(byte)kind];
+        }
+    }
+
+    /// <summary>The name a module has for a class: its definition where the class is the module's own, else the module's
+    /// reference to a type of the same full name, which the runtime resolves; null where it has neither.</summary>
+    private EntityHandle? TypeIn(ICorDebugClass of, ModuleInfo module)
+    {
+        if (FindModule(of.Module) is not { } home)
+        {
+            return null;
+        }
+        TypeDefinitionHandle definition = (TypeDefinitionHandle)MetadataTokens.Handle(of.Token);
+        if (ReferenceEquals(home, module))
+        {
+            return definition;
+        }
+        MetadataReader ours = module.MetadataReader.PeMetadataReader;
+        MetadataReader theirs = home.MetadataReader.PeMetadataReader;
+        foreach (TypeReferenceHandle reference in ours.TypeReferences)
+        {
+            if (Names(reference, definition))
+            {
+                return reference;
+            }
+        }
+        return null;
+
+        bool Names(TypeReferenceHandle reference, TypeDefinitionHandle type)
+        {
+            TypeReference written = ours.GetTypeReference(reference);
+            TypeDefinition defined = theirs.GetTypeDefinition(type);
+            if (!ours.StringComparer.Equals(written.Name, theirs.GetString(defined.Name)))
+            {
+                return false;
+            }
+            TypeDefinitionHandle outer = defined.GetDeclaringType();
+            return outer.IsNil
+                ? written.ResolutionScope.Kind is not HandleKind.TypeReference && ours.StringComparer.Equals(written.Namespace, theirs.GetString(defined.Namespace))
+                : written.ResolutionScope.Kind is HandleKind.TypeReference && Names((TypeReferenceHandle)written.ResolutionScope, outer);
+        }
     }
 
     /// <summary>The locals of a frame at native offset <paramref name="ip"/> of the code it runs: each read from its home there,
     /// as that code's variable information gives it, typed as the frame's version declares it (<paramref name="types"/>,
-    /// as its signature writes each), the way the runtime reads a local but for the code it takes the frame to run.</summary>
-    private sealed class RunningLocals(ICorDebugNativeFrame frame, uint ip, ImmutableArray<byte[]> types, IReadOnlyList<RunningLocals.Home> homes)
+    /// as its signature writes each, <paramref name="instantiated"/> with the frame's type arguments), the way the runtime
+    /// reads a local but for the code it takes the frame to run.</summary>
+    private sealed class RunningLocals(ICorDebugNativeFrame frame, uint ip, ImmutableArray<byte[]> types, IReadOnlyList<RunningLocals.Home> homes,
+        Func<byte[], byte[]> instantiated)
     {
         /// <summary>Where a local lives from one native offset to before another: a register, or memory at an offset from one.</summary>
         public sealed record Home(int Slot, uint Start, uint End, VariableLocationType Kind, CorDebugRegister Register, int Offset);
@@ -113,7 +240,7 @@ public partial class ManagedDebugger
                 throw new ArgumentOutOfRangeException(nameof(slot), slot, "The code this frame runs has no local in that slot");
             }
             Home home = HomeOf(slot);
-            byte[] type = types[slot];
+            byte[] type = instantiated(types[slot]);
             ICorDebugValue value;
             fixed (byte* signature = type)
             {

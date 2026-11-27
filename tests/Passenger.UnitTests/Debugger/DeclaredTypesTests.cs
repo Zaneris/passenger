@@ -9,7 +9,8 @@ namespace Passenger.UnitTests.Debugger;
 /// <summary>The types variables are declared as, read from this assembly's own metadata as the debugger reads a program's: a
 /// class by its definition's name whatever its type arguments, an array by its elements', object as itself, and none for a
 /// type a value of it could not derive below (a type parameter, a primitive), so a member row's expression casts only where
-/// the declared type does not reach the member.</summary>
+/// the declared type does not reach the member; and a local's own bytes of its method's signature, its type parameters
+/// written as a frame's arguments (<see cref="InstantiatedSignature"/>).</summary>
 public class DeclaredTypesTests
 {
     private const string Here = "Passenger.UnitTests.Debugger.DeclaredTypesTests";
@@ -57,6 +58,31 @@ public class DeclaredTypesTests
             Assert.Equal(0x12, written[locals.IndexOf(new DeclaredType(Here + ".Base"))][0]);
             Assert.Equal(0x1C, written[locals.IndexOf(DeclaredType.Object)][0]);
             Assert.Equal(0x1D, written[locals.IndexOf(new DeclaredType(null, new DeclaredType(Here + ".Base")))][0]);
+        }),
+        ("a local's type naming the class's and the method's type parameters is written with each one's argument in its place", () =>
+        {
+            using ModuleMetadataReader reader = Reader();
+            int token = typeof(Holder<int>).GetMethod(nameof(Holder<int>.Parameters))!.MetadataToken;
+            ImmutableArray<byte[]> written = reader.LocalTypeSignatures(token, version: 1);
+            // A class's parameter as a string, a method's as an int, each in place of its two bytes.
+            byte[] Given(byte[] type) => InstantiatedSignature.Of(type, (method, number) => number == 0 ? [method ? (byte)0x08 : (byte)0x0E] : throw new InvalidOperationException($"{number} asked"));
+            Cases.Each<(string Local, Func<byte[], bool> Is, byte Given)>(
+            [
+                ("T held", type => type is [0x13, 0x00], 0x0E),
+                ("List<TItem> items", type => type is [0x15, 0x12, .., 0x01, 0x1E, 0x00], 0x08),
+                ("Gen<T>[] made", type => type is [0x1D, 0x15, 0x12, .., 0x01, 0x13, 0x00], 0x0E),
+            ], row =>
+            {
+                byte[][] found = [.. written.Where(row.Is)];
+                Assert.True(found.Length > 0, $"No local's signature is {row.Local}'s: {string.Join(", ", written.Select(Convert.ToHexString))}");
+                foreach (byte[] type in found)
+                {
+                    byte[] expected = [.. type[..^2], row.Given];
+                    Assert.True(Given(type).SequenceEqual(expected), $"{row.Local} was written {Convert.ToHexString(Given(type))}, not {Convert.ToHexString(expected)}");
+                }
+            });
+            int plain = typeof(Holder<int>).GetMethod(nameof(Holder<int>.Locals))!.MetadataToken;
+            Assert.All(reader.LocalTypeSignatures(plain, version: 1), type => Assert.Same(type, InstantiatedSignature.Of(type, (_, _) => throw new InvalidOperationException("A type naming no parameter asked for one"))));
         }));
 
     /// <summary>A field of <see cref="Holder{T}"/> as the debugger decodes it.</summary>
@@ -104,6 +130,15 @@ public class DeclaredTypesTests
             Base[] three = [one];
             // Each read twice, so an optimized build keeps every one in its slot.
             return $"{one}{one.GetHashCode()}{two}{two.GetHashCode()}{three.Length}{three[0]}";
+        }
+
+        public static string Parameters<TItem>(T kept, TItem item)
+        {
+            T held = kept;
+            List<TItem> items = new() { item };
+            Gen<T>[] made = [];
+            // Each read twice, so an optimized build keeps every one in its slot.
+            return $"{held}{held?.GetHashCode()}{items.Count}{items[0]}{made.Length}{made.Rank}";
         }
     }
 }
