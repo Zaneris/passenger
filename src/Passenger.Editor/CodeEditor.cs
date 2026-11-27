@@ -702,6 +702,7 @@ public sealed partial class CodeEditor : Control
     {
         vertical.Measure(availableSize);
         horizontal.Measure(availableSize);
+        markdownBlockLayer?.Measure(availableSize);
         double width = double.IsInfinity(availableSize.Width) ? 600 : availableSize.Width;
         double height = double.IsInfinity(availableSize.Height) ? 400 : availableSize.Height;
         return new Size(width, height);
@@ -715,6 +716,7 @@ public sealed partial class CodeEditor : Control
         vertical.Arrange(bar);
         stripe.Arrange(bar);
         horizontal.Arrange(new Rect(GutterWidth, finalSize.Height - barHeight, Math.Max(0, finalSize.Width - GutterWidth - barWidth), barHeight));
+        markdownBlockLayer?.Arrange(new Rect(finalSize));
         UpdateScrollBars();
         if (pendingEnd && finalSize.Height > 0)
         {

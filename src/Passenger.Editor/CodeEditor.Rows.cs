@@ -186,6 +186,7 @@ public sealed partial class CodeEditor
             widest = Math.Max(widest, shown[i].Indent + lineViews[i].Width + HintsWidth(GapsOn(shown[i])));
         }
 
+        PlaceMarkdownBlocks(text, first, last, size);
         PlaceRows(shown, lineViews, rowsShownAt, stale, now);
         PlaceAbove(text, aboveShown, stale, now);
         rowsLayer.Place(new Rect(0, -scroll.Y, size.Width, size.Height));
@@ -294,6 +295,10 @@ public sealed partial class CodeEditor
         RowsDrawn++;
         slot.Drawn = frameNumber;
         slot.Forget();
+        if (MarkdownBlockShows(span.Line))
+        {
+            return;
+        }
         double lineHeight = metrics.LineHeight;
         double gutter = frameGutter;
         DrawGutterRow(context, slot.Row, span.Line, span.Row == 0);
@@ -470,6 +475,11 @@ public sealed partial class CodeEditor
         int line = span.Line;
         key.Add(line);
         key.Add(span.Row);
+        if (MarkdownBlockShows(line))
+        {
+            key.Add(true);
+            return key.Value;
+        }
         key.Add(span.Length);
         key.Add(span.IsLast);
         key.Add(span.Indent);

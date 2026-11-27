@@ -2,6 +2,8 @@ using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
@@ -181,14 +183,14 @@ internal static partial class Markdown
 
     /// <summary>A table's cells in a grid, each column as wide as its widest cell up to the most a cell is drawn, its words
     /// wrapping past that, the table scrolled across where the page is narrower than it.</summary>
-    private static Control TableOf(Table table, MarkdownPage page)
+    internal static Control TableOf(Table table, MarkdownPage page, Action<int, int>? edit = null, double rowHeight = 0)
     {
         int columns = table.Aligns.Count;
         Grid grid = new() { ColumnDefinitions = new ColumnDefinitions(string.Join(',', Enumerable.Repeat("Auto", columns))) };
         IReadOnlyList<IReadOnlyList<string>> rows = [table.Header, .. table.Rows];
         for (int row = 0; row < rows.Count; row++)
         {
-            grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            grid.RowDefinitions.Add(new RowDefinition(edit is null ? GridLength.Auto : new GridLength(rowHeight)));
             for (int column = 0; column < columns; column++)
             {
                 MarkdownText words = MarkdownText.Of(Inlines(column < rows[row].Count ? rows[row][column] : ""), page, row == 0 ? StyleClasses.MdCellHead : StyleClasses.MdCellText);
@@ -209,6 +211,28 @@ internal static partial class Markdown
                     [Grid.ColumnProperty] = column,
                 };
                 cell.Classes.Set(StyleClasses.Head, row == 0);
+                if (edit is not null)
+                {
+                    int sourceRow = row;
+                    int sourceColumn = column;
+                    words.TextWrapping = TextWrapping.NoWrap;
+                    words.LineHeight = double.NaN;
+                    words.MaxWidth = double.PositiveInfinity;
+                    words.VerticalAlignment = VerticalAlignment.Center;
+                    cell.Padding = new Thickness(Gaps.Normal, Gaps.Hair);
+                    if (row != 0)
+                    {
+                        cell.Background = Brushes.Transparent;
+                    }
+                    cell.AddHandler(InputElement.PointerPressedEvent, (_, e) =>
+                    {
+                        if (e.GetCurrentPoint(cell).Properties.IsLeftButtonPressed)
+                        {
+                            e.Handled = true;
+                            edit(sourceRow, sourceColumn);
+                        }
+                    }, RoutingStrategies.Tunnel);
+                }
                 grid.Children.Add(cell);
             }
         }

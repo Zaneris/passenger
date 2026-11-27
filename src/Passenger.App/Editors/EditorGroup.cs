@@ -314,6 +314,7 @@ public sealed class EditorGroup : DockPanel
 
     /// <summary>The group's own preview of its Markdown file, made as it first shows one.</summary>
     private MarkdownPreview? markdown;
+    private MarkdownTableEditing? markdownTableEditing;
 
     /// <summary>Whether the Markdown file's preview stands alone in its editor's place.</summary>
     private bool previewAlone;
@@ -352,6 +353,11 @@ public sealed class EditorGroup : DockPanel
             : (Markdown?.IsKeyboardFocusWithin == true || Side is WinForms.FormDesignPane { IsKeyboardFocusWithin: true })
                 && (layout.View == PaneView.Editor || inline);
         Editor.PresentsMarkdown = inline;
+        if (inline)
+        {
+            markdownTableEditing ??= new MarkdownTableEditing(Editor);
+        }
+        markdownTableEditing?.Show(inline ? document?.Text : null);
         Database.SqlConsole? console = document is not null && Database.SqlConsole.Speaks(document.Language) ? area.ConsoleOf?.Invoke(document) : null;
         body.SetPresentation(isMarkdown || isForm ? layout.Stacked : console is not null ? true : null, previewOnly);
         if (isMarkdown && layout.View is PaneView.Split or PaneView.Preview)

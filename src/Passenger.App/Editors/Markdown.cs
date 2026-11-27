@@ -542,45 +542,46 @@ internal static partial class Markdown
 
     /// <summary>A table row's cells: split at each pipe neither escaped nor in a code span, the row's outer pipes taken off,
     /// each cell trimmed.</summary>
-    private static List<string> Cells(string row)
+    private static List<string> Cells(string row) => [.. CellRanges(row).Select(cell => row[cell.Start..cell.End])];
+
+    /// <summary>The corresponding spans in the source row, for putting the editor's selection in a rendered cell.</summary>
+    internal static List<TextRange> CellRanges(string row)
     {
-        string text = row.Trim();
-        if (text.StartsWith('|'))
+        TextRange text = TextRange.Trimmed(row, new TextRange(0, row.Length));
+        int start = text.Start;
+        int end = text.End;
+        if (start < end && row[start] == '|')
         {
-            text = text[1..];
+            start++;
         }
-        if (text.EndsWith('|') && !text.EndsWith("\\|", StringComparison.Ordinal))
+        if (start < end && row[end - 1] == '|' && (end - start == 1 || row[end - 2] != '\\'))
         {
-            text = text[..^1];
+            end--;
         }
-        List<string> cells = [];
-        StringBuilder cell = new();
+        List<TextRange> cells = [];
         int code = 0;
-        for (int at = 0; at < text.Length; at++)
+        for (int at = start; at < end; at++)
         {
-            char c = text[at];
-            if (c == '\\' && at + 1 < text.Length)
+            char c = row[at];
+            if (c == '\\' && at + 1 < end)
             {
-                cell.Append(c).Append(text[++at]);
+                at++;
                 continue;
             }
             if (c == '`')
             {
-                int run = Run(text, at, '`');
+                int run = Run(row, at, '`');
                 code = code == 0 ? run : code == run ? 0 : code;
-                cell.Append('`', run);
                 at += run - 1;
                 continue;
             }
             if (c == '|' && code == 0)
             {
-                cells.Add(cell.ToString().Trim());
-                cell.Clear();
-                continue;
+                cells.Add(TextRange.Trimmed(row, TextRange.FromBounds(start, at)));
+                start = at + 1;
             }
-            cell.Append(c);
         }
-        cells.Add(cell.ToString().Trim());
+        cells.Add(TextRange.Trimmed(row, TextRange.FromBounds(start, end)));
         return cells;
     }
 

@@ -128,6 +128,9 @@ public sealed class MarkdownPreviewTests
         OpenWindows.CloseAll();
         Flow.Step(nameof(Inline_editing_formats_the_same_buffer_and_saves_only_the_edits),
             Inline_editing_formats_the_same_buffer_and_saves_only_the_edits);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(An_inline_table_shows_a_grid_until_its_source_is_being_edited),
+            An_inline_table_shows_a_grid_until_its_source_is_being_edited);
     }
 
     /// <summary>A README's headings nest by level in Structure and lead to their lines, and a typing pause in a long
@@ -388,6 +391,46 @@ public sealed class MarkdownPreviewTests
         Ui.Run(window, AppActions.Save);
         Ui.WaitFor(() => File.ReadAllText(readme) == edited + "### New heading",
             "the new heading saved as Markdown");
+        window.Close();
+    }
+
+    private static void An_inline_table_shows_a_grid_until_its_source_is_being_edited()
+    {
+        string folder = TestFolders.Create("markdown-inline-table-");
+        string file = Path.Combine(folder, "README.md");
+        const string source = "# Inventory\n\n| **Item** | Quantity |\n| :--- | ---: |\n| Pen \\| Pencil | 12 |\n\nAnother table.\n\n| Status |\n| --- |\n| Ready |\n";
+        File.WriteAllText(file, source);
+        MainWindow window = Ui.OpenFolder(folder, width: 1100, height: 720, languageServer: false);
+        Assert.Null(window.OpenFile(file));
+        CodeEditor editor = window.EditorArea.ActiveGroup.Editor;
+        Assert.True(window.Perform(AppActions.MarkdownInlineEditing));
+        MarkdownText? Cell(string words) => editor.GetVisualDescendants().OfType<MarkdownText>().FirstOrDefault(text => text.Shown == words);
+        Ui.WaitFor(() => Cell("12") is not null && Cell("Ready") is not null, "both inactive Markdown tables drawn in the editor");
+        Assert.Equal(TextAlignment.Right, Cell("12")!.TextAlignment);
+
+        Ui.Click(Assert.IsType<Border>(Cell("12")!.GetVisualParent()));
+        Assert.Null(Cell("12"));
+        Assert.NotNull(Cell("Ready"));
+        int emphasis = source.IndexOf("**Item**", StringComparison.Ordinal);
+        Assert.True(editor.PointOf(emphasis + 2).X > editor.PointOf(emphasis).X, "The open table shows its Markdown emphasis marks");
+        int quantity = source.IndexOf("12", StringComparison.Ordinal);
+        Assert.Equal(new Selection(quantity, quantity + 2), editor.Selections.Primary);
+        window.KeyTextInput("24");
+        Ui.Settle();
+        Assert.Null(Cell("24"));
+        Assert.NotNull(Cell("Ready"));
+        string edited = source.Replace("12", "24", StringComparison.Ordinal);
+        Assert.Equal(edited, editor.Document.Snapshot.ToString());
+        Assert.Equal(source, File.ReadAllText(file));
+
+        Ui.Press(window, "DOWN");
+        Ui.WaitFor(() => Cell("24") is not null, "the edited table drawn again after the caret left it");
+        Ui.Press(window, "UP");
+        Assert.Null(Cell("24"));
+        Assert.NotNull(Cell("Ready"));
+        Ui.Press(window, "DOWN");
+        Ui.Run(window, AppActions.Save);
+        Ui.WaitFor(() => Cell("24") is not null && File.ReadAllText(file) == edited, "the original Markdown table syntax saved with the new value");
         window.Close();
     }
 

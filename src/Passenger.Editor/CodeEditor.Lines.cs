@@ -153,7 +153,9 @@ public sealed partial class CodeEditor
                 RowSpan span = lines[k].Span;
                 LineRun[] runs = Runs(spans, ref index, span.Start, span.End);
                 string content = text.GetText(span.Start, span.Length);
-                MarkdownLine markdown = presentsMarkdown ? ProjectMarkdown(content, runs, span.Start == text.GetLineStart(span.Line)) : default;
+                MarkdownLine markdown = presentsMarkdown && !IsMarkdownBlockSource(text, span.Line)
+                    ? ProjectMarkdown(content, runs, span.Start == text.GetLineStart(span.Line))
+                    : default;
                 FormatKey key = new(content, runs, markdown);
                 lines[k].Text = views.Formatted(key) ?? views.Add(key, markdown.Text is null ? Format(content, runs, null) : FormatMarkdown(markdown, runs));
                 lines[k].Runs = runs;
