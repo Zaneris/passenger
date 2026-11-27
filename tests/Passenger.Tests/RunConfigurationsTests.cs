@@ -71,7 +71,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         Flow.StepApart("write to launch profile puts the changes into launchSettings json the rest as it was and Undo takes it back", () => new RunConfigurationsTests(folders), t => t.Write_to_launch_profile_puts_the_changes_into_launchSettings_json_the_rest_as_it_was_and_Undo_takes_it_back());
         Flow.StepApart("save as launch profile adds a configuration made here to launchSettings json which dotnet run runs and Undo takes it back", () => new RunConfigurationsTests(folders), t => t.Save_as_launch_profile_adds_a_configuration_made_here_to_launchSettings_json_which_dotnet_run_runs_and_Undo_takes_it_back());
         Flow.StepApart("save as launch profile in a project with no launchSettings json makes it as dotnet new does and Undo takes it away", () => new RunConfigurationsTests(folders), t => t.Save_as_launch_profile_in_a_project_with_no_launchSettings_json_makes_it_as_dotnet_new_does_and_Undo_takes_it_away());
-        Flow.StepApart("a file based programs run json changed on disk reaches its run configuration", () => new RunConfigurationsTests(folders), t => t.A_file_based_programs_run_json_changed_on_disk_reaches_its_run_configuration());
+        Flow.StepApart("a file based programs run json changed on disk reaches its run configuration, made again without a launch file read on the windows thread", () => new RunConfigurationsTests(folders), t => t.A_file_based_programs_run_json_changed_on_disk_reaches_its_run_configuration());
         Flow.StepApart("reset to launch profile puts a changed configuration back as its profile makes it for good", () => new RunConfigurationsTests(folders), t => t.Reset_to_launch_profile_puts_a_changed_configuration_back_as_its_profile_makes_it_for_good());
         Flow.StepApart("an older runConfigurations json opens as it was and keeps the persons copies as they stand", () => new RunConfigurationsTests(folders), t => t.An_older_runConfigurations_json_opens_as_it_was_and_keeps_the_persons_copies_as_they_stand());
         Flow.StepApart("use external console chosen in the dialog runs the program in the terminal and is kept with the configuration", () => new RunConfigurationsTests(folders), t => t.Use_external_console_chosen_in_the_dialog_runs_the_program_in_the_terminal_and_is_kept_with_the_configuration());
@@ -808,6 +808,13 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         {
             Ui.WaitFor(() => window.Configurations is [{ Name: "app: Greet" } greet] && greet.Environment.GetValueOrDefault("GREETING") == "Hi",
                 "app.cs to be a program with its app.run.json profile's configuration", TimeSpan.FromMinutes(1));
+            // As a batch of evaluations makes the list again: from the launch files as kept, each looked at again apart.
+            int asked = FileLook.AskedOnThisThread;
+            window.Session.Configurations.ConfigureAsKept(window.Session.Projects);
+            Assert.True(FileLook.AskedOnThisThread == asked, $"Making the run configurations again asked the disk of {FileLook.AskedOnThisThread - asked} launch "
+                + "files on the window's thread: every batch of evaluations reads every project's launch settings there");
+            Ui.Settle();
+            Assert.True(window.Configurations is [{ Name: "app: Greet" }], $"The configurations made again from the launch files as kept are {string.Join(", ", window.Configurations.Select(c => c.Name))}");
             List<ExplorerNode> rows = [.. window.ExplorerView.Tree.Rows];
             Write("app.run.json", Greet("Hello"));
             Ui.WaitFor(() => window.Configurations is [{ Name: "app: Greet" } greet] && greet.Environment.GetValueOrDefault("GREETING") == "Hello",

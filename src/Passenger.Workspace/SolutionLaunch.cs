@@ -61,36 +61,49 @@ public static class SolutionLaunch
         path.EndsWith(Extension, StringComparison.OrdinalIgnoreCase) || path.EndsWith(UserExtension, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The profiles of a solution, the team's file's then the person's, each with the problem of a file that does not
-    /// read; none for files not there. On any thread.</summary>
+    /// read; none for files not there. Each file kept by its stamp (<see cref="FileMemo{T}"/>), so a read again reads only a
+    /// file changed since. On any thread.</summary>
     public static (IReadOnlyList<SolutionLaunchProfile> Profiles, IReadOnlyList<string> Problems) Read(string solution)
     {
         List<SolutionLaunchProfile> profiles = [];
         List<string> problems = [];
-        string folder = Path.GetDirectoryName(solution)!;
         foreach ((string file, bool shared) in (ReadOnlySpan<(string, bool)>)[(SharedFile(solution), true), (UserFile(solution), false)])
         {
-            string text;
-            try
+            if (Files.Read(file, shared ? ReadShared : ReadPersons) is not { } read)
             {
-                if (!File.Exists(file))
-                {
-                    continue;
-                }
-                text = FileText.Load(file)?.Text ?? throw new IOException("it is not a text file");
-            }
-            catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
-            {
-                problems.Add($"{Path.GetFileName(file)} could not be read: {unread.Message}");
                 continue;
             }
-            (IReadOnlyList<SolutionLaunchProfile> read, string? problem) = Parse(text, folder, shared);
-            profiles.AddRange(read);
-            if (problem is not null)
+            profiles.AddRange(read.Profiles);
+            if (read.Problem is not null)
             {
-                problems.Add($"{Path.GetFileName(file)} {problem}");
+                problems.Add($"{Path.GetFileName(file)} {read.Problem}");
             }
         }
         return (profiles, problems);
+    }
+
+    /// <summary>A file's profiles and why it does not read, as kept by its stamp.</summary>
+    private sealed record FileRead(IReadOnlyList<SolutionLaunchProfile> Profiles, string? Problem);
+
+    private static readonly FileMemo<FileRead> Files = new();
+
+    private static FileRead ReadShared(string file) => ReadFile(file, shared: true);
+
+    private static FileRead ReadPersons(string file) => ReadFile(file, shared: false);
+
+    private static FileRead ReadFile(string file, bool shared)
+    {
+        string text;
+        try
+        {
+            text = FileText.Load(file)?.Text ?? throw new IOException("it is not a text file");
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            return new FileRead([], $"could not be read: {unread.Message}");
+        }
+        (IReadOnlyList<SolutionLaunchProfile> read, string? problem) = Parse(text, Path.GetDirectoryName(file)!, shared);
+        return new FileRead(read, problem);
     }
 
     /// <summary>The profiles a file's text holds, its projects' paths read from the solution's <paramref name="folder"/>; with

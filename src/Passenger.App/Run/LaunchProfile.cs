@@ -137,8 +137,16 @@ public sealed record LaunchProfile(
 
     public bool Is(string command) => string.Equals(Command, command, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>The project's profiles of every kind in the file's order; none when it has no settings or they do not read.</summary>
-    public static IReadOnlyList<LaunchProfile> Read(ProjectModel project) => Read(SettingsPath(project));
+    /// <summary>The project's profiles of every kind in the file's order; none when it has no settings or they do not read. A
+    /// file-based program's are its folder's launch settings where there are any, else its .run.json's (<see cref="FileSettingsPath"/>).</summary>
+    public static IReadOnlyList<LaunchProfile> Read(ProjectModel project) => project.IsProgram
+        ? Files.Read(SettingsIn(project.Folder), ReadFile) ?? Files.Read(Path.ChangeExtension(project.Path, ".run.json"), ReadFile) ?? []
+        : Read(SettingsIn(project.Folder));
+
+    /// <summary>Each settings file's profiles, kept by its stamp, so a list made again reads only the files changed since.</summary>
+    private static readonly FileMemo<IReadOnlyList<LaunchProfile>> Files = new();
+
+    private static IReadOnlyList<LaunchProfile> ReadFile(string path) => Parse(File.ReadAllText(path));
 
     /// <summary>Whether a project runs: an executable project, or one building no program (a library) whose launch profiles
     /// start a program of their own (<see cref="ExecutableCommand"/>, a host that loads it).</summary>
@@ -151,17 +159,7 @@ public sealed record LaunchProfile(
 
     /// <summary>A settings file's profiles of every kind in its order (a launchSettings.json, a .run.json); none when it is
     /// not there or does not read.</summary>
-    public static IReadOnlyList<LaunchProfile> Read(string path)
-    {
-        try
-        {
-            return File.Exists(path) ? Parse(File.ReadAllText(path)) : [];
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            return [];
-        }
-    }
+    public static IReadOnlyList<LaunchProfile> Read(string path) => Files.Read(path, ReadFile) ?? [];
 
     /// <summary>The profiles a settings file's text gives, in its order; none when it does not read or is no JSON object. A
     /// value that is not a string is taken as its JSON, as <c>dotnet run</c> takes it.</summary>

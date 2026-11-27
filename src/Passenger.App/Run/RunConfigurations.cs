@@ -94,21 +94,50 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
     /// it is there.</summary>
     public void Configure(IReadOnlyList<ProjectModel> projects) => Configure(projects, picked ? preferred : null);
 
+    /// <summary>Makes the list again as a batch of evaluations lands: from the launch files as last read, asking the disk
+    /// nothing on the window's thread (<see cref="FileLook"/>), each file then asked again apart and the list made again
+    /// where any changed since.</summary>
+    public void ConfigureAsKept(IReadOnlyList<ProjectModel> projects) => Configure(projects, picked ? preferred : null, asKept: true);
+
     /// <summary>Why a configuration cannot launch here among the projects loaded now, as the toolbar's menu greys it; null
     /// when it can.</summary>
     public string? WhyNotHere(RunConfiguration configuration) => configuration.WhyNotHere(projects);
 
-    private void Configure(IReadOnlyList<ProjectModel> projects, string? keep)
+    /// <summary>Makes the list from the launch files as they stand, each parsed again only once its stamp moved; <paramref
+    /// name="asKept"/>, as last read instead (<see cref="ConfigureAsKept"/>).</summary>
+    private void Configure(IReadOnlyList<ProjectModel> projects, string? keep, bool asKept = false)
     {
         this.projects = projects;
-        IReadOnlyList<RunConfiguration> generated = [.. RunConfiguration.Generate(projects, workspace?.Invoke(), SingleFileAppHosts, Packages).Select(Edited)];
-        (Profiles, IReadOnlyList<string> problems) = Solution is { } solution ? Read(solution, [.. generated.Select(g => g.Name), .. own.Select(o => o.Name)]) : ([], []);
-        (FileRuns, string? fileProblem) = folder is not null ? ReadRuns(folder, [.. generated.Select(g => g.Name), .. Profiles.Select(p => p.Name), .. own.Select(o => o.Name)]) : ([], null);
-        ProfileProblems = fileProblem is null ? problems : [.. problems, fileProblem];
-        All = [.. generated, .. Profiles, .. FileRuns, .. own];
+        FileLook? look = asKept ? FileLook.Begin() : null;
+        using (look)
+        {
+            IReadOnlyList<RunConfiguration> generated = [.. RunConfiguration.Generate(projects, workspace?.Invoke(), SingleFileAppHosts, Packages).Select(Edited)];
+            (Profiles, IReadOnlyList<string> problems) = Solution is { } solution ? Read(solution, [.. generated.Select(g => g.Name), .. own.Select(o => o.Name)]) : ([], []);
+            (FileRuns, string? fileProblem) = folder is not null ? ReadRuns(folder, [.. generated.Select(g => g.Name), .. Profiles.Select(p => p.Name), .. own.Select(o => o.Name)]) : ([], null);
+            ProfileProblems = fileProblem is null ? problems : [.. problems, fileProblem];
+            All = [.. generated, .. Profiles, .. FileRuns, .. own];
+        }
         // With none picked, an AppHost's before its services', which it runs as the person means.
         Chosen = All.FirstOrDefault(c => string.Equals(c.Name, keep, StringComparison.OrdinalIgnoreCase)) ?? All.FirstOrDefault(c => c.Aspire) ?? All.FirstOrDefault();
+        made++;
         Changed?.Invoke(this, EventArgs.Empty);
+        if (look is not null)
+        {
+            IdeErrors.Observe(LookAgainAsync(look, made));
+        }
+    }
+
+    /// <summary>How many times the list was made, so a look at what an earlier one read changes nothing once a later one is made.</summary>
+    private int made;
+
+    /// <summary>The launch files a list was made from asked again off the window's thread, and the list made again where any
+    /// changed since, the one chosen kept while it is there, unless a later one has been made meanwhile.</summary>
+    private async Task LookAgainAsync(FileLook look, int asOf)
+    {
+        if (await BackgroundWork.Run(look.Again) && asOf == made)
+        {
+            Configure(projects, picked ? preferred : Chosen?.Name, asKept: true);
+        }
     }
 
     /// <summary>A solution's launch profiles as configurations, each named as its file names it unless another configuration

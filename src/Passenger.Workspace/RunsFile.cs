@@ -121,23 +121,27 @@ public static class RunsFile
     public static bool IsFile(ReadOnlySpan<char> path) => Path.GetFileName(path).Equals(FileName, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>A folder's runs as its file holds them, with why where it cannot be read; none for no file. On any thread.</summary>
-    public static (IReadOnlyList<RunsFileRun> Runs, string? Problem) Read(string folder)
+    public static (IReadOnlyList<RunsFileRun> Runs, string? Problem) Read(string folder) =>
+        Files.Read(PathIn(folder), ReadFile) is { } read ? (read.Runs, read.Problem) : ([], null);
+
+    /// <summary>The file's runs and why it does not read, kept by its stamp, so a read again reads only a file changed since.</summary>
+    private sealed record FileRead(IReadOnlyList<RunsFileRun> Runs, string? Problem);
+
+    private static readonly FileMemo<FileRead> Files = new();
+
+    private static FileRead ReadFile(string file)
     {
-        string file = PathIn(folder);
         string text;
         try
         {
-            if (!File.Exists(file))
-            {
-                return ([], null);
-            }
             text = FileText.Load(file)?.Text ?? throw new IOException("it is not a text file");
         }
         catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
         {
-            return ([], $"{FileName} could not be read: {unread.Message}");
+            return new FileRead([], $"{FileName} could not be read: {unread.Message}");
         }
-        return Parse(text, folder);
+        (IReadOnlyList<RunsFileRun> runs, string? problem) = Parse(text, Path.GetDirectoryName(file)!);
+        return new FileRead(runs, problem);
     }
 
     /// <summary>The runs a file's text holds, their paths read from the <paramref name="folder"/>; none with why for a text

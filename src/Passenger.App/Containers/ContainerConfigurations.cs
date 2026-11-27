@@ -11,10 +11,10 @@ namespace Passenger.App.Containers;
 /// and each of its launch profiles; one for each runnable project with a Dockerfile; and one for each project the .NET SDK
 /// makes a container of (<see cref="AsksForSdkContainer"/>); a project whose launch profile is a Docker or SdkContainer one
 /// has that profile's instead. A project's properties are MSBuild's evaluation of it (<see cref="ProjectModel.Property"/>),
-/// the rest the files' text, on the window's thread: the few files it reads are kept by their time.</summary>
+/// the rest the files' text, on the window's thread: the few files it reads are kept by their stamps.</summary>
 public static class ContainerConfigurations
 {
-    private static readonly Dictionary<string, (DateTime Written, string Text)> Read = new(StringComparer.Ordinal);
+    private static readonly FileMemo<string> Texts = new();
 
     public static bool IsComposeProject(string path) => WorkspaceModel.IsComposeProject(path);
 
@@ -280,33 +280,6 @@ public static class ContainerConfigurations
     /// image (<see cref="DockerFiles.Describe"/>), through the projects it references and the packages its restore took.</summary>
     public static bool IsWeb(ProjectModel project, IReadOnlyList<ProjectModel> all) => DockerFiles.Describe(project, all).Web;
 
-    /// <summary>A file's text, read again only once it was written since; null for one that is not there.</summary>
-    public static string? Text(string path)
-    {
-        try
-        {
-            DateTime written = File.GetLastWriteTimeUtc(path);
-            if (written.Year < 1700)
-            {
-                return null;
-            }
-            lock (Read)
-            {
-                if (Read.TryGetValue(path, out (DateTime Written, string Text) kept) && kept.Written == written)
-                {
-                    return kept.Text;
-                }
-            }
-            string text = File.ReadAllText(path);
-            lock (Read)
-            {
-                Read[path] = (written, text);
-            }
-            return text;
-        }
-        catch (Exception unreadable) when (unreadable is IOException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-    }
+    /// <summary>A file's text, read again only once it changed since (<see cref="FileMemo{T}"/>); null for one that is not there.</summary>
+    public static string? Text(string path) => Texts.Read(path, File.ReadAllText);
 }
