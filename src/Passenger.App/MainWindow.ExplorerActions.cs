@@ -28,7 +28,7 @@ public partial class MainWindow
     {
         Explorer.MenuFor = ExplorerMenu;
         Row(A.NewFile, "New File…", row => AskName("New File", string.Empty, name => CreateFile(NewGoesIn(row)!, name, string.Empty)), Holds);
-        Row(A.NewFolder, "New Folder…", row => AskName("New Folder", string.Empty, name => CreateFolder(NewGoesIn(row)!, name)), Holds);
+        Row(A.NewFolder, "New Folder…", row => AskName("New Folder", string.Empty, name => CreateFolderAsync(NewGoesIn(row)!, name)), Holds);
         // Class, Interface, Record, Struct and Enum share this place, chosen in its popup.
         Row(A.NewType, "Class/Interface…", row => AskType(NewGoesIn(row)!), Holds);
         AddNewItemAction();

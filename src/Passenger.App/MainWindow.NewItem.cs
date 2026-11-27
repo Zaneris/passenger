@@ -133,7 +133,8 @@ public partial class MainWindow
 
     /// <summary>What New Item made, one command Undo takes back whole: Passenger's own file written, or what dotnet new
     /// wrote taken in (its files made, its folders made whole, those in a shared project's folder written into its items
-    /// file), then followed and opened, the first in front. Null once added, else why not.</summary>
+    /// file, the item of a folder its project kept empty taken out), then followed and opened, the first in front. Null once
+    /// added, else why not.</summary>
     private async Task<string?> AddItemAsync(MadeItem made)
     {
         List<string> files = [.. made.Files];
@@ -166,7 +167,7 @@ public partial class MainWindow
             {
                 CameOrWent([.. made.Files, .. made.Folders]);
             }
-            if (IntoShared(files, recording) is { } unshared)
+            if ((IntoShared(files, recording) ?? KeepFolders([], [.. files, .. made.Folders.Select(PathNames.Canonical)], [], recording)) is { } unshared)
             {
                 status.Text = unshared;
             }

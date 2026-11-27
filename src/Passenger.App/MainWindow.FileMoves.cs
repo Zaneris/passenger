@@ -198,6 +198,8 @@ public partial class MainWindow
         string? unfollowed = !copy ? FollowMoved(moved, recording) ?? await FollowGodotAsync(moved, recording, kept)
             : put.Count > 0 && InShared(put) ? IntoShared([.. put.SelectMany(FilesAt)], recording)
             : null;
+        // A folder a project kept empty lets its item go once something came into it, as does one moved out of its project.
+        unfollowed ??= put.Count > 0 ? KeepFolders([], put, [.. moved.Select(m => m.From)], recording) : null;
         if (unfollowed is not null)
         {
             refused.Add(unfollowed);

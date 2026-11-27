@@ -8,7 +8,7 @@ using Passenger.Text;
 namespace Passenger.Workspace;
 
 /// <summary>Add Reference and Remove on a project reference, a package reference added (or its central version set), its
-/// paths following a file moved, and a property set (Add &gt; Docker Support's container properties), made to the project file's text through
+/// paths following a file moved, an empty folder kept by a Folder item, and a property set (Add &gt; Docker Support's container properties), made to the project file's text through
 /// <see cref="XmlText"/>: a reference goes beside the project's others, or in an item group of its own before
 /// &lt;/Project&gt;, written relative with backslashes; taking it out takes the group it leaves empty, so the file is as
 /// it was. What a comment holds is never read or changed, and the rest of the file keeps its bytes, its byte order mark,
@@ -348,6 +348,71 @@ public static class ProjectEdits
         }
         return null;
     });
+
+    /// <summary>The project (at its path now) keeping its empty folders as <see cref="WithFoldersKept"/> writes them. Whether
+    /// it changed.</summary>
+    public static bool KeepFolders(string project, IReadOnlyCollection<string> keep, Func<string, bool> letGo)
+    {
+        ProjectText file = new(project);
+        if (WithFoldersKept(file.Text, project, keep, letGo) is not { } kept)
+        {
+            return false;
+        }
+        file.Write(kept);
+        return true;
+    }
+
+    /// <summary>A project file's text keeping empty folders as Visual Studio keeps them, each by an item of its own
+    /// (<c>&lt;Folder Include="Models\Old\" /&gt;</c>, relative with backslashes, escaped as MSBuild reads it): those
+    /// <paramref name="letGo"/> says no longer need theirs taken out (a group left empty with them), then one written for
+    /// each folder of <paramref name="keep"/> none keeps yet, after the project's last such item, else in an item group of
+    /// its own before &lt;/Project&gt;. Null where nothing changed or the text is no project.</summary>
+    public static string? WithFoldersKept(string text, string project, IReadOnlyCollection<string> keep, Func<string, bool> letGo)
+    {
+        if (Read(text) is not { Root.Name.LocalName: "Project" } xml)
+        {
+            return null;
+        }
+        string folder = Path.GetDirectoryName(project)!;
+        bool changed = false;
+        while (FolderItems(xml, folder).FirstOrDefault(f => letGo(f.Folder)).Element is { } gone)
+        {
+            SharedProjects.RemoveItem(xml, gone);
+            changed = true;
+        }
+        foreach (string kept in keep)
+        {
+            List<(XElement Element, string Folder)> items = FolderItems(xml, folder);
+            if (items.Any(i => PathNames.Same(i.Folder, kept)))
+            {
+                continue;
+            }
+            string include = ItemPaths.Named(Path.GetRelativePath(folder, kept).Replace('/', '\\')) + "\\";
+            string element = $"<{MSBuildNames.Folder} Include=\"{XmlEntities.Encode(include, '"')}\" />";
+            if (items.LastOrDefault().Element is { } last)
+            {
+                xml.After(last, element);
+            }
+            else
+            {
+                InGroupOfItsOwn(xml, element);
+            }
+            changed = true;
+        }
+        return changed ? xml.Text : null;
+    }
+
+    /// <summary>The folders a project's text keeps by an item of their own: a Folder item every build sees naming one
+    /// folder and saying nothing more of it, each with the folder made whole from the project's.</summary>
+    public static IReadOnlyList<string> FoldersKept(string text, string project) =>
+        Read(text) is { Root.Name.LocalName: "Project" } xml ? [.. FolderItems(xml, Path.GetDirectoryName(project)!).Select(f => f.Folder)] : [];
+
+    private static List<(XElement Element, string Folder)> FolderItems(XmlText xml, string folder) =>
+        [.. xml.Root.Elements().Where(g => ProjectItems.IsItemGroup(g) && !ProjectItems.Conditioned(g)).SelectMany(g => g.Elements())
+            .Where(e => e.Name.LocalName == MSBuildNames.Folder && !e.HasElements && e.Attributes().All(a => a.Name.LocalName == "Include"))
+            .Select(e => (Element: e, Named: ProjectItems.PathOf(folder, (string?)e.Attribute("Include") ?? string.Empty)))
+            .Where(f => f.Named is { Glob: false, Path.Length: > 0 })
+            .Select(f => (f.Element, f.Named!.Path))];
 
     /// <summary>The project's imports of shared projects' items files, in the file's order, each with the file it names.</summary>
     private static List<(XElement Element, string Path)> SharedImports(XmlText xml, string project)
