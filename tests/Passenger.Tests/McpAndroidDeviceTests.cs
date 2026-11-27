@@ -15,7 +15,8 @@ namespace Passenger.Tests;
 /// ended there. An agent that goes as stop answers a debugged app's leaves nothing of Passenger's on the emulator. An
 /// Avalonia app's Android head shows its view root as its one window to app_windows asked as run answers; the MAUI
 /// template's Android head lists its main page's label and button to app_tree, its picture to app_screenshot, and
-/// app_click taps the button. Every adb call names the emulator, ANDROID_SERIAL's where several run. Skips, saying why,
+/// app_click taps the button. An agent's Passenger killed as its app runs with Hot Reload leaves no adb forward or reverse
+/// of its own, nor the app running, its watchdog ending them. Every adb call names the emulator, ANDROID_SERIAL's where several run. Skips, saying why,
 /// without the Android workload, its SDK and Java, or an emulator (and the relays, for the debugged app; Avalonia's
 /// Android packages, or MAUI's workload, for their apps). Alone, as AndroidDeviceTests is, the emulator one for both.</summary>
 [Collection(Alone.Name)]
@@ -254,12 +255,23 @@ public sealed class McpAndroidDeviceTests : McpRig
         Assert.True(left.Length == 0, $"Passenger went leaving on the emulator {left}: the next start finds them, and the app runs on marked as debugged");
     }
 
+    /// <summary>An agent's Passenger that goes, its agent still there, while its app runs on the emulator: asked to by the
+    /// system, it takes out all it put there first; killed, its watchdog takes out the forwards and reverses it made.</summary>
+    [Fact]
+    public async Task An_agents_passenger_the_system_ends_or_kills_while_its_app_runs_on_the_emulator_leaves_none_of_its_own_rules_there()
+    {
+        await Flow.StepApartAsync("an agent's passenger the system ends while its debugged app's end on the emulator is held leaves nothing there", () => new McpAndroidDeviceTests(),
+            t => t.An_agents_passenger_the_system_ends_while_its_debugged_apps_end_on_the_emulator_is_held_leaves_nothing_there());
+        await Flow.StepApartAsync("an agent's passenger killed while its app runs with hot reload on the emulator leaves no rule of its own there, nor the app running",
+            () => new McpAndroidDeviceTests(),
+            t => t.An_agents_passenger_killed_while_its_app_runs_with_hot_reload_on_the_emulator_leaves_no_rule_of_its_own_there_nor_the_app_running());
+    }
+
     /// <summary>An agent's Passenger the system asks to end (SIGTERM) while its debugged app's end on the emulator is held past
     /// the moment such an end otherwise gives its process waits for it, as one whose input closes does: it goes only once
     /// the app has ended there and nothing of the debugging is left, where it went leaving the relay, its port and the app
     /// marked as debugged.</summary>
-    [Fact]
-    public async Task An_agents_passenger_the_system_ends_while_its_debugged_apps_end_on_the_emulator_is_held_leaves_nothing_there()
+    private async Task An_agents_passenger_the_system_ends_while_its_debugged_apps_end_on_the_emulator_is_held_leaves_nothing_there()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows has no SIGTERM for the system to send");
         string folder = PathNames.Canonical(TestFolders.Create("mcp-android-"));
@@ -295,19 +307,94 @@ public sealed class McpAndroidDeviceTests : McpRig
         Assert.True(running.Length == 0, $"Passenger went as the system asked with its debugged app still running on the emulator as {running}");
     }
 
+    /// <summary>An agent's Passenger killed while its app runs with Hot Reload on the emulator, a port forwarded to its relay and
+    /// a socket reversed to its update handlers' hook, leaves neither there, nor the app running or marked as debugged: its
+    /// watchdog ends them once it has gone, where the rules stayed until adb's server or the device restarted and the app ran
+    /// on. Windows has no watchdog: there a start takes out what one no longer running left (<see cref="AndroidDeviceTests"/>).</summary>
+    private async Task An_agents_passenger_killed_while_its_app_runs_with_hot_reload_on_the_emulator_leaves_no_rule_of_its_own_there_nor_the_app_running()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows has no watchdog to take out what a killed Passenger made");
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-android-"));
+        DeleteAtEnd(folder);
+        string source = Path.Combine(Debuggees.Root, "tests", "AndroidApp");
+        foreach (string file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories).Where(f => !Path.GetRelativePath(source, f).StartsWith("bin", StringComparison.Ordinal)
+            && !Path.GetRelativePath(source, f).StartsWith("obj", StringComparison.Ordinal)))
+        {
+            string copy = Path.Combine(folder, Path.GetRelativePath(source, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
+            File.Copy(file, copy);
+        }
+        string project = Path.Combine(folder, "AndroidApp.csproj");
+        (DeviceTarget target, AndroidTools tools) = await TargetAsync(project);
+        if (!((string[])["android-arm64", "android-x64"]).Any(runtime => File.Exists(CarriedFiles.Relay(runtime, AndroidApp.RelayFile))))
+        {
+            Assert.Skip("This build carries no Android debug relay, which `just debug-relay android` makes before a build carries it");
+        }
+        System.Diagnostics.Process passenger = StartPassenger(["--mcp", folder], languageServer: false);
+        string serial = string.Empty;
+        try
+        {
+            McpClient client = await Connect(passenger, ["--mcp", folder]);
+            await ChooseAsync(client, "AndroidApp", target);
+            JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = "AndroidApp", ["hotReload"] = true, ["waitSeconds"] = 3600 });
+            Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"run said the app ended on the emulator: {ran}");
+            serial = await SerialAsync(target, project);
+            string[] made = [.. await RulesAsync(tools, serial), .. await RunningAsync(tools, serial)];
+            Assert.True(made.Any(r => r.Contains("passenger-debug-", StringComparison.Ordinal)) && made.Any(r => r.Contains("passenger-handlers-", StringComparison.Ordinal))
+                && made.Contains(Running), $"Run with Hot Reload left nothing on the emulator to see ended: {string.Join("; ", made)}");
+
+            OwnProcess.Of(passenger).Kill(alone: true);
+            Assert.True(await Waiting.Within(passenger.WaitForExitAsync(Cancel), TimeSpan.FromMinutes(1), Cancel), "Passenger did not end once killed");
+            string[] left = made;
+            await Waiting.UntilAsync(async () => (left = [.. (await RulesAsync(tools, serial)).Where(made.Contains), .. await RunningAsync(tools, serial)]).Length == 0,
+                TimeSpan.FromSeconds(30).Scaled(), Cancel, TimeSpan.FromMilliseconds(500));
+            Assert.True(left.Length == 0, $"A killed Passenger left on the emulator {string.Join("; ", left)}, which stay until adb's server or the device restarts, or another start");
+        }
+        finally
+        {
+            if (serial.Length > 0)
+            {
+                // The relay a kill leaves in the app, and what the watchdog was to end where it did not.
+                AndroidApp app = new(serial, tools.Adb, Package, string.Empty, string.Empty);
+                foreach (IReadOnlyList<string> command in (IReadOnlyList<string>[])[app.ForceStop(), app.TakeOutLeft(), app.ClearDebugApp()])
+                {
+                    await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, command), cancel: Cancel);
+                }
+            }
+        }
+    }
+
+    private const string Running = "the app running";
+
+    private const string Marked = "the app marked as debugged";
+
+    /// <summary>Whether the test app runs on the emulator of <paramref name="serial"/> and is its debugged app.</summary>
+    private static async Task<string[]> RunningAsync(AndroidTools tools, string serial)
+    {
+        string pid = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "pidof", Package]))).Output.Trim();
+        string debugged = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "dumpsys activity processes | grep mDebugApp="]))).Output;
+        return [.. pid.Length > 0 ? [Running] : (string[])[], .. debugged.Contains($"mDebugApp={Package}/", StringComparison.Ordinal) ? [Marked] : (string[])[]];
+    }
+
+    /// <summary>The forwards and reverses on the emulator of <paramref name="serial"/> to a socket a Passenger named, as adb lists them.</summary>
+    private static async Task<string[]> RulesAsync(AndroidTools tools, string serial)
+    {
+        string forwards = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "forward", "--list"]))).Output;
+        string reverses = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "reverse", "--list"]))).Output;
+        return [.. forwards.Split('\n').Where(l => l.StartsWith(serial + " ", StringComparison.Ordinal) && l.Contains("localabstract:passenger-", StringComparison.Ordinal))
+                .Select(l => l.Trim()),
+            .. reverses.Split('\n').Where(l => l.Contains("localabstract:passenger-", StringComparison.Ordinal)).Select(l => l.Trim())];
+    }
+
     /// <summary>What a Debug start leaves on the emulator of <paramref name="serial"/>: a port forwarded to a relay's or an
     /// inspector's socket, a socket reversed to Passenger, the relay in the app's folder, the app marked as debugged; empty
     /// once its end took them away.</summary>
     private static async Task<string> LeftAsync(AndroidTools tools, string serial)
     {
-        string forwards = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "forward", "--list"]))).Output;
-        string reverses = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "reverse", "--list"]))).Output;
         string relay = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb,
             ["-s", serial, "shell", $"run-as {Package} ls files/.__override__/arm64-v8a files/.__override__/x86_64 2>/dev/null"]))).Output;
         string debugged = (await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Adb, ["-s", serial, "shell", "dumpsys activity processes | grep mDebugApp="]))).Output;
-        return string.Join("; ", [.. forwards.Split('\n').Where(l => l.StartsWith(serial + " ", StringComparison.Ordinal) && l.Contains("localabstract:passenger-", StringComparison.Ordinal))
-                .Select(l => l.Trim()),
-            .. reverses.Split('\n').Where(l => l.Contains("localabstract:passenger-", StringComparison.Ordinal)).Select(l => l.Trim()),
+        return string.Join("; ", [.. await RulesAsync(tools, serial),
             .. relay.Contains(AndroidApp.RelayFile, StringComparison.Ordinal) ? ["the relay in the app"] : (string[])[],
             .. debugged.Contains($"mDebugApp={Package}/", StringComparison.Ordinal) ? [$"{Package} marked as debugged"] : (string[])[]]);
     }

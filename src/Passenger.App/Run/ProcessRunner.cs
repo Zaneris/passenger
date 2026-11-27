@@ -11,7 +11,7 @@ namespace Passenger.App.Run;
 /// reads what the person types into the console and is told it may write its colours there; a build's input is closed,
 /// so a step that reads ends rather than waits. Stopping kills the whole process tree, and a runner of builds the MSBuild
 /// nodes its builds left with what they run (<see cref="Stop"/>); let go of, a runner of builds asks its nodes to end
-/// first (<see cref="EndNodesAsync"/>).
+/// first (<see cref="EndNodesAsync"/>), as the watchdog does where Passenger ends unasked.
 /// The console is the window's; a runner lets go of it when disposed, its folder left, and another folder's runner writes
 /// there.</summary>
 public sealed class ProcessRunner : IDisposable, IRunningProgram
@@ -105,16 +105,15 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
             ProcessStartInfo? shutdown = null;
             if (nodesOf is { } nodes && (left.Length > 0 || OperatingSystem.IsWindows()))
             {
-                shutdown = ChildProcesses.DotnetCommand(nodes.Host, ["build-server", "shutdown", "--msbuild"], nodes.Folder);
-                shutdown.Environment[MSBuildNames.NodeHandshakeSalt] = nodes.Salt;
+                shutdown = NodesShutdown(nodes);
             }
             nodesOf = null;
-            nodesEnded = EndingNodesAsync(shutdown, left);
+            nodesEnded = EndingNodesAsync(shutdown, left, WatchdogKey);
         }
         return nodesEnded;
     }
 
-    private static async Task EndingNodesAsync(ProcessStartInfo? shutdown, int[] left)
+    private static async Task EndingNodesAsync(ProcessStartInfo? shutdown, int[] left, string watchdogKey)
     {
         if (shutdown is not null)
         {
@@ -131,11 +130,26 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         {
             ChildProcesses.KillLeft(build);
         }
+        // Only now: a Passenger killed meanwhile has its watchdog ask them again.
+        ChildProcesses.BeforeIdeEnd(watchdogKey, null);
     }
+
+    /// <summary>MSBuild's shutdown of the nodes left under the salt of a runner of builds' last command, as its dotnet and
+    /// folder take that MSBuild.</summary>
+    private static ProcessStartInfo NodesShutdown((string Host, string Folder, string Salt) nodes)
+    {
+        ProcessStartInfo shutdown = ChildProcesses.DotnetCommand(nodes.Host, ["build-server", "shutdown", "--msbuild"], nodes.Folder);
+        shutdown.Environment[MSBuildNames.NodeHandshakeSalt] = nodes.Salt;
+        return shutdown;
+    }
+
+    /// <summary>The key under which a runner of builds has the watchdog ask its nodes to end (<see cref="ChildProcesses.BeforeIdeEnd"/>).</summary>
+    private string WatchdogKey => $"{nameof(ProcessRunner)}{ownNodes}";
 
     /// <summary>Kills what is left in the groups of the commands a runner of builds started: the nodes they left for the
     /// next and whatever those run, a step of the build Stop ends among them, which the node would otherwise end by
-    /// itself through a kill of the step's tree that passes over a child forked as it kills.</summary>
+    /// itself through a kill of the step's tree that passes over a child forked as it kills. Nothing is left for the
+    /// watchdog to ask.</summary>
     private void EndBuilds()
     {
         foreach (int build in builds)
@@ -143,6 +157,10 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
             ChildProcesses.KillLeft(build);
         }
         builds.Clear();
+        if (ownNodes is not null)
+        {
+            ChildProcesses.BeforeIdeEnd(WatchdogKey, null);
+        }
     }
 
     /// <summary>A whole line of output, for whoever reads it (the build's error list, dotnet watch's words of a save); UI
@@ -223,12 +241,14 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
     }
 
     /// <summary>For a runner of builds, what asks the nodes a dotnet command of its leaves to end: that command's dotnet and
-    /// folder, and the salt it runs with (<see cref="Prepare"/>).</summary>
+    /// folder, and the salt it runs with (<see cref="Prepare"/>), told the watchdog too, which asks them where Passenger
+    /// ends unasked (killed, or as the system ends it).</summary>
     private void KeepNodesEnd(ProcessStartInfo command)
     {
         if (ownNodes is not null && command.Environment.TryGetValue(MSBuildNames.NodeHandshakeSalt, out string? salt) && salt is not null)
         {
             nodesOf = (command.FileName, command.WorkingDirectory, salt + ownNodes);
+            ChildProcesses.BeforeIdeEnd(WatchdogKey, NodesShutdown(nodesOf.Value));
         }
     }
 

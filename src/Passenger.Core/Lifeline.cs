@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 namespace Passenger.Core;
@@ -32,7 +33,8 @@ internal static partial class Lifeline
     private static readonly TimeSpan KillAgainFor = TimeSpan.FromSeconds(5);
 
     /// <summary>The watchdog: "+N" puts group N on its list and "-N" strikes it off; "@P F" lists file F of process P's
-    /// runtime and "-@P" strikes off all of P's; "!C" makes C the command it runs last. At the end of its input every group
+    /// runtime and "-@P" strikes off all of P's; "^F" makes F the commands it runs first, "!C" the command it runs last. At
+    /// the end of its input F runs, its commands beside each other, each one still running 10 s on killed; then every group
     /// still listed is killed, then each file listed is removed once its process has gone (for 2 s at most), then C runs.
     /// It writes nothing, and a terminal's hangup or interrupt is not its to obey.</summary>
     private const string Watch = """
@@ -42,6 +44,7 @@ internal static partial class Lifeline
         '
         groups=' '
         files=''
+        first=''
         last=''
         while IFS= read -r line; do
           case $line in
@@ -49,9 +52,22 @@ internal static partial class Lifeline
             -@*) kept=''; set -f; IFS=$nl; for entry in $files; do case $entry in "${line#-@} "*) ;; *) kept="$kept$entry$nl" ;; esac; done; unset IFS; set +f; files=$kept ;;
             -*) case $groups in *" ${line#-} "*) groups="${groups%% ${line#-} *} ${groups#* ${line#-} }" ;; esac ;;
             @*) files="$files${line#@}$nl" ;;
+            \^*) first="${line#?}" ;;
             !*) last="${line#!}" ;;
           esac
         done
+        if [ -n "$first" ]; then
+          firsts=''
+          eval "$first"
+          tries=0
+          while [ "$tries" -lt 100 ]; do
+            alive=''
+            for pid in $firsts; do kill -0 "$pid" && alive="$alive $pid"; done
+            [ -z "$alive" ] && break
+            sleep 0.1; tries=$((tries + 1))
+          done
+          for pid in $alive; do kill -s KILL "$pid"; done
+        fi
         for group in $groups; do kill -s KILL -- "-$group"; done
         set -f; IFS=$nl
         tries=0
@@ -86,6 +102,7 @@ internal static partial class Lifeline
     private static readonly Dictionary<int, SafeFileHandle> Families = [];
     private static Process? watchdog;
     private static readonly SortedDictionary<string, string> AtEnds = new(StringComparer.Ordinal);
+    private static readonly SortedDictionary<string, string> BeforeEnds = new(StringComparer.Ordinal);
     private static bool unavailable;
     private static Timer? pruning;
 
@@ -197,6 +214,72 @@ internal static partial class Lifeline
     /// <summary>The commands run last, each in a subshell, so one's exit or failure leaves the next to run. Under the gate.</summary>
     private static string Last() => string.Join("; ", AtEnds.Values.Select(command => $"( {command} )"));
 
+    /// <summary>Has the watchdog run a one-line shell command, <paramref name="key"/>'s in place of the one it gave before
+    /// (none: nothing of its), once Passenger's process has ended and before its children's groups are killed: for what a
+    /// child left that takes what it made away only at an end it was asked for (an MSBuild node its temporary folder). Each
+    /// key's command runs in a subshell of its own beside the others, killed where it still runs 10 s on, with the program
+    /// it hands its place to by exec. Nothing on Windows, which has no watchdog.</summary>
+    public static void BeforeEnd(string key, string? command)
+    {
+        if (OperatingSystem.IsWindows() || command is not null && command.Contains('\n', StringComparison.Ordinal))
+        {
+            return;
+        }
+        lock (Gate)
+        {
+            if (command is { Length: > 0 })
+            {
+                if (BeforeEnds.TryGetValue(key, out string? told) && told == command)
+                {
+                    return;
+                }
+                BeforeEnds[key] = command;
+            }
+            else if (!BeforeEnds.Remove(key))
+            {
+                return;
+            }
+            Tell($"^{First()}");
+        }
+    }
+
+    /// <summary>A start as the watchdog's shell runs it (<see cref="BeforeEnd"/>): in its folder, given each variable it sets
+    /// otherwise than this process has it and none it takes away (through the shell, never a command line, as one may be a
+    /// secret), its program in the subshell's place; a variable whose name no shell takes is passed over. Null for a start
+    /// of arguments in one string, which no shell's words hold as given.</summary>
+    internal static string? LineOf(ProcessStartInfo start)
+    {
+        if (start.Arguments.Length > 0)
+        {
+            return null;
+        }
+        System.Collections.IDictionary own = Environment.GetEnvironmentVariables();
+        string[] given = [.. start.Environment.Where(v => v.Value is not null && Named(v.Key) && own[v.Key] as string != v.Value).Select(v => Quoted($"{v.Key}={v.Value}"))];
+        string[] taken = [.. own.Keys.OfType<string>().Where(name => Named(name) && !start.Environment.ContainsKey(name))];
+        StringBuilder line = new();
+        if (start.WorkingDirectory.Length > 0)
+        {
+            line.Append($"cd -- {Quoted(start.WorkingDirectory)} && ");
+        }
+        if (given.Length > 0)
+        {
+            line.Append($"export {string.Join(' ', given)} && ");
+        }
+        if (taken.Length > 0)
+        {
+            line.Append($"unset {string.Join(' ', taken)} && ");
+        }
+        return line.Append($"exec {string.Join(' ', start.ArgumentList.Prepend(start.FileName).Select(Quoted))}").ToString();
+
+        static bool Named(string name) => name.Length > 0 && !char.IsAsciiDigit(name[0]) && name.All(c => char.IsAsciiLetterOrDigit(c) || c == '_');
+    }
+
+    /// <summary>A word as the watchdog's shell takes it whole, nothing in it expanded.</summary>
+    internal static string Quoted(string word) => $"'{word.Replace("'", "'\\''", StringComparison.Ordinal)}'";
+
+    /// <summary>The commands run first, each in a subshell in the background, its process kept to wait for. Under the gate.</summary>
+    private static string First() => string.Join("; ", BeforeEnds.Values.Select(command => $"( {command} ) & firsts=\"$firsts $!\""));
+
     /// <summary>On Windows, puts a child that has just started in a job of its own, which every process it starts from then
     /// on joins, so <see cref="KillGroup"/> ends them all, those whose own parent has gone among them (a restore's MSBuild
     /// nodes once the restore has ended), which no walk of its tree finds. Elsewhere its process group does that already.</summary>
@@ -299,14 +382,22 @@ internal static partial class Lifeline
     }
 
     /// <summary>As Passenger's process ends of itself: every group still listed killed here, as the watchdog would kill it a
-    /// moment later, so what their programs' runtimes leave is taken, and those removals waited for. Synchronous, as the
-    /// process's end waits for no task.</summary>
+    /// moment later, so what their programs' runtimes leave is taken, and those removals waited for; unless the watchdog
+    /// has a command to run before its kill (<see cref="BeforeEnd"/>), which a kill here would forestall: then it is told
+    /// every runtime file now and left the rest. Synchronous, as the process's end waits for no task.</summary>
     private static void EndGroupsAtExit()
     {
         int[] listed;
+        bool asking;
         lock (Gate)
         {
             listed = [.. Groups];
+            asking = BeforeEnds.Count > 0;
+        }
+        if (asking)
+        {
+            FollowRuntimeFiles();
+            return;
         }
         foreach (int group in listed)
         {
@@ -537,6 +628,10 @@ internal static partial class Lifeline
                 {
                     started.StandardInput.Write(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"@{files.Id} {path}\n"));
                 }
+            }
+            if (BeforeEnds.Count > 0)
+            {
+                started.StandardInput.Write($"^{First()}\n");
             }
             if (AtEnds.Count > 0)
             {

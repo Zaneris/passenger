@@ -14,4 +14,13 @@ public sealed partial record AndroidApp : IDeviceApp
 
     /// <summary>The build's environment linked back (<see cref="DeviceLaunches.PutBackEnvironmentAsync"/>).</summary>
     public Task PutBackEnvironmentAsync(DevicePut put) => DeviceLaunches.PutBackEnvironmentAsync(this, put);
+
+    /// <summary>adb ending the app it started and clearing the mark as the debugged app a relayed put set, while it is still
+    /// this app's (<see cref="ClearDebugApp"/>), in one call of the device's shell.</summary>
+    public string? LeftEnd(DevicePut? put, bool started)
+    {
+        string[] steps = [.. started ? [$"am force-stop {Package}"] : (string[])[], .. put?.Relayed == true ? [ClearingDebugApp] : (string[])[]];
+        return steps.Length == 0 ? null
+            : string.Join(' ', On("shell", string.Join("; ", steps)).Prepend(Adb).Select(word => global::Passenger.Terminal.ShellWords.Quoted(word, global::Passenger.Core.ShellKind.Posix)));
+    }
 }

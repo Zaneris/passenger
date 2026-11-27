@@ -104,8 +104,10 @@ public sealed partial record AndroidApp(string Serial, string Adb, string Packag
     public IReadOnlyList<string> SetDebugApp() => On("shell", "am", "set-debug-app", Package);
 
     /// <summary>The device's debugged app cleared, only while it is still this one: another start may have marked its own since.</summary>
-    public IReadOnlyList<string> ClearDebugApp() =>
-        On("shell", $"[ \"$(dumpsys activity processes | grep -c 'mDebugApp={Package}/')\" != 0 ] && am clear-debug-app; true");
+    public IReadOnlyList<string> ClearDebugApp() => On("shell", ClearingDebugApp);
+
+    /// <summary>What the device's shell runs to clear its debugged app while it is still this one (<see cref="ClearDebugApp"/>).</summary>
+    private string ClearingDebugApp => $"[ \"$(dumpsys activity processes | grep -c 'mDebugApp={Package}/')\" != 0 ] && am clear-debug-app; true";
 
     /// <summary>The app's fast-deployment folder on the device for an ABI, whose environment its runtime's host reads.</summary>
     public string OverrideFolder(string abi) => $"/data/user/0/{Package}/files/.__override__/{abi}";

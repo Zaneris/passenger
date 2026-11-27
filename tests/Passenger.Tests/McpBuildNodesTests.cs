@@ -13,8 +13,8 @@ using Passenger.Editor;
 namespace Passenger.Tests;
 
 /// <summary>The MSBuild nodes an agent's own Passenger's builds leave end with it, as it ends or is killed, and nothing its
-/// project host writes, nor the nodes it asks to end, stays in its temporary folder. MSBuild keeps a node only while the machine's count of nodes allows,
-/// which other builds beside it would take, so the class runs alone.</summary>
+/// project host writes, nor the nodes it or its watchdog asks to end, stays in its temporary folder. MSBuild keeps a node
+/// only while the machine's count of nodes allows, which other builds beside it would take, so the class runs alone.</summary>
 [Collection(Alone.Name)]
 [AboutMacOS]
 public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
@@ -38,10 +38,10 @@ public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>The MSBuild nodes a build of Passenger's leaves for its next build, which no other build takes up, end with
-    /// Passenger, whether it ends as its agent leaves or is killed, and as it ends, as MSBuild's shutdown asks, leaving no
-    /// folder of theirs in its temporary folder. The two projects build at once, each with a step of a few seconds, so
+    /// Passenger, as it ends or is killed, as MSBuild's shutdown asks (killed, its watchdog asks; Windows has none), leaving
+    /// no folder of theirs in its temporary folder. The two projects build at once, each with a step of a few seconds, so
     /// MSBuild runs one in a node the test sees; restored first, with no language server, whose restore would leave a node
-    /// no process's child. MSBuild sometimes ends a node it meant to keep (<see cref="NodeBuilds"/>): the test builds until one stays.</summary>
+    /// no process's child. MSBuild sometimes ends a node it meant to keep (<see cref="NodeBuilds"/>): it builds until one stays.</summary>
     private async Task The_msbuild_nodes_a_build_leaves_for_the_next_end_with_passenger(bool killed)
     {
         Nice.SkipUnlessMSBuildKeepsNodes();
@@ -92,11 +92,11 @@ public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
             }
             string[] running = [.. left.Where(id => !Processes.Gone(id)).Select(Processes.Describe)];
             Assert.True(running.Length == 0, $"After Passenger {(killed ? "was killed" : "ended")}, {running.Length} of the {left.Count} processes its build left went on:\n{string.Join('\n', running)}");
-            if (!killed)
+            if (!killed || !OperatingSystem.IsWindows())
             {
                 string[] folders = [.. Directory.EnumerateDirectories(given, "MSBuildTemp*").Select(Path.GetFileName).OfType<string>()];
-                Assert.True(folders.Length == 0, $"After Passenger ended, the MSBuild nodes its build left had left {string.Join(", ", folders)} in the temporary "
-                    + "folder it was given, as a node killed rather than asked to end leaves its folder for good");
+                Assert.True(folders.Length == 0, $"After Passenger {(killed ? "was killed" : "ended")}, the MSBuild nodes its build left had left {string.Join(", ", folders)} "
+                    + "in the temporary folder it was given, as a node killed rather than asked to end leaves its folder for good");
             }
         }
         finally

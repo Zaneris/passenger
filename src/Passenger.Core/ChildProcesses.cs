@@ -526,6 +526,18 @@ public static class ChildProcesses
     /// runs it, and the next start ends what is left.</summary>
     public static void AtIdeEnd(string key, string? command) => Lifeline.AtEnd(key, command);
 
+    /// <summary>A program run on macOS and Linux once the IDE's process has ended, however it ended, before its children's
+    /// groups are killed, as <paramref name="start"/> would start it: for what a child left that ends well only when asked
+    /// (an MSBuild node, which a kill leaves its temporary folder). It takes the place of the one <paramref name="key"/> gave
+    /// before, null of none, and is killed where it still runs 10 s on; on Windows nothing runs it.</summary>
+    public static void BeforeIdeEnd(string key, ProcessStartInfo? start)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Lifeline.BeforeEnd(key, start is null ? null : Lifeline.LineOf(start));
+        }
+    }
+
     /// <summary>What ends the command line of the watchdog of the IDE's process <paramref name="ide"/> (<see cref="Lifeline"/>)
     /// on macOS and Linux, which is in no process tree of the IDE's.</summary>
     public static string WatchdogOf(int ide) => Lifeline.NameOf(ide);

@@ -8,7 +8,8 @@ namespace Passenger.App.Run.Devices;
 /// then hands it to its run's or session's end (<see cref="EndsWith"/>) or takes it out itself (<see cref="TakeOutAsync"/>).
 /// Each step on the device runs off the window's thread, so the folder's end takes it all out (<see cref="EndNowAsync"/>)
 /// once the window's loop has stopped too. Stop waits for a start until it has settled (<see cref="Settled"/>), and a
-/// Passenger the system asks to end until every start is out (<see cref="EveryOut"/>).</summary>
+/// Passenger the system asks to end until every start is out (<see cref="EveryOut"/>); where Passenger ends before, its
+/// watchdog ends what each start left (<see cref="IDeviceApp.LeftEnd"/>).</summary>
 public sealed class DeviceStart : IDisposable
 {
     /// <summary>The starts in this process not yet out again, whichever window holds each.</summary>
@@ -37,6 +38,10 @@ public sealed class DeviceStart : IDisposable
 
     /// <summary>Whether the app was started, what the start put in handed to its run's or session's end.</summary>
     private bool handed;
+
+    /// <summary>What the watchdog runs for this start where Passenger ends before it is out (<see cref="IDeviceApp.LeftEnd"/>),
+    /// as last told; null for nothing. Under <see cref="StartsGate"/>.</summary>
+    private string? left;
 
     public DeviceStart(string name, IDeviceApp app)
     {
@@ -96,6 +101,7 @@ public sealed class DeviceStart : IDisposable
         try
         {
             (DevicePut? Put, RelaySession? Relay, string? Problem) put = await under;
+            TellWatchdog();
             if (put.Put is not null && DeviceLaunches.HeldStarts is { } held)
             {
                 await held();
@@ -118,6 +124,7 @@ public sealed class DeviceStart : IDisposable
         {
             handed = true;
         }
+        TellWatchdog();
         settled.TrySetResult();
         IdeErrors.Observe(ending);
         IdeErrors.Observe(OutOnceEndedAsync(ending));
@@ -230,5 +237,27 @@ public sealed class DeviceStart : IDisposable
     {
         settled.TrySetResult();
         taken.TrySetResult();
+        TellWatchdog();
+    }
+
+    /// <summary>The watchdog told what it ends where Passenger ends now: what each start not yet out left on its device, as
+    /// this one's changed (its app started, something put in, or all out). Any thread.</summary>
+    private void TellWatchdog()
+    {
+        string? now;
+        lock (gate)
+        {
+            now = Out.IsCompleted ? null : App.LeftEnd(Placed(), handed);
+        }
+        lock (StartsGate)
+        {
+            if (now == left)
+            {
+                return;
+            }
+            left = now;
+            string[] ends = [.. Starts.Where(s => !s.Out.IsCompleted).Select(s => s.left).OfType<string>().Distinct(StringComparer.Ordinal)];
+            ChildProcesses.AtIdeEnd(nameof(DeviceStart), ends.Length == 0 ? null : string.Join("; ", ends));
+        }
     }
 }

@@ -87,4 +87,7 @@ public sealed partial record MacCatalystApp : IDeviceApp
 
     /// <summary>Nothing to put back: the app's environment is its start's alone.</summary>
     public Task PutBackEnvironmentAsync(DevicePut put) => Task.CompletedTask;
+
+    /// <summary>Nothing: the app's process, adopted once found, ends with Passenger's children.</summary>
+    public string? LeftEnd(DevicePut? put, bool started) => null;
 }

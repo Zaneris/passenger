@@ -69,8 +69,8 @@ public sealed class AndroidDeviceTests
             A_run_stopped_once_its_relay_is_in_the_app_never_starts_the_app_on_the_emulator);
         Flow.Step("Passenger ending while a debugged app's end on the emulator is held waits until nothing of it is left there",
             Passenger_ending_while_a_debugged_apps_end_on_the_emulator_is_held_waits_until_nothing_of_it_is_left_there);
-        Flow.Step("a relay a vanished end left in the app is out before its next run starts it",
-            A_relay_a_vanished_end_left_in_the_app_is_out_before_its_next_run_starts_it);
+        Flow.Step("a relay a vanished end left in the app, and the forwards and reverses a Passenger no longer running left, are out before its next run starts it",
+            A_relay_a_vanished_end_left_in_the_app_and_the_forwards_and_reverses_a_passenger_no_longer_running_left_are_out_before_its_next_run_starts_it);
         Flow.Step("a debugged app started from its launcher while its end is held loads no relay",
             A_debugged_app_started_from_its_launcher_while_its_end_is_held_loads_no_relay);
     }
@@ -496,23 +496,43 @@ public sealed class AndroidDeviceTests
 
     /// <summary>The relay and an environment naming it, left in the app by a start whose end never reached the emulator (its
     /// device gone as it ended), are out before the app's next Run starts it: the app starts at once without the relay,
-    /// where it loaded it and waited a minute for a debugger, and its environment is the build's link again.</summary>
-    private static void A_relay_a_vanished_end_left_in_the_app_is_out_before_its_next_run_starts_it()
+    /// where it loaded it and waited a minute for a debugger, and its environment is the build's link again. So are the
+    /// forwards and reverses to sockets a Passenger no longer running named (one killed, or on a system with no watchdog),
+    /// which stayed until adb's server or the device restarted; another program's and a running Passenger's stay.</summary>
+    private static void A_relay_a_vanished_end_left_in_the_app_and_the_forwards_and_reverses_a_passenger_no_longer_running_left_are_out_before_its_next_run_starts_it()
     {
         (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        string serial = string.Empty;
+        List<string[]> made = [];
         try
         {
             Choose(window, project, target);
             Ui.Launched(window, window.RunAsync(), "the build, the install and the start on the emulator", Slow);
             AndroidApp app = window.Session.RunPlan?.Device?.App as AndroidApp ?? throw new InvalidOperationException("The run on the emulator named no app there");
+            serial = app.Serial;
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the run to end once stopped");
             Ui.WaitFor(() => Pid(tools, app.Serial).Length == 0, () => $"the app to end on the emulator once stopped; it runs as {Pid(tools, app.Serial)}", TimeSpan.FromSeconds(30));
             string abi = LeaveRelay(tools, app);
             Assert.True(Left(tools, app.Serial).Contains("the relay in the app", StringComparison.Ordinal), "The relay was not left in the app as a vanished end leaves it");
+            // A Passenger of this process's id that started in 1970 is one no longer running.
+            string[] gone = [DeviceSockets.Address + DeviceSockets.Named("debug", Environment.ProcessId, 1), DeviceSockets.Address + DeviceSockets.Named("handlers", Environment.ProcessId, 1)];
+            string[] others = [DeviceSockets.Address + "another-program", DeviceSockets.Address + DeviceSockets.Named("inspector")];
+            foreach (string socket in (string[])[gone[0], .. others])
+            {
+                made.Add(["forward", "--remove", $"tcp:{Adb(tools, serial, "forward", "tcp:0", socket).Trim()}"]);
+            }
+            Adb(tools, serial, "reverse", gone[1], "tcp:9");
+            made.Add(["reverse", "--remove", gone[1]]);
+            string before = Rules(tools, serial);
+            Assert.True(gone.Concat(others).All(rule => before.Contains(rule, StringComparison.Ordinal)), $"adb did not make the rules a step needs:\n{before}");
 
             Ui.Launched(window, window.RunAsync(), "the next run's start on the emulator", Slow);
+            string rules = Rules(tools, serial);
+            Assert.False(gone.Any(rule => rules.Contains(rule, StringComparison.Ordinal)),
+                $"The next run started with the forward and reverse of a Passenger no longer running still on the emulator, which stay until adb's server or the device restarts:\n{rules}");
+            Assert.True(others.All(rule => rules.Contains(rule, StringComparison.Ordinal)), $"The next run took out another program's or a running Passenger's rule:\n{rules}");
             Ui.WaitFor(() => Output(window).Contains("Hello from Passenger's test app, 42", StringComparison.Ordinal),
                 () => $"the app to start at once, its log in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", TimeSpan.FromSeconds(40));
             string pid = Pid(tools, app.Serial);
@@ -526,7 +546,13 @@ public sealed class AndroidDeviceTests
         finally
         {
             window.Close();
+            foreach (string[] rule in made)
+            {
+                Adb(tools, serial, rule);
+            }
         }
+
+        static string Rules(AndroidTools tools, string serial) => Adb(tools, serial, "forward", "--list") + Adb(tools, serial, "reverse", "--list");
     }
 
     /// <summary>A debugged app ended on the emulator and started from its launcher while its end there is held, as where the

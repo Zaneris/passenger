@@ -333,7 +333,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         {
             return null;
         }
-        string socket = $"passenger-inspector-{Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(4)).ToLowerInvariant()}";
+        string socket = Run.Devices.DeviceSockets.Named("inspector");
         string token = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
         return new LiveApp(plan.Name, $"{Wire.Listens}{socket}", null, plan, kind == LiveAppKind.Avalonia ? overlays : [], kind,
             device: new Run.Devices.DeviceInspector(socket, token, Carried(inspector), More(kind, plan, overlays)));

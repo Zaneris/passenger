@@ -69,7 +69,7 @@ public static partial class UserTemporary
         string id = Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
         string own = Own(Path.Combine(kept, id + suffix));
         string named = Path.Combine(kept, id);
-        ChildProcesses.AtIdeEnd($"{nameof(UserTemporary)} {kept}", $"rm -rf -- {Quoted(named)} {Quoted(named)}-*");
+        ChildProcesses.AtIdeEnd($"{nameof(UserTemporary)} {kept}", $"rm -rf -- {Lifeline.Quoted(named)} {Lifeline.Quoted(named)}-*");
         return own;
     }
 
@@ -100,9 +100,6 @@ public static partial class UserTemporary
             PassengerLog.Write($"A temporary folder Passenger no longer needs stays, {folder}: {error.Message}");
         }
     }
-
-    /// <summary>A path as one word of a POSIX shell's command line.</summary>
-    private static string Quoted(string path) => $"'{path.Replace("'", "'\\''", StringComparison.Ordinal)}'";
 
     /// <summary><paramref name="folder"/> made the user's alone (mode 0700), or an <see cref="IOException"/> saying why not:
     /// a link, or one another user made first (on Linux's shared /tmp), whose mode only its owner may set. On Windows the
