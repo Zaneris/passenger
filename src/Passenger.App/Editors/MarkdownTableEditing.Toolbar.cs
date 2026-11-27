@@ -19,6 +19,7 @@ internal sealed partial class MarkdownTableEditing
     private enum ToolbarRequest { Automatic, Shown, Dismissed }
 
     private Border toolbar = null!;
+    private Border tableSection = null!;
     private Grid tableTools = null!;
     private Button editSource = null!;
     private Button insertRowAbove = null!;
@@ -50,6 +51,15 @@ internal sealed partial class MarkdownTableEditing
             TableButton("AlignCenter", "Center", "Align Column Center", spot => Align(spot, ":---:")),
             TableButton("AlignRight", "Right", "Align Column Right", spot => Align(spot, "---:")));
 
+        tableSection = new Border
+        {
+            BorderThickness = Hairlines.Above,
+            Margin = new Thickness(0, Gaps.Tight, 0, 0),
+            Padding = new Thickness(0, Gaps.Tight, 0, 0),
+            Child = tableTools,
+        };
+        tableSection.Bind(Border.BorderBrushProperty, tableSection.GetResourceObservable(TokenKeys.Separator));
+
         toolbar = new Border
         {
             Name = "MarkdownFormattingToolbar",
@@ -63,7 +73,7 @@ internal sealed partial class MarkdownTableEditing
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 Content = new StackPanel
                 {
-                    Children = { ButtonRow(bold, italic, insert, editSource), tableTools },
+                    Children = { ButtonRow(bold, italic, insert, editSource), tableSection },
                 },
             },
         };
@@ -136,7 +146,7 @@ internal sealed partial class MarkdownTableEditing
 
     private void ShowTableTools(Spot? spot)
     {
-        tableTools.IsVisible = editSource.IsVisible = spot is not null;
+        tableSection.IsVisible = editSource.IsVisible = spot is not null;
         if (spot is null)
         {
             return;
