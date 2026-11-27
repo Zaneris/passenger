@@ -98,17 +98,17 @@ internal static class MauiApp
         ShowsButtonsText(window, app, "!", "the added label whose C# expression reads the button's text", "Click me");
     }
 
-    /// <summary>The page's click handler edited while the debugged app runs, a statement added above its last, which takes a
-    /// breakpoint: a tap on the button runs the handler's new code, where the program stops, shown at the breakpoint's line
-    /// with the page's count evaluated there, and Step Over goes on to the handler's closing brace, as the new code has them;
-    /// then the breakpoint goes and the program goes on, its button showing what the new code wrote (the tap itself unanswered
-    /// past the inspector's limit while the program was stopped).</summary>
+    /// <summary>The page's click handler edited while the debugged app runs, a local and a statement added above its last,
+    /// which takes a breakpoint: a tap runs the handler's new code, where the program stops, shown at the breakpoint's line
+    /// with the added local in its Variables and evaluated there, and Step Over goes on to the handler's closing brace, as the
+    /// new code has them; then the breakpoint goes and the program goes on, its button showing what the new code wrote (the
+    /// tap itself unanswered past the inspector's limit while the program was stopped).</summary>
     public static void StopsInEditedHandler(MainWindow window, LiveApp app, string project, TimeSpan limit)
     {
         string page = Path.Combine(PathNames.Canonical(Path.GetDirectoryName(project)!), "MainPage.xaml.cs");
         window.OpenFile(page);
         HotReloadOutcome? before = window.Debugger.LastApplied;
-        Typing.Replace(window, "SemanticScreenReader.Announce(CounterBtn.Text);", "CounterBtn.Text += \" (edited)\";\nSemanticScreenReader.Announce(CounterBtn.Text);");
+        Typing.Replace(window, "SemanticScreenReader.Announce(CounterBtn.Text);", "string edited = \" (edited)\";\nCounterBtn.Text += edited;\nSemanticScreenReader.Announce(CounterBtn.Text);");
         Ui.Run(window, AppActions.ApplyHotReloadChanges);
         Ui.WaitFor(() => window.Debugger.LastApplied != before, () => $"Hot Reload to say what it made of the click handler's edit: {Ui.Said(window)}", limit);
         Assert.True(window.Debugger.LastApplied!.Result == HotReloadResult.Applied, $"The app did not take the click handler's edit: {window.Debugger.LastApplied.Said}");
@@ -121,8 +121,10 @@ internal static class MauiApp
         Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames is [{ Source.Path: { } path, Line: int line }, ..]
                 && PathNames.Same(path, page) && line == announce + 1,
             () => $"the stop in the click handler's new code at its last statement, line {announce + 1}, shown at {Top(window)}: {Ui.Said(window)}", limit);
-        Dap.EvaluateResponse counted = Ui.Await(window.Debugger.Session!.EvaluateAsync("count > 0", window.BottomPanel.Debug.Frames[0].Id, Dap.EvaluateContexts.Watch),
-            "the page's count, evaluated in the handler's new code", limit);
+        Ui.WaitFor(() => window.BottomPanel.Debug.Tree.Rows.FirstOrDefault(r => r.Depth == 0 && r.Name == "edited")?.Value == "\" (edited)\"",
+            () => $"the stop's Variables to show the local the edit added; they show {string.Join(", ", window.BottomPanel.Debug.Tree.Rows.Where(r => r.Depth == 0).Select(r => $"{r.Name} = {r.Value}"))}", limit);
+        Dap.EvaluateResponse counted = Ui.Await(window.Debugger.Session!.EvaluateAsync("count > 0 && edited.Length == 9", window.BottomPanel.Debug.Frames[0].Id, Dap.EvaluateContexts.Watch),
+            "the page's count and the added local, evaluated in the handler's new code", limit);
         Assert.Equal("true", counted.Result);
         Ui.Run(window, AppActions.StepOver);
         Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames is [{ Source.Path: { } path, Line: int line }, ..]

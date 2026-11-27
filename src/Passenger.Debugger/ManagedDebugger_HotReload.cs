@@ -416,28 +416,6 @@ public partial class ManagedDebugger
             : code;
     }
 
-    /// <summary>A frame's locals as the runtime reads them, or null with why it will not: of a frame its interpreter runs in
-    /// code an update changed, it reads them by the build's code, which <see cref="ModuleMetadataReader.VersionOf(ICorDebugFrame)"/>
-    /// says the frame does not run.</summary>
-    internal (ICorDebugValue[]? Locals, string? Why) LocalsOf(ICorDebugILFrame frame)
-    {
-        try
-        {
-            return (frame.LocalVariables, null);
-        }
-        catch (Exception error) when (Failures.OfRuntime(error))
-        {
-            return (null, FindModule(frame.Function.Module)?.MetadataReader.VersionOf(frame) is int version && frame.TryGetCode(out ICorDebugCode code) is Cor.S_OK && code.TryGetVersionNumber(out uint said) is Cor.S_OK && version != said
-                ? $"Not read: the runtime lays this frame's locals out as its method's code before Hot Reload changed it, which the frame does not run ({error.Message})"
-                : $"Not read: {error.Message}");
-        }
-    }
-
-    /// <summary>How many locals a frame has: as the runtime reads them, else as the code it runs declares them.</summary>
-    internal int LocalCountOf(ICorDebugILFrame frame) =>
-        LocalsOf(frame).Locals?.Length
-            ?? (FindModule(frame.Function.Module)?.MetadataReader is { } reader ? reader.LocalTypes(frame.Function.Token, reader.VersionOf(frame)).Length : 0);
-
     /// <summary>A module's metadata with every update applied, as the debugger's own copy of it holds it, saved whole into
     /// memory that does not move (the expression compiler reads it by its address); null when it will not save, after which
     /// expressions compile against the image's metadata.</summary>

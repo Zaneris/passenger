@@ -225,7 +225,7 @@ public partial class ManagedDebugger
             call.Machine?.TryDispose();
         }
         string label = call?.Label ?? LabelOf(point.Module.MetadataReader.DescribeCall(point.Method.Kickoff));
-        ICorDebugValue? value = point.Method.Result is int slot && frame.TryGetLocalVariable(checked((uint)slot), out ICorDebugValue? held) is Cor.S_OK ? held : null;
+        ICorDebugValue? value = point.Method.Result is int slot ? TryLocalOf(frame, slot) : null;
         await KeepAsyncMomentAsync(thread, call, value, ReturnedRow(label), DescribeFrame(0, frame), came);
     }
 

@@ -28,7 +28,7 @@ public partial class ManagedDebugger
         }
         try
         {
-            return new AheadRun(frame, module).Read();
+            return new AheadRun(this, frame, module).Read();
         }
         catch (Exception error) when (Failures.OfRuntime(error) || error is NotSupportedException or InvalidOperationException)
         {
@@ -59,7 +59,7 @@ public partial class ManagedDebugger
         public static Held Of(bool value) => new(AheadKind.Integer, value ? 1 : 0);
     }
 
-    private sealed class AheadRun(ICorDebugILFrame frame, ModuleInfo module)
+    private sealed class AheadRun(ManagedDebugger debugger, ICorDebugILFrame frame, ModuleInfo module)
     {
         private readonly int token = frame.Function.Token;
         private readonly int? version = module.MetadataReader.VersionOf(frame);
@@ -364,7 +364,7 @@ public partial class ManagedDebugger
             }
             if (!locals.TryGetValue(index, out Held value))
             {
-                value = frame.TryGetLocalVariable(checked((uint)index), out ICorDebugValue? read) is Cor.S_OK ? HeldOf(read) : Held.Unknown;
+                value = debugger.TryLocalOf(frame, index) is { } read ? HeldOf(read) : Held.Unknown;
                 locals[index] = value;
             }
             return value;
@@ -783,7 +783,7 @@ public partial class ManagedDebugger
             foreach ((int offset, int local, Held value) in stored)
             {
                 if (LineOf(points, offset) is not int line || module.MetadataReader.GetLocalVariableName(token, local, offset, version) is not { } name
-                    || frame.TryGetLocalVariable(checked((uint)local), out ICorDebugValue? declared) is not Cor.S_OK || Said(declared.Type, value) is not { } said)
+                    || debugger.TryLocalOf(frame, local) is not { } declared || Said(declared.Type, value) is not { } said)
                 {
                     continue;
                 }

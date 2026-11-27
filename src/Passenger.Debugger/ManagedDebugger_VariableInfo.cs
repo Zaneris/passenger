@@ -28,7 +28,7 @@ public partial class ManagedDebugger
             await AddClosureChainMembers(classContainingHoistedLocalsValue, threadId, stackDepth, result, inScope);
         }
         ICorDebugILFrame corDebugIlFrame = GetIlFrameForThreadIdAndStackDepth(threadId, stackDepth);
-        (ICorDebugValue[]? locals, string? unread) = LocalsOf(corDebugIlFrame);
+        (ICorDebugValue?[]? locals, string? unread) = LocalsOf(corDebugIlFrame);
         int currentIlOffset = corDebugIlFrame.IP.pnOffset;
         int? version = module.MetadataReader.VersionOf(corDebugIlFrame);
         if (locals is null)
@@ -53,6 +53,11 @@ public partial class ManagedDebugger
                 continue; // Compiler generated locals will not be found. E.g. DefaultInterpolatedStringHandler
             }
 
+            if (localVariableCorDebugValue is null)
+            {
+                result.Add(FailedRow(localVariableName, unread!));
+                continue;
+            }
             if (IsLambdaDisplayClass(localVariableCorDebugValue))
             {
                 await AddClosureChainMembers(localVariableCorDebugValue, threadId, stackDepth, result);

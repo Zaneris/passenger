@@ -511,6 +511,39 @@ public partial class ModuleMetadataReader
         }
     }
 
+    /// <summary>Each of a method's local variables' types at a version (the newest without one) as its signature writes it, by
+    /// their slots: what the runtime reads a local at an address as. Empty as <see cref="LocalTypes"/> is.</summary>
+    internal ImmutableArray<byte[]> LocalTypeSignatures(int methodToken, int? version)
+    {
+        if (LocalSignature(methodToken, version) is not { IsNil: false } locals)
+        {
+            return [];
+        }
+        try
+        {
+            BlobHandle handle = _peMetadataReader.GetStandaloneSignature(locals).Signature;
+            byte[] blob = _peMetadataReader.GetBlobBytes(handle);
+            BlobReader reader = _peMetadataReader.GetBlobReader(handle);
+            if (reader.ReadSignatureHeader().Kind is not SignatureKind.LocalVariables)
+            {
+                return [];
+            }
+            SignatureDecoder<DeclaredType?, object?> decoder = new(DeclaredTypeProvider.Instance, _peMetadataReader, null);
+            ImmutableArray<byte[]>.Builder types = ImmutableArray.CreateBuilder<byte[]>(reader.ReadCompressedInteger());
+            while (types.Count < types.Capacity)
+            {
+                int start = reader.Offset;
+                decoder.DecodeType(ref reader);
+                types.Add(blob[start..reader.Offset]);
+            }
+            return types.MoveToImmutable();
+        }
+        catch (BadImageFormatException)
+        {
+            return [];
+        }
+    }
+
     /// <summary>A method's local variables' signature at a version (the newest without one): the update's that last changed
     /// it, else the image's; nil for a body with no locals, null where the body is not read (a module with no image) or its
     /// signature is not in the metadata the updates made.</summary>

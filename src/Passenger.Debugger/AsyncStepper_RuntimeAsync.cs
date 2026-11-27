@@ -361,7 +361,7 @@ internal sealed partial class AsyncStepper
                 _debugger.Log($"Another run of the method stepped out of returns on thread {thread.Id}: it runs on");
                 return;
             }
-            if (step.Leaving is not (string method, _) || thread.ActiveFrame is not ICorDebugILFrame frame || frame.TryGetLocalVariable((uint)local, out ICorDebugValue value) is not Cor.S_OK)
+            if (step.Leaving is not (string method, _) || thread.ActiveFrame is not ICorDebugILFrame frame || _debugger.TryLocalOf(frame, local) is not { } value)
             {
                 _debugger.Log($"What the method stepped out of returns on thread {thread.Id} could not be read from its local {local}");
                 return;

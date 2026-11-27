@@ -361,7 +361,7 @@ public partial class ManagedDebugger
         OpenCall call = open[at];
         LetGoFrom(open, at + 1);
         open.RemoveAt(at);
-        ICorDebugValue? value = local >= 0 && frame.TryGetLocalVariable(checked((uint)local), out ICorDebugValue? held) is Cor.S_OK ? held : null;
+        ICorDebugValue? value = local >= 0 ? TryLocalOf(frame, local) : null;
         await KeepReturnAsync(thread, call, value, DescribeFrame(0, frame), at, came);
     }
 

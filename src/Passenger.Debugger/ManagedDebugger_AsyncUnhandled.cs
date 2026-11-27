@@ -196,12 +196,12 @@ public partial class ManagedDebugger
 
     /// <summary>Whether a frame's arguments or locals, as far as it has them, hold what is made for a task
     /// (<see cref="MadeFor"/>), or, <paramref name="calledOn"/>, its first argument is the task.</summary>
-    private static bool Holds(ICorDebugILFrame frame, CORDB_ADDRESS task, bool calledOn)
+    private bool Holds(ICorDebugILFrame frame, CORDB_ADDRESS task, bool calledOn)
     {
         try
         {
             return calledOn && frame.TryGetArgument(0, out ICorDebugValue? first) >= 0 && first?.UnwrapDebugValueToObjectOrNull()?.Address == task
-                || frame.EnumerateArguments().Concat(frame.EnumerateLocalVariables()).Any(value => MadeFor(value, task));
+                || frame.EnumerateArguments().Concat((LocalsOf(frame).Locals ?? []).OfType<ICorDebugValue>()).Any(value => MadeFor(value, task));
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {

@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
@@ -42,6 +43,20 @@ public class DeclaredTypesTests
             Assert.Contains(new DeclaredType(Here + ".Base"), locals);
             Assert.Contains(DeclaredType.Object, locals);
             Assert.Contains(new DeclaredType(null, new DeclaredType(Here + ".Base")), locals);
+        }),
+        ("each local's type is the run of its signature's bytes for that slot, as the runtime reads a local at an address", () =>
+        {
+            using ModuleMetadataReader reader = Reader();
+            int token = typeof(Holder<int>).GetMethod(nameof(Holder<int>.Locals))!.MetadataToken;
+            ImmutableArray<DeclaredType?> locals = reader.LocalTypes(token, version: 1);
+            ImmutableArray<byte[]> written = reader.LocalTypeSignatures(token, version: 1);
+            byte[] whole = reader.PeMetadataReader.GetBlobBytes(reader.PeMetadataReader.GetStandaloneSignature(reader.LocalSignature(token, 1)!.Value).Signature);
+            // The header and a count under 128 take a byte each.
+            Assert.Equal(whole[2..], written.SelectMany(type => type));
+            Assert.Equal(locals.Length, written.Length);
+            Assert.Equal(0x12, written[locals.IndexOf(new DeclaredType(Here + ".Base"))][0]);
+            Assert.Equal(0x1C, written[locals.IndexOf(DeclaredType.Object)][0]);
+            Assert.Equal(0x1D, written[locals.IndexOf(new DeclaredType(null, new DeclaredType(Here + ".Base")))][0]);
         }));
 
     /// <summary>A field of <see cref="Holder{T}"/> as the debugger decodes it.</summary>
