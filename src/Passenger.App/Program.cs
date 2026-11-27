@@ -168,14 +168,16 @@ internal static class Program
 
     /// <summary>A screenshot keeps nothing of the person's: unless PASSENGER_SETTINGS names a folder, its state and logs
     /// (Roslyn's server's among them) go to a temporary one, a portable copy's too, removed when it ends with the state's
-    /// own folders in the user's temporary folder (<see cref="UserTemporary.LetGoOf"/>), and its terminal's shell never
-    /// reads or writes the person's history or startup files.</summary>
+    /// own folders in the user's temporary folder (<see cref="UserTemporary.LetGoOf"/>), and by the watchdog once it and
+    /// its children have gone, however it ended and whatever wrote there last; its terminal's shell never reads or writes
+    /// the person's history or startup files.</summary>
     private static int Apart(Func<int> run)
     {
         string? scratch = null;
         if (State.StateStore.Named is not { } root)
         {
             scratch = Directory.CreateTempSubdirectory("passenger-screenshot-").FullName;
+            ChildProcesses.AtIdeEnd(nameof(Apart), $"rm -rf -- {Terminal.ShellWords.Quoted(scratch, ShellKind.Posix)}");
             root = scratch;
             Environment.SetEnvironmentVariable(State.StateStore.Variable, scratch);
         }

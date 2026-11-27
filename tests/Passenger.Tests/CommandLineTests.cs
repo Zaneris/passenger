@@ -404,8 +404,12 @@ public sealed class CommandLineTests : IDisposable
                 $"File, Save as a step was to write what was typed and say so; the run exited {code} ({error}) and the file holds:\n{saved}");
             // On Windows a log a server of the screenshot's still holds keeps its state there a while; NuGet's scratch every restore shares stays.
             string scratch = Path.GetFileName(NuGetScratch.In(given, OperatingSystem.IsLinux(), Environment.UserName));
-            string[] left = OperatingSystem.IsWindows() ? [] : [.. Directory.EnumerateFileSystemEntries(given).Where(entry => Path.GetFileName(entry) != scratch)];
-            Assert.True(left.Length == 0, $"A screenshot with no state named left {string.Join(", ", left)} in the temporary folder it was given, a folder for every screenshot taken");
+            string[] left = [];
+            // The watchdog's work, once the screenshot and its children have gone, may still be under way.
+            await Waiting.UntilAsync(() => (left = OperatingSystem.IsWindows() ? [] : [.. Directory.EnumerateFileSystemEntries(given, "*", SearchOption.AllDirectories)
+                .Select(entry => Path.GetRelativePath(given, entry)).Where(entry => entry.Split(Path.DirectorySeparatorChar)[0] != scratch)]).Length == 0,
+                TimeSpan.FromSeconds(10).Scaled(), TestContext.Current.CancellationToken, TimeSpan.FromMilliseconds(250));
+            Assert.True(left.Length == 0, $"A screenshot with no state named left {string.Join(", ", left.Take(20))} in the temporary folder it was given, a folder for every screenshot taken");
         }
         finally
         {
