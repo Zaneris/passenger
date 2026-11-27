@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -338,20 +337,8 @@ public sealed class IdeErrorsTests : IDisposable
         string root = Passenger.Tests.Debugging.Helpers.Debuggees.Root;
         List<string> found = [];
         List<string> read = [];
-        foreach (string project in Directory.GetDirectories(Path.Combine(root, "src")).Order(StringComparer.Ordinal))
+        foreach ((string name, string assembly) in SrcAssemblies.Built())
         {
-            string name = Path.GetFileName(project);
-            string projectFile = Path.Combine(project, $"{name}.csproj");
-            if (!File.Exists(projectFile))
-            {
-                continue;
-            }
-            Match named = Regex.Match(File.ReadAllText(projectFile), "<AssemblyName>([^<]+)</AssemblyName>");
-            string assembly = Path.Combine(root, "artifacts", "bin", name, "debug", $"{(named.Success ? named.Groups[1].Value : name)}.dll");
-            if (!File.Exists(assembly))
-            {
-                continue;
-            }
             read.Add(name);
             foreach ((string file, int line) in DroppedTasks.In(assembly))
             {

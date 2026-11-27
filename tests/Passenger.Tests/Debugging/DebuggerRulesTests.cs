@@ -1,4 +1,7 @@
 using System.Reflection;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -9,8 +12,9 @@ using Passenger.Tests.Debugging.Helpers;
 namespace Passenger.Tests.Debugging;
 
 /// <summary>The debugger's code says each of its own rows by one name and takes each failure of the runtime's interfaces
-/// one way: no string outside <see cref="DapRows"/> is one of its rows' names, and no catch lists the runtime's failures
-/// by hand rather than through Failures.OfRuntime. Its tests say where their processes stood only once they failed.</summary>
+/// one way: no string outside <see cref="DapRows"/> is one of its rows' names, no catch lists the runtime's failures by
+/// hand rather than through Failures.OfRuntime, and a frame's locals are read in one place. Its tests say where their
+/// processes stood only once they failed.</summary>
 [Collection(Beside.Name)]
 [SameOnEverySystem]
 public sealed class DebuggerRulesTests
@@ -60,6 +64,80 @@ public sealed class DebuggerRulesTests
         Assert.True(found.Count == 0, $"{found.Count} catches list the runtime's failures by hand, so the ones they leave out (an E_INVALIDARG's "
             + $"ArgumentException, an E_NOTIMPL's NotImplementedException) escape the read they guard and fail the request around it: take them "
             + $"through Failures.OfRuntime:\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>Every read of a frame's locals, all at once or one by its slot, goes through ManagedDebugger's LocalsOf, LocalOf
+    /// and TryLocalOf, which read a frame running code an update changed as that code keeps them: read from the IL of each
+    /// assembly src builds, which names the type each call's member is on, as the source alone does not.</summary>
+    [Fact]
+    public void A_frames_locals_are_read_only_through_LocalsOf_LocalOf_and_TryLocalOf()
+    {
+        string[] through = ["LocalsOf", "LocalOf", "TryLocalOf"];
+        List<string> found = [];
+        List<string> read = [];
+        foreach ((string project, string assembly) in SrcAssemblies.Built().Where(built => built.Project != "Passenger.Debugger.Interop"))
+        {
+            read.Add(project);
+            using PEReader pe = new(File.OpenRead(assembly));
+            MetadataReader metadata = pe.GetMetadataReader();
+            foreach (TypeDefinitionHandle typeHandle in metadata.TypeDefinitions)
+            {
+                TypeDefinition type = metadata.GetTypeDefinition(typeHandle);
+                foreach (MethodDefinition method in type.GetMethods().Select(metadata.GetMethodDefinition).Where(m => m.RelativeVirtualAddress != 0))
+                {
+                    string name = metadata.GetString(method.Name);
+                    // One of the three, or a lambda or local function written in one.
+                    if (through.Any(own => (name == own && metadata.GetString(type.Name) == "ManagedDebugger") || name.StartsWith($"<{own}>", StringComparison.Ordinal)))
+                    {
+                        continue;
+                    }
+                    BlobReader il = pe.GetMethodBody(method.RelativeVirtualAddress).GetILReader();
+                    while (il.RemainingBytes > 0)
+                    {
+                        int code = il.ReadByte();
+                        code = code == 0xFE ? 0xFE00 | il.ReadByte() : code;
+                        if (code is not (0x28 or 0x6F or 0xFE06 or 0xFE07))
+                        {
+                            // Its size first: a switch's is read past the count of its targets.
+                            int operand = DroppedTasks.OperandSize(ref il, code);
+                            il.Offset += operand;
+                        }
+                        else if (ReadsALocal(metadata, MetadataTokens.EntityHandle(il.ReadInt32())) is { } reads)
+                        {
+                            found.Add($"{project}: {metadata.GetString(type.Name)}.{name} calls {reads}");
+                        }
+                    }
+                }
+            }
+        }
+        Assert.Contains("Passenger.Debugger", read);
+        Assert.True(found.Count == 0, $"{Plural.Of(found.Count, "method")} {Plural.Agreeing(found.Count, "reads", "read")} a frame's locals from the runtime itself, which lays "
+            + $"out a frame its interpreter runs in code an update changed by the build's code, so those locals come back not read or wrong: read them through "
+            + $"ManagedDebugger's LocalsOf, LocalOf or TryLocalOf:\n{string.Join("\n", found)}");
+
+        // A member of an IL frame's interface, or of the extensions over it, that reads its locals.
+        static string? ReadsALocal(MetadataReader metadata, EntityHandle called)
+        {
+            (StringHandle member, EntityHandle owner) = called.Kind switch
+            {
+                HandleKind.MemberReference => (metadata.GetMemberReference((MemberReferenceHandle)called).Name, metadata.GetMemberReference((MemberReferenceHandle)called).Parent),
+                HandleKind.MethodDefinition => (metadata.GetMethodDefinition((MethodDefinitionHandle)called).Name, metadata.GetMethodDefinition((MethodDefinitionHandle)called).GetDeclaringType()),
+                HandleKind.MethodSpecification => (default, metadata.GetMethodSpecification((MethodSpecificationHandle)called).Method),
+                _ => (default, default),
+            };
+            if (called.Kind is HandleKind.MethodSpecification)
+            {
+                return ReadsALocal(metadata, owner);
+            }
+            string type = owner.Kind switch
+            {
+                HandleKind.TypeReference => metadata.GetString(metadata.GetTypeReference((TypeReferenceHandle)owner).Name),
+                HandleKind.TypeDefinition => metadata.GetString(metadata.GetTypeDefinition((TypeDefinitionHandle)owner).Name),
+                _ => string.Empty,
+            };
+            string name = member.IsNil ? string.Empty : metadata.GetString(member);
+            return type.Contains("ILFrame", StringComparison.Ordinal) && name.Contains("LocalVariable", StringComparison.Ordinal) ? $"{type}.{name}" : null;
+        }
     }
 
     /// <summary>A failed debugging test says where the adapter and the program stood: on macOS it samples each for a second
