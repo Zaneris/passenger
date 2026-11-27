@@ -31,6 +31,9 @@ internal sealed class SyntaxTreeView : Panel
     private TextSpan? editorSpan;
     private CancellationTokenSource? activeReveal;
 
+    /// <summary>Whether the editor's selection is choosing the row, which leaves the editor's selection as it is.</summary>
+    private bool revealing;
+
     internal SyntaxTreeView(Action<ParsedText, TextSpan> selectSource)
     {
         this.selectSource = selectSource;
@@ -38,16 +41,16 @@ internal sealed class SyntaxTreeView : Panel
         list.ItemsSource = rows;
         ScrollViewer.SetHorizontalScrollBarVisibility(list, ScrollBarVisibility.Auto);
         ReusedRows.Use(list, MakeRow);
-        TreeKeys.Attach<Row>(list, Toggle);
-        list.SelectionChanged += (_, _) => ShowChoice();
-        list.AddHandler(InputElement.KeyUpEvent, (_, e) =>
+        TreeKeys.Attach<Row>(list, Toggle, acts: new ListActs { Source = SelectChosenSource });
+        list.SelectionChanged += (_, _) =>
         {
-            if (e.KeyModifiers == KeyModifiers.None && e.Key is Key.Up or Key.Down or Key.Left or Key.Right or Key.Home or Key.End or Key.PageUp or Key.PageDown
-                && list.SelectedItem is Row row)
+            ShowChoice();
+            // A row the keys move to selects its code; one the editor's selection chose leaves the editor as it is.
+            if (!revealing && list.IsKeyboardFocusWithin)
             {
-                SelectSource(row);
+                SelectChosenSource();
             }
-        }, RoutingStrategies.Bubble, handledEventsToo: true);
+        };
         split = new PaneSplit(list, details, "4*,1,*") { IsVisible = false };
         split.SetPresentation(stack: true, onlySecond: false);
         split.RowDefinitions[0].MinHeight = ListRow.Height * 2;
@@ -122,14 +125,22 @@ internal sealed class SyntaxTreeView : Panel
             {
                 return;
             }
-            foreach (Row parent in path.Take(path.Count - 1))
+            revealing = true;
+            try
             {
-                if (!parent.IsExpanded)
+                foreach (Row parent in path.Take(path.Count - 1))
                 {
-                    Toggle(parent);
+                    if (!parent.IsExpanded)
+                    {
+                        Toggle(parent);
+                    }
                 }
+                list.SelectedItem = path[^1];
             }
-            list.SelectedItem = path[^1];
+            finally
+            {
+                revealing = false;
+            }
         }
         finally
         {
@@ -163,6 +174,14 @@ internal sealed class SyntaxTreeView : Panel
             {
                 properties.Add((name, DetailsTables.Words(value, code)));
             }
+        }
+    }
+
+    private void SelectChosenSource()
+    {
+        if (list.SelectedItem is Row row)
+        {
+            SelectSource(row);
         }
     }
 

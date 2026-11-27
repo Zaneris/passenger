@@ -13,7 +13,7 @@ public partial class MainWindow
     {
         SyntaxTreeView? view = null;
         FollowedDocument followed = FollowedDocument.OfSyntax(() => Refresh(Source()));
-        ToolWindow window = new(ToolWindowIds.SyntaxTree, "Syntax Tree", IconKeys.DatabaseRoutine,
+        ToolWindow window = new(ToolWindowIds.SyntaxTree, "Syntax Tree", IconKeys.SyntaxTree,
             () => view = new SyntaxTreeView(SelectSource), ToolAnchor.RightTop)
         {
             Serves = ToolWindowServes.EveryFolder,

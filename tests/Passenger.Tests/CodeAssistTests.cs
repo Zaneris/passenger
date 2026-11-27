@@ -101,7 +101,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>What the window says of the code around the caret: the status bar's path, a hover card and File
-    /// Structure, once the server has the file; the structure window following the editor; Go to Symbol's generated
+    /// Structure, once the server has the file; the structure and syntax tree windows following the editor; Go to Symbol's generated
     /// declarations; parameter info's overloads, those the arguments no longer fit set back; documentation as its tags
     /// write it in every card; a hover's signature with the attributes declared on what it names; and the peeks at the
     /// caret.</summary>
@@ -112,6 +112,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("the links in a wrapped hover signature go to their own declarations", () => new CodeAssistTests(project), t => t.Hover_signature_links_go_to_their_own_declarations());
         Flow.StepApart("a file shown before its folder's server has it names the member the caret is in once it does", () => new CodeAssistTests(project), t => t.A_file_shown_before_its_folders_server_has_it_names_the_member_the_caret_is_in_once_it_does());
         Flow.StepApart("the structure window shows the shown file's outline whenever it is shown, once the server has the file, and follows the editor", () => new CodeAssistTests(project), t => t.The_structure_window_shows_the_shown_files_outline_whenever_it_is_shown_and_once_the_server_has_the_file_and_follows_the_editor());
+        Flow.StepApart("the syntax tree window shows the shown C# file's syntax at the selection, follows its unsaved edits and the file shown, and a row chosen selects its code", () => new CodeAssistTests(project), t => t.The_syntax_tree_window_shows_the_shown_files_syntax_at_the_selection_follows_its_unsaved_edits_and_the_file_shown_and_a_row_chosen_selects_its_code());
         Flow.StepApart("Go to Symbol lists a generated method's own declaration alone, and what only a generator wrote after", () => new CodeAssistTests(project), t => t.Go_to_Symbol_lists_a_generated_methods_own_declaration_alone_and_what_only_a_generator_wrote_after());
         Flow.StepApart("parameter info shows every overload, setting back those the arguments no longer fit", () => new CodeAssistTests(project), t => t.Parameter_info_shows_every_overload_setting_back_those_the_arguments_no_longer_fit());
         Flow.StepApart("the peeks show an interface member's implementation, the caret line's problem, an expression's type and the file's folders", () => new CodeAssistTests(project), t => t.The_peeks_show_an_interface_members_implementation_the_caret_lines_problem_an_expressions_type_and_the_files_folders());
@@ -509,6 +510,120 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         {
             window.Close();
         }
+    }
+
+    /// <summary>The Syntax Tree window, at the right's top, shows the shown C# file's syntax as the window parsed it: the
+    /// node, token or trivia the editor's selection is in is chosen a moment after it moves, the editor keeping the keys; a
+    /// row clicked, or moved to by the keys, selects its code; a kind's description is its tip and its Properties' row;
+    /// unsaved edits and another file shown are followed, the divider kept where it was dragged; a file of no C# says so.</summary>
+    private void The_syntax_tree_window_shows_the_shown_files_syntax_at_the_selection_follows_its_unsaved_edits_and_the_file_shown_and_a_row_chosen_selects_its_code()
+    {
+        const string code = "class Calculator\n{\n    int Combine(int left, int right)\n    {\n        // Combine the values.\n        return left + right;\n    }\n}\n";
+        const string expression = "left + right";
+        string folder = TestFolders.Create("syntax-tree-");
+        string source = TestFolders.Write(folder, "Calculator.cs", code);
+        TestFolders.Write(folder, "Other.cs", "record Other;\n");
+        TestFolders.Write(folder, "Notes.txt", "plain text");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false, autosaves: false);
+        try
+        {
+            window.OpenFile("Calculator.cs");
+            Ui.Settle();
+            Passenger.App.Docking.ToolWindow tool = Assert.Single(window.DockHost.Windows, w => w.Title == "Syntax Tree");
+            Assert.Equal(Passenger.App.Docking.ToolAnchor.RightTop, tool.Anchor);
+            Assert.Single(window.DockHost.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>(), b => Equals(b.Tag, tool.Id));
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            int start = code.IndexOf(expression, StringComparison.Ordinal);
+            editor.Selections = SelectionSet.Single(start + 1);
+            Assert.True(window.Perform(AppActions.ShowSyntaxTree));
+            Ui.Settle();
+            Assert.Equal(Selection.At(start + 1), editor.Selections.Primary);
+            TreeList tree = Assert.Single(tool.Content.GetVisualDescendants().OfType<TreeList>());
+            PaneSplit panes = Assert.Single(tool.Content.GetVisualDescendants().OfType<PaneSplit>());
+            Assert.True(panes.IsStacked);
+            editor.Focus();
+            Ui.WaitFor(() => SelectedKind(tree, "IdentifierToken"), "the identifier token at the caret");
+            Assert.Same(editor, window.FocusManager?.GetFocusedElement());
+
+            ListBoxItem identifierName = Assert.IsAssignableFrom<ListBoxItem>(tree.ContainerFromIndex(tree.SelectedIndex - 1));
+            Assert.Contains(identifierName.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "IdentifierName");
+            Ui.Click(identifierName);
+            Ui.WaitFor(() => editor.Selections.Primary.Range == new TextRange(start, "left".Length), "the source span chosen from the identifier name");
+            Ui.Settle();
+            Assert.True(SelectedKind(tree, "IdentifierName"));
+
+            editor.Focus();
+            editor.Selections = SelectionSet.Single(new Selection(start + expression.Length, start));
+            Ui.WaitFor(() => SelectedKind(tree, "AddExpression"), "the addition covering the backward selection");
+            Assert.Equal(start, editor.Selections.Primary.Caret);
+            Assert.Contains(tool.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "BinaryExpressionSyntax");
+            Assert.Contains(tool.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == expression);
+            const string description = "A binary + expression.";
+            Assert.Contains(tool.Content.GetVisualDescendants().OfType<SelectableWords>(), text => text.Text == description);
+            ListBoxItem addition = Assert.IsAssignableFrom<ListBoxItem>(tree.ContainerFromIndex(tree.SelectedIndex));
+            AssertTip(addition, $"{description}\n{new Microsoft.CodeAnalysis.Text.TextSpan(start, expression.Length)}");
+            Assert.True(tree.ContainerFromIndex(0)?.GetVisualDescendants().OfType<RowGlyphs>().Single().Turned);
+
+            // From a row clicked the keys move on, each row they reach selecting its code: past the name's token to the plus.
+            int operation = start + "left ".Length;
+            ListBoxItem leftName = Assert.IsAssignableFrom<ListBoxItem>(tree.ContainerFromIndex(tree.SelectedIndex + 1));
+            Ui.Click(leftName);
+            Ui.Press(window, "down");
+            Ui.Press(window, "down");
+            Ui.WaitFor(() => editor.Selections.Primary.Start == operation && editor.Selections.Primary.Length == 1, "the plus operator selected in the editor by the keys");
+            Assert.True(SelectedKind(tree, "PlusToken"));
+            Assert.DoesNotContain(tool.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Description");
+            ListBoxItem plus = Assert.IsAssignableFrom<ListBoxItem>(tree.ContainerFromIndex(tree.SelectedIndex));
+            AssertTip(plus, new Microsoft.CodeAnalysis.Text.TextSpan(operation, 1).ToString());
+
+            double initialTreeHeight = tree.Bounds.Height;
+            Point divider = Ui.Centre(panes.Divider.Splitter, window);
+            Ui.Drag(window, divider, divider - new Vector(0, 60));
+            Ui.WaitFor(() => tree.Bounds.Height < initialTreeHeight - 40, "the lower property pane made taller by dragging");
+            double resizedTreeHeight = tree.Bounds.Height;
+
+            int comment = code.IndexOf("Combine the values", StringComparison.Ordinal);
+            editor.Selections = SelectionSet.Single(comment);
+            Ui.WaitFor(() => SelectedKind(tree, "SingleLineCommentTrivia"), "the comment trivia at the caret");
+
+            editor.Focus();
+            editor.Selections = SelectionSet.Single(new Selection(operation, operation + 1));
+            window.KeyTextInput("*");
+            editor.Selections = SelectionSet.Single(new Selection(start, start + "left * right".Length));
+            Ui.WaitFor(() => SelectedKind(tree, "MultiplyExpression"), "multiplication before saving");
+            Assert.Contains(tool.Content.GetVisualDescendants().OfType<SelectableWords>(), text => text.Text == "A binary * expression.");
+            Assert.Equal(code, File.ReadAllText(source));
+
+            window.KeyTextInput("0");
+            window.OpenFile("Other.cs");
+            CodeEditor other = window.EditorArea.CodeEditor;
+            other.Selections = SelectionSet.Single(1);
+            Ui.WaitFor(() => SelectedKind(tree, "RecordKeyword"), "the record keyword in the newly active file");
+            Ui.Settle();
+            Assert.True(SelectedKind(tree, "RecordKeyword"));
+            Assert.Equal(resizedTreeHeight, tree.Bounds.Height, precision: 1);
+
+            window.DockHost.Hide(ToolWindowIds.SyntaxTree);
+            window.OpenFile("Calculator.cs");
+            window.EditorArea.CodeEditor.Selections = SelectionSet.Single(1);
+            Assert.Equal(0, tree.ItemCount);
+            Assert.True(window.Perform(AppActions.ShowSyntaxTree));
+            Ui.WaitFor(() => SelectedKind(tree, "ClassKeyword"), "the active file's syntax after reopening the pane");
+            Assert.Equal(resizedTreeHeight, tree.Bounds.Height, precision: 1);
+
+            window.OpenFile("Notes.txt");
+            Ui.WaitFor(() => !tree.IsEffectivelyVisible && tree.ItemCount == 0, "the empty state for a non-C# file");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+
+        static void AssertTip(Control row, string text) => Assert.Contains(row.GetVisualDescendants().OfType<Control>(), child => Equals(ToolTip.GetTip(child), text));
+
+        static bool SelectedKind(TreeList tree, string kind) => tree.SelectedIndex >= 0
+            && tree.ContainerFromIndex(tree.SelectedIndex)?.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == kind) == true;
     }
 
     private void The_structure_window_shows_the_shown_files_outline_whenever_it_is_shown_and_once_the_server_has_the_file_and_follows_the_editor()
