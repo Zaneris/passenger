@@ -31,7 +31,42 @@ public static partial class UserTemporary
     {
         string key = $"{Environment.UserName}\n{Path.TrimEndingDirectorySeparator(PathNames.Canonical(state))}";
         string hash = FileNames.Hash(key, 10);
-        return Path.Combine(Folder(), kind is null ? $"passenger-{hash}" : $"passenger-{hash}-{kind}");
+        return Path.Combine(Folder(), kind is null ? $"{Prefix}{hash}" : $"{Prefix}{hash}-{kind}");
+    }
+
+    /// <summary>What begins the name of every state's own folder (<see cref="Of"/>).</summary>
+    private const string Prefix = "passenger-";
+
+    /// <summary>Removes the folders of states let go of for good (a screenshot's, a test run's): each one's own and those of
+    /// each kind of it (<see cref="Of"/>), found in one look through <see cref="Folder"/>. One that cannot be removed stays.</summary>
+    public static void LetGoOf(IEnumerable<string> states)
+    {
+        HashSet<string> names = new(states.Select(state => Path.GetFileName(Of(state))), StringComparer.Ordinal);
+        if (names.Count == 0 || !Directory.Exists(Folder()))
+        {
+            return;
+        }
+        foreach (string folder in Directory.EnumerateDirectories(Folder(), Prefix + "*"))
+        {
+            string name = Path.GetFileName(folder);
+            int kind = name.IndexOf('-', Prefix.Length);
+            if (names.Contains(kind < 0 ? name : name[..kind]))
+            {
+                Remove(folder);
+            }
+        }
+    }
+
+    private static void Remove(string folder)
+    {
+        try
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            PassengerLog.Write($"A temporary folder Passenger no longer needs stays, {folder}: {error.Message}");
+        }
     }
 
     /// <summary><paramref name="folder"/> made the user's alone (mode 0700), or an <see cref="IOException"/> saying why not:
