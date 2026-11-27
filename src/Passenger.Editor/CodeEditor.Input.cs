@@ -237,7 +237,7 @@ public sealed partial class CodeEditor
             return;
         }
         CancelChoices();
-        if (left && (ClickDocumentation(point.Position) || ClickFold(point.Position)))
+        if (left && (OverRenderedDocumentation(point.Position) || ClickFold(point.Position)))
         {
             e.Handled = true;
             return;
@@ -347,10 +347,7 @@ public sealed partial class CodeEditor
         base.OnPointerMoved(e);
         Point position = e.GetPosition(this);
         RestartHover(position);
-        int line = LineAtY(position.Y);
-        bool documentation = Folding.Documentation.ContainsKey(line) || line == DocumentationEditLine(document.Snapshot)
-            && DocumentationButton(Bounds.Width, TopOf(line) - scroll.Y).Contains(position);
-        Cursor = position.X < GutterWidth || drag.Mode == DragMode.Gutter || documentation ? Cursor.Default : IbeamCursor;
+        Cursor = position.X < GutterWidth || drag.Mode == DragMode.Gutter || OverRenderedDocumentation(position) ? Cursor.Default : IbeamCursor;
         FollowLinks(position, drag.Mode != DragMode.None && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed);
         FollowAbove(position);
         pointer = position;

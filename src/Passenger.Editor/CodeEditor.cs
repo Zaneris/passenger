@@ -468,7 +468,6 @@ public sealed partial class CodeEditor : Control
         document.Changed -= OnDocumentChanged;
         ForgetSplitBlocks();
         ForgetTypedClosers();
-        ForgetDocumentationEdit();
         ResetDocumentationCards();
         document = value;
         document.ChangedFirst += OnChangedFirst;

@@ -521,30 +521,36 @@ public sealed partial class CodeEditor
                     continue;
                 }
                 int start = StartLineOf(text, region);
-                int first = start + 1;
                 int last = EndLineOf(text, region);
                 if (start == int.MaxValue || last < start)
                 {
                     continue;
                 }
                 bool rendered = showDocumentation && region.Documentation is not null && (!region.Folded || last == start) && start != editingDocumentation;
-                if (rendered && !Placeholders.ContainsKey(start))
+                if (rendered)
                 {
-                    Documentation[start] = i;
+                    if (!Placeholders.ContainsKey(start))
+                    {
+                        Documentation[start] = region;
+                    }
                 }
-                else if (!rendered && (!region.Folded || last == start))
+                else
+                {
+                    if (!region.Folded || last == start)
+                    {
+                        continue;
+                    }
+                    if (!Placeholders.TryGetValue(start, out int widest) || region.End > folds[widest].End)
+                    {
+                        Placeholders[start] = i;
+                        Documentation.Remove(start);
+                    }
+                }
+                if (last == start)
                 {
                     continue;
                 }
-                else if (!rendered && (!Placeholders.TryGetValue(start, out int widest) || region.End > folds[widest].End))
-                {
-                    Placeholders[start] = i;
-                    Documentation.Remove(start);
-                }
-                if (last < first)
-                {
-                    continue;
-                }
+                int first = start + 1;
                 if (ranges.Count > 0 && first <= ranges[^1].Last + 1)
                 {
                     ranges[^1] = (ranges[^1].First, Math.Max(ranges[^1].Last, last));
@@ -567,7 +573,7 @@ public sealed partial class CodeEditor
 
         public IReadOnlyList<FoldRegion> Folds { get; }
         public int EditingDocumentation { get; }
-        public Dictionary<int, int> Documentation { get; } = [];
+        public Dictionary<int, FoldRegion> Documentation { get; } = [];
         public int[] DocumentationLines { get; }
 
         public (int First, int Last)[] Hidden { get; }

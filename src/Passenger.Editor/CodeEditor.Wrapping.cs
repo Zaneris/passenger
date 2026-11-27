@@ -1396,7 +1396,6 @@ public sealed partial class CodeEditor
 
         /// <summary>The rows above the lines the folded ranges before each hide; one more than the ranges.</summary>
         private readonly int[] hiddenAbove = NoneHidden;
-        private readonly int[] renderedLines = [];
         private readonly int[] renderedSizes = [];
         private readonly int[] renderedExtra = NoneHidden;
 
@@ -1419,15 +1418,15 @@ public sealed partial class CodeEditor
                 }
                 Count += wraps.ExtraRows - hiddenExtra[^1];
             }
-            if (folds.DocumentationLines.Length > 0)
+            int[] renderedLines = folds.DocumentationLines;
+            if (renderedLines.Length > 0)
             {
-                renderedLines = folds.DocumentationLines;
                 renderedSizes = new int[renderedLines.Length];
                 renderedExtra = new int[renderedLines.Length + 1];
                 for (int k = 0; k < renderedLines.Length; k++)
                 {
                     int line = renderedLines[k];
-                    renderedSizes[k] = documentationHeight(folds.Text, line, folds.Folds[folds.Documentation[line]].Documentation!);
+                    renderedSizes[k] = documentationHeight(folds.Text, line, folds.Documentation[line].Documentation!);
                     renderedExtra[k + 1] = renderedExtra[k] + renderedSizes[k] - 1 - (wraps?[line]?.Breaks ?? 0);
                 }
                 Count += renderedExtra[^1];
@@ -1476,7 +1475,7 @@ public sealed partial class CodeEditor
             {
                 row += Wraps.ExtraBefore(line) - hiddenExtra[k];
             }
-            row += renderedExtra[Sorted.FirstAtOrAfter(renderedLines, static i => i, line)];
+            row += renderedExtra[Sorted.FirstAtOrAfter(Folds.DocumentationLines, static i => i, line)];
             if (AboveCount > 0)
             {
                 row += AboveBefore(line + 1) - hiddenAbove[k];
@@ -1487,7 +1486,7 @@ public sealed partial class CodeEditor
         /// <summary>How many rows of text a line takes: one for a folded one, which shares its fold's.</summary>
         public int RowsOf(int line)
         {
-            int documentation = Array.BinarySearch(renderedLines, line);
+            int documentation = Array.BinarySearch(Folds.DocumentationLines, line);
             return documentation >= 0 ? renderedSizes[documentation] : Folds.IsHidden(line) ? 1 : 1 + (WrapOn(line)?.Breaks ?? 0);
         }
 

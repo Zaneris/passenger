@@ -107,8 +107,7 @@ public sealed class FoldingTests : IDisposable
         editor.Selections = SelectionSet.Single(new Selection(at, at + old.Length));
         window.KeyTextInput("ready");
 
-        double header = editor.PointOf(editor.Document.Snapshot.GetLineStart(2)).Y;
-        Ui.Click(editor, new Point(editor.Bounds.Width - 40, header + editor.LineHeight / 2));
+        Ui.Click(Assert.Single(editor.GetVisualDescendants().OfType<Button>(), button => Equals(button.Content, "Done")));
         Ui.WaitFor(() => Words().Any(words => words.Shown.Contains("keeps stock ready", StringComparison.Ordinal)), "the edited summary");
         Assert.True(window.EditorArea.SaveAll());
         Assert.Equal(source.Replace(old, "ready", StringComparison.Ordinal), File.ReadAllText(path));
