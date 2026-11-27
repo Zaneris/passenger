@@ -1145,8 +1145,9 @@ public sealed partial class Vim
             left--;
             begun = true;
         }
-        bool passWhite = false;
         bool landedAlone = false;
+        // is owes a white it passes with the sentence before it: from an empty line text follows, and by turns at each line break alone it crosses.
+        bool owed = false;
         // An empty line in a run that ends the text passes no white: is takes the white before the sentence it steps to.
         int runLast = VimMotions.LineOf(text, at).Line;
         while (fromStart && runLast < VimMotions.LastLine(text, breakEnds) && text.GetLine(runLast + 1).Length == 0)
@@ -1163,12 +1164,14 @@ public sealed partial class Vim
             (int Start, bool White) here = SentenceUnit(text, at);
             bool inside = here.Start < at;
             (int start, bool white) = inside ? here : SentenceUnit(text, VimMotions.StepBack(text, at));
-            // After a step to an empty line alone, is takes the blanks ending the line above it with it.
-            if ((passWhite || (passesAtEmpty && fromEmpty) || (inner && landedAlone)) && white && start > 0)
+            // After a step to an empty line alone, or while it owes one, is takes the white it meets next with the sentence before it.
+            bool passed = ((passesAtEmpty && fromEmpty) || (inner && (landedAlone || owed))) && white && start > 0;
+            if (passed)
             {
                 (start, white) = SentenceUnit(text, VimMotions.StepBack(text, start));
             }
-            passWhite = inner && fromEmpty && !white && fromStart && !endsText;
+            owed = (!passed && owed != (!inside && !white && BreakAloneBefore(text, at) && start < VimMotions.LineOf(text, at).Start))
+                || (inner && fromEmpty && !white && fromStart && !endsText);
             fromStart = false;
             reached = fromEmpty && (reached || left < (begun ? n : n - 1));
             at = start;
@@ -1187,6 +1190,10 @@ public sealed partial class Vim
         }
         return at;
     }
+
+    /// <summary>Whether an offset opens its line with a character that is no blank, below a line of text ending in none.</summary>
+    private static bool BreakAloneBefore(TextSnapshot text, int at) => VimMotions.LineOf(text, at) is { Line: > 0 } line && line.Start == at && at < line.End
+        && text[at] is not (' ' or '\t') && text.GetLine(line.Line - 1) is { Length: > 0 } above && text[above.End - 1] is not (' ' or '\t');
 
     /// <summary>Whether an offset is the start of an empty line between two lines of text, the one below opening with a
     /// character that is no blank, end mark or closer.</summary>
