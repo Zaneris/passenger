@@ -39,9 +39,9 @@
     "url": "https://passenger-ide.net/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Windows, macOS, Linux",
-    "softwareVersion": "0.4.5",
+    "softwareVersion": "0.4.6",
     "downloadUrl": "https://github.com/Zaneris/passenger/releases",
-    "releaseNotes": "https://github.com/Zaneris/passenger/releases/tag/v0.4.5",
+    "releaseNotes": "https://github.com/Zaneris/passenger/releases/tag/v0.4.6",
     "offers": {
         "@type": "Offer",
         "price": "0",
@@ -107,8 +107,8 @@
 <main id="main">
     <div class="hero">
         <div class="wrap">
-            <a class="news" href="#nuget"><span class="tag">New in 0.4.5</span>
-                <span class="what">NuGet updates keep to your version ranges: a [14.0.0] pin stays put, 10.* stays on 10</span><span class="short">What's
+            <a class="news" href="#devices"><span class="tag">New in 0.4.6</span>
+                <span class="what">.NET 11 device tests run and debug on Android, iOS simulators and Mac Catalyst</span><span class="short">What's
                 new</span><span class="arrow" aria-hidden="true">&rarr;</span></a>
             <h1><span class="lead">Debugger, profiler and Hot&nbsp;Reload, built&nbsp;in.</span> The free IDE for C# and .NET.</h1>
             <p class="lede">Stop at a breakpoint and read every line's values, change the code while it runs, on your
@@ -184,10 +184,11 @@
                 </picture>
             </figure>
             <div class="grid">
-                <div class="card">
+                <div class="card" id="devices">
                     <h3>Android, iOS and Mac Catalyst</h3>
                     <p>An Android device or emulator, an iOS simulator on a Mac, or the Mac itself for Mac Catalyst: Run
-                        installs and starts the app there, its log in the Run window. A MAUI app opened on Windows runs its
+                        installs and starts the app there, its log in the Run window, and a .NET 11 device test project's
+                        tests run and debug there, each result in the Tests window. A MAUI app opened on Windows runs its
                         Windows head from the same chooser.</p>
                 </div>
                 <div class="card">
@@ -896,7 +897,7 @@
                 </details>
                 <details>
                     <summary>Is it ready for daily work?</summary>
-                    <p>Passenger is young (0.4.5), and its own development runs through it every day: the coding agents
+                    <p>Passenger is young (0.4.6), and its own development runs through it every day: the coding agents
                         that write much of it work through its MCP server. Its tests drive the whole IDE, a window with real
                         keys and clicks, on macOS, Windows and Linux, and a release ships only once its core tests pass
                         on all three. Each release's notes say what it does and its known limits, so you can judge for
