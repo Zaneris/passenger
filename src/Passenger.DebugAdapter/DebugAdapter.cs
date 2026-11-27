@@ -168,7 +168,7 @@ public sealed class DebugAdapter
             }
         });
         connection.Handle<UnmarkObjectArguments>(DapCommands.UnmarkObject, arguments => Locked(() => debugger.UnmarkObject(arguments.Label)));
-        // Historical debugging: the calls recorded from now on or no longer, the timeline kept, a moment as a past stop.
+        // Step back debugging: the calls recorded from now on or no longer, the timeline kept, a moment as a past stop.
         connection.Handle<RecordArguments>(DapCommands.Record, arguments => Locked(() => debugger.Record(arguments.On)));
         connection.Handle<TimelineArguments, TimelineResponse>(DapCommands.Timeline, async arguments =>
         {

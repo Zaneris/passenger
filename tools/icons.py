@@ -126,7 +126,7 @@ ICONS = [
     ("Overlays", "Layer", "20_regular"),
     # A Godot game's loop stepped one frame while it is held.
     ("NextFrame", "Next", "20_regular"),
-    # Historical debugging: Record Calls on the Debug window's side, Step Back and Step Forward through what it recorded.
+    # Step back debugging: Record Calls on the Debug window's side, Step Back and Step Forward through what it recorded.
     ("RecordCalls", "Record", "20_regular"),
     ("StepBack", "Arrow Previous", "20_regular"),
     ("StepForward", "Arrow Next", "20_regular"),

@@ -619,7 +619,7 @@ public sealed record SnapshotEvent
 /// <summary>A frame of a snapshot, its locals by their reference among the snapshot's values, 0 where they were not read.</summary>
 public sealed record DapSnapshotFrame(DapStackFrame Frame, int Locals);
 
-/// <summary>Passenger's own request: whether the debugger records the program's calls from now on (historical debugging).</summary>
+/// <summary>Passenger's own request: whether the debugger records the program's calls from now on (step back debugging).</summary>
 public sealed record RecordArguments(bool On);
 
 /// <summary>Passenger's own request: the recording's moments on a thread, every thread's without one.</summary>

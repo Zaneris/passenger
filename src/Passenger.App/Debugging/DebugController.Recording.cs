@@ -4,7 +4,7 @@ using Passenger.Dap;
 
 namespace Passenger.App.Debugging;
 
-/// <summary>Historical debugging: while Record Calls is on, each program debugged records the calls of its own code, from its
+/// <summary>Step back debugging: while Record Calls is on, each program debugged records the calls of its own code, from its
 /// start or from then on; at a stop, Step Back and Step Forward go through the moments recorded on the stopped thread,
 /// each shown as a past stop as a snapshot is, the live stop one step past the newest.</summary>
 public sealed partial class DebugController

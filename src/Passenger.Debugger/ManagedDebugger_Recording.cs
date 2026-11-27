@@ -5,7 +5,7 @@ using Passenger.Debugger.Models.Response;
 
 namespace Passenger.Debugger;
 
-/// <summary>Historical debugging: while a session records, each method of the user's code that its symbols place (none the
+/// <summary>Step back debugging: while a session records, each method of the user's code that its symbols place (none the
 /// compiler wrote, none its code says is not the user's) has a breakpoint at its start, where a call's arguments are read,
 /// and each call site of the user's code it is called from one at the call's return address, placed as the call is first
 /// met, where ICorDebug reads the value it returned. Each read runs none of the program's code, as a snapshot's does, and

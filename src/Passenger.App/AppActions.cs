@@ -614,7 +614,7 @@ public static class AppActions
     public const string ToggleSnapshotPoint = "app.debug.toggleSnapshotPoint";
     public const string ToggleBreakpointEnabled = "app.debug.toggleBreakpointEnabled";
 
-    // Historical debugging, which Rider's keymaps give no keys: the programs debugged record their calls, and a stop steps
+    // Step back debugging, which Rider's keymaps give no keys: the programs debugged record their calls, and a stop steps
     // back and forward through what they recorded.
     public const string RecordCalls = "app.debug.recordCalls";
     public const string StepBack = "app.debug.stepBack";

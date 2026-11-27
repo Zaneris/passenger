@@ -1138,7 +1138,7 @@ public sealed class DebugSession
             : Path.IsPathFullyQualified(path) && File.Exists(path) ? f with { Source = source with { Path = PathNames.Canonical(path) } }
             : f;
 
-    /// <summary>Whether the program's calls are recorded (historical debugging): asked before the program starts, sent with
+    /// <summary>Whether the program's calls are recorded (step back debugging): asked before the program starts, sent with
     /// what changed, and at once while it runs or is paused.</summary>
     public bool Records { get; private set; }
 
