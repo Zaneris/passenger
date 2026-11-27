@@ -765,6 +765,7 @@ public sealed class KeymapDispatcher(Keymap keymap, Func<long>? timestamps = nul
     /// <inheritdoc cref="LeftAltHeld"/>
     private const ulong RightCtrlHeld = 0x4;
 
-    internal static bool IsModifierOnly(Key key) => key is Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl
+    /// <summary>Whether a key is a modifier's alone, which types nothing.</summary>
+    public static bool IsModifierOnly(Key key) => key is Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl
         or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin;
 }

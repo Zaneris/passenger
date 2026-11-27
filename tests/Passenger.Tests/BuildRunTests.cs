@@ -1038,10 +1038,12 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
 
     /// <summary>Choose and Run's keys list the folder's configurations, Edit Configurations last, and Enter on one chooses it
     /// and runs it; Choose and Debug's open its own list; Run Anything's double Ctrl takes a command line typed and runs it in
-    /// a Terminal tab of the open folder, then offers it again (#2314).</summary>
+    /// a Terminal tab of the open folder, then offers it again, kept with the folder, Ctrl's double tap in that terminal
+    /// opening it too (#2314, #2388).</summary>
     private void Choose_and_Run_runs_the_configuration_chosen_and_Run_Anything_a_command_line_in_a_Terminal_tab_from_their_keys()
     {
-        MainWindow window = Open();
+        string settings = TestFolders.Create("state-");
+        MainWindow window = Keeping(settings);
         try
         {
             Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Hello"), "Hello's run configuration");
@@ -1066,16 +1068,38 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Ui.Press(window, "ENTER");
             Ui.WaitFor(() => window.TerminalPanel.Active is { } shell && TerminalTests.Screen(shell).Split('\n').Any(l => l.Trim() == "ran-from-anything"),
                 () => $"the command line to run in a Terminal tab: {(window.TerminalPanel.Active is { } shell ? TerminalTests.Screen(shell) : "no tab")}");
-            // The terminal keeps a lone Ctrl for the shell, as it keeps every key the shell reads.
-            window.ExplorerView.FocusRows();
+            // A lone Ctrl types nothing in the shell, so its double tap opens Run Anything from the terminal too.
+            window.TerminalPanel.FocusView();
+            Ui.Settle();
+            Assert.True(window.TerminalPanel.View.IsFocused, "The terminal did not have the keys before Ctrl's double tap");
             Ui.Press(window, "control , control");
             Assert.Contains(Assert.IsType<RunOffersPopup>(window.Popup).Rows, r => r is { Command: "echo ran-from-anything", Detail: RunWords.RecentInTerminal });
+            Ui.Press(window, "ESCAPE");
+            window.Close();
+
+            window = Keeping(settings);
+            window.ExplorerView.FocusRows();
+            Ui.Press(window, "control , control");
+            Assert.True(window.Popup is RunOffersPopup { Rows: [.., { Command: "echo ran-from-anything" }] },
+                "Run Anything offered no command line run before the folder opened again: it is not kept with the folder");
             Ui.Press(window, "ESCAPE");
         }
         finally
         {
             window.Close();
+            TestFolders.Delete(settings);
         }
+    }
+
+    /// <summary>A window on the solution that keeps the folder's state in its own state folder, as a person's does.</summary>
+    private MainWindow Keeping(string settings)
+    {
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings };
+        window.Show();
+        window.KeepLayout();
+        window.OpenFolder(Folder);
+        Ui.Settle();
+        return window;
     }
 
     private static string Output(MainWindow window) => window.BottomPanel.Run.Document.Snapshot.ToString();

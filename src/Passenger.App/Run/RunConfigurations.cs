@@ -26,6 +26,23 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
     /// stays chosen, rather than the first there was, which follows the projects as their evaluations land.</summary>
     private bool picked;
     private string? preferred;
+    private List<string> commands = [];
+
+    /// <summary>The command lines Run Anything ran in the folder, the latest first.</summary>
+    public IReadOnlyList<string> RecentCommands => commands;
+
+    /// <summary>A command line Run Anything ran, kept first to be offered again, the oldest past those kept let go of.</summary>
+    public void Ran(string command)
+    {
+        UiThread.Check();
+        commands.Remove(command);
+        commands.Insert(0, command);
+        if (commands.Count > RunConfigurationsState.RecentCommandsKept)
+        {
+            commands.RemoveRange(RunConfigurationsState.RecentCommandsKept, commands.Count - RunConfigurationsState.RecentCommandsKept);
+        }
+        Write();
+    }
 
     /// <summary>Every configuration: the generated ones, then the folder's own.</summary>
     public IReadOnlyList<RunConfiguration> All { get; private set; } = [];
@@ -76,8 +93,8 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
     /// <summary>The list or the one chosen changed, for the toolbar's widget.</summary>
     public event EventHandler? Changed;
 
-    /// <summary>Takes the folder's own, the changes to generated ones and the one chosen from the store, which keeps each
-    /// change from now; the one chosen before stays chosen when the store names none.</summary>
+    /// <summary>Takes the folder's own, the changes to generated ones, the one chosen and Run Anything's command lines from
+    /// the store, which keeps each change from now; the one chosen before stays chosen when the store names none.</summary>
     public void Keep(StateDocument<RunConfigurationsState> document, IReadOnlyList<ProjectModel> projects)
     {
         RunConfigurationsState read = document.Value;
@@ -85,6 +102,7 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         edits = new(read.Edits.Where(e => e.Value is JsonObject).Select(e => KeyValuePair.Create(e.Key, ConfigurationEdit.Mapped((JsonObject)e.Value!, Full))),
             StringComparer.OrdinalIgnoreCase);
         kept = document;
+        commands = [.. read.RecentCommands];
         picked |= read.Selected is not null;
         preferred = read.Selected ?? preferred ?? Chosen?.Name;
         Configure(projects, preferred);
@@ -461,6 +479,7 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         Configurations = [.. own.Select(ForStore)],
         Edits = new(edits.Select(e => KeyValuePair.Create(e.Key, (JsonNode?)ConfigurationEdit.Mapped(e.Value, Relative))), StringComparer.OrdinalIgnoreCase),
         Selected = preferred ?? Chosen?.Name,
+        RecentCommands = [.. commands],
     });
 
     /// <summary>A configuration as the store keeps it: its project and every file it names (compose files, env files, a

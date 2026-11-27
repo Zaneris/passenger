@@ -637,6 +637,12 @@ public sealed record RunConfigurationsState : IStateDocument<RunConfigurationsSt
     /// <summary>The name of the configuration chosen in the toolbar, the person's or a generated one.</summary>
     public string? Selected { get; init; }
 
+    /// <summary>The command lines Run Anything ran in the folder, the latest first, which it offers again.</summary>
+    public List<string> RecentCommands { get; init; } = [];
+
+    /// <summary>How many command lines Run Anything keeps to offer again.</summary>
+    public const int RecentCommandsKept = 10;
+
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, Kinded, Edited];
 
     /// <summary>Version 2, when a configuration gained a kind: every one before it ran a project.</summary>
@@ -657,7 +663,8 @@ public sealed record RunConfigurationsState : IStateDocument<RunConfigurationsSt
 
     /// <summary>One without a name is left out, as is a second of the same name, a project, Dockerfile or SDK container
     /// configuration without its project, a Compose one without its files and a run of several parts without parts; a kind, console, mode or service action this
-    /// build does not know is the default. A change to a generated one that is no object of fields is left out.</summary>
+    /// build does not know is the default. A change to a generated one that is no object of fields is left out, as is an
+    /// empty command line, one run later and those past the ones kept.</summary>
     public RunConfigurationsState Clamped()
     {
         HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
@@ -689,6 +696,11 @@ public sealed record RunConfigurationsState : IStateDocument<RunConfigurationsSt
                 edits.TryAdd(name, edit);
             }
         }
-        return this with { Configurations = kept, Edits = edits };
+        return this with
+        {
+            Configurations = kept,
+            Edits = edits,
+            RecentCommands = [.. (RecentCommands ?? []).Where(c => !string.IsNullOrWhiteSpace(c)).Distinct(StringComparer.Ordinal).Take(RecentCommandsKept)],
+        };
     }
 }

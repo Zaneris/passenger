@@ -6,17 +6,12 @@ namespace Passenger.App;
 /// <summary>Run Anything, and Choose and Run or Debug: popups over what the open folder runs, each running what is chosen
 /// through the window's actions, so Run's and Debug's refusals hold there as they do on the toolbar. Run Anything offers
 /// the folder's run configurations (its projects', launch profiles, its own, and its packages' scripts, which are
-/// configurations too), then the command lines run from it before, then what is typed as a command line: those run in a
-/// Terminal tab of the open folder, whose shell takes the person's own ways and the folder's own dotnet first, so any of
-/// dotnet's commands, or another tool's, runs there as typed.</summary>
+/// configurations too), then the command lines run from it before (kept with the folder), then what is typed as a command
+/// line: those run in a Terminal tab of the open folder, whose shell takes the person's own ways and the folder's own dotnet
+/// first, so any of dotnet's commands, or another tool's, runs there as typed. It opens on Ctrl tapped twice, in a focused
+/// Terminal too.</summary>
 public partial class MainWindow
 {
-    /// <summary>How many command lines Run Anything offers again.</summary>
-    private const int RecentCommandsKept = 10;
-
-    /// <summary>The command lines Run Anything ran in this window, the latest first.</summary>
-    private readonly List<string> recentCommands = [];
-
     private void AddRunAnything()
     {
         Add(A.RunAnything, "Run Anything…", "Run", ShowRunAnything, NeedsFolder, ("Run", 0, 4), words: ["Command", "Terminal", "Run configuration"]);
@@ -29,7 +24,7 @@ public partial class MainWindow
     /// <summary>Run Anything: a configuration chosen runs (Shift+Enter debugs it), a command line runs in a Terminal tab.</summary>
     private void ShowRunAnything(ActionContext context)
     {
-        RunOffer[] offered = [.. ConfigurationChoices("Run configuration"), .. recentCommands.Select(c => new RunOffer(c, RunWords.RecentInTerminal, Command: c))];
+        RunOffer[] offered = [.. ConfigurationChoices("Run configuration"), .. session.Configurations.RecentCommands.Select(c => new RunOffer(c, RunWords.RecentInTerminal, Command: c))];
         RunOffersPopup popup = new(TitleOf(A.RunAnything), $"Run a configuration or a command line; {OtherwiseKey} debugs", offered, commands: true,
             Refusals.NothingToRunYet);
         popups.Show(popup, chosen => Take(chosen, popup.Otherwise, context));
@@ -74,19 +69,15 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>A command line run in a new Terminal tab of the open folder, as if typed there, and kept to be offered again.</summary>
+    /// <summary>A command line run in a new Terminal tab of the open folder, as if typed there, and kept with the folder's
+    /// state to be offered again.</summary>
     private async Task RunCommandAsync(string command)
     {
         if (Folder is not { } folder)
         {
             return;
         }
-        recentCommands.Remove(command);
-        recentCommands.Insert(0, command);
-        if (recentCommands.Count > RecentCommandsKept)
-        {
-            recentCommands.RemoveAt(recentCommands.Count - 1);
-        }
+        session.Configurations.Ran(command);
         Terminal.TerminalSession shell = await OpenTerminalAt(folder);
         if (shell.IsRunning)
         {
