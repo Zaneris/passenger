@@ -92,13 +92,17 @@ public class BreakpointKindsTests
             Assert.Equal([why, "at 1"], said);
             Assert.Equal([tracepoint], told);
         }),
-        ("Run to Cursor's hold stops the next hit whatever its condition and count say", async () =>
+        ("Run to Cursor's hold stops the next hit whatever its condition and count say, a forced run's too, which passes every other by uncounted", async () =>
         {
             BreakpointManager.BreakpointInfo held = Set(1, new BreakpointRequest(5, Condition: "i > 10", HitCondition: "==4", RunTo: true), hits: 2);
             Assert.True(await BreakpointHits.StopsAsync(held, Reading(3, i => new ConditionRead(i > 10), [], [])), "Run to Cursor's hold did not stop where the condition is false");
             Assert.Equal(2, held.HitCount);
             Assert.True(await BreakpointHits.StopsAsync(held, Reading(11, i => new ConditionRead(i > 10), [], [])), "Run to Cursor's hold did not stop where the hit count is not met");
             Assert.Equal(3, held.HitCount);
+            Assert.True(await BreakpointHits.StopsAsync(held, Reading(11, _ => new ConditionRead(true), [], [], forced: true)), "A forced run passed Run to Cursor's hold by");
+            BreakpointManager.BreakpointInfo plain = Set(2, new BreakpointRequest(9), hits: 0);
+            Assert.False(await BreakpointHits.StopsAsync(plain, Reading(1, _ => new ConditionRead(true), [], [], forced: true)), "A forced step stopped at a breakpoint it passes by");
+            Assert.Equal(0, plain.HitCount);
         }),
         ("a breakpoint waiting for another passes its hits by uncounted until that one takes a hit, a tracepoint's too, then stops as its own say", async () =>
         {
@@ -191,10 +195,12 @@ public class BreakpointKindsTests
     }
 
     /// <summary>A hit at turn <paramref name="i"/>, its condition read as <paramref name="holds"/>, a message's {i} as i, in a
-    /// session of its own unless one is given, a snapshot point's capture taken by <paramref name="capture"/>.</summary>
+    /// session of its own unless one is given, a snapshot point's capture taken by <paramref name="capture"/>, in a forced step
+    /// where <paramref name="forced"/>.</summary>
     private static HitReading Reading(int i, Func<int, ConditionRead> holds, List<string> said, List<IHitBreakpoint> told, SessionHits? session = null,
-        List<IHitBreakpoint>? removed = null, Func<IHitBreakpoint, Task>? capture = null) => new()
+        List<IHitBreakpoint>? removed = null, Func<IHitBreakpoint, Task>? capture = null, bool forced = false) => new()
     {
+        Forced = forced,
         Capture = capture,
         Named = "the breakpoint",
         Holds = _ => Task.FromResult(holds(i)),

@@ -484,7 +484,7 @@ public partial class ManagedDebugger
         EndStepForStop();
         ICorDebugFrame? top = TopFrame(thread);
         _writtenAt = top is null ? null : WritingStatement(thread, top);
-        SourceInfo? source = top is ICorDebugILFrame ? GetSourceInfoAtFrame(top, _justMyCode is false) : null;
+        SourceInfo? source = top is ICorDebugILFrame ? GetSourceInfoAtFrame(top, JustMyCodeNow is false) : null;
         string change = $"Previous Value: {before ?? "?"}, New Value: {target.Shown ?? "?"}";
         _logger?.Invoke($"Data {target.Id}: {target.Description} is changed ({change})");
         ReportStop(thread.Id, StopReasons.DataBreakpoint, source?.FilePath, source?.StartLine ?? 0, source?.StartColumn ?? 0, [watch.Id], change);
@@ -537,9 +537,9 @@ public partial class ManagedDebugger
         {
             return false;
         }
-        SourceInfo? shown = GetSourceInfoAtFrame(top, _justMyCode is false);
+        SourceInfo? shown = GetSourceInfoAtFrame(top, JustMyCodeNow is false);
         _writtenAt = null;
-        SourceInfo? actual = GetSourceInfoAtFrame(top, _justMyCode is false);
+        SourceInfo? actual = GetSourceInfoAtFrame(top, JustMyCodeNow is false);
         if (actual is not { } at || shown is { } same && same.StartLine == at.StartLine && same.StartColumn == at.StartColumn)
         {
             return false;

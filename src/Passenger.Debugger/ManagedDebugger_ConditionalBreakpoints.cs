@@ -72,6 +72,7 @@ public partial class ManagedDebugger
         Session = _sessionHits,
         Removed = gone => OnBreakpointRemoved?.Invoke(gone.Id),
         Capture = came is long held ? point => CaptureAsync(thread, point, held) : null,
+        Forced = _forcing,
     });
 
     /// <summary>A breakpoint's message changed at a hit, told as its kind tells one.</summary>

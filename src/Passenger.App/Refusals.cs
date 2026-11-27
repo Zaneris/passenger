@@ -220,6 +220,12 @@ public static class Refusals
     /// <summary>Collapse Block where no block of braces is around the caret.</summary>
     public const string NoBlockHere = "No block of braces is around the caret";
 
+    /// <summary>Cancel Build with no build running.</summary>
+    public const string NoBuildRunning = "No build is running";
+
+    /// <summary>Remove All Breakpoints with none in the code (on a line, a lambda, an attribute or a method).</summary>
+    public const string NoBreakpointsInCode = "No breakpoint is set in the code";
+
     /// <summary>VCS Operations where none of the Git menu's actions can run.</summary>
     public const string NoVcsOperations = "No Git action can run here";
 

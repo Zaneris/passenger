@@ -467,7 +467,7 @@ public partial class ManagedDebugger
             _entryBreakpoint = null;
             _stopAtEntry = false;
             EndStepForStop();
-            SourceInfo? sourceInfo = GetSourceInfoAtFrame(StoppedFrame(corThread), _justMyCode is false);
+            SourceInfo? sourceInfo = GetSourceInfoAtFrame(StoppedFrame(corThread), JustMyCodeNow is false);
             if (sourceInfo is null)
             {
                 ReportStop(corThread.Id, StopReasons.Entry);
@@ -503,7 +503,7 @@ public partial class ManagedDebugger
                     _stepper = null;
                 }
 
-                SourceInfo? sourceInfo = GetSourceInfoAtFrame(StoppedFrame(corThread), _justMyCode is false);
+                SourceInfo? sourceInfo = GetSourceInfoAtFrame(StoppedFrame(corThread), JustMyCodeNow is false);
                 if (sourceInfo is null)
                 {
                     // Into Task.NotifyDebuggerOfWaitCompletion, on toward the awaiting caller's next user code.
@@ -538,7 +538,7 @@ public partial class ManagedDebugger
         EndStepForStop();
         if (managedBreakpoint.IsFunctionBreakpoint)
         {
-            SourceInfo? sourceInfo = GetSourceInfoAtFrame(StoppedFrame(corThread), _justMyCode is false);
+            SourceInfo? sourceInfo = GetSourceInfoAtFrame(StoppedFrame(corThread), JustMyCodeNow is false);
             // Told as a breakpoint's stop, not with the protocol's function breakpoint reason.
             if (sourceInfo is null)
             {
@@ -695,7 +695,7 @@ public partial class ManagedDebugger
         {
             // A box's evaluation left running holds the thread, so no stepper could go on from here: the step stops where it ended.
             _logger?.Invoke($"The step on thread {corThread.Id} stops where it ended, the box's evaluation left running above it");
-            SourceInfo? held = FindModule(ilFrame.Function.Module) is null ? null : GetSourceInfoAtFrame(ilFrame, _justMyCode is false);
+            SourceInfo? held = FindModule(ilFrame.Function.Module) is null ? null : GetSourceInfoAtFrame(ilFrame, JustMyCodeNow is false);
             _steppedIntoHidden = IsHiddenFrame(ilFrame) ? corThread.Id : null;
             ReportStop(corThread.Id, StopReasons.Step, held?.FilePath, held?.StartLine ?? 0, held?.StartColumn ?? 0, null);
             return;
@@ -708,7 +708,7 @@ public partial class ManagedDebugger
             Continue(clearVariables: true);
             return;
         }
-        SourceInfo? sourceInfo = module is null ? null : GetSourceInfoAtFrame(ilFrame, _justMyCode is false);
+        SourceInfo? sourceInfo = module is null ? null : GetSourceInfoAtFrame(ilFrame, JustMyCodeNow is false);
         if (module is null || sourceInfo is null)
         {
             // No line to show (no symbols, code the compiler made, an async state machine's start): the step goes on to one.

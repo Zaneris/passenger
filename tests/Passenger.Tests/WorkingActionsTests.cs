@@ -24,8 +24,9 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
     }
 
     /// <summary>Every toolbar button runs an action that shows its work, Run turns its ring and says its first stage at
-    /// once with a second click running nothing more, Stop as Run starts or during its build or Profile's ends it, and
-    /// Fetch says it is under way, as one flow, each step the check one test made in an instance of its own.</summary>
+    /// once with a second click running nothing more, Stop as Run starts or during its build or Profile's ends it, Fetch
+    /// says it is under way and Cancel Build stops a build, as one flow, each step the check one test made in an instance of
+    /// its own.</summary>
     [AvaloniaFact]
     public void An_action_that_takes_a_while_shows_its_work_at_once_and_Stop_ends_it()
     {
@@ -35,6 +36,7 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
         Flow.StepApart("Run stopped through its work during its build stops the build", () => new WorkingActionsTests(folders), t => t.Run_stopped_through_its_work_during_its_build_stops_the_build());
         Flow.StepApart("profile stopped through its work during its build stops the build", () => new WorkingActionsTests(folders), t => t.Profile_stopped_through_its_work_during_its_build_stops_the_build());
         Flow.StepApart("fetch says it is fetching at once and a second fetch says it is under way", () => new WorkingActionsTests(folders), t => t.Fetch_says_it_is_fetching_at_once_and_a_second_fetch_says_it_is_under_way());
+        Flow.StepApart("cancel build stops the build under way and with none is greyed saying so", () => new WorkingActionsTests(folders), t => t.Cancel_build_stops_the_build_under_way_and_with_none_is_greyed_saying_so());
     }
 
     private void Every_toolbar_button_runs_an_action_so_it_shows_that_actions_work()
@@ -121,6 +123,25 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
         Assert.Equal("Hello was stopped as it started", Ui.Await(starting, $"{action}'s start to end once stopped during its build", TimeSpan.FromMinutes(2)));
         Assert.True(builds is [true], $"{action} stopped during its build should stop the build, but its builds ended {string.Join(", ", builds.Select(b => b ? "stopped" : "run to their end"))}");
         Assert.False(window.Runner.IsRunning || window.IsBuilding || window.Profiling is not null, $"Something ran or built once {action}'s start was stopped");
+        window.Close();
+    }
+
+    /// <summary>Cancel Build with no build says there is none; during a build held at its compile it stops that build, which
+    /// ends as stopped rather than run to its end.</summary>
+    private void Cancel_build_stops_the_build_under_way_and_with_none_is_greyed_saying_so()
+    {
+        MainWindow window = Open();
+        Assert.Equal(Refusals.NoBuildRunning, window.Actions.WhyNot(AppActions.CancelBuild, window.Actions.Context()));
+        List<bool> builds = [];
+        window.Builder.Exited += (_, _) => builds.Add(window.Builder.WasStopped);
+        using (BuildHold held = HoldNextBuild())
+        {
+            Assert.True(window.Perform(AppActions.Build), window.Status);
+            held.Reached();
+            Assert.True(window.Perform(AppActions.CancelBuild), window.Actions.WhyNot(AppActions.CancelBuild, window.Actions.Context()));
+            Ui.WaitFor(() => builds.Count == 1, "the build to end once Cancel Build stopped it");
+        }
+        Assert.True(builds is [true], "Cancel Build left the build to run to its end");
         window.Close();
     }
 

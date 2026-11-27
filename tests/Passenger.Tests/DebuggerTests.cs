@@ -211,6 +211,12 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             OpenWindows.CloseAll();
             return Task.CompletedTask;
         });
+        await Flow.StepApartLivedAsync<DebuggerTests>("forced steps and run to cursor pass breakpoints by and step into what just my code passes", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Forced_steps_and_run_to_cursor_pass_breakpoints_by_and_step_into_what_just_my_code_passes();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
         await Flow.StepApartLivedAsync<DebuggerTests>("the Breakpoints window lists every breakpoint and turns one off", () => new DebuggerTests(sum, sleeper, folders), t =>
         {
             t.The_breakpoints_window_lists_every_breakpoint_and_turns_one_off();
@@ -1543,6 +1549,58 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         editor.LineMarks.FirstOrDefault(m => m.Line == line && m.Range is { Length: > 0 }) is { Range: { } range }
             ? editor.Document.Snapshot.GetText(range.Start, range.Length)
             : null;
+
+    /// <summary>The forced moves, on their keys: Force Step Over steps over a call past the breakpoint in it, Force Run to
+    /// Cursor runs past it on the loop's later turns to the caret's line, and Force Step Into steps into a method Just My Code
+    /// passes by as the debugger's code; Remove All Breakpoints takes them all away, and Exception Settings opens the
+    /// Breakpoints window on the exceptions'.</summary>
+    private void Forced_steps_and_run_to_cursor_pass_breakpoints_by_and_step_into_what_just_my_code_passes()
+    {
+        Write("Program.cs", "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += Calc.Twice(i);\n}\ntotal = Calc.Hidden(total);\n"
+            + "Console.WriteLine($\"total {total}\");\n\nstatic class Calc\n{\n    public static int Twice(int value)\n    {\n        return value * 2;\n    }\n\n"
+            + "    [System.Diagnostics.DebuggerNonUserCode]\n    public static int Hidden(int value)\n    {\n        return value + 1;\n    }\n}\n");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(0, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        editor.GoTo(new TextPosition(12, 8));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        StartDebugging(window);
+        DebugSession session = window.Debugger.Session!;
+        WaitDebugging(window, () => session is { State: DebugState.Paused, Stops: 1 }, "the stop at the first line");
+        editor.GoTo(new TextPosition(3, 4));
+        Ui.Run(window, AppActions.RunToCursor);
+        WaitDebugging(window, () => session is { State: DebugState.Paused, Stops: 2 }, "Run to Cursor's stop at the loop's call");
+
+        Ui.Run(window, AppActions.ForceStepOver);
+        WaitDebugging(window, () => session is { State: DebugState.Paused, Stops: 3 }, "Force Step Over's stop");
+        Assert.True(Shown(window) is not 12 && Value(window, "total") == "2",
+            $"Force Step Over over Twice stopped at line {Shown(window) + 1} with total {Value(window, "total") ?? "not listed"}, where it passes Twice's breakpoint by");
+
+        editor.GoTo(new TextPosition(5, 0));
+        Ui.Run(window, AppActions.ForceRunToCursor);
+        WaitDebugging(window, () => session is { State: DebugState.Paused, Stops: 4 }, "Force Run to Cursor's stop");
+        Assert.True(Shown(window) == 5 && Value(window, "total") == "12",
+            $"Force Run to Cursor stopped at line {Shown(window) + 1} with total {Value(window, "total") ?? "not listed"}, where it runs past Twice's breakpoint to line 6");
+
+        Ui.Run(window, AppActions.ForceStepInto);
+        WaitDebugging(window, () => session is { State: DebugState.Paused, Stops: 5 }, "Force Step Into's stop");
+        Assert.True(Shown(window) is >= 16 and <= 18, $"Force Step Into stopped at line {Shown(window) + 1}, where it steps into Hidden, which Just My Code passes by");
+
+        Ui.Run(window, AppActions.RemoveAllBreakpoints);
+        Assert.DoesNotContain(editor.LineMarks, mark => mark.Kind == LineMarkKind.Breakpoint);
+        Ui.Run(window, AppActions.Resume);
+        WaitDebugging(window, () => session.State == DebugState.Ended, "the program to run to its end");
+        Assert.Contains("total 13", window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
+
+        Ui.Run(window, AppActions.ExceptionSettings);
+        BreakpointsWindow breakpoints = Assert.IsType<BreakpointsWindow>(window.Popup);
+        Assert.IsType<ExceptionBreakpoint>(breakpoints.Chosen);
+        Ui.Press(window, "ESCAPE");
+        window.Close();
+
+        static int? Shown(MainWindow window) => window.EditorArea.CodeEditor.LineMarks.Where(m => m.Kind == LineMarkKind.ExecutionPoint).Select(m => (int?)m.Line).FirstOrDefault();
+    }
 
     /// <summary>Run to Cursor stops at its line whatever breakpoint stands there, one whose condition is false and a
     /// tracepoint alike, each as it was once the stop is made: the condition passed by on the loop's later turns.</summary>

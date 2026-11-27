@@ -2062,6 +2062,13 @@ public sealed partial class DebugController : IDisposable
                 ? UnpinFromLineTitle : PinToLineTitle,
             Menus = [new("Run", 1, 11)],
         });
+        // Past Just My Code and every breakpoint on the way, where the session's debugger forces steps.
+        Add(AppActions.ForceStepOver, "Force Step Over", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepOverAsync(force: true), "step over")),
+            (d, _) => d.NotSteppable() ?? d.Session!.ForcesWhyNot, new("Run", 1, 20));
+        Add(AppActions.ForceStepInto, "Force Step Into", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepIntoAsync(force: true), "step into")),
+            (d, _) => d.NotSteppable() ?? d.Session!.ForcesWhyNot, new("Run", 1, 21));
+        Add(AppActions.ForceRunToCursor, "Force Run to Cursor", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.RunToCursorAsync(c.File!.Path, c.Caret.Line, force: true), "run to the cursor")),
+            (d, c) => Refusals.NeedsLines(c) ?? d.NotPaused() ?? d.Session!.ForcesWhyNot, new("Run", 1, 22));
         Add(AppActions.StepBack, "Step Back", (d, _) => IdeErrors.Observe(d.SaidAsync(d.StepBackAsync())), (d, _) => d.WhyNotStepBack(), new("Run", 1, 13));
         Add(AppActions.StepForward, "Step Forward", (d, _) => IdeErrors.Observe(d.SaidAsync(d.StepForwardAsync())),
             (d, _) => d.NotPaused() ?? (d.MomentShown is null ? Refusals.LiveStop : null), new("Run", 1, 14));

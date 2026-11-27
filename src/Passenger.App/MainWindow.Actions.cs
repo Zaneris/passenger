@@ -458,6 +458,7 @@ public partial class MainWindow
         // One build at a time, whichever began it: while one works, the others say so.
         Add(A.RebuildSolution, "Rebuild Solution", "Build", _ => Build(BuildKind.Rebuild), Unbuildable, ("Build", 0, 1), works: A.Build);
         Add(A.CleanSolution, "Clean Solution", "Build", _ => Build(BuildKind.Clean), Unbuildable, ("Build", 0, 2), works: A.Build);
+        Add(A.CancelBuild, "Cancel Build", "Build", _ => session.Builder.Stop(), _ => session.Builder.IsRunning ? null : Refusals.NoBuildRunning, ("Build", 0, 3));
         Add(A.BuildSelected, "Build Selected Projects", "Build", _ => Build(BuildKind.Build, SelectedProjects()), NoneSelected, ("Build", 1, 0), works: A.Build);
         Add(A.RebuildSelected, "Rebuild Selected Projects", "Build", _ => Build(BuildKind.Rebuild, SelectedProjects()), NoneSelected, ("Build", 1, 1), works: A.Build);
         Add(A.CleanSelected, "Clean Selected Projects", "Build", _ => Build(BuildKind.Clean, SelectedProjects()), NoneSelected, ("Build", 1, 2), works: A.Build);
@@ -532,6 +533,10 @@ public partial class MainWindow
             ShowBreakpointPopup(editing);
         }, Refusals.NeedsFile, ("Run", 2, 5));
         Add(A.ViewBreakpoints, "View Breakpoints and Exceptions…", "Debug", _ => ShowBreakpoints(null), menu: ("Run", 2, 6));
+        Add(A.ExceptionSettings, "Exception Settings…", "Debug", _ => ShowBreakpoints(session.Debug.Breakpoints.Exceptions.FirstOrDefault()), menu: ("Run", 2, 11),
+            words: ["Exception Breakpoints", "Break on Exceptions"]);
+        Add(A.RemoveAllBreakpoints, "Remove All Breakpoints", "Debug", _ => session.Debug.Breakpoints.RemoveAllInCode(),
+            _ => session.Debug.Breakpoints.All.Any() || session.Debug.Breakpoints.Methods.Count > 0 ? null : Refusals.NoBreakpointsInCode, ("Run", 2, 10));
         Add(A.ExportBreakpoints, "Export Breakpoints…", "Debug", _ => IdeErrors.Observe(ExportBreakpointsAsync()), NeedsFolder, ("Run", 2, 8));
         Add(A.ImportBreakpoints, "Import Breakpoints…", "Debug", _ => IdeErrors.Observe(ImportBreakpointsAsync()), NeedsFolder, ("Run", 2, 9));
 
@@ -606,7 +611,7 @@ public partial class MainWindow
     /// <summary>Adds one of the window's actions, listed in one place of the menus if given.</summary>
     /// <summary>A key the keymap gives one action where another takes it by place (<see cref="AppActions.KeysIn"/>): New
     /// Item in the Explorer, Rerun in the Run window, Edit Breakpoint on a breakpoint's line, Stop Statement in a console
-    /// running one, Query History in a console, New Branch in the Commit and Git windows, View Designer in a form's file while the debugger has not stopped. True once taken.</summary>
+    /// running one, Query History in a console, New Branch in the Commit and Git windows, Cancel Build while one runs, View Designer in a form's file while the debugger has not stopped. True once taken.</summary>
     private bool PlaceTakes(string action)
     {
         ActionContext context = actions!.Context();
@@ -618,6 +623,7 @@ public partial class MainWindow
             ?? Here(A.EditBreakpoint, context is { ToolWindow: null, File: { } file } && session.Debug.Breakpoints.In(file.Path).Any(b => b.Line == context.Caret.Line))
             ?? Here(A.CommitMessageHistory, commitView?.HasMessageKeys(context.Focused) == true)
             ?? Here(A.NewBranch, context.ToolWindow?.Id is ToolWindowIds.Commit or ToolWindowIds.Git)
+            ?? Here(A.CancelBuild, session.Builder.IsRunning)
             ?? Here(A.FormDesignOnly, context is { ToolWindow: null, File: { } form } && FormOf(form) is not null && session.Debug.Session is not { State: Debugging.DebugState.Paused })
             ?? Here(A.NextOverload, assist.StepsOverloads)
             ?? Here(A.PreviousOverload, assist.StepsOverloads);

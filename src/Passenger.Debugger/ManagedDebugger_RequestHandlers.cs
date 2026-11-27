@@ -357,10 +357,12 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>The client's continue: the program runs on from the stop shown, all its threads.</summary>
-    public void Continue()
+    /// <summary>The client's continue: the program runs on from the stop shown, all its threads; forced (Force Run to Cursor)
+    /// past every breakpoint but Run to Cursor's.</summary>
+    public void Continue(bool force = false)
     {
-        _logger?.Invoke("Continue");
+        _logger?.Invoke(force ? "Continue, forced" : "Continue");
+        _forcing = force;
         ForgetReturnedValues();
         Continue(clearVariables: true, allowSuperfluous: true);
     }
@@ -435,21 +437,21 @@ public partial class ManagedDebugger
     private bool StepOutToManagedCode(ICorDebugThread thread)
     {
         ICorDebugFrame? top = TopFrame(thread);
-        if (!_justMyCode && _stoppedByEvent != thread.Id && LibraryInNativeCall(thread) is { } caller)
+        if (!JustMyCodeNow && _stoppedByEvent != thread.Id && LibraryInNativeCall(thread) is { } caller)
         {
             _logger?.Invoke($"Paused in native code {FrameTold(caller)} called: the step runs out of it");
             BeginStep(caller.CreateStepper(), thread, caller, justMyCode: false, stepper => stepper.StepOut());
             Continue(clearVariables: true);
             return true;
         }
-        if (top is ICorDebugILFrame && (!_justMyCode || _stoppedByEvent == thread.Id || IsUserCodeFrame(top)))
+        if (top is ICorDebugILFrame && (!JustMyCodeNow || _stoppedByEvent == thread.Id || IsUserCodeFrame(top)))
         {
             return false;
         }
         _logger?.Invoke(top is ICorDebugILFrame
             ? $"Paused in {FrameTold(top)}, outside the user's code: the step runs out to the user's code"
             : $"Paused in {(top is null ? "native code" : FrameTold(top))}: the step runs out to managed code");
-        BeginStep(thread.CreateStepper(), thread, null, _justMyCode, stepper => stepper.StepOut());
+        BeginStep(thread.CreateStepper(), thread, null, JustMyCodeNow, stepper => stepper.StepOut());
         Continue(clearVariables: true);
         return true;
     }
@@ -489,10 +491,11 @@ public partial class ManagedDebugger
     }
 
     /// <summary>Steps a thread on, or refuses saying why: a step answered as taken that never set the program going would
-    /// leave the IDE waiting for a stop that never comes. An async method's step over an await is the async stepper's.</summary>
-    public async Task Step(int threadId, StepType type)
+    /// leave the IDE waiting for a stop that never comes. An async method's step over an await is the async stepper's. A
+    /// forced one (Force Step Into and Over) steps without Just My Code and passes every breakpoint by.</summary>
+    public async Task Step(int threadId, StepType type, bool force = false)
     {
-        _logger?.Invoke($"{type} on thread {threadId}");
+        _logger?.Invoke($"{type} on thread {threadId}{(force ? ", forced" : string.Empty)}");
         _lastStep = type;
         ArgumentNullException.ThrowIfNull(_process);
         if (!_threads.TryGetValue(threadId, out ThreadInfo? threadInfo))
@@ -509,6 +512,7 @@ public partial class ManagedDebugger
         {
             throw new InvalidOperationException("A step operation is already in progress");
         }
+        _forcing = force;
         ForgetReturnedValues();
         _stepBegan = null;
         if (StepsAfterEvaluation(threadId, type))
@@ -879,7 +883,7 @@ public partial class ManagedDebugger
             stackFrameInfo.Name = GetMethodFormattedName(module, kickoffMethodToken ?? function.Token, ilFrame.TypeParameters);
             SourceInfo? sourceInfo = GetSourceInfoAtFrame(ilFrame, decompiled);
             // A method its own code says is not the user's ([DebuggerNonUserCode] and kin) is shown as external code.
-            stackFrameInfo.IsUserCode = module.IsUserCode && !(_justMyCode && module.MetadataReader.IsNonUserCode(function.Token));
+            stackFrameInfo.IsUserCode = module.IsUserCode && !(JustMyCodeNow && module.MetadataReader.IsNonUserCode(function.Token));
             stackFrameInfo.IsResolved = module.MetadataReader.HasSymbols;
             if (sourceInfo is not null)
             {

@@ -223,19 +223,19 @@ public sealed class DebugAdapter
             }
             return new SetExpressionResponse { Value = assigned.Value, Type = assigned.Type, VariablesReference = assigned.VariablesReference };
         });
-        connection.Handle<ThreadArguments, ContinueResponse>(DapCommands.Continue, async _ =>
+        connection.Handle<GoingArguments, ContinueResponse>(DapCommands.Continue, async arguments =>
         {
             await Leave(() =>
             {
-                debugger.Continue();
+                debugger.Continue(arguments.Force == true);
                 return Task.CompletedTask;
             });
             return new ContinueResponse(AllThreadsContinued: true);
         });
-        connection.Handle<ThreadArguments>(DapCommands.Next, arguments => Leave(() => debugger.Step(arguments.ThreadId, StepType.StepOver)));
+        connection.Handle<GoingArguments>(DapCommands.Next, arguments => Leave(() => debugger.Step(arguments.ThreadId, StepType.StepOver, arguments.Force == true)));
         connection.Handle<StepInArguments>(DapCommands.StepIn, arguments => Leave(() => arguments.TargetId is int target
             ? debugger.StepIntoTarget(arguments.ThreadId, target)
-            : debugger.Step(arguments.ThreadId, StepType.StepIn)));
+            : debugger.Step(arguments.ThreadId, StepType.StepIn, arguments.Force == true)));
         // Smart Step Into: the calls of the frame's statement, each placed where it is written.
         connection.Handle<StepInTargetsArguments, StepInTargetsResponse>(DapCommands.StepInTargets, async arguments =>
         {
@@ -373,6 +373,7 @@ public sealed class DebugAdapter
             SupportsGotoTargetsRequest = true,
             SupportsDataBreakpoints = ManagedDebugger.DataBreakpointsUnavailable is null,
             SupportsMarkObject = true,
+            SupportsForcedSteps = true,
             DataBreakpointsUnavailable = ManagedDebugger.DataBreakpointsUnavailable,
             ExceptionBreakpointFilters =
             [

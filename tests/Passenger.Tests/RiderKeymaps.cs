@@ -233,7 +233,10 @@ internal static class RiderKeymaps
         ([EditorActions.ExpandWordBackward], ["HippieBackwardCompletion"]), ([AppActions.PasteFromHistory], ["PasteMultiple"]),
         ([AppActions.CopyReference], ["CopyReference"]), ([AppActions.SmartTypeCompletion], ["SmartTypeCompletion"]),
         ([AppActions.NewBranch], ["Git.CreateNewBranch"]), ([AppActions.CommitAndPush], ["Git.Commit.And.Push.Executor"]),
-        ([AppActions.VcsOperations], ["Vcs.QuickListPopupAction"])
+        ([AppActions.VcsOperations], ["Vcs.QuickListPopupAction"]), ([AppActions.ForceStepInto], ["ForceStepInto"]),
+        ([AppActions.ForceStepOver], ["ForceStepOver"]), ([AppActions.ForceRunToCursor], ["ForceRunToCursor"]),
+        ([AppActions.RemoveAllBreakpoints], ["RiderRemoveAllLineBreakpoints"]), ([AppActions.ExceptionSettings], ["OpenExceptionSettings"]),
+        ([AppActions.CancelBuild], ["CancelBuildAction"])
     ];
 
     /// <summary>Where a keymap here differs from Rider's on purpose: a shortcut it keeps that Rider's lacks, or one of Rider's
@@ -259,6 +262,8 @@ internal static class RiderKeymaps
         (VisualStudioMac, AppActions.MethodDown, "control shift DOWN", false, "Clone Caret Below's, which the keymap gives it too"),
         (VisualStudioMac, AppActions.CodeBlockStart, "meta alt OPEN_BRACKET", false, "Select Containing Declaration's, which Rider's own descriptor gives it"),
         (VisualStudioMac, AppActions.QuickImplementations, "meta Y", false, "Redo's, Visual Studio's own"),
+        (VisualStudio, AppActions.CancelBuild, "control F9", false, "Toggle Breakpoint Enabled's, which the keymap gives it too"),
+        (VisualStudioMac, AppActions.CancelBuild, "meta F9", false, "Toggle Breakpoint Enabled's, which the keymap gives it too"),
         (VisualStudio, EditorActions.MoveLineUp, "alt UP", true, "Visual Studio's own Move Line Up, over Rider's Method Up"),
         (VisualStudio, EditorActions.MoveLineDown, "alt DOWN", true, "Visual Studio's own Move Line Down, over Rider's Method Down"),
         (VisualStudio, AppActions.MethodUp, "alt UP", false, "Move Line Up's, Visual Studio's own"),

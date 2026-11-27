@@ -378,6 +378,10 @@ public sealed class DebugSession
     /// <summary>A module loaded, unloaded, or had its symbols loaded.</summary>
     public event EventHandler? ModulesChanged;
 
+    /// <summary>Why the session's debugger forces no step, where it cannot; null where it does (Force Step Into and Over,
+    /// Force Run to Cursor).</summary>
+    public string? ForcesWhyNot { get; private set; } = "The debugger has not started";
+
     /// <summary>Why the session's debugger marks no object, where it cannot; null where it does (Mark Object).</summary>
     public string? MarksWhyNot { get; private set; } = "The debugger has not started";
 
@@ -609,6 +613,12 @@ public sealed class DebugSession
             session.DataBreakpointsUnavailable = capabilities.SupportsDataBreakpoints == true ? null
                 : capabilities.DataBreakpointsUnavailable ?? "The debugger sets no data breakpoints";
             session.MovesNextStatement = capabilities.SupportsGotoTargetsRequest == true;
+            session.ForcesWhyNot = capabilities.SupportsForcedSteps == true ? null : engine switch
+            {
+                DebugEngine.GDScript => "Godot's GDScript debugger has no Just My Code to step past nor a way to pass breakpoints by",
+                DebugEngine.WebAssembly => "The browser's .NET debugger steps as it does and stops at each breakpoint",
+                _ => "The debugger forces no step",
+            };
             session.MarksWhyNot = capabilities.SupportsMarkObject == true ? null : engine switch
             {
                 DebugEngine.GDScript => "Godot's GDScript debugger marks no object",
@@ -661,9 +671,11 @@ public sealed class DebugSession
 
     public Task ContinueAsync() => Resume(DapCommands.Continue);
 
-    public Task StepOverAsync() => Resume(DapCommands.Next);
+    /// <summary>Step Over; forced, past every breakpoint in what it steps over (Force Step Over).</summary>
+    public Task StepOverAsync(bool force = false) => Resume(DapCommands.Next, thread => new GoingArguments(thread, force ? true : null));
 
-    public Task StepIntoAsync() => Resume(DapCommands.StepIn);
+    /// <summary>Step Into; forced, into code Just My Code passes by and past every breakpoint (Force Step Into).</summary>
+    public Task StepIntoAsync(bool force = false) => Resume(DapCommands.StepIn, thread => new StepInArguments(thread, Force: force ? true : null));
 
     /// <summary>Smart Step Into's step: straight into one of the calls <see cref="StepInTargetsAsync"/> gave.</summary>
     public Task StepIntoTargetAsync(int target) => Resume(DapCommands.StepIn, thread => new StepInArguments(thread, target));
@@ -677,16 +689,18 @@ public sealed class DebugSession
     public Task StepOutAsync() => Resume(DapCommands.StepOut);
 
     /// <summary>Runs on to a line: a breakpoint the user never sees, gone again at the next stop (the stop shown again when the
-    /// continue is refused among them, so no later run stops at a breakpoint no one set).</summary>
-    public Task RunToCursorAsync(string path, int line)
+    /// continue is refused among them, so no later run stops at a breakpoint no one set); forced, past every other breakpoint
+    /// on the way (Force Run to Cursor).</summary>
+    public Task RunToCursorAsync(string path, int line, bool force = false)
     {
         UiThread.Check();
         if (State != DebugState.Paused)
         {
             return Task.CompletedTask;
         }
-        runToCursor = (path, Asked(path, line, null));
-        return Resume(DapCommands.Continue, before: () => SendBreakpointsAsync(path));
+        // Its own breakpoint is Run to Cursor's as one held there is, which a forced run stops at alone.
+        runToCursor = (path, Asked(path, line, null) with { RunTo = true });
+        return Resume(DapCommands.Continue, thread => new GoingArguments(thread, force ? true : null), before: () => SendBreakpointsAsync(path));
     }
 
     /// <summary>Text for the program's standard input.</summary>

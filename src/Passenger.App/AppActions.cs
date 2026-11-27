@@ -648,6 +648,15 @@ public static class AppActions
     public const string NewBranch = "app.vcs.newBranch";
     public const string CommitAndPush = "app.vcs.commitAndPush";
     public const string VcsOperations = "app.vcs.operations";
+
+    // Rider's ForceStepInto, ForceStepOver and ForceRunToCursor (past Just My Code and every breakpoint on the way),
+    // RiderRemoveAllLineBreakpoints, OpenExceptionSettings and CancelBuildAction, bound as its keymaps bind them (RiderKeys).
+    public const string ForceStepInto = "app.debug.forceStepInto";
+    public const string ForceStepOver = "app.debug.forceStepOver";
+    public const string ForceRunToCursor = "app.debug.forceRunToCursor";
+    public const string RemoveAllBreakpoints = "app.debug.removeAllBreakpoints";
+    public const string ExceptionSettings = "app.debug.exceptionSettings";
+    public const string CancelBuild = "app.build.cancel";
     public const string ShowExecutionPoint = "app.debug.showExecutionPoint";
 
     // Rider's XDebugger.AttachToProcess and RiderReattach, on its Visual Studio keymaps' Ctrl+Alt+P (Cmd+Alt+P) and
@@ -946,11 +955,9 @@ public static class AppActions
     /// change, since every tip and menu reads it; a caller reads it and never binds into it.</summary>
     public static Keymap Keymap() => inForce ??= Keymap(Preset, UserShortcuts);
 
-    /// <summary>The action whose keys a place takes for one of its own, where Rider's keymaps give a key two by place: Show
-    /// Diff and Compare Files Duplicate's (not in VS Code's or Emacs's), Add to Watches Complete Statement's (VS Code's Start
-    /// New Line Before's), Focus Editor Escape's; outside Visual Studio's New Item Generate's, Edit Breakpoint View
-    /// Breakpoints' and New Branch Inline's; Rerun Replace's and Commit Message History Match Brace's (IntelliJ IDEA's on
-    /// the Mac; History Replace's in Visual Studio's), a console's and a grid's by id, Query History Find in Selection's.</summary>
+    /// <summary>The action whose keys a place takes for one of its own, where Rider's keymaps give a key two told apart by
+    /// place (the editor or a tool window, a console, a build running), each case one; an action the person gave keys of
+    /// its own keeps them.</summary>
     public static string KeysIn(string id) => UserShortcuts.ContainsKey(id) ? id : id switch
     {
         ShowDiff or CompareFiles when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => EditorActions.Duplicate,
@@ -968,7 +975,8 @@ public static class AppActions
         DatabaseRevert => RollbackLines,
         DatabaseShowDdl => GoToDeclaration,
         DatabaseRunStop => Stop,
-        DatabaseHistory when HistoryKeyShared(Preset) => FindInSelection,
+        DatabaseHistory when HistoryKeyHolder(Preset) is { } holder => holder,
+        CancelBuild when Preset is KeymapPreset.IntelliJ or KeymapPreset.Emacs => Build,
         NewBranch when Preset != KeymapPreset.VisualStudio => Inline,
         Rerun when Preset == KeymapPreset.IntelliJ && OperatingSystem.IsMacOS() => Replace,
         NextOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: true),
@@ -977,11 +985,16 @@ public static class AppActions
         _ => id,
     };
 
-    /// <summary>Whether Query History's Ctrl+Alt+E, as Rider's keymap gives it, is another action's too: Find in Selection's in
-    /// IntelliJ IDEA's and VS Code's off the Mac, which a console takes it from (<see cref="KeysIn"/>), and in Emacs's Method
-    /// Down's, Emacs's own list, which keeps it from both.</summary>
-    private static bool HistoryKeyShared(KeymapPreset preset) =>
-        preset == KeymapPreset.Emacs || (!OperatingSystem.IsMacOS() && preset is KeymapPreset.IntelliJ or KeymapPreset.VSCode);
+    /// <summary>The action holding Query History's Ctrl+Alt+E (Cmd's in Visual Studio's on the Mac) where Rider's keymap gives
+    /// it another too, which a console takes it from (<see cref="KeysIn"/>): Exception Settings in Visual Studio's, Find in
+    /// Selection in IntelliJ IDEA's and VS Code's off the Mac and in Emacs's, whose Method Down keeps the key from both.</summary>
+    private static string? HistoryKeyHolder(KeymapPreset preset) => preset switch
+    {
+        KeymapPreset.VisualStudio => ExceptionSettings,
+        KeymapPreset.Emacs => FindInSelection,
+        KeymapPreset.IntelliJ or KeymapPreset.VSCode when !OperatingSystem.IsMacOS() => FindInSelection,
+        _ => null,
+    };
 
     /// <summary>The action whose keys step through Parameter Info's overloads, as Rider's keymaps give them Ctrl+Up and Down,
     /// or Alt's on the Mac: the editor's scroll by a line, its line move on the Mac, or IntelliJ IDEA's selection steps
@@ -1027,7 +1040,7 @@ public static class AppActions
         // Rider's Console.History.Browse and Console.Transaction.Commit: $default's, the Mac's with Cmd for Ctrl, as KeysIn says.
         bool commandKey = OperatingSystem.IsMacOS() && preset != KeymapPreset.Emacs;
         keymap.Bind(DatabaseCommit, commandKey ? "meta alt shift ENTER" : "control alt shift ENTER");
-        if (!HistoryKeyShared(preset))
+        if (HistoryKeyHolder(preset) is null)
         {
             keymap.Bind(DatabaseHistory, commandKey ? "meta alt E" : "control alt E");
         }
@@ -1109,7 +1122,8 @@ public static class AppActions
             (GoToRegion, "control alt PERIOD"), (QuickImplementations, "alt F12"), (CollapseSelection, "control M , H"), (CollapseSelection, "control M , control H"),
             (CollapseBlock, "control shift PERIOD"), (PasteFromHistory, "control shift V"), (PasteFromHistory, "control shift INSERT"),
             (CopyReference, "control alt shift C"), (SmartTypeCompletion, "control alt SPACE"), (NewBranch, "control alt N"),
-            (CommitAndPush, "control alt shift K"), (VcsOperations, "control alt Q"),
+            (CommitAndPush, "control alt shift K"), (VcsOperations, "control alt Q"), (ForceStepInto, "alt F11"), (ForceStepOver, "alt shift F8"),
+            (ForceRunToCursor, "control alt F9"), (RemoveAllBreakpoints, "control shift F9"), (ExceptionSettings, "control alt E"), (CancelBuild, "control CANCEL"),
         ],
         ["Visual Studio OSX"] =
         [
@@ -1118,14 +1132,16 @@ public static class AppActions
             (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
             (GoToRegion, "meta alt PERIOD"), (QuickImplementations, "alt SPACE"), (CollapseSelection, "meta PERIOD"), (CollapseBlock, "meta shift PERIOD"),
             (PasteFromHistory, "meta shift V"), (PasteFromHistory, "meta shift INSERT"), (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control alt SPACE"),
-            (NewBranch, "meta alt N"), (CommitAndPush, "meta alt K"), (VcsOperations, "control V"),
+            (NewBranch, "meta alt N"), (CommitAndPush, "meta alt K"), (VcsOperations, "control V"), (ForceStepInto, "alt F11"), (ForceStepOver, "alt shift F8"),
+            (ForceRunToCursor, "meta alt F9"), (RemoveAllBreakpoints, "meta shift F9"), (ExceptionSettings, "meta alt E"),
         ],
         ["VSCode"] =
         [
             (GoToContainingDeclaration, "alt shift OPEN_BRACKET"), (SelectContainingDeclaration, "control alt shift OPEN_BRACKET"),
             (GoToRegion, "control alt PERIOD"), (QuickImplementations, "alt F12"), (ErrorDescription, "control F1"), (ShowFilePath, "control alt F12"),
             (CollapseBlock, "control alt OPEN_BRACKET"), (CollapseBlock, "control K , control L"), (PasteFromHistory, "control shift INSERT"),
-            (CopyReference, "control alt shift C"), (CommitAndPush, "control alt K"), (VcsOperations, "alt BACK_QUOTE"),
+            (CopyReference, "control alt shift C"), (CommitAndPush, "control alt K"), (VcsOperations, "alt BACK_QUOTE"), (ForceStepInto, "alt shift F7"),
+            (ForceRunToCursor, "control alt F9"), (RemoveAllBreakpoints, "control shift F9"), (CancelBuild, "control F9"),
         ],
         ["VSCode OSX"] =
         [
@@ -1135,6 +1151,7 @@ public static class AppActions
             (GoToRegion, "meta alt PERIOD"), (QuickImplementations, "alt SPACE"), (QuickImplementations, "alt F12"), (ErrorDescription, "meta F1"),
             (ExpressionTypeInfo, "control shift P"), (ShowFilePath, "meta alt F12"), (CollapseBlock, "meta K , meta L"),
             (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control shift SPACE"), (CommitAndPush, "meta alt K"), (VcsOperations, "control V"),
+            (ForceStepInto, "alt shift F7"), (ForceRunToCursor, "meta alt F9"), (RemoveAllBreakpoints, "meta shift F9"), (CancelBuild, "meta F9"),
         ],
         ["$default"] =
         [
@@ -1145,7 +1162,8 @@ public static class AppActions
             (ExpressionTypeInfo, "control shift P"), (ShowFilePath, "control alt F12"), (CollapseSelection, "control PERIOD"),
             (CollapseBlock, "control shift PERIOD"), (PasteFromHistory, "control shift V"), (PasteFromHistory, "control shift INSERT"),
             (CopyReference, "control alt shift C"), (SmartTypeCompletion, "control shift SPACE"), (CommitAndPush, "control alt K"),
-            (VcsOperations, "alt BACK_QUOTE"),
+            (VcsOperations, "alt BACK_QUOTE"), (ForceStepInto, "alt shift F7"), (ForceStepOver, "alt shift F8"), (ForceRunToCursor, "control alt F9"),
+            (RemoveAllBreakpoints, "control shift F9"),
         ],
         ["Mac OS X 10.5+"] =
         [
@@ -1157,6 +1175,7 @@ public static class AppActions
             (ExpressionTypeInfo, "control shift P"), (ShowFilePath, "meta alt F12"), (CollapseSelection, "meta PERIOD"),
             (CollapseBlock, "meta shift PERIOD"), (PasteFromHistory, "meta shift V"), (PasteFromHistory, "meta shift INSERT"),
             (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control shift SPACE"), (CommitAndPush, "meta alt K"), (VcsOperations, "control V"),
+            (ForceStepInto, "alt shift F7"), (ForceStepOver, "alt shift F8"), (ForceRunToCursor, "meta alt F9"), (RemoveAllBreakpoints, "meta shift F9"),
         ],
     };
 

@@ -88,6 +88,9 @@ public sealed class HitReading
     /// <summary>Why a hit went on without stopping, in words ("its condition i == 3 was false"), for a recording; null where
     /// nothing records.</summary>
     public Action<string>? Passed { get; init; }
+
+    /// <summary>Whether the hit came in a forced step or run (Force Step Over, Force Run to Cursor), which passes it by.</summary>
+    public bool Forced { get; init; }
 }
 
 /// <summary>What one debugging session's breakpoints have come to between them, by their keys
@@ -200,13 +203,19 @@ public static class BreakpointHits
     public static string? Unreadable(string? hitCondition) =>
         hitCondition is { } hits && !HitCondition.TryParse(hits, out _, out string? problem) ? problem : null;
 
-    /// <summary>A hit of a breakpoint of any kind: passed over while what it waits for has taken no hit, or once it went as
-    /// temporary; else its condition tried (one that cannot be told taken as held and said), counted where it held, then tried
-    /// by its hit count. A hit taken arms those waiting for it, is a temporary one's last (<see cref="HitReading.Removed"/>), is
-    /// a snapshot point's capture within its limit, and logs its message, or says <see cref="HitReading.Reached"/> where it
-    /// neither logs, stops nor captures. Whether it stops the program, as a snapshot point's never does but for Run to Cursor.</summary>
+    /// <summary>A hit of a breakpoint of any kind: passed over in a forced step, while what it waits for has taken no hit, or
+    /// once it went as temporary; else its condition tried (one that cannot be told taken as held and said), counted where it
+    /// held, then tried by its hit count. A hit taken arms those waiting for it, is a temporary one's last, is a snapshot
+    /// point's capture within its limit, and logs its message, or says <see cref="HitReading.Reached"/> where it neither logs,
+    /// stops nor captures. Whether it stops the program, as a snapshot point's never does but for Run to Cursor.</summary>
     public static async Task<bool> StopsAsync(IHitBreakpoint breakpoint, HitReading hit)
     {
+        if (hit.Forced && !breakpoint.RunTo)
+        {
+            hit.Log?.Invoke($"Breakpoint {breakpoint.Id}: passed by a forced step");
+            hit.Passed?.Invoke("a forced step passes breakpoints by");
+            return false;
+        }
         if (breakpoint.WaitFor is int awaited && !hit.Session.WasHit(awaited))
         {
             hit.Log?.Invoke($"Breakpoint {breakpoint.Id}: waits for another breakpoint to be hit first");

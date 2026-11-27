@@ -47,6 +47,10 @@ public sealed record DapCapabilities
 
     /// <summary>Passenger's own: whether the debugger marks objects (<see cref="DapCommands.MarkObject"/>).</summary>
     public bool? SupportsMarkObject { get; init; }
+
+    /// <summary>Passenger's own: whether the debugger forces a step or a continue (<see cref="StepInArguments.Force"/>),
+    /// stepping without Just My Code and passing every breakpoint by but Run to Cursor's.</summary>
+    public bool? SupportsForcedSteps { get; init; }
     public IReadOnlyList<DapExceptionFilter>? ExceptionBreakpointFilters { get; init; }
 }
 
@@ -455,8 +459,13 @@ public sealed record SetExpressionResponse
 
 public sealed record ThreadArguments(int ThreadId);
 
-/// <summary>Step Into: the thread, and the call to step straight into (a target stepInTargets gave), Smart Step Into's.</summary>
-public sealed record StepInArguments(int ThreadId, int? TargetId = null);
+/// <summary>Step Into: the thread, and the call to step straight into (a target stepInTargets gave), Smart Step Into's;
+/// <paramref name="Force"/> is Passenger's own, Force Step Into's (<see cref="DapCapabilities.SupportsForcedSteps"/>).</summary>
+public sealed record StepInArguments(int ThreadId, int? TargetId = null, bool? Force = null);
+
+/// <summary>Step Over and Continue: the thread, and Passenger's own <paramref name="Force"/>, Force Step Over's and Force
+/// Run to Cursor's (<see cref="DapCapabilities.SupportsForcedSteps"/>).</summary>
+public sealed record GoingArguments(int ThreadId, bool? Force = null);
 
 /// <summary>The calls a frame's statement can step into, in the order they run (Smart Step Into's question), its source read
 /// as its project compiles it: with these preprocessor symbols, at this C# version ("12.0", "preview"); with neither, with

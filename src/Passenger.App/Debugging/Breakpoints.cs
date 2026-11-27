@@ -1255,6 +1255,20 @@ public sealed class BreakpointStore
         RaiseMethods(breakpoint.Path);
     }
 
+    /// <summary>Remove All Breakpoints: every breakpoint in the code taken away, on a line (a lambda's and an attribute's among
+    /// them) or a method; the exceptions', data and property breakpoints stay, set in their own window.</summary>
+    public void RemoveAllInCode()
+    {
+        foreach (LineBreakpoint line in All.ToList())
+        {
+            Remove(line);
+        }
+        foreach (MethodBreakpoint method in methods.ToList())
+        {
+            Remove(method);
+        }
+    }
+
     /// <summary>Removes a breakpoint; "Any exception" stays, turned off by its box instead, as XAML Binding Errors
     /// is.</summary>
     public void Remove(Breakpoint breakpoint)
