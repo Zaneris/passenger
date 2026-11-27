@@ -856,10 +856,17 @@ public sealed partial class Vim
             {
                 run++;
             }
-            if (on.Length > 0 && r.Cursor == on.End && on.Line < lastLine && VimMotions.Blank(text, on.Line + 1)
+            if (on.Length > 0 && r.Cursor == on.End && on.Line < lastLine && VimMotions.Blank(text, on.Line + 1) && run == lastLine && r.Anchor > on.End
+                && r.Anchor < text.GetLineStart(run))
+            {
+                // Past the end of a line above empty lines ending the text, a stretch begun on one before their last has the white after it taken: steps go back from where that white begins.
+                int taken = SentencesBack(text, WhiteEnding(text, on.Line), inner, n);
+                return taken != r.Cursor ? r with { Cursor = taken } : null;
+            }
+            if (on.Length > 0 && r.Cursor == on.End && on.Line < lastLine && VimMotions.Blank(text, on.Line + 1) && (run < lastLine || text.GetLineStart(run) != r.Anchor)
                 && (inner || run > on.Line + 1 || text[on.End - 1] is not (' ' or '\t')))
             {
-                // Past the end of a line before empty lines, the first step goes on to the last of them (as after blanks, of two or more), a count going on back.
+                // Past the end of a line before empty lines, the first step goes on to the last of them (as after blanks, of two or more), but to the text's last where the stretch begins on it, a count going on back.
                 int to = n == 1 ? text.GetLineStart(run) : SentencesBack(text, text.GetLineStart(run), inner, n - 1, reached: true, begun: true);
                 return to != r.Cursor ? r with { Cursor = to } : null;
             }
@@ -882,6 +889,13 @@ public sealed partial class Vim
             {
                 // Past the end of a line of blanks alone, is takes the line's blanks.
                 return r with { Cursor = on.Start };
+            }
+            if (!inner && on.Length > 0 && r.Cursor == on.End && on.Line + 2 <= lastLine && VimMotions.Blank(text, on.Line + 1) && text.GetLine(on.Line + 2).Length > 0
+                && r.Anchor == text.GetLineStart(on.Line + 1) && WhiteEnding(text, on.Line) is var blanksAt && blanksAt > on.Start && blanksAt < on.End)
+            {
+                // Past the end of a line ending in blanks, above the empty line the stretch began on, as takes those blanks first, then a sentence with the white before it each step.
+                int to = n == 1 ? blanksAt : SentencesBack(text, blanksAt, inner, n - 1);
+                return to != r.Cursor ? r with { Cursor = to } : null;
             }
             if ((inner || n == 1) && on.Length > 0 && r.Cursor == on.End && WhiteEnding(text, on.Line) is var ending && ending > on.Start && ending < on.End)
             {
