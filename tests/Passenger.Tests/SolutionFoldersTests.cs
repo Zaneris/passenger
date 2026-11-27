@@ -83,6 +83,8 @@ public sealed class SolutionFoldersTests : IDisposable
     private void A_solution_folder_has_its_own_icon_lists_its_files_and_sorts_before_the_projects_by_name(string format)
     {
         string solution = WriteSolution(format);
+        // A folder named to lead the list, declared last (#2396).
+        File.WriteAllBytes(solution, new UTF8Encoding(false).GetBytes(File.ReadAllText(solution).Replace("</Solution>", "  <Folder Name=\"/_shared/\" />\n</Solution>", StringComparison.Ordinal)));
         MainWindow window = Open();
         ExplorerTree tree = window.ExplorerView.Tree;
         ExplorerNode items = Row(window, NodeKind.SolutionFolder, "Solution Items");
@@ -94,12 +96,12 @@ public sealed class SolutionFoldersTests : IDisposable
         Ui.ClickRow(window, Row(window, NodeKind.SolutionFolder, "src"));
         Ui.Press(window, "RIGHT");
         Assert.True(items.IconKey == IconKeys.SolutionFolderOpen, "An open solution folder still shows the closed one's icon");
-        // The solution declares the project first and README.md before .editorconfig: the view sorts by kind, then name.
+        // Declared project first, README.md before .editorconfig, _shared last: sorted by kind, then name, punctuation first.
         Assert.Equal(
-            ["Shop", "  Solution Items", "    .editorconfig", "    README.md", "  src", "    Shop.Core", "  Shop.Web"],
+            ["Shop", "  _shared", "  Solution Items", "    .editorconfig", "    README.md", "  src", "    Shop.Core", "  Shop.Web"],
             tree.Rows.Select(r => new string(' ', r.Depth * 2) + r.Name));
         Assert.Equal(
-            [NodeKind.Solution, NodeKind.SolutionFolder, NodeKind.File, NodeKind.File, NodeKind.SolutionFolder, NodeKind.Project, NodeKind.Project],
+            [NodeKind.Solution, NodeKind.SolutionFolder, NodeKind.SolutionFolder, NodeKind.File, NodeKind.File, NodeKind.SolutionFolder, NodeKind.Project, NodeKind.Project],
             tree.Rows.Select(r => r.Kind));
 
         Ui.DoubleClick(Ui.Row(window.ExplorerView, Row(window, NodeKind.File, "README.md")));

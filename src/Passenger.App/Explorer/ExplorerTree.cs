@@ -147,7 +147,7 @@ public sealed class ExplorerTree
         int count = solution.Projects.Count() + beside.Count;
         ExplorerNode root = new(NodeKind.Solution, solution.Name, solution.Path, 0, false,
             node => [.. Entries(solution.Entries, node.Depth + 1, null),
-                .. beside.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).Select(p => Project(p, node.Depth + 1))],
+                .. beside.OrderBy(p => p.Name, NameOrder.Instance).Select(p => Project(p, node.Depth + 1))],
             Plural.Of(count, "project"));
         Show(root);
     }
@@ -742,7 +742,7 @@ public sealed class ExplorerTree
     private List<ExplorerNode> Entries(IEnumerable<SolutionEntry> entries, int depth, string? folder) =>
         [.. entries
             .OrderBy(e => e switch { SolutionFolder => 0, ProjectModel => 1, _ => 2 })
-            .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(e => e.Name, NameOrder.Instance)
             .Select(e => Entry(e, depth, folder))];
 
     private ExplorerNode Entry(SolutionEntry entry, int depth, string? parent) => entry switch
@@ -847,7 +847,7 @@ public sealed class ExplorerTree
     private string SharedTip(ProjectModel project)
     {
         List<string> importing = [.. projects.Values.Where(p => SharedImports(p).Any(s => s.Project == project.Path)).Select(p => p.Name)
-            .Order(StringComparer.OrdinalIgnoreCase)];
+            .Order(NameOrder.Instance)];
         string items = Path.GetFileName(SharedProjects.ItemsFileOf(project.Path));
         return importing.Count == 0 ? $"Shared project: no project imports {items}, so none compiles its files"
             : $"Shared project: its files are compiled into {Plural.Listed(importing)}, which {Plural.Agreeing(importing.Count, "imports", "import")} {items}";
@@ -921,7 +921,7 @@ public sealed class ExplorerTree
             {
                 children.AddRange(Generators(project.Path, null, below));
             }
-            children.AddRange(SharedImports(project).OrderBy(s => Path.GetFileName(s.Items), StringComparer.OrdinalIgnoreCase)
+            children.AddRange(SharedImports(project).OrderBy(s => Path.GetFileName(s.Items), NameOrder.Instance)
                 .Select(s => SharedLeaf(project, s.Items, s.Project, below)));
             if (!generated.ContainsKey(project.Path))
             {
@@ -945,9 +945,9 @@ public sealed class ExplorerTree
             yield break;
         }
         yield return new ExplorerNode(NodeKind.Generators, "Source Generators", null, depth, false, node =>
-            [.. Made(project, framework).GroupBy(f => (f.Generator, f.Assembly)).OrderBy(g => TypeNames.Short(g.Key.Generator), StringComparer.OrdinalIgnoreCase)
+            [.. Made(project, framework).GroupBy(f => (f.Generator, f.Assembly)).OrderBy(g => TypeNames.Short(g.Key.Generator), NameOrder.Instance)
                 .Select(g => new ExplorerNode(NodeKind.Generator, TypeNames.Short(g.Key.Generator), null, node.Depth + 1, false, generator =>
-                    [.. Made(project, framework).Where(f => (f.Generator, f.Assembly) == g.Key).OrderBy(f => f.Hint, StringComparer.OrdinalIgnoreCase)
+                    [.. Made(project, framework).Where(f => (f.Generator, f.Assembly) == g.Key).OrderBy(f => f.Hint, NameOrder.Instance)
                         .Select(f => new ExplorerNode(NodeKind.GeneratedFile, f.Hint, null, generator.Depth + 1, false, null) { Owner = project, Referenced = f.Uri })],
                     g.Key.Assembly)
                 {
@@ -1075,13 +1075,13 @@ public sealed class ExplorerTree
     private List<ExplorerNode> Held(ProjectModel given, ProjectFiles files, string relative, int depth, Nesting nesting, bool dimmed)
     {
         List<ExplorerNode> nodes = [.. files.FoldersIn(relative)
-            .Order(StringComparer.OrdinalIgnoreCase)
+            .Order(NameOrder.Instance)
             .Select(name => relative.Length == 0 ? name : $"{relative}/{name}")
             .Select(inner => HeldFolder(given, files.PathOf(inner), inner, depth, dimmed, HoldsAny(files, inner)))
             .OrderBy(Listed)];
         List<(string Name, string Path)> held = [.. files.FilesIn(relative)
             .Where(f => !FolderWalk.IsMomentary(f.Name))
-            .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)];
+            .OrderBy(f => f.Name, NameOrder.Instance)];
         IReadOnlyDictionary<string, string> parents = FileNesting.Parents([.. held.Select(f => f.Path)], files.DependentUpon, nesting.ByName);
         ILookup<string, string> nestedUnder = NestedUnder(held.Select(f => f.Path), parents);
         List<ExplorerNode> shown = [];
@@ -1104,7 +1104,7 @@ public sealed class ExplorerTree
             Unlisted = true,
             Tip = $"{Path.GetFileName(files.Items)} leaves it out of the shared project: Include in Project takes it in",
         }));
-        nodes.AddRange(files.Items is null ? shown : shown.OrderBy(n => n.Name, StringComparer.OrdinalIgnoreCase));
+        nodes.AddRange(files.Items is null ? shown : shown.OrderBy(n => n.Name, NameOrder.Instance));
         return nodes;
     }
 
@@ -1120,7 +1120,7 @@ public sealed class ExplorerTree
                 .Where(ShownEntry)
                 .Where(e => skip is null || (e.FullName != skip && !(e is DirectoryInfo && e.Name is "bin" or "obj")))
                 .OrderBy(e => e is FileInfo)
-                .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)];
+                .ThenBy(e => e.Name, NameOrder.Instance)];
         }
         catch (Exception error) when (error is UnauthorizedAccessException or IOException)
         {

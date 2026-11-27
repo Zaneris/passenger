@@ -255,7 +255,7 @@ public static partial class FileNesting
             foreach (string path in chosen)
             {
                 string folder = Path.GetDirectoryName(path)!;
-                found[path] = [.. under[PathNames.Canonical(path)].Where(d => PathNames.Same(Path.GetDirectoryName(d)!, folder)).Order(StringComparer.OrdinalIgnoreCase)];
+                found[path] = [.. under[PathNames.Canonical(path)].Where(d => PathNames.Same(Path.GetDirectoryName(d)!, folder)).Order(NameOrder.Instance)];
             }
         }
         return found;

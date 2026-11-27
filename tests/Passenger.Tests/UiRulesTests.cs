@@ -4074,6 +4074,24 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Assert.Matches(byHand, "        RowIcon chevron = RowIcon.Chevron();");
     }
 
+    /// <summary>The Explorer lists its names as NameOrder puts them, punctuation before digits before letters, alike on every
+    /// machine: a sort of the Explorer's or file nesting's by a string comparer or comparison of its own fails here, naming
+    /// its line, as OrdinalIgnoreCase puts a folder begun with an underscore after the letters (#2396).</summary>
+    [Fact]
+    public void Every_name_the_Explorer_lists_is_put_in_NameOrder()
+    {
+        Regex byHand = new(@"\.(?:Order|OrderBy|OrderByDescending|ThenBy|ThenByDescending|Sort)\(.*\bString(?:Comparer|Comparison)\.|\bSorted\w*<.*\bStringComparer\.");
+        string[] found = [.. UiFiles().Where(f => f.Path.StartsWith("src/Passenger.App/Explorer/", StringComparison.Ordinal) && f.Path.EndsWith(".cs", StringComparison.Ordinal))
+            .SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => byHand.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}: {l.Text.Trim()}")];
+        Assert.True(found.Length == 0, $"{found.Length} of the Explorer's sorts compare names their own way, so a folder named to lead the list "
+            + $"lands after the letters, or the order differs from machine to machine: sort each by NameOrder.Instance:\n{string.Join("\n", found)}");
+        Assert.Matches(byHand, "            .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)");
+        Assert.Matches(byHand, "            .Order(StringComparer.CurrentCultureIgnoreCase)];");
+        Assert.Matches(byHand, "        names.Sort((a, b) => string.Compare(a, b, StringComparison.OrdinalIgnoreCase));");
+        Assert.DoesNotMatch(byHand, "        .. beside.OrderBy(p => p.Name, NameOrder.Instance).Select(p => Project(p, node.Depth + 1))],");
+    }
+
     /// <summary>A RowIcon is one of two sizes, never one of its own: a row's or a tab's icon beside words (RowIcon.Size, its
     /// own) or a glyph (RowIcon.Glyph: a chevron, a tab's close), so like icons stand alike in every list. A RowIcon given a
     /// width or height outside RowIcon.cs fails here, naming its line.</summary>
