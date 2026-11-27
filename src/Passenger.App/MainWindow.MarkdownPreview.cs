@@ -26,6 +26,15 @@ public partial class MainWindow
             ["Markdown Preview Beside the Editor", "Markdown Preview Under the Editor", "Turn Markdown Split"]);
         AddMarkdownLayout(A.MarkdownPreviewOnly, "Preview Only", PaneView.Preview, ["Markdown Preview Alone"]);
         AddMarkdownLayout(A.MarkdownInlineEditing, "Inline Markdown Editing", PaneView.Inline, ["Edit Markdown Inline", "Markdown Live Editor"]);
+        actions.Add(new IdeAction(A.MarkdownFormatting, "Show Markdown Formatting Toolbar", "Editor", _ => Editors.ActiveGroup.ShowMarkdownFormatting())
+        {
+            WhyNot = WhyNotMarkdownTools,
+            Words = ["Bold", "Italic", "Inline Markdown"],
+        });
+        actions.Add(new IdeAction(A.InsertMarkdownTable, "Insert Markdown Table", "Editor", _ => Editors.ActiveGroup.InsertMarkdownTable())
+        {
+            WhyNot = WhyNotMarkdownTools,
+        });
         actions.Add(new IdeAction(A.SvgPreview, "SVG Preview", "Editor", _ => ToggleSvgPreview())
         {
             WhyNot = context => context.File is null ? Refusals.NoFile : !EditorArea.IsSvg(context.File) ? "The picture is for SVG files" : null,
@@ -55,6 +64,9 @@ public partial class MainWindow
 
     private static string? WhyNotMarkdown(ActionContext context) => context.File is null ? Refusals.NoFile
         : context.File.Language != Languages.Language.Markdown ? "This action is for Markdown files" : null;
+
+    private static string? WhyNotMarkdownTools(ActionContext context) => WhyNotMarkdown(context)
+        ?? (!context.Editor.PresentsMarkdown ? "Enable inline Markdown editing to use this action" : context.ReadOnlyWhy);
 
     /// <summary>A Markdown file's layout as an action, checked while it is in force: Editor and Preview chosen while it is
     /// turns the split, the preview under the editor or beside it, back to as the group's shape stands it.</summary>

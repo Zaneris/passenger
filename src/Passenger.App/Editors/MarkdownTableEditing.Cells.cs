@@ -62,6 +62,7 @@ internal sealed partial class MarkdownTableEditing
         field.Focus();
         field.SelectAll();
         field.BringIntoView();
+        ToolbarChanged();
     }
 
     private void WriteCell(CellEditor cell)
@@ -100,10 +101,14 @@ internal sealed partial class MarkdownTableEditing
 
     public void FollowReadOnly()
     {
-        Toolbar.IsEnabled = !editor.IsReadOnly;
         if (editor.IsReadOnly)
         {
             CloseCell();
+            ResetToolbar();
+        }
+        else
+        {
+            QueueToolbarPosition();
         }
     }
 
@@ -119,6 +124,7 @@ internal sealed partial class MarkdownTableEditing
         {
             Present(editor.Document.Snapshot);
         }
+        ToolbarChanged();
     }
 
     private void MoveCell(int direction)

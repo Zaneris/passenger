@@ -1,8 +1,5 @@
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Layout;
-using Avalonia.Media;
 using Passenger.App.ToolWindows;
 using Passenger.Editor;
 using Passenger.Text;
@@ -12,50 +9,6 @@ namespace Passenger.App.Editors;
 internal sealed partial class MarkdownTableEditing
 {
     private sealed record Spot(Entry Entry, int Row, int Column);
-
-    public Border Toolbar { get; private set; } = null!;
-
-    private void MakeToolbar()
-    {
-        Button bold = FormatButton("B", "Bold", Key.B, bold: true);
-        Button italic = FormatButton("I", "Italic", Key.I, bold: false);
-        Button table = new() { Name = "MarkdownTableMenu", Content = "Table…", Focusable = false, VerticalAlignment = VerticalAlignment.Center };
-        ContextMenu menu = new() { Placement = PlacementMode.BottomEdgeAlignedLeft };
-        table.ContextMenu = menu;
-        table.Click += (_, _) =>
-        {
-            FillTableMenu(menu);
-            menu.Open(table);
-        };
-        Toolbar = ToolBars.OverEditor(new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = Gaps.Tight,
-            Margin = new Thickness(Gaps.Small, Gaps.Hair),
-            Children = { bold, italic, ToolBars.Rule(), table },
-        });
-        Toolbar.IsVisible = false;
-    }
-
-    private Button FormatButton(string label, string name, Key key, bool bold)
-    {
-        TextBlock mark = new()
-        {
-            MinWidth = Gaps.Wide,
-            TextAlignment = TextAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        mark.Inlines!.Add(new Avalonia.Controls.Documents.Run(label)
-        {
-            FontWeight = bold ? FontWeight.Bold : FontWeight.Normal,
-            FontStyle = bold ? FontStyle.Normal : FontStyle.Italic,
-        });
-        Button button = ToolButtons.Of(mark, name, () => Format(bold));
-        button.Name = "Markdown" + name;
-        ToolButtons.Tip(button, name, KeyWords.Of(new Keystroke(key, Keystroke.Command)));
-        return button;
-    }
 
     private void FillTableMenu(ContextMenu menu)
     {
@@ -107,6 +60,10 @@ internal sealed partial class MarkdownTableEditing
         {
             return true;
         }
+        if (e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && toolbar.IsVisible)
+        {
+            return true;
+        }
         return active is not null && ((e.Key == Key.Tab && e.KeyModifiers is KeyModifiers.None or KeyModifiers.Shift)
             || (e.KeyModifiers == KeyModifiers.None && e.Key is Key.Escape or Key.Enter));
     }
@@ -136,6 +93,8 @@ internal sealed partial class MarkdownTableEditing
             case Key.Escape:
                 CloseCell();
                 editor.Focus();
+                toolbarRequest = ToolbarRequest.Dismissed;
+                PositionToolbar();
                 break;
             case Key.Z or Key.Y:
                 CloseCell();
@@ -194,7 +153,7 @@ internal sealed partial class MarkdownTableEditing
         }
     }
 
-    private void InsertTable()
+    public void InsertTable()
     {
         TextSnapshot snapshot = editor.Document.Snapshot;
         LineSpan line = snapshot.GetLine(editor.CaretPosition.Line);

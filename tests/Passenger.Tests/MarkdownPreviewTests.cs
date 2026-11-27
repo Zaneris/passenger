@@ -409,19 +409,26 @@ public sealed class MarkdownPreviewTests
         MarkdownText? Cell(string words) => editor.GetVisualDescendants().OfType<MarkdownText>().FirstOrDefault(text => text.Shown == words);
         TextBox? Field() => editor.GetVisualDescendants().OfType<TextBox>().FirstOrDefault(box => box.Name == "MarkdownTableCell");
         Button Button(string name) => group.GetVisualDescendants().OfType<Button>().Single(button => button.Name == name);
+        Border Toolbar() => group.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "MarkdownFormattingToolbar");
         void ChooseTable(string item)
         {
             Button menu = Button("MarkdownTableMenu");
+            Assert.True(menu.IsEffectivelyVisible);
             Ui.Click(menu);
             Ui.Choose(menu.ContextMenu, item);
         }
         string command = Keystroke.Command == KeyModifiers.Meta ? "meta" : "control";
+        string showToolbar = $"{command} alt I";
         Ui.WaitFor(() => Cell("12") is not null && Cell("Ready") is not null, "both inactive Markdown tables drawn in the editor");
         Assert.Equal(TextAlignment.Right, Cell("12")!.TextAlignment);
+        Assert.False(Toolbar().IsEffectivelyVisible);
 
-        Ui.Click(Assert.IsType<Border>(Cell("12")!.GetVisualParent()));
+        Border cell = Assert.IsType<Border>(Cell("12")!.GetVisualParent());
+        Ui.Click(cell);
         Assert.Equal("12", Field()!.Text);
         Assert.Equal("12", Field()!.SelectedText);
+        Assert.True(Toolbar().IsEffectivelyVisible);
+        Assert.True(Toolbar().TranslatePoint(default, cell)!.Value.X >= cell.Bounds.Width);
         Assert.NotNull(Cell("Item"));
         Assert.NotNull(Cell("Ready"));
         window.KeyTextInput("24");
@@ -456,7 +463,27 @@ public sealed class MarkdownPreviewTests
         Assert.NotNull(Cell("Ready"));
 
         int words = edited.IndexOf("Another table.", StringComparison.Ordinal);
-        editor.Select(new TextRange(words, "Another".Length));
+        editor.Select(new TextRange(words, 0));
+        Ui.Settle();
+        Assert.False(Toolbar().IsEffectivelyVisible);
+        Point line = editor.PointOf(words);
+        Ui.Press(window, showToolbar);
+        Assert.True(Toolbar().IsEffectivelyVisible);
+        Assert.Equal(line, editor.PointOf(words));
+        Ui.Press(window, "ESCAPE");
+        Assert.False(Toolbar().IsEffectivelyVisible);
+
+        int length = "Another".Length;
+        Point InWindow(int offset) => editor.TranslatePoint(editor.PointOf(offset) + new Vector(0, editor.LineHeight / 2), window)!.Value;
+        Ui.Drag(window, InWindow(words), InWindow(words + length));
+        Assert.Equal(new TextRange(words, length), editor.Selections.Primary.Range);
+        Assert.True(Toolbar().IsEffectivelyVisible);
+        Point toolbarBottom = Toolbar().TranslatePoint(new Point(0, Toolbar().Bounds.Height), editor)!.Value;
+        Assert.True(toolbarBottom.Y <= line.Y && Math.Abs(toolbarBottom.X - line.X) <= Gaps.Tight);
+        Ui.Press(window, "ESCAPE");
+        Assert.False(Toolbar().IsEffectivelyVisible);
+        Assert.Equal(new TextRange(words, length), editor.Selections.Primary.Range);
+        Ui.Press(window, showToolbar);
         Ui.Click(Button("MarkdownBold"));
         Assert.Contains("**Another** table.", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
         Ui.Press(window, $"{command} B");
@@ -465,6 +492,12 @@ public sealed class MarkdownPreviewTests
         Assert.Contains("_Another_ table.", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
         Ui.Press(window, $"{command} I");
         Assert.Equal(edited, editor.Document.Snapshot.ToString());
+        editor.Select(new TextRange(edited.Length, 0));
+        Assert.True(window.Perform(AppActions.InsertMarkdownTable));
+        Ui.WaitFor(() => Field()?.Text == "Column 1", "the Insert Markdown Table action opens its new header cell");
+        Assert.StartsWith(edited, editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.True(window.Perform(AppActions.MarkdownEditorOnly));
+        Assert.False(Toolbar().IsEffectivelyVisible);
         window.Close();
     }
 

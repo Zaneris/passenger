@@ -766,6 +766,8 @@ public static class AppActions
     public const string MarkdownEditorAndPreview = "app.editor.markdownEditorAndPreview";
     public const string MarkdownPreviewOnly = "app.editor.markdownPreviewOnly";
     public const string MarkdownInlineEditing = "app.editor.markdownInlineEditing";
+    public const string MarkdownFormatting = "app.editor.markdownFormatting";
+    public const string InsertMarkdownTable = "app.editor.insertMarkdownTable";
 
     // A Windows Forms form's layouts, on its file's tab strip, View Designer under View too: Rider's OpenWinFormsCodeAction
     // and OpenWinFormsDesignerAction, F7 and Shift+F7 in its Visual Studio and Visual Studio OSX keymaps, where Shift+F7 is
@@ -1037,7 +1039,8 @@ public static class AppActions
         keymap.Bind(GameKeys, "control F11")
             .Bind(NextRegion, OperatingSystem.IsMacOS() ? "control meta BACK_QUOTE" : "control alt BACK_QUOTE")
             .Bind(PreviousRegion, OperatingSystem.IsMacOS() ? "control meta shift BACK_QUOTE" : "control alt shift BACK_QUOTE")
-            .Bind(ReadAsText, OperatingSystem.IsMacOS() ? "control meta R" : "control alt R");
+            .Bind(ReadAsText, OperatingSystem.IsMacOS() ? "control meta R" : "control alt R")
+            .Bind(MarkdownFormatting, OperatingSystem.IsMacOS() ? "meta alt I" : "control alt I");
         // Rider's Console.History.Browse and Console.Transaction.Commit: $default's, the Mac's with Cmd for Ctrl, as KeysIn says.
         bool commandKey = OperatingSystem.IsMacOS() && preset != KeymapPreset.Emacs;
         keymap.Bind(DatabaseCommit, commandKey ? "meta alt shift ENTER" : "control alt shift ENTER");

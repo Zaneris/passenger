@@ -319,6 +319,10 @@ public sealed class EditorGroup : DockPanel, IOwnKeys
     private MarkdownPreview? markdown;
     private MarkdownTableEditing? markdownTableEditing;
 
+    internal void ShowMarkdownFormatting() => markdownTableEditing?.ShowToolbar();
+
+    internal void InsertMarkdownTable() => markdownTableEditing?.InsertTable();
+
     /// <summary>Whether the Markdown file's preview stands alone in its editor's place.</summary>
     private bool previewAlone;
 
@@ -359,7 +363,7 @@ public sealed class EditorGroup : DockPanel, IOwnKeys
         if (inline && markdownTableEditing is null)
         {
             markdownTableEditing = new MarkdownTableEditing(Editor);
-            Children.Insert(Children.IndexOf(body), markdownTableEditing.Toolbar);
+            editorPlace.Children.Add(markdownTableEditing.ToolbarLayer);
         }
         markdownTableEditing?.Show(inline ? document?.Text : null);
         Database.SqlConsole? console = document is not null && Database.SqlConsole.Speaks(document.Language) ? area.ConsoleOf?.Invoke(document) : null;

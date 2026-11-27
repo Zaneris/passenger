@@ -33,7 +33,6 @@ internal sealed partial class MarkdownTableEditing
     public void Show(TextDocument? next)
     {
         document = next;
-        Toolbar.IsVisible = next is not null;
         FollowReadOnly();
         Follow(editor.IsAttachedToVisualTree() ? next : null);
     }
@@ -44,6 +43,7 @@ internal sealed partial class MarkdownTableEditing
         {
             return;
         }
+        ResetToolbar();
         reading.Stop();
         pending = null;
         CloseCell(present: false);

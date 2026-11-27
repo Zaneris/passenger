@@ -140,6 +140,29 @@ internal sealed class PopupPlacement
 
     public void Place(Control popup, int offset, bool above) => Place(popup, Editor.PointOf(offset), above);
 
+    /// <summary>Places compact controls beside a selection or cell in an editor's own layer.</summary>
+    public static void PlaceFloatingToolbar(Control popup, Canvas onto, Rect anchor, double? beside)
+    {
+        // An invisible control measures as empty. Reveal it before measuring, then use either side of the anchor.
+        popup.IsVisible = true;
+        popup.Measure(Size.Infinity);
+        Size size = popup.DesiredSize;
+        Size room = onto.Bounds.Size;
+        double left = anchor.Left;
+        double top = anchor.Top - Gaps.Tight - size.Height;
+        if (beside is { } right && right + Gaps.Small + size.Width <= room.Width)
+        {
+            left = right + Gaps.Small;
+            top = anchor.Center.Y - size.Height / 2;
+        }
+        else if (top < 0)
+        {
+            top = anchor.Bottom + Gaps.Tight;
+        }
+        Canvas.SetLeft(popup, Math.Clamp(left, 0, Math.Max(0, room.Width - size.Width)));
+        Canvas.SetTop(popup, Math.Clamp(top, 0, Math.Max(0, room.Height - size.Height)));
+    }
+
     /// <summary>Puts a popup under the line at <paramref name="at"/> (its top), or over it when asked or when there is no
     /// room below, kept inside the editor, below the bars over it (<see cref="HeldIn"/>). A card, a list of choices, Rename's
     /// box or the colour picker (<see cref="IHeldToEditor"/>) is held to the editor's width (<see cref="Widest"/>); one that
