@@ -18,9 +18,9 @@ namespace Passenger.App.ToolWindows;
 /// <summary>The Unit Tests window: the tests grouped as its Group By chooses (by project and namespace at first), then by
 /// class and method, a theory's data rows under it, each marked with how it last ran and how long it took; the chosen
 /// one's message, stack trace (its frames links to their lines), output and attachments beside the tree, the pictures
-/// among them (a failing headless test's windows) as thumbnails over it; above it the toolbar (Expand All, Collapse All,
-/// Group By, a filter for each outcome with how many tests have it, the search) and the run's tally; and while there are
-/// none, why. Double-click or F4 goes to a test's source.</summary>
+/// among them (a failing headless test's windows) as thumbnails over it; above it the test sessions' tabs while there are
+/// any (every test's, then each session's), the toolbar (Group By, a filter for each outcome with how many tests have it,
+/// the search) and the run's tally; and while there are none, why. Double-click or F4 goes to a test's source.</summary>
 public sealed class TestsView : DockPanel
 {
     /// <summary>The column a test's state mark is centred in, an icon's width.</summary>
@@ -40,8 +40,18 @@ public sealed class TestsView : DockPanel
         (TestState.Running, "Running Tests", IconKeys.TestRunning, TokenKeys.Test_Running),
     ];
 
+    /// <summary>The key of the tab of every test, beside the sessions' tabs.</summary>
+    private static readonly object AllTests = new();
+
     private readonly TreeList tree;
     private readonly TextDocument detailsText = new();
+
+    /// <summary>The sessions' tabs, shown while there is a session.</summary>
+    private readonly ToolTabs.Strip<object> sessionTabs = new() { Name = "TestSessions" };
+    private readonly Border sessionBar;
+
+    /// <summary>The sessions the tabs were last drawn for, by name, in their order.</summary>
+    private string[] drawnSessions = [];
     private readonly DockPanel result;
 
     /// <summary>The details' editor, made as the window is first shown or they are asked for (<see cref="Details"/>).</summary>
@@ -74,6 +84,7 @@ public sealed class TestsView : DockPanel
         // A double click and Enter open or close a row with rows under it but a method's, and go to any other.
         TreeKeys.Attach<TestNode>(tree, model.Toggle, GoTo, new ListActs
         {
+            Remove = TakeOutChosen,
             Open = () =>
             {
                 if (tree.SelectedItem is not TestNode node)
@@ -97,6 +108,11 @@ public sealed class TestsView : DockPanel
             ListMenus.Keyed("Run Until Failure", AppActions.RunTestsUntilFailure, () => UntilFailureRequested?.Invoke(this, EventArgs.Empty)),
             ListMenus.Keyed("Run with Coverage", AppActions.CoverTests, () => Request(AppActions.CoverTests)),
             new Separator(),
+            ListMenus.Keyed("New Session", AppActions.NewTestSession, () => Request(AppActions.NewTestSession)),
+            ListMenus.Keyed("Append to Session", AppActions.AppendToTestSession, () => Request(AppActions.AppendToTestSession)),
+            ListMenus.Remove(model.Shown is { } session ? $"Remove from {session.Name}" : "Remove from Session", TakeOutChosen,
+                model.Shown is null ? Refusals.NoSessionShown : null),
+            new Separator(),
             ListMenus.Source(() => GoToRequested?.Invoke(this, chosen), chosen.Path is null ? Refusals.TestUnplaced : null),
         ]);
         // Results come by the thousand: the details and the filters' counts are written again once they have, not once each.
@@ -110,7 +126,12 @@ public sealed class TestsView : DockPanel
             QueueDetails();
             QueueCounts();
         };
-        model.ViewChanged += (_, _) => ShowFilters();
+        model.ViewChanged += (_, _) =>
+        {
+            ShowFilters();
+            ShowSessions();
+            ShowPlaceholder();
+        };
         status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         status.Classes.Add(StyleClasses.Muted);
         placeholder = new EmptyState { Text = model.EmptyText };
@@ -165,9 +186,47 @@ public sealed class TestsView : DockPanel
             ToolButtons.Of(AppActions.CoverAllTests, IconKeys.Coverage, "Run All Tests with Coverage", Request),
             ToolButtons.Of(AppActions.RerunFailedTests, IconKeys.Rerun, "Rerun Failed Tests", Request),
             stop);
+        sessionTabs.Chosen += (_, key) => model.ShowSession(key as TestSession);
+        Button runSession = ToolButtons.Of(AppActions.RunTestSession, IconKeys.Run, "Run Current Session", Request);
+        DockPanel.SetDock(runSession, Dock.Right);
+        sessionBar = ToolBars.Top(new DockPanel
+        {
+            Margin = new Thickness(Gaps.Normal, 0),
+            Children = { runSession, TabStrips.ScrollingAcross(sessionTabs) },
+        });
+        ShowSessions();
+        // The sessions' tabs over the whole window, its side bar beneath them.
+        Children.Add(sessionBar);
         Children.Add(leftBar);
         Children.Add(topBar);
         Children.Add(split);
+    }
+
+    /// <summary>The sessions' tabs as the model has them, the one shown chosen; drawn again only where the sessions changed.</summary>
+    private void ShowSessions()
+    {
+        string[] names = [.. Model.Sessions.Select(s => s.Name)];
+        if (!names.SequenceEqual(drawnSessions))
+        {
+            drawnSessions = names;
+            sessionTabs.Clear();
+            sessionTabs.Add(AllTests, "All Tests");
+            foreach (TestSession session in Model.Sessions)
+            {
+                sessionTabs.Add(session, session.Name, () => Model.CloseSession(session), "Close Session");
+            }
+        }
+        sessionTabs.Choice = (object?)Model.Shown ?? AllTests;
+        sessionBar.IsVisible = names.Length > 0;
+    }
+
+    /// <summary>Takes the chosen rows' tests out of the session shown, as Delete does there.</summary>
+    private void TakeOutChosen()
+    {
+        if (Model.Shown is { } session && Selected.Count > 0)
+        {
+            Model.TakeOut(session, Selected.SelectMany(TestSession.Of));
+        }
     }
 
     public TestTree Model { get; }
@@ -421,11 +480,21 @@ public sealed class TestsView : DockPanel
         }, DispatcherPriority.Background);
     }
 
-    /// <summary>Why the tree has no rows: none yet, or none the filters and search let through.</summary>
+    /// <summary>Why the tree has no rows: none yet, none of the session shown found, or none the filters and search let through.</summary>
     private void ShowPlaceholder()
     {
         placeholder.IsVisible = Model.Rows.Count == 0;
-        placeholder.Text = Model.Roots.Count > 0 ? "No matching tests" : Model.EmptyText;
+        placeholder.Text = Model.Roots.Count == 0 ? Model.EmptyText
+            : Model is { Shown: not null, Outcomes.Count: 0, Search.Length: 0 } ? "None of this session's tests is found"
+            : "No matching tests";
+    }
+
+    /// <summary>Shows the tests of a session (every test for none) and gives the tree's chosen row the keys, its first where
+    /// none is chosen; false where it shows no row to take them.</summary>
+    public bool FocusSession(TestSession? session)
+    {
+        Model.ShowSession(session);
+        return ListKeys.Hold(tree, chooseFirst: true);
     }
 
     /// <summary>Group By: the predefined groupings, the one in use ticked, then each level, ticked while it is on.</summary>

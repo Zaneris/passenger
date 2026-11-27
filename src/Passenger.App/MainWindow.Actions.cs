@@ -575,6 +575,7 @@ public partial class MainWindow
             c => NeedsTestBuild(c) ?? session.Tests.NeverRuns(), ("Tests", 0, 5), works: A.RunTests);
         Add(A.ExportCoverage, "Export Coverage as Cobertura…", "Unit Tests", _ => IdeErrors.Observe(ExportCoverageAsync()), Measured, ("Tests", 1, 3));
         Add(A.ClearCoverage, "Clear Coverage", "Unit Tests", _ => session.Tests.ClearCoverage(), Measured, ("Tests", 1, 4));
+        AddTestSessions();
 
         // Where the Explorer has the keys, its rows say what to run, never the editor's caret.
         string? NoTestHere(ActionContext context) => NeedsTestBuild(context)

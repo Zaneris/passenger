@@ -57,6 +57,23 @@ public static class TestsAtCaret
         return null;
     }
 
+    /// <summary>The class, struct, record or interface the caret's line (from zero, the editor's) is in, the innermost; null
+    /// where it is in none.</summary>
+    public static DeclaredPlace? TypeAt(ParsedText syntax, int line)
+    {
+        TextSnapshot text = syntax.Text;
+        if (line < 0 || line >= text.LineCount)
+        {
+            return null;
+        }
+        string content = text.GetLineText(line);
+        SyntaxNode root = syntax.Root;
+        SyntaxNode? node = root.FindToken(Math.Min(text.GetLineStart(line) + (content.Length - content.TrimStart().Length), root.FullSpan.End)).Parent;
+        return node?.AncestorsAndSelf().OfType<TypeDeclarationSyntax>().FirstOrDefault() is { } type
+            ? Place(syntax, FullName(type), null, type.Identifier, type)
+            : null;
+    }
+
     /// <summary>Every type and method a file declares and where, read without going into any member's body.</summary>
     public static FilePlaces Places(ParsedText syntax)
     {

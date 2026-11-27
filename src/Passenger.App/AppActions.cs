@@ -720,6 +720,18 @@ public static class AppActions
     public const string StopTests = "app.tests.stop";
     public const string ShowTests = "app.showTests";
 
+    // Test sessions, the tests' quick list and Go to Test, as Rider's keymaps bind them (RiderKeys): its New Session, Append to
+    // Session and Run Current Session (Ctrl+U, N, A and Y in its Visual Studio keymaps, Ctrl+;'s in the others), Unit Test
+    // Explorer and Session (Ctrl+Alt+U and T in its Visual Studio keymaps), Unit Test Quick List (Alt+Shift+U), and Go to Test
+    // with Go to Linked Types (Ctrl+Shift+T in $default's, Ctrl+U, G in its Visual Studio keymaps).
+    public const string NewTestSession = "app.tests.newSession";
+    public const string AppendToTestSession = "app.tests.appendToSession";
+    public const string RunTestSession = "app.tests.runSession";
+    public const string ShowAllTests = "app.tests.showAll";
+    public const string ShowTestSession = "app.tests.showSession";
+    public const string TestsQuickList = "app.tests.quickList";
+    public const string GoToTest = "app.goToTest";
+
     // Coverage, measured by a run of tests: Rider's Cover All Tests from Solution (its dotCover descriptor's keys, Ctrl+U, K in
     // its Visual Studio keymaps and Ctrl+;, K in IntelliJ's, which VS Code's take from their parents); the rest have none.
     public const string CoverTests = "app.tests.cover";
@@ -1143,11 +1155,11 @@ public static class AppActions
         _ => "Visual Studio",
     };
 
-    /// <summary>The moves by the code's structure, the peeks, the person's own folds, Paste from History, Copy Reference,
-    /// Smart Type Completion, New Branch, Commit and Push, VCS Operations, Run Anything and the configuration choosers as
-    /// each of Rider's keymaps binds them, by its name. Where Rider gives a key to one of them and to an action Passenger has there already, that one keeps it:
-    /// Visual Studio's own Move Line Alt+Up and Down, the Mac's Clone Caret Ctrl+Shift+Up and Down and Redo Cmd+Y, VS Code's
-    /// Quick Fix Cmd+. and Collapse Cmd+Alt+[ on the Mac, and Select Containing Declaration Cmd+Alt+[ over Code Block Start.</summary>
+    /// <summary>The structure moves, peeks, folds, Paste from History, Copy Reference, Smart Type Completion, New Branch, Commit
+    /// and Push, VCS Operations, Run Anything, the configuration choosers, test sessions, Unit Test Operations and Go to Test as
+    /// each of Rider's keymaps binds them, by its name. A key Rider gives one of them and an action here already stays that
+    /// one's: Visual Studio's Move Line Alt+Up and Down, the Mac's Clone Caret Ctrl+Shift+Up and Down and Redo Cmd+Y, VS Code's
+    /// Quick Fix Cmd+., Collapse Cmd+Alt+[ and Choose Run Configuration Ctrl+;, A; Select Containing Declaration takes Cmd+Alt+[.</summary>
     private static readonly Dictionary<string, (string Action, string Key)[]> RiderKeys = new()
     {
         ["Visual Studio"] =
@@ -1162,6 +1174,10 @@ public static class AppActions
             (CopyReference, "control alt shift C"), (SmartTypeCompletion, "control alt SPACE"), (NewBranch, "control alt N"),
             (CommitAndPush, "control alt shift K"), (VcsOperations, "control alt Q"), (ForceStepInto, "alt F11"), (ForceStepOver, "alt shift F8"),
             (ForceRunToCursor, "control alt F9"), (RemoveAllBreakpoints, "control shift F9"), (ExceptionSettings, "control alt E"), (CancelBuild, "control CANCEL"),
+            (NewTestSession, "control U , N"), (NewTestSession, "control U , control N"), (AppendToTestSession, "control U , A"),
+            (AppendToTestSession, "control U , control A"), (RunTestSession, "control U , Y"), (RunTestSession, "control U , control Y"),
+            (ShowAllTests, "control alt U"), (ShowTestSession, "control alt T"), (TestsQuickList, "alt shift U"), (GoToTest, "control U , G"),
+            (GoToTest, "control U , control G"),
         ],
         ["Visual Studio OSX"] =
         [
@@ -1174,6 +1190,10 @@ public static class AppActions
             (PasteFromHistory, "meta shift V"), (PasteFromHistory, "meta shift INSERT"), (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control alt SPACE"),
             (NewBranch, "meta alt N"), (CommitAndPush, "meta alt K"), (VcsOperations, "control V"), (ForceStepInto, "alt F11"), (ForceStepOver, "alt shift F8"),
             (ForceRunToCursor, "meta alt F9"), (RemoveAllBreakpoints, "meta shift F9"), (ExceptionSettings, "meta alt E"),
+            (NewTestSession, "meta U , N"), (NewTestSession, "meta U , meta N"), (AppendToTestSession, "meta U , A"),
+            (AppendToTestSession, "meta U , meta A"), (RunTestSession, "meta U , Y"), (RunTestSession, "meta U , meta Y"),
+            (ShowAllTests, "meta alt U"), (ShowTestSession, "meta alt T"), (TestsQuickList, "alt shift U"), (GoToTest, "meta U , G"),
+            (GoToTest, "meta U , meta G"),
         ],
         ["VSCode"] =
         [
@@ -1184,6 +1204,8 @@ public static class AppActions
             (CollapseBlock, "control alt OPEN_BRACKET"), (CollapseBlock, "control K , control L"), (PasteFromHistory, "control shift INSERT"),
             (CopyReference, "control alt shift C"), (CommitAndPush, "control alt K"), (VcsOperations, "alt BACK_QUOTE"), (ForceStepInto, "alt shift F7"),
             (ForceRunToCursor, "control alt F9"), (RemoveAllBreakpoints, "control shift F9"), (CancelBuild, "control F9"),
+            (NewTestSession, "control SEMICOLON , N"), (NewTestSession, "control SEMICOLON , control N"), (AppendToTestSession, "control SEMICOLON , control A"),
+            (RunTestSession, "control SEMICOLON , Y"), (RunTestSession, "control SEMICOLON , control Y"), (TestsQuickList, "alt shift U"),
         ],
         ["VSCode OSX"] =
         [
@@ -1196,6 +1218,8 @@ public static class AppActions
             (ExpressionTypeInfo, "control shift P"), (ShowFilePath, "meta alt F12"), (CollapseBlock, "meta K , meta L"),
             (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control shift SPACE"), (CommitAndPush, "meta alt K"), (VcsOperations, "control V"),
             (ForceStepInto, "alt shift F7"), (ForceRunToCursor, "meta alt F9"), (RemoveAllBreakpoints, "meta shift F9"), (CancelBuild, "meta F9"),
+            (NewTestSession, "meta SEMICOLON , N"), (NewTestSession, "meta SEMICOLON , meta N"), (AppendToTestSession, "meta SEMICOLON , meta A"),
+            (RunTestSession, "meta SEMICOLON , Y"), (RunTestSession, "meta SEMICOLON , meta Y"), (TestsQuickList, "alt shift U"),
         ],
         ["$default"] =
         [
@@ -1210,6 +1234,9 @@ public static class AppActions
             (CopyReference, "control alt shift C"), (SmartTypeCompletion, "control shift SPACE"), (CommitAndPush, "control alt K"),
             (VcsOperations, "alt BACK_QUOTE"), (ForceStepInto, "alt shift F7"), (ForceStepOver, "alt shift F8"), (ForceRunToCursor, "control alt F9"),
             (RemoveAllBreakpoints, "control shift F9"),
+            (NewTestSession, "control SEMICOLON , N"), (NewTestSession, "control SEMICOLON , control N"), (AppendToTestSession, "control SEMICOLON , A"),
+            (AppendToTestSession, "control SEMICOLON , control A"), (RunTestSession, "control SEMICOLON , Y"), (RunTestSession, "control SEMICOLON , control Y"),
+            (TestsQuickList, "alt shift U"), (GoToTest, "control shift T"),
         ],
         ["Mac OS X 10.5+"] =
         [
@@ -1224,6 +1251,9 @@ public static class AppActions
             (CollapseBlock, "meta shift PERIOD"), (PasteFromHistory, "meta shift V"), (PasteFromHistory, "meta shift INSERT"),
             (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control shift SPACE"), (CommitAndPush, "meta alt K"), (VcsOperations, "control V"),
             (ForceStepInto, "alt shift F7"), (ForceStepOver, "alt shift F8"), (ForceRunToCursor, "meta alt F9"), (RemoveAllBreakpoints, "meta shift F9"),
+            (NewTestSession, "meta SEMICOLON , N"), (NewTestSession, "meta SEMICOLON , meta N"), (AppendToTestSession, "meta SEMICOLON , A"),
+            (AppendToTestSession, "meta SEMICOLON , meta A"), (RunTestSession, "meta SEMICOLON , Y"), (RunTestSession, "meta SEMICOLON , meta Y"),
+            (TestsQuickList, "alt shift U"), (GoToTest, "meta shift T"),
         ],
     };
 

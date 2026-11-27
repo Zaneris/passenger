@@ -551,6 +551,17 @@ public sealed class CodeAssist
         LspLocation Place(LspPosition at) => new(uri, new LspRange(at, at));
     }
 
+    /// <summary>Places in any file to go to, by their names (Go to Test's): straight to one, else a list at the caret to
+    /// choose from; <paramref name="none"/> said where there are none.</summary>
+    public void ShowPlaces(string title, IReadOnlyList<(string Path, TextSnapshot Text, int Offset, string Name)> places, string none)
+    {
+        navigation.Go([.. places.Select(p =>
+        {
+            LspPosition at = ServerLines.Of(p.Text).PositionOf(p.Offset);
+            return new LspLocation(DocumentUris.FromPath(p.Path), new LspRange(at, at));
+        })], context.Caret, title, none, [.. places.Select(p => p.Name)]);
+    }
+
     /// <summary>What the hover card says of a line-end annotation of the file shown (<see cref="QuickInfo.AnnotationCard"/>).</summary>
     internal Func<LineAnnotation, IHoverCard, bool>? AnnotationCard
     {

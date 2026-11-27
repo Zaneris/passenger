@@ -243,6 +243,9 @@ public static class Refusals
     /// <summary>Remove All Breakpoints with none in the code (on a line, a lambda, an attribute or a method).</summary>
     public const string NoBreakpointsInCode = "No breakpoint is set in the code";
 
+    /// <summary>Unit Test Operations where none of the Tests menu's actions can run.</summary>
+    public const string NoTestOperations = "No unit test action can run here";
+
     /// <summary>VCS Operations where none of the Git menu's actions can run.</summary>
     public const string NoVcsOperations = "No Git action can run here";
 
@@ -1494,6 +1497,27 @@ public static class Refusals
 
     /// <summary>A test's Go to Source where its runner gave no file for it.</summary>
     public const string TestUnplaced = "The test's runner gives no file for it";
+
+    /// <summary>Append to Session, Run Current Session or Show Current Session before any test session is made.</summary>
+    public const string NoTestSession = "No unit test session is made yet: New Session makes one of the tests chosen or at the caret";
+
+    /// <summary>Remove from Session while the Unit Tests window shows every test, in no session.</summary>
+    public const string NoSessionShown = "The Unit Tests window shows every test, not a session's";
+
+    /// <summary>New Session or Append to Session with no test chosen in the Unit Tests window or the Explorer, nor at the caret.</summary>
+    public const string NoTestsForSession = "No test is chosen in the Unit Tests window or the Explorer, nor at the caret";
+
+    /// <summary>Run Current Session where none of the session's tests is found among the solution's.</summary>
+    public static string SessionHoldsNone(string session) => $"None of {session}'s tests is found among the solution's";
+
+    /// <summary>Go to Test where the caret is in no class, struct, record or interface of a C# file.</summary>
+    public const string NoTypeForTest = "Go to Test goes from the type the caret is in to its tests, and back: the caret is in no type of a C# file";
+
+    /// <summary>Go to Test from a type whose tests no test class is named after (its name and Tests, Test, Fixture…).</summary>
+    public static string NoTestOfType(string type) => $"No test class is named after {type} ({type}Tests, {type}Test, {type}Fixture…)";
+
+    /// <summary>Go to Test from a test class whose tested type its name names no type of the solution.</summary>
+    public static string NoTestedType(string testClass, string tested) => $"No type of the solution is named {tested}, which {testClass} is named after";
 
     /// <summary>The Coverage window's Go to Source on a project's or a namespace's row, or a type's whose file the report's
     /// paths did not lead to.</summary>

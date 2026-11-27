@@ -32,11 +32,13 @@ public partial class MainWindow
             testGutter.Forget(document);
             session.Tests.Finder.Closed(document.Path);
         };
-        // The grouping and outcomes chosen are the folder's.
+        // The grouping, outcomes and sessions chosen are the folder's.
         Bottom.TestTree.ViewChanged += (_, _) => session.State?.UnitTests.Set(new Testing.UnitTestsState
         {
             Grouping = [.. Bottom.TestTree.Grouping],
             Outcomes = [.. Bottom.TestTree.Outcomes.Order()],
+            Sessions = [.. Bottom.TestTree.Sessions.Select(s => new Testing.KeptTestSession { Name = s.Name, Tests = [.. s.Tests], Left = [.. s.Left] })],
+            Session = Bottom.TestTree.Shown?.Name,
         });
         Bottom.Tests.ActionRequested += (_, action) => Request(action);
         Bottom.Tests.RunRequested += (_, debugging) =>
@@ -133,9 +135,10 @@ public partial class MainWindow
         };
     }
 
-    /// <summary>The Unit Tests window's grouping and outcomes as the folder kept them, or the defaults.</summary>
+    /// <summary>The Unit Tests window's sessions, grouping and outcomes as the folder kept them, or the defaults.</summary>
     private void RestoreUnitTests(Testing.UnitTestsState kept)
     {
+        session.Tests.Tree.Restore(kept.Sessions.Select(s => new Testing.TestSession(s.Name, s.Tests, s.Left)), kept.Session);
         session.Tests.Tree.Group(kept.Grouping);
         session.Tests.Tree.ShowOutcomes(kept.Outcomes);
     }

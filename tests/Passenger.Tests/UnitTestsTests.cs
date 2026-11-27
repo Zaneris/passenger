@@ -300,6 +300,90 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
             t.A_fake_made_of_a_dependency_from_show_context_actions_stands_in_for_it_in_a_test_that_runs_green();
             OpenWindows.CloseAll();
         });
+        Flow.StepApart<UnitTestsTests>("test sessions made appended to and run from the keys run their tests alone and come back with the folder", () => new UnitTestsTests(restored), t =>
+        {
+            t.Test_sessions_made_appended_to_and_run_from_the_keys_run_their_tests_alone_and_come_back_with_the_folder();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    /// <summary>Test sessions from the keys (#2311): New Session at the caret makes one of the test there, shown alone in its
+    /// tab; New Session in the Unit Tests window makes a second of the class chosen, Append to Session adds the theory at the
+    /// caret to it, and Run Current Session, chosen from Unit Test Operations, runs those tests alone; Delete takes a test out
+    /// of the session shown; the sessions and the one shown come back when the folder opens again, a tab shows another; and
+    /// Go to Test goes from a type to the test class named after it and back.</summary>
+    private void Test_sessions_made_appended_to_and_run_from_the_keys_run_their_tests_alone_and_come_back_with_the_folder()
+    {
+        string doubler = Write("Doubler.cs", "namespace Sums.Tests;\n\npublic static class Doubler\n{\n    public static int Twice(int value) => value * 2;\n}\n");
+        string doublerTests = Write("DoublerTests.cs",
+            "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class DoublerTests\n{\n    [Fact]\n    public void Twice_two() => Assert.Equal(4, Doubler.Twice(2));\n}\n");
+        string settings = NewFolder();
+        MainWindow window = Keeping(settings, Folder);
+        Ui.WaitFor(() => Method(window, "Twice_two") is not null && Method(window, "Doubles") is not null, "the tests read from the code");
+        window.OpenFile(Source);
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        Ui.PlaceAfter(editor, "public void Two_and_two_make_four");
+        Ui.Run(window, AppActions.NewTestSession);
+        TestSession first = Assert.Single(window.Tests.Tree.Sessions);
+        Assert.Equal("Two_and_two_make_four", first.Name);
+        Assert.Same(first, window.Tests.Tree.Shown);
+        Assert.Equal(["Sums.Tests", "  Sums.Tests", "    SumTests", "      Two_and_two_make_four"], Shown(window));
+
+        ListBox tree = Tree(window);
+        Ui.Run(window, AppActions.ShowAllTests);
+        Assert.True(window.Tests.Tree.Shown is null && tree.IsKeyboardFocusWithin, "Show All Unit Tests left a session shown or the keys elsewhere");
+        Ui.Click(tree.ContainerFromItem(window.Tests.Tree.Rows.Single(r => r.Name == "DoublerTests"))!);
+        Ui.Run(window, AppActions.NewTestSession);
+        Assert.Equal(["Two_and_two_make_four", "DoublerTests"], window.Tests.Tree.Sessions.Select(s => s.Name));
+        Assert.Equal("DoublerTests", window.Tests.Tree.Shown?.Name);
+        Assert.Equal(["Sums.Tests", "  Sums.Tests", "    DoublerTests", "      Twice_two"], Shown(window));
+
+        editor.Focus();
+        Ui.PlaceAfter(editor, "public void Doubles");
+        Ui.Run(window, AppActions.AppendToTestSession);
+        Assert.Equal(["Sums.Tests", "  Sums.Tests", "    DoublerTests", "      Twice_two", "    SumTests", "      Doubles"], Shown(window));
+        editor.Focus();
+        Ui.Run(window, AppActions.TestsQuickList);
+        Passenger.App.Vcs.ChoicePopup operations = Assert.IsType<Passenger.App.Vcs.ChoicePopup>(window.Popup);
+        Assert.True(operations.Rows.Any(r => r.Label == "Run Current Unit Test Session" && r.Detail.Length > 0),
+            $"Unit Test Operations listed [{string.Join("; ", operations.Rows.Select(r => $"{r.Label} {r.Detail}"))}], not Run Current Session with its keys");
+        window.KeyTextInput("Run Current");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Twice_two")?.State == TestState.Passed, "the session's run", TimeSpan.FromSeconds(120));
+        Assert.Equal(TestState.Passed, Method(window, "Doubles")!.State);
+        Assert.True(Method(window, "Two_and_two_make_four")!.State == TestState.NotRun && Method(window, "Two_and_two_make_five")!.State == TestState.NotRun,
+            "Run Current Session ran tests of no session shown, not the session's alone");
+        Assert.Equal("3", Count(window, "All Tests"));
+
+        Ui.Click(tree.ContainerFromItem(window.Tests.Tree.Rows.Single(r => r.Name == "Twice_two"))!);
+        Ui.Press(window, OperatingSystem.IsMacOS() ? "BACK_SPACE" : "DELETE");
+        Assert.DoesNotContain(Shown(window), r => r.Trim() is "Twice_two" or "DoublerTests");
+        window.Close();
+
+        MainWindow again = Keeping(settings, Folder);
+        Ui.WaitFor(() => Method(again, "Doubles") is not null, "the tests read from the code");
+        Assert.Equal(["Two_and_two_make_four", "DoublerTests"], again.Tests.Tree.Sessions.Select(s => s.Name));
+        Assert.Equal("DoublerTests", again.Tests.Tree.Shown?.Name);
+        Assert.Equal(["Sums.Tests", "  Sums.Tests", "    SumTests", "      Doubles"], Shown(again).Take(4));
+        Passenger.App.ToolWindows.ToolTabs.Strip<object> tabs = again.BottomPanel.Tests.GetVisualDescendants().OfType<Passenger.App.ToolWindows.ToolTabs.Strip<object>>().Single();
+        Assert.Equal(3, tabs.Toggles.Count);
+        Ui.Click(tabs.Toggles[1]);
+        Assert.Equal("Two_and_two_make_four", again.Tests.Tree.Shown?.Name);
+
+        again.OpenFile(doubler);
+        Ui.Settle();
+        CodeEditor shown = again.EditorArea.CodeEditor;
+        shown.Focus();
+        Ui.PlaceAfter(shown, "class Doub");
+        Ui.Run(again, AppActions.GoToTest);
+        Ui.WaitFor(() => PathNames.Same(again.EditorArea.Active?.Path ?? string.Empty, doublerTests), () => $"Go to Test to DoublerTests.cs, at {again.EditorArea.Active?.Path}");
+        Assert.Equal(4, again.EditorArea.CodeEditor.CaretPosition.Line);
+        Ui.Run(again, AppActions.GoToTest);
+        Ui.WaitFor(() => PathNames.Same(again.EditorArea.Active?.Path ?? string.Empty, doubler), () => $"Go to Test back to Doubler.cs, at {again.EditorArea.Active?.Path}");
+        Assert.Equal(2, again.EditorArea.CodeEditor.CaretPosition.Line);
+        again.Close();
     }
 
     /// <summary>Show Context Actions at an interface's name offers Create Fake into the test project that sees it, first, and at

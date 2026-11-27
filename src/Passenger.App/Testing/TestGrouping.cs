@@ -84,20 +84,53 @@ public static class TestGroupings
     }
 }
 
-/// <summary>The Unit Tests window's choices for a folder: how its tests are grouped and which outcomes it shows (none for
-/// all of them).</summary>
+/// <summary>The Unit Tests window's choices for a folder: how its tests are grouped, which outcomes it shows (none for
+/// all of them), its test sessions and the one it shows (none for every test).</summary>
 public sealed record UnitTestsState : IStateDocument<UnitTestsState>
 {
+    /// <summary>The most sessions kept, and the most tests each keeps taken in and taken out.</summary>
+    public const int MostSessions = 50;
+
+    /// <inheritdoc cref="MostSessions"/>
+    public const int MostSessionTests = 5000;
+
     public List<TestGroupLevel> Grouping { get; init; } = [.. TestGroupings.Default];
 
     public List<TestState> Outcomes { get; init; } = [];
 
+    public List<KeptTestSession> Sessions { get; init; } = [];
+
+    /// <summary>The name of the session shown; null while every test is.</summary>
+    public string? Session { get; init; }
+
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
 
-    /// <summary>A level or outcome this build does not have is left out, and each is kept once, levels in their order.</summary>
-    public UnitTestsState Clamped() => this with
+    /// <summary>A level or outcome this build does not have is left out, and each is kept once, levels in their order; a
+    /// session without a name or a project, or with the name of one before it, is left out, and the one shown is one kept.</summary>
+    public UnitTestsState Clamped()
     {
-        Grouping = [.. TestGroupings.Ordered(Grouping ?? [])],
-        Outcomes = [.. (Outcomes ?? []).Where(Enum.IsDefined).Distinct().Order()],
-    };
+        List<KeptTestSession> sessions = [.. (Sessions ?? []).Where(s => s is not null && !string.IsNullOrWhiteSpace(s.Name))
+            .DistinctBy(s => s.Name, StringComparer.Ordinal).Take(MostSessions)
+            .Select(s => s with { Tests = Kept(s.Tests), Left = Kept(s.Left) })];
+        return this with
+        {
+            Grouping = [.. TestGroupings.Ordered(Grouping ?? [])],
+            Outcomes = [.. (Outcomes ?? []).Where(Enum.IsDefined).Distinct().Order()],
+            Sessions = sessions,
+            Session = sessions.Any(s => s.Name == Session) ? Session : null,
+        };
+
+        static List<SessionTest> Kept(List<SessionTest>? tests) =>
+            [.. (tests ?? []).Where(t => t is not null && !string.IsNullOrEmpty(t.Project) && (t.Row is null || t.Name is not null)).Distinct().Take(MostSessionTests)];
+    }
+}
+
+/// <summary>A test session as a folder keeps it: its name, what it takes in and what was taken out of that.</summary>
+public sealed record KeptTestSession
+{
+    public string Name { get; init; } = string.Empty;
+
+    public List<SessionTest> Tests { get; init; } = [];
+
+    public List<SessionTest> Left { get; init; } = [];
 }
