@@ -1135,6 +1135,7 @@ public sealed partial class Vim
             begun = true;
         }
         bool passWhite = false;
+        bool landedAlone = false;
         // A line break alone between two sentences is no white: each is a step of its own.
         for (; left > 0 && at > 0; left--)
         {
@@ -1142,7 +1143,8 @@ public sealed partial class Vim
             (int Start, bool White) here = SentenceUnit(text, at);
             bool inside = here.Start < at;
             (int start, bool white) = inside ? here : SentenceUnit(text, VimMotions.StepBack(text, at));
-            if ((passWhite || (passesAtEmpty && fromEmpty)) && white && start > 0)
+            // After a step to an empty line alone, is takes the blanks ending the line above it with it.
+            if ((passWhite || (passesAtEmpty && fromEmpty) || (inner && landedAlone)) && white && start > 0)
             {
                 (start, white) = SentenceUnit(text, VimMotions.StepBack(text, start));
             }
@@ -1150,6 +1152,7 @@ public sealed partial class Vim
             fromStart = false;
             reached = fromEmpty && (reached || left < (begun ? n : n - 1));
             at = start;
+            landedAlone = LoneEmpty(text, at);
             if (!inner && (white || inside || here.White || reached) && at > 0 && SentenceUnit(text, VimMotions.StepBack(text, at)) is var before
                 && before.White != white)
             {
@@ -1158,6 +1161,12 @@ public sealed partial class Vim
         }
         return at;
     }
+
+    /// <summary>Whether an offset is the start of an empty line between two lines of text, the one below opening with a
+    /// character that is no blank, end mark or closer.</summary>
+    private bool LoneEmpty(TextSnapshot text, int at) => VimMotions.LineOf(text, at) is { Length: 0, Line: > 0 } empty && empty.Start == at
+        && empty.Line < VimMotions.LastLine(text, breakEnds) && text.GetLine(empty.Line - 1).Length > 0 && text.GetLine(empty.Line + 1) is { Length: > 0 } below
+        && text[below.Start] is not (' ' or '\t' or '.' or '!' or '?' or ')' or ']' or '"' or '\'');
 
     /// <summary>The last character of the last line before a line's run of empty lines that holds any.</summary>
     private static int LastCharacterBefore(TextSnapshot text, int line)
