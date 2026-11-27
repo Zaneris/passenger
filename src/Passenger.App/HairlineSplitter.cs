@@ -38,4 +38,15 @@ public sealed class HairlineDivider : Panel
 
     /// <summary>Whether the line is drawn: only between two panes of one ground.</summary>
     public bool Drawn => line.IsVisible;
+
+    /// <summary>A divider under what stands between two panes in a column or row of its own (a diff's strip), no line of
+    /// its own drawn and the whole of it the splitter: a drag on what stands over it, anywhere that takes no press of its
+    /// own, moves the panes either side.</summary>
+    public static HairlineDivider Under(GridResizeDirection direction)
+    {
+        HairlineDivider divider = new(direction, drawn: false) { ZIndex = -1 };
+        divider.Splitter.Width = divider.Splitter.Height = double.NaN;
+        divider.Splitter.Margin = default;
+        return divider;
+    }
 }

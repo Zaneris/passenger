@@ -10,14 +10,15 @@ using Passenger.Vcs;
 namespace Passenger.App.Vcs;
 
 /// <summary>The side-by-side diff: the last commit's text on the left (read-only), the file as it is on the right (the
-/// open file's own text, so an edit there is an edit to it), each change tinted on both sides and joined by a band
-/// between them, the words that changed inside its lines marked stronger, the two kept level as either scrolls. A band's
-/// arrow puts that change back in the open file's text, or writes it to a file not open, as Rollback Lines does to the
-/// change at the caret (<see cref="RollBackAtCaretAsync"/>); F7 and Shift+F7 (F8 and Shift+F8 too off the Mac) go to the
-/// next and previous one; F4 asks for its file at the caret's line (Jump to Source); Settings (its keys
-/// <see cref="AppActions.DiffSettings"/>'s) chooses how differences are highlighted, by words at first; Find searches the
-/// side with the caret (<see cref="ShowFind"/>). A side whose version has no such file (a file new since it, or gone) shows
-/// a pane saying so in place of its lines (<see cref="NoFile"/>). Made by <see cref="DiffPanes"/>.</summary>
+/// open file's own text, so an edit there is an edit to it), each change tinted on both sides and joined by a band on
+/// the strip between them, which a drag moves, the words that changed inside its lines marked stronger, the two kept
+/// level as either scrolls. A band's arrow puts that change back in the open file's text, or writes it to a file not
+/// open, as Rollback Lines does to the change at the caret (<see cref="RollBackAtCaretAsync"/>); F7 and Shift+F7 (F8
+/// and Shift+F8 too off the Mac) go to the next and previous one; F4 asks for its file at the caret's line (Jump to
+/// Source); Settings (its keys <see cref="AppActions.DiffSettings"/>'s) chooses how differences are highlighted, by
+/// words at first; Find searches the side with the caret (<see cref="ShowFind"/>). A side whose version has no such
+/// file (a file new since it, or gone) shows a pane saying so in place of its lines (<see cref="NoFile"/>). Made by
+/// <see cref="DiffPanes"/>.</summary>
 public sealed class DiffView : DockPanel, IOwnKeys
 {
     /// <summary>How long editing pauses before the differences are worked out again.</summary>
@@ -86,23 +87,19 @@ public sealed class DiffView : DockPanel, IOwnKeys
                 }
             }, AppActions.RollbackLines, band => HeldAt(band.Index), AppActions.Stage) { Width = 36 };
 
-        Grid sides = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,*"), RowDefinitions = new RowDefinitions("Auto,*") };
+        Grid sides = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto,*"), RowDefinitions = new RowDefinitions("Auto,*") };
         Left.ReadOnlyWhy = Refusals.ReadOnly(named.Left);
         Right.ReadOnlyWhy = editable ? null : Refusals.ReadOnly(named.Right);
         sides.Children.Add(DiffLines.Title(named.Left, 0));
-        sides.Children.Add(DiffLines.Title(named.Right, 3));
+        sides.Children.Add(DiffLines.Title(named.Right, 2));
         Grid.SetRow(Left, 1);
-        Grid.SetRow(bands, 1);
-        Grid.SetColumn(bands, 1);
         Grid.SetRow(Right, 1);
-        Grid.SetColumn(Right, 3);
-        Grid.SetColumn(hunkBoxes, 2);
-        Grid.SetRow(hunkBoxes, 1);
+        Grid.SetColumn(Right, 2);
+        Grid.SetColumn(hunkBoxes, 1);
         hunkBoxes.SizeChanged += (_, _) => PlaceHunkBoxes();
-        sides.Children.Add(hunkBoxes);
         sides.Children.Add(Left);
-        sides.Children.Add(bands);
         sides.Children.Add(Right);
+        DiffLines.Divide(sides, new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto"), Children = { bands, hunkBoxes } }, 1);
         leftNone = NoFilePane(Left, "New file");
         rightNone = NoFilePane(Right, "Deleted file");
         sides.Children.Add(leftNone);
