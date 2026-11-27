@@ -127,6 +127,11 @@ public sealed partial class CodeEditor
             TypedOverEndTag?.Invoke(this, EventArgs.Empty);
             return;
         }
+        if (overwrite && vim is null)
+        {
+            Apply(TextEditing.Overtype(document.Snapshot, selections, typed));
+            return;
+        }
         formattedKey = BeginFormattedKey(typed);
         Apply(TextEditing.Type(document.Snapshot, selections, typed, ClosesWhole(typed)));
         EditPlan? closing = ClosesTags ? TextEditing.CloseTag(document.Snapshot, selections, typed, Markup) : null;
@@ -305,7 +310,7 @@ public sealed partial class CodeEditor
             drag = new Drag(DragMode.Column, offset, from);
             SetSelections(ColumnSelection(text, from, point.Position), reveal: false);
         }
-        else if (dragged == EditorActions.ColumnSelectionDrag)
+        else if (dragged == EditorActions.ColumnSelectionDrag || (columnMode && left && clicked is null && dragged is null && mods == KeyModifiers.None))
         {
             drag = new Drag(DragMode.Column, offset, point.Position, Clicked: clicked, Before: selections);
             SetSelections(SelectionSet.Single(offset), reveal: false);

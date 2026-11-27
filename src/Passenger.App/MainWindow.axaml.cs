@@ -141,6 +141,7 @@ public partial class MainWindow : IdeWindow
         AddTargetFramework();
         AddRunTargets();
         AddRunAnything();
+        AddCodeMoves();
         AddBuildConfigurations();
         AddMobile();
         AddAutosave();

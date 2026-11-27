@@ -229,6 +229,21 @@ public static class Refusals
     /// <summary>VCS Operations where none of the Git menu's actions can run.</summary>
     public const string NoVcsOperations = "No Git action can run here";
 
+    /// <summary>Move Statement Up where nothing stands above the statement or member in its block, type or file.</summary>
+    public const string NoStatementAbove = "No statement or member is above it in its block";
+
+    /// <summary>Move Statement Down where nothing stands below the statement or member in its block, type or file.</summary>
+    public const string NoStatementBelow = "No statement or member is below it in its block";
+
+    /// <summary>Move Element Left where the element at the caret is a list's first, or in no list.</summary>
+    public const string NoElementLeft = "No element of a list is left of the caret's";
+
+    /// <summary>Move Element Right where the element at the caret is a list's last, or in no list.</summary>
+    public const string NoElementRight = "No element of a list is right of the caret's";
+
+    /// <summary>Unwrap where no statement around the caret holds others (an if, a loop, a using, a try, a block).</summary>
+    public const string NothingToUnwrap = "No statement around the caret holds others to unwrap";
+
     /// <summary>Choose and Run or Debug where no run configuration matches what is typed, or the folder has none.</summary>
     public const string NoRunConfigurationMatches = "No run configuration matches";
 
