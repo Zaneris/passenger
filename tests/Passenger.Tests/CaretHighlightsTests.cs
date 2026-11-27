@@ -228,11 +228,10 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         CodeEditor.StripeMark[] marks = [.. editor.StripeMarks.Where(m => m.Kind is StripeMarkKind.Usage or StripeMarkKind.WriteUsage)];
         Assert.Equal(occurrences.Select(range => range.Start), marks.Select(m => m.Offset));
         Assert.Equal([StripeMarkKind.Usage, StripeMarkKind.WriteUsage, StripeMarkKind.Usage], marks.Select(m => m.Kind));
-        foreach (CodeEditor.StripeMark mark in marks)
-        {
-            string token = mark.Kind == StripeMarkKind.WriteUsage ? TokenKeys.Editor_UsageWriteMark : TokenKeys.Editor_UsageReadMark;
-            Assert.Equal(Token(window, token), Ui.Pixel(window, editor.TranslatePoint(editor.StripePoint(mark), window)!.Value));
-        }
+        Color readMark = Token(window, TokenKeys.Editor_UsageReadMark);
+        Color writeMark = Token(window, TokenKeys.Editor_UsageWriteMark);
+        Point[] points = [.. marks.Select(mark => editor.TranslatePoint(editor.StripePoint(mark), window)!.Value)];
+        Assert.Equal([readMark, writeMark, readMark], Ui.Pixels(window, points));
 
         Ui.Click(editor, editor.StripePoint(marks[2]));
         Assert.Equal(read, editor.Selections.Primary.Caret);
