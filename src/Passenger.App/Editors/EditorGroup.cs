@@ -90,7 +90,8 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The banner's way to the merge window, while the file shown is in conflict.</summary>
     private readonly Button mergeLink;
     private EditorTab? active;
-    private EditorTabsPlace tabsPlace;
+    private bool wrapsTabs;
+    private bool ScrollsDown => TabsPlace != EditorTabsPlace.Top || wrapsTabs;
 
     /// <summary>The table over the editor for a CSV or workbook, made as the group first shows one.</summary>
     private TableViewer? tables;
@@ -466,7 +467,7 @@ public sealed class EditorGroup : DockPanel
     {
         get
         {
-            bool down = tabsPlace != EditorTabsPlace.Top;
+            bool down = ScrollsDown;
             double from = down ? stripView.Offset.Y : stripView.Offset.X;
             double to = from + (down ? stripView.Viewport.Height : stripView.Viewport.Width);
             return [.. tabs.Where(tab => strip.ContainerFromItem(tab) is not Control shown
@@ -474,36 +475,38 @@ public sealed class EditorGroup : DockPanel
         }
     }
 
-    /// <summary>Where its tabs stand: a row across its top that scrolls, or a column down its left or right side, each tab
-    /// as wide as the column.</summary>
-    public EditorTabsPlace TabsPlace
+    /// <summary>Where its tabs stand, across its top or down one side.</summary>
+    public EditorTabsPlace TabsPlace { get; private set; }
+
+    /// <summary>Arranges the tabs as a scrolling row, wrapping rows, or a scrolling column.</summary>
+    internal void PlaceTabs(EditorTabsPlace place, bool wrap)
     {
-        get => tabsPlace;
-        set
+        bool down = place != EditorTabsPlace.Top;
+        wrap = wrap && !down;
+        if (place == TabsPlace && wrap == wrapsTabs)
         {
-            if (value == tabsPlace)
-            {
-                return;
-            }
-            tabsPlace = value;
-            bool down = value != EditorTabsPlace.Top;
-            tabBar[DockProperty] = value switch { EditorTabsPlace.Left => Dock.Left, EditorTabsPlace.Right => Dock.Right, _ => Dock.Top };
-            tabBar.Classes.Set(StyleClasses.SideTabs, down);
-            strip.ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = down ? Orientation.Vertical : Orientation.Horizontal });
-            stripView.HorizontalScrollBarVisibility = down ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Hidden;
-            stripView.VerticalScrollBarVisibility = down ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
-            hiddenTabs[DockProperty] = down ? Dock.Bottom : Dock.Right;
-            PreviewToggle[DockProperty] = down ? Dock.Top : Dock.Right;
-            markdownModes[DockProperty] = down ? Dock.Top : Dock.Right;
-            tabBar.Styles.Clear();
-            if (down)
-            {
-                tabBar.Styles.Add(SideShadows(value));
-            }
-            // Every tab made again for the new direction.
-            ReusedRows.Use(strip, Tab);
-            RevealActive();
+            return;
         }
+        TabsPlace = place;
+        wrapsTabs = wrap;
+        tabBar[DockProperty] = place switch { EditorTabsPlace.Left => Dock.Left, EditorTabsPlace.Right => Dock.Right, _ => Dock.Top };
+        tabBar.Classes.Set(StyleClasses.SideTabs, down);
+        tabBar.Classes.Set(StyleClasses.WrappedTabs, wrap);
+        strip.ItemsPanel = new FuncTemplate<Panel?>(() => wrap ? new WrapPanel()
+            : new StackPanel { Orientation = down ? Orientation.Vertical : Orientation.Horizontal });
+        stripView.HorizontalScrollBarVisibility = ScrollsDown ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Hidden;
+        stripView.VerticalScrollBarVisibility = ScrollsDown ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
+        hiddenTabs[DockProperty] = down ? Dock.Bottom : Dock.Right;
+        PreviewToggle[DockProperty] = down ? Dock.Top : Dock.Right;
+        markdownModes[DockProperty] = down ? Dock.Top : Dock.Right;
+        tabBar.Styles.Clear();
+        if (down)
+        {
+            tabBar.Styles.Add(SideShadows(place));
+        }
+        // A tab's contents and height follow the space its layout gives it.
+        ReusedRows.Use(strip, Tab);
+        RevealActive();
     }
 
     /// <summary>The most of a group's width its tabs down a side take, so a narrow group (a small window's, a split's) keeps
@@ -512,11 +515,16 @@ public sealed class EditorGroup : DockPanel
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        // Set before the column is measured, so it is laid out once at its width.
-        double most = tabsPlace == EditorTabsPlace.Top ? double.PositiveInfinity : availableSize.Width * SideTabsShare;
-        if (!tabBar.MaxWidth.Equals(most))
+        double width = TabsPlace == EditorTabsPlace.Top ? double.PositiveInfinity : availableSize.Width * SideTabsShare;
+        // A large set of wrapped tabs can scroll, leaving room for the code.
+        double height = wrapsTabs ? availableSize.Height / 2 : double.PositiveInfinity;
+        if (!tabBar.MaxWidth.Equals(width))
         {
-            tabBar.MaxWidth = most;
+            tabBar.MaxWidth = width;
+        }
+        if (!tabBar.MaxHeight.Equals(height))
+        {
+            tabBar.MaxHeight = height;
         }
         return base.MeasureOverride(availableSize);
     }
@@ -906,11 +914,14 @@ public sealed class EditorGroup : DockPanel
     public int IndexAt(Point at)
     {
         int index = 0;
-        bool down = tabsPlace != EditorTabsPlace.Top;
+        bool down = TabsPlace != EditorTabsPlace.Top;
         foreach (Control tab in tabBar.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains(StyleClasses.Tab)))
         {
             Point centre = tab.TranslatePoint(new Point(tab.Bounds.Width / 2, tab.Bounds.Height / 2), tabBar) ?? default;
-            if (down ? at.Y > centre.Y : at.X > centre.X)
+            double vertical = at.Y - centre.Y;
+            double halfHeight = tab.Bounds.Height / 2;
+            bool otherRow = wrapsTabs && (vertical < -halfHeight || vertical >= halfHeight);
+            if (down || otherRow ? vertical > 0 : at.X > centre.X)
             {
                 index++;
             }
@@ -1040,10 +1051,9 @@ public sealed class EditorGroup : DockPanel
         Border production = Tags.Of("production", TokenKeys.Error);
         Border readOnly = Tags.Of("read-only");
         Panel ends = new() { Width = 16, Height = 16, Children = { modified, close } };
-        bool down = tabsPlace != EditorTabsPlace.Top;
         Border border = new() { Classes = { StyleClasses.Tab } };
-        // Down a side, the name takes the column's width left over, its close at the column's edge.
-        ChosenMark.Hold(border, down
+        // In a width-constrained layout, let a long name give way to the tab's controls.
+        ChosenMark.Hold(border, ScrollsDown
             ? new DockPanel
             {
                 VerticalAlignment = VerticalAlignment.Center,
@@ -1181,11 +1191,11 @@ public sealed class EditorGroup : DockPanel
         };
         border.PointerMoved += (_, e) => area.TabDragOf(this)?.Continue(e);
         border.PointerReleased += (_, e) => area.TabDragOf(this)?.End(e);
-        if (!down)
+        if (!ScrollsDown)
         {
             return border.Showing<EditorTab>(Paint);
         }
-        // Each tab of a column as high as the strip is across the top, its margins inside it as there.
+        // Each wrapped or side tab is as high as a single-row strip, with the same margins inside it.
         Panel slot = new() { Children = { border } };
         slot.Bind(HeightProperty, slot.GetResourceObservable(TokenKeys.TabStripHeight));
         return slot.Showing<EditorTab>(Paint);

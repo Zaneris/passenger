@@ -66,6 +66,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// across the top (<see cref="TabsPlace"/>).</summary>
     public EditorTabsPlace? EditorTabs { get; init; }
 
+    /// <summary>Lets top editor tabs wrap into more rows when they do not fit one.</summary>
+    public bool WrapEditorTabs { get; init; }
+
     /// <summary>How docked tool windows are named as the person set it, or null where they set none: the theme's, else by
     /// stripe icons alone (<see cref="ToolWindowsAs"/>).</summary>
     public ToolWindowLook? ToolWindowLook { get; init; }

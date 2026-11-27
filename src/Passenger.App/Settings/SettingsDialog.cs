@@ -292,6 +292,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.WindowFontFamily);
         Add(Declared.DisplayScale);
         Add(Declared.EditorTabs);
+        Add(Declared.WrapEditorTabs);
         Add(Declared.ToolWindowLook);
         Add(Declared.ClosedToolWindows);
         Add(Declared.WideLayout);

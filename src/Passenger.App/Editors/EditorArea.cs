@@ -132,18 +132,16 @@ public sealed partial class EditorArea : UserControl
     public Func<string, CSharpParseOptions> ParseOptions { get; set; } = _ => CSharpParsing.Default;
 
     private EditorTabsPlace tabsPlace;
+    private bool wrapTabs;
 
-    /// <summary>Where every group's tabs stand, in every editor window.</summary>
-    public EditorTabsPlace TabsPlace
+    /// <summary>Applies the editor tab layout to every group, including detached editor windows.</summary>
+    internal void PlaceTabs(EditorTabsPlace place, bool wrap)
     {
-        get => tabsPlace;
-        set
+        tabsPlace = place;
+        wrapTabs = wrap;
+        foreach (EditorGroup group in AllGroups)
         {
-            tabsPlace = value;
-            foreach (EditorGroup group in AllGroups)
-            {
-                group.TabsPlace = value;
-            }
+            group.PlaceTabs(place, wrap);
         }
     }
 
@@ -1581,7 +1579,8 @@ public sealed partial class EditorArea : UserControl
 
     private EditorGroup NewGroup()
     {
-        EditorGroup group = new(this) { IsCurrent = false, TabsPlace = tabsPlace };
+        EditorGroup group = new(this) { IsCurrent = false };
+        group.PlaceTabs(tabsPlace, wrapTabs);
         group.Editor.SelectionChanged += (_, _) =>
         {
             if (group == activeGroup)

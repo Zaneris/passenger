@@ -52,7 +52,11 @@ public static class Declared
     public static readonly ThemedChoiceSetting<EditorTabsPlace> EditorTabs = new(s => s.EditorTabs, s => s.TabsPlace(), (s, v) => s with { EditorTabs = v },
         [(EditorTabsPlace.Top, "Top"), (EditorTabsPlace.Left, "Left"), (EditorTabsPlace.Right, "Right")],
         new(D.Appearance, "Editor tabs", "editor tabs tab well strip placement position vertical side left right top layout arrangement",
-            "Where each editor's tabs stand: a row across its top, or a column down its left or right side, which fits more of them."));
+            "Where each editor's tabs stand, across its top or down its left or right side."));
+
+    public static readonly ToggleSetting WrapEditorTabs = new(s => s.WrapEditorTabs, (s, v) => s with { WrapEditorTabs = v },
+        new(D.Appearance, "Wrap editor tabs", "editor tabs top multiple multiline rows wrap overflow layout",
+            "Show more rows of tabs when they do not fit across the top of the editor. With wrapping off, the top row scrolls sideways."));
 
     public static readonly ThemedChoiceSetting<ToolWindowLook> ToolWindowLook = new(s => s.ToolWindowLook, s => s.ToolWindowsAs(), (s, v) => s with { ToolWindowLook = v },
         [(Passenger.App.ToolWindowLook.StripeIcons, "Stripe icons"), (Passenger.App.ToolWindowLook.TitledTabs, "Titled tabs")],

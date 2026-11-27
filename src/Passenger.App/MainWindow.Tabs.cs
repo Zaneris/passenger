@@ -145,7 +145,7 @@ public partial class MainWindow
     /// areas run the whole height.</summary>
     private void FollowArrangement(AppSettings next)
     {
-        Editors.TabsPlace = next.TabsPlace();
+        Editors.PlaceTabs(next.TabsPlace(), next.WrapEditorTabs);
         Dock.TitledTabs = next.ToolWindowsAs() == ToolWindowLook.TitledTabs;
         Dock.ClosesOffStripe = next.ClosedWindows() == ClosedToolWindows.LeaveStripe;
         Dock.Wide = next.WideLayout;

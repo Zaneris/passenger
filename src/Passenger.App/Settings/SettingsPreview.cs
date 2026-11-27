@@ -61,6 +61,7 @@ public sealed class SettingsPreview : IDisposable
         WindowFontFamily = Shown(from.WindowFontFamily, to.WindowFontFamily, saved.WindowFontFamily),
         DisplayScale = Shown(from.DisplayScale, to.DisplayScale, saved.DisplayScale),
         EditorTabs = Shown(from.EditorTabs, to.EditorTabs, saved.EditorTabs),
+        WrapEditorTabs = Shown(from.WrapEditorTabs, to.WrapEditorTabs, saved.WrapEditorTabs),
         ToolWindowLook = Shown(from.ToolWindowLook, to.ToolWindowLook, saved.ToolWindowLook),
         WideLayout = Shown(from.WideLayout, to.WideLayout, saved.WideLayout),
         MainMenuBar = Shown(from.MainMenuBar, to.MainMenuBar, saved.MainMenuBar),

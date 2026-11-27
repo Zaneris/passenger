@@ -6,6 +6,7 @@ using Avalonia.Media;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Editors;
+using Passenger.App.Settings;
 using Passenger.Text;
 
 namespace Passenger.Tests;
@@ -54,6 +55,77 @@ public sealed class EditorTabsTests : IDisposable
         Flow.StepApart<EditorTabsTests>("close Tabs to the Right and Close Other Tabs end showing the tab they were chosen on", t => t.Close_Tabs_to_the_Right_and_Close_Other_Tabs_end_showing_the_tab_they_were_chosen_on());
         Flow.StepApart<EditorTabsTests>("unsplit joins a split into the group worked in and Unsplit All joins every split keeping each tab and its caret", t => t.Unsplit_joins_a_split_into_the_group_worked_in_and_Unsplit_All_joins_every_split_keeping_each_tab_and_its_caret());
         Flow.StepApart<EditorTabsTests>("the button at the strip's end lists the tabs out of its sight and goes to the one chosen", t => t.The_button_at_the_strips_end_lists_the_tabs_out_of_its_sight_and_goes_to_the_one_chosen());
+    }
+
+    [AvaloniaFact]
+    public void Top_editor_tabs_wrap_when_chosen_and_keep_the_choice()
+    {
+        string[] files = [.. Enumerable.Range(1, 8).Select(i => $"Component{i:00}.cs")];
+        foreach (string file in files)
+        {
+            File.WriteAllText(Path.Combine(folder, file), $"class {Path.GetFileNameWithoutExtension(file)} {{ }}\n");
+        }
+
+        MainWindow window = Keeping(files);
+        window.KeepSettings();
+        window.Width = 900;
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        Ui.Settle();
+        Assert.True(group.HiddenTabsButton.IsVisible);
+        Assert.Equal(1, Rows());
+
+        SettingsDialog dialog = window.ShowSettings();
+        dialog.Page = SettingsDialog.Appearance;
+        Ui.Settle();
+        CheckBox wrap = SettingsTests.Editor<CheckBox>(dialog, "Wrap editor tabs");
+        Assert.False(wrap.IsChecked);
+        Ui.Click(wrap);
+        Assert.True(Rows() > 1);
+        Assert.Empty(group.HiddenTabs);
+        Assert.False(group.HiddenTabsButton.IsVisible);
+        dialog.Apply();
+        Ui.Click(wrap);
+        Assert.Equal(1, Rows());
+        Assert.True(group.HiddenTabsButton.IsVisible);
+        dialog.Close();
+        Ui.Settle();
+        Assert.True(Rows() > 1);
+
+        window.Width = 1800;
+        Ui.Settle();
+        Assert.Equal(1, Rows());
+        window.Width = 900;
+        Ui.Settle();
+
+        Rect first = Bounds(files[0]);
+        Rect last = Bounds(files[^1]);
+        Ui.Click(Tab(group, files[^1]));
+        Assert.Equal(files[^1], group.Active?.Name);
+        Assert.True(last.Y > first.Y);
+        Ui.Drag(window, first.Center, new Point(last.Right - 2, last.Center.Y));
+        Assert.Equal([.. files.Skip(1), files[0]], Names(group));
+
+        window.ApplySettings(window.Settings with { EditorTabs = EditorTabsPlace.Left });
+        Ui.Settle();
+        Assert.Single(files.Select(file => Bounds(file).X).Distinct());
+        window.ApplySettings(window.Settings with { EditorTabs = EditorTabsPlace.Top });
+        window.Close();
+
+        window = Keeping(files);
+        window.KeepSettings();
+        window.Width = 900;
+        group = window.EditorArea.ActiveGroup;
+        Ui.Settle();
+        Assert.True(Rows() > 1);
+        window.Close();
+
+        Rect Bounds(string file)
+        {
+            Control tab = Tab(group, file);
+            return new Rect(tab.TranslatePoint(default, window)!.Value, tab.Bounds.Size);
+        }
+
+        int Rows() => files.Select(file => Bounds(file).Y).Distinct().Count();
     }
 
     private void A_pinned_tab_stands_left_with_a_pin_stays_through_Close_Others_and_Close_All_and_comes_back_pinned_with_the_folder()

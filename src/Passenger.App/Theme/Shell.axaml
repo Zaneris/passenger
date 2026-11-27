@@ -331,7 +331,11 @@
         <Setter Property="Width" Value="220" />
         <Setter Property="Padding" Value="0,6" />
     </Style>
-    <Style Selector="Border.sideTabs TextBlock.tabName">
+    <Style Selector="Border.tabStrip.wrappedTabs">
+        <Setter Property="Height" Value="NaN" />
+        <Setter Property="MinHeight" Value="{DynamicResource Passenger.TabStripHeight}" />
+    </Style>
+    <Style Selector="Border.sideTabs TextBlock.tabName, Border.wrappedTabs TextBlock.tabName">
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
     <!-- A place's titled tool window tabs along its foot, on the window's own ground, so they read as its and the seam
