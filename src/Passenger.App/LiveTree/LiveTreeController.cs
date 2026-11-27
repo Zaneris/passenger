@@ -618,7 +618,7 @@ public sealed partial class LiveTreeController
                 ShowBanner(null);
                 ShowMonitors(null);
                 Picking(false);
-                ShowStatus($"{app.Name} has ended.", null);
+                ShowStatus($"{Ended()}.", null);
                 break;
             default:
                 ShowStatus(null, $"{app.Name} · {app.Framework}");
@@ -956,6 +956,11 @@ public sealed partial class LiveTreeController
 
     private void OnDebugState()
     {
+        if (app is LiveApp { State: LiveAppState.Ended })
+        {
+            // Its session's end says the app has ended, where its inspector's connection closed while it ran.
+            ShowState();
+        }
         bool paused = Paused && app is { State: LiveAppState.Connected };
         ShowBanner(paused ? $"{app!.Name} is paused: its tree and values are as it last ran, and are asked again once it runs." : null);
         if (!paused && stale)
@@ -969,13 +974,17 @@ public sealed partial class LiveTreeController
         }
     }
 
+    /// <summary>What the window says of an app whose inspector has gone: that its connection closed while the session debugging
+    /// it runs on, else that the app has ended.</summary>
+    private string Ended() => app is LiveApp && Debugged() is { State: not DebugState.Ended } ? Refusals.InspectorGone(app.Name) : $"{app!.Name} has ended";
+
     /// <summary>Why the window cannot ask the app now: nothing inspected, not up yet, refused, gone, or paused.</summary>
     private string? WhyNotAsk() => app switch
     {
         null => "No Avalonia, WPF or WinUI app is being debugged, nor a Godot game running",
         { State: LiveAppState.Waiting } => $"{app.Name} has not shown its windows yet",
         { State: LiveAppState.Refused } => app.Problem,
-        { State: LiveAppState.Ended } => $"{app.Name} has ended",
+        { State: LiveAppState.Ended } => Ended(),
         _ when Paused => $"{app.Name} is paused",
         _ => null,
     };

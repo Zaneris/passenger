@@ -68,9 +68,8 @@ internal static class AvaloniaAndroidTests
                 () => $"the app's start in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", Slow);
             string serial = AndroidSerials.Of(window, target);
             Ui.WaitFor(() => Pid(tools, serial).Length > 0, "the app to run on the emulator", TimeSpan.FromSeconds(30));
-            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, () => $"the inspector in the app on the emulator to say hello; it is "
-                + $"{window.Session.RunApp?.State.ToString() ?? "not made"} ({window.Session.RunApp?.Problem}): {Ui.Said(window)}\n{Output(window)}", Slow);
-            TreeAsked tree = new(window.Session.RunApp!);
+            TreeAsked tree = new(InspectorWaits.Hello(window, () => window.Session.RunApp, () => $"the inspector in the app on the emulator to say hello; it is "
+                + $"{window.Session.RunApp?.State.ToString() ?? "not made"}: {Ui.Said(window)}\n{Output(window)}", Slow));
             // The app's Application says hello before its activity shows the shared view.
             Ui.WaitFor(() => tree.Holds(e => e.Type == "MainView") && tree.Holds(e => e.Type == "TextBox"),
                 () => $"the shared view and its TextBox in the app's tree; it shows {tree.Shown}", Slow);

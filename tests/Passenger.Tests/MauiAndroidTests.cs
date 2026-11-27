@@ -61,13 +61,15 @@ internal static class MauiAndroidTests
 
             // Breakpoints in the page's XAML, bound in the code MAUI's source generator wrote of it, stop as the page is made.
             (string xaml, int hello, int clickMe) = MauiApp.XamlBreakpoints(window, project);
+            // adb ends each connection the app's socket does not take yet a second late, as on a loaded machine.
+            using LateRefusals late = new();
             Ui.Launched(window, window.DebugAsync(), "the build, the install and the debugged start on the emulator", Slow);
             MauiApp.StopsInXaml(window, xaml, hello, clickMe, Slow);
             Ui.Run(window, AppActions.Resume);
             LiveTreeView tree = window.LiveTree;
-            Ui.WaitFor(() => tree.Rows.Any(r => r.Element is { Type: "Button", Name: "CounterBtn" }),
-                () => $"the main page's button in the Live Visual Tree; it shows {string.Join(", ", tree.Rows.Select(r => r.Element.Type))}; the inspector is "
-                    + $"{window.LiveApp?.State.ToString() ?? "not made"} ({window.LiveApp?.Problem}): {Ui.Said(window)}", Slow);
+            InspectorWaits.Until(window, () => window.LiveApp, () => tree.Rows.Any(r => r.Element is { Type: "Button", Name: "CounterBtn" }),
+                () => $"the main page's button in the Live Visual Tree; it shows {string.Join(", ", tree.Rows.Select(r => r.Element.Type))}", Slow);
+            Assert.True(late.Refused > 0, "adb ended no connection before the app's inspector listened, so the step did not hold Passenger's reach to adb's late ends");
             Assert.True(window.LiveApp is { Kind: LiveAppKind.Maui } && window.LiveApp.Framework.StartsWith("MAUI 11.", StringComparison.Ordinal),
                 $"The app was taken for {window.LiveApp?.Kind}, {window.LiveApp?.Framework}");
             Assert.True(tree.Rows[0].Element.Type == "Window", $"The tree's first row is {tree.Rows[0].Element.Type}, not the app's window");

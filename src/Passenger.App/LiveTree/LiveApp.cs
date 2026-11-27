@@ -715,14 +715,15 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
 
     private void FailAll() => asked.End(_ => new LiveAppException($"{Name} has ended"));
 
-    /// <summary>How long a connection through adb's forward is watched for adb's end of it, which comes at once where the app's
-    /// socket is not listening yet.</summary>
-    private static readonly TimeSpan Unanswered = TimeSpan.FromMilliseconds(500);
+    /// <summary>Where Passenger reaches an app's inspector on a device in place of where its start says: a test's stand-in put
+    /// between them (an adb as late as a loaded machine's). Null reaches it where the start says.</summary>
+    public static Func<EndPoint, EndPoint>? ReachedThrough { get; set; }
 
     /// <summary>The inspector in an app on a device reached where the start says once it has put it in (adb's forward, a
     /// simulator's port, a socket in a Mac Catalyst app's container): connected and given the token, again and again until
-    /// the app's socket takes it, as adb takes each connection here and ends it at once while the app's inspector is not
-    /// listening yet. Null where the session ended first, or it could not be reached, which the app is refused for.</summary>
+    /// the inspector writes the token back, its word that it took the connection, as adb takes each connection here and
+    /// ends it, however late, while the app's socket is not listening yet. Null where the session ended first, or it could
+    /// not be reached, which the app is refused for.</summary>
     private async Task<Socket?> ReachAsync(Run.Devices.DeviceInspector device, CancellationToken stop)
     {
         EndPoint at;
@@ -743,6 +744,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             });
             return null;
         }
+        at = ReachedThrough?.Invoke(at) ?? at;
         byte[] token = System.Text.Encoding.UTF8.GetBytes(device.Token + "\n");
         while (!stop.IsCancellationRequested)
         {
@@ -752,7 +754,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             {
                 await socket.ConnectAsync(at, stop);
                 await socket.SendAsync(token, SocketFlags.None, stop);
-                if (!socket.Poll(Unanswered, SelectMode.SelectRead) || socket.Available > 0)
+                if (await SaidBackAsync(socket, token, stop))
                 {
                     return socket;
                 }
@@ -777,6 +779,23 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             }
         }
         return null;
+    }
+
+    /// <summary>Whether the token came back whole before the connection ended, read to its last byte and no further, so what
+    /// the inspector says next is the stream's.</summary>
+    private static async Task<bool> SaidBackAsync(Socket socket, byte[] token, CancellationToken stop)
+    {
+        byte[] back = new byte[token.Length];
+        for (int read = 0; read < back.Length;)
+        {
+            int more = await socket.ReceiveAsync(back.AsMemory(read), SocketFlags.None, stop);
+            if (more == 0)
+            {
+                return false;
+            }
+            read += more;
+        }
+        return back.AsSpan().SequenceEqual(token);
     }
 
     /// <summary>Everything the app has told unasked since the UI thread last heard it, in the order told.</summary>

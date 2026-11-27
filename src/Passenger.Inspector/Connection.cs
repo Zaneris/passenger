@@ -133,7 +133,7 @@ internal sealed class Connection : IDisposable
                     continue;
                 }
                 Socket client = listener.Accept();
-                if (Said(client, token))
+                if (Said(client, token) && SaidBack(client, token))
                 {
                     return new Connection(client);
                 }
@@ -172,6 +172,20 @@ internal sealed class Connection : IDisposable
             // Silent past its time, or gone: not Passenger.
         }
         return false;
+    }
+
+    /// <summary>Whether the token went back to the client, Passenger's word that the inspector took its connection.</summary>
+    private static bool SaidBack(Socket client, string token)
+    {
+        try
+        {
+            client.Send(Encoding.UTF8.GetBytes(token + "\n"));
+            return true;
+        }
+        catch (SocketException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Why the inspector is not in the app, in the app's own error output (its run's console) and the trace.</summary>

@@ -16,7 +16,7 @@ namespace Passenger.Inspector;
 public static class Wire
 {
     /// <summary>Bumped by a change either end must know of: a hello of another version is refused, saying so.</summary>
-    public const int Version = 11;
+    public const int Version = 12;
 
     /// <summary>The app's environment: the socket's path, where it connects.</summary>
     [IdentifierHome]
@@ -29,7 +29,8 @@ public static class Wire
     public const char Listens = '@';
 
     /// <summary>The app's environment where it listens (<see cref="Listens"/>): the line Passenger first writes, which only the
-    /// launch that put it there knows.</summary>
+    /// launch that put it there knows, and the inspector writes back once it has taken the connection: one ended with nothing
+    /// written back (adb's forward ends each the app's socket does not take) never reached the inspector.</summary>
     [IdentifierHome]
     public const string TokenVariable = "PASSENGER_INSPECTOR_TOKEN";
 

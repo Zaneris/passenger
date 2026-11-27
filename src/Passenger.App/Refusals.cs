@@ -550,6 +550,10 @@ public static class Refusals
     /// <summary>Live Visual Tree, in a folder holding no app Passenger's inspector looks into, with none inspected now.</summary>
     public const string NoInspectedApp = "The open folder holds no Avalonia, WPF, Windows Forms, .NET MAUI or Godot app, and no app is inspected";
 
+    /// <summary>The Live Visual Tree or an agent's app tool, of an app (named as it is shown) still debugged whose inspector's
+    /// connection closed under it.</summary>
+    public static string InspectorGone(string app) => $"{app} still runs, but the connection to its inspector closed, so nothing more is read of its windows until it starts again";
+
     /// <summary>Set Next Statement asked of a program whose debugger cannot move where a paused thread goes on (a Godot game's
     /// GDScript).</summary>
     public const string NoNextStatement = "The paused program's debugger cannot move where it goes on, so there is no Set Next Statement there";
