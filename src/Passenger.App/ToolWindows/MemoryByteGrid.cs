@@ -176,7 +176,7 @@ internal sealed class MemoryByteGrid : ScrollViewer
         TextRun run = new(text);
         if (changes[index])
         {
-            run.Bind(TextElement.ForegroundProperty, row.GetResourceObservable(TokenKeys.Error));
+            run.Bind(TextElement.ForegroundProperty, row.GetResourceObservable(TokenKeys.Memory_Changed));
         }
         if (index >= selected && index < selected + width)
         {

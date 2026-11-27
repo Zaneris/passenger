@@ -616,13 +616,13 @@ public sealed class DebugSession
                 ColumnsStartAt1 = true,
                 PathFormat = "path",
                 SupportsVariableType = true,
-                SupportsMemoryReferences = !session.Elsewhere && engine == DebugEngine.Managed,
+                SupportsMemoryReferences = engine == DebugEngine.Managed,
                 SupportsRunInTerminalRequest = runInTerminal is not null,
             });
             session.DataBreakpointsUnavailable = capabilities.SupportsDataBreakpoints == true ? null
                 : capabilities.DataBreakpointsUnavailable ?? "The debugger sets no data breakpoints";
             session.MovesNextStatement = capabilities.SupportsGotoTargetsRequest == true;
-            session.ReadsMemory = !session.Elsewhere && engine == DebugEngine.Managed && capabilities.SupportsReadMemoryRequest == true;
+            session.ReadsMemory = engine == DebugEngine.Managed && capabilities.SupportsReadMemoryRequest == true;
             session.ForcesWhyNot = capabilities.SupportsForcedSteps == true ? null : engine switch
             {
                 DebugEngine.GDScript => "Godot's GDScript debugger has no Just My Code to step past nor a way to pass breakpoints by",

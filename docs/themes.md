@@ -72,7 +72,8 @@ pressed, has them worked out in each variant from its own colours, as Passenger'
 are its `Hover` and `Selected` laid over its `Button`, and the default button's pressed goes as far past its `AccentHover`
 as that is from its `Accent`. One that leaves out `Debug` or `TitleBar.Debug`, the Debug button's own colours, draws it in
 its own `Icon` and `TitleBar.Icon`; one that leaves out `Editor.Fine`, a measure's mark on the code where it is fine (a
-function's cognitive complexity below yellow), draws it in its own `Test.Passed`.
+function's cognitive complexity below yellow), draws it in its own `Test.Passed`; one that leaves out `Memory.Changed`,
+a byte the debugged program changed since it last stopped, draws it in its own `Error`.
 
 A theme may give three more for its icons, each left out of Passenger's own, whose icons are drawn as they are:
 `IconSaturation` and `IconBrightness`, numbers working on every icon's colours as CSS's `saturate()` and `brightness()`

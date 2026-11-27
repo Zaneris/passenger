@@ -80,7 +80,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         }
     }
 
-    /// <summary>Only instructions that read existing values or compute an address may run for the Memory tab.</summary>
+    /// <summary>Only instructions that read existing values or compute an address may run for Memory.</summary>
     private static bool ReadsAddress(ILOpCode code) => code is ILOpCode.Nop or ILOpCode.Ret
         or >= ILOpCode.Ldarg_0 and <= ILOpCode.Ldloc_3
         or ILOpCode.Ldarg or ILOpCode.Ldarg_s or ILOpCode.Ldarga or ILOpCode.Ldarga_s

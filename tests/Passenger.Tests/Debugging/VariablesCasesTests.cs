@@ -20,7 +20,6 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         await Flow.StepApartAsync("an exception wrapping another reports the inner one", () => new VariablesCasesTests(testOutputHelper), t => t.An_exception_wrapping_another_reports_the_inner_one());
         await Flow.StepApartAsync("a union shows the value it holds as that values type opening to its members", () => new VariablesCasesTests(testOutputHelper), t => t.A_union_shows_the_value_it_holds_as_that_values_type_opening_to_its_members());
         await Flow.StepApartAsync("a pointer shows its address and type and opens to what it points at", () => new VariablesCasesTests(testOutputHelper), t => t.A_pointer_shows_its_address_and_type_and_opens_to_what_it_points_at());
-        await Flow.StepApartAsync("the Memory tab can follow a managed reference and read objects, arrays and strings", () => new VariablesCasesTests(testOutputHelper), t => t.A_managed_reference_leads_to_the_bytes_of_its_current_object());
         await Flow.StepApartAsync("DebuggerDisplay renders as Visual Studio does", () => new VariablesCasesTests(testOutputHelper), t => t.DebuggerDisplay_renders_as_Visual_Studio_does());
         await Flow.StepApartAsync("a value whose ToString throws shows its type and opens to its members", () => new VariablesCasesTests(testOutputHelper), t => t.A_value_whose_ToString_throws_shows_its_type_and_opens_to_its_members());
     }
@@ -107,6 +106,22 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
         EvaluateResponse address = await host.EvaluateAsync(frame, "pointer");
         Assert.Equal((pointer.Value, "int*"), (address.Result, address.Type));
+        EvaluateResponse read = await host.EvaluateAsync(frame, "*pointer");
+        Assert.Equal(("42", "int"), (read.Result, read.Type));
+    }
+
+    /// <summary>A pointer's row and its evaluation name its address for Memory, which reads the value it points at there,
+    /// and an address expression (the pointer, past it, cast, a local's address) resolves in the stopped frame; one that
+    /// writes is refused.</summary>
+    private async Task A_pointers_memory_reads_at_its_address_and_its_address_expressions_resolve_in_the_stopped_frame()
+    {
+        int line = Debuggees.Line("PassengerCases", "Console.WriteLine($\"pointers");
+        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", line, []);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        Assert.Equal(line, stop.ReadStopInfo().line);
+        DapVariable pointer = Assert.Single(await host.LocalsAsync(stop), v => v.Name == "pointer");
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+        EvaluateResponse address = await host.EvaluateAsync(frame, "pointer");
         Assert.Equal(pointer.Value, pointer.MemoryReference);
         Assert.Equal(pointer.MemoryReference, address.MemoryReference);
         ReadMemoryResponse memory = await host.RequestAsync<ReadMemoryResponse>(DapCommands.ReadMemory,
@@ -119,10 +134,11 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(MemoryAddresses.Show(start), (await host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("(nuint)pointer", frame))).Address);
         Assert.Equal(MemoryAddresses.Show(start), (await host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("&number", frame))).Address);
         await Assert.ThrowsAsync<DapException>(() => host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("pointer++", frame)));
-        EvaluateResponse read = await host.EvaluateAsync(frame, "*pointer");
-        Assert.Equal(("42", "int"), (read.Result, read.Type));
     }
 
+    /// <summary>A managed reference's row names its object's address, which Memory reads (an object's field, an array's
+    /// elements, a string's UTF-16), an address expression following the reference as it is reassigned and saying so once
+    /// it is null.</summary>
     private async Task A_managed_reference_leads_to_the_bytes_of_its_current_object()
     {
         int line = Debuggees.Line("PassengerCases", "Console.WriteLine($\"managed memory");
@@ -229,12 +245,15 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
     }
 
     /// <summary>A multi-dimensional array's long outer dimension opens in ranges of 100, and an element under a range
-    /// takes a value set through the array.</summary>
+    /// takes a value set through the array; memory reads at what a pointer or a managed reference holds, and an address
+    /// expression resolves in the stopped frame, as one flow.</summary>
     [Fact]
-    public async Task A_multi_dimensional_arrays_rows_open_in_ranges_and_take_a_value_set_through_the_array()
+    public async Task Arrays_open_in_ranges_and_take_values_set_through_them_and_memory_reads_where_a_variable_points()
     {
         await Flow.StepApartAsync<VariablesCasesTests>("a multi dimensional array's long outer dimension opens in ranges of 100", () => new VariablesCasesTests(testOutputHelper), t => t.A_multi_dimensional_arrays_long_outer_dimension_opens_in_ranges_of_100());
         await Flow.StepApartAsync<VariablesCasesTests>("an element under a multi dimensional array's range takes a value set through the array", () => new VariablesCasesTests(testOutputHelper), t => t.An_element_under_a_multi_dimensional_arrays_range_takes_a_value_set_through_the_array());
+        await Flow.StepApartAsync<VariablesCasesTests>("a pointer's memory reads at its address and its address expressions resolve in the stopped frame", () => new VariablesCasesTests(testOutputHelper), t => t.A_pointers_memory_reads_at_its_address_and_its_address_expressions_resolve_in_the_stopped_frame());
+        await Flow.StepApartAsync<VariablesCasesTests>("memory can follow a managed reference and read objects, arrays and strings", () => new VariablesCasesTests(testOutputHelper), t => t.A_managed_reference_leads_to_the_bytes_of_its_current_object());
     }
 
     /// <summary>A multi-dimensional array's outer dimension over 100 long opens in ranges of 100, as a long array does, each

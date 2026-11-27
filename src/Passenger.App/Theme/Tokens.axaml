@@ -156,7 +156,8 @@
                 <GradientStop Offset="1" Color="#0B7D72" />
             </LinearGradientBrush>
 
-            <!-- Running and testing: run, debug and Hot Reload's icons; a test's mark by its outcome. -->
+            <!-- Running and testing: run, debug and Hot Reload's icons; a test's mark by its outcome; a byte a debugged
+                 program changed since its last stop. -->
             <SolidColorBrush x:Key="Passenger.Run" Color="#34D399" read:Mark="Panel Frame" />
             <SolidColorBrush x:Key="Passenger.HotReload" Color="#FF9D5C" read:Mark="Panel Frame" />
             <SolidColorBrush x:Key="Passenger.Debug" Color="#B69CFF" read:Mark="Panel Frame" />
@@ -165,6 +166,7 @@
             <SolidColorBrush x:Key="Passenger.Test.Skipped" Color="#8C97AC" read:Mark="Panel" />
             <SolidColorBrush x:Key="Passenger.Test.Running" Color="#80A8FF" read:Mark="Panel" />
             <SolidColorBrush x:Key="Passenger.Test.NotRun" Color="#6B7690" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.Memory.Changed" Color="#FF7A87" read:Text="Panel" />
 
             <!-- Version control: the gutter's change bars, a file's name by how it changed, the log's lanes, a ref's tag
                  and words, a favourite branch's star, a signed commit's mark by what its signature is worth. -->
@@ -439,6 +441,7 @@
             <SolidColorBrush x:Key="Passenger.Test.Skipped" Color="#7A8499" />
             <SolidColorBrush x:Key="Passenger.Test.Running" Color="#2F6BF2" />
             <SolidColorBrush x:Key="Passenger.Test.NotRun" Color="#828DA2" />
+            <SolidColorBrush x:Key="Passenger.Memory.Changed" Color="#C21F38" />
 
             <SolidColorBrush x:Key="Passenger.Vcs.Added" Color="#2BA676" />
             <SolidColorBrush x:Key="Passenger.Vcs.Modified" Color="#2F6BF2" />

@@ -173,7 +173,7 @@ public partial class MainWindow
         };
         work.Told += (_, told) => announcer.Tell(told.Said, told.Succeeded ? Urgency.Polite : Urgency.Assertive);
         AddEditing();
-        actions.Add(new IdeAction(A.ShowDebugMemory, "Debugger Memory", "Tool Windows", context =>
+        actions.Add(new IdeAction(A.ShowDebugMemory, "Memory", "Tool Windows", context =>
         {
             if (context.ByAgent)
             {

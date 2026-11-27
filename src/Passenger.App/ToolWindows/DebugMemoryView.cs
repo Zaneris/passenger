@@ -172,7 +172,7 @@ public sealed class DebugMemoryView : DockPanel
     {
         null or { State: DebugState.Ended } => "Start a .NET debug session to inspect memory",
         { State: DebugState.Starting } => "The debugger is starting",
-        { ReadsMemory: false } => "The Memory tab is available for local .NET debug sessions",
+        { ReadsMemory: false } => "Memory reads a .NET program's memory alone",
         { State: not DebugState.Paused } => "Pause the program to inspect memory",
         _ => model.ShownSnapshot is null ? null : "Return to the live stop to inspect memory",
     };

@@ -145,10 +145,6 @@ public sealed class DebugAdapter
         connection.Handle<ReadMemoryArguments, ReadMemoryResponse>(DapCommands.ReadMemory, ReadMemory);
         connection.Handle<ResolveMemoryArguments, ResolveMemoryResponse>(DapCommands.ResolveMemory, async arguments =>
         {
-            if (Remote)
-            {
-                throw new DapException(DapCommands.ResolveMemory, "The Memory tab reads local .NET programs");
-            }
             try
             {
                 ulong address = await Read(() => debugger.ResolveMemoryAsync(arguments.Expression, arguments.FrameId));
@@ -372,7 +368,7 @@ public sealed class DebugAdapter
         linesStartAt1 = arguments.LinesStartAt1 ?? true;
         columnsStartAt1 = arguments.ColumnsStartAt1 ?? true;
         runsInTerminal = arguments.SupportsRunInTerminalRequest ?? false;
-        memoryReferences = !Remote && arguments.SupportsMemoryReferences == true;
+        memoryReferences = arguments.SupportsMemoryReferences == true;
         return Task.FromResult(new DapCapabilities
         {
             SupportsConfigurationDoneRequest = true,
@@ -383,7 +379,7 @@ public sealed class DebugAdapter
             SupportsEvaluateForHovers = true,
             SupportsStepBack = false,
             SupportsSetVariable = false,
-            SupportsReadMemoryRequest = !Remote,
+            SupportsReadMemoryRequest = true,
             SupportsSetExpression = true,
             SupportsRestartFrame = false,
             SupportsTerminateRequest = true,
@@ -810,10 +806,6 @@ public sealed class DebugAdapter
 
     private async Task<ReadMemoryResponse> ReadMemory(ReadMemoryArguments request)
     {
-        if (Remote)
-        {
-            throw new DapException(DapCommands.ReadMemory, "The Memory window reads local .NET programs");
-        }
         if (!MemoryAddresses.TryParse(request.MemoryReference, out ulong start)
             || !MemoryAddresses.TryOffset(start, request.Offset ?? 0, out ulong address))
         {

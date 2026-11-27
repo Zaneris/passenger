@@ -2636,7 +2636,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Ui.WaitFor(() => TextAt(beginning).StartsWith($"{beginning}  11 00 00 00", StringComparison.Ordinal), "the changed bytes after the stop");
         Assert.True(window.BottomPanel.Debug.IsMemoryShown);
         Avalonia.Controls.Documents.Run changed = LineAt(beginning)!.Inlines!.OfType<Avalonia.Controls.Documents.Run>().First(run => run.Text == "11");
-        Assert.True(memory.TryFindResource(TokenKeys.Error, memory.ActualThemeVariant, out object? changeColour));
+        Assert.True(memory.TryFindResource(TokenKeys.Memory_Changed, memory.ActualThemeVariant, out object? changeColour));
         Assert.Equal(Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(changeColour).Color,
             Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(changed.Foreground).Color);
         Assert.Contains(memory.GetVisualDescendants().OfType<TextBlock>(), t => t.Text?.Contains("1 changed since the previous stop", StringComparison.Ordinal) == true);

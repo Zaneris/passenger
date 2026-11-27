@@ -181,6 +181,7 @@ public static class ThemePalettes
         t["Test.Skipped"] = L("Test.Skipped", Mix(muted, panel, 0.15), [panel], Mark, dark);
         t["Test.Running"] = Legible(p.Blue, [panel], Mark, dark);
         t["Test.NotRun"] = t["CheckBorder"];
+        t["Memory.Changed"] = t["Error"];
 
         uint gutterGround = given.TryGetValue("Editor.Gutter", out uint ownGutter) && IsDark(ownGutter) == dark ? Over(ownGutter, editor) : editor;
         t["Vcs.Added"] = L("Vcs.Added", p.Green, [gutterGround], Mark, dark);

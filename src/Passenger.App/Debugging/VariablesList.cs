@@ -130,7 +130,7 @@ public sealed class VariablesList : TreeList
 
     public const string ViewMemory = "View Memory";
 
-    /// <summary>Opens a live pointer's address in the Memory window, where the list offers it.</summary>
+    /// <summary>Opens a live pointer's or reference's address in Memory, where the list offers it.</summary>
     public event EventHandler<(string Address, string? Expression)>? MemoryRequested;
 
     internal Func<bool> CanReadMemory { get; set; } = () => false;

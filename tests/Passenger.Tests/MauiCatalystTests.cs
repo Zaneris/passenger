@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using System.Text.Json;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using ModelContextProtocol.Client;
 using Passenger.App;
 using Passenger.App.Debugging;
@@ -127,8 +128,8 @@ public sealed class MauiCatalystTests : McpRig
     }
 
     /// <summary>The tests of the project <c>dotnet new maccatalysttest</c> makes run in its app on this Mac, and one is debugged there; then the MAUI app's
-    /// Mac Catalyst head as the template builds it, debugged on this Mac, its trimmed assemblies said; then debugged and run at
-    /// once, each instance ended alone, from the one build.</summary>
+    /// Mac Catalyst head as the template builds it, debugged on this Mac, its trimmed assemblies said, its memory read through
+    /// the relay; then debugged and run at once, each instance ended alone, from the one build.</summary>
     [AvaloniaFact]
     public void A_device_test_projects_tests_run_as_a_mac_catalyst_app_and_a_maui_apps_head_is_debugged_as_the_template_builds_it_and_beside_a_run_each_ending_alone()
     {
@@ -140,8 +141,8 @@ public sealed class MauiCatalystTests : McpRig
         (string folder, string project) = Prepared("maui-catalyst-debug", whole: false);
         try
         {
-            Flow.Step("a MAUI app's Mac Catalyst head built as the template has it is debugged, its assemblies trimmed said, and takes a Hot Reload edit",
-                () => A_maui_apps_mac_catalyst_head_built_as_the_template_has_it_is_debugged_its_assemblies_trimmed_said_and_takes_a_hot_reload_edit(folder, project));
+            Flow.Step("a MAUI app's Mac Catalyst head built as the template has it is debugged, its assemblies trimmed said, its memory read through the relay, and takes a Hot Reload edit",
+                () => A_maui_apps_mac_catalyst_head_built_as_the_template_has_it_is_debugged_its_assemblies_trimmed_said_its_memory_read_and_takes_a_hot_reload_edit(folder, project));
             Flow.Step("a MAUI app's Mac Catalyst head debugged and run at once ends each instance alone with its own start",
                 () => A_maui_apps_mac_catalyst_head_debugged_and_run_at_once_ends_each_instance_alone_with_its_own_start(folder));
         }
@@ -268,7 +269,7 @@ public sealed class MauiCatalystTests : McpRig
         }
     }
 
-    private static void A_maui_apps_mac_catalyst_head_built_as_the_template_has_it_is_debugged_its_assemblies_trimmed_said_and_takes_a_hot_reload_edit(string folder, string project)
+    private static void A_maui_apps_mac_catalyst_head_built_as_the_template_has_it_is_debugged_its_assemblies_trimmed_said_its_memory_read_and_takes_a_hot_reload_edit(string folder, string project)
     {
         MainWindow window = Ui.OpenFolder(folder);
         window.ApplySettings(window.Settings with { HotReload = true });
@@ -312,6 +313,18 @@ public sealed class MauiCatalystTests : McpRig
             Dap.EvaluateResponse count = Ui.Await(window.Debugger.Session!.EvaluateAsync("count + 41", window.BottomPanel.Debug.Frames[0].Id, Dap.EvaluateContexts.Watch),
                 "the page's count, evaluated where the app stopped", Slow);
             Assert.Equal("41", count.Result);
+
+            // Memory reads the app's bytes through the relay as it reads a program's here: the page's own, by its row.
+            VariableNode self = window.BottomPanel.Debug.Tree.Rows.First(r => r.Depth == 0 && r.Name == "this");
+            Assert.True(Dap.MemoryAddresses.TryParse(self.MemoryReference, out ulong selfAt), $"The page's row names no address for Memory: {self.Value}");
+            window.DebugWindow.VariablesList.SelectedItem = self;
+            Ui.ChooseFromMenu(window.DebugWindow.VariablesList, VariablesList.ViewMemory);
+            Passenger.App.ToolWindows.DebugMemoryView memory = window.DebugWindow.GetVisualDescendants().OfType<Passenger.App.ToolWindows.DebugMemoryView>().Single();
+            string selfBytes = Dap.MemoryAddresses.Show(selfAt);
+            Ui.WaitFor(() => memory.GetVisualDescendants().OfType<TextBlock>().Any(t => t.IsEffectivelyVisible
+                    && t.Inlines?.OfType<Avalonia.Controls.Documents.Run>().FirstOrDefault()?.Text?.StartsWith(selfBytes, StringComparison.Ordinal) == true),
+                () => $"the page's bytes at {selfBytes}, read through the relay: {string.Join(" / ", memory.GetVisualDescendants().OfType<Passenger.App.ToolWindows.EmptyState>().Where(e => e.IsVisible).Select(e => e.Text))}", Slow);
+            window.BottomPanel.Debug.ShowTab(console: false);
 
             Typing.Replace(window, "$\"Clicked {count} time\"", "$\"Pressed {count} time\"");
             Ui.Run(window, AppActions.ApplyHotReloadChanges);

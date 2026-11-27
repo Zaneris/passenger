@@ -591,6 +591,7 @@ def variant(theme, p, dark):
     t["Passenger.Test.Skipped"] = legible(mix(muted, panel, 0.15), [panel], M, dark)
     t["Passenger.Test.Running"] = legible(hue("blue"), [panel], M, dark)
     t["Passenger.Test.NotRun"] = t["Passenger.CheckBorder"]
+    t["Passenger.Memory.Changed"] = t["Passenger.Error"]
 
     t["Passenger.Vcs.Added"] = legible(hue("green"), [editor], M, dark)
     t["Passenger.Vcs.Modified"] = legible(hue("blue"), [editor], M, dark)

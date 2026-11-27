@@ -343,6 +343,8 @@ public static partial class ThemeFiles
             Work("TitleBar.Debug", Given("TitleBar.Icon"));
             // A measure's fine mark on the code in the file's own green.
             Work("Editor.Fine", Given("Test.Passed"));
+            // A byte the debugged program changed in the file's own error colour.
+            Work("Memory.Changed", Given("Error"));
         }
     }
 
