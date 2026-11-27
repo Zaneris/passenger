@@ -28,6 +28,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
     private readonly DockPanel debugger;
     /// <summary>The Debugger, Console and Telemetry tabs, by their words.</summary>
     private readonly ToolTabs.Strip<string> tabs = new();
+    internal DebugMemoryView Memory { get; }
     private readonly TelemetryPane telemetry = new() { IsVisible = false };
     private readonly Dictionary<string, Button> tools = [];
     private readonly ToggleButton mute;
@@ -127,6 +128,13 @@ public sealed class DebugView : DockPanel, IOwnKeys
         variables.MarksWhyNot = () => model.MarksWhyNot();
         variables.DataBreakpointRequested += (_, node) => model.ToggleDataBreakpoint(node);
         variables.TextOpened += (_, node) => model.OpenText(node);
+        Memory = new DebugMemoryView(model);
+        variables.MemoryRequested += (_, request) =>
+        {
+            model.ShowMemory();
+            IdeErrors.Observe(Memory.OpenAsync(request.Address, request.Expression));
+        };
+        variables.CanReadMemory = () => model.Sessions.Any(tab => tab.IsChosen && tab.Session is { ReadsMemory: true, State: DebugState.Paused });
         ListMenus.Attach(frames, FramesMenu);
         ListMenus.Attach(threads, ThreadsMenu);
         // Over the values, once every thread ran in an evaluation: those read before it may have moved.
@@ -209,6 +217,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
 
         tabs.Add(DebuggerTab, DebuggerTab);
         tabs.Add(ConsoleTab, ConsoleTab);
+        tabs.Add(MemoryTab, MemoryTab, name: "debugMemoryTab");
         tabs.Add(RunWindows.TelemetryTab, RunWindows.TelemetryTab, name: "debugTelemetryTab").IsVisible = false;
         tabs.Add(SnapshotsTab, SnapshotsTab, name: "debugSnapshotsTab");
         tabs.Add(TimelineTab, TimelineTab, name: "debugTimelineTab");
@@ -226,6 +235,10 @@ public sealed class DebugView : DockPanel, IOwnKeys
             else if (tab == TimelineTab)
             {
                 model.ShowTimelineTab();
+            }
+            else if (tab == MemoryTab)
+            {
+                model.ShowMemory();
             }
             else
             {
@@ -286,7 +299,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
 
         Children.Add(leftBar);
         Children.Add(topBar);
-        Children.Add(new Panel { Children = { debugger, consolePane, telemetry, snapshotsPane, timelinePane } });
+        Children.Add(new Panel { Children = { debugger, consolePane, Memory, telemetry, snapshotsPane, timelinePane } });
         model.ToolsChanged += (_, _) => ShowTools();
         model.FramesShown += (_, _) => ShowChosen();
         model.TabShown += (_, _) => ShowTab();
@@ -326,6 +339,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
     private const string DebuggerTab = "Debugger";
 
     private const string ConsoleTab = "Console";
+    private const string MemoryTab = "Memory";
 
     /// <summary>The tab of the folder's snapshots.</summary>
     public const string SnapshotsTab = "Snapshots";
@@ -485,8 +499,11 @@ public sealed class DebugView : DockPanel, IOwnKeys
         bool console = model.IsConsoleShown || model.IsTelemetryShown && !records;
         bool taken = model.IsSnapshotsShown;
         bool recorded = model.IsTimelineShown;
-        tabs.Choice = recorded ? TimelineTab : taken ? SnapshotsTab : records ? RunWindows.TelemetryTab : console ? ConsoleTab : DebuggerTab;
-        debugger.IsVisible = !console && !records && !taken && !recorded;
+        bool memory = model.IsMemoryShown;
+        tabs.Choice = memory ? MemoryTab : recorded ? TimelineTab : taken ? SnapshotsTab : records ? RunWindows.TelemetryTab : console ? ConsoleTab : DebuggerTab;
+        debugger.IsVisible = !memory && !console && !records && !taken && !recorded;
+        Memory.IsVisible = memory;
+        Memory.UpdateStop();
         timelinePane.IsVisible = recorded;
         consolePane.IsVisible = console;
         telemetry.IsVisible = records;

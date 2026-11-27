@@ -369,6 +369,9 @@ public sealed class DebugSession
     /// <summary>Whether the debugger can move where a paused thread goes on (Set Next Statement): Godot's GDScript one cannot.</summary>
     public bool MovesNextStatement { get; private set; }
 
+    /// <summary>Whether its adapter can inspect the bytes of a paused local .NET program.</summary>
+    public bool ReadsMemory { get; private set; }
+
     private readonly List<DapModule> modules = [];
 
     /// <summary>The modules the program has loaded and not unloaded, in the order its debugger told of them, each path as
@@ -608,11 +611,13 @@ public sealed class DebugSession
                 ColumnsStartAt1 = true,
                 PathFormat = "path",
                 SupportsVariableType = true,
+                SupportsMemoryReferences = !session.Elsewhere && engine == DebugEngine.Managed,
                 SupportsRunInTerminalRequest = runInTerminal is not null,
             });
             session.DataBreakpointsUnavailable = capabilities.SupportsDataBreakpoints == true ? null
                 : capabilities.DataBreakpointsUnavailable ?? "The debugger sets no data breakpoints";
             session.MovesNextStatement = capabilities.SupportsGotoTargetsRequest == true;
+            session.ReadsMemory = !session.Elsewhere && engine == DebugEngine.Managed && capabilities.SupportsReadMemoryRequest == true;
             session.ForcesWhyNot = capabilities.SupportsForcedSteps == true ? null : engine switch
             {
                 DebugEngine.GDScript => "Godot's GDScript debugger has no Just My Code to step past nor a way to pass breakpoints by",
@@ -1158,6 +1163,12 @@ public sealed class DebugSession
     /// <summary>Assigns a value (a C# expression) to what an expression names, in a frame.</summary>
     public Task<SetExpressionResponse> SetExpressionAsync(string expression, string value, int frameId) =>
         connection.RequestAsync<SetExpressionResponse>(DapCommands.SetExpression, new SetExpressionArguments(expression, value, frameId));
+
+    internal Task<ReadMemoryResponse> ReadMemoryAsync(string address, int count) =>
+        connection.RequestAsync<ReadMemoryResponse>(DapCommands.ReadMemory, new ReadMemoryArguments(address, count));
+
+    internal Task<ResolveMemoryResponse> ResolveMemoryAsync(string expression, int frameId) =>
+        connection.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments(expression, frameId));
 
     /// <summary>Where the paused thread could go on from at a line of a file (from zero, the editor's), if the line is in its
     /// method.</summary>

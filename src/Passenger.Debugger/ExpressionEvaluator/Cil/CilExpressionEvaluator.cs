@@ -11,6 +11,18 @@ internal sealed class CilExpressionEvaluator(RuntimeAssemblyPrimitiveTypeClasses
     private readonly CilExpressionCompiler _compiler = new(debugger);
     private readonly CilInterpreter _interpreter = new(debugger, primitiveTypes);
 
+    internal async Task<ulong> MemoryAddressAsync(string expression, CompiledExpressionEvaluationContext context)
+    {
+        CompiledEvaluationMethod? compiled = _compiler.TryCompile(expression, context, out string? error);
+        if (compiled is null)
+        {
+            throw new InvalidOperationException(error ?? "The address expression could not be compiled");
+        }
+        Lazy<DelegateMaterializerAssembly> delegates = new(() => _compiler.GetDelegateMaterializer(context));
+        CilInterpretationResult result = await _interpreter.InterpretAsync(compiled, context, delegates, addressOnly: true);
+        return result.Address is > 0 ? result.Address.Value : throw new InvalidOperationException("The address expression returned a null pointer");
+    }
+
     internal async Task<EvaluationResult> Evaluate(string expression, CompiledExpressionEvaluationContext context)
     {
         try

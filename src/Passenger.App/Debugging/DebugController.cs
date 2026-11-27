@@ -3610,6 +3610,7 @@ public sealed partial class DebugController : IDisposable
             {
                 NeedsThreads = VariableNode.SaysNeedsThreads(value.PresentationHint),
                 Mark = value.Mark,
+                MemoryReference = value.MemoryReference,
                 EvaluateName = role == VariableRole.Watch ? null : expression,
             };
         }

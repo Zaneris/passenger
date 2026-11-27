@@ -16,6 +16,7 @@ public class VariableInfo
     public required string Value { get; set; }
     public required string? Type { get; set; }
     public required int VariablesReference { get; set; }
+    public string? MemoryReference { get; set; }
     public VariablePresentationHint? PresentationHint { get; set; }
 
     /// <summary>What other threads met and passed over while the evaluation that read this value ran with every thread let

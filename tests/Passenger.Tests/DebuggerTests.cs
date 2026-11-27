@@ -639,10 +639,16 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             OpenWindows.CloseAll();
             return Task.CompletedTask;
         });
-        await Flow.StepApartLivedAsync<DebuggerTests>("a value set on what a pointer points at is the one the program goes on with", () => new DebuggerTests(sum, sleeper, folders), t =>
+        await Flow.StepApartLivedAsync<DebuggerTests>("a pointer's memory is readable by pointer or address and a value set through it is the one the program goes on with", () => new DebuggerTests(sum, sleeper, folders), t =>
         {
-            t.A_value_set_on_what_a_pointer_points_at_is_the_one_the_program_goes_on_with();
-            OpenWindows.CloseAll();
+            try
+            {
+                t.A_value_set_on_what_a_pointer_points_at_is_the_one_the_program_goes_on_with();
+            }
+            finally
+            {
+                OpenWindows.CloseAll();
+            }
             return Task.CompletedTask;
         });
         await Flow.StepApartLivedAsync<DebuggerTests>("a string of megabytes shows its start in variables and a hover without holding the window", () => new DebuggerTests(sum, sleeper, folders), t =>
@@ -2535,23 +2541,123 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         return named[index];
     }
 
-    /// <summary>The value under a pointer's row, what it points at, takes a value set in that row.</summary>
+    /// <summary>A pointer opens its memory as bytes, and its target takes a value set in the expanded row.</summary>
     private void A_value_set_on_what_a_pointer_points_at_is_the_one_the_program_goes_on_with()
     {
         Write("Sum.csproj", TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>", "<AllowUnsafeBlocks>true</AllowUnsafeBlocks>"));
-        Write("Program.cs", "Pointing.Run();\n\nstatic class Pointing\n{\n    public static unsafe void Run()\n    {\n        int number = 42;\n"
-            + "        int* pointer = &number;\n        Console.WriteLine($\"pointed {*pointer} {number}\");\n    }\n}\n");
+        Write("Program.cs", """
+            Pointing.Run();
+
+            static class Pointing
+            {
+                public static unsafe void Run()
+                {
+                    int* pointer = stackalloc int[128];
+                    new Span<int>(pointer, 128).Clear();
+                    pointer[0] = 42;
+                    pointer[1] = 0x44434241;
+                    pointer[64] = 0x55667788;
+                    *pointer = 17;
+                    pointer += 64;
+                    Console.WriteLine($"pointed {*pointer} {pointer[0]}");
+                }
+            }
+            """);
         MainWindow window = Open();
-        window.EditorArea.CodeEditor.GoTo(new TextPosition(8, 8));
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(11, 8));
         Ui.Run(window, AppActions.ToggleBreakpoint);
         StartDebugging(window);
-        WaitDebugging(window, () => Row(window, "pointer") is not null, "the stop before the line that writes the number");
+        WaitDebugging(window, () => Row(window, "pointer") is not null, "the stop before changing the number");
+
+        VariablesList variables = window.DebugWindow.VariablesList;
+        VariableNode original = Row(window, "pointer")!;
+        variables.SelectedItem = original;
+        Ui.ChooseFromMenu(variables, VariablesList.ViewMemory);
+        Assert.True(window.DockHost[ToolWindowIds.Debug].IsShown);
+        Assert.True(window.BottomPanel.Debug.IsMemoryShown);
+        DebugMemoryView memory = window.DebugWindow.GetVisualDescendants().OfType<DebugMemoryView>().Single();
+        TextBox address = memory.GetVisualDescendants().OfType<TextBox>().Single(text => text.Name == "memoryAddress");
+        Button read = memory.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Go"));
+        Assert.True(MemoryAddresses.TryParse(original.Value, out ulong pointerAddress), $"Invalid pointer address {original.Value}");
+        string memoryAddress = MemoryAddresses.Show(pointerAddress);
+        string beginning = $"{memoryAddress}  +00000";
+        TextBlock? LineAt(string start) => memory.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(text => text.IsEffectivelyVisible
+            && text.Inlines?.OfType<Avalonia.Controls.Documents.Run>().FirstOrDefault()?.Text?.StartsWith(start, StringComparison.Ordinal) == true);
+        string TextAt(string start) => string.Concat(LineAt(start)?.Inlines?.OfType<Avalonia.Controls.Documents.Run>().Select(run => run.Text) ?? []);
+        bool Shows(string text) => memory.GetVisualDescendants().OfType<TextBlock>().Any(label => label.IsEffectivelyVisible && label.Text == text);
+        Ui.WaitFor(() => TextAt(beginning).StartsWith($"{beginning}  2A 00 00 00", StringComparison.Ordinal), "the pointer's bytes at its address");
+        Assert.Contains("*...ABCD", TextAt(beginning), StringComparison.Ordinal);
+        TextBlock first = LineAt(beginning)!;
+        Rect ascii = first.TextLayout.HitTestTextPosition(81);
+        Rect nextAscii = first.TextLayout.HitTestTextPosition(82);
+        Ui.Click(first, new Point((ascii.X + nextAscii.X) / 2, ascii.Center.Y));
+        Ui.WaitFor(() => Shows(MemoryAddresses.Show(pointerAddress + 4)), "the byte selected from the ASCII column");
+        Ui.Press(window, "right");
+        Ui.WaitFor(() => Shows(MemoryAddresses.Show(pointerAddress + 5)), "the next byte selected from the keyboard");
+        Ui.Click(memory.GetVisualDescendants().OfType<Button>().Single(b => Equals(ToolTip.GetTip(b), "Next 256 bytes")));
+        string following = MemoryAddresses.Show(pointerAddress + 256);
+        Ui.WaitFor(() => TextAt(following).StartsWith($"{following}  +00000  88 77 66 55", StringComparison.Ordinal), "the next page of the buffer");
+        Ui.Click(memory.GetVisualDescendants().OfType<Button>().Single(b => Equals(ToolTip.GetTip(b), "Previous 256 bytes")));
+        Ui.WaitFor(() => TextAt(beginning).StartsWith($"{beginning}  2A 00 00 00", StringComparison.Ordinal), "the first page again");
+
+        address.Text = "0x0";
+        Ui.Click(read);
+        Ui.WaitFor(() => memory.GetVisualDescendants().OfType<EmptyState>().Any(e => e.IsVisible
+            && e.Text?.StartsWith("The debugger could not read memory", StringComparison.Ordinal) == true), "an unreadable address to be reported");
+        address.Text = "pointer + 1";
+        Ui.Click(read);
+        string offset = MemoryAddresses.Show(pointerAddress + 4);
+        Ui.WaitFor(() => TextAt(offset).StartsWith($"{offset}  +00000  41 42 43 44", StringComparison.Ordinal), "the pointer expression's address");
+        ListBox types = memory.GetVisualDescendants().OfType<ListBox>().Single();
+        ToolDropDown endian = memory.GetVisualDescendants().OfType<ToolDropDown>().Single();
+        CheckNumber("1145258561");
+        endian.SelectedIndex = 1;
+        CheckNumber("1094861636");
+        endian.SelectedIndex = 0;
+
+        void CheckNumber(string value)
+        {
+            types.ScrollIntoView(types.Items[4]!);
+            Ui.WaitFor(() => Shows(value), () => $"Int32 to read {value}, with {string.Join(", ", types.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text))} shown",
+                TimeSpan.FromSeconds(6));
+        }
+        address.Text = memoryAddress;
+        Ui.Click(read);
+        Ui.WaitFor(() => TextAt(beginning).StartsWith($"{beginning}  2A 00 00 00", StringComparison.Ordinal), "the same bytes by typed address");
+        address.Text = "pointer";
+        Ui.Click(read);
+        Ui.WaitFor(() => TextAt(beginning).StartsWith($"{beginning}  2A 00 00 00", StringComparison.Ordinal), "the address followed by expression");
+
+        Ui.Run(window, AppActions.StepOver);
+        WaitDebugging(window, () => window.Debugger.Session is { State: DebugState.Paused, Stops: 2 }, "the next stop");
+        Ui.WaitFor(() => TextAt(beginning).StartsWith($"{beginning}  11 00 00 00", StringComparison.Ordinal), "the changed bytes after the stop");
+        Assert.True(window.BottomPanel.Debug.IsMemoryShown);
+        Avalonia.Controls.Documents.Run changed = LineAt(beginning)!.Inlines!.OfType<Avalonia.Controls.Documents.Run>().First(run => run.Text == "11");
+        Assert.True(memory.TryFindResource(TokenKeys.Error, memory.ActualThemeVariant, out object? changeColour));
+        Assert.Equal(Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(changeColour).Color,
+            Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(changed.Foreground).Color);
+        Assert.Contains(memory.GetVisualDescendants().OfType<TextBlock>(), t => t.Text?.Contains("1 changed since the previous stop", StringComparison.Ordinal) == true);
+
+        Ui.Run(window, AppActions.StepOver);
+        WaitDebugging(window, () => window.Debugger.Session is { State: DebugState.Paused, Stops: 3 }, "the pointer move");
+        Ui.WaitFor(() => TextAt(following).StartsWith($"{following}  +00000  88 77 66 55", StringComparison.Ordinal), "the followed pointer to move to the new address");
+        Assert.DoesNotContain(memory.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible
+            && t.Text?.Contains("changed since the previous stop", StringComparison.Ordinal) == true);
+        Control debuggerTab = window.DebugWindow.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>()
+            .Single(tab => Equals(tab.Content, "Debugger"));
+        Ui.Click(debuggerTab);
+        Assert.False(window.BottomPanel.Debug.IsMemoryShown);
+        Assert.True(window.Perform(AppActions.ShowDebugMemory), $"Memory did not show: {Ui.Said(window)}");
+        Assert.True(window.BottomPanel.Debug.IsMemoryShown);
+        Assert.StartsWith(following, TextAt(following), StringComparison.Ordinal);
+        Ui.Click(debuggerTab);
+        WaitDebugging(window, () => Row(window, "pointer")?.MemoryReference?.Equals(following, StringComparison.OrdinalIgnoreCase) == true, "the pointer at the new stop");
 
         VariableNode pointer = Row(window, "pointer")!;
         Task opened = window.BottomPanel.Debug.Tree.Expand(pointer);
         Ui.WaitFor(() => opened.IsCompleted, "pointer's row");
         VariableNode pointedAt = Assert.Single(pointer.Children ?? []);
-        Assert.Equal(("*pointer", "42"), (pointedAt.Name, pointedAt.Value));
+        Assert.Equal(("*pointer", "1432778632"), (pointedAt.Name, pointedAt.Value));
         SetInRow(window, pointedAt, "7");
         Assert.True(window.Status?.StartsWith("Could not set", StringComparison.Ordinal) != true, $"Set Value was refused: {window.Status}");
         Ui.Run(window, AppActions.Resume);

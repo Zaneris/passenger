@@ -19,6 +19,7 @@ public sealed record InitializeArguments
     public string? PathFormat { get; init; }
     public bool? SupportsVariableType { get; init; }
     public bool? SupportsVariablePaging { get; init; }
+    public bool? SupportsMemoryReferences { get; init; }
     public bool? SupportsRunInTerminalRequest { get; init; }
 }
 
@@ -41,6 +42,7 @@ public sealed record DapCapabilities
     public bool? SupportsStepInTargetsRequest { get; init; }
     public bool? SupportsGotoTargetsRequest { get; init; }
     public bool? SupportsDataBreakpoints { get; init; }
+    public bool? SupportsReadMemoryRequest { get; init; }
 
     /// <summary>Passenger's own: why the debugger can set no data breakpoint where it runs, when it cannot.</summary>
     public string? DataBreakpointsUnavailable { get; init; }
@@ -381,8 +383,17 @@ public sealed record VariablesArguments(int VariablesReference);
 
 public sealed record VariablesResponse(IReadOnlyList<DapVariable> Variables);
 
+public sealed record ReadMemoryArguments(string MemoryReference, int Count, long? Offset = null);
+
+public sealed record ReadMemoryResponse(string Address, byte[] Data, int? UnreadableBytes = null, int PointerSize = 8, bool LittleEndian = true);
+
+public sealed record ResolveMemoryArguments(string Expression, int FrameId);
+
+public sealed record ResolveMemoryResponse(string Address);
+
 public sealed record DapVariable
 {
+    public string? MemoryReference { get; init; }
     public string Name { get; init; } = string.Empty;
     public string Value { get; init; } = string.Empty;
     [JsonConverter(typeof(SharedNames))]
@@ -417,6 +428,7 @@ public sealed record EvaluateArguments(string Expression, int? FrameId = null,
 
 public sealed record EvaluateResponse
 {
+    public string? MemoryReference { get; init; }
     public string Result { get; init; } = string.Empty;
     public string? Type { get; init; }
     public int VariablesReference { get; init; }

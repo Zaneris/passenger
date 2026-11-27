@@ -483,6 +483,7 @@ public sealed class DebugSession : IAsyncDisposable
         ColumnsStartAt1 = true,
         PathFormat = "path",
         SupportsVariableType = true,
+        SupportsMemoryReferences = true,
         SupportsVariablePaging = true,
         SupportsRunInTerminalRequest = true,
     };

@@ -106,6 +106,18 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
         EvaluateResponse address = await host.EvaluateAsync(frame, "pointer");
         Assert.Equal((pointer.Value, "int*"), (address.Result, address.Type));
+        Assert.Equal(pointer.Value, pointer.MemoryReference);
+        Assert.Equal(pointer.MemoryReference, address.MemoryReference);
+        ReadMemoryResponse memory = await host.RequestAsync<ReadMemoryResponse>(DapCommands.ReadMemory,
+            new ReadMemoryArguments(pointer.MemoryReference!, sizeof(int)));
+        Assert.Equal(BitConverter.GetBytes(42), memory.Data);
+        Assert.Null(memory.UnreadableBytes);
+        Assert.True(MemoryAddresses.TryParse(memory.Address, out ulong start));
+        Assert.Equal(MemoryAddresses.Show(start), (await host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("pointer", frame))).Address);
+        Assert.Equal(MemoryAddresses.Show(start + sizeof(int)), (await host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("pointer + 1", frame))).Address);
+        Assert.Equal(MemoryAddresses.Show(start), (await host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("(nuint)pointer", frame))).Address);
+        Assert.Equal(MemoryAddresses.Show(start), (await host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("&number", frame))).Address);
+        await Assert.ThrowsAsync<DapException>(() => host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("pointer++", frame)));
         EvaluateResponse read = await host.EvaluateAsync(frame, "*pointer");
         Assert.Equal(("42", "int"), (read.Result, read.Type));
     }

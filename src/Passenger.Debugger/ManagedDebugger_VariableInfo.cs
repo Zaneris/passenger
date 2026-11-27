@@ -923,6 +923,7 @@ public partial class ManagedDebugger
             Type = type,
             PresentationHint = failed ? FailedHint(shown) : null,
             VariablesReference = GetVariablesReference(opens?.Invoke() ?? value, threadId, stackDepth, proxy, namesPointee ? name : null, declared, expression),
+            MemoryReference = !failed && value is ICorDebugReferenceValue { Type: CorElementType.PTR, IsNull: false } ? shown : null,
             Mark = MarkOf(value),
         };
     }

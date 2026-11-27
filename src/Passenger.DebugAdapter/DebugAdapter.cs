@@ -24,6 +24,7 @@ public sealed class DebugAdapter
 
     /// <summary>Whether the client said at initialize that it starts programs in its terminal.</summary>
     private bool runsInTerminal;
+    private bool memoryReferences;
 
     /// <summary>The client runs on another machine (this adapter inside a container): the processes it tells of are local
     /// to the adapter but not to the client, which must never take their ids for its own machine's.</summary>
@@ -139,7 +140,24 @@ public sealed class DebugAdapter
         connection.Handle<VariablesArguments, VariablesResponse>(DapCommands.Variables, async arguments =>
         {
             List<VariableInfo> variables = await Read(() => debugger.GetVariables(arguments.VariablesReference));
-            return new VariablesResponse([.. variables.Select(ToProtocol)]);
+            return new VariablesResponse([.. variables.Select(variable => ToProtocol(variable, memoryReferences))]);
+        });
+        connection.Handle<ReadMemoryArguments, ReadMemoryResponse>(DapCommands.ReadMemory, ReadMemory);
+        connection.Handle<ResolveMemoryArguments, ResolveMemoryResponse>(DapCommands.ResolveMemory, async arguments =>
+        {
+            if (Remote)
+            {
+                throw new DapException(DapCommands.ResolveMemory, "The Memory tab reads local .NET programs");
+            }
+            try
+            {
+                ulong address = await Read(() => debugger.ResolveMemoryAsync(arguments.Expression, arguments.FrameId));
+                return new ResolveMemoryResponse(MemoryAddresses.Show(address));
+            }
+            catch (InvalidOperationException refused)
+            {
+                throw new DapException(DapCommands.ResolveMemory, refused.Message);
+            }
         });
         // Mark Object: an object known again at every stop and named by its label.
         connection.Handle<MarkObjectArguments, MarkObjectResponse>(DapCommands.MarkObject, async arguments =>
@@ -186,6 +204,7 @@ public sealed class DebugAdapter
             {
                 Result = value.Value,
                 Type = value.Type,
+                MemoryReference = memoryReferences ? value.MemoryReference : null,
                 VariablesReference = value.VariablesReference,
                 PresentationHint = ToProtocol(value.PresentationHint),
                 PassedOver = value.PassedOver,
@@ -353,6 +372,7 @@ public sealed class DebugAdapter
         linesStartAt1 = arguments.LinesStartAt1 ?? true;
         columnsStartAt1 = arguments.ColumnsStartAt1 ?? true;
         runsInTerminal = arguments.SupportsRunInTerminalRequest ?? false;
+        memoryReferences = !Remote && arguments.SupportsMemoryReferences == true;
         return Task.FromResult(new DapCapabilities
         {
             SupportsConfigurationDoneRequest = true,
@@ -363,6 +383,7 @@ public sealed class DebugAdapter
             SupportsEvaluateForHovers = true,
             SupportsStepBack = false,
             SupportsSetVariable = false,
+            SupportsReadMemoryRequest = !Remote,
             SupportsSetExpression = true,
             SupportsRestartFrame = false,
             SupportsTerminateRequest = true,
@@ -782,12 +803,35 @@ public sealed class DebugAdapter
         At = snapshot.At,
         PausedMilliseconds = snapshot.Paused.TotalMilliseconds,
         Frames = [.. snapshot.Frames.Select(f => new DapSnapshotFrame(ToProtocol(f.Frame), f.Locals))],
-        Values = snapshot.Values.ToDictionary(v => v.Key, v => (IReadOnlyList<DapVariable>)[.. v.Value.Select(ToProtocol)]),
-        Asked = [.. snapshot.Asked.Select(ToProtocol)],
+        Values = snapshot.Values.ToDictionary(v => v.Key, v => (IReadOnlyList<DapVariable>)[.. v.Value.Select(value => ToProtocol(value, false))]),
+        Asked = [.. snapshot.Asked.Select(value => ToProtocol(value, false))],
         Cut = snapshot.Cut,
     };
 
-    private static DapVariable ToProtocol(VariableInfo variable) => new()
+    private async Task<ReadMemoryResponse> ReadMemory(ReadMemoryArguments request)
+    {
+        if (Remote)
+        {
+            throw new DapException(DapCommands.ReadMemory, "The Memory window reads local .NET programs");
+        }
+        if (!MemoryAddresses.TryParse(request.MemoryReference, out ulong start)
+            || !MemoryAddresses.TryOffset(start, request.Offset ?? 0, out ulong address))
+        {
+            throw new DapException(DapCommands.ReadMemory, "The memory address is outside the address space");
+        }
+        try
+        {
+            byte[] bytes = await Read(() => debugger.ReadMemory(address, request.Count));
+            int unread = request.Count - bytes.Length;
+            return new ReadMemoryResponse(MemoryAddresses.Show(address), bytes, unread == 0 ? null : unread, debugger.MemoryPointerSize, BitConverter.IsLittleEndian);
+        }
+        catch (InvalidOperationException refused)
+        {
+            throw new DapException(DapCommands.ReadMemory, refused.Message);
+        }
+    }
+
+    private static DapVariable ToProtocol(VariableInfo variable, bool memory) => new()
     {
         Name = variable.Name,
         EvaluateName = variable.EvaluateName,
@@ -795,6 +839,7 @@ public sealed class DebugAdapter
         Type = variable.Type,
         PresentationHint = ToProtocol(variable.PresentationHint),
         VariablesReference = variable.VariablesReference,
+        MemoryReference = memory ? variable.MemoryReference : null,
         Mark = variable.Mark,
     };
 

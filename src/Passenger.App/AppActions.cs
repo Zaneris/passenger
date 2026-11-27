@@ -698,6 +698,7 @@ public static class AppActions
 
     // The Modules window, which Rider's keymaps give no keys.
     public const string ShowModules = "app.showModules";
+    public const string ShowDebugMemory = "app.showDebugMemory";
     public const string ShowIlViewer = "app.showIlViewer";
 
     // Code clones, which Rider's keymaps give no keys: found across the solution or for the selection, two compared side by

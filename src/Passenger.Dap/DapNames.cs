@@ -22,6 +22,8 @@ public static class DapCommands
     public const string Scopes = "scopes";
     public const string Variables = "variables";
     public const string Evaluate = "evaluate";
+    public const string ReadMemory = "readMemory";
+    public const string ResolveMemory = "passenger/resolveMemory";
     public const string SetExpression = "setExpression";
     public const string GotoTargets = "gotoTargets";
     public const string Goto = "goto";
