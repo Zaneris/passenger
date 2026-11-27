@@ -85,6 +85,39 @@ public sealed class VariablesList : TreeList
     /// <summary>A query's SQL to open whole in a read-only editor tab (a double-click, Enter or its menu's Open in Editor).</summary>
     public event EventHandler<VariableNode>? TextOpened;
 
+    public Action<Window, VariableNode>? Visualize { get; set; }
+    public Func<bool> CanReadTable { get; set; } = () => false;
+
+    private string? ViewerFor(VariableNode node, bool inline = false)
+    {
+        if (Visualize is null)
+        {
+            return null;
+        }
+        return node switch
+        {
+            { IsString: true } when !inline || node.NeedsTextViewer => "View Text",
+            { IsTable: true } when CanReadTable() => "View as Table",
+            _ => null,
+        };
+    }
+
+    private void OpenViewer(VariableNode node)
+    {
+        if (TopLevel.GetTopLevel(this) is Window owner)
+        {
+            Visualize?.Invoke(owner, node);
+        }
+    }
+
+    private void CopyText(VariableNode node)
+    {
+        if (DebugController.StringValue(node.Value) is { } text)
+        {
+            IdeErrors.Observe(ListMenus.CopyAsync(this, text));
+        }
+    }
+
     /// <summary>The menu's item that opens a query's SQL in a tab.</summary>
     public const string OpenInEditor = "Open in Editor";
 
@@ -188,6 +221,15 @@ public sealed class VariablesList : TreeList
             return [];
         }
         List<Control> items = node.IsQueryText ? [ListMenus.Open(OpenInEditor, () => TextOpened?.Invoke(this, node)), new Separator()] : [];
+        if (ViewerFor(node) is { } viewer)
+        {
+            items.Add(ListMenus.Item(viewer, () => OpenViewer(node)));
+            if (node.IsString)
+            {
+                items.Add(ListMenus.Item("Copy Text", () => CopyText(node)));
+            }
+            items.Add(new Separator());
+        }
         items.AddRange(
         [
             ListMenus.Edit("Set Value…", () => EditSelectedValue(), node.NoSetting),
@@ -262,11 +304,32 @@ public sealed class VariablesList : TreeList
         // Before the words saying why, which a narrow row cuts first.
         Button again = new() { Classes = { StyleClasses.Link }, Content = RunWithThreads, Margin = new Thickness(0, 0, Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center, IsVisible = false };
         ToolTip.SetTip(again, "Evaluates it again with every other thread of the program running meanwhile, which changes what they hold");
+        Button open = new() { Name = "ViewDebugValue", Classes = { StyleClasses.Link }, Margin = new Thickness(Gaps.Normal, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, IsVisible = false, Focusable = false };
+        Button copy = ToolButtons.Of(IconKeys.Copy, "Copy Full Text");
+        copy.Name = "CopyDebugText";
+        copy.IsVisible = false;
+        copy.Focusable = false;
+        ShrinkingRow.SetKeepsWidth(open, true);
+        ShrinkingRow.SetKeepsWidth(copy, true);
         // Narrower than its row, the value gives way first, ending in an ellipsis, then its type.
         ShrinkingRow row = new()
         {
             Height = ListRow.Height,
-            Children = { chevron, icon, swatch, name, new TextBlock { Text = " = ", VerticalAlignment = VerticalAlignment.Center }, type, again, value, mark, editor },
+            Children = { chevron, icon, swatch, name, new TextBlock { Text = " = ", VerticalAlignment = VerticalAlignment.Center }, type, again, value, mark, open, copy, editor },
+        };
+        open.Click += (_, _) =>
+        {
+            if (row.DataContext is VariableNode node)
+            {
+                OpenViewer(node);
+            }
+        };
+        copy.Click += (_, _) =>
+        {
+            if (row.DataContext is VariableNode node)
+            {
+                CopyText(node);
+            }
         };
         again.Click += (_, e) =>
         {
@@ -321,6 +384,7 @@ public sealed class VariablesList : TreeList
                 editor.IsVisible = editing;
                 value.IsVisible = type.IsVisible = !editing;
                 again.IsVisible = !editing && node is { NeedsThreads: true, Expression: not null };
+                ViewerButtons(node, !editing);
                 if (editing)
                 {
                     // It starts from the value as shown, all of it chosen, so typing replaces it and an arrow edits it.
@@ -353,14 +417,23 @@ public sealed class VariablesList : TreeList
             swatch.Background = colour is { } shown ? new SolidColorBrush(shown) : null;
             name.Text = node.Name;
             type.Text = node.TypeLabel;
+            value.MaxWidth = node.IsString ? PopupFrame.Medium / 2 : 900;
             value.Text = node.Shown;
             value.Resource(TextBlock.ForegroundProperty, ref valueColour, node.Role == VariableRole.Error ? TokenKeys.Error : null);
             Tags.WordsOf(mark).Text = node.Mark;
             mark.IsVisible = node.Mark is not null && node.Mark != node.Name;
-            ToolTip.SetTip(value, node.Lines);
+            ToolTip.SetTip(value, node.IsString ? null : node.Lines);
             editor.IsVisible = false;
             value.IsVisible = type.IsVisible = true;
             again.IsVisible = node is { NeedsThreads: true, Expression: not null };
+            ViewerButtons(node, true);
+        }
+
+        void ViewerButtons(VariableNode node, bool visible)
+        {
+            open.Content = visible ? ViewerFor(node, inline: true) : null;
+            open.IsVisible = open.Content is not null;
+            copy.IsVisible = open.IsVisible && node.IsString;
         }
     }
 }

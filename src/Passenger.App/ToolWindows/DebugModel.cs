@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Avalonia.Controls;
 using Passenger.App.Debugging;
 using Passenger.Dap;
 using Passenger.Editor;
@@ -195,6 +196,8 @@ public sealed class DebugModel
 
     /// <summary>A query's SQL, read, to open whole in a read-only editor tab.</summary>
     public event EventHandler<VariableNode>? TextOpened;
+    internal Action<Window, VariableNode>? Visualize { get; set; }
+    internal Func<bool>? CanReadTable { get; set; }
 
     /// <summary>A link in a session's console was clicked.</summary>
     public event EventHandler<LinkTarget>? ConsoleLinkClicked;

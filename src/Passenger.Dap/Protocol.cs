@@ -381,6 +381,14 @@ public sealed record VariablesArguments(int VariablesReference);
 
 public sealed record VariablesResponse(IReadOnlyList<DapVariable> Variables);
 
+public sealed record VariableTableArguments(int VariablesReference, int Start, int Count, int TableIndex = 0)
+{
+    public const int PageLimit = 100;
+}
+
+public sealed record VariableTableResponse(IReadOnlyList<string> Tables, IReadOnlyList<string> Columns, int RowCount,
+    IReadOnlyList<IReadOnlyList<DapVariable>> Rows);
+
 public sealed record DapVariable
 {
     public string Name { get; init; } = string.Empty;

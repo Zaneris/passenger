@@ -172,6 +172,8 @@ public sealed partial class DebugController : IDisposable
         view.EvaluateRequested += evaluated;
         view.SetValueRequested += set;
         view.DataWatch = DataWatchAsync;
+        view.Visualize = (owner, node) => OpenValueViewer(owner, node, frame);
+        view.CanReadTable = () => Session is { Engine: DebugEngine.Managed, State: DebugState.Paused };
         view.PlaceOf = PlaceOf;
         view.DataBreakpointRequested += watchData;
         view.RunWithThreadsRequested += ranAgain;
@@ -190,6 +192,8 @@ public sealed partial class DebugController : IDisposable
         view.TimelineRequested += timelineAsked;
         letGo = () =>
         {
+            view.Visualize = null;
+            view.CanReadTable = null;
             view.SnapshotChosen -= snapshotChosen;
             view.MomentChosen -= momentChosen;
             view.LiveStopRequested -= liveAgain;
@@ -2575,7 +2579,9 @@ public sealed partial class DebugController : IDisposable
             return new CSharp.DebuggerHover(code)
             {
                 // One that did not end with the other threads held is a row too, to be run again from its link.
-                Values = value.VariablesReference > 0 || VariableNode.SaysNeedsThreads(value.PresentationHint)
+                Values = value.VariablesReference > 0 || VariableNode.IsStringValue(value.Type, value.Result)
+                    || session.Engine == DebugEngine.Managed && VariableNode.IsTableValue(value.Type, value.Result)
+                    || VariableNode.SaysNeedsThreads(value.PresentationHint)
                     ? HoverValues(session, at, stop, expression, value, pinTo: (file.Path, editors.CodeEditor.Document.Snapshot.GetLineFromOffset(offset)))
                     : null,
                 Gone = gone,
@@ -2706,7 +2712,12 @@ public sealed partial class DebugController : IDisposable
                 : throw new DapException(DapCommands.Variables, "The program has gone on from the stop this value was read at"),
         };
         tree.Show([value is not null ? Hovered(value) : new VariableNode(expression, error ?? string.Empty, null, 0, 0, VariableRole.Error)]);
-        VariablesList list = new(tree) { DataWatch = DataWatchAsync };
+        VariablesList list = new(tree)
+        {
+            DataWatch = DataWatchAsync,
+            Visualize = (owner, node) => OpenValueViewer(owner, node, at),
+            CanReadTable = () => session.Engine == DebugEngine.Managed && session.State == DebugState.Paused && stop == shown,
+        };
         list.EvaluateRequested += (_, request) => IdeErrors.Observe(Evaluate(request.Expression, request.Watch));
         list.DataBreakpointRequested += (_, node) => IdeErrors.Observe(ToggleDataBreakpointAsync(node));
         list.SetValueRequested += (_, request) => IdeErrors.Observe(SetHoveredAsync(request.Node, request.Value));

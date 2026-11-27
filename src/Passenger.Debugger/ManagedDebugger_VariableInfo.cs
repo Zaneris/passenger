@@ -660,7 +660,7 @@ public partial class ManagedDebugger
     /// <summary>The properties <paramref name="declaringType"/> declares, each read by its getter called with the type
     /// arguments the value's type gives that type (a closed generic base's own), never the value's type's.</summary>
     private async Task AddProperties(mdProperty[] mdProperties, IMetaDataImport metadataImport, ICorDebugType declaringType, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue corDebugValue, List<VariableInfo> result,
-        string? owner = null, string? listed = null)
+        string? owner = null, string? listed = null, bool table = false)
     {
         ICorDebugClass corDebugClass = declaringType.Class;
         foreach (mdProperty mdProperty in mdProperties)
@@ -692,7 +692,7 @@ public partial class ManagedDebugger
                 {
                     return;
                 }
-                bool debuggerBrowsableRootHidden = browsable is DebuggerBrowsableState.RootHidden;
+                bool debuggerBrowsableRootHidden = !table && browsable is DebuggerBrowsableState.RootHidden;
                 if (!isStatic && propertyName is "StackTrace" && GetCorDebugTypeFriendlyName(declaringType) == "System.Exception"
                     && corDebugValue.UnwrapDebugValueToObjectOrNull() is { } thrown && TryStoredStackTrace(thrown, _process!.GetThread(threadId.Value), out string? trace))
                 {
@@ -716,7 +716,8 @@ public partial class ManagedDebugger
                     {
                         ICorDebugValue stored = isStatic ? await GetStaticFieldValueAsync(declaringType, backing, threadId, stackDepth)
                             : corDebugValue.UnwrapDebugValueToObject().GetFieldValue(corDebugClass, backing);
-                        VariableInfo kept = await ValueRow(propertyName, null, stored, threadId, stackDepth, DeclaredProperty(corDebugClass, mdProperty), displayed: true, namesPointee: false);
+                        VariableInfo kept = table ? await TableCell(propertyName, stored, threadId, stackDepth)
+                            : await ValueRow(propertyName, null, stored, threadId, stackDepth, DeclaredProperty(corDebugClass, mdProperty), displayed: true, namesPointee: false);
                         kept.Member = propertyName;
                         result.Add(kept);
                     }
@@ -744,6 +745,11 @@ public partial class ManagedDebugger
                 bool retainReturnValue = false;
                 try
                 {
+                    if (table)
+                    {
+                        result.Add(await TableCell(propertyName, returnValue, threadId, stackDepth));
+                        return;
+                    }
                     if (debuggerBrowsableRootHidden)
                     {
                         ICorDebugValue unwrappedDebugValue = returnValue.UnwrapDebugValue();

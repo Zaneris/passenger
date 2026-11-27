@@ -21,6 +21,7 @@ public static class DapCommands
     public const string StackTrace = "stackTrace";
     public const string Scopes = "scopes";
     public const string Variables = "variables";
+    public const string VariableTable = "variableTable";
     public const string Evaluate = "evaluate";
     public const string SetExpression = "setExpression";
     public const string GotoTargets = "gotoTargets";

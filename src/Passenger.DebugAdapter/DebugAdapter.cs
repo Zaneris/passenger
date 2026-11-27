@@ -141,6 +141,12 @@ public sealed class DebugAdapter
             List<VariableInfo> variables = await Read(() => debugger.GetVariables(arguments.VariablesReference));
             return new VariablesResponse([.. variables.Select(ToProtocol)]);
         });
+        connection.Handle<VariableTableArguments, VariableTableResponse>(DapCommands.VariableTable, async arguments =>
+        {
+            VariableTableValues table = await Read(() => debugger.ReadVariableTableAsync(arguments));
+            return new VariableTableResponse(table.Tables, table.Columns, table.RowCount,
+                [.. table.Rows.Select(row => (IReadOnlyList<DapVariable>)[.. row.Select(ToProtocol)])]);
+        });
         // Mark Object: an object known again at every stop and named by its label.
         connection.Handle<MarkObjectArguments, MarkObjectResponse>(DapCommands.MarkObject, async arguments =>
         {

@@ -117,7 +117,12 @@ public sealed class DebugView : DockPanel, IOwnKeys
         ActionTips.SetWords(evaluate, AppActions.AddToWatches, keys => keys is null ? $"Evaluate expression ({enter})" : $"Evaluate expression ({enter}) or add a watch ({keys})");
         evaluate.AddHandler(KeyDownEvent, OnEvaluateKey, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         // The debugger the model has now asked, whichever folder's it is: each folder's sets it as it is made.
-        variables = new VariablesList(model.Tree) { DataWatch = node => model.DataWatch!(node) };
+        variables = new VariablesList(model.Tree)
+        {
+            DataWatch = node => model.DataWatch!(node),
+            Visualize = (owner, node) => model.Visualize?.Invoke(owner, node),
+            CanReadTable = () => model.CanReadTable?.Invoke() == true,
+        };
         variables.EvaluateRequested += (_, request) => model.Evaluate(request.Expression, request.Watch);
         variables.WatchRemoved += (_, watch) => model.Unwatch(watch);
         variables.SetValueRequested += (_, request) => model.SetValue(request.Node, request.Value);

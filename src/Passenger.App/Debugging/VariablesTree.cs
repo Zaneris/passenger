@@ -10,6 +10,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
     /// <summary>The most of a value its row, the row's tooltip and a hover show: a string of megabytes laid out whole would
     /// hold the window for seconds at every stop. Copy Value and Set Value take all of it.</summary>
     public const int Longest = 1000;
+    private const int TextPreviewLength = 112;
 
     private bool isExpanded;
     private bool isEditing;
@@ -105,7 +106,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
 
     /// <summary>The value as its row shows it, on its one line (a query's SQL with each line break as a space), cut past
     /// <see cref="Longest"/>; its tooltip shows its lines (<see cref="Lines"/>).</summary>
-    public string Shown => LineBreaks.Replace(Cut(Value), " ");
+    public string Shown => LineBreaks.Replace(Cut(Value, IsString ? TextPreviewLength : Longest), " ");
 
     /// <summary>The value with its lines, cut past <see cref="Longest"/>: its row's tooltip.</summary>
     public string Lines => Cut(Value);
@@ -114,8 +115,20 @@ public sealed class VariableNode(string name, string value, string? type, int re
     private static readonly System.Text.RegularExpressions.Regex LineBreaks = new(@"[ \t]*[\r\n]\s*");
 
     /// <summary>A value as the debugger's rows and hovers show it, cut past <see cref="Longest"/>.</summary>
-    public static string Cut(string value) => value.Length <= Longest ? value : value[..(Longest - 1)] + "…";
+    public static string Cut(string value) => Cut(value, Longest);
+
+    private static string Cut(string value, int length) => value.Length <= length ? value
+        : value[..(char.IsHighSurrogate(value[length - 2]) ? length - 2 : length - 1)] + "…";
     public string? Type { get; } = type;
+    public bool IsString => IsStringValue(Type, Value);
+    public bool NeedsTextViewer => IsString && (Value.Length > TextPreviewLength || Value.Contains('\\'));
+    public static bool IsStringValue(string? type, string value) => (type is "string" or "System.String") && value.StartsWith('"');
+
+    public bool IsTable => !Captured && Role != VariableRole.Error && IsTableValue(Type, Value);
+
+    public static bool IsTableValue(string? type, string value) => value != "null" && (type is "System.Data.DataTable" or "System.Data.DataSet"
+        || type?.StartsWith("System.Collections.Generic.List<", StringComparison.Ordinal) == true
+        || type?.EndsWith("[]", StringComparison.Ordinal) == true);
     public int Reference { get; } = reference;
     public int Depth { get; } = depth;
     public VariableRole Role { get; } = role;

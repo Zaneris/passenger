@@ -1178,6 +1178,9 @@ public sealed class DebugSession
     public async Task<IReadOnlyList<DapVariable>> VariablesAsync(int reference) =>
         (await connection.RequestAsync<VariablesResponse>(DapCommands.Variables, new VariablesArguments(reference))).Variables;
 
+    public Task<VariableTableResponse> VariableTableAsync(VariableTableArguments arguments) =>
+        connection.RequestAsync<VariableTableResponse>(DapCommands.VariableTable, arguments);
+
     /// <summary>The exception a thread stopped on: its type, message and inner exceptions.</summary>
     public Task<ExceptionInfoResponse> ExceptionInfoAsync(int threadId) =>
         connection.RequestAsync<ExceptionInfoResponse>(DapCommands.ExceptionInfo, new ThreadArguments(threadId));
