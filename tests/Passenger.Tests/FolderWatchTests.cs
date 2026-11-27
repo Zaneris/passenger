@@ -857,8 +857,14 @@ public sealed class FolderWatchTests : IDisposable
             Ui.Settle();
             (long beats, long heard) = (WatchLag.Beats, WatchLag.HeardBeats);
             long began = System.Diagnostics.Stopwatch.GetTimestamp();
+            Ui.WaitFor(() => WatchLag.Beats > beats, "a beat while the window the person sees is in front");
+            string beat = WatchLag.Canary!.Path;
+            ulong? first = Passenger.Core.FileIdentity.Of(beat);
             Ui.WaitFor(() => WatchLag.Beats >= beats + 5, "five beats while the window the person sees is in front");
             TimeSpan on = System.Diagnostics.Stopwatch.GetElapsedTime(began);
+            // Written in place: a file put in its place at each beat is a write synced to the disk and a rename.
+            Assert.True(first is not null && Passenger.Core.FileIdentity.Of(beat) == first,
+                $"The beat's file {beat} was put in place anew between beats ({first} then {Passenger.Core.FileIdentity.Of(beat)}), each a write synced to the disk, where it is to be written over");
             TestContext.Current.TestOutputHelper?.WriteLine(
                 $"While on, the beat wrote its file {WatchLag.Beats - beats} times and heard {WatchLag.HeardBeats - heard} changes of it in {on.TotalSeconds:F1} s");
 
