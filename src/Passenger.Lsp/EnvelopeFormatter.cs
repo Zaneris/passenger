@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using StreamJsonRpc;
 using StreamJsonRpc.Protocol;
 using StreamJsonRpc.Reflection;
@@ -40,6 +41,7 @@ internal sealed class EnvelopeFormatter : IJsonRpcMessageTextFormatter, IJsonRpc
     {
         this.options = new JsonSerializerOptions(options ?? JsonSerializerOptions.Default);
         this.options.Converters.Add(new SystemTextJsonFormatter.RequestIdSTJsonConverter());
+        this.options.Converters.Add(TextInParts.Instance);
         readerOptions = new JsonReaderOptions
         {
             MaxDepth = this.options.MaxDepth,
@@ -618,6 +620,41 @@ internal sealed class EnvelopeFormatter : IJsonRpcMessageTextFormatter, IJsonRpc
         public void Hide() => shown = null;
 
         public override string ToString() => shown is { } message ? Utf8.GetString(message) : "(a message no longer held)";
+    }
+
+    /// <summary>Every string a message holds, written past <see cref="Part"/> characters in parts, each escaped as it is
+    /// written: whole, a long one (a document's text, sent as a server opens it) took a buffer six times its length to be
+    /// escaped into, and the message's buffer grew by its escaped length at once, both from the shared pool, which has
+    /// arrays that large only for the thread that last gave one back. Read as the serializer's own converter reads one.</summary>
+    private sealed class TextInParts : JsonConverter<string>
+    {
+        public static readonly TextInParts Instance = new();
+
+        /// <summary>The characters escaped at a time: their buffer, at most six times as many, one the pool keeps for every thread.</summary>
+        private const int Part = 1024;
+
+        public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => reader.GetString();
+
+        public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
+        {
+            if (value.Length <= Part)
+            {
+                writer.WriteStringValue(value);
+                return;
+            }
+            ReadOnlySpan<char> rest = value;
+            while (rest.Length > Part)
+            {
+                writer.WriteStringValueSegment(rest[..Part], isFinalSegment: false);
+                rest = rest[Part..];
+            }
+            writer.WriteStringValueSegment(rest, isFinalSegment: true);
+        }
+
+        public override string ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            reader.GetString() ?? throw new JsonException("A property's name is null");
+
+        public override void WriteAsPropertyName(Utf8JsonWriter writer, string value, JsonSerializerOptions options) => writer.WritePropertyName(value);
     }
 
     /// <summary>Where the kept writer points between messages, so it holds no buffer of a message written.</summary>
