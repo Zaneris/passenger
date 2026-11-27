@@ -10,6 +10,7 @@ using Passenger.App.LiveTree;
 using Passenger.App.ToolWindows;
 using Passenger.App.WinForms;
 using Passenger.Core;
+using Passenger.Dap;
 using Passenger.Editor;
 using Passenger.Inspector;
 using Passenger.Text;
@@ -79,6 +80,8 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
         Flow.StepApart("a debugged WPF app's misspelt binding shows in the debug console linked to its line and in Problems", () => new WpfLiveTreeTests(folders), t => t.A_debugged_wpf_apps_misspelt_binding_shows_in_the_debug_console_linked_to_its_line_and_in_problems());
         Flow.StepApart("XAML Binding Errors stops a debugged WPF app where its binding fails", () => new WpfLiveTreeTests(folders), t => t.Xaml_binding_errors_stops_a_debugged_wpf_app_where_its_binding_fails());
         Flow.StepApart("Select Element chooses the element clicked in a WPF app", () => new WpfLiveTreeTests(folders), t => t.Select_element_chooses_the_element_clicked_in_a_wpf_app());
+        Flow.StepApart("a breakpoint on a WPF page's element and one on an attribute each stop at its XAML as the element joins the window",
+            () => new WpfLiveTreeTests(folders), t => t.A_breakpoint_on_a_wpf_pages_element_and_one_on_an_attribute_each_stop_at_its_xaml_as_the_element_joins_the_window());
         Flow.StepApart("a debugged Windows Forms app shows its controls, where each value comes from in its designer code, and Select Element chooses the one clicked", () => new WpfLiveTreeTests(folders), t => t.A_debugged_windows_forms_app_shows_its_controls_where_each_value_comes_from_in_its_designer_code_and_select_element_chooses_the_one_clicked());
         Flow.StepApart("a debugged Windows Forms app takes an edit of its form's design without being started again", () => new WpfLiveTreeTests(folders), t => t.A_debugged_windows_forms_app_takes_an_edit_of_its_forms_design_without_being_started_again());
     }
@@ -337,6 +340,46 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
         }
         return WpfApp.Project(made, "FormsTreeApp", forms: true);
     }));
+
+    /// <summary>Under Debug, a breakpoint on the line of a WPF page's element, and one on another element's attribute, each
+    /// stop as their element joins the window from the page's BAML, the stop shown at the XAML with the element there to
+    /// read (its attribute set) and the app's own frames below; Continue goes on to the next.</summary>
+    private void A_breakpoint_on_a_wpf_pages_element_and_one_on_an_attribute_each_stop_at_its_xaml_as_the_element_joins_the_window()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        MainWindow window = Opened();
+        Assert.Null(window.OpenFile(Xaml));
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        int count = Line(Xaml, "x:Name=\"Count\"") - 1;
+        int hello = Line(Xaml, "x:Name=\"Hello\"") - 1;
+        editor.GoTo(new TextPosition(count, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        editor.GoTo(new TextPosition(hello, File.ReadAllLines(Xaml)[hello].IndexOf("Text=", StringComparison.Ordinal) + 1));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        BreakpointStore store = window.Debugger.Breakpoints;
+        Assert.Equal([$"MainWindow.xaml:{count + 1}", $"MainWindow.xaml:{hello + 1} Text"], store.In(Xaml).Select(b => b.Location));
+
+        Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
+        DebugStop stop = Stopped(window, "the stop as Count joins the window");
+        string frames = string.Join(" < ", stop.Frames.Take(12).Select(f => $"{f.Name} {Path.GetFileName(f.Source?.Path)}:{f.Line}"));
+        Assert.True(stop.Top?.Source?.Path == Xaml && stop.Top.Line == count + 1, $"The stop was shown at {stop.Top?.Source?.Path}:{stop.Top?.Line}, not Count's line {count + 1} ({frames})");
+        Assert.True(stop.Frames.Count > 1, $"The stop showed no frames of the app's below its XAML: {frames}");
+        Assert.Contains("Count", Ui.Await(window.Debugger.Session!.EvaluateAsync("((System.Windows.FrameworkElement)element).Name", stop.Top!.Id, EvaluateContexts.Watch), "the element made").Result,
+            StringComparison.Ordinal);
+        Ui.WaitFor(() => window.EditorArea.Active?.Path == Xaml && window.EditorArea.CodeEditor.CaretPosition.Line == count, "the editor to show Count's line");
+
+        DebugSession session = window.Debugger.Session!;
+        bool resumed = false;
+        session.StateChanged += (_, _) => resumed |= session.State != DebugState.Paused;
+        Ui.Run(window, AppActions.Resume);
+        Ui.WaitFor(() => resumed, "the program to go on");
+        stop = Stopped(window, "the stop as Hello joins the window, its Text set");
+        Assert.True(stop.Top?.Source?.Path == Xaml && stop.Top.Line == hello + 1, $"The second stop was shown at {stop.Top?.Source?.Path}:{stop.Top?.Line}, not Hello's line {hello + 1}");
+        Assert.Equal("\"Nobody greeted\"", Ui.Await(session.EvaluateAsync("((System.Windows.Controls.TextBlock)element).Text", stop.Top!.Id, EvaluateContexts.Watch), "Hello's Text").Result);
+        Stop(window);
+        window.Close();
+    }
 
     /// <summary>Whether a row of the tree is the element of a name or inside it, by the rows above it a level up each.</summary>
     private static bool Under(LiveTreeView tree, long id, string name)

@@ -95,6 +95,11 @@ public static class Wire
     /// for the XAML Binding Errors breakpoint is; the WPF inspector's has the same name, so the one breakpoint serves both.</summary>
     public const string Failed = "Passenger.Inspector.Breaks.BindingFailed";
 
+    /// <summary>The method a WPF app's inspector calls as each element made from its XAML joins the window's tree
+    /// (XamlStops.cs), where the debugger's function breakpoint for each breakpoint in a WPF XAML file is, its condition the
+    /// place the breakpoint is on.</summary>
+    public const string Loaded = "Passenger.Inspector.Breaks.Loaded";
+
     public const string Hello = "hello";
     public const string TreeChanged = "treeChanged";
     public const string Picked = "picked";

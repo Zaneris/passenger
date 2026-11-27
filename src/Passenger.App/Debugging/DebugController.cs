@@ -1337,6 +1337,8 @@ public sealed partial class DebugController : IDisposable
                 made.SnapshotTaken += (taken, point) => KeepSnapshot(tab, taken, point);
                 RecordFromStart(made);
                 made.InBrowser = inBrowser ?? (plan is { InBrowser.Count: > 0, Project: { } project, Browser: null } ? (plan.InBrowser, project) : null);
+                made.XamlAtRunTime = tab.App?.Kind == LiveAppKind.Wpf;
+                made.XamlElementLine = (path, line, attribute, place) => CSharp.ServerPlaces.TextOf(editors, path) is { } text ? XamlBreakpoints.ElementLine(text, line, attribute, place) : null;
                 if (disposed || ending || tab.OpeningStopped || !view.Sessions.Contains(tab))
                 {
                     // Stopped as its adapter started, before there was a session to stop: its start fails as one stopped.
@@ -2080,10 +2082,10 @@ public sealed partial class DebugController : IDisposable
             actions.Add(new IdeAction(id, title, "Debug", c => run(current(), c)) { WhyNot = c => whyNot(current(), c), Menus = menu is null ? [] : [menu] });
     }
 
-    /// <summary>The Avalonia XAML attribute the caret is on, whose own breakpoint Toggle Breakpoint sets, with where its name
-    /// begins; null elsewhere.</summary>
+    /// <summary>The XAML attribute the caret is on (Avalonia's, or a WPF page's), whose own breakpoint Toggle Breakpoint sets,
+    /// with where its name begins; null elsewhere.</summary>
     public static (string Name, TextPosition At)? AttributeAtCaret(ActionContext context) =>
-        context.File is { } file && XamlBreakpoints.Compiled(file.Path)
+        context.File is { } file && XamlBreakpoints.Takes(file.Path)
             ? XamlBreakpoints.AttributeAt(file.Text.Snapshot, file.Text.Snapshot.GetOffset(context.Caret))
             : null;
 

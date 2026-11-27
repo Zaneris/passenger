@@ -80,6 +80,9 @@ public sealed class DebugSession
     /// sent, and the breakpoint each is by the id the debugger gave it.</summary>
     private string functionsSent = string.Empty;
     private readonly Dictionary<int, PropertyBreakpoint> propertyById = [];
+
+    /// <summary>The ids of the function breakpoints that stand for breakpoints in WPF XAML, each kept in <see cref="byId"/>.</summary>
+    private readonly HashSet<int> xamlIds = [];
     private readonly Dictionary<int, MethodBreakpoint> methodById = [];
     private int? bindingErrorsId;
 
@@ -343,6 +346,15 @@ public sealed class DebugSession
 
     /// <summary>The property breakpoint the program stopped at, while paused there.</summary>
     public PropertyBreakpoint? PropertyStop { get; private set; }
+
+    /// <summary>Whether the program reads its XAML as it runs (a WPF app's BAML, with Passenger's inspector in it): a
+    /// breakpoint in a .xaml file is then a function breakpoint on the inspector's call for each element made from XAML
+    /// (<see cref="Inspector.Wire.Loaded"/>), its condition the element's place, where no code of the app's stands; set as
+    /// the session starts, before any breakpoint is sent.</summary>
+    public bool XamlAtRunTime { get; set; }
+
+    /// <summary>The breakpoint in a WPF XAML file the program stopped at, as an element made from it joined its window.</summary>
+    public LineBreakpoint? XamlStop { get; private set; }
 
     /// <summary>Why no step goes on from the stop, while paused at one its debugger only continues from (a Godot script
     /// error); null where steps go on.</summary>
@@ -1051,8 +1063,26 @@ public sealed class DebugSession
     /// stops would otherwise miss the open file. Named off the caller's thread: a stop asks the disk twice for each frame
     /// with a source, a hundred and more of them in an app's stack. A source a PDB names on a share or a device has no
     /// path, so neither this nor anything shown from the frame asks for it.</summary>
-    public async Task<IReadOnlyList<DapStackFrame>> StackTraceAsync(int threadId) =>
-        [.. (await connection.RequestAsync<StackTraceResponse>(DapCommands.StackTrace, new StackTraceArguments(threadId)).ConfigureAwait(false)).StackFrames.Select(Named)];
+    public async Task<IReadOnlyList<DapStackFrame>> StackTraceAsync(int threadId)
+    {
+        List<DapStackFrame> frames = [.. (await connection.RequestAsync<StackTraceResponse>(DapCommands.StackTrace, new StackTraceArguments(threadId)).ConfigureAwait(false)).StackFrames.Select(Named)];
+        // A stop at a breakpoint in WPF XAML is shown at its XAML, in place of the inspector's call it stopped in.
+        if (XamlStop is { } xaml && threadId == StoppedThread && frames is [var call, ..] && call.Name.Contains(XamlCall, StringComparison.Ordinal))
+        {
+            frames[0] = call with
+            {
+                Name = $"{Path.GetFileName(xaml.Path)} (XAML)",
+                Source = new DapSource { Path = xaml.Path, Name = Path.GetFileName(xaml.Path) },
+                Line = xaml.Line + 1,
+                Column = columns(xaml.Path, xaml.Line, xaml.Attribute, xaml.Column ?? xaml.AttributeColumn) ?? 1,
+                PresentationHint = null,
+            };
+        }
+        return frames;
+    }
+
+    /// <summary>How the debugger names the inspector's call a WPF XAML breakpoint stops in, as its frame's name holds it.</summary>
+    private static readonly string XamlCall = Inspector.Wire.Loaded[(Inspector.Wire.Loaded.LastIndexOf('.', Inspector.Wire.Loaded.LastIndexOf('.') - 1) + 1)..];
 
     /// <summary>A frame with its source named as the IDE names its files (<see cref="StackTraceAsync"/>); asks the disk.</summary>
     private DapStackFrame Named(DapStackFrame f) =>
@@ -1209,6 +1239,17 @@ public sealed class DebugSession
     /// Cursor's line stops: its own breakpoint is sent there, or the one there held for it, its count going on.</summary>
     private async Task SendBreakpointsAsync(string path)
     {
+        if (XamlAtRunTime && IsRunTimeXaml(path))
+        {
+            // Its breakpoints are function breakpoints, sent with the others, where the program reads this XAML as it runs.
+            sent[path] = Signature(path);
+            await SendFunctionBreakpointsAsync();
+            if (breakpoints.Muted)
+            {
+                breakpoints.Report(this, path, [.. breakpoints.In(path).Select(_ => (BreakpointStatus.Unknown, (string?)null, (int?)null))], breakpoints.In(path));
+            }
+            return;
+        }
         // Muted, none is sent and each is as no debugger has said, though Run to Cursor's place still is.
         IEnumerable<LineBreakpoint> sending = breakpoints.Muted ? [] : breakpoints.In(path).Where(b => b.Enabled);
         // A WebAssembly app's own code never runs where its development server is debugged: none of it is sent.
@@ -1492,6 +1533,7 @@ public sealed class DebugSession
         }
         BindingErrorBreakpoint? bindingErrors = BindingErrorsSending();
         List<MethodBreakpoint> methods = MethodsSending();
+        List<LineBreakpoint> xaml = XamlSending();
         functionsSent = FunctionSignature();
         List<DapFunctionBreakpoint> requests = [.. sending.Select(p => new DapFunctionBreakpoint(Inspector.Wire.Changed, EngineCondition(p), null, p.LogMessage, p.Suspend)),
             .. methods.Select(m => new DapFunctionBreakpoint(m.Name, m.Condition, m.HitCondition, m.LogMessage, m.Snapshot is null && m.Suspend, m.Key, m.WaitsFor?.Key, m.Temporary ? true : null,
@@ -1501,6 +1543,9 @@ public sealed class DebugSession
             requests.Add(new DapFunctionBreakpoint(Inspector.Wire.Failed, BindingErrorTerms(bindingErrors.Condition), bindingErrors.HitCondition,
                 BindingErrorTerms(bindingErrors.LogMessage) ?? (bindingErrors.Suspend ? null : BindingErrorLog), bindingErrors.Suspend));
         }
+        int xamlFrom = requests.Count;
+        requests.AddRange(xaml.Select(b => new DapFunctionBreakpoint(Inspector.Wire.Loaded, XamlCondition(b), b.HitCondition, b.LogMessage, b.Snapshot is null && b.Suspend, b.Key,
+            b.WaitsFor?.Key, b.Temporary ? true : null)));
         SetBreakpointsResponse response;
         try
         {
@@ -1508,6 +1553,10 @@ public sealed class DebugSession
         }
         catch (DapException refused)
         {
+            foreach (IGrouping<string, LineBreakpoint> file in xaml.GroupBy(b => b.Path))
+            {
+                breakpoints.Report(this, file.Key, [.. file.Select(_ => (BreakpointStatus.Invalid, (string?)refused.Reason, (int?)null))], [.. file]);
+            }
             breakpoints.ReportProperties(this, [.. said, .. sending.Select(p => (p, BreakpointStatus.Invalid, (string?)refused.Reason))]);
             breakpoints.ReportMethods(this, [.. methods.Select(_ => (BreakpointStatus.Invalid, (string?)refused.Reason))], methods);
             breakpoints.ReportBindingErrors(this, bindingErrors is null ? BreakpointStatus.Unknown : BreakpointStatus.Invalid, bindingErrors is null ? null : refused.Reason);
@@ -1516,6 +1565,26 @@ public sealed class DebugSession
         propertyById.Clear();
         methodById.Clear();
         bindingErrorsId = null;
+        foreach (int gone in xamlIds)
+        {
+            byId.Remove(gone);
+        }
+        xamlIds.Clear();
+        List<(BreakpointStatus, string?, int?)> xamlSaid = [];
+        for (int i = 0; i < xaml.Count; i++)
+        {
+            DapBreakpoint? answer = xamlFrom + i < response.Breakpoints.Count ? response.Breakpoints[xamlFrom + i] : null;
+            if (answer?.Id is int id)
+            {
+                byId[id] = xaml[i];
+                xamlIds.Add(id);
+            }
+            xamlSaid.Add(answer is null ? (BreakpointStatus.Unknown, null, null) : Status(answer) with { Item3 = null });
+        }
+        foreach (IGrouping<string, (LineBreakpoint Breakpoint, (BreakpointStatus, string?, int?) Said)> file in xaml.Zip(xamlSaid).GroupBy(p => p.First.Path, p => (p.First, p.Second)))
+        {
+            breakpoints.Report(this, file.Key, [.. file.Select(p => p.Said)], [.. file.Select(p => p.Breakpoint)]);
+        }
         for (int i = 0; i < Math.Min(sending.Count, response.Breakpoints.Count); i++)
         {
             DapBreakpoint answer = response.Breakpoints[i];
@@ -1608,6 +1677,7 @@ public sealed class DebugSession
             : null;
         PropertyStop = stopped.Reason == StopReasons.Breakpoint ? stopped.HitBreakpointIds?.Select(id => propertyById.GetValueOrDefault(id)).FirstOrDefault(p => p is not null) : null;
         BindingErrorStop = stopped.Reason == StopReasons.Breakpoint && bindingErrorsId is int failed && stopped.HitBreakpointIds?.Contains(failed) == true;
+        XamlStop = stopped.Reason == StopReasons.Breakpoint && stopped.HitBreakpointIds?.FirstOrDefault(xamlIds.Contains) is int xaml and > 0 ? byId.GetValueOrDefault(xaml) : null;
         if (runToCursor is { } target)
         {
             runToCursor = null;
@@ -1616,9 +1686,32 @@ public sealed class DebugSession
         SetState(DebugState.Paused);
     }
 
+    /// <summary>Whether a file is XAML a WPF app reads as it runs (its BAML), where no code of the app's stands.</summary>
+    private static bool IsRunTimeXaml(string path) => Path.GetExtension(path).Equals(".xaml", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The breakpoints in WPF XAML that are on, where the program reads its XAML as it runs; none otherwise or while muted.</summary>
+    private List<LineBreakpoint> XamlSending() => !XamlAtRunTime || breakpoints.Muted ? []
+        : [.. breakpoints.Files.Where(IsRunTimeXaml).SelectMany(breakpoints.In).Where(b => b.Enabled)];
+
+    /// <summary>A WPF XAML breakpoint's condition as the debugger is given it, on the inspector's call for every element made
+    /// from XAML: the element's start tag's file and line as WPF recorded them as the app was built (its built line), the
+    /// person's own condition after them.</summary>
+    private string XamlCondition(LineBreakpoint breakpoint)
+    {
+        int line = XamlElementLine?.Invoke(breakpoint.Path, breakpoint.Line, breakpoint.Attribute, breakpoint.Column ?? breakpoint.AttributeColumn) ?? breakpoint.Line;
+        string file = breakpoint.Path.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
+        return $"line == {lines.ToBuilt(breakpoint.Path, line) + 1} && file == \"{file}\"" + (breakpoint.Condition is { } condition ? $" && ({condition})" : string.Empty);
+    }
+
+    /// <summary>The line (from zero) of the element a breakpoint on a XAML line (or on an attribute there) stops as it is made:
+    /// the first element whose start tag begins on the line, else the one whose start tag holds it; given as the session
+    /// starts, from the file's text as the editor has it.</summary>
+    public Func<string, int, string?, int?, int?>? XamlElementLine { get; set; }
+
     private string FunctionSignature()
     {
         List<object?> sending = [.. PropertiesSending().Select(p => Signatures.Of(p.Id, p.Condition, p.HitCondition, p.LogMessage, p.Suspend)),
+            .. XamlSending().Select(b => Signatures.Of("xaml", XamlCondition(b), b.HitCondition, b.LogMessage, b.Suspend, b.Key, b.WaitsFor?.Key, b.Temporary, b.Snapshot is null)),
             .. MethodsSending().Select(m => Signatures.Of("method", m.Name, m.Condition, m.HitCondition, m.LogMessage, m.Suspend, m.Key, m.WaitsFor?.Key, m.Temporary, m.Snapshot is null, m.Snapshot?.Captures, m.Snapshot?.Limit))];
         if (BindingErrorsSending() is { } b)
         {
@@ -1778,6 +1871,7 @@ public sealed class DebugSession
             DataStop = null;
             PropertyStop = null;
             BindingErrorStop = false;
+            XamlStop = null;
         }
         State = state;
         StateChanged?.Invoke(this, EventArgs.Empty);
