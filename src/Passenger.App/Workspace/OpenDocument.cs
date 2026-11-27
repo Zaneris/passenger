@@ -1458,7 +1458,7 @@ public sealed class OpenDocument : Observable
         }
         for (int i = 0; i < kept.Count; i++)
         {
-            if (kept[i].Start != found[i].Start || kept[i].End != found[i].End || kept[i].Placeholder != found[i].Placeholder || kept[i].Kind != found[i].Kind)
+            if (kept[i] with { Folded = false } != found[i] with { Folded = false })
             {
                 return false;
             }

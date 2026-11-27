@@ -36,9 +36,11 @@ public sealed partial class CodeEditor
         get
         {
             TextSnapshot text = document.Snapshot;
-            if (foldLines is not { } known || !ReferenceEquals(known.Text, text) || !ReferenceEquals(known.Folds, FoldRegions))
+            int editingDocumentation = DocumentationEditLine(text);
+            if (foldLines is not { } known || !ReferenceEquals(known.Text, text) || !ReferenceEquals(known.Folds, FoldRegions)
+                || known.EditingDocumentation != editingDocumentation)
             {
-                foldLines = known = new FoldLines(text, FoldRegions);
+                foldLines = known = new FoldLines(text, FoldRegions, editingDocumentation);
             }
             return known;
         }
@@ -263,7 +265,13 @@ public sealed partial class CodeEditor
         {
             return;
         }
-        decorations.SetFoldRegions([.. FoldRegions.Select(r => r.Folded && FoldLines.EndLineOf(text, r) is int end and >= 0 && lines.Any(l => l > FoldLines.StartLineOf(text, r) && l <= end) ? r with { Folded = false } : r)]);
+        FoldRegion[] opened = [.. FoldRegions.Select(r => r.Folded && FoldLines.EndLineOf(text, r) is int end and >= 0
+            && lines.Any(l => l > FoldLines.StartLineOf(text, r) && l <= end) ? r with { Folded = false } : r)];
+        if (opened.SequenceEqual(FoldRegions))
+        {
+            return;
+        }
+        decorations.SetFoldRegions(opened);
         UpdateScrollBars();
         FoldsToggled?.Invoke(this, FoldRegions);
     }
@@ -498,30 +506,44 @@ public sealed partial class CodeEditor
     /// others' lines are found when one is drawn or asked for.</summary>
     private sealed class FoldLines
     {
-        public FoldLines(TextSnapshot text, IReadOnlyList<FoldRegion> folds)
+        public FoldLines(TextSnapshot text, IReadOnlyList<FoldRegion> folds, int editingDocumentation)
         {
             Text = text;
             Folds = folds;
+            EditingDocumentation = editingDocumentation;
             List<(int First, int Last)> ranges = [];
             FoldList? runs = folds as FoldList;
-            for (int i = runs?.NextFolded(0) ?? 0; i < folds.Count; i = runs?.NextFolded(i + 1) ?? i + 1)
+            for (int i = runs?.NextPresented(0) ?? 0; i < folds.Count; i = runs?.NextPresented(i + 1) ?? i + 1)
             {
                 FoldRegion region = folds[i];
-                if (!region.Folded)
+                if (region is { Folded: false, Documentation: null })
                 {
                     continue;
                 }
                 int start = StartLineOf(text, region);
                 int first = start + 1;
                 int last = EndLineOf(text, region);
-                // A region that hides nothing (its lines deleted, waiting for the regions found again) shows no placeholder.
-                if (start == int.MaxValue || last < first)
+                if (start == int.MaxValue || last < start)
                 {
                     continue;
                 }
-                if (!Placeholders.TryGetValue(start, out int widest) || region.End > folds[widest].End)
+                bool rendered = region.Documentation is not null && (!region.Folded || last == start) && start != editingDocumentation;
+                if (rendered && !Placeholders.ContainsKey(start))
+                {
+                    Documentation[start] = i;
+                }
+                else if (!rendered && (!region.Folded || last == start))
+                {
+                    continue;
+                }
+                else if (!rendered && (!Placeholders.TryGetValue(start, out int widest) || region.End > folds[widest].End))
                 {
                     Placeholders[start] = i;
+                    Documentation.Remove(start);
+                }
+                if (last < first)
+                {
+                    continue;
                 }
                 if (ranges.Count > 0 && first <= ranges[^1].Last + 1)
                 {
@@ -543,6 +565,8 @@ public sealed partial class CodeEditor
         public TextSnapshot Text { get; }
 
         public IReadOnlyList<FoldRegion> Folds { get; }
+        public int EditingDocumentation { get; }
+        public Dictionary<int, int> Documentation { get; } = [];
 
         public (int First, int Last)[] Hidden { get; }
 

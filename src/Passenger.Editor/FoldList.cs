@@ -127,20 +127,19 @@ public sealed class FoldList : IReadOnlyList<FoldRegion>
         return made is null ? this : new FoldList(made, Count);
     }
 
-    /// <summary>The first folded region at or after an index, or <see cref="Count"/>: runs with none folded are passed over
-    /// whole.</summary>
-    public int NextFolded(int index)
+    /// <summary>The next fold or rendered documentation block, or <see cref="Count"/>.</summary>
+    public int NextPresented(int index)
     {
         for (int k = index / RunLength; k < runs.Length; k++)
         {
             Run run = runs[k];
-            if (!run.AnyFolded)
+            if (!run.AnyFolded && !run.AnyDocumentation)
             {
                 continue;
             }
             for (int i = k == index / RunLength ? index % RunLength : 0; i < run.Regions.Count; i++)
             {
-                if (run.Regions[i].Folded)
+                if (run.Regions[i] is { Folded: true } or { Documentation: not null })
                 {
                     return (k * RunLength) + i;
                 }
@@ -176,20 +175,22 @@ public sealed class FoldList : IReadOnlyList<FoldRegion>
 
     /// <summary>Regions as they stood when the run was made, and what edits wholly before them have added to their offsets
     /// since; the lowest and highest offset among them as made, and whether any is folded.</summary>
-    private readonly record struct Run(ArraySegment<FoldRegion> Regions, int Shift, int Lowest, int Highest, bool AnyFolded)
+    private readonly record struct Run(ArraySegment<FoldRegion> Regions, int Shift, int Lowest, int Highest, bool AnyFolded, bool AnyDocumentation)
     {
         public static Run Of(ArraySegment<FoldRegion> regions)
         {
             int lowest = int.MaxValue;
             int highest = int.MinValue;
             bool folded = false;
+            bool documentation = false;
             foreach (FoldRegion region in regions)
             {
                 lowest = Math.Min(lowest, Math.Min(region.Start, region.End));
                 highest = Math.Max(highest, Math.Max(region.Start, region.End));
                 folded |= region.Folded;
+                documentation |= region.Documentation is not null;
             }
-            return new Run(regions, 0, lowest, highest, folded);
+            return new Run(regions, 0, lowest, highest, folded, documentation);
         }
 
         public FoldRegion At(int index)

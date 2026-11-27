@@ -233,7 +233,7 @@ public sealed partial class CodeEditor
             return;
         }
         CancelChoices();
-        if (left && ClickFold(point.Position))
+        if (left && (ClickDocumentation(point.Position) || ClickFold(point.Position)))
         {
             e.Handled = true;
             return;
@@ -343,7 +343,11 @@ public sealed partial class CodeEditor
         base.OnPointerMoved(e);
         Point position = e.GetPosition(this);
         RestartHover(position);
-        Cursor = position.X < GutterWidth || drag.Mode == DragMode.Gutter ? Cursor.Default : IbeamCursor;
+        int line = LineAtY(position.Y);
+        bool documentation = Folding.Documentation.ContainsKey(line) || line == DocumentationEditLine(document.Snapshot)
+            && DocumentationButton(Bounds.Width, TopOf(line) - scroll.Y).Contains(position);
+        Cursor = position.X < GutterWidth || drag.Mode == DragMode.Gutter || documentation ? Cursor.Default : IbeamCursor;
+        PointAtDocumentation(position);
         FollowLinks(position, drag.Mode != DragMode.None && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed);
         FollowAbove(position);
         pointer = position;
@@ -428,6 +432,7 @@ public sealed partial class CodeEditor
     protected override void OnPointerExited(PointerEventArgs e)
     {
         base.OnPointerExited(e);
+        ClearDocumentationTip();
         if (overGutter)
         {
             overGutter = false;
@@ -523,6 +528,10 @@ public sealed partial class CodeEditor
         }
         (int line, int row) = Rows.LineOfRow(RowAtY(hoverAt.Y));
         if (line < 0 || line >= text.LineCount)
+        {
+            return;
+        }
+        if (Folding.Documentation.ContainsKey(line))
         {
             return;
         }

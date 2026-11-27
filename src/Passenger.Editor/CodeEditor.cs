@@ -259,6 +259,7 @@ public sealed partial class CodeEditor : Control
                 break;
             case DecorationKind.Folds:
                 HideFoldPreview();
+                RevealDocumentationAt(selections.Primary.Caret);
                 UpdateScrollBars();
                 ScrollWithinRows();
                 FollowInputMethod();
@@ -467,6 +468,7 @@ public sealed partial class CodeEditor : Control
         document.Changed -= OnDocumentChanged;
         ForgetSplitBlocks();
         ForgetTypedClosers();
+        ForgetDocumentationEdit();
         document = value;
         document.ChangedFirst += OnChangedFirst;
         document.Changed += OnDocumentChanged;
@@ -814,6 +816,10 @@ public sealed partial class CodeEditor : Control
         wrapLeaning = nextWrapLeaning ?? Emptied(wrapLeaning);
         nextWrapLeaning = null;
         UnfoldAroundCarets(clamped);
+        if (RevealDocumentationAt(clamped.Primary.Caret))
+        {
+            DocumentationRowsChanged();
+        }
         bool changed = !clamped.SameAs(selections) || clamped.PrimaryIndex != selections.PrimaryIndex;
         selections = clamped;
         caretsText = document.Snapshot;

@@ -23,8 +23,9 @@ public readonly record struct LineAnnotation(int Line, string Text, LineAnnotati
 
 /// <summary>A stretch that folds: from <see cref="Start"/>, the end of its first line's code where its placeholder
 /// stands while folded, to <see cref="End"/>; folded, the lines after the first are hidden. Its kind says whether it
-/// starts folded and which folding actions fold it.</summary>
-public readonly record struct FoldRegion(int Start, int End, string Placeholder, bool Folded = false, FoldKind Kind = FoldKind.Code);
+/// starts folded. <see cref="Documentation"/> replaces the source visually when the documentation is rendered.</summary>
+public readonly record struct FoldRegion(int Start, int End, string Placeholder, bool Folded = false, FoldKind Kind = FoldKind.Code,
+    string? Documentation = null);
 
 /// <summary>What a region folds: which fold as a file opens (Fold by default), and which Collapse to Definitions and
 /// the doc comments' actions fold.</summary>
@@ -46,7 +47,7 @@ public enum FoldKind : byte
     /// <summary>The comments a file begins with (its header).</summary>
     FileHeader,
 
-    /// <summary>A documentation comment over several lines.</summary>
+    /// <summary>A documentation comment.</summary>
     DocComment,
 
     /// <summary>A block comment over several lines.</summary>

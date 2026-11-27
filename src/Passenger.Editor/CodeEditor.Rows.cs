@@ -320,6 +320,11 @@ public sealed partial class CodeEditor
         LineView view = frameViews[slot.Index];
         const double y = 0;
         double from = TextLeft - scroll.X + span.Indent;
+        if (Folding.Documentation.TryGetValue(line, out int documentation))
+        {
+            DrawDocumentation(context, span, view, FoldRegions[documentation].Documentation!);
+            return;
+        }
         Gap[] gaps = GapsOn(span);
 
         if (frameNoneSelected && caretLines.Contains(line))
@@ -368,6 +373,10 @@ public sealed partial class CodeEditor
         DrawLinks(context, text, view, gaps, from, y);
         DrawMarkers(context, view, gaps, from, y, gutter, width);
         DrawFaded(context, view, gaps, from, y);
+        if (span.Row == 0 && line == DocumentationEditLine(text))
+        {
+            DrawDocumentationButton(context, DocumentationButton(width, y), "Done");
+        }
         if (!span.IsLast)
         {
             if (caretLines.Contains(line))
@@ -475,6 +484,12 @@ public sealed partial class CodeEditor
         key.Add(span.Indent);
         key.Add(view.Text);
         key.Add(view.X);
+        if (Folding.Documentation.TryGetValue(line, out int documentation))
+        {
+            key.Add(FoldRegions[documentation].Documentation);
+            return key.Value;
+        }
+        key.Add(span.Row == 0 && line == DocumentationEditLine(frameText!));
         foreach (Gap gap in GapsOn(span))
         {
             key.Add(gap.Column);

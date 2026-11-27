@@ -177,9 +177,19 @@ public sealed class FoldRegions
             end--;
         }
         int first = text.GetLineFromOffset(trivia.SpanStart);
-        if (text.GetLineFromOffset(end) > first)
+        LineSpan header = text.GetLine(first);
+        string? documentation = null;
+        int start = trivia.FullSpan.Start;
+        if (trivia.IsKind(SyntaxKind.SingleLineDocumentationCommentTrivia)
+            && start >= header.Start && TextRange.Trimmed(text, TextRange.FromBounds(header.Start, start)).Length == 0
+            && trivia.GetStructure() is DocumentationCommentTriviaSyntax xml)
         {
-            found.Add(new FoldRegion(text.GetLine(first).End, end, "...", Kind: trivia.IsKind(SyntaxKind.MultiLineCommentTrivia) ? FoldKind.Comment : FoldKind.DocComment));
+            documentation = DocumentationText.Of(xml);
+        }
+        if (documentation is not null || text.GetLineFromOffset(end) > first)
+        {
+            found.Add(new FoldRegion(header.End, end, "...", Kind: trivia.IsKind(SyntaxKind.MultiLineCommentTrivia) ? FoldKind.Comment : FoldKind.DocComment,
+                Documentation: documentation));
         }
     }
 

@@ -1,5 +1,6 @@
 using System.Text;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
@@ -52,6 +53,67 @@ public sealed class FoldingTests : IDisposable
         Flow.StepApart<FoldingTests>("typing below five thousand folded lines colours only the lines on screen", t => t.Typing_below_five_thousand_folded_lines_colours_only_the_lines_on_screen());
         Flow.StepApart<FoldingTests>("typing in twenty thousand lines parses what each key changed and the folds stay those of the whole text", t => t.Typing_in_twenty_thousand_lines_parses_what_each_key_changed_and_the_folds_stay_those_of_the_whole_text());
         Flow.StepApart<FoldingTests>("typing in twenty thousand lines of XML scans it off the UI thread and its folds stay those of the whole text", t => t.Typing_in_twenty_thousand_lines_of_XML_scans_it_off_the_UI_thread_and_its_folds_stay_those_of_the_whole_text());
+    }
+
+    [AvaloniaFact]
+    public void CSharp_documentation_renders_in_place_and_can_be_edited_and_saved()
+    {
+        const string source = """
+            class Stock
+            {
+                /// <summary>
+                /// Returns the <see cref="Count"/> &amp; keeps stock available.
+                /// </summary>
+                public int Count => 42;
+
+                /// <summary>Checks stock.</summary>
+                public bool HasStock => Count > 0;
+            }
+            """;
+        string path = Path.Combine(folder, "Stock.cs");
+        File.WriteAllText(path, source);
+        MainWindow window = Ui.OpenFolder(folder, width: 1000);
+        window.OpenFile(path);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.WaitFor(() => window.EditorArea.Active!.FoldsFound, "the C# documentation blocks");
+        editor.SoftWrap = true;
+        Ui.Settle();
+
+        double Y(int line) => editor.PointOf(editor.Document.Snapshot.GetLineStart(line)).Y;
+        Point OnRow(double x, int line) => new(x, Y(line) + editor.LineHeight / 2);
+        void ShowText(int line, string words)
+        {
+            Ui.Hover(editor, OnRow(editor.Bounds.Width / 2, line));
+            Assert.Equal(words, ToolTip.GetTip(editor));
+        }
+
+        Assert.Equal(editor.LineHeight, Y(5) - Y(2), 1);
+        ShowText(2, "Returns the Count & keeps stock available.");
+        ShowText(7, "Checks stock.");
+        Ui.Click(editor, OnRow(editor.Bounds.Width / 2, 2));
+        Assert.Equal(editor.LineHeight, Y(5) - Y(2), 1);
+
+        Ui.Click(editor, OnRow(editor.Bounds.Width - 40, 2));
+        Assert.True(Y(5) - Y(2) >= 3 * editor.LineHeight, "All source lines are visible while editing");
+        ShowText(7, "Checks stock.");
+        string old = "available";
+        int at = source.IndexOf(old, StringComparison.Ordinal);
+        editor.Selections = SelectionSet.Single(new Selection(at, at + old.Length));
+        window.KeyTextInput("ready");
+
+        Ui.Click(editor, OnRow(editor.Bounds.Width - 40, 2));
+        Assert.Equal(editor.LineHeight, Y(5) - Y(2), 1);
+        Ui.WaitFor(() => editor.FoldRegions.Any(r => r.Documentation == "Returns the Count & keeps stock ready."), "the edited summary");
+        ShowText(2, "Returns the Count & keeps stock ready.");
+        Assert.True(window.EditorArea.SaveAll());
+        Assert.Equal(source.Replace(old, "ready", StringComparison.Ordinal), File.ReadAllText(path));
+        Assert.True(window.EditorArea.CloseTab(window.EditorArea.ActiveGroup, window.EditorArea.Active!));
+        window.OpenFile(path);
+        Ui.WaitFor(() => window.EditorArea.Active!.FoldsFound, "the saved summaries on reopen");
+        Ui.Settle();
+        Assert.Equal(editor.LineHeight, Y(5) - Y(2), 1);
+        ShowText(2, "Returns the Count & keeps stock ready.");
+        window.Close();
     }
 
     private void A_method_folds_to_its_signature_the_caret_steps_past_it_and_going_into_it_unfolds_it()
