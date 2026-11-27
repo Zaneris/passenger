@@ -1372,7 +1372,13 @@ public sealed partial class DebugController : IDisposable
                 {
                     made.MauiXaml = (BackgroundWork.Run(() => MauiXamlCode.Read(program, Path.GetDirectoryName(built)!)), path => CSharp.ServerPlaces.TextOf(editors, path));
                 }
-                made.XamlElementLine = (path, line, attribute, place) => CSharp.ServerPlaces.TextOf(editors, path) is { } text ? XamlBreakpoints.ElementLine(text, line, attribute, place) : null;
+                made.XamlElementPlace = (path, line, attribute, place) => CSharp.ServerPlaces.TextOf(editors, path) is { } text ? XamlBreakpoints.ElementPlace(text, line, attribute, place) : null;
+                if (made.XamlAtRunTime && plan is { Project: { } wpf } && plan.Workspace?.Projects.FirstOrDefault(p => PathNames.Same(p.Path, wpf)) is { Evaluated: not null } evaluated
+                    && (evaluated.Property(Passenger.Host.CarriedProperties.XamlDebuggingInformation) is not { } recorded || !recorded.Equals("true", StringComparison.OrdinalIgnoreCase)))
+                {
+                    made.XamlUnplaced = $"{Path.GetFileNameWithoutExtension(plan.Project)}'s build records no element's place in its XAML (XamlDebuggingInformation is off, as in a Release "
+                        + "build), so WPF tells of none and no XAML breakpoint can stop: debug a Debug build";
+                }
                 if (disposed || ending || tab.OpeningStopped || !view.Sessions.Contains(tab))
                 {
                     // Stopped as its adapter started, before there was a session to stop: its start fails as one stopped.

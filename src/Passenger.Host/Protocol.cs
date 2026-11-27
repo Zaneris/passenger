@@ -298,6 +298,10 @@ public static class CarriedProperties
     /// designer writes follows.</summary>
     public const string Nullable = "Nullable";
 
+    /// <summary>Whether WPF's markup compiler records each element's place in the BAML it makes ("true" in a Debug build),
+    /// which WPF tells a debugger of as the app reads it.</summary>
+    public const string XamlDebuggingInformation = "XamlDebuggingInformation";
+
     public static readonly IReadOnlyList<string> Names =
     [
         EnableSdkContainerSupport, ContainerRepository, ContainerImageName, ContainerBaseImage, DockerfileFile, DockerfileContext,
@@ -305,7 +309,7 @@ public static class CarriedProperties
         NuGetPackageRoot, NuGetPackageFolders, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
         DirectoryPackagesPropsPath, GodotProjectDir, GodotProjectDirBase64, UsingGodotNETSdk, StaticWebAssetBasePath, PackageId, AspireHostingSDKVersion,
         AndroidApplication, Configurations, Platforms, AzureFunctionsVersion, EnableAvaloniaXamlCompilation, MSBuildNames.UseMaui,
-        MSBuildNames.EnableMsixTooling, MSBuildNames.WindowsPackageType, Nullable,
+        MSBuildNames.EnableMsixTooling, MSBuildNames.WindowsPackageType, Nullable, XamlDebuggingInformation,
     ];
 }
 

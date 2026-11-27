@@ -343,22 +343,29 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
 
     /// <summary>Under Debug, a breakpoint on the line of a WPF page's element, and one on another element's attribute, each
     /// stop as their element joins the window from the page's BAML, the stop shown at the XAML with the element there to
-    /// read (its attribute set) and the app's own frames below; Continue goes on to the next.</summary>
+    /// read (its attribute set) and the app's own frames below; Continue goes on to the next, one on the second of two
+    /// elements on a line stopping at that one alone. Built with no XAML places recorded, each says why it cannot stop.</summary>
     private void A_breakpoint_on_a_wpf_pages_element_and_one_on_an_attribute_each_stop_at_its_xaml_as_the_element_joins_the_window()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        // Two elements on one line, which WPF tells apart by the column it records each at.
+        File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("<TextBlock x:Name=\"Hello\"",
+            "<TextBlock x:Name=\"Left\" Text=\"left\" /><TextBlock x:Name=\"Right\" Text=\"right\" />\r\n        <TextBlock x:Name=\"Hello\"", StringComparison.Ordinal));
         MainWindow window = Opened();
         Assert.Null(window.OpenFile(Xaml));
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;
         int count = Line(Xaml, "x:Name=\"Count\"") - 1;
         int hello = Line(Xaml, "x:Name=\"Hello\"") - 1;
+        int shared = Line(Xaml, "x:Name=\"Right\"") - 1;
         editor.GoTo(new TextPosition(count, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        editor.GoTo(new TextPosition(shared, File.ReadAllLines(Xaml)[shared].IndexOf("Text=\"right\"", StringComparison.Ordinal) + 1));
         Ui.Run(window, AppActions.ToggleBreakpoint);
         editor.GoTo(new TextPosition(hello, File.ReadAllLines(Xaml)[hello].IndexOf("Text=", StringComparison.Ordinal) + 1));
         Ui.Run(window, AppActions.ToggleBreakpoint);
         BreakpointStore store = window.Debugger.Breakpoints;
-        Assert.Equal([$"MainWindow.xaml:{count + 1}", $"MainWindow.xaml:{hello + 1} Text"], store.In(Xaml).Select(b => b.Location));
+        Assert.Equal([$"MainWindow.xaml:{count + 1}", $"MainWindow.xaml:{shared + 1} Text", $"MainWindow.xaml:{hello + 1} Text"], store.In(Xaml).Select(b => b.Location));
 
         Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
         DebugStop stop = Stopped(window, "the stop as Count joins the window");
@@ -374,10 +381,33 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
         session.StateChanged += (_, _) => resumed |= session.State != DebugState.Paused;
         Ui.Run(window, AppActions.Resume);
         Ui.WaitFor(() => resumed, "the program to go on");
+        stop = Stopped(window, "the stop as Right joins the window, and not Left, which starts on its line before it");
+        Assert.True(stop.Top?.Source?.Path == Xaml && stop.Top.Line == shared + 1, $"The second stop was shown at {stop.Top?.Source?.Path}:{stop.Top?.Line}, not Right's line {shared + 1}");
+        Assert.Equal("\"right\"", Ui.Await(session.EvaluateAsync("((System.Windows.Controls.TextBlock)element).Text", stop.Top!.Id, EvaluateContexts.Watch), "the element stopped at").Result);
+        resumed = false;
+        Ui.Run(window, AppActions.Resume);
+        Ui.WaitFor(() => resumed, "the program to go on");
         stop = Stopped(window, "the stop as Hello joins the window, its Text set");
-        Assert.True(stop.Top?.Source?.Path == Xaml && stop.Top.Line == hello + 1, $"The second stop was shown at {stop.Top?.Source?.Path}:{stop.Top?.Line}, not Hello's line {hello + 1}");
+        Assert.True(stop.Top?.Source?.Path == Xaml && stop.Top.Line == hello + 1, $"The third stop was shown at {stop.Top?.Source?.Path}:{stop.Top?.Line}, not Hello's line {hello + 1}");
         Assert.Equal("\"Nobody greeted\"", Ui.Await(session.EvaluateAsync("((System.Windows.Controls.TextBlock)element).Text", stop.Top!.Id, EvaluateContexts.Watch), "Hello's Text").Result);
         Stop(window);
+
+        // Built with no element's place recorded, as a Release build is, each XAML breakpoint says why it cannot stop.
+        string project = Directory.GetFiles(folder, "*.csproj").Single();
+        string built = File.ReadAllText(project);
+        File.WriteAllText(project, built.Replace("</Project>", "  <PropertyGroup>\r\n    <XamlDebuggingInformation>false</XamlDebuggingInformation>\r\n  </PropertyGroup>\r\n</Project>",
+            StringComparison.Ordinal));
+        try
+        {
+            Ui.Launched(window, window.DebugAsync(), "the app built with no XAML places to start under the debugger", TimeSpan.FromMinutes(4));
+            Ui.WaitFor(() => store.In(Xaml).All(b => b.Status == BreakpointStatus.Invalid && b.Message?.Contains("XamlDebuggingInformation", StringComparison.Ordinal) == true),
+                () => $"each XAML breakpoint to say why it cannot stop: {string.Join("; ", store.In(Xaml).Select(b => $"{b.Location} {b.Status} {b.Message}"))}", TimeSpan.FromMinutes(2));
+            Stop(window);
+        }
+        finally
+        {
+            File.WriteAllText(project, built);
+        }
         window.Close();
     }
 

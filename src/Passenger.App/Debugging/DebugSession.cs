@@ -1632,6 +1632,15 @@ public sealed class DebugSession
         List<MethodBreakpoint> methods = MethodsSending();
         List<LineBreakpoint> xaml = XamlSending();
         functionsSent = FunctionSignature();
+        if (XamlUnplaced is { } unplaced)
+        {
+            // None could stop: each says why, and none is sent.
+            foreach (IGrouping<string, LineBreakpoint> file in xaml.GroupBy(b => b.Path))
+            {
+                breakpoints.Report(this, file.Key, [.. file.Select(_ => (BreakpointStatus.Invalid, (string?)unplaced, (int?)null))], [.. file]);
+            }
+            xaml = [];
+        }
         List<DapFunctionBreakpoint> requests = [.. sending.Select(p => new DapFunctionBreakpoint(Inspector.Wire.Changed, EngineCondition(p), null, p.LogMessage, p.Suspend)),
             .. methods.Select(m => new DapFunctionBreakpoint(m.Name, m.Condition, m.HitCondition, m.LogMessage, m.Snapshot is null && m.Suspend, m.Key, m.WaitsFor?.Key, m.Temporary ? true : null,
                 m.Snapshot is null ? null : true, m.Snapshot?.Captures, m.Snapshot?.Limit))];
@@ -1795,15 +1804,21 @@ public sealed class DebugSession
     /// person's own condition after them.</summary>
     private string XamlCondition(LineBreakpoint breakpoint)
     {
-        int line = XamlElementLine?.Invoke(breakpoint.Path, breakpoint.Line, breakpoint.Attribute, breakpoint.Column ?? breakpoint.AttributeColumn) ?? breakpoint.Line;
+        (int line, int? column) = XamlElementPlace?.Invoke(breakpoint.Path, breakpoint.Line, breakpoint.Attribute, breakpoint.Column ?? breakpoint.AttributeColumn)
+            ?? (breakpoint.Line, null);
         string file = breakpoint.Path.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
-        return $"line == {lines.ToBuilt(breakpoint.Path, line) + 1} && file == \"{file}\"" + (breakpoint.Condition is { } condition ? $" && ({condition})" : string.Empty);
+        return $"line == {lines.ToBuilt(breakpoint.Path, line) + 1}" + (column is int at ? $" && column == {at}" : string.Empty) + $" && file == \"{file}\""
+            + (breakpoint.Condition is { } condition ? $" && ({condition})" : string.Empty);
     }
 
-    /// <summary>The line (from zero) of the element a breakpoint on a XAML line (or on an attribute there) stops as it is made:
-    /// the first element whose start tag begins on the line, else the one whose start tag holds it; given as the session
-    /// starts, from the file's text as the editor has it.</summary>
-    public Func<string, int, string?, int?, int?>? XamlElementLine { get; set; }
+    /// <summary>Where the element a breakpoint on a XAML line (or on an attribute there) stops as it is made starts
+    /// (<see cref="XamlBreakpoints.ElementPlace"/>): its line (from zero), and its name's column (from one) where another
+    /// element starts on that line; given as the session starts, from the file's text as the editor has it.</summary>
+    public Func<string, int, string?, int?, (int Line, int? Column)?>? XamlElementPlace { get; set; }
+
+    /// <summary>Why a WPF program's XAML breakpoints cannot stop, where its build records no element's place in its XAML
+    /// (XamlDebuggingInformation off, as in a Release build); null where they can. Set as the session starts.</summary>
+    public string? XamlUnplaced { get; set; }
 
     private string FunctionSignature()
     {

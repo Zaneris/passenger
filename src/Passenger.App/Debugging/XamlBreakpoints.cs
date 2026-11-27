@@ -93,11 +93,12 @@ public static class XamlBreakpoints
         return null;
     }
 
-    /// <summary>The line (from zero) of the element a breakpoint on a line (or on an attribute there) stops as it is made,
-    /// where the app reads its XAML as it runs (WPF's BAML) and tells of each element by its start tag's place alone: the
-    /// attribute's element; else the first element whose start tag begins on the line or holds a property it sets there.
-    /// Null when the line holds none.</summary>
-    public static int? ElementLine(TextSnapshot text, int line, string? attribute, int? column)
+    /// <summary>Where the element a breakpoint on a line (or on an attribute there) stops as it is made starts, where the app
+    /// reads its XAML as it runs (WPF's BAML) and tells of each element by its start tag's place alone: the attribute's
+    /// element, else the first element whose start tag begins on the line or holds a property it sets there. Its start tag's
+    /// line (from zero), and where another element starts on that line too its name's column (from one), as the app
+    /// records it, which tells the two apart. Null when the line holds none.</summary>
+    public static (int Line, int? Column)? ElementPlace(TextSnapshot text, int line, string? attribute, int? column)
     {
         if (line < 0 || line >= text.LineCount)
         {
@@ -105,7 +106,8 @@ public static class XamlBreakpoints
         }
         LineSpan span = text.GetLine(line);
         int? named = attribute is null ? null : AttributeRange(text, line, attribute, column)?.Start;
-        foreach (XmlElement element in XmlTree.Parse(text.ToString()).Elements)
+        IReadOnlyList<XmlElement> elements = XmlTree.Parse(text.ToString()).Elements;
+        foreach (XmlElement element in elements)
         {
             if (element.Start > span.End)
             {
@@ -116,7 +118,9 @@ public static class XamlBreakpoints
                     || element.Attributes.Any(a => Sets(a) && a.NameStart >= span.Start && a.NameStart < span.End));
             if (on)
             {
-                return text.GetPosition(element.Start).Line;
+                int starts = text.GetPosition(element.Start).Line;
+                bool shared = elements.Count(e => !e.IsPropertyElement && text.GetPosition(e.Start).Line == starts) > 1;
+                return (starts, shared ? text.GetPosition(element.NameStart).Column + 1 : null);
             }
         }
         return null;
