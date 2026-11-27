@@ -28,6 +28,39 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-27
+
+- `CommandLineTests`' `A_screenshot_wears_its_look_types_its_keys_on_the_settings_kept_and_writes_only_what_it_saves`,
+  CI 45962922022 (macOS report shard 2), at 494009d7e: "A screenshot with no state named left
+  /private/tmp/prun-4802/shot-0aeba820/passenger-screenshot-wLOBDt in the temporary folder it was given". **The IDE**: a
+  screenshot's own state was taken away only by its own end, so a write there after it (a line its log's thread wrote
+  late, a child still at work) made the folder again, or one under way kept it, and a screenshot killed left it whole;
+  which writer it was on CI's runner is not known, as neither the step nor the screenshot alone left it on the Mac, at
+  full speed or slowed to background priority. The watchdog now takes the state too, once the screenshot and its
+  children have gone, however it ended, and the step waits for that, naming what it finds left file by file
+  (cdde240f8); the class passes on the Mac, where a screenshot killed 4 s in now leaves nothing.
+- `AboutMacOSRulesTests`' `A_report_class_that_reaches_macOSs_own_behaviour_is_marked_to_run_there_and_a_marked_one_reaches_it`,
+  CI 45962922022 (Linux gate shard 2, Windows gate shard 2), at 494009d7e: "McpBuildNodesTests reaches macOS's own
+  behaviour, yet macOS's report lane passes it over: it takes the user's temporary folder, behind /var's link on macOS".
+  **The test**: McpBuildNodesTests' step for the temporary folder an agent's Passenger was given, new in 4f3c8518c
+  (#2373), reaches UserTemporary; the class carries [AboutMacOS] (3304097a7) and passes on the Mac, where it now runs,
+  and the rule passes on the Mac and both VMs.
+- `SameOnEverySystemRulesTests`' `A_class_marked_same_on_every_system_runs_nothing_that_behaves_otherwise_on_another`,
+  CI 45962922022 (Linux report shard 3, Windows report shard 3), at 494009d7e: "WatcherRulesTests's words name a system
+  (Windows)". **The test**: WatcherRulesTests' step for a link told apart by its attributes, new in 43aad9553 (#2346),
+  said in its failure where the cost comes as "off Windows" and "on macOS"; it names no system (28ef7a8fe), and the rule
+  passes on the Mac and both VMs.
+- `DebuggerRulesTests`' `A_debugging_tests_account_of_where_its_processes_stood_is_made_only_once_it_has_failed`, CI
+  45962922022 (Linux gate shard 1), at 494009d7e: "1 call describes where a debugging test's processes stood whether it
+  failed or not … tests/Passenger.Tests/HangReports.cs:112". **The test**: HangReports, new in 5944b3689 (#2272), wrote a
+  hung run's account of each program's stacks in a lambda, which the rule takes for words made whether a test failed or
+  not; the account goes through a member of its own, HangReports.Stacks, as DebugSession's and McpRig's do (d220bc18d).
+- `DebuggerRulesTests`' `A_row_the_debugger_adds_is_named_only_in_DapRows`, CI 45962922022 (Linux gate shard 1), at
+  494009d7e: "1 strings write a row's name outside DapRows … src/Passenger.App/Testing/TrxResults.cs:36: Results". **The
+  test**: TrxResults, new in b9f96e4dc (#2338), reads a TRX file's Results element, whose name the rule took for the
+  debugger's Results row; the rule tells a name joined to an XML namespace from a row's (5ee724c9c), and passes on the
+  Mac and both VMs.
+
 ## 2026-11-25
 
 - `AspireStandInTests`' `Aspire_services_are_debugged_and_hot_reloaded_or_run_on_saying_why_the_debugger_could_not_reach_them`,

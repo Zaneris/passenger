@@ -56,36 +56,19 @@ public static class RoslynServerFolder
         }
     }
 
-    /// <summary>A server's own temporary folder (TMPDIR) in <see cref="Temporaries"/>, named for this process first, those
-    /// of a process no longer running removed as it is made: a server clears away, as it first writes a library's code,
-    /// every other's code it cannot see running, and on macOS and Linux sees none in another session, where Passenger
-    /// starts each. Null where there is no <see cref="Temporaries"/>.</summary>
+    /// <summary>A server's own temporary folder (TMPDIR) in <see cref="Temporaries"/>, one of this process's own
+    /// (<see cref="UserTemporary.OfThisProcess"/>): a server clears away, as it first writes a library's code, every
+    /// other's code it cannot see running, and on macOS and Linux sees none in another session, where Passenger starts
+    /// each. Null where there is no <see cref="Temporaries"/>.</summary>
     public static string? TemporaryOf(string stateCache)
     {
         if (Temporaries(stateCache) is not { } temporaries)
         {
             return null;
         }
-        foreach (string left in Directory.EnumerateDirectories(temporaries))
-        {
-            string name = Path.GetFileName(left);
-            int dash = name.IndexOf('-', StringComparison.Ordinal);
-            if (dash > 0 && int.TryParse(name.AsSpan(0, dash), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int owner)
-                && owner != Environment.ProcessId && !DotnetProcesses.Runs(owner))
-            {
-                try
-                {
-                    Directory.Delete(left, recursive: true);
-                }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-                {
-                    PassengerLog.Write($"A C# language server's temporary folder stays, {left}: {error.Message}");
-                }
-            }
-        }
         try
         {
-            return UserTemporary.Own(Path.Combine(temporaries, $"{Environment.ProcessId}-{Interlocked.Increment(ref temporariesMade)}"));
+            return UserTemporary.OfThisProcess(temporaries, $"-{Interlocked.Increment(ref temporariesMade)}");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

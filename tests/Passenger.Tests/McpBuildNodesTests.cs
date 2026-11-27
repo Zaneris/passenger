@@ -12,10 +12,11 @@ using Passenger.Editor;
 
 namespace Passenger.Tests;
 
-/// <summary>The MSBuild nodes an agent's own Passenger's builds leave end with it, as it ends or is killed. MSBuild keeps
-/// a node only while the machine's count of nodes allows, which other builds beside it would take, so the class runs
-/// alone.</summary>
+/// <summary>The MSBuild nodes an agent's own Passenger's builds leave end with it, as it ends or is killed, and nothing its
+/// project host writes stays in its temporary folder. MSBuild keeps a node only while the machine's count of nodes allows,
+/// which other builds beside it would take, so the class runs alone.</summary>
 [Collection(Alone.Name)]
+[AboutMacOS]
 public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
 {
     /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>
@@ -24,15 +25,16 @@ public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
     public McpBuildNodesTests(RestoredFolders folders)
         : base(folders) => restored = folders;
 
-    /// <summary>The builds' processes as one flow, every step needing MSBuild to keep its nodes, each in an instance of
-    /// its own: the nodes a build leaves for the next ending with Passenger, each way it ends, and nothing a build of
-    /// Passenger's starts running on under its salt once Passenger ends.</summary>
+    /// <summary>The builds' processes as one flow, each step in an instance of its own: the nodes a build leaves for the next
+    /// ending with Passenger, each way it ends, nothing a build of Passenger's starts running on under its salt once
+    /// Passenger ends, and the project host leaving nothing in Passenger's temporary folder.</summary>
     [Fact]
     public async Task What_Passengers_builds_start_ends_with_Passenger_MSBuilds_nodes_too()
     {
         await Flow.StepApartAsync("the msbuild nodes a build leaves for the next end with passenger (false)", () => new McpBuildNodesTests(restored), t => t.The_msbuild_nodes_a_build_leaves_for_the_next_end_with_passenger(false));
         await Flow.StepApartAsync("the msbuild nodes a build leaves for the next end with passenger (true)", () => new McpBuildNodesTests(restored), t => t.The_msbuild_nodes_a_build_leaves_for_the_next_end_with_passenger(true));
         await Flow.StepApartAsync("nothing a build of passengers starts runs on under its salt once passenger ends", () => new McpBuildNodesTests(restored), t => t.Nothing_a_build_of_passengers_starts_runs_on_under_its_salt_once_passenger_ends());
+        await Flow.StepApartAsync("the project host leaves nothing in the temporary folder passenger was given once it ends", () => new McpBuildNodesTests(restored), t => t.The_project_host_leaves_nothing_in_the_temporary_folder_passenger_was_given_once_it_ends());
     }
 
     /// <summary>The MSBuild nodes a build of Passenger's leaves for its next build, which no other build takes up, end with
@@ -164,6 +166,75 @@ public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
         }
 
         static bool IsNode(string command) => command.Contains("/nodemode:1", StringComparison.Ordinal);
+    }
+
+    /// <summary>The project host, whose design-time builds for the language server write in MSBuild's temporary folder and
+    /// which Passenger ends as it ends, leaves nothing in the temporary folder Passenger was given.</summary>
+    private async Task The_project_host_leaves_nothing_in_the_temporary_folder_passenger_was_given_once_it_ends()
+    {
+        string folder = await TakeFolderAsync();
+        string given = GivenTemporary();
+        Process passenger = StartPassenger(["--mcp", folder], environment: TemporaryVariables(given));
+        McpClient? client = null;
+        try
+        {
+            client = await Connect(passenger, ["--mcp", folder]);
+            // Answered once the language server has the project loaded, which the host built at design time for it.
+            await Call(client, McpTools.Diagnostics, new() { ["path"] = "Program.cs" });
+            await client.DisposeAsync();
+            client = null;
+            Assert.True(passenger.WaitForExit(MainWindow.EndLimit + TimeSpan.FromSeconds(5).Scaled()), "Passenger did not end once its agent left");
+            await LeftNothingInAsync(given, passenger.Id, killed: false);
+        }
+        finally
+        {
+            ChildProcesses.Kill(passenger);
+            if (client is not null)
+            {
+                try
+                {
+                    await client.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+                }
+                catch (Exception gone) when (gone is IOException or TimeoutException or ObjectDisposedException or OperationCanceledException or InvalidOperationException)
+                {
+                    // The server is gone.
+                }
+            }
+        }
+    }
+
+    /// <summary>A temporary folder of the test's own for a Passenger, short as the run's is for the runtime's socket in it.</summary>
+    private string GivenTemporary()
+    {
+        string given = Directory.CreateDirectory(Path.Combine(TestRun.Temporary, $"tmp-{Guid.NewGuid():N}"[..12])).FullName;
+        DeleteAtEnd(given);
+        return given;
+    }
+
+    /// <summary>The variables naming a temporary folder: TMPDIR on macOS and Linux, TMP and TEMP on Windows.</summary>
+    private static Dictionary<string, string?> TemporaryVariables(string folder) => new() { ["TMPDIR"] = folder, ["TMP"] = folder, ["TEMP"] = folder };
+
+    /// <summary>What a Passenger ended or killed left in the temporary folder it was given, NuGet's scratch aside, which every
+    /// restore shares and keeps: nothing, what its project host and language servers write being in folders of its own in
+    /// its state's (<see cref="UserTemporary.OfThisProcess"/>), which the watchdog takes once Passenger and its children have
+    /// gone. On Windows, with no watchdog, the next Passenger takes them, and they lie in the temporary folder itself (the
+    /// user's own there), as do the language server's: there no folder of MSBuild's is left in it.</summary>
+    private async Task LeftNothingInAsync(string given, int passenger, bool killed)
+    {
+        string scratch = Path.GetFileName(NuGetScratch.In(given, OperatingSystem.IsLinux(), Environment.UserName));
+        string id = passenger.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string[] kept = [UserTemporary.Of(OwnState, SdkTemporary.Kind), UserTemporary.Of(Path.Combine(OwnState, "cache"), global::Passenger.Lsp.RoslynServerFolder.TemporariesKind)];
+        string[] left = [];
+        string[] own = [];
+        // The watchdog's work, and the runtime's own as each process ends, may still be under way.
+        await Waiting.UntilAsync(() => (left = [.. Directory.EnumerateFileSystemEntries(given).Select(Path.GetFileName).OfType<string>()
+                .Where(name => name != scratch && (!OperatingSystem.IsWindows() || name.StartsWith("MSBuildTemp", StringComparison.Ordinal)))]).Length == 0
+            && (own = OperatingSystem.IsWindows() ? [] : [.. kept.Where(Directory.Exists).SelectMany(Directory.EnumerateDirectories)
+                .Where(folder => Path.GetFileName(folder) is var name && (name == id || name.StartsWith(id + "-", StringComparison.Ordinal)))]).Length == 0,
+            TimeSpan.FromSeconds(10).Scaled(), TestContext.Current.CancellationToken, TimeSpan.FromMilliseconds(250));
+        Assert.True(left.Length == 0, $"After Passenger {(killed ? "was killed" : "ended")}, what it started left {string.Join(", ", left)} "
+            + "in the temporary folder it was given, a folder for each MSBuild process it ended");
+        Assert.True(own.Length == 0, $"After Passenger {(killed ? "was killed" : "ended")}, its own temporary folders stayed: {string.Join(", ", own)}");
     }
 
     /// <summary>Two projects of one solution, restored, each with a step of a few seconds, so a build of both runs one in a

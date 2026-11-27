@@ -80,7 +80,7 @@ public sealed class CommandLineTests : IDisposable
         await Flow.StepApartAsync("a crop reaching past the dialog the steps left in front ends the screenshot with exit code 2 saying so", () => new CommandLineTests(), t => t.A_crop_reaching_past_the_dialog_the_steps_left_in_front_ends_the_screenshot_with_exit_code_2_saying_so());
         await Flow.StepApartAsync("a screenshot s key takes a key as the character it types so meta comma opens settings", () => new CommandLineTests(), t => t.A_screenshot_s_key_takes_a_key_as_the_character_it_types_so_meta_comma_opens_settings());
         await Flow.StepApartAsync("a screenshot opens on the settings kept where its state is named and its keys type shifted characters", () => new CommandLineTests(), t => t.A_screenshot_opens_on_the_settings_kept_where_its_state_is_named_and_its_keys_type_shifted_characters());
-        await Flow.StepApartAsync("a screenshot writes no file its steps type into but one a step saves and says so", () => new CommandLineTests(), t => t.A_screenshot_writes_no_file_its_steps_type_into_but_one_a_step_saves_and_says_so());
+        await Flow.StepApartAsync("a screenshot writes no file its steps type into but one a step saves and says so and leaves no state of its own behind", () => new CommandLineTests(), t => t.A_screenshot_writes_no_file_its_steps_type_into_but_one_a_step_saves_and_says_so_and_leaves_no_state_of_its_own_behind());
     }
 
     /// <summary>A start failing before its log is set up leaves why in the log folder and the next start says it once,
@@ -365,12 +365,15 @@ public sealed class CommandLineTests : IDisposable
 
     /// <summary>A screenshot only looks: what its steps type stays in the editor, never written to the file, even when
     /// another program (here its --agent) writes the file meanwhile and the File Cache Conflict question takes the Escape
-    /// and Enter typed after; File, Save typed as a step writes it, and the run says on standard error that it did.</summary>
-    private async Task A_screenshot_writes_no_file_its_steps_type_into_but_one_a_step_saves_and_says_so()
+    /// and Enter typed after; File, Save typed as a step writes it, and the run says on standard error that it did. One
+    /// whose state no variable names keeps it in the temporary folder it is given, which it leaves as it found it.</summary>
+    private async Task A_screenshot_writes_no_file_its_steps_type_into_but_one_a_step_saves_and_says_so_and_leaves_no_state_of_its_own_behind()
     {
         string notes = Path.Combine(folder, "notes.txt");
         string agent = TestFolders.Create("disk-writer-");
         string state = TestFolders.Create("disk-writer-state-");
+        // Short, as the run's own is, for the runtime's socket in it.
+        string given = Directory.CreateDirectory(Path.Combine(TestRun.Temporary, $"shot-{Guid.NewGuid():N}"[..13])).FullName;
         string command;
         if (OperatingSystem.IsWindows())
         {
@@ -393,15 +396,26 @@ public sealed class CommandLineTests : IDisposable
                 $"What the steps typed was to stay out of notes.txt, which holds what the agent wrote; the run exited {code} ({error}) and the file holds:\n{held}");
 
             string save = OperatingSystem.IsMacOS() ? "meta+S" : "control+S";
-            (code, error) = await Run(["notes.txt", "--caret", "1:1", "--type", "saved ", "--key", save, "--size", "800x500", "--scale", "1", "--screenshot", "out.png"], state);
+            (code, error) = await Run(["notes.txt", "--caret", "1:1", "--type", "saved ", "--key", save, "--size", "800x500", "--scale", "1", "--screenshot", "out.png"], state,
+                environment: OperatingSystem.IsWindows() ? new Dictionary<string, string> { ["TMP"] = given, ["TEMP"] = given } : new Dictionary<string, string> { ["TMPDIR"] = given },
+                unset: [StateStore.Variable]);
             string saved = await File.ReadAllTextAsync(notes, TestContext.Current.CancellationToken);
             Assert.True(code == 0 && saved == "saved disk\n" && error.Contains("screenshot: wrote notes.txt", StringComparison.Ordinal),
                 $"File, Save as a step was to write what was typed and say so; the run exited {code} ({error}) and the file holds:\n{saved}");
+            // On Windows a log a server of the screenshot's still holds keeps its state there a while; NuGet's scratch every restore shares stays.
+            string scratch = Path.GetFileName(NuGetScratch.In(given, OperatingSystem.IsLinux(), Environment.UserName));
+            string[] left = [];
+            // The watchdog's work, once the screenshot and its children have gone, may still be under way.
+            await Waiting.UntilAsync(() => (left = OperatingSystem.IsWindows() ? [] : [.. Directory.EnumerateFileSystemEntries(given, "*", SearchOption.AllDirectories)
+                .Select(entry => Path.GetRelativePath(given, entry)).Where(entry => entry.Split(Path.DirectorySeparatorChar)[0] != scratch)]).Length == 0,
+                TimeSpan.FromSeconds(10).Scaled(), TestContext.Current.CancellationToken, TimeSpan.FromMilliseconds(250));
+            Assert.True(left.Length == 0, $"A screenshot with no state named left {string.Join(", ", left.Take(20))} in the temporary folder it was given, a folder for every screenshot taken");
         }
         finally
         {
             TestFolders.Delete(agent);
             TestFolders.Delete(state);
+            TestFolders.Delete(given);
             TestFolders.Delete(global::Passenger.App.Mcp.McpHost.SocketFolderFor(state));
         }
     }

@@ -157,6 +157,8 @@ public sealed class ProjectHost : IAsyncDisposable
         }
         // The installation MSBuild's SDK resolvers and tools take, which the helper host is no part of.
         ChildProcesses.NamingDotnet(start, folder);
+        // MSBuild's temporary folder in each of its processes, which one ended with the IDE has no time to take away.
+        SdkTemporary.Give(start);
         if (Dotnet.Translated)
         {
             // The locator finds its SDK where DOTNET_ROOT says, which may name the system's own rather than the x64 one chosen.

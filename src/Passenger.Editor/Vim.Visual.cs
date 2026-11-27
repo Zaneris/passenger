@@ -1015,6 +1015,11 @@ public sealed partial class Vim
         }
         if (own.End == own.Start && VimMotions.NextSentenceStart(text, own.Start) < text.Length)
         {
+            if (!inner && EmptyBelowBlanks(text, after, VimMotions.LastLine(text, breakEnds)) is { } lastEmptyStart)
+            {
+                // From blanks ending a line, and lines of blanks alone, before empty lines, as takes them all to the last empty line's start.
+                return r with { Cursor = lastEmptyStart };
+            }
             return own.Start > r.Cursor ? r with { Cursor = own.Start } : null;
         }
         if (next.Linewise && !inner && n == 1 && own.End > after && VimMotions.LineOf(text, own.End) is { Length: 0 } lastEmpty
@@ -1022,6 +1027,12 @@ public sealed partial class Vim
         {
             // Lines taken whole, from blanks alone to the last of the empty lines after them, end on that last one.
             return r with { Cursor = lastEmpty.Start };
+        }
+        if (!inner && n > 1 && CutShortBeforeBlanks(text, after, n, own.End) is { } left
+            && SentencesOn(text, r with { Cursor = VimMotions.StepBack(text, own.End) }, inner, left) is { } further)
+        {
+            // A count cut short at a sentence ending its line before lines of blanks alone and empty lines goes on from that sentence's end.
+            return further;
         }
         // Of the empty lines ending the text, the last is none to go to.
         return own.End > after ? r with { Cursor = VimMotions.StepBack(text, own.End) } : Ended(text, r, inner, n);
@@ -1134,8 +1145,17 @@ public sealed partial class Vim
             left--;
             begun = true;
         }
-        bool passWhite = false;
         bool landedAlone = false;
+        // is owes a white it passes with the sentence before it: from an empty line text follows, and by turns at each line break alone it crosses.
+        bool owed = false;
+        bool owesBefore = false;
+        // An empty line in a run that ends the text passes no white: is takes the white before the sentence it steps to.
+        int runLast = VimMotions.LineOf(text, at).Line;
+        while (fromStart && runLast < VimMotions.LastLine(text, breakEnds) && text.GetLine(runLast + 1).Length == 0)
+        {
+            runLast++;
+        }
+        bool endsText = fromStart && runLast == VimMotions.LastLine(text, breakEnds);
         // A walk begun inside a sentence or the white after one's mark, short of its line's end.
         bool begunInside = SentenceUnit(text, at) is var begunIn && (begunIn.Start < at || begunIn.White) && at < VimMotions.LineOf(text, at).End;
         // A line break alone between two sentences is no white: each is a step of its own.
@@ -1145,20 +1165,30 @@ public sealed partial class Vim
             (int Start, bool White) here = SentenceUnit(text, at);
             bool inside = here.Start < at;
             (int start, bool white) = inside ? here : SentenceUnit(text, VimMotions.StepBack(text, at));
-            // After a step to an empty line alone, is takes the blanks ending the line above it with it.
-            if ((passWhite || (passesAtEmpty && fromEmpty) || (inner && landedAlone)) && white && start > 0)
+            // After a step to an empty line alone, or while it owes one, is takes the white it meets next with the sentence before it.
+            bool passed = ((passesAtEmpty && fromEmpty) || (inner && (landedAlone || owed))) && white && start > 0;
+            if (passed)
             {
                 (start, white) = SentenceUnit(text, VimMotions.StepBack(text, start));
             }
-            passWhite = inner && fromEmpty && !white && fromStart;
+            owed = (!passed && owed != (!inside && !white && BreakAloneBefore(text, at) && start < VimMotions.LineOf(text, at).Start))
+                || (inner && fromEmpty && !white && fromStart && !endsText);
             fromStart = false;
             reached = fromEmpty && (reached || left < (begun ? n : n - 1));
             at = start;
             landedAlone = LoneEmpty(text, at);
-            if (!inner && (white || inside || here.White || reached) && at > 0 && SentenceUnit(text, VimMotions.StepBack(text, at)) is var before
+            bool owing = owesBefore;
+            bool wants = white || inside || here.White || reached || owing;
+            owesBefore = false;
+            if (!inner && wants && at > 0 && SentenceUnit(text, VimMotions.StepBack(text, at)) is var before
                 && before.White != white)
             {
                 at = before.Start;
+            }
+            else if (!inner && (inside || reached || owing) && !white && BreakAloneBefore(text, at))
+            {
+                // A sentence with no white after it taken and a line break alone before it has none to take: as takes the white before the next sentence instead.
+                owesBefore = true;
             }
             else if (!inner && landedAlone && begunInside && text.GetLine(text.GetLineFromOffset(at) - 1) is var above && WhiteEnding(text, above.Line) is var blanks
                 && blanks > above.Start && blanks < above.End)
@@ -1169,6 +1199,10 @@ public sealed partial class Vim
         }
         return at;
     }
+
+    /// <summary>Whether an offset opens its line with a character that is no blank, below a line of text ending in none.</summary>
+    private static bool BreakAloneBefore(TextSnapshot text, int at) => VimMotions.LineOf(text, at) is { Line: > 0 } line && line.Start == at && at < line.End
+        && text[at] is not (' ' or '\t') && text.GetLine(line.Line - 1) is { Length: > 0 } above && text[above.End - 1] is not (' ' or '\t');
 
     /// <summary>Whether an offset is the start of an empty line between two lines of text, the one below opening with a
     /// character that is no blank, end mark or closer.</summary>
@@ -1221,6 +1255,47 @@ public sealed partial class Vim
             line++;
         }
         return line;
+    }
+
+    /// <summary>How much of a count of as from <paramref name="from"/> is left where the sentences it takes, ending at
+    /// <paramref name="end"/>, stop short at a sentence ending its line before lines of blanks alone and then an empty
+    /// line; null where the count is used up or other lines follow.</summary>
+    private int? CutShortBeforeBlanks(TextSnapshot text, int from, int n, int end)
+    {
+        LineSpan line = VimMotions.LineOf(text, end);
+        int lastLine = VimMotions.LastLine(text, breakEnds);
+        if (end <= from || line.Length == 0 || end != line.End || line.Line >= lastLine
+            || text.GetLine(line.Line + 1) is not { Length: > 0 } blanks || TextNavigation.IndentEnd(text, blanks) != blanks.End || BelowBlanks(text, line.EndIncludingBreak, lastLine) is var below && (below > lastLine || text.GetLine(below).Length > 0))
+        {
+            return null;
+        }
+        int taken = 1;
+        while (taken < n && VimTextObjects.Of(text, from, "s", inner: false, taken, breakEnds) is { } fewer && OwnLine(text, fewer).End < end)
+        {
+            taken++;
+        }
+        return taken < n ? n - taken : null;
+    }
+
+    /// <summary>From blanks that end their line, the start of the last of the empty lines after it and the lines of blanks
+    /// alone that follow it, where a line that is not empty comes after them; null otherwise.</summary>
+    private static int? EmptyBelowBlanks(TextSnapshot text, int offset, int lastLine)
+    {
+        LineSpan line = VimMotions.LineOf(text, offset);
+        if (offset >= line.End || !VimMotions.BlanksTo(text, offset, line.End))
+        {
+            return null;
+        }
+        int empty = BelowBlanks(text, offset, lastLine);
+        if (empty > lastLine || text.GetLine(empty).Length > 0)
+        {
+            return null;
+        }
+        while (empty < lastLine && text.GetLine(empty + 1).Length == 0)
+        {
+            empty++;
+        }
+        return empty < lastLine ? text.GetLineStart(empty) : null;
     }
 
     /// <summary>Whether an offset is a blank of the white after a mark ending a sentence on its line.</summary>

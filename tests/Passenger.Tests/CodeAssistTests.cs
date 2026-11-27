@@ -2355,7 +2355,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         string before = decompiled.Text.Snapshot.ToString();
         string readOnly = $"{decompiled.Name} is read-only";
         HashSet<string> reading = [EditorActions.Unfold, EditorActions.UnfoldAll, EditorActions.Fold, EditorActions.FoldToDefinitions, EditorActions.FoldAll,
-            EditorActions.UnfoldDocComments, EditorActions.FoldDocComments, EditorActions.ToggleFold, AppActions.ToggleSolutionAnalysis, AppActions.RestartCSharpServer,
+            EditorActions.UnfoldDocComments, EditorActions.FoldDocComments, EditorActions.ToggleFold, EditorActions.UnfoldRecursively, EditorActions.FoldRecursively,
+            .. EditorActions.UnfoldToLevels, .. EditorActions.UnfoldAllToLevels, AppActions.ToggleSolutionAnalysis, AppActions.RestartCSharpServer,
             AppActions.FindClones, AppActions.FindClonesOfSelection];
         HashSet<string> elsewhere = [AppActions.CreateFake];
         HashSet<string> otherLanguage = [AppActions.OrderScriptParts, AppActions.ExtractResource, AppActions.ExtractStyle];
