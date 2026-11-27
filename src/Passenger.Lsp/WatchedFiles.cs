@@ -24,6 +24,9 @@ public sealed class WatchedFiles
     private readonly Lock gate = new();
     private readonly Registrations<FileWatch> registered = new();
 
+    /// <summary>The watchers by folder as last made (<see cref="Index"/>), of the list it was made from.</summary>
+    private WatchIndex? index;
+
     /// <summary>The latest change of each file no watcher covered as it was told, kept until one does.</summary>
     private readonly Dictionary<string, FileChangeType> kept = new(PathNames.Comparer);
 
@@ -97,6 +100,22 @@ public sealed class WatchedFiles
             }
         }
     }
+
+    /// <summary>Every watcher registered now by the folder it is under, made again only as it is read after a registration
+    /// came or went, as <see cref="Watches"/> is.</summary>
+    public WatchIndex Index
+    {
+        get
+        {
+            lock (gate)
+            {
+                return Indexed();
+            }
+        }
+    }
+
+    /// <summary>The index as it stands, under the gate.</summary>
+    private WatchIndex Indexed() => index is { } made && ReferenceEquals(made.All, registered.All) ? made : index = new WatchIndex(registered.All);
 
     /// <summary>A registration's watchers taken as the server gave them (one with none it can read kept as none), and the
     /// changes kept for it told now.</summary>
@@ -388,10 +407,10 @@ public sealed class WatchedFiles
         List<FileEvent> covered = [];
         lock (gate)
         {
-            IReadOnlyList<FileWatch> watches = registered.All;
+            WatchIndex watches = Indexed();
             foreach (FileEvent change in events)
             {
-                if (watches.Any(watch => watch.Covers(change)))
+                if (watches.Covers(change))
                 {
                     covered.Add(change);
                 }
@@ -455,8 +474,8 @@ public sealed class WatchedFiles
     /// cannot be asked.</summary>
     public async Task<IReadOnlyList<FileEvent>> ReferencedAsync(IReadOnlyList<FileEvent> changes, CancellationToken cancel)
     {
-        IReadOnlyList<FileWatch> now = Watches;
-        List<string> asked = [.. changes.Where(c => now.Any(w => w.EveryAssembly && w.Covers(c)) && !now.Any(w => !w.EveryAssembly && w.Covers(c))).Select(c => c.Path)];
+        WatchIndex now = Index;
+        List<string> asked = [.. changes.Where(now.CoveredByEveryAssemblyAlone).Select(c => c.Path)];
         if (asked.Count == 0 || server.ExtensionProblem is not null)
         {
             return changes;
@@ -533,222 +552,4 @@ public sealed class WatchedFiles
             Sent?.Invoke(this, changes);
         }
     }
-}
-
-/// <summary>A change on disk as the protocol numbers it.</summary>
-public enum FileChangeType
-{
-    Created = 1,
-    Changed = 2,
-    Deleted = 3,
-}
-
-/// <summary>A file or folder changed on disk, by its canonical path.</summary>
-public readonly record struct FileEvent(string Path, FileChangeType Change);
-
-/// <summary>One watcher a server registered: the paths under <see cref="Folder"/> whose names from it match
-/// <see cref="Pattern"/> (with no folder, whole paths that match it), for the changes of <see cref="Kinds"/>.</summary>
-public sealed record FileWatch(string? Folder, string Pattern, WatchKinds Kinds)
-{
-    /// <summary>The watcher as a log shows it.</summary>
-    public string Shown => $"{Folder}{(Folder is null ? "" : " ")}{Pattern} ({Kinds})";
-
-    /// <summary>What a file's name must end with, or be, for each pattern: read from its last name (<c>*.cs</c>,
-    /// <c>*.{cs,csx}</c>, <c>*Tests.cs</c>, <c>project.assets.json</c>); none where any name may match it.</summary>
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Text, bool Whole)[]> NamesOfPattern = new(StringComparer.Ordinal);
-
-    /// <summary>Whether a file of this name may match the glob, by its last name alone and in any letter case: false only
-    /// for a name it never matches, told without a string made.</summary>
-    public bool MayMatch(ReadOnlySpan<char> name)
-    {
-        (string Text, bool Whole)[] names = NamesOfPattern.GetOrAdd(Pattern, NamesOf);
-        if (names.Length == 0)
-        {
-            return true;
-        }
-        foreach ((string text, bool whole) in names)
-        {
-            if (whole ? name.Equals(text, StringComparison.OrdinalIgnoreCase) : name.EndsWith(text, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /// <summary>What a pattern's last name asks a file's name to end with or be, each choice's where the whole pattern is
-    /// one brace of them; none where it is not of those shapes.</summary>
-    private static (string Text, bool Whole)[] NamesOf(string pattern)
-    {
-        string[] choices = ChoicesOf.GetOrAdd(pattern, Choices);
-        if (choices.Length > 1)
-        {
-            (string Text, bool Whole)[][] each = [.. choices.Select(NamesOf)];
-            return each.Any(names => names.Length == 0) ? [] : [.. each.SelectMany(names => names).Distinct()];
-        }
-        string last = pattern[(pattern.LastIndexOf('/') + 1)..];
-        if (last.Length == 0 || last.IndexOfAny(['?', '[', ']', '!', '}']) >= 0 && !last.StartsWith("*.{", StringComparison.Ordinal))
-        {
-            return [];
-        }
-        if (last.StartsWith("*.{", StringComparison.Ordinal))
-        {
-            string inner = last[3..];
-            return inner.EndsWith('}') && inner[..^1] is var alternatives && alternatives.IndexOfAny(['*', '?', '[', ']', '{', '}', '!', '/']) < 0
-                ? [.. alternatives.Split(',').Select(a => ("." + a, false))]
-                : [];
-        }
-        if (last[0] == '*')
-        {
-            string rest = last[1..];
-            return rest.Length == 0 || rest.IndexOfAny(['*', '{']) >= 0 ? [] : [(rest, false)];
-        }
-        return last.IndexOfAny(['*', '{']) >= 0 ? [] : [(last, true)];
-    }
-
-    /// <summary>Whether the watcher takes every assembly under its folder however deep (<c>**/*.dll</c> alone): a folder of
-    /// reference assemblies watched whole rather than file by file, as Roslyn's server watches the .NET installation's packs.</summary>
-    public bool EveryAssembly => Folder is not null && Pattern == "**/*.dll";
-
-    /// <summary>Whether the pattern reaches into the folders under <see cref="Folder"/>, where it can match a path of more
-    /// than one name.</summary>
-    public bool Recursive => Pattern.Contains('/', StringComparison.Ordinal) || Pattern.Contains("**", StringComparison.Ordinal);
-
-    /// <summary>Whether the watcher asks for this change of this path.</summary>
-    public bool Covers(FileEvent change)
-    {
-        WatchKinds kind = change.Change switch
-        {
-            FileChangeType.Created => WatchKinds.Create,
-            FileChangeType.Deleted => WatchKinds.Delete,
-            _ => WatchKinds.Change,
-        };
-        return (Kinds & kind) != 0 && Matches(change.Path);
-    }
-
-    /// <summary>Whether the watcher's glob matches a path, whatever changed there: a path outside its folder, or whose name
-    /// its glob's last name cannot match (<see cref="MayMatch"/>), told without a string made, as a build's churn is.</summary>
-    public bool Matches(string path)
-    {
-        if (Folder is not null && !PathNames.IsUnder(path, Folder) || !MayMatch(Path.GetFileName(path.AsSpan())))
-        {
-            return false;
-        }
-        string named = Folder is null ? PathNames.Slashed(path) : PathNames.Relative(path, Folder) ?? path;
-        string relative = "/" + named.TrimStart('/');
-        foreach (string choice in ChoicesOf.GetOrAdd(Pattern, Choices))
-        {
-            string glob = "/" + choice.TrimStart('/');
-            // Where the path's folder takes names in any letter case, so does the glob.
-            if (EditorConfig.Matches(glob, relative)
-                || EditorConfig.Matches(glob.ToLowerInvariant(), relative.ToLowerInvariant()) && PathNames.CaseIgnoredIn(Path.GetDirectoryName(path) ?? path))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /// <summary>Each pattern's choices (<see cref="Choices"/>).</summary>
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string[]> ChoicesOf = new(StringComparer.Ordinal);
-
-    /// <summary>A pattern whose whole is one brace of choices (<c>{**/*.cs,**/*.csproj}</c>) as its choices, each matched as
-    /// a pattern of its own, so one starting <c>**/</c> matches a file in the folder itself, as it would alone; any other
-    /// pattern as itself.</summary>
-    private static string[] Choices(string pattern)
-    {
-        if (pattern.Length < 2 || pattern[0] != '{' || pattern[^1] != '}')
-        {
-            return [pattern];
-        }
-        List<string> choices = [];
-        int depth = 0;
-        int start = 1;
-        for (int i = 1; i < pattern.Length - 1; i++)
-        {
-            switch (pattern[i])
-            {
-                case '\\':
-                    i++;
-                    break;
-                case '{':
-                    depth++;
-                    break;
-                case '}' when depth == 0:
-                    // The first brace closes before the end: the pattern is more than one brace.
-                    return [pattern];
-                case '}':
-                    depth--;
-                    break;
-                case ',' when depth == 0:
-                    choices.Add(pattern[start..i]);
-                    start = i + 1;
-                    break;
-            }
-        }
-        choices.Add(pattern[start..^1]);
-        return depth == 0 ? [.. choices] : [pattern];
-    }
-
-    /// <summary>Whether a folder may hold a path the watcher matches, or lies on the way down to its folder: one under its
-    /// folder no deeper than the glob's names reach (any depth past a <c>**</c>), or one over it.</summary>
-    public bool Reaches(string folder)
-    {
-        if (Folder is null)
-        {
-            return Recursive;
-        }
-        if (PathNames.Within(Folder, folder))
-        {
-            return true;
-        }
-        if (!PathNames.IsUnder(folder, Folder))
-        {
-            return false;
-        }
-        if (Pattern.Contains("**", StringComparison.Ordinal))
-        {
-            return true;
-        }
-        int names = 1;
-        foreach (char at in PathNames.Below(folder, Folder))
-        {
-            names += PathNames.Separators.Contains(at) ? 1 : 0;
-        }
-        return names <= Pattern.Trim('/').Count('/');
-    }
-
-    /// <summary>A watcher as the protocol gives it: its glob a string, or a pattern relative to a folder or workspace
-    /// folder's URI; its kinds every change unless it names them. Null for one that cannot be read.</summary>
-    internal static FileWatch? Read(JsonElement watcher)
-    {
-        if (JsonMembers.Value(watcher, "globPattern") is not { } glob)
-        {
-            return null;
-        }
-        WatchKinds kinds = JsonMembers.Number(watcher, "kind") is { } given ? (WatchKinds)given : WatchKinds.All;
-        if (glob.ValueKind == JsonValueKind.String)
-        {
-            return new FileWatch(null, glob.GetString()!, kinds);
-        }
-        if (JsonMembers.Text(glob, "pattern") is not { } pattern || JsonMembers.Value(glob, "baseUri") is not { } place)
-        {
-            return null;
-        }
-        string? uri = place.ValueKind == JsonValueKind.String ? place.GetString() : JsonMembers.Text(place, "uri");
-        return uri is not null && Uri.TryCreate(uri, UriKind.Absolute, out Uri? parsed) && parsed.IsFile
-            ? new FileWatch(DocumentUris.ToPath(uri), pattern, kinds)
-            : null;
-    }
-}
-
-/// <summary>The kinds of change a watcher asks for, as the protocol's flags.</summary>
-[Flags]
-public enum WatchKinds
-{
-    None = 0,
-    Create = 1,
-    Change = 2,
-    Delete = 4,
-    All = Create | Change | Delete,
 }

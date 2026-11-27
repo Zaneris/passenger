@@ -302,7 +302,7 @@ public static partial class ProjectTemplates
 
         protected override bool Kept(string path) => PathNames.Same(path, Top) || IsSource(path);
 
-        protected override bool Records(string at, string name, bool folder) => !PathNames.Same(at, Top) || Sources.Contains(name, PathNames.NamesIn(Top));
+        protected override bool Records(string at, string name, string path, bool folder) => !PathNames.Same(at, Top) || Sources.Contains(name, PathNames.NamesIn(Top));
 
         /// <summary>A source folder come or gone, an entry in one, or the install itself, which changes lost are noted at.</summary>
         protected override Notice Noticed(string path, bool created) =>

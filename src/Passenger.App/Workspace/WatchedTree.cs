@@ -342,9 +342,9 @@ public abstract class WatchedTree : IDisposable
     /// <summary>Whether a folder, the top or one under it, is watched and recorded, and walked into.</summary>
     protected abstract bool Kept(string path);
 
-    /// <summary>Whether a kept folder's entry is recorded, and so found come, gone or written by a listing: every one,
-    /// unless the watcher wants fewer.</summary>
-    protected virtual bool Records(string at, string name, bool folder) => true;
+    /// <summary>Whether a kept folder's entry, by its folder, name and path, is recorded, and so found come, gone or written
+    /// by a listing: every one, unless the watcher wants fewer.</summary>
+    protected virtual bool Records(string at, string name, string path, bool folder) => true;
 
     /// <summary>Whether a folder's entry, by its name, may be one <see cref="Records"/> keeps, asked before a walk makes a
     /// string of it: an entry it says no to is passed over as if not there (a build's output no registration can match).</summary>
@@ -910,10 +910,12 @@ public abstract class WatchedTree : IDisposable
             {
                 continue;
             }
-            Keep(at, entries.Stamp, Recorded(at, entries.Entries));
-            foreach (Entry entry in entries.Entries)
+            string[] paths = Paths(at, entries.Entries);
+            Keep(at, entries.Stamp, Recorded(at, entries.Entries, paths));
+            for (int i = 0; i < paths.Length; i++)
             {
-                string path = Path.Join(at, entry.Name);
+                Entry entry = entries.Entries[i];
+                string path = paths[i];
                 // A linked folder is not followed, since it can loop.
                 if (entry.Folder && !entry.Link && Kept(path))
                 {
@@ -959,8 +961,30 @@ public abstract class WatchedTree : IDisposable
         }
     }
 
-    /// <summary>The entries of a folder's listing the record keeps.</summary>
-    private List<Entry> Recorded(string at, List<Entry> entries) => [.. entries.Where(entry => entry.Passed && Records(at, entry.Name, entry.Folder))];
+    /// <summary>The entries of a folder's listing the record keeps, by their paths (<see cref="Paths"/>).</summary>
+    private List<Entry> Recorded(string at, List<Entry> entries, string[] paths)
+    {
+        List<Entry> recorded = new(entries.Count);
+        for (int i = 0; i < entries.Count; i++)
+        {
+            if (entries[i].Passed && Records(at, entries[i].Name, paths[i], entries[i].Folder))
+            {
+                recorded.Add(entries[i]);
+            }
+        }
+        return recorded;
+    }
+
+    /// <summary>Each entry's path in a folder's listing, made once for all that asks of it.</summary>
+    private static string[] Paths(string at, List<Entry> entries)
+    {
+        string[] paths = new string[entries.Count];
+        for (int i = 0; i < paths.Length; i++)
+        {
+            paths[i] = Path.Join(at, entries[i].Name);
+        }
+        return paths;
+    }
 
     private static readonly EnumerationOptions Everything = new() { AttributesToSkip = 0, IgnoreInaccessible = false, RecurseSubdirectories = false };
 
@@ -1002,7 +1026,7 @@ public abstract class WatchedTree : IDisposable
                 continue;
             }
             string name = Path.GetFileName(seen.Path);
-            if (seen.There && Records(parent, name, seen.Folder))
+            if (seen.There && Records(parent, name, seen.Path, seen.Folder))
             {
                 recorded += listed.Names.Add(name) ? 1 : 0;
                 if (seen.Folder && !record.ContainsKey(seen.Path) && Kept(seen.Path))
@@ -1237,7 +1261,7 @@ public abstract class WatchedTree : IDisposable
             {
                 return null;
             }
-            List<Entry> entries = Recorded(at, now.Entries);
+            List<Entry> entries = Recorded(at, now.Entries, Paths(at, now.Entries));
             HashSet<string> names = new(entries.Select(e => e.Name), StringComparer.Ordinal);
             foreach (string name in was.Names.Where(n => !names.Contains(n)))
             {

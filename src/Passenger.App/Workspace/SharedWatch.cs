@@ -143,21 +143,14 @@ internal sealed unsafe partial class SharedWatch : IDisposable
 
         private static readonly string Home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) is { Length: > 0 } home ? PathNames.Canonical(home) : "/";
 
-        /// <summary>The folders read for, as one snapshot the watcher's thread reads without the gate.</summary>
-        private Readers readers = Readers.None;
-
         /// <summary>How many holds on the reading are let go of not yet, under the gate.</summary>
         private int holds;
 
         /// <summary>The folder read, with all below it.</summary>
         public string Top { get; } = top;
 
-        /// <summary>The folders read for; changed under the gate.</summary>
-        protected Readers Reading
-        {
-            get => Volatile.Read(ref readers);
-            set => Volatile.Write(ref readers, value);
-        }
+        /// <summary>The folders read for, which the watcher's thread reads without the gate; changed under it.</summary>
+        protected Readers Reading { get; } = new();
 
         public static IReadOnlyList<string> Folders
         {
@@ -179,7 +172,7 @@ internal sealed unsafe partial class SharedWatch : IDisposable
             {
                 if (Open.Where(s => PathNames.Within(events.Folder, s.Top)).MaxBy(s => s.Top.Length) is { } reading)
                 {
-                    reading.Reading = reading.Reading.With([events]);
+                    reading.Reading.Add(events);
                     Volatile.Write(ref events.source, reading);
                     return;
                 }
@@ -205,8 +198,8 @@ internal sealed unsafe partial class SharedWatch : IDisposable
                     return;
                 }
                 Volatile.Write(ref events.source, null);
-                reading.Reading = reading.Reading.Without(events);
-                if (reading.Reading.Every.Count == 0 && Open.Remove(reading))
+                reading.Reading.Remove(events);
+                if (reading.Reading.Count == 0 && Open.Remove(reading))
                 {
                     reading.End();
                 }
@@ -250,7 +243,7 @@ internal sealed unsafe partial class SharedWatch : IDisposable
         private static void Start(string top, List<SharedWatch> reading)
         {
             Source started = OperatingSystem.IsMacOS() ? new MacStream(top) : new WindowsWatcher(top);
-            started.Reading = Readers.None.With(reading);
+            reading.ForEach(started.Reading.Add);
             started.Begin();
             Open.Add(started);
             reading.ForEach(e => Volatile.Write(ref e.source, started));
@@ -344,7 +337,7 @@ internal sealed unsafe partial class SharedWatch : IDisposable
             // Its last release lets go of this object's handle (Release).
             FSEventStreamRelease(stream);
             dispatch_release(queue);
-            Reading = Readers.None;
+            Reading.Clear();
         }
 
         protected override void Retire()
@@ -452,7 +445,7 @@ internal sealed unsafe partial class SharedWatch : IDisposable
         protected override void End()
         {
             watcher?.Dispose();
-            Reading = Readers.None;
+            Reading.Clear();
         }
 
         protected override void Retire()
@@ -468,31 +461,65 @@ internal sealed unsafe partial class SharedWatch : IDisposable
         }
     }
 
-    /// <summary>The folders a watcher reads for, by each folder (named as the system's events name them, case aside), made
-    /// anew for each change so the watcher's thread reads it without a lock.</summary>
+    /// <summary>The folders a watcher reads for, by each folder (named as the system's events name them, case aside), which
+    /// the watcher's thread reads without a lock: each folder's readers replaced whole as one comes or goes, under the gate,
+    /// so one more costs what its folder's readers do, never all of them again.</summary>
     private sealed class Readers
     {
-        public static readonly Readers None = new([]);
+        private readonly ConcurrentDictionary<string, SharedWatch[]> byName = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, SharedWatch[]>.AlternateLookup<ReadOnlySpan<char>> lookup;
 
-        private readonly Dictionary<string, SharedWatch[]>.AlternateLookup<ReadOnlySpan<char>> byName;
+        /// <summary>Every folder read for, under the gate.</summary>
+        private readonly HashSet<SharedWatch> every = [];
 
-        /// <summary>The lengths of the shortest and longest folder read for, between which a path's folders are looked up.</summary>
-        private readonly int shortest;
-        private readonly int longest;
+        /// <summary>The lengths of the shortest and longest folder read for, between which a path's folders are looked up;
+        /// widened as folders come, never narrowed until cleared.</summary>
+        private int shortest = int.MaxValue;
+        private int longest;
 
-        private Readers(List<SharedWatch> every)
+        public Readers() => lookup = byName.GetAlternateLookup<ReadOnlySpan<char>>();
+
+        /// <summary>How many folders are read for, under the gate.</summary>
+        public int Count => every.Count;
+
+        /// <summary>Every folder read for, under the gate.</summary>
+        public List<SharedWatch> Every => [.. every];
+
+        /// <summary>A folder read for from now on, under the gate.</summary>
+        public void Add(SharedWatch events)
         {
-            Every = every;
-            byName = every.GroupBy(e => e.Folder, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.ToArray(), StringComparer.OrdinalIgnoreCase)
-                .GetAlternateLookup<ReadOnlySpan<char>>();
-            (shortest, longest) = every.Count == 0 ? (int.MaxValue, 0) : (every.Min(e => e.Folder.Length), every.Max(e => e.Folder.Length));
+            every.Add(events);
+            byName.AddOrUpdate(events.Folder, static (_, added) => [added], static (_, were, added) => [.. were, added], events);
+            Volatile.Write(ref shortest, Math.Min(shortest, events.Folder.Length));
+            Volatile.Write(ref longest, Math.Max(longest, events.Folder.Length));
         }
 
-        public List<SharedWatch> Every { get; }
+        /// <summary>A folder read for no longer, under the gate.</summary>
+        public void Remove(SharedWatch gone)
+        {
+            every.Remove(gone);
+            if (byName.TryGetValue(gone.Folder, out SharedWatch[]? were))
+            {
+                SharedWatch[] left = [.. were.Where(e => e != gone)];
+                if (left.Length == 0)
+                {
+                    byName.TryRemove(gone.Folder, out _);
+                }
+                else
+                {
+                    byName[gone.Folder] = left;
+                }
+            }
+        }
 
-        public Readers With(List<SharedWatch> more) => new([.. Every, .. more]);
-
-        public Readers Without(SharedWatch gone) => new([.. Every.Where(e => e != gone)]);
+        /// <summary>No folder read for any more, under the gate: what the watcher hands over after reaches none.</summary>
+        public void Clear()
+        {
+            every.Clear();
+            byName.Clear();
+            Volatile.Write(ref shortest, int.MaxValue);
+            Volatile.Write(ref longest, 0);
+        }
 
         /// <summary>Hands an event to each folder above its path up to <paramref name="top"/>, and to each folder it may say
         /// something more of (<see cref="FolderEvents.Reaches"/>): the watcher's own word (a drop, its folder moved, its
@@ -504,13 +531,17 @@ internal sealed unsafe partial class SharedWatch : IDisposable
                 Reaching(path, flags);
                 return;
             }
-            ReadOnlySpan<char> at = Path.TrimEndingDirectorySeparator(path.AsSpan());
-            int least = Math.Max(Path.TrimEndingDirectorySeparator(top.AsSpan()).Length, shortest);
-            for (int end = at.LastIndexOfAny(PathNames.Separators); end >= least && end > 0; end = at[..end].LastIndexOfAny(PathNames.Separators))
+            int least = Math.Max(Path.TrimEndingDirectorySeparator(top.AsSpan()).Length, Volatile.Read(ref shortest));
+            int most = Volatile.Read(ref longest);
+            foreach (ReadOnlySpan<char> above in PathNames.Above(path))
             {
-                if (end <= longest && byName.TryGetValue(at[..end], out SharedWatch[]? above))
+                if (above.Length < least || above.Length == 0)
                 {
-                    foreach (SharedWatch each in above)
+                    break;
+                }
+                if (above.Length <= most && lookup.TryGetValue(above, out SharedWatch[]? readers))
+                {
+                    foreach (SharedWatch each in readers)
                     {
                         each.Take(path, flags);
                     }
@@ -525,11 +556,14 @@ internal sealed unsafe partial class SharedWatch : IDisposable
         /// <summary>Hands an event to each folder it reaches past those above its path.</summary>
         private void Reaching(string path, uint flags)
         {
-            foreach (SharedWatch each in Every)
+            foreach (KeyValuePair<string, SharedWatch[]> folder in byName)
             {
-                if (FolderEvents.Reaches(path, flags, each.Folder))
+                foreach (SharedWatch each in folder.Value)
                 {
-                    each.Take(path, flags);
+                    if (FolderEvents.Reaches(path, flags, each.Folder))
+                    {
+                        each.Take(path, flags);
+                    }
                 }
             }
         }
