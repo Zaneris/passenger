@@ -286,7 +286,8 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>The line under an error, a warning or a suggestion, each its own shape as well as its colour
-    /// (<see cref="Underlines"/>); unnecessary code is faded by laying the background over it, half see-through.</summary>
+    /// (<see cref="Underlines"/>); unnecessary code is faded by laying the background over it, half see-through, and so is
+    /// a marker's own <see cref="Marker.Faded"/> text under its line.</summary>
     private void DrawMarkers(DrawingContext context, LineView view, Gap[] gaps, double left, double y, double clipLeft, double clipRight)
     {
         RowSpan span = view.Span;
@@ -312,10 +313,13 @@ public sealed partial class CodeEditor
                 // A zero-width diagnostic (a missing semicolon) still needs something to see.
                 x2 = x1 + metrics.CharWidth;
             }
-            if (marker.Kind == MarkerKind.Unnecessary)
+            if (marker.Kind == MarkerKind.Unnecessary || marker.Faded)
             {
                 context.FillRectangle(palette.Faded, new Rect(x1, y, x2 - x1, metrics.LineHeight));
-                continue;
+                if (marker.Kind == MarkerKind.Unnecessary)
+                {
+                    continue;
+                }
             }
             IBrush brush = marker.Kind switch
             {

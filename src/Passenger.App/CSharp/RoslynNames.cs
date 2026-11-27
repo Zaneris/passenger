@@ -38,6 +38,10 @@ internal static class RoslynNames
     /// <summary>The diagnostic of a using nothing needs.</summary>
     public const string UnnecessaryUsing = "IDE0005";
 
+    /// <summary>The compiler's warnings of a local never used and of a local function never called, which it gives no
+    /// unnecessary tag.</summary>
+    public static readonly IReadOnlyList<string> UnusedLocals = ["CS0168", "CS8321"];
+
     /// <summary>The fix that removes the usings nothing needs, the whole title.</summary>
     public const string RemoveUnnecessaryUsings = "Remove unnecessary usings";
 

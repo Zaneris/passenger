@@ -7,6 +7,7 @@ using Passenger.App.DependencyMap;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Text;
 
 namespace Passenger.Tests;
@@ -57,6 +58,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Flow.StepApart("Next and Previous Error in Solution step through the Solution tab's errors from the caret, wrapping, and say why with the analysis off", () => new ProblemsTests(project), t => t.Next_and_previous_error_in_solution_step_through_the_solution_tabs_errors_from_the_caret_wrapping_and_say_why_with_the_analysis_off());
         Flow.StepApart("Run Inspection by Name runs the rule chosen over the solution whatever its severity and lists its places in the Inspection tab", () => new ProblemsTests(project), t => t.Run_inspection_by_name_runs_the_rule_chosen_over_the_solution_whatever_its_severity_and_lists_its_places_in_the_inspection_tab());
         Flow.StepApart("a use breaking the folder's layer rules is marked in the editor, Problems and the map, and its fix lets the layer use the other", () => new ProblemsTests(project), t => t.A_use_breaking_the_folders_layer_rules_is_marked_in_the_editor_Problems_and_the_map_and_its_fix_lets_the_layer_use_the_other());
+        Flow.StepApart("a local and a local function never used are faded beside their warnings' waves and listed as warnings", () => new ProblemsTests(project), t => t.A_local_and_a_local_function_never_used_are_faded_beside_their_warnings_waves_and_listed_as_warnings());
         Flow.StepApart("a problem below line breaks only Roslyn counts is listed and gone to at its own line", () => new ProblemsTests(project), t => t.A_problem_below_line_breaks_only_roslyn_counts_is_listed_and_gone_to_at_its_own_line());
         Flow.StepApart("a typing pause lists again only the open file's problems, however many the solution has", () => new ProblemsTests(project), t => t.A_typing_pause_lists_again_only_the_open_files_problems_however_many_the_solution_has());
         Flow.StepApart("a key in a large solution lists the open file's problems without waiting for the whole project's analysis", () => new ProblemsTests(project), t => t.A_key_in_a_large_solution_lists_the_open_files_problems_without_waiting_for_the_whole_projects_analysis());
@@ -1111,6 +1113,55 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Assert.True(errors.Length == 0,
             $"Problems lists C# 15 that the .NET 11 SDK builds as an error: {string.Join("; ", errors.Select(p => p.Message))}");
         window.Close();
+    }
+
+    /// <summary>A local never used (CS0168) and a local function never called (CS8321), which the compiler warns of with no
+    /// unnecessary tag, have their names faded under their warnings' waves, as code the server calls unnecessary is: a
+    /// name drawn at half its ink beside a local used, and Problems still lists both as warnings (#2398).</summary>
+    private void A_local_and_a_local_function_never_used_are_faded_beside_their_warnings_waves_and_listed_as_warnings()
+    {
+        Write("Unused.cs", "static class Unused\n{\n    static int Count()\n    {\n        int declared;\n        int counted = 1;\n"
+            + "        int Local() => 1;\n        return counted;\n    }\n}\n");
+        MainWindow window = project.Open("Unused.cs", w => w.Perform(AppActions.ShowProblems));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string text = editor.Document.Snapshot.ToString();
+        Marker? Of(string code) => window.EditorArea.Active!.Markers.FirstOrDefault(m => m.Code == code);
+        string Marked() => string.Join("; ", window.EditorArea.Active!.Markers.Select(m => $"{m.Kind}{(m.Faded ? " faded" : "")} {text[m.Range.Start..m.Range.End]}: {m.Message}"));
+        Ui.WaitFor(() => Of("CS0168") is not null && Of("CS8321") is not null, () => $"the warnings of the local and the local function never used; the file is marked [{Marked()}]");
+        foreach ((string code, string name) in (ReadOnlySpan<(string, string)>)[("CS0168", "declared"), ("CS8321", "Local")])
+        {
+            Marker marker = Of(code)!.Value;
+            Assert.True(marker is { Kind: MarkerKind.Warning, Faded: true } && text[marker.Range.Start..marker.Range.End] == name,
+                $"{code} marks \"{text[marker.Range.Start..marker.Range.End]}\" as {marker.Kind}{(marker.Faded ? ", faded" : ", unfaded")}, where {name} is faded under a warning's wave: [{Marked()}]");
+        }
+        Assert.DoesNotContain(window.EditorArea.Active!.Markers, m => m.Faded && text[m.Range.Start..m.Range.End] == "counted");
+        Ui.Settle();
+        double declared = Ink(text.IndexOf("declared", StringComparison.Ordinal), "declared".Length);
+        double counted = Ink(text.IndexOf("counted", StringComparison.Ordinal), "counted".Length);
+        Assert.True(declared < counted * 0.75,
+            $"The local never used is drawn at {declared:0} of ink against its ground, the local used at {counted:0}: its name is not faded as the window draws it");
+        ProblemsModel problems = window.BottomPanel.Problems;
+        Ui.WaitFor(() => problems.FileProblems.Count(p => p.Severity == ProblemSeverity.Warning && (p.Message.StartsWith("CS0168: ", StringComparison.Ordinal) || p.Message.StartsWith("CS8321: ", StringComparison.Ordinal))) == 2,
+            () => $"Problems listing both as warnings: [{string.Join("; ", problems.FileProblems.Select(p => $"{p.Severity} {p.Message}"))}]");
+        window.Close();
+
+        // How far the name's pixels stray from its line's ground at most, above the wave its warning draws under it.
+        double Ink(int offset, int length)
+        {
+            Point from = editor.TranslatePoint(editor.PointOf(offset), window)!.Value;
+            Point to = editor.TranslatePoint(editor.PointOf(offset + length), window)!.Value;
+            List<Point> points = [new Point(from.X + 0.5, from.Y + 0.5)];
+            for (double y = from.Y + 1; y < from.Y + (editor.LineHeight * 0.75); y += 0.5)
+            {
+                for (double x = from.X; x < to.X; x += 0.5)
+                {
+                    points.Add(new Point(x, y));
+                }
+            }
+            Avalonia.Media.Color[] seen = Ui.Pixels(window, points);
+            Avalonia.Media.Color ground = seen[0];
+            return seen.Skip(1).Max(c => Math.Abs(c.R - ground.R) + Math.Abs(c.G - ground.G) + Math.Abs(c.B - ground.B));
+        }
     }
 
     /// <summary>A folder's passenger-layers.json puts the Shop.Domain namespaces in one layer and Shop.Screens' in another

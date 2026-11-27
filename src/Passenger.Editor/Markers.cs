@@ -30,6 +30,9 @@ public readonly record struct Marker(TextRange Range, MarkerKind Kind, string Me
 
     public Uri? Link { get; init; }
 
+    /// <summary>Whether its text is faded beside its line, as unnecessary code is: code its checker warns is never used.</summary>
+    public bool Faded { get; init; }
+
     public string? LinkText { get; init; }
 
     /// <summary>Where its start goes when text is typed at it while it holds text: <see cref="AnchorGravity.Before"/> takes

@@ -568,6 +568,7 @@ public sealed partial class CodeEditor
         {
             key.Add(markers[i].Range, start, end);
             key.Add((int)markers[i].Kind);
+            key.Add(markers[i].Faded);
         }
         foreach (TextRange faded in decorations.Faded)
         {
