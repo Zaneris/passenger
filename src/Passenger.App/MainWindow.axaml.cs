@@ -87,7 +87,7 @@ public partial class MainWindow : IdeWindow
             Declare = () => Request(AppActions.GoToDeclaration),
         });
         // One keymap for the whole window, seen before any control: editor actions go to the editor with the focus.
-        windowKeys = new IdeKeys(this, keys, popups, OnEscape, OnKey, OnTypingRefused, OnSideButton, OnActivity, OnLeft);
+        windowKeys = new IdeKeys(this, keys, popups, OnEscape, OnKey, OnTypingRefused, RunThere, OnActivity, OnLeft);
         windowKeys.Attach(this);
         AddActions();
         AddTitleBar();
@@ -140,6 +140,7 @@ public partial class MainWindow : IdeWindow
         AddFileProperties();
         AddTargetFramework();
         AddRunTargets();
+        AddRunAnything();
         AddBuildConfigurations();
         AddMobile();
         AddAutosave();
@@ -612,9 +613,10 @@ public partial class MainWindow : IdeWindow
         }
     }
 
-    /// <summary>A side button pressed in one of the IDE's windows, over the editor, a tool window or anything else: the
-    /// keymap's action for it (Back, Forward) runs there, the window it was pressed in being the one worked in.</summary>
-    private void OnSideButton(TopLevel window, string action)
+    /// <summary>A side button pressed, or a modifier tapped twice, in one of the IDE's windows, over the editor, a tool window
+    /// or anything else: the keymap's action for it (Back, Forward, Go to Everything) runs there, the window it was made in
+    /// being the one worked in.</summary>
+    private void RunThere(TopLevel window, string action)
     {
         Editors.Front(window);
         Request(action);

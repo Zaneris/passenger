@@ -437,6 +437,13 @@ public static class AppActions
     public const string Rerun = "app.rerun";
     public const string EditConfigurations = "app.editConfigurations";
 
+    // Rider's RunAnything (Ctrl tapped twice in every keymap), ChooseRunConfiguration and ChooseDebugConfiguration, bound as
+    // its keymaps bind them (RiderKeys): a run configuration or a command line run from one popup, and a configuration
+    // chosen and run, or debugged, from another.
+    public const string RunAnything = "app.runAnything";
+    public const string ChooseRunConfiguration = "app.chooseRunConfiguration";
+    public const string ChooseDebugConfiguration = "app.chooseDebugConfiguration";
+
     // Where the chosen configuration's app runs (a device, an emulator or a simulator), the widget beside the configuration's.
     public const string ChooseRunTarget = "app.chooseRunTarget";
 
@@ -1109,13 +1116,15 @@ public static class AppActions
     };
 
     /// <summary>The moves by the code's structure, the peeks, the person's own folds, Paste from History, Copy Reference,
-    /// Smart Type Completion, New Branch, Commit and Push and VCS Operations as each of Rider's keymaps binds them, by its name. Where Rider gives a key to one of them and to an action Passenger has there already, that one keeps it:
+    /// Smart Type Completion, New Branch, Commit and Push, VCS Operations, Run Anything and the configuration choosers as
+    /// each of Rider's keymaps binds them, by its name. Where Rider gives a key to one of them and to an action Passenger has there already, that one keeps it:
     /// Visual Studio's own Move Line Alt+Up and Down, the Mac's Clone Caret Ctrl+Shift+Up and Down and Redo Cmd+Y, VS Code's
     /// Quick Fix Cmd+. and Collapse Cmd+Alt+[ on the Mac, and Select Containing Declaration Cmd+Alt+[ over Code Block Start.</summary>
     private static readonly Dictionary<string, (string Action, string Key)[]> RiderKeys = new()
     {
         ["Visual Studio"] =
         [
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "control alt shift R"), (ChooseDebugConfiguration, "alt shift F9"),
             (NextUsage, "control shift DOWN"), (PreviousUsage, "control shift UP"), (GoToContainingDeclaration, "control OPEN_BRACKET"),
             (SelectContainingDeclaration, "control shift OPEN_BRACKET"), (CodeBlockStart, "alt shift OPEN_BRACKET"),
             (CodeBlockStartWithSelection, "control alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "control alt shift CLOSE_BRACKET"),
@@ -1127,6 +1136,7 @@ public static class AppActions
         ],
         ["Visual Studio OSX"] =
         [
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "meta alt shift R"), (ChooseDebugConfiguration, "control alt D"),
             (NextUsage, "control alt DOWN"), (PreviousUsage, "control alt UP"), (GoToContainingDeclaration, "meta OPEN_BRACKET"),
             (SelectContainingDeclaration, "meta alt OPEN_BRACKET"), (CodeBlockEnd, "meta alt CLOSE_BRACKET"),
             (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
@@ -1137,6 +1147,7 @@ public static class AppActions
         ],
         ["VSCode"] =
         [
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "control SEMICOLON , A"), (ChooseDebugConfiguration, "alt shift F9"),
             (GoToContainingDeclaration, "alt shift OPEN_BRACKET"), (SelectContainingDeclaration, "control alt shift OPEN_BRACKET"),
             (GoToRegion, "control alt PERIOD"), (QuickImplementations, "alt F12"), (ErrorDescription, "control F1"), (ShowFilePath, "control alt F12"),
             (CollapseBlock, "control alt OPEN_BRACKET"), (CollapseBlock, "control K , control L"), (PasteFromHistory, "control shift INSERT"),
@@ -1145,6 +1156,7 @@ public static class AppActions
         ],
         ["VSCode OSX"] =
         [
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "meta SEMICOLON , A"), (ChooseDebugConfiguration, "control alt D"),
             (MethodUp, "control shift UP"), (MethodDown, "control shift DOWN"), (NextUsage, "control alt DOWN"), (PreviousUsage, "control alt UP"),
             (GoToContainingDeclaration, "control OPEN_BRACKET"), (SelectContainingDeclaration, "control shift OPEN_BRACKET"),
             (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
@@ -1155,6 +1167,7 @@ public static class AppActions
         ],
         ["$default"] =
         [
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "alt shift F10"), (ChooseDebugConfiguration, "alt shift F9"),
             (MethodUp, "alt UP"), (MethodDown, "alt DOWN"), (GoToContainingDeclaration, "alt shift OPEN_BRACKET"),
             (SelectContainingDeclaration, "control alt shift OPEN_BRACKET"), (CodeBlockStart, "control OPEN_BRACKET"), (CodeBlockEnd, "control CLOSE_BRACKET"),
             (CodeBlockStartWithSelection, "control shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "control shift CLOSE_BRACKET"),
@@ -1167,6 +1180,7 @@ public static class AppActions
         ],
         ["Mac OS X 10.5+"] =
         [
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "control alt R"), (ChooseDebugConfiguration, "control alt D"),
             (MethodUp, "control shift UP"), (MethodDown, "control shift DOWN"), (NextUsage, "control alt DOWN"), (PreviousUsage, "control alt UP"),
             (GoToContainingDeclaration, "control OPEN_BRACKET"), (SelectContainingDeclaration, "control shift OPEN_BRACKET"),
             (CodeBlockStart, "meta alt OPEN_BRACKET"), (CodeBlockEnd, "meta alt CLOSE_BRACKET"),

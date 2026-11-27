@@ -23,11 +23,11 @@ public interface IOwnKeys
 /// <param name="keys">The main window's keymap, which runs in each.</param>
 /// <param name="dismissed">Escape with no popup over a window: whether it closed the code's choices or rename box.</param>
 /// <param name="pressed">What a key not taken here does in the window it was pressed in: the keymap's action.</param>
-/// <param name="sideClicked">What a side button does in the window it was pressed in: the keymap's action for its gesture.</param>
+/// <param name="ran">What a side button or a modifier's double tap does in the window it was made in: the keymap's action.</param>
 /// <param name="activity">A key or a click, in any of them.</param>
 /// <param name="left">One of them was left, perhaps for another program.</param>
 public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups, Func<TopLevel, bool> dismissed, Action<TopLevel, object?, KeyEventArgs> pressed,
-    Action<CodeEditor> typingRefused, Action<TopLevel, string> sideClicked, Action activity, Action left)
+    Action<CodeEditor> typingRefused, Action<TopLevel, string> ran, Action activity, Action left)
 {
     /// <summary>The window a key is being handled in, while it is: what an action it runs acts on there.</summary>
     public TopLevel? Pressing { get; private set; }
@@ -53,7 +53,7 @@ public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups
             keys.Heard(e);
             activity();
         }, RoutingStrategies.Tunnel, handledEventsToo: true);
-        window.AddHandler(InputElement.KeyUpEvent, (_, e) => keys.Release(e), RoutingStrategies.Tunnel, handledEventsToo: true);
+        window.AddHandler(InputElement.KeyUpEvent, (_, e) => OnKeyUp(window, e), RoutingStrategies.Tunnel, handledEventsToo: true);
         window.AddHandler(InputElement.PointerPressedEvent, (_, _) =>
         {
             keys.Reset();
@@ -111,6 +111,25 @@ public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups
         }
     }
 
+    /// <summary>A modifier's second tap let go runs the double tap's action there; one that throws is reported as an IDE
+    /// error, as a key's is.</summary>
+    private void OnKeyUp(TopLevel window, KeyEventArgs e)
+    {
+        if (keys.Release(e) is not { } action)
+        {
+            return;
+        }
+        e.Handled = true;
+        try
+        {
+            ran(window, action);
+        }
+        catch (Exception error)
+        {
+            IdeErrors.Report(error);
+        }
+    }
+
     /// <summary>A side button's gesture runs its action wherever it is pressed, as no control takes those buttons, where a
     /// left or middle press is the control's under it (an editor's through <see cref="CodeEditor.GesturesProperty"/>); each
     /// press of a quick run runs it again (<see cref="Keymap.ActionForAnyClick"/>). One that throws is reported as an IDE
@@ -125,7 +144,7 @@ public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups
         e.Handled = true;
         try
         {
-            sideClicked(window, action);
+            ran(window, action);
         }
         catch (Exception error)
         {

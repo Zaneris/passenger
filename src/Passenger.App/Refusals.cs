@@ -229,6 +229,12 @@ public static class Refusals
     /// <summary>VCS Operations where none of the Git menu's actions can run.</summary>
     public const string NoVcsOperations = "No Git action can run here";
 
+    /// <summary>Choose and Run or Debug where no run configuration matches what is typed, or the folder has none.</summary>
+    public const string NoRunConfigurationMatches = "No run configuration matches";
+
+    /// <summary>Run Anything with nothing typed in a folder with no run configuration.</summary>
+    public const string NothingToRunYet = "No run configurations: type a command line to run it in the Terminal";
+
     /// <summary>Paste from History before anything was copied, here or on the clipboard.</summary>
     public const string NothingCopied = "Nothing has been copied yet";
 

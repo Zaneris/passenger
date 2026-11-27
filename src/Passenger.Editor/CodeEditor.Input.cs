@@ -67,6 +67,16 @@ public sealed partial class CodeEditor
         }
     }
 
+    /// <summary>A modifier's second tap let go runs the double tap's action, where the editor resolves its own keys.</summary>
+    protected override void OnKeyUp(KeyEventArgs e)
+    {
+        base.OnKeyUp(e);
+        if (ownKeys?.Release(e) is { } action && TryExecute(action))
+        {
+            e.Handled = true;
+        }
+    }
+
     protected override void OnTextInput(TextInputEventArgs e)
     {
         formattedKey = null;

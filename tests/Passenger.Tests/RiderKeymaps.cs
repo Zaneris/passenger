@@ -115,6 +115,8 @@ internal static class RiderKeymaps
         ([AppActions.CleanSolution], ["CleanSolutionAction"]), ([AppActions.BuildSelected], ["BuildCurrentProject"]),
         ([AppActions.RunProgram], ["Run"]), ([AppActions.Debug], ["Debug"]), ([AppActions.Stop], ["Stop"]),
         ([AppActions.Rerun], ["Rerun"]), ([AppActions.EditConfigurations], ["editRunConfigurations"]),
+        ([AppActions.RunAnything], ["RunAnything"]), ([AppActions.ChooseRunConfiguration], ["ChooseRunConfiguration"]),
+        ([AppActions.ChooseDebugConfiguration], ["ChooseDebugConfiguration"]),
         ([AppActions.RunHere], ["RunClass"]), ([AppActions.DebugHere], ["DebugClass"]),
         ([AppActions.ShowBuild], ["ActivateBuildToolWindow"]), ([AppActions.ShowRun], ["ActivateRunToolWindow"]),
         ([AppActions.ShowProblems], ["ActivateProblemsViewToolWindow"]),
