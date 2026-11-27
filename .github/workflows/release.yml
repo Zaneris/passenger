@@ -646,6 +646,8 @@ jobs:
         if: ${{ !cancelled() && steps.files.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ secrets.PACKAGES_GITHUB_TOKEN }}
+          # Each request gh makes and GitHub's response headers in the log, the token masked: since 0.4.5 the step fails on a "Not Found" of a request it never named.
+          GH_DEBUG: api
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "::notice title=WinGet::No PACKAGES_GITHUB_TOKEN in the secrets: the manifests are not sent"
