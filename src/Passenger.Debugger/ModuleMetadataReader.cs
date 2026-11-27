@@ -741,10 +741,6 @@ public partial class ModuleMetadataReader : IDisposable
         return (ipResult.pnOffset, nextUserCodeIlOffset);
     }
 
-    /// <summary>The EnC version of the code a frame runs (1 for the build's), or null when the runtime will not say.</summary>
-    internal static int? VersionOf(ICorDebugFrame frame) =>
-        frame.TryGetCode(out ICorDebugCode code) is Cor.S_OK && code.TryGetVersionNumber(out uint version) is Cor.S_OK ? (int)version : null;
-
     public int? GetNextUserCodeIlOffset(int methodToken, int currentIlOffset, int? version = null)
     {
         foreach (Point sequencePoint in Points(methodToken, version))

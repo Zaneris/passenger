@@ -961,12 +961,12 @@ public partial class ManagedDebugger
             return result;
         }
 
-        ICorDebugValue[] localVariables = ilFrame.LocalVariables;
+        int localVariables = LocalCountOf(ilFrame);
         ICorDebugValue[] arguments = ilFrame.Arguments;
         ICorDebugThread? thread = _threads.GetValueOrDefault(threadId.Value)?.Thread;
         ArgumentNullException.ThrowIfNull(thread);
         bool hasCurrentException = thread.TryGetCurrentException(out _) is Cor.S_OK;
-        if (localVariables.Length is 0 && arguments.Length is 0 && !hasCurrentException && !HasReturnedValues(threadId, frameStackDepth))
+        if (localVariables is 0 && arguments.Length is 0 && !hasCurrentException && !HasReturnedValues(threadId, frameStackDepth))
         {
             return result;
         }

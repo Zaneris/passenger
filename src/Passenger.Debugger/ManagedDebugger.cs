@@ -1008,7 +1008,7 @@ public partial class ManagedDebugger
     internal bool StopStepAt(ICorDebugThread thread)
     {
         if (TopFrame(thread) is not ICorDebugILFrame frame || (JustMyCodeNow && !IsUserCodeFrame(frame)) || FindModule(frame.Function.Module) is not { } module
-            || module.MetadataReader.IsCurrentSequencePointHidden(frame.Function.Token, frame.IP.pnOffset, ModuleMetadataReader.VersionOf(frame))
+            || module.MetadataReader.IsCurrentSequencePointHidden(frame.Function.Token, frame.IP.pnOffset, module.MetadataReader.VersionOf(frame))
             || GetSourceInfoAtFrame(frame, JustMyCodeNow is false) is not { } source)
         {
             return false;
@@ -1218,7 +1218,7 @@ public partial class ManagedDebugger
         try
         {
             return frame is ICorDebugILFrame il && FindModule(il.Function.Module) is { } module
-                && module.MetadataReader.GetAsyncMethodSteppingInfo(il.Function.Token, ModuleMetadataReader.VersionOf(il)) is not null;
+                && module.MetadataReader.GetAsyncMethodSteppingInfo(il.Function.Token, module.MetadataReader.VersionOf(il)) is not null;
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {
@@ -1288,7 +1288,7 @@ public partial class ManagedDebugger
                 return false;
             }
             int token = il.Function.Token;
-            int? version = ModuleMetadataReader.VersionOf(il);
+            int? version = module.MetadataReader.VersionOf(il);
             int at = il.IP.pnOffset;
             return module.MetadataReader.GetAsyncMethodSteppingInfo(token, version) is { } method && at > method.LastUserCodeIlOffset
                 && module.MetadataReader.IsCurrentSequencePointHidden(token, at, version);
@@ -1447,11 +1447,16 @@ public partial class ManagedDebugger
     internal (int Start, int End)? StepRangeOf(ICorDebugILFrame frame, int? at = null)
     {
         ICorDebugFunction function = frame.Function;
-        if (FindModule(function.Module)?.MetadataReader.GetStartAndEndSequencePointIlOffsetsForIlOffset(function.Token, at ?? frame.IP.pnOffset, ModuleMetadataReader.VersionOf(frame)) is not var (start, end))
+        if (FindModule(function.Module)?.MetadataReader is not { } reader)
         {
             return null;
         }
-        return (start, start == end ? function.ILCode.Size : end);
+        int? version = reader.VersionOf(frame);
+        if (reader.GetStartAndEndSequencePointIlOffsetsForIlOffset(function.Token, at ?? frame.IP.pnOffset, version) is not var (start, end))
+        {
+            return null;
+        }
+        return (start, start != end ? end : reader.MethodIL(function.Token, version)?.Length ?? function.ILCode.Size);
     }
 
     /// <summary>Binds a line breakpoint in every loaded module (or the one just <paramref name="loaded"/>) whose symbols name

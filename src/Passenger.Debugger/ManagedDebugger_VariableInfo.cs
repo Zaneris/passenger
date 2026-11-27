@@ -24,20 +24,30 @@ public partial class ManagedDebugger
         {
             // Captured variables are fields of the closure chain; the lambda's own locals are still read below.
             ICorDebugILFrame holding = GetIlFrameForThreadIdAndStackDepth(threadId, stackDepth);
-            IReadOnlySet<int>? inScope = module.MetadataReader.HoistedSlotsInScope(corDebugFunction.Token, holding.IP.pnOffset, ModuleMetadataReader.VersionOf(holding));
+            IReadOnlySet<int>? inScope = module.MetadataReader.HoistedSlotsInScope(corDebugFunction.Token, holding.IP.pnOffset, module.MetadataReader.VersionOf(holding));
             await AddClosureChainMembers(classContainingHoistedLocalsValue, threadId, stackDepth, result, inScope);
         }
         ICorDebugILFrame corDebugIlFrame = GetIlFrameForThreadIdAndStackDepth(threadId, stackDepth);
-        if (corDebugIlFrame.LocalVariables.Length is 0)
+        (ICorDebugValue[]? locals, string? unread) = LocalsOf(corDebugIlFrame);
+        int currentIlOffset = corDebugIlFrame.IP.pnOffset;
+        int? version = module.MetadataReader.VersionOf(corDebugIlFrame);
+        if (locals is null)
+        {
+            // Each local the frame's code has in scope, named, saying why its value is not read.
+            result.AddRange(Enumerable.Range(0, LocalCountOf(corDebugIlFrame))
+                .Select(index => module.MetadataReader.GetLocalVariableName(corDebugFunction.Token, index, currentIlOffset, version))
+                .OfType<string>().Select(name => FailedRow(name, unread!)));
+            return;
+        }
+        if (locals.Length is 0)
         {
             return;
         }
 
-        int currentIlOffset = corDebugIlFrame.IP.pnOffset;
         ImmutableArray<DeclaredType?> declared = DeclaredLocals(module, corDebugIlFrame);
-        foreach ((int index, ICorDebugValue? localVariableCorDebugValue) in corDebugIlFrame.LocalVariables.Index())
+        foreach ((int index, ICorDebugValue? localVariableCorDebugValue) in locals.Index())
         {
-            string? localVariableName = module.MetadataReader.GetLocalVariableName(corDebugFunction.Token, index, currentIlOffset, ModuleMetadataReader.VersionOf(corDebugIlFrame));
+            string? localVariableName = module.MetadataReader.GetLocalVariableName(corDebugFunction.Token, index, currentIlOffset, version);
             if (localVariableName is null)
             {
                 continue; // Compiler generated locals will not be found. E.g. DefaultInterpolatedStringHandler

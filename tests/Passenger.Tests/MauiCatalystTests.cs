@@ -20,10 +20,10 @@ namespace Passenger.Tests;
 /// with .NET's assemblies whole, Run with Hot Reload carries the inspector and the update handlers' hook in too, so its tree
 /// is the app's window, a tap reaches its button's centre, a C# edit lands and its update handler is called, and XAML edits
 /// show, patched or the page made again; built as the template has it, which trims them, Debug says they stay out, and stops
-/// in its main page, which its interpreter runs, steps, shows, evaluates and takes an edit. Stop ends the app and takes out
-/// what was carried, its start's own instance alone where it is debugged and run at once; an agent's Passenger killed with
-/// its tree ends the app it opened too. Skips, saying why, off a Mac, without MAUI's and Mac Catalyst's workloads or Xcode,
-/// or the Mac Catalyst relay. Debugged through the window, so alone; waits end within the run's limit (<see cref="Limits.WithinHang"/>).</summary>
+/// in its main page, which its interpreter runs, steps, shows, evaluates and takes an edit; built whole and debugged, a tap
+/// runs its click handler as an edit changed it, stopping and stepping at the edit's lines. Stop ends the app and takes out
+/// what was carried, its start's own instance alone where debugged and run at once; an agent's Passenger killed with its
+/// tree ends the app it opened too. Skips, saying why, where it cannot run; alone, as it debugs.</summary>
 [Collection(Alone.Name)]
 [AboutMacOS]
 public sealed class MauiCatalystTests : McpRig
@@ -147,6 +147,37 @@ public sealed class MauiCatalystTests : McpRig
         }
         finally
         {
+            TestFolders.Delete(folder);
+        }
+        Flow.Step("a MAUI app's Mac Catalyst head built whole and debugged stops in its click handler's code a Hot Reload edit changed, at the edit's lines",
+            A_maui_apps_mac_catalyst_head_built_whole_and_debugged_stops_in_its_click_handlers_code_a_hot_reload_edit_changed_at_the_edits_lines);
+    }
+
+    /// <summary>The app built whole, debugged, its inspector connected: its click handler edited, a tap runs the handler's new
+    /// code, which its interpreter runs, stopping at the breakpoint on a line the edit moved and stepping on as that code has
+    /// its lines (<see cref="MauiApp.StopsInEditedHandler"/>).</summary>
+    private static void A_maui_apps_mac_catalyst_head_built_whole_and_debugged_stops_in_its_click_handlers_code_a_hot_reload_edit_changed_at_the_edits_lines()
+    {
+        (string folder, string project) = Prepared("maui-catalyst-edited", whole: true);
+        MainWindow window = Ui.OpenFolder(folder);
+        window.ApplySettings(window.Settings with { HotReload = true });
+        try
+        {
+            Chosen(window);
+            Ui.Launched(window, window.DebugAsync(), "the Mac Catalyst head's build whole and its debugged opening", Slow);
+            MacCatalystApp opened = window.Debugger.Tabs.Select(t => t.Plan?.MacCatalyst?.App).LastOrDefault(a => a is not null)
+                ?? throw new Xunit.Sdk.XunitException("The session's plan opens no Mac Catalyst app");
+            Ui.WaitFor(() => window.LiveApp is { State: LiveAppState.Connected },
+                () => $"the debugged app's inspector to connect; it is {window.LiveApp?.State.ToString() ?? "not made"} ({window.LiveApp?.Problem}): {Ui.Said(window)}\n{Console(window)}", Slow);
+            MauiApp.StopsInEditedHandler(window, window.LiveApp!, project, Slow);
+
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => Running(opened) is null, () => $"the debugged app to end once stopped; process {Running(opened)} still runs it", TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            window.Close();
             TestFolders.Delete(folder);
         }
     }

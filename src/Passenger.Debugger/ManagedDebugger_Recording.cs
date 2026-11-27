@@ -445,7 +445,7 @@ public partial class ManagedDebugger
             return null;
         }
         uint[] offsets = new uint[4];
-        foreach (ModuleMetadataReader.CallSite call in module.MetadataReader.CallSites(caller.Function.Token, 0, int.MaxValue, ModuleMetadataReader.VersionOf(caller)))
+        foreach (ModuleMetadataReader.CallSite call in module.MetadataReader.CallSites(caller.Function.Token, 0, int.MaxValue, module.MetadataReader.VersionOf(caller)))
         {
             if (call.Kind == ModuleMetadataReader.CallKind.Call
                 && returns.TryGetReturnValueLiveOffset(checked((uint)call.Offset), (uint)offsets.Length, out uint fetched, offsets) is Cor.S_OK

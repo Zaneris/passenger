@@ -62,7 +62,7 @@ public partial class ManagedDebugger
     private sealed class AheadRun(ICorDebugILFrame frame, ModuleInfo module)
     {
         private readonly int token = frame.Function.Token;
-        private readonly int? version = ModuleMetadataReader.VersionOf(frame);
+        private readonly int? version = module.MetadataReader.VersionOf(frame);
         private readonly Dictionary<int, Held> locals = [];
         private readonly Dictionary<int, Held> arguments = [];
         private readonly HashSet<int> addressed = [];

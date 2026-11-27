@@ -80,6 +80,45 @@ internal static class MauiApp
         ShowsButtonsText(window, app, "!", "the added label whose C# expression reads the button's text", "Click me");
     }
 
+    /// <summary>The page's click handler edited while the debugged app runs, a statement added above its last, which takes a
+    /// breakpoint: a tap on the button runs the handler's new code, where the program stops, shown at the breakpoint's line
+    /// with the page's count evaluated there, and Step Over goes on to the handler's closing brace, as the new code has them;
+    /// then the breakpoint goes and the program goes on, its button showing what the new code wrote (the tap itself unanswered
+    /// past the inspector's limit while the program was stopped).</summary>
+    public static void StopsInEditedHandler(MainWindow window, LiveApp app, string project, TimeSpan limit)
+    {
+        string page = Path.Combine(PathNames.Canonical(Path.GetDirectoryName(project)!), "MainPage.xaml.cs");
+        window.OpenFile(page);
+        HotReloadOutcome? before = window.Debugger.LastApplied;
+        Typing.Replace(window, "SemanticScreenReader.Announce(CounterBtn.Text);", "CounterBtn.Text += \" (edited)\";\nSemanticScreenReader.Announce(CounterBtn.Text);");
+        Ui.Run(window, AppActions.ApplyHotReloadChanges);
+        Ui.WaitFor(() => window.Debugger.LastApplied != before, () => $"Hot Reload to say what it made of the click handler's edit: {Ui.Said(window)}", limit);
+        Assert.True(window.Debugger.LastApplied!.Result == HotReloadResult.Applied, $"The app did not take the click handler's edit: {window.Debugger.LastApplied.Said}");
+        string[] written = window.EditorArea.CodeEditor.Document.Snapshot.ToString().Split('\n');
+        int announce = Array.FindIndex(written, l => l.Contains("SemanticScreenReader.Announce", StringComparison.Ordinal));
+        window.EditorArea.CodeEditor.GoTo(new Passenger.Text.TextPosition(announce, written[announce].IndexOf('S', StringComparison.Ordinal)));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        LineBreakpoint onAnnounce = window.Debugger.Breakpoints.In(page).Single(b => b.Line == announce);
+        Task<InputDone> tapped = app.InputAsync(new InputAction(InputKinds.Click) { Element = Button(app).Id });
+        Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames is [{ Source.Path: { } path, Line: int line }, ..]
+                && PathNames.Same(path, page) && line == announce + 1,
+            () => $"the stop in the click handler's new code at its last statement, line {announce + 1}, shown at {Top(window)}: {Ui.Said(window)}", limit);
+        Dap.EvaluateResponse counted = Ui.Await(window.Debugger.Session!.EvaluateAsync("count > 0", window.BottomPanel.Debug.Frames[0].Id, Dap.EvaluateContexts.Watch),
+            "the page's count, evaluated in the handler's new code", limit);
+        Assert.Equal("true", counted.Result);
+        Ui.Run(window, AppActions.StepOver);
+        Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames is [{ Source.Path: { } path, Line: int line }, ..]
+                && PathNames.Same(path, page) && line == announce + 2,
+            () => $"Step Over to the click handler's closing brace, line {announce + 2}, shown at {Top(window)}: {Ui.Said(window)}", limit);
+        window.Debugger.Breakpoints.Remove(onAnnounce);
+        Ui.Run(window, AppActions.Resume);
+        Ui.WaitFor(() => tapped.IsCompleted, "the tap on the button to end once its handler went on", limit);
+        string? shown = null;
+        Ui.WaitFor(() => (shown = AppTree.Walk(Ui.AwaitPumped(app.AgentTreeAsync([]), "the app's tree with what each element shows", TimeSpan.FromMinutes(1)).Roots)
+                .Select(e => e.Element).FirstOrDefault(e => e is { Type: "Button", Name: "CounterBtn" })?.Text)?.EndsWith(" (edited)", StringComparison.Ordinal) == true,
+            () => $"the button to show what the click handler's new code wrote; it shows \"{shown}\", the tap {tapped.Exception?.InnerException?.Message ?? "answered"}", limit);
+    }
+
     /// <summary>Breakpoints set in the main page's XAML: on the Hello label's line, and on the button's Text attribute; the
     /// file, and those lines (from zero).</summary>
     public static (string Xaml, int Hello, int ClickMe) XamlBreakpoints(MainWindow window, string project)

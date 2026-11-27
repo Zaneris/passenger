@@ -491,13 +491,13 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
         PEMethodSymbol currentFrame = compilation.GetMethod(moduleId, methodHandle);
         CSharpEESymbolProvider symbolProvider = new CSharpEESymbolProvider(compilation.SourceAssembly, (PEModuleSymbol)currentFrame.ContainingModule, currentFrame);
         MetadataDecoder metadataDecoder = new MetadataDecoder((PEModuleSymbol)currentFrame.ContainingModule, currentFrame);
-        StandaloneSignatureHandle localSignature = frame.Function.LocalVarSigToken == 0
-            ? default
-            : (StandaloneSignatureHandle)MetadataTokens.Handle(frame.Function.LocalVarSigToken);
+        // The frame's version of the method, read from the PDB delta of the update that made it, as Roslyn's reader reads one.
+        int version = moduleInfo.MetadataReader.VersionOf(frame) ?? 1;
+        // Its locals as that version declares them: the runtime's code of an interpreted frame an update changed is another's.
+        StandaloneSignatureHandle localSignature = moduleInfo.MetadataReader.LocalSignature(methodToken, version)
+            ?? (frame.Function.LocalVarSigToken == 0 ? default : (StandaloneSignatureHandle)MetadataTokens.Handle(frame.Function.LocalVarSigToken));
         ImmutableArray<LocalInfo<TypeSymbol>> localInfo = metadataDecoder.GetLocalInfo(localSignature);
         int ilOffset = EvaluationContextBase.NormalizeILOffset((uint)frame.IP.pnOffset);
-        // The frame's version of the method, read from the PDB delta of the update that made it, as Roslyn's reader reads one.
-        int version = ModuleMetadataReader.VersionOf(frame) ?? 1;
         MetadataReader? pdbReader = moduleInfo.MetadataReader.DebugOf(methodToken, version)?.Reader;
         MethodDebugInfo<TypeSymbol, LocalSymbol> debugInfo = pdbReader is null
             ? MethodDebugInfo<TypeSymbol, LocalSymbol>.None

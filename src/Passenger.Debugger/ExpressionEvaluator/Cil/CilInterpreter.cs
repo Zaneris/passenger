@@ -29,7 +29,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         Func<ICorDebugILFrame> refind = () => debugger.GetIlFrameForThreadIdAndStackDepth(context.ThreadId, context.StackDepth);
         EvaluationMetadataResolver resolver = CreateResolver(compiled, context, frame);
         ICilLocation[] arguments = CreateArguments(frame, context, refind);
-        ICilLocation[] locals = CreateLocals(compiled, resolver, frame, body.LocalSignature, context.RootValue is not null, refind);
+        ICilLocation[] locals = CreateLocals(compiled, resolver, frame, body.LocalSignature, context.RootValue is not null, refind, debugger.LocalCountOf);
         ExpressionTime time = new ExpressionTime(Deadline.In(Extensions.EvaluationTimeout));
         await using DebuggeeDelegateAssemblyLoader delegateAssemblyLoader = new DebuggeeDelegateAssemblyLoader(debugger, compiled, resolver, context, handles, delegateMaterializer, time);
         Interpretation run = new Interpretation(compiled, resolver, context, handles, delegateAssemblyLoader, time, Stopwatch.GetTimestamp(), debugger.EvalStatus.Leaving);
@@ -110,18 +110,19 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         return [.. Enumerable.Range(0, ilFrame.Arguments.Length).Select(i => (ICilLocation)new FrameSlotLocation(ilFrame, i, argument: true, refind))];
     }
 
-    private static ICilLocation[] CreateLocals(CompiledEvaluationMethod compiled, EvaluationMetadataResolver resolver, ICorDebugILFrame? frame, StandaloneSignatureHandle localSignature, bool isTypeContext, Func<ICorDebugILFrame> refind)
+    private static ICilLocation[] CreateLocals(CompiledEvaluationMethod compiled, EvaluationMetadataResolver resolver, ICorDebugILFrame? frame, StandaloneSignatureHandle localSignature, bool isTypeContext, Func<ICorDebugILFrame> refind,
+        Func<ICorDebugILFrame, int> frameLocalCount)
     {
         int localCount = localSignature.IsNil
             ? 0
             : compiled.MetadataReader.GetStandaloneSignature(localSignature)
                 .DecodeLocalSignature(LocalCountSignatureProvider.Instance, genericContext: null).Length;
-        ICorDebugValue[]? frameLocals = frame?.LocalVariables;
+        int frameLocals = localCount == 0 || isTypeContext || frame is null ? 0 : frameLocalCount(frame);
         ICilLocation[] result = new ICilLocation[localCount];
         for (int i = 0; i < result.Length; i++)
         {
             int local = i;
-            result[i] = !isTypeContext && i < frameLocals!.Length
+            result[i] = !isTypeContext && i < frameLocals
                 ? new FrameSlotLocation(frame!, i, argument: false, refind)
                 : new TemporaryLocation(CilValue.Null(), () => resolver.ResolveEvaluationLocalType(localSignature, local));
         }

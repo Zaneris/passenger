@@ -701,7 +701,7 @@ public partial class ManagedDebugger
             return;
         }
         ModuleInfo? module = FindModule(ilFrame.Function.Module);
-        if (module is not null && module.MetadataReader.IsCurrentSequencePointHidden(ilFrame.Function.Token, ilFrame.IP.pnOffset, ModuleMetadataReader.VersionOf(ilFrame)))
+        if (module is not null && module.MetadataReader.IsCurrentSequencePointHidden(ilFrame.Function.Token, ilFrame.IP.pnOffset, module.MetadataReader.VersionOf(ilFrame)))
         {
             // Past a hidden sequence point, which would show the line before it as where the step ended.
             SetupStepper(corThread, StepType.StepOver, ilFrame);

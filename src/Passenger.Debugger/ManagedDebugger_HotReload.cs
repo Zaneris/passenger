@@ -211,7 +211,7 @@ public partial class ManagedDebugger
                         continue;
                     }
                     int token = function.Token;
-                    int version = ModuleMetadataReader.VersionOf(il) ?? 1;
+                    int version = module.MetadataReader.VersionOf(il) ?? 1;
                     (int offset, CorDebugMappingResult mapping) = il.IP;
                     int flags = 1;
                     if (leaf && !mapping.HasFlag(CorDebugMappingResult.MAPPING_EXACT) && !mapping.HasFlag(CorDebugMappingResult.MAPPING_APPROXIMATE))
@@ -315,6 +315,7 @@ public partial class ManagedDebugger
         {
             return new ModuleApplied(update.Module, update.Name, false, $"The runtime would not give the debugger {module.ModuleName}'s metadata, which an update changes");
         }
+        KeepRunningCode(module, update.UpdatedMethods);
         int result = module.Module.Module2.TryApplyChanges((uint)update.Metadata.Length, update.Metadata, (uint)update.IL.Length, update.IL);
         if (result != Cor.S_OK)
         {
@@ -369,6 +370,73 @@ public partial class ManagedDebugger
         _logger?.Invoke($"Applied an update to {module.ModuleName}: {Numbers.Said(update.UpdatedMethods.Count)} methods, {Numbers.Said(update.UpdatedTypes.Count)} types, generation {module.MetadataReader.Generations}");
         return new ModuleApplied(update.Module, update.Name, true, null);
     }
+
+    /// <summary>The code each frame of a method an update is about to change runs, kept with its version: the runtime moves
+    /// no frame its interpreter runs to an update's code, nor says which code such a frame runs (<see
+    /// cref="ModuleMetadataReader.VersionOf(int, int, Func{ulong?})"/>). Every chain's frames, an evaluation's too.</summary>
+    private void KeepRunningCode(ModuleInfo module, IReadOnlyList<int> methods)
+    {
+        HashSet<int> changing = [.. methods];
+        foreach (ThreadInfo thread in _threads.Values)
+        {
+            try
+            {
+                foreach (ICorDebugChain chain in thread.Thread.EnumerateChains())
+                {
+                    if (chain.IsManaged is false)
+                    {
+                        continue;
+                    }
+                    foreach (ICorDebugFrame frame in chain.EnumerateFrames())
+                    {
+                        if (frame is ICorDebugILFrame && frame.TryGetFunctionToken(out mdMethodDef token) is Cor.S_OK && changing.Contains(token)
+                            && ReferenceEquals(FindModule(frame.Function.Module), module))
+                        {
+                            module.MetadataReader.KeepRunning(frame);
+                        }
+                    }
+                }
+            }
+            catch (Exception error) when (Failures.OfRuntime(error))
+            {
+                _logger?.Invoke($"  The code thread {thread.Thread.Id} runs could not be read before the update to {module.ModuleName}: {error.Message}");
+            }
+        }
+    }
+
+    /// <summary>The IL code a frame runs, in which a breakpoint catches it: its function's, or the method's newest where the
+    /// frame runs that though the runtime says it runs an older (<see cref="ModuleMetadataReader.VersionOf(ICorDebugFrame)"/>).</summary>
+    internal ICorDebugCode CodeOf(ICorDebugILFrame frame)
+    {
+        ICorDebugFunction function = frame.Function;
+        ICorDebugCode code = function.ILCode;
+        return FindModule(function.Module)?.MetadataReader.VersionOf(frame) is int version && version != code.VersionNumber
+            && function.TryGetCurrentVersionNumber(out uint newest) is Cor.S_OK && newest == version
+            ? function.Module.GetFunctionFromToken(function.Token).ILCode
+            : code;
+    }
+
+    /// <summary>A frame's locals as the runtime reads them, or null with why it will not: of a frame its interpreter runs in
+    /// code an update changed, it reads them by the build's code, which <see cref="ModuleMetadataReader.VersionOf(ICorDebugFrame)"/>
+    /// says the frame does not run.</summary>
+    internal (ICorDebugValue[]? Locals, string? Why) LocalsOf(ICorDebugILFrame frame)
+    {
+        try
+        {
+            return (frame.LocalVariables, null);
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            return (null, FindModule(frame.Function.Module)?.MetadataReader.VersionOf(frame) is int version && frame.TryGetCode(out ICorDebugCode code) is Cor.S_OK && code.TryGetVersionNumber(out uint said) is Cor.S_OK && version != said
+                ? $"Not read: the runtime lays this frame's locals out as its method's code before Hot Reload changed it, which the frame does not run ({error.Message})"
+                : $"Not read: {error.Message}");
+        }
+    }
+
+    /// <summary>How many locals a frame has: as the runtime reads them, else as the code it runs declares them.</summary>
+    internal int LocalCountOf(ICorDebugILFrame frame) =>
+        LocalsOf(frame).Locals?.Length
+            ?? (FindModule(frame.Function.Module)?.MetadataReader is { } reader ? reader.LocalTypes(frame.Function.Token, reader.VersionOf(frame)).Length : 0);
 
     /// <summary>A module's metadata with every update applied, as the debugger's own copy of it holds it, saved whole into
     /// memory that does not move (the expression compiler reads it by its address); null when it will not save, after which
@@ -539,7 +607,7 @@ public partial class ManagedDebugger
             try
             {
                 ICorDebugILFrame? now = complete.Thread.ActiveFrame as ICorDebugILFrame;
-                _logger?.Invoke($"The {_lastStep} under way on thread {thread} goes on in the new code, v{(now is null ? null : ModuleMetadataReader.VersionOf(now))} IL_{now?.IP.pnOffset:X4}");
+                _logger?.Invoke($"The {_lastStep} under way on thread {thread} goes on in the new code, v{(now is null ? null : FindModule(now.Function.Module)?.MetadataReader.VersionOf(now))} IL_{now?.IP.pnOffset:X4}");
             }
             catch (Exception error) when (Failures.OfRuntime(error))
             {

@@ -55,7 +55,7 @@ public partial class ManagedDebugger
         }
         (int ip, CorDebugMappingResult mapping) = frame.IP;
         List<WatchedCall> calls = [];
-        foreach (ModuleMetadataReader.CallSite call in module.MetadataReader.CallSites(frame.Function.Token, start, end, ModuleMetadataReader.VersionOf(frame)))
+        foreach (ModuleMetadataReader.CallSite call in module.MetadataReader.CallSites(frame.Function.Token, start, end, module.MetadataReader.VersionOf(frame)))
         {
             // A call before the stop has run already: the one the stop is right after (a step out's) included.
             bool toCome = call.Offset > ip || (call.Offset == ip && mapping.HasFlag(CorDebugMappingResult.MAPPING_EXACT));
@@ -142,7 +142,7 @@ public partial class ManagedDebugger
         }
         int token = frame.Function.Token;
         (int ip, CorDebugMappingResult mapping) = frame.IP;
-        int? version = ModuleMetadataReader.VersionOf(frame);
+        int? version = module.MetadataReader.VersionOf(frame);
         if (module.MetadataReader.GetStartAndEndSequencePointIlOffsetsForIlOffset(token, ip, version) is not var (start, end))
         {
             return;
