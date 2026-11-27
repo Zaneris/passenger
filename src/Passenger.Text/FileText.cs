@@ -106,6 +106,12 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
         : bytes.StartsWith((ReadOnlySpan<byte>)[0xFE, 0xFF]) ? Encoding.BigEndianUnicode
         : null;
 
+    /// <summary>A file's bytes as text in the encoding the BOM they start with says, left out, or else as UTF-8, a byte it
+    /// does not read becoming its replacement character, as a reader that looks for a BOM reads them: decoded at their
+    /// length into one string, with no buffer grown on the way.</summary>
+    public static string Decoded(ReadOnlySpan<byte> bytes) =>
+        Bom(bytes) is { } marked ? marked.GetString(bytes[Preamble(marked).Length..]) : Encoding.UTF8.GetString(bytes);
+
     /// <summary>A file's bytes read in an encoding, leaving out the BOM they start with when it is that encoding's; a
     /// byte it does not read becomes its replacement character.</summary>
     public static FileText Decode(byte[] bytes, Encoding encoding)

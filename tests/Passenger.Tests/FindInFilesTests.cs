@@ -1076,9 +1076,10 @@ public sealed class FindInFilesTests : IDisposable
 public sealed class FindInFilesBytesTests
 {
     /// <summary>Find in Files reads as text only the files whose bytes may hold a match: over 2,000 files of 4 KB with a match
-    /// in a few, each search allocates (on every thread, the least of three) under 4 KB for each file more than over 20,
-    /// where reading one as text costs ten times that. It finds the same matches in UTF-8, UTF-8 with a BOM, UTF-16 and
-    /// 8-bit files, ignoring case as its regex does (a Kelvin sign is a k), matching case, by whole words and by regex.</summary>
+    /// in a few, each search allocates (on every thread, the least of three) under 4 KB a file more than over 20, and beside
+    /// a 2 MB file under 1 MB more ignoring case than matching case, ASCII looked for in the bytes undecoded. It finds the
+    /// same matches in UTF-8, UTF-8 with a BOM, UTF-16 and 8-bit files, ignoring case as its regex does (a Kelvin sign is a
+    /// k), matching case, by whole words and by regex.</summary>
     [AvaloniaFact]
     public void A_search_over_two_thousand_files_reads_as_text_only_those_whose_bytes_may_match()
     {
@@ -1098,6 +1099,7 @@ public sealed class FindInFilesBytesTests
             Files(large, 2000);
             (long Bytes, string Found)[] few = Searches(small, queries);
             (long Bytes, string Found)[] many = Searches(large, queries);
+            int matchingCase = Array.FindIndex(queries, q => q.MatchCase);
             for (int i = 0; i < queries.Length; i++)
             {
                 string asked = $"{queries[i].Text}{(queries[i].MatchCase ? " matching case" : string.Empty)}{(queries[i].Words ? " as a word" : string.Empty)}{(queries[i].Regex ? " as a regex" : string.Empty)}";
@@ -1107,6 +1109,8 @@ public sealed class FindInFilesBytesTests
                     $"Find in Files for {asked} found [{few[i].Found}] over 20 files and [{many[i].Found}] over 2,000, not [{queries[i].Found}]");
                 Assert.True(each < 4096,
                     $"Find in Files for {asked} allocated {many[i].Bytes / 1024:N0} KB over 2,000 files, {few[i].Bytes / 1024:N0} KB over 20: {each:N0} bytes for each file more, as if every file were read as text");
+                Assert.True(many[i].Bytes - many[matchingCase].Bytes < 1024 * 1024,
+                    $"Find in Files for {asked} allocated {many[i].Bytes / 1024:N0} KB against {many[matchingCase].Bytes / 1024:N0} KB matching case, as if the 2 MB file's bytes were decoded to be looked at");
             }
         }
         finally
@@ -1126,6 +1130,7 @@ public sealed class FindInFilesBytesTests
             File.WriteAllBytes(Path.Combine(root, "Latin.cs"), System.Text.Encoding.Latin1.GetBytes("// déjà une needle\n"));
             File.WriteAllText(Path.Combine(root, "Kelvin.cs"), "// Kelvin's line\n");
             File.WriteAllBytes(Path.Combine(root, "Blob.bin"), [.. System.Text.Encoding.ASCII.GetBytes("needle kelvin"), 0, 1, 2]);
+            File.WriteAllText(Path.Combine(root, "src/Large.cs"), string.Concat(Enumerable.Repeat("    int field = 2 * 3; // a sum of the parts\n", 2 * 1024 * 1024 / 46)));
         }
     }
 
