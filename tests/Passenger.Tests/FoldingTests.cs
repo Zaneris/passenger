@@ -41,6 +41,7 @@ public sealed class FoldingTests : IDisposable
         Flow.StepApart<FoldingTests>("a file opens with its header usings and regions folded and Collapse to Definitions folds every member and doc comment", t => t.A_file_opens_with_its_header_usings_and_regions_folded_and_Collapse_to_Definitions_folds_every_member_and_doc_comment());
         Flow.StepApart<FoldingTests>("collapsing with the view wheeled down past where the folded rows end draws them", t => t.Collapsing_with_the_view_wheeled_down_past_where_the_folded_rows_end_draws_them());
         Flow.StepApart<FoldingTests>("Expand and Collapse Recursively and Expand to Level fold by how deep each region is nested", t => t.Expand_and_collapse_recursively_and_expand_to_level_fold_by_how_deep_each_region_is_nested());
+        Flow.StepApart<FoldingTests>("statement blocks fold by their braces open at first and Collapse takes the innermost", t => t.Statement_blocks_fold_by_their_braces_open_at_first_and_collapse_takes_the_innermost());
         Flow.StepApart<FoldingTests>("a project file folds by its elements and a JSON file by its braces and typing keeps their folds", t => t.A_project_file_folds_by_its_elements_and_a_JSON_file_by_its_braces_and_typing_keeps_their_folds());
     }
 
@@ -320,6 +321,12 @@ public sealed class FoldingTests : IDisposable
             "        #region Sixty\n        /// <summary>\n        /// Method 60.");
         Replace("a #region ended", "        public int Property61", "        public int Property61", "        #endregion\n\n        public int Property61");
         SameAsOpenedAfresh("two members wrapped in a #region");
+        TypeAt("                value0 += 1;", " value0 *= 3;");
+        SameAsOpenedAfresh("a statement typed in an if's block");
+        Replace("an else taken away", "            else\n            {\n                value0 -= 1;\n            }\n", "            }\n", string.Empty);
+        Replace("a catch put on a line of its own", "            } catch (OverflowException) {", "            } catch (OverflowException) {",
+            "            }\n            catch (OverflowException) {");
+        SameAsOpenedAfresh("an else taken away and a catch put on a line of its own");
         TypeAt("int value1 = value0 * 3 + \"10:1\".Length;", " Func<int> made = () => { return 1; };");
         TypeAt("int value2 = value1 * 3 + \"30:2\".Length;", " /*");
         SameAsOpenedAfresh("a block comment left open");
@@ -498,6 +505,53 @@ public sealed class FoldingTests : IDisposable
         Ui.Run(window, EditorActions.UnfoldAllToLevel5);
         Assert.Empty(FoldedLines());
         Assert.Equal("Expand All to Level 5", window.Actions[EditorActions.UnfoldAllToLevel5]!.Title);
+        window.Close();
+    }
+
+    /// <summary>Every statement's braces over several lines fold, each in its own way: an if's, an else's, a loop's, a try's,
+    /// a catch's and a finally's, a lock's, a switch's, a case's block and a block standing alone; none folded as the file
+    /// opens, Collapse folds the innermost at the caret and then the one holding it, and a block whose closing brace a
+    /// <c>} catch {</c> goes on from leaves that line showing (#2414).</summary>
+    private void Statement_blocks_fold_by_their_braces_open_at_first_and_collapse_takes_the_innermost()
+    {
+        const string Statements = "class Flow\n{\n    int Run(int[] items, object gate)\n    {\n        int sum = 0;\n"
+            + "        if (items.Length > 0)\n        {\n            foreach (int item in items)\n            {\n                sum += item;\n            }\n        }\n"
+            + "        else\n        {\n            sum = -1;\n        }\n"
+            + "        try {\n            lock (gate)\n            {\n                sum++;\n            }\n        } catch (InvalidOperationException) {\n"
+            + "            sum = 0;\n        } finally {\n            sum--;\n        }\n"
+            + "        switch (sum)\n        {\n            case 1:\n            {\n                return 1;\n            }\n        }\n"
+            + "        {\n            sum *= 2;\n        }\n        return sum;\n    }\n}\n";
+        string path = Path.Combine(folder, "Flow.cs");
+        File.WriteAllText(path, Statements);
+        MainWindow window = Ui.OpenFolder(folder, width: 1000, height: 900, languageServer: false);
+        window.OpenFile(path);
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.WaitFor(() => window.EditorArea.Active!.FoldsFound, "the file's regions");
+        Assert.Equal(
+            [(0, "{...}"), (2, "{...}"), (5, "{...}"), (7, "{...}"), (12, "{...}"), (16, "..."), (17, "{...}"), (21, "..."), (23, "...}"),
+                (26, "{...}"), (28, "{...}"), (33, "...}")],
+            Regions(editor));
+        Assert.All(editor.FoldRegions.Where(r => r.Kind != FoldKind.Body), r => Assert.Equal(FoldKind.Code, r.Kind));
+        Assert.Empty(Folded(editor));
+
+        TextSnapshot text = editor.Document.Snapshot;
+        int[] FoldedLines() => [.. Folded(editor).Select(r => text.GetLineFromOffset(r.Start))];
+        double Top(int line) => editor.PointOf(text.GetLineStart(line)).Y;
+        editor.Focus();
+        editor.Selections = SelectionSet.Single(text.GetLineStart(9) + 16);
+        Ui.Run(window, EditorActions.Fold);
+        Assert.Equal([7], FoldedLines());
+        Ui.Run(window, EditorActions.Fold);
+        Assert.Equal([5, 7], FoldedLines());
+        Assert.Equal(Top(5) + editor.LineHeight, Top(12), 1);
+        editor.Selections = SelectionSet.Single(text.GetLineStart(22) + 12);
+        Ui.Run(window, EditorActions.Fold);
+        Assert.Equal([5, 7, 21], FoldedLines());
+        // The catch's closing brace goes on to the finally, whose line stays under the catch's.
+        Assert.Equal(Top(21) + editor.LineHeight, Top(23), 1);
+        Ui.Run(window, EditorActions.UnfoldAll);
+        Assert.Empty(Folded(editor));
         window.Close();
     }
 
@@ -851,7 +905,7 @@ public sealed class FoldingTests : IDisposable
         + "            return twice(w * h);\n        }\n\n        int Size\n        {\n            get\n            {\n                return size;\n            }\n"
         + "        }\n        #endregion\n    }\n}\n";
 
-    /// <summary>Members of every kind that folds, with a doc comment each, around 120 lines a member.</summary>
+    /// <summary>Members of every kind that folds, with a doc comment each, around 130 lines a member.</summary>
     private static string Members(int count)
     {
         StringBuilder text = new("using System;\nusing System.Collections.Generic;\nusing System.Linq;\n\nnamespace Long\n{\n    /// <summary>\n    /// Members of every kind that folds.\n    /// </summary>\n    public class Members\n    {\n        private static int counter;\n\n");
@@ -862,6 +916,8 @@ public sealed class FoldingTests : IDisposable
                 text.Append(System.Globalization.CultureInfo.InvariantCulture, $"        #region Group {i / 20}\n");
             }
             text.Append(System.Globalization.CultureInfo.InvariantCulture, $"        /// <summary>\n        /// Method {i}.\n        /// </summary>\n        public static int Method{i}(int seed)\n        {{\n            int value0 = seed + {i};\n");
+            text.Append("            if (seed > 0)\n            {\n                value0 += 1;\n            }\n            else\n            {\n                value0 -= 1;\n            }\n");
+            text.Append("            try {\n                value0 = checked(value0 * 2);\n            } catch (OverflowException) {\n                value0 = 0;\n            }\n");
             text.Append("            Func<int, int> twice = x =>\n            {\n                return x * 2;\n            };\n");
             for (int j = 1; j < 90; j++)
             {
