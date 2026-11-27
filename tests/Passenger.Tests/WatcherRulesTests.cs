@@ -33,9 +33,9 @@ public sealed class WatcherRulesTests
     private static void No_link_is_told_apart_by_its_attributes_outside_FileLinks()
     {
         List<string> found = Named("ReparsePoint", ["src/Passenger.Core/FileLinks.cs"]);
-        Assert.True(found.Count == 0, "A link told apart by its attributes off Windows reads whether each file is read-only too, which on macOS asks the "
-            + "directory service of every file another user owns, so a walk of .NET's root-owned packs takes seconds: tell links apart through "
-            + $"FileLinks.Is:\n{string.Join('\n', found)}");
+        Assert.True(found.Count == 0, "A link told apart by its attributes, where the system has no reparse points, reads whether each file is read-only "
+            + "too, which may ask the directory service of every file another user owns, so a walk of .NET's root-owned packs takes seconds: tell "
+            + $"links apart through FileLinks.Is:\n{string.Join('\n', found)}");
     }
 
     /// <summary>Each line of src's C# outside <paramref name="homes"/> naming <paramref name="name"/>, comments passed over.</summary>
