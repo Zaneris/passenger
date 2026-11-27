@@ -231,7 +231,9 @@ internal static class RiderKeymaps
         ([AppActions.CollapseSelection], ["CollapseSelection"]), ([AppActions.CollapseBlock], ["CollapseBlock"]),
         ([EditorActions.PasteAsPlainText], ["EditorPasteSimple"]), ([EditorActions.ExpandWord], ["HippieCompletion"]),
         ([EditorActions.ExpandWordBackward], ["HippieBackwardCompletion"]), ([AppActions.PasteFromHistory], ["PasteMultiple"]),
-        ([AppActions.CopyReference], ["CopyReference"]), ([AppActions.SmartTypeCompletion], ["SmartTypeCompletion"])
+        ([AppActions.CopyReference], ["CopyReference"]), ([AppActions.SmartTypeCompletion], ["SmartTypeCompletion"]),
+        ([AppActions.NewBranch], ["Git.CreateNewBranch"]), ([AppActions.CommitAndPush], ["Git.Commit.And.Push.Executor"]),
+        ([AppActions.VcsOperations], ["Vcs.QuickListPopupAction"])
     ];
 
     /// <summary>Where a keymap here differs from Rider's on purpose: a shortcut it keeps that Rider's lacks, or one of Rider's

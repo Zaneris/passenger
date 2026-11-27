@@ -606,7 +606,7 @@ public partial class MainWindow
     /// <summary>Adds one of the window's actions, listed in one place of the menus if given.</summary>
     /// <summary>A key the keymap gives one action where another takes it by place (<see cref="AppActions.KeysIn"/>): New
     /// Item in the Explorer, Rerun in the Run window, Edit Breakpoint on a breakpoint's line, Stop Statement in a console
-    /// running one, Query History in a console, View Designer in a form's file while the debugger has not stopped. True once taken.</summary>
+    /// running one, Query History in a console, New Branch in the Commit and Git windows, View Designer in a form's file while the debugger has not stopped. True once taken.</summary>
     private bool PlaceTakes(string action)
     {
         ActionContext context = actions!.Context();
@@ -617,6 +617,7 @@ public partial class MainWindow
             ?? Here(A.DatabaseHistory, context is { ToolWindow: null, File: { } console } && database?.ConsoleOf(console.Path) is not null)
             ?? Here(A.EditBreakpoint, context is { ToolWindow: null, File: { } file } && session.Debug.Breakpoints.In(file.Path).Any(b => b.Line == context.Caret.Line))
             ?? Here(A.CommitMessageHistory, commitView?.HasMessageKeys(context.Focused) == true)
+            ?? Here(A.NewBranch, context.ToolWindow?.Id is ToolWindowIds.Commit or ToolWindowIds.Git)
             ?? Here(A.FormDesignOnly, context is { ToolWindow: null, File: { } form } && FormOf(form) is not null && session.Debug.Session is not { State: Debugging.DebugState.Paused })
             ?? Here(A.NextOverload, assist.StepsOverloads)
             ?? Here(A.PreviousOverload, assist.StepsOverloads);

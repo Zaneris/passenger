@@ -642,6 +642,12 @@ public static class AppActions
     public const string PasteFromHistory = "app.editor.pasteFromHistory";
     public const string CopyReference = "app.copyReference";
     public const string SmartTypeCompletion = "app.code.smartTypeCompletion";
+
+    // Rider's Git.CreateNewBranch, Git.Commit.And.Push.Executor and Vcs.QuickListPopupAction, bound as its keymaps bind them
+    // (RiderKeys): a branch made from the head, a commit pushed as it is made, and the Git menu's actions in a popup.
+    public const string NewBranch = "app.vcs.newBranch";
+    public const string CommitAndPush = "app.vcs.commitAndPush";
+    public const string VcsOperations = "app.vcs.operations";
     public const string ShowExecutionPoint = "app.debug.showExecutionPoint";
 
     // Rider's XDebugger.AttachToProcess and RiderReattach, on its Visual Studio keymaps' Ctrl+Alt+P (Cmd+Alt+P) and
@@ -942,9 +948,9 @@ public static class AppActions
 
     /// <summary>The action whose keys a place takes for one of its own, where Rider's keymaps give a key two by place: Show
     /// Diff and Compare Files Duplicate's (not in VS Code's or Emacs's), Add to Watches Complete Statement's (VS Code's Start
-    /// New Line Before's), Focus Editor Escape's, New Item Generate's and Edit Breakpoint View Breakpoints' (not in Visual
-    /// Studio's), Rerun Replace's and Commit Message History Match Brace's (IntelliJ IDEA's on the Mac; History Replace's in
-    /// Visual Studio's), a console's and a grid's by id, Query History Find in Selection's (HistoryKeyShared).</summary>
+    /// New Line Before's), Focus Editor Escape's; outside Visual Studio's New Item Generate's, Edit Breakpoint View
+    /// Breakpoints' and New Branch Inline's; Rerun Replace's and Commit Message History Match Brace's (IntelliJ IDEA's on
+    /// the Mac; History Replace's in Visual Studio's), a console's and a grid's by id, Query History Find in Selection's.</summary>
     public static string KeysIn(string id) => UserShortcuts.ContainsKey(id) ? id : id switch
     {
         ShowDiff or CompareFiles when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => EditorActions.Duplicate,
@@ -963,6 +969,7 @@ public static class AppActions
         DatabaseShowDdl => GoToDeclaration,
         DatabaseRunStop => Stop,
         DatabaseHistory when HistoryKeyShared(Preset) => FindInSelection,
+        NewBranch when Preset != KeymapPreset.VisualStudio => Inline,
         Rerun when Preset == KeymapPreset.IntelliJ && OperatingSystem.IsMacOS() => Replace,
         NextOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: true),
         PreviousOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: false),
@@ -1088,8 +1095,8 @@ public static class AppActions
         _ => "Visual Studio",
     };
 
-    /// <summary>The moves by the code's structure, the peeks, the person's own folds, Paste from History, Copy Reference and
-    /// Smart Type Completion as each of Rider's keymaps binds them, by its name. Where Rider gives a key to one of them and to an action Passenger has there already, that one keeps it:
+    /// <summary>The moves by the code's structure, the peeks, the person's own folds, Paste from History, Copy Reference,
+    /// Smart Type Completion, New Branch, Commit and Push and VCS Operations as each of Rider's keymaps binds them, by its name. Where Rider gives a key to one of them and to an action Passenger has there already, that one keeps it:
     /// Visual Studio's own Move Line Alt+Up and Down, the Mac's Clone Caret Ctrl+Shift+Up and Down and Redo Cmd+Y, VS Code's
     /// Quick Fix Cmd+. and Collapse Cmd+Alt+[ on the Mac, and Select Containing Declaration Cmd+Alt+[ over Code Block Start.</summary>
     private static readonly Dictionary<string, (string Action, string Key)[]> RiderKeys = new()
@@ -1101,7 +1108,8 @@ public static class AppActions
             (CodeBlockStartWithSelection, "control alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "control alt shift CLOSE_BRACKET"),
             (GoToRegion, "control alt PERIOD"), (QuickImplementations, "alt F12"), (CollapseSelection, "control M , H"), (CollapseSelection, "control M , control H"),
             (CollapseBlock, "control shift PERIOD"), (PasteFromHistory, "control shift V"), (PasteFromHistory, "control shift INSERT"),
-            (CopyReference, "control alt shift C"), (SmartTypeCompletion, "control alt SPACE"),
+            (CopyReference, "control alt shift C"), (SmartTypeCompletion, "control alt SPACE"), (NewBranch, "control alt N"),
+            (CommitAndPush, "control alt shift K"), (VcsOperations, "control alt Q"),
         ],
         ["Visual Studio OSX"] =
         [
@@ -1110,13 +1118,14 @@ public static class AppActions
             (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
             (GoToRegion, "meta alt PERIOD"), (QuickImplementations, "alt SPACE"), (CollapseSelection, "meta PERIOD"), (CollapseBlock, "meta shift PERIOD"),
             (PasteFromHistory, "meta shift V"), (PasteFromHistory, "meta shift INSERT"), (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control alt SPACE"),
+            (NewBranch, "meta alt N"), (CommitAndPush, "meta alt K"), (VcsOperations, "control V"),
         ],
         ["VSCode"] =
         [
             (GoToContainingDeclaration, "alt shift OPEN_BRACKET"), (SelectContainingDeclaration, "control alt shift OPEN_BRACKET"),
             (GoToRegion, "control alt PERIOD"), (QuickImplementations, "alt F12"), (ErrorDescription, "control F1"), (ShowFilePath, "control alt F12"),
             (CollapseBlock, "control alt OPEN_BRACKET"), (CollapseBlock, "control K , control L"), (PasteFromHistory, "control shift INSERT"),
-            (CopyReference, "control alt shift C"),
+            (CopyReference, "control alt shift C"), (CommitAndPush, "control alt K"), (VcsOperations, "alt BACK_QUOTE"),
         ],
         ["VSCode OSX"] =
         [
@@ -1125,7 +1134,7 @@ public static class AppActions
             (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
             (GoToRegion, "meta alt PERIOD"), (QuickImplementations, "alt SPACE"), (QuickImplementations, "alt F12"), (ErrorDescription, "meta F1"),
             (ExpressionTypeInfo, "control shift P"), (ShowFilePath, "meta alt F12"), (CollapseBlock, "meta K , meta L"),
-            (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control shift SPACE"),
+            (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control shift SPACE"), (CommitAndPush, "meta alt K"), (VcsOperations, "control V"),
         ],
         ["$default"] =
         [
@@ -1135,7 +1144,8 @@ public static class AppActions
             (GoToRegion, "control alt PERIOD"), (QuickImplementations, "control shift I"), (ErrorDescription, "control F1"),
             (ExpressionTypeInfo, "control shift P"), (ShowFilePath, "control alt F12"), (CollapseSelection, "control PERIOD"),
             (CollapseBlock, "control shift PERIOD"), (PasteFromHistory, "control shift V"), (PasteFromHistory, "control shift INSERT"),
-            (CopyReference, "control alt shift C"), (SmartTypeCompletion, "control shift SPACE"),
+            (CopyReference, "control alt shift C"), (SmartTypeCompletion, "control shift SPACE"), (CommitAndPush, "control alt K"),
+            (VcsOperations, "alt BACK_QUOTE"),
         ],
         ["Mac OS X 10.5+"] =
         [
@@ -1146,7 +1156,7 @@ public static class AppActions
             (GoToRegion, "meta alt PERIOD"), (QuickImplementations, "alt SPACE"), (QuickImplementations, "meta Y"), (ErrorDescription, "meta F1"),
             (ExpressionTypeInfo, "control shift P"), (ShowFilePath, "meta alt F12"), (CollapseSelection, "meta PERIOD"),
             (CollapseBlock, "meta shift PERIOD"), (PasteFromHistory, "meta shift V"), (PasteFromHistory, "meta shift INSERT"),
-            (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control shift SPACE"),
+            (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control shift SPACE"), (CommitAndPush, "meta alt K"), (VcsOperations, "control V"),
         ],
     };
 

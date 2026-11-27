@@ -336,7 +336,7 @@ public partial class MainWindow
         }
         menu.Items.Add(Action(AppActions.UpdateProject));
         menu.Items.Add(Action(AppActions.Fetch));
-        menu.Items.Add(ToolWindows.ListMenus.Item("New Branch…", ShowNewBranch));
+        menu.Items.Add(Action(AppActions.NewBranch));
         menu.Items.Add(Action(AppActions.Commit));
         menu.Items.Add(Action(AppActions.Push));
         menu.Items.Add(Action(AppActions.Stash));
@@ -579,6 +579,25 @@ public partial class MainWindow
             }
         };
         popups.Show(popup);
+        return popup;
+    }
+
+    /// <summary>VCS Operations: the Git menu's actions that can run where it was asked, in the menu's order with their keys, in
+    /// a popup narrowed as words are typed; the one chosen runs there.</summary>
+    public ChoicePopup ShowVcsOperations(ActionContext context)
+    {
+        ActionRegistry registry = actions!;
+        Choice[] runnable = [.. MainMenu.ActionsIn(MainMenu.Of(registry.All, "Git"))
+            .Where(id => id != AppActions.VcsOperations && registry.WhyNot(id, context) is null)
+            .Select(id => new Choice(registry[id]!.TitleWhere(context), registry.ShortcutsShown(id) ?? string.Empty, id))];
+        ChoicePopup popup = new(TitleOf(AppActions.VcsOperations), "Search Git actions", runnable, Refusals.NoVcsOperations);
+        popups.Show(popup, chosen =>
+        {
+            if (chosen?.Value is string id)
+            {
+                Request(id, context);
+            }
+        });
         return popup;
     }
 
@@ -984,11 +1003,29 @@ public partial class MainWindow
             IdeErrors.Observe(session.Vcs.RefreshAsync());
             CommitView.FocusMessage();
         }, new("Git", 0, 0));
+        // In the Commit window the commit is made and pushed; elsewhere the window is shown to write its message.
+        Add(AppActions.CommitAndPush, "Commit and Push…", context =>
+        {
+            if (context.ToolWindow?.Id == ToolWindowIds.Commit)
+            {
+                IdeErrors.Observe(CommitView.CommitAsync(push: true));
+            }
+            else
+            {
+                Request(AppActions.Commit, context);
+            }
+        }, new("Git", 0, 1), remote: true);
         // An agent's Push pushes as it stands, the dialog and a remote's choice being the person's to answer.
         Add(AppActions.Push, "Push…", context => IdeErrors.Observe(AskedByAgent(context) ? session.Vcs.PushAsync(ask: false) : ShowPushAsync(null, elsewhere: false)), new("Git", 0, 1), remote: true);
         Add(AppActions.UpdateProject, "Update Project…", context => IdeErrors.Observe(session.Vcs.UpdateAsync()), new("Git", 0, 2), remote: true);
         Add(AppActions.Fetch, "Fetch", context => IdeErrors.Observe(session.Vcs.FetchAsync()), new("Git", 0, 3), remote: true);
+        Add(AppActions.NewBranch, "New Branch…", _ => ShowNewBranch(), new("Git", 0, 4));
         Add(AppActions.Branches, "Branches…", _ => ShowBranches(BranchButton), new("Git", 0, 4));
+        actions!.Add(new IdeAction(AppActions.VcsOperations, "VCS Operations", "Git", context => ShowVcsOperations(context))
+        {
+            WhyNot = NeedsFolder,
+            Words = ["Git Operations", "Quick List", "Version Control"],
+        });
         // At the commit chosen in the Git log where the log has the keys, else at HEAD; the dialog takes any other.
         Add(AppActions.NewTag, "New Tag…", context => IdeErrors.Observe(ShowNewTagAsync(
             (context.Focused as Visual)?.FindAncestorOfType<ToolWindows.GitLogView>(includeSelf: true)?.Selected?.Hash ?? "HEAD")), new("Git", 0, 5));

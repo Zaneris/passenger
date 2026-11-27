@@ -106,7 +106,8 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>The Commit window as one flow, each step one test's check in an instance of its own: git started off
     /// the window's thread, the diff's keys, renames by git mv or the Explorer committed as renames, Amend rewording
     /// alone and keeping what was typed, a message file another program holds, a hook's job holding git's output
-    /// done within seconds, and the messages committed offered again.</summary>
+    /// done within seconds, the messages committed offered again, and the Git keys of VCS Operations, Commit and Push and
+    /// New Branch.</summary>
     [AvaloniaFact]
     public void A_commit_takes_what_the_person_chose_and_typed_as_renames_where_files_moved_never_held_by_another_program()
     {
@@ -120,6 +121,7 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("a commit whose message file another program holds is made and the file goes once let go", t => t.A_commit_whose_message_file_another_program_holds_is_made_and_the_file_goes_once_let_go());
         Flow.StepApart<VcsTests>("a commit whose hook leaves a job holding gits output is done within seconds", t => t.A_commit_whose_hook_leaves_a_job_holding_gits_output_is_done_within_seconds());
         Flow.StepApart<VcsTests>("the commit windows message history offers each message committed newest first to change and commit again", t => t.The_commit_windows_message_history_offers_each_message_committed_newest_first_to_change_and_commit_again());
+        Flow.StepApart<VcsTests>("vcs operations commit and push and new branch run from their keys", t => t.Vcs_operations_commit_and_push_and_new_branch_run_from_their_keys());
     }
 
     /// <summary>The log and annotations as one flow, each step in an instance of its own: annotations in a SHA-256
@@ -3262,6 +3264,49 @@ public sealed partial class VcsTests : IDisposable
 
     private static Avalonia.Controls.ListBox Find(Avalonia.Controls.Control view, object rows) =>
         Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Avalonia.Controls.ListBox>().First(l => ReferenceEquals(l.ItemsSource, rows));
+
+    /// <summary>The Git keys of the keymap in force: VCS Operations lists the Git menu's actions with their keys and runs the
+    /// one chosen (Commit…, showing the Commit window); Commit and Push there commits the change and pushes it to the remote;
+    /// New Branch's box makes a branch from the head and checks it out.</summary>
+    private void Vcs_operations_commit_and_push_and_new_branch_run_from_their_keys()
+    {
+        string remote = TestFolders.Create("git-remote-");
+        TestGit.Run(remote, "init", "-q", "--bare", "-b", "main");
+        Git("remote", "add", "origin", remote);
+        Git("push", "-q", "-u", "origin", "main");
+        MainWindow window = Open();
+        try
+        {
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Press(window, Ui.Shortcut(AppActions.VcsOperations));
+            Passenger.App.Vcs.ChoicePopup operations = Assert.IsType<Passenger.App.Vcs.ChoicePopup>(window.Popup);
+            Assert.True(operations.Rows.FirstOrDefault()?.Label == "Commit…" && operations.Rows.Any(r => r.Label == "Commit and Push…" && r.Detail.Length > 0),
+                $"VCS Operations listed [{string.Join("; ", operations.Rows.Select(r => $"{r.Label} {r.Detail}"))}], not the Git menu's actions with their keys");
+            Ui.Press(window, "ENTER");
+            Ui.Settle();
+            Assert.True(window.DockHost.IsShown(ToolWindowIds.Commit), "Commit… chosen in VCS Operations left the Commit window hidden");
+
+            File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 3", StringComparison.Ordinal));
+            Assert.True(window.Perform(AppActions.CommitRefresh), window.Status);
+            Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "Shop.cs"), "Shop.cs changed in the Commit window");
+            window.CommitView.Message = "Three at a time";
+            window.CommitView.FocusMessage();
+            Ui.Settle();
+            Ui.Press(window, Ui.Shortcut(AppActions.CommitAndPush));
+            Ui.Landed(() => TestGit.Run(remote, "log", "-1", "--format=%s", "main").Trim() == "Three at a time", "the commit pushed to the remote");
+
+            Ui.Press(window, Ui.Shortcut(AppActions.NewBranch));
+            NamePopup branch = Assert.IsType<NamePopup>(window.Popup);
+            branch.Text = "feature/keys";
+            Task submitted = branch.SubmitAsync();
+            Ui.Landed(() => submitted.IsCompleted && window.Vcs.Branch == "feature/keys", "the new branch checked out");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(remote);
+        }
+    }
 
     private MainWindow Open()
     {

@@ -220,6 +220,9 @@ public static class Refusals
     /// <summary>Collapse Block where no block of braces is around the caret.</summary>
     public const string NoBlockHere = "No block of braces is around the caret";
 
+    /// <summary>VCS Operations where none of the Git menu's actions can run.</summary>
+    public const string NoVcsOperations = "No Git action can run here";
+
     /// <summary>Paste from History before anything was copied, here or on the clipboard.</summary>
     public const string NothingCopied = "Nothing has been copied yet";
 
