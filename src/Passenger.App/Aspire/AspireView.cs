@@ -61,6 +61,9 @@ public sealed class AspireView : DockPanel, IDisposable
     private Func<string, bool>? requestAction;
     private Func<string, MenuItem>? actionItem;
 
+    /// <summary>The Graph tab's page, the graph scrolled, whose menu copies it as Mermaid once the window's actions are bound.</summary>
+    private readonly ScrollViewer graphPage;
+
     public AspireView(AspireModel model)
     {
         this.model = model;
@@ -129,7 +132,7 @@ public sealed class AspireView : DockPanel, IDisposable
             [LogTab] = Log,
             [StatsTab] = Metrics,
             [AspireModel.DetailsTab] = Details,
-            [AspireModel.GraphTab] = new ScrollViewer { Content = Graph, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto },
+            [AspireModel.GraphTab] = graphPage = new ScrollViewer { Content = Graph, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto },
             [TelemetryTab] = Telemetry.Both,
             [AspireModel.AppHostTab] = WithHeader(readiness, appHostConsole),
         };
@@ -366,6 +369,9 @@ public sealed class AspireView : DockPanel, IDisposable
         }
         requestAction = request;
         actionItem = item;
+        ContextMenu graphMenu = new();
+        graphMenu.Opening += (_, _) => graphMenu.ItemsSource = (Control[])[item(AppActions.AspireGraphMermaid)];
+        graphPage.ContextMenu = graphMenu;
         foreach ((Button button, string action) in tools)
         {
             ActionTips.Set(button, action, actions[action]?.Title ?? ToolTip.GetTip(button) as string ?? action);

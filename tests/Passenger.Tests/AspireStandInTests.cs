@@ -2311,7 +2311,8 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     }
 
     /// <summary>The AppHost's graph shows every resource at once, an edge for each wait and reference its relationships give,
-    /// each resource right of those it waits for; a click on a node chooses its row.</summary>
+    /// each resource right of those it waits for; a click on a node chooses its row; and it is copied as a Mermaid flowchart
+    /// of the same nodes and edges.</summary>
     private void The_apphosts_graph_has_an_edge_for_each_wait_and_a_node_chooses_its_row()
     {
         project.Reset();
@@ -2342,6 +2343,17 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
             Ui.Click(graph.Nodes["db"]);
             Ui.WaitFor(() => window.Aspire.SelectedResource?.Name == "db", "the db node to choose db's row");
+
+            // Copied as Mermaid, it is the graph as drawn: a node a resource, an arrow a wait, a dashed line a reference.
+            FindAction(window, "Copy Aspire Graph as Mermaid");
+            Ui.WaitFor(() => window.Copied.FirstOrDefault().Text?.StartsWith("flowchart RL\n", StringComparison.Ordinal) == true,
+                () => $"the graph copied as a Mermaid flowchart ({window.Status})");
+            string[] lines = [.. window.Copied[0].Text.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(1).Select(line => line.Trim())];
+            Dictionary<string, string> ids = lines.Select(line => System.Text.RegularExpressions.Regex.Match(line, "^(r[0-9]+)\\[\"([a-z]+)\"\\]$"))
+                .Where(node => node.Success).ToDictionary(node => node.Groups[2].Value, node => node.Groups[1].Value);
+            Assert.Equal(["api", "cache", "db", "web"], ids.Keys.Order(StringComparer.Ordinal));
+            Assert.Equal([$"{ids["api"]} --> {ids["cache"]}", $"{ids["api"]} --> {ids["db"]}", $"{ids["web"]} --> {ids["api"]}", $"{ids["web"]} -.- {ids["cache"]}"],
+                lines.Where(line => line.Contains(' ', StringComparison.Ordinal)).Order(StringComparer.Ordinal));
             Assert.Empty(backend.Errors);
         }
         finally

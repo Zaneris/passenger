@@ -467,6 +467,7 @@ public static class AppActions
     public const string AspireTelemetry = "app.aspire.telemetry";
     public const string AspireStats = "app.aspire.stats";
     public const string AspireGraph = "app.aspire.graph";
+    public const string AspireGraphMermaid = "app.aspire.graphMermaid";
     public const string AspireLogs = "app.aspire.logs";
     public const string AspireTraces = "app.aspire.traces";
     public const string AspireAppHostConsole = "app.aspire.appHostConsole";

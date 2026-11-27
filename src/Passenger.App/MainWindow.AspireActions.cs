@@ -1,5 +1,6 @@
 using Passenger.App.Aspire;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 using A = Passenger.App.AppActions;
 
 namespace Passenger.App;
@@ -75,6 +76,14 @@ public partial class MainWindow
                 AspireWindow.ShowTelemetry(page);
             }, NeedsAspire);
         }
+        // The graph as drawn, for a document: Mermaid's flowchart, which renders where Markdown does.
+        Add(A.AspireGraphMermaid, "Copy Aspire Graph as Mermaid", "Aspire", _ =>
+        {
+            if (aspireView?.Graph.Mermaid() is { } flowchart)
+            {
+                IdeErrors.Observe(CopyAsync(flowchart, $"Copied the graph of {Plural.Of(aspireView.Graph.Nodes.Count, "resource")} as a Mermaid flowchart"));
+            }
+        }, c => NeedsAspire(c) ?? (aspireView?.Graph.Nodes.Count is > 0 ? null : "The Aspire graph shows no resources"), words: ["Export Aspire Graph as Mermaid"]);
         Add(A.AspireOpenLink, "Open Aspire Resource Endpoint", "Aspire", _ =>
         {
             if (Aspire.TakePendingLink() is { Scheme: "http" or "https" } link)

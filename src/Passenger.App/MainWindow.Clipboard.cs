@@ -38,14 +38,15 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Text put on the clipboard and remembered for Paste from History, said in the status bar.</summary>
-    private async Task CopyAsync(string text)
+    /// <summary>Text put on the clipboard and remembered for Paste from History, said in the status bar (as <paramref name="said"/>
+    /// where it is given).</summary>
+    private async Task CopyAsync(string text, string? said = null)
     {
         if (Clipboard is { } clipboard)
         {
             await clipboard.SetTextAsync(text);
             Remember(new CopiedText(text, WholeLines: false));
-            status.Text = $"Copied {text}";
+            status.Text = said ?? $"Copied {text}";
         }
     }
 
