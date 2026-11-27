@@ -37,6 +37,7 @@ public sealed class FoldingTests : IDisposable
         Flow.StepApart<FoldingTests>("keys among three hundred folded methods carry every region to where the parse finds it", t => t.Keys_among_three_hundred_folded_methods_carry_every_region_to_where_the_parse_finds_it());
         Flow.StepApart<FoldingTests>("a selection and a block the person folds stay folded through edits and a reopen and Expand takes them away", t => t.A_selection_and_a_block_the_person_folds_stay_folded_through_edits_and_a_reopen_and_expand_takes_them_away());
         Flow.StepApart<FoldingTests>("a file opens folded as it last closed and so does its folder after a restart", t => t.A_file_opens_folded_as_it_last_closed_and_so_does_its_folder_after_a_restart());
+        Flow.StepApart<FoldingTests>("a large file opened at a member keeps it on its row as its regions and kept folds land", t => t.A_large_file_opened_at_a_member_keeps_it_on_its_row_as_its_regions_and_kept_folds_land());
         Flow.StepApart<FoldingTests>("a file opens with its header usings and regions folded and Collapse to Definitions folds every member and doc comment", t => t.A_file_opens_with_its_header_usings_and_regions_folded_and_Collapse_to_Definitions_folds_every_member_and_doc_comment());
         Flow.StepApart<FoldingTests>("collapsing with the view wheeled down past where the folded rows end draws them", t => t.Collapsing_with_the_view_wheeled_down_past_where_the_folded_rows_end_draws_them());
         Flow.StepApart<FoldingTests>("Expand and Collapse Recursively and Expand to Level fold by how deep each region is nested", t => t.Expand_and_collapse_recursively_and_expand_to_level_fold_by_how_deep_each_region_is_nested());
@@ -426,6 +427,46 @@ public sealed class FoldingTests : IDisposable
         {
             TestFolders.Delete(settings);
         }
+    }
+
+    /// <summary>Going to a member of a large file that is not open (Go to Implementation, a usage, a stack's link) puts it a
+    /// third of the way down the view before the parse has found the file's folds; its #regions and the folds it last
+    /// closed with then take thousands of lines away above it, and the member stays on the row it was put on (#2413).</summary>
+    private void A_large_file_opened_at_a_member_keeps_it_on_its_row_as_its_regions_and_kept_folds_land()
+    {
+        string path = Path.Combine(folder, "Long.cs");
+        string source = Members(200);
+        File.WriteAllText(path, source);
+        string shapes = Path.Combine(folder, "Shapes.cs");
+        File.WriteAllText(shapes, Source);
+        MainWindow window = Ui.OpenFolder(folder, width: 1000, height: 700, languageServer: false);
+        window.OpenFile(shapes);
+        window.OpenFile(path);
+        Ui.Settle();
+        Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => document.FoldsFound, "the long file's regions");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        Ui.Run(window, EditorActions.FoldToDefinitions);
+        Assert.True(window.EditorArea.Close(document), "The long file did not close");
+        Ui.Settle();
+
+        int member = source.IndexOf("public static int Method150(", StringComparison.Ordinal) + "public static int ".Length;
+        TextPosition at = new(source[..member].Count(c => c == '\n'), "        public static int ".Length);
+        window.NavigateTo(path, at);
+        Passenger.App.Workspace.OpenDocument reopened = window.EditorArea.Active!;
+        Assert.False(reopened.FoldsFound, "The long file's folds were found before the view went to the member, so landing they move nothing");
+        double put = editor.PointOf(member).Y;
+        Assert.True(editor.ScrollOffset.Y > 0 && put > 0 && put < editor.Bounds.Height, $"Going to the member put it {put:0} down a view {editor.Bounds.Height:0} high");
+        Ui.WaitFor(() => reopened.FoldsFound, "the reopened long file's regions");
+        Ui.Settle();
+        TextSnapshot text = editor.Document.Snapshot;
+        Assert.True(Folded(editor).Count(r => r.Kind == FoldKind.Region && r.End < member) == 7,
+            $"The #regions above the member are not all folded as the file closed: [{string.Join(", ", Folded(editor).Where(r => r.Kind == FoldKind.Region).Select(r => text.GetLineFromOffset(r.Start)))}]");
+        Assert.Equal(at, editor.CaretPosition);
+        Assert.True(Math.Abs(editor.PointOf(member).Y - put) < 1,
+            $"The member went to stood {put:0} down the view and {editor.PointOf(member).Y:0} once the file's folds landed: the view kept its height, not the member's row");
+        window.Close();
     }
 
     /// <summary>Rider's keys for the folds by nesting: Expand All to Level 3 leaves the three outer levels open, Expand

@@ -68,6 +68,10 @@ public sealed partial class CodeEditor : Control
     private bool updatingBars;
     private bool editing;
     private int? pendingGoTo;
+
+    /// <summary>Where <see cref="GoTo"/> last put the caret on screen: in which text, the caret, the view's top since and
+    /// how far below it the caret's row stands.</summary>
+    private (TextSnapshot Text, int Caret, double Top, double Below)? placed;
     private bool pendingEnd;
     private bool ligatures;
     private Metrics metrics;
@@ -241,14 +245,13 @@ public sealed partial class CodeEditor : Control
     }
 
     /// <summary>Draws what the decorations were set to: lines with hints drawn otherwise wrapped again, the rows of other
-    /// folds.</summary>
+    /// folds and rows above lines, which keep the view's place (<see cref="KeepPlace"/>).</summary>
     private void OnDecorationsChanged(object? sender, DecorationKind kind)
     {
         switch (kind)
         {
             case DecorationKind.RowsAbove:
-                // The line at the view's top stays there as rows come and go above it.
-                KeepTopLine(() => { });
+                KeepPlace();
                 FollowInputMethod();
                 break;
             case DecorationKind.InlayHints:
@@ -259,6 +262,10 @@ public sealed partial class CodeEditor : Control
                 break;
             case DecorationKind.Folds:
                 HideFoldPreview();
+                if (!foldingHere)
+                {
+                    KeepPlace();
+                }
                 UpdateScrollBars();
                 ScrollWithinRows();
                 FollowInputMethod();
@@ -475,6 +482,7 @@ public sealed partial class CodeEditor : Control
         EndSnippet();
         CancelChoices();
         pendingGoTo = null;
+        placed = null;
         usages.Clear();
         UsagesKept = false;
         inlineChanges.Clear();
@@ -576,6 +584,24 @@ public sealed partial class CodeEditor : Control
         double lastAtFoot = Math.Max(0, RowCount * metrics.LineHeight - Viewport.Height);
         ScrollTo(new Vector(scroll.X, fits ? 0 : Math.Min(y - Viewport.Height / 3, lastAtFoot)));
         Reveal(offset);
+        placed = (document.Snapshot, offset, scroll.Y, PointOf(offset).Y);
+    }
+
+    /// <summary>Rows come or gone (folds landing, rows above lines): the caret <see cref="GoTo"/> put on screen stays on its
+    /// row of the view while neither the view, the caret nor the text has moved since, else the view's top line stays.</summary>
+    private void KeepPlace()
+    {
+        if (placed is not { } at || !ReferenceEquals(at.Text, document.Snapshot) || at.Caret != selections.Primary.Caret || at.Top != scroll.Y || Bounds.Height <= 0)
+        {
+            KeepTopLine(() => { });
+            return;
+        }
+        double y = Math.Clamp((RowOfOffset(at.Text, at.Caret, LeansBack(at.Caret)).Row * metrics.LineHeight) - at.Below, 0, MaxScrollY);
+        placed = at with { Top = y };
+        scroll = new Vector(scroll.X, y);
+        UpdateScrollBars();
+        Redraw();
+        ScrollChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Shows a document with the carets and scroll it was left at, as switching back to a
