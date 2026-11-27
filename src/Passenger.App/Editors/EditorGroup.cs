@@ -365,7 +365,7 @@ public sealed class EditorGroup : DockPanel, IOwnKeys
             markdownTableEditing = new MarkdownTableEditing(Editor);
             editorPlace.Children.Add(markdownTableEditing.ToolbarLayer);
         }
-        markdownTableEditing?.Show(inline ? document?.Text : null);
+        markdownTableEditing?.FollowEditor();
         Database.SqlConsole? console = document is not null && Database.SqlConsole.Speaks(document.Language) ? area.ConsoleOf?.Invoke(document) : null;
         body.SetPresentation(isMarkdown || isForm ? layout.Stacked : console is not null ? true : null, previewOnly);
         if (isMarkdown && layout.View is PaneView.Split or PaneView.Preview)

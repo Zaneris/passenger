@@ -15,25 +15,17 @@ internal sealed partial class MarkdownTableEditing
         {
             return false;
         }
-        if (IsToolbarKey(e))
+        Key key = e.Key;
+        bool inCell = active is not null;
+        return IsToolbarKey(e) || (e.KeyModifiers switch
         {
-            return true;
-        }
-        if (e.KeyModifiers == Keystroke.Command)
-        {
-            return e.Key is Key.B or Key.I || (e.Key == Key.Enter && AtCaret() is not null)
-                || (active is not null && e.Key is Key.Z or Key.Y);
-        }
-        if (active is not null && e.KeyModifiers == (Keystroke.Command | KeyModifiers.Shift) && e.Key == Key.Z)
-        {
-            return true;
-        }
-        if (e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && toolbar.IsVisible)
-        {
-            return true;
-        }
-        return active is not null && ((e.Key == Key.Tab && e.KeyModifiers is KeyModifiers.None or KeyModifiers.Shift)
-            || (e.KeyModifiers == KeyModifiers.None && e.Key is Key.Escape or Key.Enter));
+            KeyModifiers.None => key == Key.Escape ? inCell || toolbar.IsVisible : inCell && key is Key.Enter or Key.Tab,
+            KeyModifiers.Shift => inCell && key == Key.Tab,
+            KeyModifiers modifiers when modifiers == Keystroke.Command =>
+                key is Key.B or Key.I || (key == Key.Enter && AtCaret() is not null) || (inCell && key is Key.Z or Key.Y),
+            KeyModifiers modifiers when modifiers == (Keystroke.Command | KeyModifiers.Shift) => inCell && key == Key.Z,
+            _ => false,
+        });
     }
 
     public void KeyDown(KeyEventArgs e)
@@ -55,20 +47,17 @@ internal sealed partial class MarkdownTableEditing
                 AddRow(spot);
                 break;
             case Key.Enter:
-                CloseCell();
-                editor.Focus();
+                FocusSource();
                 break;
             case Key.Tab:
                 MoveCell(e.KeyModifiers == KeyModifiers.Shift ? -1 : 1);
                 break;
             case Key.Escape:
-                CloseCell();
-                editor.Focus();
-                DismissToolbar();
+                FocusSource();
+                ResetToolbar(ToolbarRequest.Dismissed);
                 break;
             case Key.Z or Key.Y:
-                CloseCell();
-                editor.Focus();
+                FocusSource();
                 editor.TryExecute(e.Key == Key.Y || e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? EditorActions.Redo : EditorActions.Undo);
                 break;
         }
@@ -76,6 +65,12 @@ internal sealed partial class MarkdownTableEditing
 
     // Auto-Indent uses Ctrl+Alt+I in the application keymap, so this chord belongs only to the inline editor.
     private static bool IsToolbarKey(KeyEventArgs e) => e.Key == Key.I && e.KeyModifiers == (Keystroke.Command | KeyModifiers.Alt);
+
+    private void FocusSource()
+    {
+        CloseCell();
+        editor.Focus();
+    }
 
     private Spot? AtCaret()
     {
@@ -176,10 +171,9 @@ internal sealed partial class MarkdownTableEditing
     private void EditSource(Spot spot)
     {
         MarkdownTableSource source = Source(spot.Entry);
-        CloseCell();
-        editor.Focus();
+        FocusSource();
         editor.Select(source.Cell(spot.Row, spot.Column) ?? new TextRange(source.Line(spot.Row).End, 0));
-        DismissToolbar();
+        ResetToolbar(ToolbarRequest.Dismissed);
     }
 
     private void ApplyTableEdits(IReadOnlyList<TextEdit> edits, int start, int row, int column)
@@ -193,8 +187,7 @@ internal sealed partial class MarkdownTableEditing
         {
             return;
         }
-        CloseCell();
-        editor.Focus();
+        FocusSource();
         pending = (start, row, column);
         editor.ApplyEdits(edits, reveal: false);
         reading.Stop();

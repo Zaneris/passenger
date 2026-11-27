@@ -195,9 +195,9 @@ internal sealed partial class MarkdownTableEditing
             TextAlignment = TextAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
+            Text = label,
             FontWeight = bold ? FontWeight.Bold : FontWeight.Normal,
             FontStyle = bold ? FontStyle.Normal : FontStyle.Italic,
-            Text = label,
         };
         return ToolbarButton(name, name, mark, () => Format(bold), key);
     }
@@ -208,8 +208,7 @@ internal sealed partial class MarkdownTableEditing
         {
             editor.Focus();
         }
-        toolbarRequest = ToolbarRequest.Shown;
-        QueueToolbarPosition();
+        ToolbarChanged(ToolbarRequest.Shown);
     }
 
     private void EndSelectionDrag()
@@ -221,22 +220,16 @@ internal sealed partial class MarkdownTableEditing
         }
     }
 
-    private void ToolbarChanged()
+    private void ToolbarChanged(ToolbarRequest request = ToolbarRequest.Automatic)
     {
-        toolbarRequest = ToolbarRequest.Automatic;
+        toolbarRequest = request;
         QueueToolbarPosition();
     }
 
-    private void ResetToolbar()
+    private void ResetToolbar(ToolbarRequest request = ToolbarRequest.Automatic)
     {
-        toolbarRequest = ToolbarRequest.Automatic;
+        toolbarRequest = request;
         selecting = false;
-        toolbar.IsVisible = false;
-    }
-
-    private void DismissToolbar()
-    {
-        toolbarRequest = ToolbarRequest.Dismissed;
         toolbar.IsVisible = false;
     }
 
@@ -263,30 +256,21 @@ internal sealed partial class MarkdownTableEditing
             return;
         }
         Rect viewport = new(ToolbarLayer.Bounds.Size);
-        Rect? anchor;
-        Rect? tableBounds = null;
-        if (active is { } cell)
-        {
-            anchor = cell.Host.TranslatePoint(default, ToolbarLayer) is { } point ? new Rect(point, cell.Host.Bounds.Size) : null;
-            if (cell.Host.GetVisualParent() is Grid table && table.TranslatePoint(default, ToolbarLayer) is { } origin)
-            {
-                tableBounds = new Rect(origin, table.Bounds.Size);
-            }
-        }
-        else
-        {
-            anchor = SelectionAnchor(viewport);
-        }
+        Rect? anchor = active is { } cell ? BoundsInToolbar(cell.Host) : SelectionAnchor(viewport);
         if (anchor is { } visible && viewport.Intersects(visible))
         {
             ShowTableTools(AtCaret());
-            PopupPlacement.PlaceFloatingToolbar(toolbar, ToolbarLayer, visible.Intersect(viewport), tableBounds);
+            PopupPlacement.PlaceFloatingToolbar(toolbar, ToolbarLayer, visible.Intersect(viewport),
+                BoundsInToolbar(active?.Host.GetVisualParent() as Grid));
         }
         else
         {
             toolbar.IsVisible = false;
         }
     }
+
+    private Rect? BoundsInToolbar(Visual? visual) =>
+        visual is not null && visual.TranslatePoint(default, ToolbarLayer) is { } origin ? new Rect(origin, visual.Bounds.Size) : null;
 
     private Rect? SelectionAnchor(Rect viewport)
     {

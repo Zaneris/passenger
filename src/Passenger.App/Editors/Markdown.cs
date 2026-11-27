@@ -559,6 +559,24 @@ internal static partial class Markdown
             end--;
         }
         List<TextRange> cells = [];
+        foreach (int at in CellPipes(row, start, end))
+        {
+            cells.Add(CellAt(start, at));
+            start = at + 1;
+        }
+        cells.Add(CellAt(start, end));
+        return cells;
+
+        TextRange CellAt(int from, int to)
+        {
+            TextRange words = TextRange.Trimmed(row, TextRange.FromBounds(from, to));
+            return words.Length > 0 ? words : new TextRange(from + (to - from) / 2, 0);
+        }
+    }
+
+    /// <summary>Pipes that split cells, shared by the row reader and the editor's cell writer.</summary>
+    internal static IEnumerable<int> CellPipes(string row, int start, int end)
+    {
         int code = 0;
         for (int at = start; at < end; at++)
         {
@@ -577,17 +595,8 @@ internal static partial class Markdown
             }
             if (c == '|' && code == 0)
             {
-                cells.Add(CellAt(start, at));
-                start = at + 1;
+                yield return at;
             }
-        }
-        cells.Add(CellAt(start, end));
-        return cells;
-
-        TextRange CellAt(int from, int to)
-        {
-            TextRange words = TextRange.Trimmed(row, TextRange.FromBounds(from, to));
-            return words.Length > 0 ? words : new TextRange(from + (to - from) / 2, 0);
         }
     }
 

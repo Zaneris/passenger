@@ -14,7 +14,6 @@ internal sealed partial class MarkdownTableEditing
     private static readonly MarkdownPage Page = new(static _ => { });
     private readonly CodeEditor editor;
     private readonly Debounce reading;
-    private TextDocument? document;
     private TextDocument? followed;
     private List<Entry> tables = [];
     private CellEditor? active;
@@ -28,15 +27,14 @@ internal sealed partial class MarkdownTableEditing
         this.editor = editor;
         reading = new Debounce(TypingPauses.Previews, ReadAsync);
         MakeToolbar();
-        editor.AttachedToVisualTree += (_, _) => Follow(document);
+        editor.AttachedToVisualTree += (_, _) => FollowEditor();
         editor.DetachedFromVisualTree += (_, _) => Follow(null);
     }
 
-    public void Show(TextDocument? next)
+    public void FollowEditor()
     {
-        document = next;
         FollowReadOnly();
-        Follow(editor.IsAttachedToVisualTree() ? next : null);
+        Follow(editor.PresentsMarkdown && editor.IsAttachedToVisualTree() ? editor.Document : null);
     }
 
     private void Follow(TextDocument? next)

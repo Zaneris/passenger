@@ -110,34 +110,13 @@ internal sealed class MarkdownTableSource(TextSnapshot text, int firstLine, int 
         {
             return line;
         }
-        StringBuilder written = new(line.Length);
-        int ticks = 0;
-        for (int i = 0; i < line.Length; i++)
+        StringBuilder? written = null;
+        int start = 0;
+        foreach (int pipe in Markdown.CellPipes(line, 0, line.Length))
         {
-            char c = line[i];
-            if (c == '\\' && i + 1 < line.Length)
-            {
-                written.Append(c).Append(line[++i]);
-                continue;
-            }
-            if (c == '`')
-            {
-                int at = i;
-                while (i + 1 < line.Length && line[i + 1] == '`')
-                {
-                    i++;
-                }
-                int run = i - at + 1;
-                ticks = ticks == 0 ? run : ticks == run ? 0 : ticks;
-                written.Append('`', run);
-                continue;
-            }
-            if (c == '|' && ticks == 0)
-            {
-                written.Append('\\');
-            }
-            written.Append(c);
+            (written ??= new StringBuilder(line.Length)).Append(line, start, pipe - start).Append('\\');
+            start = pipe;
         }
-        return written.ToString();
+        return written?.Append(line, start, line.Length - start).ToString() ?? line;
     }
 }

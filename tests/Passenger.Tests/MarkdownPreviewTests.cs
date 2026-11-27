@@ -469,6 +469,9 @@ public sealed class MarkdownPreviewTests
         Ui.Settle();
         Assert.NotNull(Cell("Item"));
         Assert.NotNull(Cell("Ready"));
+        window.KeyTextInput("24 | `x|y`");
+        Assert.Contains(@"| Pen \| Pencil | 24 \| `x|y` |", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Field()!.SelectAll();
         window.KeyTextInput("24");
         Ui.Settle();
         string edited = source.Replace("12", "24", StringComparison.Ordinal);
