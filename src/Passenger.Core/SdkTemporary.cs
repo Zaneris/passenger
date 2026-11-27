@@ -3,11 +3,13 @@ using System.Diagnostics;
 namespace Passenger.Core;
 
 /// <summary>The temporary folder of what Passenger runs of the .NET SDK that builds none of the person's projects (the SDK
-/// commands it <see cref="Takes"/>) and what that starts. These leave folders in it (the .NET CLI one at each, a workload
-/// install's downloads in it), so it is one of this process's own in the state's (<see cref="UserTemporary.OfThisProcess"/>),
-/// which goes with it. A build keeps the person's: its compiler server meets theirs by a lock in the temporary folder on
-/// macOS and a pipe in /tmp, which a second server at another lock would take over. So does a program of the person's
-/// (dotnet run, watch, test, exec), where a debugger and the diagnostics tools look for its runtime's socket and pipes.</summary>
+/// commands it <see cref="Takes"/>, and the project host, whose design-time builds skip the compiler's run and so reach no
+/// compiler server) and what that starts. These leave folders in it (the .NET CLI one at each command, MSBuild one in each
+/// of its processes a kill ends, a workload install's downloads), so it is one of this process's own in the state's
+/// (<see cref="UserTemporary.OfThisProcess"/>), which goes with it. A build keeps the person's: its compiler server meets
+/// theirs by a lock in the temporary folder on macOS and a pipe in /tmp, which a second server at another lock would take
+/// over. So does a program of the person's (dotnet run, watch, test, exec), where a debugger and the diagnostics tools
+/// look for its runtime's socket and pipes.</summary>
 public static class SdkTemporary
 {
     /// <summary>The state folder whose own folder of <see cref="Kind"/> holds this process's (<see cref="UserTemporary.Of"/>),
