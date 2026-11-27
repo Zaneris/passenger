@@ -46,6 +46,24 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
 
     private const string Braces = "static class Braces\n{\n    public static int Deep(int a)\n    {\n        return ((a + 1) * (a + 2));\n    }\n}\n";
 
+    private const string Properties = """
+        sealed class Counter
+        {
+            public int Count { get; set; }
+
+            public void Increment() => Count += 1;
+
+            // Count is also available on the other counter.
+            public int Read() => this.Count;
+        }
+
+        sealed class OtherCounter
+        {
+            public int Count => 0;
+        }
+
+        """;
+
     private const string Words = "static class Words\n{\n    // The public count of a text's words, publicly said: Public in a title.\n"
         + "    public static int Count(string text)\n    {\n        int count = 0;\n        foreach (string word in text.Split(' '))\n        {\n"
         + "            count += 1;\n        }\n        return count;\n    }\n\n    public static readonly string Said = \"count every public word\";\n}\n";
@@ -66,6 +84,8 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
     public void The_caret_lights_a_symbols_uses_and_a_brackets_pair_follows_moves_and_typing_and_never_holds_the_window()
     {
         Flow.StepApart("resting the caret on a local highlights its writes and reads and marks them on the scrollbar", () => new CaretHighlightsTests(project), t => t.Resting_the_caret_on_a_local_highlights_its_writes_and_reads_and_marks_them_on_the_scrollbar());
+        Flow.StepApart("selecting a property in either direction lights its own occurrences and makes them reachable from the scrollbar", () => new CaretHighlightsTests(project), t => t.Selecting_a_property_lights_its_own_occurrences_and_marks_them_on_the_scrollbar());
+        Flow.StepApart("a selected C# identifier is never highlighted by spelling when no server can resolve it", () => new CaretHighlightsTests(project), t => t.A_selected_identifier_is_never_highlighted_by_spelling());
         Flow.StepApart("highlights answered before a file's first parse wait for it without holding the window's thread", () => new CaretHighlightsTests(project), t => t.Highlights_answered_before_a_files_first_parse_wait_for_it_without_holding_the_windows_thread());
         Flow.StepApart("moving the caret off a symbol takes its highlights away at once, and another symbol brings its own", () => new CaretHighlightsTests(project), t => t.Moving_the_caret_off_a_symbol_takes_its_highlights_away_at_once_and_another_symbol_brings_its_own());
         Flow.StepApart("typing never leaves a highlight on text it changed, and the uses come back where they now are", () => new CaretHighlightsTests(project), t => t.Typing_never_leaves_a_highlight_on_text_it_changed_and_the_uses_come_back_where_they_now_are());
@@ -98,6 +118,67 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         Assert.Equal((Ui.RowOf(editor, write.Range.Start), Ui.RowOf(editor, read.Range.Start)), (writeMark.Row, readMark.Row));
         Assert.Equal(Token(window, TokenKeys.Editor_UsageWriteMark), Ui.Pixel(window, editor.TranslatePoint(editor.StripePoint(writeMark), window)!.Value));
         Assert.Equal(Token(window, TokenKeys.Editor_UsageReadMark), Ui.Pixel(window, editor.TranslatePoint(editor.StripePoint(readMark), window)!.Value));
+        window.Close();
+    }
+
+    private void Selecting_a_property_lights_its_own_occurrences_and_marks_them_on_the_scrollbar()
+    {
+        MainWindow window = project.Open("Properties.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        int declaration = Properties.IndexOf("Count {", StringComparison.Ordinal);
+        int write = Properties.IndexOf("Count +=", StringComparison.Ordinal);
+        int read = Properties.IndexOf("Count;", StringComparison.Ordinal);
+        int[] occurrences = [declaration, write, read];
+
+        void AssertOccurrences()
+        {
+            Assert.Equal(occurrences, editor.UsageHighlights.Select(u => u.Range.Start));
+            Assert.All(editor.UsageHighlights, u => Assert.True(!u.ByText && TextOf(editor, u.Range) == "Count"));
+            Assert.Equal(occurrences.Select(at => Ui.RowOf(editor, at)),
+                editor.StripeMarks.Where(m => m.Kind is StripeMarkKind.Usage or StripeMarkKind.WriteUsage).Select(m => m.Row));
+        }
+
+        Ui.DoubleClick(editor, editor.PointOf(read + 2) + new Point(1, editor.LineHeight / 2));
+        Assert.Equal(new TextRange(read, "Count".Length), editor.Selections.Primary.Range);
+        Ui.Settle();
+        AssertOccurrences();
+        UsageHighlight propertyWrite = editor.UsageHighlights[1];
+        Assert.True(propertyWrite.IsWrite);
+        Assert.Equal(Token(window, TokenKeys.Editor_UsageWrite), Ui.Pixel(window, InBox(window, editor, propertyWrite.Range.Start)));
+
+        // Extending the selection while its caret stays at Count must clear Count's old highlights.
+        editor.Selections = SelectionSet.Single(new Selection(read - "this.".Length, read + "Count".Length));
+        Assert.Empty(editor.UsageHighlights);
+        Ui.Settle();
+        Assert.Empty(editor.UsageHighlights);
+        Assert.DoesNotContain(editor.StripeMarks, m => m.Kind is StripeMarkKind.Usage or StripeMarkKind.WriteUsage);
+
+        editor.Selections = SelectionSet.Single(new Selection(write + "Count".Length, write));
+        Ui.Settle();
+        AssertOccurrences();
+        CodeEditor.StripeMark mark = Assert.Single(editor.StripeMarks, m => m.Item == 2 && m.Kind == StripeMarkKind.Usage);
+        Ui.Click(editor, editor.StripePoint(mark));
+        Assert.Equal(read, editor.Selections.Primary.Caret);
+        AssertOccurrences();
+        window.Close();
+    }
+
+    private void A_selected_identifier_is_never_highlighted_by_spelling()
+    {
+        MainWindow window = project.Open("Properties.cs", languageServer: false);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        int comment = Properties.IndexOf("Count is", StringComparison.Ordinal);
+        int read = Properties.IndexOf("Count;", StringComparison.Ordinal);
+
+        editor.Selections = SelectionSet.Single(new Selection(comment, comment + "Count".Length));
+        Ui.WaitFor(() => editor.UsageHighlights.Count == 5, () => "the word chosen in the comment has five text matches");
+        Assert.All(editor.UsageHighlights, use => Assert.True(use.ByText));
+
+        editor.Selections = SelectionSet.Single(new Selection(read, read + "Count".Length));
+        Assert.Empty(editor.UsageHighlights);
+        Ui.Settle();
+        Assert.Empty(editor.UsageHighlights);
+        Assert.DoesNotContain(editor.StripeMarks, m => m.Kind is StripeMarkKind.Usage or StripeMarkKind.WriteUsage);
         window.Close();
     }
 
@@ -366,6 +447,7 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
             File.WriteAllText(PathOf("Sample.csproj"),
                 $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Library</OutputType>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
             File.WriteAllText(PathOf("Totals.cs"), Totals);
+            File.WriteAllText(PathOf("Properties.cs"), Properties);
             File.WriteAllText(PathOf("Braces.cs"), Braces);
             File.WriteAllText(PathOf("Words.cs"), Words);
             File.WriteAllText(PathOf("Shapes.cs"), Shapes);

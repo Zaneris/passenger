@@ -1,4 +1,6 @@
 using System.Runtime.CompilerServices;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -9,11 +11,11 @@ using Passenger.Text;
 
 namespace Passenger.App.CSharp;
 
-/// <summary>What the caret lights up, in every file: once the caret rests on a symbol, the language server's highlights
-/// of its uses in the file (writes apart from reads), drawn in the editor and marked on its stripe. Where the language
-/// lights nothing (a keyword, a word in a comment or a string, a file no server reads), a selection of one whole word,
-/// as a double-click makes, lights that word's other whole-word places instead (<see cref="TextSearch.PlacesOfWord"/>),
-/// found off the window's thread. They go as soon as the caret leaves them or the text changes, so none is ever left
+/// <summary>What the caret or selection lights up: the language server's uses of the symbol in the file (writes apart
+/// from reads), drawn in the editor and marked on its stripe. Where the language lights nothing, a whole word chosen in
+/// a comment, string or plain text lights its other whole-word places (<see cref="TextSearch.PlacesOfWord"/>), found off
+/// the window's thread. C# identifiers require a symbol even when the language server is unavailable.
+/// Highlights go when the caret or selection leaves them or the text changes, so none is ever left
 /// on the wrong symbol, and come again once it rests. Highlight Usages in File asks at once and keeps them, through
 /// edits and caret moves, until Escape or the action again. Each editor of a split has its own, for the file it shows.</summary>
 public sealed class UsageHighlighting
@@ -75,19 +77,19 @@ public sealed class UsageHighlighting
     /// <summary>The file an editor shows, of the split it is in.</summary>
     private OpenDocument? DocumentOf(CodeEditor editor) => editors.Groups.FirstOrDefault(g => g.Editor == editor)?.Active;
 
-    /// <summary>The server's highlights for the caret of an editor showing a file, or null when the text or the file shown
+    /// <summary>The server's highlights for the selection or caret in a file, or null when the text or the file shown
     /// changed while it answered; none when the server cannot answer.</summary>
-    private async Task<List<UsageHighlight>?> AskAsync(CodeEditor editor, OpenDocument document, CancellationToken cancel)
+    private async Task<List<UsageHighlight>?> AskAsync(CodeEditor editor, OpenDocument document, Selection selection, CancellationToken cancel)
     {
         if (service()?.For(document)?.Lsp is not { } lsp)
         {
             return [];
         }
         int version = document.Text.Version;
-        int caret = editor.Selections.Primary.Caret;
+        int offset = selection.Start + selection.Length / 2;
         try
         {
-            IReadOnlyList<DocumentHighlight> found = await lsp.HighlightsAsync(caret, cancel);
+            IReadOnlyList<DocumentHighlight> found = await lsp.HighlightsAsync(offset, cancel);
             if (cancel.IsCancellationRequested || document.Text.Version != version || editor.Document != document.Text)
             {
                 return null;
@@ -111,8 +113,7 @@ public sealed class UsageHighlighting
                 bool write = found[i].Kind == DocumentHighlightKind.Write || (syntax is not null && UsageKinds.DeclaresWithValue(syntax.Root, start));
                 uses.Add(new UsageHighlight(TextRange.FromBounds(start, Math.Max(start, offsets[(2 * i) + 1])), write));
             }
-            // Uses of something other than what the caret is on are none of its.
-            return uses.Any(u => Covers(u.Range, caret)) ? uses : [];
+            return uses.Any(u => Covers(u.Range, selection)) ? uses : [];
         }
         catch (OperationCanceledException)
         {
@@ -126,14 +127,25 @@ public sealed class UsageHighlighting
 
     /// <summary>The places of the word an editor's selection is, the chosen one among them, found off the window's thread;
     /// none for a selection that is no whole word, and null when the text or the file shown changed meanwhile.</summary>
-    private static async Task<List<UsageHighlight>?> WordPlacesAsync(CodeEditor editor, OpenDocument document, CancellationToken cancel)
+    private static async Task<List<UsageHighlight>?> WordPlacesAsync(CodeEditor editor, OpenDocument document, Selection chosen, CancellationToken cancel)
     {
-        Selection chosen = editor.Selections.Primary;
         if (chosen.IsEmpty)
         {
             return [];
         }
         TextSnapshot text = editor.Document.Snapshot;
+        if (document.Syntax is { } parsing)
+        {
+            if (await parsing.ParsedAsync(text) is not { } syntax || cancel.IsCancellationRequested || editor.Document != document.Text)
+            {
+                return null;
+            }
+            SyntaxToken token = syntax.Root.FindToken(chosen.Start, findInsideTrivia: true);
+            if (token.IsKind(SyntaxKind.IdentifierToken) && token.Span.Contains(chosen.Start))
+            {
+                return [];
+            }
+        }
         IReadOnlyList<TextRange> places = await BackgroundWork.Run(() => TextSearch.PlacesOfWord(text, chosen.Range));
         if (cancel.IsCancellationRequested || !ReferenceEquals(editor.Document.Snapshot, text) || editor.Document != document.Text)
         {
@@ -156,8 +168,8 @@ public sealed class UsageHighlighting
         {
             return;
         }
-        int caret = editor.Selections.Primary.Caret;
-        if (editor.UsagesKept && OnOne(editor.UsageHighlights, caret))
+        Selection point = Selection.At(editor.Selections.Primary.Caret);
+        if (editor.UsagesKept && OnOne(editor.UsageHighlights, point))
         {
             editor.SetUsageHighlights([]);
             return;
@@ -171,7 +183,7 @@ public sealed class UsageHighlighting
         using (BackgroundWork.Scope())
         {
             CancellationTokenSource cancel = watch.Begin();
-            if (await AskAsync(editor, document, cancel.Token) is not { } uses)
+            if (await AskAsync(editor, document, point, cancel.Token) is not { } uses)
             {
                 return;
             }
@@ -182,7 +194,7 @@ public sealed class UsageHighlighting
                 return;
             }
             editor.SetUsageHighlights(uses, keep: true);
-            string name = editor.Document.Snapshot.GetText(uses.First(u => Covers(u.Range, caret)).Range);
+            string name = editor.Document.Snapshot.GetText(uses.First(u => Covers(u.Range, point)).Range);
             // Each named by the keys the keymap in force gives it, or by its name while nothing runs it.
             string again = ActionTips.Keys(AppActions.HighlightUsages) is { } keys ? $"press {keys} again" : "run Highlight Usages in File again";
             string escape = ActionTips.Keys(EditorActions.Escape) ?? "Escape";
@@ -190,14 +202,15 @@ public sealed class UsageHighlighting
         }
     }
 
-    /// <summary>Whether a caret stands on a range, at either end of it included.</summary>
-    private static bool Covers(TextRange range, int caret) => caret >= range.Start && caret <= range.End;
+    /// <summary>Whether one occurrence covers the selection or touches the caret.</summary>
+    private static bool Covers(TextRange range, Selection selection) => range.Start <= selection.Start && selection.End <= range.End;
 
-    /// <summary>Whether a caret stands on one of the highlights (sorted, apart from each other), found by halving.</summary>
-    private static bool OnOne(IReadOnlyList<UsageHighlight> uses, int caret)
+    /// <summary>Whether one of the sorted highlights still applies to the selection or caret.</summary>
+    private static bool OnOne(IReadOnlyList<UsageHighlight> uses, Selection selection)
     {
-        int at = Sorted.FirstAtOrAfter(uses, static u => u.Range.End, caret);
-        return at < uses.Count && Covers(uses[at].Range, caret);
+        int at = Sorted.FirstAtOrAfter(uses, static u => u.Range.End, selection.End);
+        return at < uses.Count && Covers(uses[at].Range, selection)
+            && (!uses[at].ByText || selection.IsEmpty || uses[at].Range == selection.Range);
     }
 
     /// <summary>One editor's caret, watched: a move off the uses shown takes them away and asks again once it rests.</summary>
@@ -222,14 +235,14 @@ public sealed class UsageHighlighting
             {
                 return;
             }
-            int caret = editor.Selections.Primary.Caret;
-            if (!editor.Selections.HasMultiple && OnOne(editor.UsageHighlights, caret))
+            IReadOnlyList<UsageHighlight> uses = editor.UsageHighlights;
+            if (!editor.Selections.HasMultiple && OnOne(uses, editor.Selections.Primary)
+                && (!uses[0].ByText || owner.DocumentOf(editor)?.Syntax is null))
             {
-                // Still on the symbol they are the uses of, or on a place of the word they are the places of.
                 return;
             }
             Stop();
-            if (editor.UsageHighlights.Count > 0)
+            if (uses.Count > 0)
             {
                 editor.SetUsageHighlights([]);
             }
@@ -281,14 +294,14 @@ public sealed class UsageHighlighting
                 return;
             }
             CancellationTokenSource cancel = Begin();
-            if (await owner.AskAsync(editor, document, cancel.Token) is not { } uses || asking != cancel || editor.UsagesKept)
+            Selection selection = editor.Selections.Primary;
+            if (await owner.AskAsync(editor, document, selection, cancel.Token) is not { } uses || asking != cancel || editor.UsagesKept)
             {
                 return;
             }
             if (uses.Count == 0)
             {
-                // The language's uses win; a word it lights nothing for is lit by its text.
-                if (await WordPlacesAsync(editor, document, cancel.Token) is not { } places || asking != cancel || editor.UsagesKept)
+                if (await WordPlacesAsync(editor, document, selection, cancel.Token) is not { } places || asking != cancel || editor.UsagesKept)
                 {
                     return;
                 }
