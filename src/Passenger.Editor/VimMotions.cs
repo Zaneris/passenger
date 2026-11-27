@@ -634,7 +634,7 @@ public static class VimMotions
     }
 
     /// <summary>Whether a line has only blanks from an offset to its end.</summary>
-    private static bool BlanksTo(TextSnapshot text, int from, int lineEnd)
+    internal static bool BlanksTo(TextSnapshot text, int from, int lineEnd)
     {
         for (int at = from; at < lineEnd; at++)
         {

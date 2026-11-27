@@ -1015,6 +1015,11 @@ public sealed partial class Vim
         }
         if (own.End == own.Start && VimMotions.NextSentenceStart(text, own.Start) < text.Length)
         {
+            if (!inner && EmptyBelowBlanks(text, after, VimMotions.LastLine(text, breakEnds)) is { } lastEmptyStart)
+            {
+                // From blanks ending a line, and lines of blanks alone, before empty lines, as takes them all to the last empty line's start.
+                return r with { Cursor = lastEmptyStart };
+            }
             return own.Start > r.Cursor ? r with { Cursor = own.Start } : null;
         }
         if (next.Linewise && !inner && n == 1 && own.End > after && VimMotions.LineOf(text, own.End) is { Length: 0 } lastEmpty
@@ -1022,6 +1027,12 @@ public sealed partial class Vim
         {
             // Lines taken whole, from blanks alone to the last of the empty lines after them, end on that last one.
             return r with { Cursor = lastEmpty.Start };
+        }
+        if (!inner && n > 1 && CutShortBeforeBlanks(text, after, n, own.End) is { } left
+            && SentencesOn(text, r with { Cursor = VimMotions.StepBack(text, own.End) }, inner, left) is { } further)
+        {
+            // A count cut short at a sentence ending its line before lines of blanks alone and empty lines goes on from that sentence's end.
+            return further;
         }
         // Of the empty lines ending the text, the last is none to go to.
         return own.End > after ? r with { Cursor = VimMotions.StepBack(text, own.End) } : Ended(text, r, inner, n);
@@ -1221,6 +1232,47 @@ public sealed partial class Vim
             line++;
         }
         return line;
+    }
+
+    /// <summary>How much of a count of as from <paramref name="from"/> is left where the sentences it takes, ending at
+    /// <paramref name="end"/>, stop short at a sentence ending its line before lines of blanks alone and then an empty
+    /// line; null where the count is used up or other lines follow.</summary>
+    private int? CutShortBeforeBlanks(TextSnapshot text, int from, int n, int end)
+    {
+        LineSpan line = VimMotions.LineOf(text, end);
+        int lastLine = VimMotions.LastLine(text, breakEnds);
+        if (end <= from || line.Length == 0 || end != line.End || line.Line >= lastLine
+            || text.GetLine(line.Line + 1) is not { Length: > 0 } blanks || TextNavigation.IndentEnd(text, blanks) != blanks.End || BelowBlanks(text, line.EndIncludingBreak, lastLine) is var below && (below > lastLine || text.GetLine(below).Length > 0))
+        {
+            return null;
+        }
+        int taken = 1;
+        while (taken < n && VimTextObjects.Of(text, from, "s", inner: false, taken, breakEnds) is { } fewer && OwnLine(text, fewer).End < end)
+        {
+            taken++;
+        }
+        return taken < n ? n - taken : null;
+    }
+
+    /// <summary>From blanks that end their line, the start of the last of the empty lines after it and the lines of blanks
+    /// alone that follow it, where a line that is not empty comes after them; null otherwise.</summary>
+    private static int? EmptyBelowBlanks(TextSnapshot text, int offset, int lastLine)
+    {
+        LineSpan line = VimMotions.LineOf(text, offset);
+        if (offset >= line.End || !VimMotions.BlanksTo(text, offset, line.End))
+        {
+            return null;
+        }
+        int empty = BelowBlanks(text, offset, lastLine);
+        if (empty > lastLine || text.GetLine(empty).Length > 0)
+        {
+            return null;
+        }
+        while (empty < lastLine && text.GetLine(empty + 1).Length == 0)
+        {
+            empty++;
+        }
+        return empty < lastLine ? text.GetLineStart(empty) : null;
     }
 
     /// <summary>Whether an offset is a blank of the white after a mark ending a sentence on its line.</summary>
