@@ -263,8 +263,8 @@ internal static class MauiApp
 
     /// <summary>A device test project's tests debugged from the Tests window where its project runs: its first test, empty as
     /// the template makes it, given a local and a breakpoint after it, the run stopping there with the local shown, then going
-    /// on (past the stops the failing and skipped tests' exceptions may make) to its end, each test told. The window has the
-    /// project open, its target chosen.</summary>
+    /// on to its end, each test told; the failing and skipped tests run beside it, so their exceptions may stop it before or
+    /// after, and it goes on past each. The window has the project open, its target chosen.</summary>
     public static void DebugDeviceTests(MainWindow window, string project, string where, TimeSpan limit)
     {
         string tests = PathNames.Canonical(Path.Combine(Path.GetDirectoryName(project)!, "Test1.cs"));
@@ -281,9 +281,22 @@ internal static class MauiApp
         window.EditorArea.CodeEditor.GoTo(new Passenger.Text.TextPosition(after, 8));
         Ui.Run(window, AppActions.ToggleBreakpoint);
         Task<string?> debugged = window.Tests.RunAsync(window.Folder!, debug: true);
-        Ui.WaitFor(() => window.Debugger.Session?.State == Passenger.App.Debugging.DebugState.Paused && Shown(window, "answer") is not null,
-            () => $"the stop at the breakpoint in TestMethod1 {where}; the debugger is {window.Debugger.Session?.State.ToString() ?? "not debugging"}: "
-                + $"{window.BottomPanel.Tests.Status}\n{Ui.Said(window)}\n{DebugConsole(window)}", limit);
+        for (int stops = 0; ; stops++)
+        {
+            Ui.WaitFor(() => window.Debugger.Session is { State: Passenger.App.Debugging.DebugState.Paused } paused
+                    && (Shown(window, "answer") is not null || paused.StopReason == Passenger.Dap.StopReasons.Exception),
+                () => $"the stop at the breakpoint in TestMethod1 {where}; the debugger is {window.Debugger.Session?.State.ToString() ?? "not debugging"}: "
+                    + $"{window.BottomPanel.Tests.Status}\n{Ui.Said(window)}\n{DebugConsole(window)}", limit);
+            if (Shown(window, "answer") is not null)
+            {
+                break;
+            }
+            Assert.True(stops < 4, $"The debugged run {where} stopped at its tests' exceptions {stops + 1} times, never at TestMethod1's breakpoint:\n{DebugConsole(window)}");
+            int seen = window.Debugger.Session!.Stops;
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => window.Debugger.Session is not { State: Passenger.App.Debugging.DebugState.Paused } || window.Debugger.Session.Stops > seen,
+                () => $"the debugged run {where} to go on from a test's exception: {DebugConsole(window)}", limit);
+        }
         Assert.Equal("42", Shown(window, "answer"));
         for (int stops = 0; stops < 4 && !debugged.IsCompleted; stops++)
         {
