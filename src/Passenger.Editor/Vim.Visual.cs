@@ -1136,6 +1136,8 @@ public sealed partial class Vim
         }
         bool passWhite = false;
         bool landedAlone = false;
+        // A walk begun inside a sentence or the white after one's mark, short of its line's end.
+        bool begunInside = SentenceUnit(text, at) is var begunIn && (begunIn.Start < at || begunIn.White) && at < VimMotions.LineOf(text, at).End;
         // A line break alone between two sentences is no white: each is a step of its own.
         for (; left > 0 && at > 0; left--)
         {
@@ -1157,6 +1159,12 @@ public sealed partial class Vim
                 && before.White != white)
             {
                 at = before.Start;
+            }
+            else if (!inner && landedAlone && begunInside && text.GetLine(text.GetLineFromOffset(at) - 1) is var above && WhiteEnding(text, above.Line) is var blanks
+                && blanks > above.Start && blanks < above.End)
+            {
+                // A walk of as begun inside a sentence, on an empty line alone, takes the blanks ending the line above it too.
+                at = blanks;
             }
         }
         return at;
