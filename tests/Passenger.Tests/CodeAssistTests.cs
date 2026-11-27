@@ -3168,7 +3168,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>The hints in one window: types the code leaves out show after their names, a hint's card says what its
-    /// type is, and Settings turns type name hints off and on again, parameter name hints staying; the caret steps
+    /// type is, from the data each hint keeps as the bytes the server gave and nothing more, and Settings turns type name
+    /// hints off and on again, parameter name hints staying; the caret steps
     /// across a hint as one place and typing at a name keeps its type after it; and a literal argument shows its
     /// parameter's name before it, the text after making room, until Settings turns them off.</summary>
     private void Type_and_parameter_name_hints_show_where_Rider_shows_them_make_room_step_as_one_place_and_go_with_Settings()
@@ -3199,6 +3200,11 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.MouseMove(editor.TranslatePoint(hint, window)!.Value, Avalonia.Input.RawInputModifiers.None);
         Ui.WaitFor(() => window.Assist.HoverText is not null, "the hint's hover card");
         Assert.Contains("Int32", window.Assist.HoverText, StringComparison.Ordinal);
+        Passenger.Lsp.LspInlayHint[] given = [.. editor.InlayHints.Select(h => h.Data).OfType<Passenger.Lsp.LspInlayHint>()];
+        (long held, string most) = HeldBytes.Of(given, _ => false);
+        long data = given.Sum(h => (long)(h.Data?.Utf8.Length ?? 0));
+        Assert.True(held - data < 300L * given.Length, $"Each of the server's {given.Length} hints holds {(held - data) / given.Length:N0} bytes beside its data's own "
+            + $"{data / given.Length:N0} ({most}), where its place, its words and its data's bytes alone take under 300: a file of a thousand calls holds a thousand");
         window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
         Ui.Settle();
 
