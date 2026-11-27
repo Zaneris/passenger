@@ -9,92 +9,75 @@ namespace Passenger.App;
 
 public partial class MainWindow
 {
-    private SyntaxTreeView? syntaxTreeView;
-    private OpenDocument? syntaxTreeDocument;
-
     private void AddSyntaxTree()
     {
+        SyntaxTreeView? view = null;
+        FollowedDocument followed = FollowedDocument.OfSyntax(() => Refresh(Source()));
         ToolWindow window = new(ToolWindowIds.SyntaxTree, "Syntax Tree", IconKeys.DatabaseRoutine,
-            () => syntaxTreeView = new SyntaxTreeView(SelectSyntaxSource), ToolAnchor.RightTop)
+            () => view = new SyntaxTreeView(SelectSource), ToolAnchor.RightTop)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowSyntaxTree,
         };
         Dock.Add(window);
-        window.Built += (_, _) => FollowSyntaxTree();
+        window.Built += (_, _) => Follow();
         window.PropertyChanged += (_, change) =>
         {
             if (change.PropertyName == nameof(ToolWindow.IsShown))
             {
-                FollowSyntaxTree();
+                Follow();
             }
         };
-        Editors.ActiveChanged += (_, _) => FollowSyntaxTree();
-        Editors.CaretMoved += (_, _) => FollowSyntaxTree();
-        Closed += (_, _) => SetSyntaxTreeDocument(null);
-    }
+        Editors.ActiveChanged += (_, _) => Follow();
+        Editors.CaretMoved += (_, _) => Follow();
+        Closed += (_, _) => ChangeSource(null);
 
-    private void FollowSyntaxTree()
-    {
-        if (syntaxTreeView is not { } view)
-        {
-            return;
-        }
-        if (!Dock.IsShown(ToolWindowIds.SyntaxTree))
-        {
-            SetSyntaxTreeDocument(null);
-            return;
-        }
-        OpenDocument? active = Editors.Active;
-        OpenDocument? source = active is { Syntax: not null, Diff: null, Tool: null }
+        OpenDocument? Source() => Dock.IsShown(ToolWindowIds.SyntaxTree)
+            && Editors.Active is { Syntax: not null, Diff: null, Tool: null } active
             && ReferenceEquals(Editors.CodeEditor.Document, active.Text) ? active : null;
-        SetSyntaxTreeDocument(source);
-        if (source?.Syntax is not { } syntax)
+
+        void ChangeSource(OpenDocument? next)
         {
-            view.Say("Open a C# file to see its syntax tree.");
+            if (followed.Show(next))
+            {
+                view?.Say(next is null ? SyntaxTreeView.NoSource : "Reading C# syntax…");
+            }
         }
-        else if (syntax.Newest is { } parsed && ReferenceEquals(parsed.Text, source.Text.Snapshot)
-            && Equals(parsed.Tree.Options, syntax.Options))
+
+        void Follow()
         {
-            view.Follow(parsed, Editors.CodeEditor.Selections.Primary);
+            if (view is null)
+            {
+                return;
+            }
+            OpenDocument? document = Source();
+            ChangeSource(document);
+            Refresh(document);
         }
-        else
+
+        void Refresh(OpenDocument? document)
         {
-            view.WaitForParse();
+            if (view is null || document?.Syntax is not { } syntax)
+            {
+                return;
+            }
+            if (syntax.Newest is { } parsed && ReferenceEquals(parsed.Text, document.Text.Snapshot)
+                && Equals(parsed.Tree.Options, syntax.Options))
+            {
+                view.Follow(parsed, Editors.CodeEditor.Selections.Primary.Range);
+            }
+            else
+            {
+                view.ClearChoice();
+            }
+        }
+
+        void SelectSource(ParsedText parsed, TextSpan span)
+        {
+            if (Source() is { } document && document == followed.Document && ReferenceEquals(parsed.Text, document.Text.Snapshot))
+            {
+                Editors.CodeEditor.Select(new TextRange(span.Start, span.Length));
+            }
         }
     }
-
-    private void SetSyntaxTreeDocument(OpenDocument? source)
-    {
-        if (syntaxTreeDocument == source)
-        {
-            return;
-        }
-        if (syntaxTreeDocument is { } before)
-        {
-            before.Parsed -= SyntaxTreeParsed;
-            before.Text.Changed -= SyntaxTreeEdited;
-        }
-        syntaxTreeDocument = source;
-        syntaxTreeView?.Say(source is null ? "Open a C# file to see its syntax tree." : "Reading C# syntax…");
-        if (source is not null)
-        {
-            source.Parsed += SyntaxTreeParsed;
-            source.Text.Changed += SyntaxTreeEdited;
-        }
-    }
-
-    private void SelectSyntaxSource(ParsedText parsed, TextSpan span)
-    {
-        if (syntaxTreeDocument is { } document && document == Editors.Active
-            && ReferenceEquals(parsed.Text, document.Text.Snapshot)
-            && ReferenceEquals(Editors.CodeEditor.Document, document.Text))
-        {
-            Editors.CodeEditor.Selections = SelectionSet.Single(new Selection(span.Start, span.End));
-        }
-    }
-
-    private void SyntaxTreeParsed(object? sender, ParsedText parsed) => FollowSyntaxTree();
-
-    private void SyntaxTreeEdited(object? sender, DocumentChangedEventArgs edit) => FollowSyntaxTree();
 }

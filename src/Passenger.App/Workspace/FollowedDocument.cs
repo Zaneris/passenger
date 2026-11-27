@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Passenger.Languages.CSharp;
 using Passenger.Text;
 
 namespace Passenger.App.Workspace;
@@ -26,6 +27,22 @@ public sealed class FollowedDocument
     /// <summary>Follows a document's text, each edit given to <paramref name="changed"/>.</summary>
     public static FollowedDocument OfText(EventHandler<DocumentChangedEventArgs> changed) =>
         new(document => document.Text.Changed += changed, document => document.Text.Changed -= changed);
+
+    /// <summary>Follows edits that invalidate C# syntax and the parses that arrive for them.</summary>
+    internal static FollowedDocument OfSyntax(Action changed)
+    {
+        EventHandler<DocumentChangedEventArgs> edited = (_, _) => changed();
+        EventHandler<ParsedText> parsed = (_, _) => changed();
+        return new(document =>
+        {
+            document.Text.Changed += edited;
+            document.Parsed += parsed;
+        }, document =>
+        {
+            document.Text.Changed -= edited;
+            document.Parsed -= parsed;
+        });
+    }
 
     /// <summary>Follows <paramref name="next"/> in place of the document followed: whether it is another.</summary>
     public bool Show(OpenDocument? next)

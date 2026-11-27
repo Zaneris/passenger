@@ -87,6 +87,14 @@ public sealed class SyntaxTreeTests : IDisposable
             Assert.True(SelectedKind(tree, "RecordKeyword"));
             Assert.Equal(resizedTreeHeight, tree.Bounds.Height, precision: 1);
 
+            window.DockHost.Hide(ToolWindowIds.SyntaxTree);
+            window.OpenFile("Calculator.cs");
+            window.EditorArea.CodeEditor.Selections = SelectionSet.Single(1);
+            Assert.Equal(0, tree.ItemCount);
+            Assert.True(window.Perform(AppActions.ShowSyntaxTree));
+            Ui.WaitFor(() => SelectedKind(tree, "ClassKeyword"), "the active file's syntax after reopening the pane");
+            Assert.Equal(resizedTreeHeight, tree.Bounds.Height, precision: 1);
+
             window.OpenFile("Notes.txt");
             Ui.WaitFor(() => !tree.IsEffectivelyVisible && tree.ItemCount == 0, "the empty state for a non-C# file");
         }

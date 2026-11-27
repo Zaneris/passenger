@@ -18,15 +18,16 @@ namespace Passenger.App.ToolWindows;
 
 internal sealed class SyntaxTreeView : Panel
 {
+    internal const string NoSource = "Open a C# file to see its syntax tree.";
+
     private readonly TreeList list = new() { Classes = { StyleClasses.Tree } };
     private readonly TreeRows<Row> rows = [];
-    private readonly EmptyState message = new("Open a C# file to see its syntax tree.");
+    private readonly EmptyState message = new(NoSource);
     private readonly DetailsTables details = new();
     private readonly PaneSplit split;
     private readonly Action<ParsedText, TextSpan> selectSource;
     private readonly Debounce reveal;
     private ParsedText? shown;
-    private Row? root;
     private TextSpan? wanted;
     private CancellationTokenSource? finding;
 
@@ -55,7 +56,7 @@ internal sealed class SyntaxTreeView : Panel
         Children.Add(message);
     }
 
-    internal void Follow(ParsedText parsed, Selection selection)
+    internal void Follow(ParsedText parsed, TextRange selection)
     {
         if (parsed.DeepAt is not null)
         {
@@ -64,15 +65,13 @@ internal sealed class SyntaxTreeView : Panel
         }
         if (shown?.Tree != parsed.Tree)
         {
-            StopRevealing();
-            list.SelectedItem = null;
+            ClearChoice();
             shown = parsed;
-            root = new Row(parsed.Root, 0);
-            rows.Show([root]);
+            rows.Show([new Row(parsed.Root, 0)]);
             message.IsVisible = false;
             split.IsVisible = true;
         }
-        TextSpan span = TextSpan.FromBounds(selection.Start, selection.End);
+        TextSpan span = new(selection.Start, selection.Length);
         if (wanted != span)
         {
             finding?.Cancel();
@@ -83,10 +82,8 @@ internal sealed class SyntaxTreeView : Panel
 
     internal void Say(string text)
     {
-        StopRevealing();
-        list.SelectedItem = null;
+        ClearChoice();
         shown = null;
-        root = null;
         if (rows.Count > 0)
         {
             rows.Clear();
@@ -96,7 +93,7 @@ internal sealed class SyntaxTreeView : Panel
         message.IsVisible = true;
     }
 
-    internal void WaitForParse()
+    internal void ClearChoice()
     {
         StopRevealing();
         list.SelectedItem = null;
@@ -111,16 +108,17 @@ internal sealed class SyntaxTreeView : Panel
 
     private async Task RevealAsync()
     {
-        if (root is not { } start || wanted is not { } span)
+        if (rows.Count == 0 || wanted is not { } span)
         {
             return;
         }
+        Row root = rows[0];
         using CancellationTokenSource request = new();
         finding = request;
         try
         {
-            List<Row> path = await BackgroundWork.Run(() => PathTo(start, span, request.Token), request.Token);
-            if (request.IsCancellationRequested)
+            List<Row>? path = await BackgroundWork.Run(() => PathTo(root, span, request.Token));
+            if (request.IsCancellationRequested || path is null)
             {
                 return;
             }
@@ -132,10 +130,6 @@ internal sealed class SyntaxTreeView : Panel
                 }
             }
             list.SelectedItem = path[^1];
-        }
-        catch (OperationCanceledException) when (request.IsCancellationRequested)
-        {
-            // The selection, file or window changed while the branch was being read.
         }
         finally
         {
@@ -188,12 +182,11 @@ internal sealed class SyntaxTreeView : Panel
             .Replace("\t", "\\t", StringComparison.Ordinal) + (span.Length > limit ? "…" : "");
     }
 
-    private static List<Row> PathTo(Row root, TextSpan selection, CancellationToken cancel)
+    private static List<Row>? PathTo(Row root, TextSpan selection, CancellationToken cancel)
     {
         List<Row> path = [root];
-        while (true)
+        while (!cancel.IsCancellationRequested)
         {
-            cancel.ThrowIfCancellationRequested();
             Row? match = path[^1].Children.FirstOrDefault(row => Covers(row, selection));
             if (match is null)
             {
@@ -201,6 +194,7 @@ internal sealed class SyntaxTreeView : Panel
             }
             path.Add(match);
         }
+        return null;
     }
 
     private static bool Covers(Row row, TextSpan selection) => selection.IsEmpty
@@ -271,35 +265,20 @@ internal sealed class SyntaxTreeView : Panel
         public string? Diagnostic => (IsTrivia ? trivia.GetDiagnostics() : syntax.GetDiagnostics()).FirstOrDefault() is { } error
             ? $"{error.Id} {error.GetMessage()}" : null;
 
-        public IReadOnlyList<Row> Children => LazyInitializer.EnsureInitialized(ref children, () => ReadChildren().ToArray());
+        public IReadOnlyList<Row> Children => LazyInitializer.EnsureInitialized(ref children, ReadChildren);
 
-        private IEnumerable<Row> ReadChildren()
+        private IReadOnlyList<Row> ReadChildren()
         {
             if (IsTrivia)
             {
-                if (trivia.GetStructure() is { } structure)
-                {
-                    yield return new Row(structure, Depth + 1);
-                }
-                yield break;
+                return trivia.GetStructure() is { } structure ? [new Row(structure, Depth + 1)] : [];
             }
             if (syntax.IsNode)
             {
-                foreach (SyntaxNodeOrToken child in syntax.ChildNodesAndTokens())
-                {
-                    yield return new Row(child, Depth + 1);
-                }
-                yield break;
+                return [.. syntax.ChildNodesAndTokens().Select(child => new Row(child, Depth + 1))];
             }
             SyntaxToken token = syntax.AsToken();
-            foreach (SyntaxTrivia detail in token.LeadingTrivia)
-            {
-                yield return new Row(default, Depth + 1, detail);
-            }
-            foreach (SyntaxTrivia detail in token.TrailingTrivia)
-            {
-                yield return new Row(default, Depth + 1, detail);
-            }
+            return [.. token.LeadingTrivia.Concat(token.TrailingTrivia).Select(detail => new Row(default, Depth + 1, detail))];
         }
     }
 }
