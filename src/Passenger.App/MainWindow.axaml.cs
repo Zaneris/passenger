@@ -131,6 +131,7 @@ public partial class MainWindow : IdeWindow
         AddPlaces();
         AddSwitcher();
         AddHierarchy();
+        AddSyntaxTree();
         AddClones();
         AddDependencyMap();
         AddIlViewer();

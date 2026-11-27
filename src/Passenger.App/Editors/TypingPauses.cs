@@ -49,6 +49,9 @@ public static class TypingPauses
     /// <summary>Before the Structure window asks for the shown file's outline again.</summary>
     public static TimeSpan Structure => Of(TimeSpan.FromMilliseconds(600));
 
+    /// <summary>Before the Syntax Tree window reveals the syntax under the latest selection.</summary>
+    public static TimeSpan SyntaxTree => Of(TimeSpan.FromMilliseconds(80));
+
     /// <summary>Before what a Godot project reads against an open scene, resource or script is read again.</summary>
     public static TimeSpan GodotScenes => Of(TimeSpan.FromMilliseconds(600));
 

@@ -19,6 +19,7 @@ public sealed class ToolWindowServesTests
     {
         [ToolWindowIds.Explorer] = ToolWindowServes.EveryFolder,
         [ToolWindowIds.Structure] = ToolWindowServes.EveryFolder,
+        [ToolWindowIds.SyntaxTree] = ToolWindowServes.EveryFolder,
         [ToolWindowIds.Bookmarks] = ToolWindowServes.EveryFolder,
         [ToolWindowIds.Commit] = ToolWindowServes.EveryFolder,
         [ToolWindowIds.Run] = ToolWindowServes.EveryFolder,

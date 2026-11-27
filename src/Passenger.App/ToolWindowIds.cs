@@ -7,6 +7,7 @@ public static class ToolWindowIds
 {
     public const string Explorer = "explorer";
     public const string Structure = "structure";
+    public const string SyntaxTree = "syntaxTree";
     public const string Bookmarks = "bookmarks";
     public const string Commit = "commit";
     public const string Run = "run";
