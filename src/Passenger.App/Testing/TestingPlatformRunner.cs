@@ -337,13 +337,16 @@ public sealed class TestingPlatformRunner : ITestRunner
         private readonly StringBuilder said;
         /// <summary>Done once the runner's own test host's output and errors are read to their end.</summary>
         private readonly Task heard;
+        /// <summary>A device test project's app debugged where it runs: its session's end, which stands for its process.</summary>
+        private readonly Task? apart;
         private bool stopped;
 
-        private Host(string name, Process? process, int processId, TcpClient client, JsonRpcPeer peer, Notifications target, StringBuilder said, Task heard)
+        private Host(string name, Process? process, int processId, Task? apart, TcpClient client, JsonRpcPeer peer, Notifications target, StringBuilder said, Task heard)
         {
             this.name = name;
             this.process = process;
             this.processId = processId;
+            this.apart = apart;
             this.client = client;
             this.peer = peer;
             this.target = target;
@@ -354,7 +357,8 @@ public sealed class TestingPlatformRunner : ITestRunner
         /// <summary>Starts an assembly's program as a server that connects to a port of the IDE's own, and initializes it; its
         /// updates read by the tests a run asks for, by uid, if any; its connection held until it ends where
         /// <paramref name="held"/> (<see cref="HoldsConnectionsUntilEnded"/>). A device test project's app is started where
-        /// its project runs (<paramref name="devices"/>), and ended there as its start ends, killed or not.</summary>
+        /// its project runs (<paramref name="devices"/>), and ended there as its start ends, killed or not; debugged, the
+        /// debugger starts it there as Debug starts an app, through Passenger's relay in it.</summary>
         public static async Task<Host> StartAsync(TestAssembly assembly, IReadOnlyDictionary<string, string>? environment, ITestDebugLauncher? debugger,
             Dictionary<string, TestItem>? asked, Action<string>? log, bool held, DeviceTestHosts? devices, CancellationToken cancel)
         {
@@ -362,10 +366,6 @@ public sealed class TestingPlatformRunner : ITestRunner
             DeviceTestApp? onDevice = null;
             if (devices is not null && Run.Devices.DeviceTargets.RunsElsewhere(assembly.Framework))
             {
-                if (debugger is not null)
-                {
-                    throw new TestHostFailed(Refusals.DeviceTestsNotDebugged(assembly.Project.Name));
-                }
                 (onDevice, string? unready) = await devices.ReadyAsync(assembly, cancel);
                 cancel.ThrowIfCancellationRequested();
                 if (onDevice is null)
@@ -384,7 +384,8 @@ public sealed class TestingPlatformRunner : ITestRunner
             StringBuilder said = new();
             Process? process = null;
             Task heard = Task.CompletedTask;
-            int id;
+            Task? apart = null;
+            int id = 0;
             if (debugger is null)
             {
                 Func<Task, Task>? follow = null;
@@ -416,6 +417,17 @@ public sealed class TestingPlatformRunner : ITestRunner
                 }
                 id = process.Id;
             }
+            else if (onDevice is not null)
+            {
+                try
+                {
+                    apart = await debugger.DebugOnDeviceAsync(onDevice.Plan(server, environment));
+                }
+                catch (InvalidOperationException undebugged)
+                {
+                    throw new TestHostFailed($"{name} could not be debugged: {undebugged.Message}");
+                }
+            }
             else
             {
                 id = await debugger.LaunchAsync(new TestHostStart(Dotnet.Host(folder), arguments, folder, environment, assembly.Framework));
@@ -423,11 +435,11 @@ public sealed class TestingPlatformRunner : ITestRunner
             TcpClient client;
             try
             {
-                client = await AcceptAsync(listener, process, heard, id, name, said, held, cancel);
+                client = await AcceptAsync(listener, process, heard, id, apart, name, said, held, cancel);
             }
             catch
             {
-                End(process, id);
+                End(process, id, apart);
                 process?.Dispose();
                 throw;
             }
@@ -440,7 +452,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             peer.On<TracedJson>("telemetry/update", update => Trace("<--", "telemetry/update", update?.Json));
             peer.On<TracedJson>("testing/testUpdates/attachments", update => Trace("<--", "testing/testUpdates/attachments", update?.Json));
             peer.Start();
-            Host host = new(name, process, id, client, peer, target, said, heard);
+            Host host = new(name, process, id, apart, client, peer, target, said, heard);
             try
             {
                 JsonObject initialize = new()
@@ -506,7 +518,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             if (!await Exited(limit) && (process is not null || stopped))
             {
                 IdeLog.Write(IdeLog.Tests, $"{name} (process {processId}) had not exited {Durations.Said(limit)} after it was told to, and is ended");
-                End(process, processId);
+                End(process, processId, apart);
             }
             peer.Dispose();
             client.Dispose();
@@ -530,7 +542,7 @@ public sealed class TestingPlatformRunner : ITestRunner
         private async Task<bool> Exited(TimeSpan limit)
         {
             long began = Stopwatch.GetTimestamp();
-            while (Alive(process, processId))
+            while (Alive(process, processId, apart))
             {
                 if (Stopwatch.GetElapsedTime(began) >= limit)
                 {
@@ -556,7 +568,7 @@ public sealed class TestingPlatformRunner : ITestRunner
         /// <summary>The test host's connection, once its program makes it; failed if the program ends without having made it
         /// or, run by the runner, takes longer than <see cref="ConnectLimit"/> to (under the debugger the person may be
         /// stopped in it).</summary>
-        private static async Task<TcpClient> AcceptAsync(TcpListener listener, Process? process, Task heard, int id, string name, StringBuilder said, bool held,
+        private static async Task<TcpClient> AcceptAsync(TcpListener listener, Process? process, Task heard, int id, Task? apart, string name, StringBuilder said, bool held,
             CancellationToken cancel)
         {
             using CancellationTokenSource giveUp = CancellationTokenSource.CreateLinkedTokenSource(cancel);
@@ -574,7 +586,7 @@ public sealed class TestingPlatformRunner : ITestRunner
                 {
                     await Task.WhenAny(accepting, Task.Delay(100, CancellationToken.None));
                     cancel.ThrowIfCancellationRequested();
-                    if (!accepting.IsCompleted && !Alive(process, id))
+                    if (!accepting.IsCompleted && !Alive(process, id, apart))
                     {
                         ended.SetResult();
                         if (await MadeAsync(listener, accepting, giveUp, cancel) is { } made)
@@ -626,14 +638,22 @@ public sealed class TestingPlatformRunner : ITestRunner
             return listener.Pending() ? await listener.AcceptTcpClientAsync(cancel) : null;
         }
 
-        private static bool Alive(Process? process, int id) => process is not null ? DotnetProcesses.Runs(process) : DotnetProcesses.Runs(id);
+        /// <summary>Whether a test host runs: the runner's own process, a device's app debugged there while its session lasts
+        /// (<paramref name="apart"/>), else the process the debugger started.</summary>
+        private static bool Alive(Process? process, int id, Task? apart) =>
+            apart is not null ? !apart.IsCompleted : process is not null ? DotnetProcesses.Runs(process) : DotnetProcesses.Runs(id);
 
-        /// <summary>Ends a test host: the runner's own with all it started, the debugger's alone.</summary>
-        private static void End(Process? process, int id)
+        /// <summary>Ends a test host: the runner's own with all it started, the debugger's alone; a device's app debugged there
+        /// ends with its session, which the run's end stops.</summary>
+        private static void End(Process? process, int id, Task? apart)
         {
             if (process is not null)
             {
                 ChildProcesses.Kill(process);
+                return;
+            }
+            if (apart is not null)
+            {
                 return;
             }
             try

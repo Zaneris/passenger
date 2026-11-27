@@ -1,3 +1,4 @@
+using Passenger.App;
 using Passenger.App.Run.Devices;
 using Passenger.Core;
 
@@ -81,6 +82,46 @@ internal static class MauiApp
 
     /// <summary>What the Tests window says once a device test project's three tests have run, its time left out.</summary>
     public const string DeviceTestsRan = "Tests passed: 1, failed: 1, skipped: 1 of 3";
+
+    /// <summary>A device test project's tests debugged from the Tests window where its project runs: its first test, empty as
+    /// the template makes it, given a local and a breakpoint after it, the run stopping there with the local shown, then going
+    /// on (past the stops the failing and skipped tests' exceptions may make) to its end, each test told. The window has the
+    /// project open, its target chosen.</summary>
+    public static void DebugDeviceTests(MainWindow window, string project, string where, TimeSpan limit)
+    {
+        string tests = PathNames.Canonical(Path.Combine(Path.GetDirectoryName(project)!, "Test1.cs"));
+        string text = File.ReadAllText(tests);
+        System.Text.RegularExpressions.Match empty = System.Text.RegularExpressions.Regex.Match(text, @"TestMethod1\s*\(\s*\)\s*\{\s*\}");
+        Assert.True(empty.Success, $"The template's first test is no longer empty:\n{text}");
+        text = string.Concat(text.AsSpan(0, empty.Index), "TestMethod1()\n    {\n        int answer = 6 * 7;\n        Console.WriteLine(answer);\n    }",
+            text.AsSpan(empty.Index + empty.Length));
+        File.WriteAllText(tests, text);
+        int after = text.AsSpan(0, text.IndexOf("Console.WriteLine(answer);", StringComparison.Ordinal)).Count('\n');
+        Ui.WaitFor(() => window.Tests.Tree.Methods.Any(m => m.Name == "TestMethod1"), () => $"the template's tests read from its code: {Ui.Said(window)}", limit);
+        window.OpenFile(tests);
+        Ui.Settle();
+        window.EditorArea.CodeEditor.GoTo(new Passenger.Text.TextPosition(after, 8));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        Task<string?> debugged = window.Tests.RunAsync(window.Folder!, debug: true);
+        Ui.WaitFor(() => window.Debugger.Session?.State == Passenger.App.Debugging.DebugState.Paused && Shown(window, "answer") is not null,
+            () => $"the stop at the breakpoint in TestMethod1 {where}; the debugger is {window.Debugger.Session?.State.ToString() ?? "not debugging"}: "
+                + $"{window.BottomPanel.Tests.Status}\n{Ui.Said(window)}\n{DebugConsole(window)}", limit);
+        Assert.Equal("42", Shown(window, "answer"));
+        for (int stops = 0; stops < 4 && !debugged.IsCompleted; stops++)
+        {
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => debugged.IsCompleted || window.Debugger.Session?.State == Passenger.App.Debugging.DebugState.Paused,
+                () => $"the debugged run {where} to go on to its end: {window.BottomPanel.Tests.Status}\n{DebugConsole(window)}", limit);
+        }
+        Ui.Launched(window, debugged, $"the debugged run's end {where}", limit);
+        Assert.True(System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, $" in {SaidWhile.Pattern}$", string.Empty) == DeviceTestsRan,
+            $"The debugged tests {where} were not each told: {window.BottomPanel.Tests.Status}\n{DebugConsole(window)}");
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, $"the debug session {where} to end with the run", TimeSpan.FromMinutes(1));
+
+        static string? Shown(MainWindow window, string name) => window.BottomPanel.Debug.Tree.Rows.FirstOrDefault(r => r.Depth == 0 && r.Name == name)?.Value;
+
+        static string DebugConsole(MainWindow window) => window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
+    }
 
     /// <summary>The device or emulator to run on, of those listed: the one adb's ANDROID_SERIAL names, as adb itself takes
     /// it where several are connected, else the first running, else the first emulator to start; null for none.</summary>

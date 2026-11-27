@@ -77,7 +77,7 @@ public sealed class DeviceTestHosts(Func<ProjectModel, KeptTarget?> targets, Fun
                 return (null, $"{project.Name} cannot run here: {Refusals.MacCatalystOnMacAlone}");
             }
             (LaunchPlan? opened, string? unopened) = await MacCatalystApps.ReadyAsync(plan with { MacCatalyst = new MacCatalystLaunch(assembly.Framework) }, properties, cancel);
-            return opened?.MacCatalyst?.App is { } catalyst ? (new DeviceTestApp(catalyst, null, unseen), null) : (null, unopened);
+            return opened?.MacCatalyst?.App is not null ? (new DeviceTestApp(opened, unseen), null) : (null, unopened);
         }
         if (target is not { Kind: not TargetKind.ThisMachine } chosen || chosen.Platform != platform)
         {
@@ -87,39 +87,38 @@ public sealed class DeviceTestHosts(Func<ProjectModel, KeptTarget?> targets, Fun
             stage, found => listed(project, platform, found), cancel, booted);
         return installed?.Device?.App switch
         {
-            SimulatorApp simulator => (new DeviceTestApp(null, simulator, unseen), null),
-            AndroidApp { Instrumentation.Length: > 0 } android => (new DeviceTestApp(null, null, unseen) { Android = android }, null),
+            SimulatorApp or AndroidApp { Instrumentation.Length: > 0 } => (new DeviceTestApp(installed, unseen), null),
             AndroidApp => (null, Refusals.NoInstrumentation(project.Name)),
             _ => (null, uninstalled ?? Refusals.NotYetOn(chosen.Name)),
         };
     }
 }
 
-/// <summary>A device test project's app made ready where it runs, as a Mac Catalyst app here or an iOS simulator's: each
-/// <see cref="Start"/> a start of it of its own, found by its own token; or installed on an Android device or emulator,
-/// whose instrumentation runs its tests (<see cref="Android"/>).</summary>
-public sealed class DeviceTestApp(MacCatalystApp? catalyst, SimulatorApp? simulator, bool unseen)
+/// <summary>A device test project's app made ready where it runs, as Run makes it ready (<paramref name="ready"/>): a Mac
+/// Catalyst app here or an iOS simulator's, each <see cref="Start"/> a start of it of its own, found by its own token; or
+/// installed on an Android device or emulator, whose instrumentation runs its tests (<see cref="Android"/>). Debugged, each
+/// start is a plan the debugger starts through Passenger's relay in it (<see cref="Plan"/>).</summary>
+public sealed class DeviceTestApp(LaunchPlan ready, bool unseen)
 {
+    /// <summary>A start's name, as the debugger's tab and the device's hold of it name it.</summary>
+    private const string Name = "Tests";
+
     /// <summary>The app installed on an Android device or emulator, started through its instrumentation; null for an Apple one.</summary>
-    public AndroidApp? Android { get; init; }
+    public AndroidApp? Android => ready.Device?.App as AndroidApp;
 
     /// <summary>The program that starts the app with the Testing Platform's <paramref name="server"/> options as its own
     /// arguments and <paramref name="environment"/> in its environment, lasting as long as the app does, and what follows
     /// the start: the app taken on once it runs, so it ends with Passenger, and ended once that program has
-    /// <c>ended</c> (killed, its app runs on). A Mac Catalyst app's results are written beside its bundle, where the template's
-    /// would go to the person's Documents, unless its sandbox keeps it in its container.</summary>
+    /// <c>ended</c> (killed, its app runs on).</summary>
     public (ProcessStartInfo Program, Func<Task, Task> Follow) Start(IReadOnlyList<string> server, IReadOnlyDictionary<string, string> environment)
     {
-        if (catalyst is not null)
+        LaunchPlan plan = Plan(server, environment);
+        if (plan.MacCatalyst?.App is { } app)
         {
-            MacCatalystApp app = MacCatalystApps.Afresh(catalyst);
-            string[] own = app.InSandbox ? [.. server] : [.. server, "--results-directory", Path.Combine(Path.GetDirectoryName(app.Bundle)!, "TestResults")];
-            return (ChildProcesses.Command(MacCatalystApps.Shell, MacCatalystApps.Opening(app, unseen, own, appKit: false), null, app.Variables(environment, null, null, null)),
-                ended => MacCatalystApps.EndWithAsync(app, ended));
+            return (ChildProcesses.Command(plan.Program, plan.Arguments, null, app.Variables(environment, null, null, null)), ended => MacCatalystApps.EndWithAsync(app, ended));
         }
-        SimulatorApp launched = simulator! with { Process = new AppProcess() };
-        return (ChildProcesses.Command(launched.Simctl, launched.Launch(server), null,
-            SimulatorApp.Given(launched.Variables(environment, null, null, null))), ended => EndAsync(launched, ended));
+        SimulatorApp launched = (SimulatorApp)plan.Device!.App!;
+        return (ChildProcesses.Command(plan.Program, plan.Arguments, null, SimulatorApp.Given(launched.Variables(environment, null, null, null))), ended => EndAsync(launched, ended));
 
         static async Task EndAsync(SimulatorApp app, Task ended)
         {
@@ -128,5 +127,29 @@ public sealed class DeviceTestApp(MacCatalystApp? catalyst, SimulatorApp? simula
             // By its process, never by its bundle identifier, which names the next test host's app too.
             app.Process.End();
         }
+    }
+
+    /// <summary>A start of the app of its own as a plan: an Android app's instrumentation (no <paramref name="server"/>
+    /// options), an iOS simulator's app launched afresh with the Testing Platform's options as its own arguments, a Mac
+    /// Catalyst app opened afresh with them, its results written beside its bundle where the template's would go to the
+    /// person's Documents, unless its sandbox keeps it in its container; <paramref name="environment"/> its own.</summary>
+    public LaunchPlan Plan(IReadOnlyList<string>? server, IReadOnlyDictionary<string, string> environment)
+    {
+        LaunchPlan plan = ready with { Name = Name, Environment = new Dictionary<string, string>(environment) };
+        if (ready.MacCatalyst is { App: { } catalyst } opening)
+        {
+            MacCatalystApp app = MacCatalystApps.Afresh(catalyst);
+            string[] own = app.InSandbox ? [.. server ?? []] : [.. server ?? [], "--results-directory", Path.Combine(Path.GetDirectoryName(app.Bundle)!, "TestResults")];
+            IReadOnlyList<string> opened = MacCatalystApps.Opening(app, unseen, own, appKit: false);
+            return plan with { Program = MacCatalystApps.Shell, Arguments = opened, Leading = opened.Count - own.Length, MacCatalyst = opening with { App = app } };
+        }
+        if (ready.Device is { App: SimulatorApp simulator } device)
+        {
+            SimulatorApp launched = simulator with { Process = new AppProcess() };
+            IReadOnlyList<string> launch = launched.Launch(server ?? []);
+            return plan with { Program = launched.Simctl, Arguments = launch, Leading = launch.Count - (server?.Count ?? 0), Device = device with { App = launched } };
+        }
+        AndroidApp android = Android ?? throw new InvalidOperationException($"{ready.Name}'s app is on no device");
+        return plan with { Program = android.Adb, Arguments = android.Instrument(), Leading = android.Instrument().Count };
     }
 }

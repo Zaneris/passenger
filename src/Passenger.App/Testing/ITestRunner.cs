@@ -30,6 +30,11 @@ public interface ITestDebugLauncher
     /// debugger's own arguments after the first <paramref name="leading"/>; done once it has started, with the run's end. Each
     /// line the game writes is handed to <paramref name="heard"/> as the debug session hears it, on the session's thread.</summary>
     Task<Task> DebugGameAsync(TestHostStart start, string folder, int leading, bool csharp, Action<string>? heard = null);
+
+    /// <summary>Starts a device test project's app under the debugger as Debug starts an app on its device, through Passenger's
+    /// relay in it, <paramref name="plan"/>'s program starting it there as the runner would (<see cref="DeviceTestApp.Plan"/>);
+    /// done once its session is open, with the session's end. Each line the start writes is handed to <paramref name="heard"/>.</summary>
+    Task<Task> DebugOnDeviceAsync(Run.LaunchPlan plan, Action<string>? heard = null);
 }
 
 /// <summary>A built test assembly whose tests a runner could not look through (its test host never started, or broke off),

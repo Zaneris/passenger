@@ -878,10 +878,6 @@ public static class Refusals
     public static string NoInstrumentation(string project) =>
         $"{project}'s tests cannot run on Android: its app starts through no instrumentation, which runs an Android app's tests (androidtest's template declares one)";
 
-    /// <summary>A device test project's tests asked to be debugged, which Passenger runs on their target undebugged.</summary>
-    public static string DeviceTestsNotDebugged(string project) =>
-        $"Passenger does not debug {project}'s tests where they run, on a device, a simulator or as a Mac Catalyst app, yet: Run Tests runs them there";
-
     /// <summary>The iOS workload could not list simulators (no workload, no Xcode), with how to get them.</summary>
     public static string NoIos(string problem) =>
         $"iOS's simulators could not be listed ({problem}): iOS apps need the .NET ios workload (dotnet workload install ios) and the Xcode it names, "

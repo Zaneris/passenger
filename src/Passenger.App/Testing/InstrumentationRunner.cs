@@ -10,7 +10,8 @@ namespace Passenger.App.Testing;
 /// held there as Run holds a start, runs the instrumentation (<see cref="AndroidApp.Instrument"/>), which runs every test of the
 /// app whichever were chosen, each told as its status comes (<see cref="InstrumentationLines"/>); once it has ended, the
 /// results file it wrote is brought beside the build and tells each again with its details (<see cref="TrxResults"/>).
-/// Stopped, or as the folder or Passenger ends, the app is ended there.</summary>
+/// Stopped, or as the folder or Passenger ends, the app is ended there. Debugged, the debugger starts it as Debug starts an
+/// app there, through Passenger's relay in it, its lines heard from its session's console.</summary>
 public sealed class InstrumentationRunner(Func<string, IReadOnlyList<TestItem>> declared, DeviceTestHosts devices) : ITestRunner
 {
     private readonly Lock gate = new();
@@ -35,7 +36,7 @@ public sealed class InstrumentationRunner(Func<string, IReadOnlyList<TestItem>> 
         return Task.FromResult(FoundTests.All(tests));
     }
 
-    /// <summary>Runs each assembly's app's instrumentation in turn, refused under the debugger.</summary>
+    /// <summary>Runs each assembly's app's instrumentation in turn, under the debugger where one is given.</summary>
     public async Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
         ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default)
     {
@@ -51,8 +52,7 @@ public sealed class InstrumentationRunner(Func<string, IReadOnlyList<TestItem>> 
             {
                 continue;
             }
-            RunSummary part = debugger is not null ? Refused(Refusals.DeviceTestsNotDebugged(assembly.Project.Name), log)
-                : await RunInAsync(assembly, [.. asked], outcomes, log, cancel);
+            RunSummary part = await RunInAsync(assembly, [.. asked], outcomes, log, debugger, environment ?? new Dictionary<string, string>(), cancel);
             summary = summary is null ? part : summary.And(part);
             if (part.Canceled)
             {
@@ -64,7 +64,7 @@ public sealed class InstrumentationRunner(Func<string, IReadOnlyList<TestItem>> 
 
     /// <summary>One run of an assembly's app's instrumentation on its device: what it told, or why it could not run or broke off.</summary>
     private async Task<RunSummary> RunInAsync(TestAssembly assembly, IReadOnlyList<TestItem> asked, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log,
-        CancellationToken cancel)
+        ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string> environment, CancellationToken cancel)
     {
         long began = Stopwatch.GetTimestamp();
         string name = $"{Path.GetFileNameWithoutExtension(assembly.Path)} ({assembly.Framework})";
@@ -86,38 +86,29 @@ public sealed class InstrumentationRunner(Func<string, IReadOnlyList<TestItem>> 
         {
             return Refused($"{name} could not start: {unready}", log);
         }
-        if (await devices.StartsOnDeviceAsync(assembly.Project.Name, app) is not { } start)
-        {
-            return new RunSummary(Stopwatch.GetElapsedTime(began), true, false, null);
-        }
         Telling telling = new(assembly, asked, declared(assembly.Project.Path), outcomes);
-        Process process;
-        try
-        {
-            ProcessStartInfo program = ChildProcesses.Command(app.Adb, app.Instrument());
-            program.RedirectStandardOutput = true;
-            program.RedirectStandardError = true;
-            process = await ChildProcesses.StartAsync(program);
-        }
-        catch (Exception unstarted) when (unstarted is System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
-        {
-            start.Dispose();
-            return Refused($"{name} could not start: {unstarted.Message}", log);
-        }
         List<string> errors = [];
-        Task heard = ChildProcesses.Hear(process, telling.Heard, line =>
+        Run.LaunchPlan plan = ready.Plan(null, environment);
+        if (debugger is not null)
         {
-            lock (errors)
+            try
             {
-                errors.Add(line);
+                // The debugger's start holds the app on its device as Debug's does, and ends it there with its session.
+                Task debugged = await debugger.DebugOnDeviceAsync(plan, telling.Heard);
+                await debugged.WaitAsync(cancel);
             }
-        });
-        // However the run ends, stopped or not, the app is ended on its device once adb's run of it has.
-        start.EndsWith(EndAsync(heard, start));
-        using (process)
-        using (cancel.Register(() => ChildProcesses.Kill(process)))
+            catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+            {
+                return telling.Summary(Stopwatch.GetElapsedTime(began), canceled: true, null);
+            }
+            catch (InvalidOperationException undebugged)
+            {
+                return Refused($"{name} could not be debugged: {undebugged.Message}", log);
+            }
+        }
+        else if (await RanAsync(plan, app, assembly, telling, errors, cancel) is { } unstarted)
         {
-            await heard.Ended();
+            return unstarted.Error is null ? unstarted with { Elapsed = Stopwatch.GetElapsedTime(began) } : Refused(unstarted.Error, log);
         }
         if (cancel.IsCancellationRequested)
         {
@@ -145,6 +136,46 @@ public sealed class InstrumentationRunner(Func<string, IReadOnlyList<TestItem>> 
             log?.Invoke($"{name}: {problem}");
         }
         return telling.Summary(Stopwatch.GetElapsedTime(began), canceled: false, problem is null ? null : $"{name}: {problem}");
+    }
+
+    /// <summary>The app's instrumentation run on its device by adb (<paramref name="plan"/>'s program) to its end, each line
+    /// told to <paramref name="telling"/> and adb's own words kept in <paramref name="errors"/>, held there as Run holds a
+    /// start: null once it has run (or was stopped), else a summary of why it did not: canceled where the folder had ended,
+    /// else its error.</summary>
+    private async Task<RunSummary?> RanAsync(Run.LaunchPlan plan, AndroidApp app, TestAssembly assembly, Telling telling, List<string> errors, CancellationToken cancel)
+    {
+        if (await devices.StartsOnDeviceAsync(assembly.Project.Name, app) is not { } start)
+        {
+            return new RunSummary(TimeSpan.Zero, true, false, null);
+        }
+        Process process;
+        try
+        {
+            ProcessStartInfo program = plan.Start();
+            program.RedirectStandardOutput = true;
+            program.RedirectStandardError = true;
+            process = await ChildProcesses.StartAsync(program);
+        }
+        catch (Exception unstarted) when (unstarted is System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
+        {
+            start.Dispose();
+            return new RunSummary(TimeSpan.Zero, false, true, $"{Path.GetFileNameWithoutExtension(assembly.Path)} ({assembly.Framework}) could not start: {unstarted.Message}");
+        }
+        Task heard = ChildProcesses.Hear(process, telling.Heard, line =>
+        {
+            lock (errors)
+            {
+                errors.Add(line);
+            }
+        });
+        // However the run ends, stopped or not, the app is ended on its device once adb's run of it has.
+        start.EndsWith(EndAsync(heard, start));
+        using (process)
+        using (cancel.Register(() => ChildProcesses.Kill(process)))
+        {
+            await heard.Ended();
+        }
+        return null;
     }
 
     /// <summary>The results file a run wrote on the device brought beside the build (TestResults), as the workload's own run

@@ -16,7 +16,7 @@ namespace Passenger.Tests;
 /// with Passenger's relay carried into its data container, stops in its main page, steps, shows, evaluates and takes a Hot
 /// Reload edit, whose update handler is called once the app goes on; Stop ends the app and takes out what was carried, and a
 /// simulator the window booted is shut down as it closes. First, the tests of the project <c>dotnet new iostest</c> makes
-/// run in its app on the simulator chosen beside its configuration. Skips, saying why, off a Mac, without MAUI's and iOS's
+/// run in its app on the simulator chosen beside its configuration, and one is debugged there. Skips, saying why, off a Mac, without MAUI's and iOS's
 /// workloads, Xcode or an iPhone simulator, or the simulator's relay. Debugged through the window, so alone; its waits end
 /// within the run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
 [Collection(Alone.Name)]
@@ -34,6 +34,8 @@ public sealed class MauiSimulatorTests
         using IDisposable hang = Limits.BeginHang();
         Flow.Step("an iostest project's tests run in its app on the simulator chosen beside its configuration, each told, and the app ends there",
             An_iostest_projects_tests_run_in_its_app_on_the_simulator_chosen_beside_its_configuration_each_told_and_the_app_ends_there);
+        Flow.Step("an iostest project's tests debugged from the Tests window stop at a breakpoint in one on the simulator, then each test is told and the app ends there",
+            An_iostest_projects_tests_debugged_from_the_tests_window_stop_at_a_breakpoint_in_one_on_the_simulator_then_each_test_is_told_and_the_app_ends_there);
         Flow.Step("a MAUI app's iOS head debugged on a simulator stops, steps, evaluates and takes a Hot Reload edit",
             A_maui_apps_ios_head_debugged_on_a_simulator_stops_steps_evaluates_and_takes_a_hot_reload_edit);
     }
@@ -67,6 +69,41 @@ public sealed class MauiSimulatorTests
                 TestNode failed = window.Tests.Tree.Roots.SelectMany(r => r.Methods).Single(m => m.State == TestState.Failed);
                 Assert.Contains("This test is expected to fail", failed.Details, StringComparison.Ordinal);
                 Ui.WaitFor(() => !AppRuns(target), () => $"the tests' app to end on {target.Name} once their run was over", TimeSpan.FromSeconds(30));
+            }
+            finally
+            {
+                window.Close();
+            }
+            LeftAsFound(target, tools);
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>The tests of the project <c>dotnet new iostest</c> makes, debugged from the Tests window (<see cref="MauiApp.DebugDeviceTests"/>):
+    /// the app started on the simulator through Passenger's relay in it as Debug starts an app there, with the Testing
+    /// Platform's server options, stopping at a breakpoint in its first test; once it goes on each test is told as a run tells it,
+    /// and the app ends there.</summary>
+    private static void An_iostest_projects_tests_debugged_from_the_tests_window_stop_at_a_breakpoint_in_one_on_the_simulator_then_each_test_is_told_and_the_app_ends_there()
+    {
+        Relayed();
+        string folder = PathNames.Canonical(TestFolders.Create("ios-device-tests-debugged"));
+        try
+        {
+            (string project, string? unmade) = Ui.AwaitPumped(Waiting.Apart(() => MauiApp.CreateDeviceTestsAsync(folder, "iostest")), "dotnet new iostest and its restore", Slow);
+            if (unmade is not null)
+            {
+                Assert.Skip(unmade);
+            }
+            (DeviceTarget target, AppleTools tools) = Listed(project);
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            try
+            {
+                Choose(window, project, target, MauiApp.DeviceTests);
+                MauiApp.DebugDeviceTests(window, project, $"on {target.Name}", Slow);
+                Ui.WaitFor(() => !AppRuns(target), () => $"the debugged tests' app to end on {target.Name} once their run was over", TimeSpan.FromSeconds(30));
             }
             finally
             {
@@ -144,15 +181,7 @@ public sealed class MauiSimulatorTests
     /// changed, and the simulator to run it on (<see cref="Target"/>), or a skip saying why there is none.</summary>
     private static (string Folder, string Project, DeviceTarget Target, AppleTools Tools) Prepared(string name)
     {
-        if (!OperatingSystem.IsMacOS())
-        {
-            Assert.Skip(Refusals.IosOnMacAlone);
-        }
-        string runtime = $"iossimulator-{(RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64" : "x64")}";
-        if (!File.Exists(CarriedFiles.Relay(runtime, SimulatorApp.RelayFile)))
-        {
-            Assert.Skip($"This build carries no debug relay for {runtime}, which `just debug-relay apple` makes before a build carries it");
-        }
+        Relayed();
         string folder = PathNames.Canonical(TestFolders.Create(name));
         (string project, string? unmade) = Ui.AwaitPumped(Waiting.Apart(() => MauiApp.CreateIosHeadAsync(folder)), "dotnet new maui and the iOS head's restore", Slow);
         if (unmade is not null)
@@ -224,6 +253,20 @@ public sealed class MauiSimulatorTests
     /// <summary>Whether a process of this Mac (a simulator's app is one) still runs.</summary>
     private static bool Runs(string process) =>
         Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command("ps", ["-p", process, "-o", "pid="]))), "ps on the app's process").Output.Trim().Length > 0;
+
+    /// <summary>A skip, saying why, off a Mac or where this build carries no debug relay for this Mac's simulators.</summary>
+    private static void Relayed()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip(Refusals.IosOnMacAlone);
+        }
+        string runtime = $"iossimulator-{(RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64" : "x64")}";
+        if (!File.Exists(CarriedFiles.Relay(runtime, SimulatorApp.RelayFile)))
+        {
+            Assert.Skip($"This build carries no debug relay for {runtime}, which `just debug-relay apple` makes before a build carries it");
+        }
+    }
 
     /// <summary>The simulator as the test found it once the window has closed: shut down again where the window booted it,
     /// still booted where it was already.</summary>
