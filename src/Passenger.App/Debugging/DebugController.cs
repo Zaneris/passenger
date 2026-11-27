@@ -706,13 +706,18 @@ public sealed partial class DebugController : IDisposable
     }
 
     /// <summary>A .NET MAUI app's edits applied, its XAML with its C# in one update (MAUI's source generator writes the XAML's
-    /// code), its update handlers told as it lands, so MAUI's patches the open pages, which its inspector then says.</summary>
+    /// code), its update handlers told as it lands, so MAUI's patches the open pages, which its inspector then says; a
+    /// debugged app's XAML breakpoints bound in the update's code first, so one in what the patch makes or sets stops there.</summary>
     private async Task<HotReloadOutcome> ApplyGeneratedAsync(IHotReloadTarget target, LiveTree.XamlHotReload xaml, HotReload reload)
     {
         bool paused = (target as DebugTab)?.Session?.State == DebugState.Paused;
         int? heard = xaml.Changed && !paused ? await xaml.UpdatesHeardAsync() : null;
         IReadOnlyList<Passenger.Roslyn.Extension.HotReloadMarkup> markup = xaml.Markup(paused);
         HotReloadOutcome code = await reload.ApplyAsync(markup);
+        if (code.Result == HotReloadResult.Applied && !paused && target is DebugTab { Session: { MauiXaml: not null } debugged } taking && code.Generated.Count > 0)
+        {
+            await XamlCodeTakenAsync(taking, debugged, code.Generated);
+        }
         if (code.Result == HotReloadResult.Applied && code.Modules.Count > 0)
         {
             if (target is RunningReload run)
@@ -726,6 +731,22 @@ public sealed partial class DebugController : IDisposable
             code = code with { HandlersTold = true };
         }
         return HotReloadOutcome.Both(code, await xaml.UpdatedAsync(code, markup, heard, paused)) ?? code;
+    }
+
+    /// <summary>A debugged .NET MAUI app took an update carrying the code MAUI's generator wrote of its XAML files
+    /// (<paramref name="generated"/>): the session reads its pages from that code, the files' lines as the update was made of
+    /// them are the program's from now, and their breakpoints are bound again in it.</summary>
+    private static async Task XamlCodeTakenAsync(DebugTab tab, DebugSession session, IReadOnlyList<(string Markup, string Document, string Text)> generated)
+    {
+        (Task<MauiXamlCode> Code, Func<string, TextSnapshot?> Texts) maui = session.MauiXaml!.Value;
+        MauiXamlCode before = await maui.Code;
+        session.MauiXaml = (Task.FromResult(await BackgroundWork.Run(() => before.Updated(generated))), maui.Texts);
+        List<string> files = [.. generated.Select(g => g.Markup).Distinct(PathNames.Comparer)];
+        foreach (string path in files)
+        {
+            tab.Lines?.Reset(path);
+        }
+        await session.SendBreakpointsAgainAsync(files);
     }
 
     /// <summary>The update handlers of a program run with Hot Reload told of an update it took (<see cref="ToldHandlers(DebugTab, DebugSession, HotReloadOutcome)"/>).</summary>

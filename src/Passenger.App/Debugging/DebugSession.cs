@@ -1086,26 +1086,27 @@ public sealed class DebugSession
     {
         List<DapStackFrame> frames = [.. (await connection.RequestAsync<StackTraceResponse>(DapCommands.StackTrace, new StackTraceArguments(threadId)).ConfigureAwait(false)).StackFrames.Select(Named)];
         // A frame in the code MAUI's source generator wrote of a page is shown at the page's XAML.
-        if (MauiXaml is { } generated)
+        if (MauiXaml is { } generated && (await generated.Code) is var code
+            && frames.Select((f, i) => (Frame: f, At: i)).Where(f => f.Frame.Source?.Path is { } document && code.OfDocument(document) is not null).ToList() is { Count: > 0 } placed)
         {
-            MauiXamlCode code = await generated.Code;
-            Dictionary<string, TextSnapshot?> texts = new(PathNames.Comparer);
-            for (int i = 0; i < frames.Count; i++)
+            // The editor's text and the built lines are the window's thread's.
+            await UiThread.InvokeAsync(() =>
             {
-                if (frames[i].Source?.Path is not { } document || code.OfDocument(document) is not { } page)
+                Dictionary<string, TextSnapshot?> texts = new(PathNames.Comparer);
+                foreach ((DapStackFrame frame, int at) in placed)
                 {
-                    continue;
+                    MauiXamlPage page = code.OfDocument(frame.Source!.Path!)!;
+                    if (!texts.TryGetValue(page.Xaml, out TextSnapshot? text))
+                    {
+                        texts[page.Xaml] = text = generated.Texts(page.Xaml);
+                    }
+                    if (page.Place(text, frame.Source.Path!, frame.Line, frame.Column, p => BuiltPlace(page.Xaml, p)) is { } place)
+                    {
+                        frames[at] = frame with { Source = new DapSource { Path = page.Xaml, Name = Path.GetFileName(page.Xaml) }, Line = place.Line + 1, Column = place.Column + 1 };
+                    }
                 }
-                if (!texts.TryGetValue(page.Xaml, out TextSnapshot? text))
-                {
-                    // The editor's text is the window's thread's.
-                    texts[page.Xaml] = text = await UiThread.InvokeAsync(() => generated.Texts(page.Xaml));
-                }
-                if (page.Place(text, frames[i].Line) is { } place)
-                {
-                    frames[i] = frames[i] with { Source = new DapSource { Path = page.Xaml, Name = Path.GetFileName(page.Xaml) }, Line = place.Line + 1, Column = place.Column + 1 };
-                }
-            }
+                return true;
+            });
         }
         // A stop at a breakpoint in WPF XAML is shown at its XAML, in place of the inspector's call it stopped in.
         if (XamlStop is { } xaml && threadId == StoppedThread && frames is [var call, ..] && call.Name.Contains(XamlCall, StringComparison.Ordinal))
@@ -1347,21 +1348,29 @@ public sealed class DebugSession
             [.. built.Take(response.Breakpoints.Count), .. unbuilt]);
     }
 
-    /// <summary>A .NET MAUI XAML file's breakpoints sent for the code MAUI's source generator wrote of it, each at the line
-    /// of that code its element or attribute binds to; one where the code makes or sets nothing, or a file of no code, said
-    /// why. Answered on the XAML, at its own lines.</summary>
+    /// <summary>A .NET MAUI XAML file's breakpoints sent for the code MAUI's source generator wrote of it, at each place its
+    /// element or attribute binds to (the page's InitializeComponent, an update's patch, the XAML a #line maps code to), one
+    /// request a document, one the last sending had and this one has none of sent empty; one on a line written since the
+    /// code was made, where the code makes or sets nothing, or of a file of no code, said why. Answered on the XAML at its own
+    /// lines, bound where any of its places bound.</summary>
     private async Task SendGeneratedAsync(string path, MauiXamlCode code, TextSnapshot? text)
     {
         IEnumerable<LineBreakpoint> sending = breakpoints.Muted ? [] : breakpoints.In(path).Where(b => b.Enabled);
         (MauiXamlPage? page, string? why) = code.Of(path);
-        List<(LineBreakpoint Breakpoint, int Line)> bound = [];
+        List<(LineBreakpoint Breakpoint, IReadOnlyList<(string Document, int Line)> At)> bound = [];
         List<(LineBreakpoint Breakpoint, string Why)> unbound = [];
         foreach (LineBreakpoint breakpoint in sending)
         {
-            int built = lines.ToBuilt(path, breakpoint.Line);
-            if (page is not null && text is not null && page.Bind(text, built, breakpoint.Attribute, breakpoint.Column ?? breakpoint.AttributeColumn) is int line)
+            IReadOnlyList<(string Document, int Line)>? at = page is null || text is null ? []
+                : lines.IsBuilt(path, breakpoint.Line) ? page.Bind(text, breakpoint.Line, breakpoint.Attribute, breakpoint.Column ?? breakpoint.AttributeColumn, p => BuiltPlace(path, p))
+                : null;
+            if (at is null)
             {
-                bound.Add((breakpoint, line));
+                unbound.Add((breakpoint, NotBuilt));
+            }
+            else if (at.Count > 0)
+            {
+                bound.Add((breakpoint, at));
             }
             else
             {
@@ -1373,30 +1382,46 @@ public sealed class DebugSession
         {
             byId.Remove(id);
         }
-        List<DapBreakpoint> answered = [];
-        if (page is not null)
+        HashSet<string> documents = [.. bound.SelectMany(b => b.At).Select(a => a.Document)];
+        IEnumerable<string> emptied = generatedSent.TryGetValue(path, out HashSet<string>? before) ? before.Except(documents, StringComparer.Ordinal) : [];
+        Dictionary<LineBreakpoint, DapBreakpoint> answered = [];
+        foreach (string document in documents.Concat(emptied).ToList())
         {
+            List<(LineBreakpoint Breakpoint, int Line)> here = [.. bound.SelectMany(b => b.At.Where(a => a.Document == document).Select(a => (b.Breakpoint, a.Line)))];
             SetBreakpointsResponse response = await connection.RequestAsync<SetBreakpointsResponse>(DapCommands.SetBreakpoints,
-                new SetBreakpointsArguments(new DapSource { Path = page.Document, Name = Path.GetFileName(page.Document) },
-                    [.. bound.Select(b => Request(path, b.Breakpoint) with { Line = b.Line, Column = null })]));
-            answered = [.. response.Breakpoints.Take(bound.Count)];
-            for (int i = 0; i < answered.Count; i++)
+                new SetBreakpointsArguments(new DapSource { Path = document, Name = Path.GetFileName(document) },
+                    [.. here.Select(b => Request(path, b.Breakpoint) with { Line = b.Line, Column = null })]));
+            for (int i = 0; i < Math.Min(here.Count, response.Breakpoints.Count); i++)
             {
-                if (answered[i].Id is int id)
+                if (response.Breakpoints[i].Id is int id)
                 {
-                    byId[id] = bound[i].Breakpoint;
+                    byId[id] = here[i].Breakpoint;
+                }
+                // Of a breakpoint's places, one bound stands for it, else its first answer.
+                if (!answered.TryGetValue(here[i].Breakpoint, out DapBreakpoint? other) || !other.Verified && response.Breakpoints[i].Verified)
+                {
+                    answered[here[i].Breakpoint] = response.Breakpoints[i];
                 }
             }
         }
+        generatedSent[path] = documents;
         if (breakpoints.Muted)
         {
             breakpoints.Report(this, path, [.. breakpoints.In(path).Select(_ => (BreakpointStatus.Unknown, (string?)null, (int?)null))], breakpoints.In(path));
             return;
         }
+        List<LineBreakpoint> answeredFor = [.. bound.Select(b => b.Breakpoint).Where(answered.ContainsKey)];
         breakpoints.Report(this, path,
-            [.. answered.Select(b => Status(path, b)), .. unbound.Select(u => (BreakpointStatus.Invalid, (string?)u.Why, (int?)null))],
-            [.. bound.Take(answered.Count).Select(b => b.Breakpoint), .. unbound.Select(u => u.Breakpoint)]);
+            [.. answeredFor.Select(b => Status(path, answered[b])), .. unbound.Select(u => (BreakpointStatus.Invalid, (string?)u.Why, (int?)null))],
+            [.. answeredFor, .. unbound.Select(u => u.Breakpoint)]);
     }
+
+    /// <summary>The documents each .NET MAUI XAML file's breakpoints were last sent for (<see cref="SendGeneratedAsync"/>).</summary>
+    private readonly Dictionary<string, HashSet<string>> generatedSent = new(StringComparer.Ordinal);
+
+    /// <summary>Where a place in a file as the editor has it (line and column from zero) was as the program's code was made of
+    /// the file, as its compiler counts them; null for one on a line written since.</summary>
+    private TextPosition? BuiltPlace(string path, TextPosition place) => lines.IsBuilt(path, place.Line) ? lines.ToBuilt(path, place.Line, place.Column) : null;
 
     /// <summary>A breakpoint as the debugger is asked for it (<see cref="Asked"/>), with its key, the key of the one it waits
     /// for, whether it is temporary, and what it captures as a snapshot point, which never stops.</summary>

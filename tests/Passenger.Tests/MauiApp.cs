@@ -62,10 +62,12 @@ internal static class MauiApp
             : $"{Name}'s {framework} head does not restore here from nuget.org: {restored.Output.Split('\n').FirstOrDefault(l => l.Contains(": error ", StringComparison.Ordinal))?.Trim() ?? restored.FirstLine}");
     }
 
-    /// <summary>The main page's XAML edited while the app runs with Hot Reload: its label's text, which MAUI patches into the
-    /// open page, then a label of a C# expression of the button's text, for which the page is made again; each read back
-    /// from the app.</summary>
-    public static void TakesXamlEdits(MainWindow window, LiveApp app, string project, TimeSpan limit)
+    /// <summary>The main page's XAML edited while the debugged app runs with Hot Reload, its breakpoints at
+    /// <see cref="XamlBreakpoints"/>' lines (<paramref name="set"/>): its label's text, which MAUI patches into the open page,
+    /// stopping at none; a label added, a breakpoint on its line first, where the program stops as MAUI's patch makes it; then
+    /// a label of a C# expression of the button's text, for which the page is made again by the update's InitializeComponent,
+    /// stopping at each breakpoint as it makes its element or sets its property; each read back from the app.</summary>
+    public static void TakesXamlEdits(MainWindow window, LiveApp app, string project, (string Xaml, int Hello, int ClickMe) set, TimeSpan limit)
     {
         window.OpenFile(Path.Combine(PathNames.Canonical(Path.GetDirectoryName(project)!), "MainPage.xaml"));
         Typing.Replace(window, "Text=\"Hello, World!\"", "Text=\"Hello, Passenger!\"");
@@ -73,8 +75,24 @@ internal static class MauiApp
         Assert.False(window.Debugger.LastApplied!.Said.Contains("made again", StringComparison.Ordinal),
             $"The page was made again for a property's edit, which MAUI patches: {window.Debugger.LastApplied.Said}");
         Shows(window, app, "Hello, Passenger!", "the edited label's text");
+
+        Typing.Replace(window, "            <Button", "            <Label Text=\"Added by Hot Reload\" />\n\n            <Button");
+        string[] written = window.EditorArea.CodeEditor.Document.Snapshot.ToString().Split('\n');
+        int added = Array.FindIndex(written, l => l.Contains("Added by Hot Reload", StringComparison.Ordinal));
+        window.EditorArea.CodeEditor.GoTo(new Passenger.Text.TextPosition(added, written[added].IndexOf('<', StringComparison.Ordinal)));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        LineBreakpoint onAdded = window.Debugger.Breakpoints.In(set.Xaml).Single(b => b.Line == added);
+        Ui.WaitFor(() => onAdded.Status == BreakpointStatus.Invalid,
+            () => $"the breakpoint on the label written since the app's code was made to say it cannot stop yet; it is {onAdded.Status}: {onAdded.Message}", limit);
+        XamlApplied(window, "an added element", limit, set.Xaml, (added, "UpdateComponent", "the added label's line, where MAUI's patch makes it"));
+        Assert.True(onAdded.Status == BreakpointStatus.Bound, $"The added label's breakpoint is {onAdded.Status} once the update made it: {onAdded.Message}");
+        Shows(window, app, "Added by Hot Reload", "the added label");
+
         Typing.Replace(window, "HorizontalOptions=\"Fill\" />", "HorizontalOptions=\"Fill\" />\n\n<Label Text=\"{CounterBtn.Text + '!'}\" />");
-        XamlApplied(window, "an element with a C# expression of the button's text", limit);
+        XamlApplied(window, "an element with a C# expression of the button's text", limit, set.Xaml,
+            (set.Hello, "InitializeComponent", "the Hello label's line, where the page made again makes it"),
+            (added, "InitializeComponent", "the added label's line, where the page made again makes it"),
+            (set.ClickMe + 2, "InitializeComponent", "the button's Text attribute, where the page made again sets it"));
         Assert.True(window.Debugger.LastApplied!.Said.Contains("MainPage made again", StringComparison.Ordinal),
             $"The page was not made again for a C# expression, which MAUI's patch passes over: {window.Debugger.LastApplied.Said}");
         ShowsButtonsText(window, app, "!", "the added label whose C# expression reads the button's text", "Click me");
@@ -155,17 +173,33 @@ internal static class MauiApp
     private static void XamlStop(MainWindow window, string xaml, int line, string what, TimeSpan limit) =>
         Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames is [{ Source.Path: { } path, Line: int at }, ..]
                 && PathNames.Same(path, xaml) && at == line + 1,
-            () => $"the stop at {what}, line {line + 1} of {Path.GetFileName(xaml)}, shown at {Top(window)}: {Ui.Said(window)}", limit);
+            () => $"the stop at {what}, line {line + 1} of {Path.GetFileName(xaml)}, shown at {Top(window)} (stopped for {window.Debugger.Stop?.Reason} {window.Debugger.Stop?.Exception}): {Ui.Said(window)}", limit);
 
     /// <summary>Where the stop shown is, for a failure's words.</summary>
     public static string Top(MainWindow window) =>
         window.BottomPanel.Debug.Frames is [var top, ..] ? $"{top.Name} {top.Source?.Path}:{top.Line}" : "no frame";
 
     /// <summary>Apply Hot Reload Changes for a XAML edit, which the app takes: MAUI patched its open page, or it was made again.</summary>
-    public static void XamlApplied(MainWindow window, string what, TimeSpan limit)
+    public static void XamlApplied(MainWindow window, string what, TimeSpan limit) => XamlApplied(window, what, limit, string.Empty);
+
+    /// <summary>Apply Hot Reload Changes for a XAML edit, which the app takes, the program stopping on the way at each of
+    /// <paramref name="stops"/> (a line of <paramref name="xaml"/> from zero, in a method of that name) and going on.</summary>
+    public static void XamlApplied(MainWindow window, string what, TimeSpan limit, string xaml, params (int Line, string In, string What)[] stops)
     {
         HotReloadOutcome? before = window.Debugger.LastApplied;
-        Ui.Run(window, AppActions.ApplyHotReloadChanges);
+        // The apply waits for the program, which stops in its code: the IDE is quiet, as a settled wait asks, only once it went on.
+        Ui.Run(window, AppActions.ApplyHotReloadChanges, settle: stops.Length == 0);
+        int seen = window.Debugger.Session?.Stops ?? 0;
+        foreach ((int line, string method, string where) in stops)
+        {
+            Assert.True(Ui.Pumped(() => window.Debugger.Session is { State: DebugState.Paused } session && session.Stops > seen
+                    && window.BottomPanel.Debug.Frames is [{ Source.Path: { } path, Line: int at }, ..] && PathNames.Same(path, xaml) && at == line + 1, limit),
+                $"No stop at {where}, line {line + 1} of {Path.GetFileName(xaml)}, as the apply ran: shown at {Top(window)}: {Ui.Said(window)}");
+            Assert.True(window.BottomPanel.Debug.Frames[0].Name.Contains(method, StringComparison.Ordinal),
+                $"The stop at {where} is in {window.BottomPanel.Debug.Frames[0].Name}, not {method}");
+            seen = window.Debugger.Session!.Stops;
+            Ui.Run(window, AppActions.Resume, settle: false);
+        }
         Ui.WaitFor(() => window.Debugger.LastApplied != before, () => $"Hot Reload to say what it made of {what}: {Ui.Said(window)}", limit);
         HotReloadOutcome applied = window.Debugger.LastApplied!;
         Assert.True(applied.Result == HotReloadResult.Applied && applied.Said.Contains("XAML changes applied: MainPage.xaml (MainPage", StringComparison.Ordinal),

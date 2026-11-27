@@ -126,14 +126,14 @@ internal static class HotReload
         await GeneratedMarkup.Generating.WaitAsync(cancel).ConfigureAwait(false);
         try
         {
-            (solution, IReadOnlyList<HotReloadProblem> errors, IReadOnlyList<string> remade) =
+            (solution, IReadOnlyList<HotReloadProblem> errors, IReadOnlyList<string> remade, IReadOnlyList<HotReloadGeneratedCode> generated) =
                 await GeneratedMarkup.RegeneratedAsync(solution, markup, scope, session.Baselines, cancel).ConfigureAwait(false);
             if (errors.Count > 0)
             {
                 session.Baselines.Discard();
                 return new HotReloadEmitted(null, "blocked", [], errors, await ChangedAsync(session.Committed, solution, scope, cancel).ConfigureAwait(false));
             }
-            return await EmittedAsync(session, message, solution, scope, cancel).ConfigureAwait(false) with { Remade = remade };
+            return await EmittedAsync(session, message, solution, scope, cancel).ConfigureAwait(false) with { Remade = remade, Generated = generated };
         }
         finally
         {

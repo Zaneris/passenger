@@ -24,14 +24,15 @@ internal static class GeneratedMarkup
     /// <summary>The solution with a MAUI app's XAML as the editor has it (<paramref name="markup"/>), every project of the
     /// program's (<paramref name="scope"/>, every one when null) that holds XAML generated afresh through the program's own
     /// record of what its pages show (<paramref name="baselines"/>), first over the texts the app holds, so each page's patch
-    /// is from what its open pages show. With the generator's errors in the XAML, which keep the update from being made.</summary>
-    public static async Task<(Solution Solution, IReadOnlyList<HotReloadProblem> Errors, IReadOnlyList<string> Remade)> RegeneratedAsync(Solution solution,
+    /// is from what its open pages show. With the generator's errors in the XAML, which keep the update from being made, and
+    /// the code it wrote of each file of <paramref name="markup"/>.</summary>
+    public static async Task<(Solution Solution, IReadOnlyList<HotReloadProblem> Errors, IReadOnlyList<string> Remade, IReadOnlyList<HotReloadGeneratedCode> Generated)> RegeneratedAsync(Solution solution,
         IReadOnlyList<HotReloadMarkup> markup, IReadOnlySet<ProjectId>? scope, XamlPatchBaselines baselines, CancellationToken cancel)
     {
         List<ProjectId> projects = [.. solution.Projects.Where(p => (scope?.Contains(p.Id) != false) && p.AdditionalDocuments.Any(d => IsXaml(d.FilePath))).Select(p => p.Id)];
         if (projects.Count == 0)
         {
-            return (solution, [], []);
+            return (solution, [], [], []);
         }
         Solution held = solution;
         Solution now = solution;
@@ -48,6 +49,8 @@ internal static class GeneratedMarkup
         now = Afresh(now, projects);
         HashSet<string> edited = new(markup.Where(m => m.Text != m.Before).Select(m => m.Path), PathNames.Comparer);
         HashSet<string> remade = new(PathNames.Comparer);
+        HashSet<string> sent = new(markup.Select(m => m.Path), PathNames.Comparer);
+        List<HotReloadGeneratedCode> written = [];
         List<HotReloadProblem> errors = await baselines.RunAsync([.. projects.Select(p => solution.GetProject(p)!)],
             async () =>
             {
@@ -76,10 +79,35 @@ internal static class GeneratedMarkup
                             place.StartLinePosition.Line, place.StartLinePosition.Character, place.EndLinePosition.Line, place.EndLinePosition.Character, project.Name));
                     }
                     remade.UnionWith(await UnpatchedAsync(project, edited, cancel).ConfigureAwait(false));
+                    written.AddRange(await WrittenAsync(project, sent, cancel).ConfigureAwait(false));
                 }
                 return found;
             }).ConfigureAwait(false);
-        return (now, errors, [.. remade]);
+        return (now, errors, [.. remade], written);
+    }
+
+    /// <summary>What MAUI's generator wrote of a project's XAML files of <paramref name="files"/>: each one's InitializeComponent
+    /// and its patch, by the names the program's PDB gives them.</summary>
+    private static async Task<IEnumerable<HotReloadGeneratedCode>> WrittenAsync(Project project, IReadOnlySet<string> files, CancellationToken cancel)
+    {
+        List<HotReloadGeneratedCode> written = [];
+        Microsoft.CodeAnalysis.Diagnostics.AnalyzerConfigOptionsProvider options = project.AnalyzerOptions.AnalyzerConfigOptionsProvider;
+        List<SourceGeneratedDocument> generated = [.. await project.GetSourceGeneratedDocumentsAsync(cancel).ConfigureAwait(false)];
+        foreach (AdditionalText file in project.AnalyzerOptions.AdditionalFiles.Where(f => files.Contains(f.Path)))
+        {
+            if (!options.GetOptions(file).TryGetValue("build_metadata.additionalfiles.RelativePath", out string? relative))
+            {
+                continue;
+            }
+            foreach (string kind in (string[])["xsg", "uc.xsg"])
+            {
+                if (generated.FirstOrDefault(g => g.HintName == HintOf(relative, options.GetOptions(file), kind)) is { FilePath: { } document } code)
+                {
+                    written.Add(new HotReloadGeneratedCode(file.Path, document, (await code.GetTextAsync(cancel).ConfigureAwait(false)).ToString()));
+                }
+            }
+        }
+        return written;
     }
 
     /// <summary>The edited XAML files of a project whose open pages MAUI's patch does not bring to the text: its generator

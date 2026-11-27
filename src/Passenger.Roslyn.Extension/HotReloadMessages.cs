@@ -149,7 +149,19 @@ public sealed record HotReloadEmitted(
     /// <summary>A .NET MAUI app's XAML files whose open pages MAUI's patch does not bring to the text, so each is made again.</summary>
     [JsonPropertyName("remade")]
     public IReadOnlyList<string>? Remade { get; init; }
+
+    /// <summary>The code MAUI's generator wrote of each of a .NET MAUI app's XAML files the update was made of: the program's
+    /// from the update on.</summary>
+    [JsonPropertyName("generated")]
+    public IReadOnlyList<HotReloadGeneratedCode>? Generated { get; init; }
 }
+
+/// <summary>A document a source generator wrote of a markup file (<see cref="Markup"/>, as the disk names it) for an update:
+/// its name, as the update's PDB names it, and its text.</summary>
+public sealed record HotReloadGeneratedCode(
+    [property: JsonPropertyName("markup")] string Markup,
+    [property: JsonPropertyName("document")] string Document,
+    [property: JsonPropertyName("text")] string Text);
 
 /// <summary>A message about a session alone: commit, discard or end.</summary>
 public sealed record HotReloadSessionMessage([property: JsonPropertyName("session")] int Session);

@@ -15,12 +15,12 @@ namespace Passenger.Tests;
 /// configuration, as the iOS workload lists them, the iOS head's debug path (<see cref="AvaloniaSimulatorTests"/> holds its
 /// run path): Debug builds it for the simulator, boots one that is shut down with no window, installs and starts the app
 /// with Passenger's relay carried into its data container, stops in its main page and at breakpoints in its XAML, steps,
-/// shows, evaluates and takes a Hot Reload edit, whose update handler is called once the app goes on, a tap then stopping
-/// and stepping in the edited handler at its edit's lines, then XAML edits, one MAUI patches and one for which the page is
-/// made again; Stop ends the app and takes out what was carried, and a simulator the window booted is shut down as it
-/// closes. First, the tests of the project <c>dotnet new iostest</c> makes run in its app on the simulator chosen beside
-/// its configuration, and one is debugged there. Skips, saying why, where it cannot run (off a Mac, without MAUI's and iOS's
-/// workloads, Xcode, an iPhone simulator or the simulator's relay). Debugged through the window, so alone.</summary>
+/// shows, evaluates and takes a Hot Reload edit, whose update handler is called once the app goes on, a tap then stopping and
+/// stepping in the edited handler at its edit's lines, then XAML edits stopping where each update's code makes what a
+/// breakpoint is on (<see cref="MauiApp.TakesXamlEdits"/>); Stop ends the app and takes out what was carried, and a simulator
+/// the window booted is shut down as it closes. First, the tests of the project <c>dotnet new iostest</c> makes run in its
+/// app on the simulator chosen beside its configuration, and one is debugged there. Skips, saying why, where it cannot run
+/// (off a Mac, without MAUI's and iOS's workloads, Xcode, an iPhone simulator or its relay). Debugged, so alone.</summary>
 [Collection(Alone.Name)]
 [AboutMacOS]
 public sealed class MauiSimulatorTests
@@ -173,7 +173,7 @@ public sealed class MauiSimulatorTests
                 () => $"the app's update handler to be called once the app went on: {Ui.Said(window)}\n{Console(window)}", TimeSpan.FromMinutes(1));
             LiveApp app = window.LiveApp ?? throw new Xunit.Sdk.XunitException($"The debugged app has no inspector: {Ui.Said(window)}");
             MauiApp.StopsInEditedHandler(window, app, project, Slow);
-            MauiApp.TakesXamlEdits(window, app, project, Slow);
+            MauiApp.TakesXamlEdits(window, app, project, (xaml, hello, clickMe), Slow);
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
             Assert.True(started is not null, $"simctl did not say the app's process in the Debug console:\n{Console(window)}");

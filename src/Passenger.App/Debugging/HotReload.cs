@@ -373,6 +373,7 @@ public sealed class HotReload
             Methods = methods,
             Took = took.Elapsed,
             Remade = [.. (emitted.Remade ?? []).Select(PathNames.Canonical)],
+            Generated = [.. (emitted.Generated ?? []).Select(g => (PathNames.Canonical(g.Markup), g.Document, g.Text))],
         };
     }
 

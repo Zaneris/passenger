@@ -47,6 +47,10 @@ public sealed record HotReloadOutcome(HotReloadResult Result, string Said)
     /// <summary>A .NET MAUI app's XAML files whose open pages MAUI's patch does not bring to the text, so each is made again.</summary>
     public IReadOnlyList<string> Remade { get; init; } = [];
 
+    /// <summary>The code MAUI's source generator wrote of a .NET MAUI app's XAML files for the update, which the program
+    /// runs from now: each document of it, by its XAML file and the name the update's PDB gives it, with its text.</summary>
+    public IReadOnlyList<(string Markup, string Document, string Text)> Generated { get; init; } = [];
+
     public TimeSpan Took { get; init; }
 
     /// <summary>Of several programs' apply (a container run's services), those whose edits need them restarted, by name.</summary>

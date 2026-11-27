@@ -14,7 +14,8 @@ namespace Passenger.Tests;
 /// button's details give its type, its Text set on it and its box
 /// in the window; the outline over the button chosen is drawn in the app where the platform lays the button out, a tap
 /// given through the inspector clicks it, and its main page's XAML edits reach it with Hot Reload, a property's patched by
-/// MAUI, a C# expression's with the page made again. Debug's end ends the app and leaves nothing of the inspector's in it.
+/// MAUI, an added label's too, stopping at its breakpoint as the patch makes it, a C# expression's with the page made again,
+/// stopping at each breakpoint as it is made. Debug's end ends the app and leaves nothing of the inspector's in it.
 /// Skips, saying why, without MAUI's workload, the Android SDK's platform and Java, an emulator, or the relays.
 /// Steps of <see cref="AndroidDeviceTests"/>' flow, which runs alone.</summary>
 internal static class MauiAndroidTests
@@ -104,7 +105,7 @@ internal static class MauiAndroidTests
 
             InputDone tapped = Ui.AwaitPumped(app.InputAsync(new InputAction(InputKinds.Click) { Element = button.Id }), "a tap on the button", TimeSpan.FromMinutes(1));
             Assert.True(tapped.Target == button.Id && tapped.Shows == "Clicked 1 time", $"The tap reached {tapped.TargetName}, which shows \"{tapped.Shows}\", not the button counting it");
-            MauiApp.TakesXamlEdits(window, app, project, Slow);
+            MauiApp.TakesXamlEdits(window, app, project, (xaml, hello, clickMe), Slow);
 
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));

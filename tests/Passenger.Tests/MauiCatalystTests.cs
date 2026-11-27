@@ -20,10 +20,10 @@ namespace Passenger.Tests;
 /// with .NET's assemblies whole, Run with Hot Reload carries the inspector and the update handlers' hook in too, so its tree
 /// is the app's window, a tap reaches its button's centre, a C# edit lands and its update handler is called, and XAML edits
 /// show, patched or the page made again; built as the template has it, which trims them, Debug says they stay out, and stops
-/// in its main page, which its interpreter runs, steps, shows, evaluates and takes an edit; built whole and debugged, a tap
-/// runs its click handler as an edit changed it, stopping and stepping at the edit's lines. Stop ends the app and takes out
-/// what was carried, its start's own instance alone where debugged and run at once; an agent's Passenger killed with its
-/// tree ends the app it opened too. Skips, saying why, where it cannot run; alone, as it debugs.</summary>
+/// in its main page, which its interpreter runs, steps, shows, evaluates and takes an edit; built whole with its XAML's line
+/// info and debugged, it stops at its XAML's breakpoints, in its click handler as an edit changed it, and where each XAML
+/// edit's code makes what they are on. Stop ends the app and takes out what was carried, its own instance alone where debugged
+/// and run at once; an agent's Passenger killed with its tree ends the app too. Skips, saying why, where it cannot run.</summary>
 [Collection(Alone.Name)]
 [AboutMacOS]
 public sealed class MauiCatalystTests : McpRig
@@ -149,27 +149,38 @@ public sealed class MauiCatalystTests : McpRig
         {
             TestFolders.Delete(folder);
         }
-        Flow.Step("a MAUI app's Mac Catalyst head built whole and debugged stops in its click handler's code a Hot Reload edit changed, at the edit's lines",
-            A_maui_apps_mac_catalyst_head_built_whole_and_debugged_stops_in_its_click_handlers_code_a_hot_reload_edit_changed_at_the_edits_lines);
+        Flow.Step("a MAUI app's Mac Catalyst head built whole with its XAML's line info and debugged stops at its XAML's breakpoints as without it, in its click handler's code an edit changed at the edit's lines, and where each XAML edit's code makes what they are on",
+            A_maui_apps_mac_catalyst_head_built_whole_with_its_xamls_line_info_and_debugged_stops_at_its_xamls_breakpoints_in_its_edited_click_handler_and_where_each_xaml_edits_code_makes_what_they_are_on);
     }
 
-    /// <summary>The app built whole, debugged, its inspector connected: its click handler edited, a tap runs the handler's new
-    /// code, which its interpreter runs, stopping at the breakpoint on a line the edit moved and stepping on as that code has
-    /// its lines (<see cref="MauiApp.StopsInEditedHandler"/>).</summary>
-    private static void A_maui_apps_mac_catalyst_head_built_whole_and_debugged_stops_in_its_click_handlers_code_a_hot_reload_edit_changed_at_the_edits_lines()
+    /// <summary>The app built whole, MAUI's generator mapping the code it writes of the XAML to the XAML with #line directives
+    /// (MauiXamlLineInfo), debugged: its XAML's breakpoints stop as in a build without them; its inspector connected, a tap
+    /// runs its click handler as an edit changed it, which its interpreter runs, stopping and stepping at the edit's lines
+    /// (<see cref="MauiApp.StopsInEditedHandler"/>); then its XAML edits, each update's code stopping where it makes or sets
+    /// what a breakpoint is on (<see cref="MauiApp.TakesXamlEdits"/>).</summary>
+    private static void A_maui_apps_mac_catalyst_head_built_whole_with_its_xamls_line_info_and_debugged_stops_at_its_xamls_breakpoints_in_its_edited_click_handler_and_where_each_xaml_edits_code_makes_what_they_are_on()
     {
-        (string folder, string project) = Prepared("maui-catalyst-edited", whole: true);
+        (string folder, string project) = Prepared("maui-catalyst-lines", whole: true, lineInfo: true);
         MainWindow window = Ui.OpenFolder(folder);
         window.ApplySettings(window.Settings with { HotReload = true });
         try
         {
             Chosen(window);
-            Ui.Launched(window, window.DebugAsync(), "the Mac Catalyst head's build whole and its debugged opening", Slow);
+            (string xaml, int hello, int clickMe) = MauiApp.XamlBreakpoints(window, project);
+            Ui.Launched(window, window.DebugAsync(), "the Mac Catalyst head's build whole with its XAML's line info and its debugged opening", Slow);
+            // The build's own, not the copy in its app bundle.
+            string pdb = Directory.EnumerateFiles(Path.Combine(Path.GetDirectoryName(project)!, "bin"), $"{MauiApp.Name}.pdb", SearchOption.AllDirectories)
+                .First(p => !p.Contains(".app/", StringComparison.Ordinal));
+            Assert.True(PortablePdbs.EmbeddedSources(pdb, d => d.EndsWith("MainPage.xaml.xsg.cs", StringComparison.Ordinal)) is [(_, string code)] && code.Contains("#line ", StringComparison.Ordinal),
+                "MAUI's generator wrote no #line directive in the main page's code, so the build does not map it to the XAML");
+            MauiApp.StopsInXaml(window, xaml, hello, clickMe, Slow);
             MacCatalystApp opened = window.Debugger.Tabs.Select(t => t.Plan?.MacCatalyst?.App).LastOrDefault(a => a is not null)
                 ?? throw new Xunit.Sdk.XunitException("The session's plan opens no Mac Catalyst app");
+            Ui.Run(window, AppActions.Resume);
             Ui.WaitFor(() => window.LiveApp is { State: LiveAppState.Connected },
                 () => $"the debugged app's inspector to connect; it is {window.LiveApp?.State.ToString() ?? "not made"} ({window.LiveApp?.Problem}): {Ui.Said(window)}\n{Console(window)}", Slow);
             MauiApp.StopsInEditedHandler(window, window.LiveApp!, project, Slow);
+            MauiApp.TakesXamlEdits(window, window.LiveApp!, project, (xaml, hello, clickMe), Slow);
 
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
@@ -444,8 +455,9 @@ public sealed class MauiCatalystTests : McpRig
 
     /// <summary>The MAUI template's Mac Catalyst head in a folder of its own, with an update handler that says each type an
     /// update changed, its build keeping .NET's assemblies <paramref name="whole"/> or trimming them as the template's does,
-    /// or a skip saying why it cannot be made or run here.</summary>
-    private static (string Folder, string Project) Prepared(string name, bool whole)
+    /// the code MAUI's generator writes of its XAML mapped to the XAML (<paramref name="lineInfo"/>), or a skip saying why it
+    /// cannot be made or run here.</summary>
+    private static (string Folder, string Project) Prepared(string name, bool whole, bool lineInfo = false)
     {
         Relayed();
         string folder = PathNames.Canonical(TestFolders.Create(name));
@@ -467,7 +479,9 @@ public sealed class MauiCatalystTests : McpRig
             """);
         if (whole)
         {
-            File.WriteAllText(project, File.ReadAllText(project).Replace("</Project>", "\t<PropertyGroup>\n\t\t<MtouchLink>None</MtouchLink>\n\t</PropertyGroup>\n</Project>",
+            // MAUI's generator writes #line directives where MauiXamlLineInfo is "enable", not where it is "true".
+            string lines = lineInfo ? "\t\t<MauiXamlLineInfo>enable</MauiXamlLineInfo>\n" : string.Empty;
+            File.WriteAllText(project, File.ReadAllText(project).Replace("</Project>", $"\t<PropertyGroup>\n\t\t<MtouchLink>None</MtouchLink>\n{lines}\t</PropertyGroup>\n</Project>",
                 StringComparison.Ordinal));
         }
         else
