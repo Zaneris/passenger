@@ -29,8 +29,8 @@ public sealed partial class Vim
     private VimResult OneEx(string line, TextSnapshot text, SelectionSet selections, IVimView view)
     {
         VimResult result = ExCommand(line, text, selections, view);
-        // One that changes the text or moves the carets sets the column j and k aim for afresh.
-        wantedFor = result.Edits is { Count: > 0 } || (result.Selections is { } moved && !moved.SameAs(selections)) ? null : wantedFor;
+        // One that changes the text or places the carets, even where they stand, sets the column j and k aim for afresh.
+        wantedFor = result.Edits is { Count: > 0 } || result.Selections is not null ? null : wantedFor;
         return view.Refuses is { } why && result.Edits is { Count: > 0 } ? Refused(why) : result;
     }
 

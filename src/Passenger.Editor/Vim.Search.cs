@@ -52,7 +52,7 @@ public sealed record VimRequest(VimRequestKind Kind, string? Path = null, int Co
 public sealed partial class Vim
 {
     /// <summary>The motions that jump: the place they leave is the mark ' and goes behind in the host's places.</summary>
-    private static readonly HashSet<string> Jumping = ["G", "gg", "%", "(", ")", "{", "}", "n", "N", "*", "#", "g*", "g#", "H", "M", "L", "'", "`"];
+    private static readonly HashSet<string> Jumping = ["G", "gg", "%", "(", ")", "{", "}", "[[", "]]", "[]", "][", "[(", "])", "[{", "]}", "n", "N", "*", "#", "g*", "g#", "H", "M", "L", "'", "`"];
 
     /// <summary>The command line under way: its prompt (: / ?), what is typed, the keys of the command it ends (a count,
     /// an operator) and the history entry Up and Down show.</summary>

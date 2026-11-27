@@ -221,6 +221,12 @@ public sealed partial class VimTests
             + "normal-mode cursor of Vim mode stands: Passenger's settles on that line's last character",
             (vimCase, vim, _) => vimCase.Commands.Any(command => command.Keys[0] == VimKeys.CtrlV && command.Keys.Contains("<"))
                 && vim.Cursor.Column > Math.Max(1, vim.Lines[vim.Cursor.Line - 1].Length)),
+        ("d, c and y with ]] from past the first column of a last line beginning with }, from which ]] goes nowhere, leave Vim's "
+            + "unnamed and small delete registers empty, as though they took a text of nothing, where Vim's d and c over nothing "
+            + "elsewhere leave them as they were, as Passenger's do there too",
+            (vimCase, vim, passenger) => vimCase.Commands.Any(command => string.Concat(command.Keys).Contains("]]", StringComparison.Ordinal))
+                && vim.Lines.SequenceEqual(passenger.Lines) && vim.Cursor == passenger.Cursor && vim.Visual == passenger.Visual
+                && Registers.All(name => vim.Registers[name] == passenger.Registers[name] || vim.Registers[name].Text.Length == 0)),
     ];
 
     private const string TypedEnter = "Enter typed in insert mode";
@@ -232,17 +238,27 @@ public sealed partial class VimTests
     private const string MarkWord = "an end mark or closer standing alone";
 
     /// <summary>A case of 1 to 6 lines and 1 to 4 commands, the cursor anywhere on a character; a visual stretch the
-    /// keys leave is left only by the last command, the others' ended by Escape.</summary>
+    /// keys leave is left only by the last command, the others' ended by Escape. A command beginning with [ or ] never
+    /// follows one ending with Escape: fed to Vim at once, it would read the two as a terminal's code.</summary>
     private static VimCase Make(Random random)
     {
         string[] lines = [.. Enumerable.Range(0, random.Next(1, 7)).Select(_ => Line(random))];
         int line = random.Next(1, lines.Length + 1);
         int column = random.Next(1, Math.Max(1, lines[line - 1].Length) + 1);
         string text = string.Join("\n", lines);
-        VimCommand[] commands = [.. Enumerable.Range(0, random.Next(1, 5)).Select(_ => Command(random, text))];
-        for (int i = 0; i < commands.Length - 1; i++)
+        VimCommand[] commands = new VimCommand[random.Next(1, 5)];
+        for (int i = 0; i < commands.Length; i++)
         {
-            commands[i] = commands[i].Uses.Contains(LeftVisual) ? commands[i] with { Keys = [.. commands[i].Keys, VimKeys.Escape] } : commands[i];
+            commands[i] = Command(random, text);
+            if (i == 0)
+            {
+                continue;
+            }
+            commands[i - 1] = commands[i - 1].Uses.Contains(LeftVisual) ? commands[i - 1] with { Keys = [.. commands[i - 1].Keys, VimKeys.Escape] } : commands[i - 1];
+            while (commands[i - 1].Keys[^1] == VimKeys.Escape && commands[i].Keys[0] is "[" or "]")
+            {
+                commands[i] = Command(random, text);
+            }
         }
         return new VimCase(lines, line, column, commands);
     }
@@ -259,6 +275,11 @@ public sealed partial class VimTests
         if (random.Next(6) == 0)
         {
             return string.Empty;
+        }
+        // Now and then a brace first, where a section begins or ends.
+        if (random.Next(12) == 0)
+        {
+            return Pick(random, ["{", "}"]) + (random.Next(2) == 0 ? string.Empty : " " + Pick(random, Words));
         }
         StringBuilder line = new(new string(' ', random.Next(4) switch { 0 => 4, 1 => 2, 2 => 8, _ => 0 }));
         int parts = random.Next(1, 7);
@@ -299,7 +320,8 @@ public sealed partial class VimTests
         yield return VimKeys.Escape;
     }
 
-    private static readonly string[] Motions = ["h", "j", "k", "l", "w", "b", "e", "W", "B", "E", "ge", "0", "^", "$", "gg", "G", "%", "{", "}", "(", ")", "_", "+", "-"];
+    private static readonly string[] Motions = ["h", "j", "k", "l", "w", "b", "e", "W", "B", "E", "ge", "0", "^", "$", "gg", "G", "%", "{", "}", "(", ")", "_", "+", "-",
+        "[[", "]]", "[]", "][", "[(", "])", "[{", "]}"];
 
     private static readonly string[] Objects = ["iw", "aw", "iW", "aW", "i(", "a(", "i\"", "a\"", "i'", "a'", "i{", "a{", "i[", "a[", "ip", "ap", "is", "as", "ib"];
 

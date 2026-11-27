@@ -231,12 +231,12 @@ public sealed partial class Vim(VimRegisters registers)
             : WritesIntoEmpty(command, text, view) ? OnOneEmptyLine(command, text, view)
             : Run(command, text, selections, view);
         if ((command is { Operator: null, Name: "." or "p" or "P" or "gp" or "gP" or "~" or "r" or "h" or "l" or "f" or "F" or "t" or "T" or ";" or "," or "*" or "#"
-                or "S" or "Y" or "s" or "x" or "X" or "J" or "gJ" or "%" or "+" or "-" or "_" }
+                or "S" or "Y" or "s" or "x" or "X" or "J" or "gJ" or "%" or "+" or "-" or "_" or "[(" or "])" or "[{" or "]}" }
             && (ReferenceEquals(result, VimResult.Held) || result is { Edits: null, Selections: null, ReadsClipboard: false }))
-            || (command is { Operator: not null, Name: not ("i" or "a" or "$" or "(" or ")" or "{" or "}" or "b" or "B" or "ge" or "gE" or "n" or "N") }
+            || (command is { Operator: not null, Name: not ("i" or "a" or "$" or "(" or ")" or "{" or "}" or "[[" or "]]" or "[]" or "][" or "b" or "B" or "ge" or "gE" or "n" or "N") }
                 && ReferenceEquals(result, VimResult.Held)))
         {
-            // One that can't act (nothing to repeat or put, nowhere to go, its operator's motion failing but by sentence, paragraph, word back or search) keeps j and k's column.
+            // One that can't act (nothing to repeat or put, nowhere to go, its operator's motion failing but by sentence, paragraph, section, word back or search) keeps j and k's column.
             wantedFor = aimedFor;
         }
         if (command is { Operator: not null, Name: "$" } or { Operator: null, Name: "C" or "D" } && ReferenceEquals(result, VimResult.Held))

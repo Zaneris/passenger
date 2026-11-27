@@ -354,7 +354,7 @@ public sealed partial class Vim
             body.InsertRange(0, ["\"", named.ToString()]);
         }
         Command command = new(body, count, register, null, first, null);
-        if (first is "g" or "r" or "i" or "a" or "f" or "F" or "t" or "T" && at + 1 >= pending.Count)
+        if (first is "g" or "r" or "i" or "a" or "f" or "F" or "t" or "T" or "[" or "]" && at + 1 >= pending.Count)
         {
             return VimResult.Held;
         }
@@ -592,8 +592,8 @@ public sealed partial class Vim
             }
             if (moved is not { } reached)
             {
-                // A $ cut short still aims at the line's end; a word (w in an emptied text), sentence, paragraph or search the cursor.
-                bool resets = command.Name is "b" or "B" or "e" or "E" or "ge" or "gE" or "(" or ")" or "{" or "}" or "n" or "N"
+                // A $ cut short still aims at the line's end; a word (w in an emptied text), sentence, paragraph, section or search the cursor.
+                bool resets = command.Name is "b" or "B" or "e" or "E" or "ge" or "gE" or "(" or ")" or "{" or "}" or "[[" or "]]" or "[]" or "][" or "n" or "N"
                     || (command.Name is "w" or "W" && text.Length == 0);
                 visualAims[i] = resets ? -1 : block ? visualAims[i] : command.Name == "$" ? int.MaxValue : visualAims[i];
                 blockColumns = !block ? blockColumns

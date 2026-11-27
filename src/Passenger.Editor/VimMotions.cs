@@ -403,7 +403,7 @@ public static class VimMotions
         List<int> marks = [];
         for (int p = line.Start; p < line.End; p++)
         {
-            if (text[p] == '"' && (p == line.Start || text[p - 1] != '\\'))
+            if (IsQuote(text, line, p))
             {
                 marks.Add(p);
             }
@@ -460,43 +460,22 @@ public static class VimMotions
         return slashes % 2 == 1;
     }
 
-    /// <summary>The bracket matching the one at <paramref name="at"/>, or -1: brackets in strings between double quotes,
-    /// or in a character's quotes, count only from within such a string on its line, and escaped ones only from an
-    /// escaped one.</summary>
+    /// <summary>The bracket matching the one at <paramref name="at"/>, or -1, counting brackets as <see cref="BracketCounting"/>
+    /// counts them from it.</summary>
     public static int Partner(TextSnapshot text, int at, char open, char close)
     {
-        bool escaped = Escaped(text, at);
         bool forward = text[at] == open;
-        LineSpan span = LineOf(text, at);
+        BracketCounting counting = new(text, at);
         int depth = 0;
-        LineSpan quotesOf = span;
-        List<(int Start, int End)> quotes = Quoted(text, span);
-        bool inQuotes = quotes.Exists(q => q.Start < at && at < q.End);
         for (int p = at; forward ? p < text.Length : p >= 0; p += forward ? 1 : -1)
         {
             char c = text[p];
-            if (c != open && c != close)
+            if ((c != open && c != close) || (p != at && !counting.Counts(p)))
             {
                 continue;
             }
-            if (p < quotesOf.Start || p > quotesOf.End)
-            {
-                quotesOf = LineOf(text, p);
-                quotes = Quoted(text, quotesOf);
-            }
-            if (p != at && (quotes.Exists(q => q.Start < p && p < q.End) != (inQuotes && quotesOf.Line == span.Line) || InCharacterQuotes(text, p)
-                || Escaped(text, p) != escaped))
-            {
-                continue;
-            }
-            if (c == open)
-            {
-                depth += forward ? 1 : -1;
-            }
-            else if (c == close)
-            {
-                depth += forward ? -1 : 1;
-            }
+            // Forward an opening one goes deeper, backward a closing one.
+            depth += (c == open) == forward ? 1 : -1;
             if (depth == 0)
             {
                 return p;
@@ -504,6 +483,47 @@ public static class VimMotions
         }
         return -1;
     }
+
+    /// <summary>Which brackets count from a place, as % and [( count them: an escaped one only from an escaped place, none
+    /// between a character's single quotes, and of those between double quotes on a line with an even number of them, on
+    /// the place's own line those with an even number of quotes between them and the place, on another those outside.</summary>
+    private sealed class BracketCounting(TextSnapshot text, int from)
+    {
+        private readonly bool escaped = Escaped(text, from);
+        private readonly LineSpan home = LineOf(text, from);
+        private LineSpan quotesOf = LineOf(text, from);
+        private List<(int Start, int End)> quotes = Quoted(text, LineOf(text, from));
+
+        public bool Counts(int p)
+        {
+            if (Escaped(text, p) != escaped || InCharacterQuotes(text, p))
+            {
+                return false;
+            }
+            if (p < quotesOf.Start || p > quotesOf.End)
+            {
+                quotesOf = LineOf(text, p);
+                quotes = Quoted(text, quotesOf);
+            }
+            if (quotesOf.Start != home.Start)
+            {
+                return !quotes.Exists(q => q.Start < p && p < q.End);
+            }
+            if (quotes.Count == 0)
+            {
+                return true;
+            }
+            int between = 0;
+            for (int q = Math.Min(p, from) + 1; q < Math.Max(p, from); q++)
+            {
+                between += IsQuote(text, home, q) ? 1 : 0;
+            }
+            return between % 2 == 0;
+        }
+    }
+
+    /// <summary>Whether a double quote stands at a place of a line, one after a backslash being none.</summary>
+    private static bool IsQuote(TextSnapshot text, LineSpan line, int p) => text[p] == '"' && (p == line.Start || text[p - 1] != '\\');
 
     /// <summary>} and {: past the next (or last) run of lines with text to the empty line after (before) it, or the text's
     /// end (start), where a } stands on the last character, which an operator takes too; a count with paragraphs left over
@@ -540,6 +560,138 @@ public static class VimMotions
             return new VimTarget(SettledOn(text, end, end.End), end.Length > 0 ? VimMotionKind.Inclusive : VimMotionKind.Exclusive);
         }
         return new VimTarget(text.GetLineStart(line), VimMotionKind.Exclusive);
+    }
+
+    /// <summary>]] and [[ (][ and [], <paramref name="closing"/>): to the next (previous) line beginning with a { (a }), a form
+    /// feed or a section macro (<see cref="SectionMacros"/>), under an operator ]] also to below a } line. With none left,
+    /// the last (first) line's first non-blank; under an operator the text's start, ][ the last line's, ]] the last line
+    /// whole but where empty or a } not gone below, from which itself nowhere (a case operator, <paramref name="casing"/>,
+    /// takes the rest of it below the first line). A count with sections left over fails.</summary>
+    public static VimTarget? Section(TextSnapshot text, int caret, int n, bool forward, bool closing, bool operating, bool casing, bool breakEnds)
+    {
+        int line = text.GetLineFromOffset(caret);
+        int from = line;
+        int last = LastLine(text, breakEnds);
+        int step = forward ? 1 : -1;
+        char brace = closing ? '}' : '{';
+        bool stopsAtClose = operating && forward && !closing;
+        bool found = false;
+        for (int i = 0; i < n; i++)
+        {
+            found = false;
+            for (bool first = true; ; first = false)
+            {
+                if (!first && (Begins(line, brace) || SectionLine(text, line) || (stopsAtClose && Begins(line, '}'))))
+                {
+                    found = true;
+                    break;
+                }
+                if (line + step < 0 || line + step > last)
+                {
+                    if (i < n - 1)
+                    {
+                        return null;
+                    }
+                    break;
+                }
+                line += step;
+            }
+        }
+        bool below = found && stopsAtClose && Begins(line, '}') && line < last;
+        if (below)
+        {
+            line++;
+        }
+        if (forward && operating && line == last)
+        {
+            LineSpan end = text.GetLine(line);
+            bool closes = end.Length > 0 && text[end.Start] == '}';
+            if (closes && !closing && line == from)
+            {
+                return new VimTarget(casing && line > 0 ? end.End : caret, VimMotionKind.Exclusive);
+            }
+            return closing || (closes && !below) || end.Length == 0 ? new VimTarget(end.Start, VimMotionKind.Exclusive)
+                : new VimTarget(SettledOn(text, end, end.End), VimMotionKind.Inclusive);
+        }
+        if (found)
+        {
+            return new VimTarget(text.GetLineStart(line), VimMotionKind.Exclusive);
+        }
+        return new VimTarget(operating ? 0 : FirstNonBlank(text, line, breakEnds), VimMotionKind.Exclusive);
+
+        bool Begins(int at, char c) => at >= 0 && text.GetLine(at) is { Length: > 0 } span && text[span.Start] == c;
+    }
+
+    /// <summary>The nroff macros a section begins at, as Vim's 'sections' option names them by default: a line of a dot and
+    /// one of them, a one-letter one then ending or going on after a blank.</summary>
+    private static readonly string[] SectionMacros = ["SH", "NH", "H", "HU", "nh", "sh"];
+
+    /// <summary>Whether a line begins a section whatever its braces: a form feed, or a section macro, first.</summary>
+    private static bool SectionLine(TextSnapshot text, int line)
+    {
+        LineSpan span = text.GetLine(line);
+        if (span.Length == 0)
+        {
+            return false;
+        }
+        if (text[span.Start] == '\f')
+        {
+            return true;
+        }
+        if (text[span.Start] != '.' || span.Length < 2)
+        {
+            return false;
+        }
+        char first = text[span.Start + 1];
+        char? second = span.Length > 2 ? text[span.Start + 2] : null;
+        foreach (string macro in SectionMacros)
+        {
+            if (macro[0] == first && (macro.Length == 2 ? second == macro[1] : second is null or ' '))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>[{ [( and ]} ]): the [count]th unmatched open bracket before the caret, or close bracket after it, as far as
+    /// there are, exclusive; a pair between counted out, with brackets counted as % counts them (<see cref="BracketCounting"/>). Fails
+    /// where there is none.</summary>
+    public static VimTarget? Unmatched(TextSnapshot text, int caret, int n, char open, char close, bool forward)
+    {
+        BracketCounting counting = new(text, caret);
+        int at = caret;
+        for (int i = 0; i < n; i++)
+        {
+            int depth = 0;
+            int p = at + (forward ? 1 : -1);
+            for (; forward ? p < text.Length : p >= 0; p += forward ? 1 : -1)
+            {
+                char c = text[p];
+                if ((c != open && c != close) || !counting.Counts(p))
+                {
+                    continue;
+                }
+                if (c == (forward ? open : close))
+                {
+                    depth++;
+                }
+                else if (depth == 0)
+                {
+                    break;
+                }
+                else
+                {
+                    depth--;
+                }
+            }
+            if (forward ? p >= text.Length : p < 0)
+            {
+                break;
+            }
+            at = p;
+        }
+        return at == caret ? null : new VimTarget(at, VimMotionKind.Exclusive);
     }
 
     /// <summary>Whether a line is empty, a paragraph's bound; a line of blanks is not.</summary>

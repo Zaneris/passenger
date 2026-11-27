@@ -21,6 +21,9 @@ public sealed partial class Vim
 
     private static readonly HashSet<string> GMotions = ["g", "e", "E", "j", "k", "_", "*", "#"];
 
+    /// <summary>The motions [ and ] begin: by sections ([[ ]] [] ][) and to an unmatched brace or parenthesis ([{ ]} [( ]).</summary>
+    private static readonly HashSet<string> BracketMotions = ["[[", "]]", "[]", "][", "[{", "]}", "[(", "])"];
+
     private static readonly HashSet<string> Simple = ["x", "X", "s", "S", "C", "D", "Y", "J", "~", "i", "a", "I", "A", "o", "O", "u", "p", "P", ".", "v", "V", VimKeys.CtrlV, "R", VimKeys.CtrlO, VimKeys.CtrlI, VimKeys.Tab];
 
     /// <summary>The commands that change the text, or begin insert or replace mode, without an operator: refused alone where the
@@ -183,6 +186,16 @@ public sealed partial class Vim
         if (SingleMotions.Contains(key))
         {
             return (key, null, 1);
+        }
+        if (key is "[" or "]")
+        {
+            if (at + 1 >= keys.Count)
+            {
+                incomplete = true;
+                return (null, null, 0);
+            }
+            string bracketed = key + keys[at + 1];
+            return BracketMotions.Contains(bracketed) ? (bracketed, null, 2) : (null, null, 0);
         }
         if (key is "g" or "f" or "F" or "t" or "T" or "'" or "`")
         {
@@ -469,6 +482,11 @@ public sealed partial class Vim
                 return VimMotions.MatchPair(text, caret, count, breakEnds);
             case "{" or "}":
                 return VimMotions.Paragraph(text, caret, n, command.Name == "}", breakEnds);
+            case "[[" or "]]" or "[]" or "][":
+                return VimMotions.Section(text, caret, n, forward: command.Name[0] == ']', closing: command.Name is "[]" or "][", operating,
+                    casing: command.Operator is "g~" or "gu" or "gU", breakEnds);
+            case "[{" or "]}" or "[(" or "])":
+                return VimMotions.Unmatched(text, caret, n, command.Name[1] is '{' or '}' ? '{' : '(', command.Name[1] is '{' or '}' ? '}' : ')', forward: command.Name[0] == ']');
             case "(" or ")":
                 return VimMotions.Sentence(text, caret, n, command.Name == ")", breakEnds);
             case "n" or "N":
