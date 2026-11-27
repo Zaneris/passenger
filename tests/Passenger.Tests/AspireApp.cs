@@ -14,6 +14,9 @@ public sealed class AspireApp : SharedProject
 {
     private static readonly Lazy<Task<string>> Hive = new(InstallAsync, LazyThreadSafetyMode.ExecutionAndPublication);
     public static string TemplatesVersion => AvaloniaApp.Metadata("AspireTemplatesVersion");
+
+    /// <summary>Aspire 13's version, whose AppHost SDK takes its dashboard and orchestrator from its packages (#2345).</summary>
+    public static string Version13 => AvaloniaApp.Metadata("Aspire13Version");
     public const string Name = "PassengerAspire";
     public const string CompanionName = "CompanionAspire";
     public const string RequestLog = "Passenger request {RequestValue}";
@@ -90,13 +93,15 @@ public sealed class AspireApp : SharedProject
                 File.WriteAllText(targets, own[..end] + NoBundle + own[end..]);
             }
         }
-        string version = TemplatesVersion.ToLowerInvariant();
-        string sdk = Path.Combine(AvaloniaApp.Metadata("NuGetPackageRoot"), "aspire.apphost.sdk", version, $"aspire.apphost.sdk.{version}.nupkg");
-        Assert.True(File.Exists(sdk), $"Aspire.AppHost.Sdk {TemplatesVersion} is missing at {sdk}; restore the test project first");
-        string fed = Path.Combine(AvaloniaApp.Feed, Path.GetFileName(sdk));
-        if (!File.Exists(fed))
+        foreach (string version in new[] { TemplatesVersion, Version13 }.Select(v => v.ToLowerInvariant()))
         {
-            File.Copy(sdk, fed, overwrite: true);
+            string sdk = Path.Combine(AvaloniaApp.Metadata("NuGetPackageRoot"), "aspire.apphost.sdk", version, $"aspire.apphost.sdk.{version}.nupkg");
+            Assert.True(File.Exists(sdk), $"Aspire.AppHost.Sdk {version} is missing at {sdk}; restore the test project first");
+            string fed = Path.Combine(AvaloniaApp.Feed, Path.GetFileName(sdk));
+            if (!File.Exists(fed))
+            {
+                File.Copy(sdk, fed, overwrite: true);
+            }
         }
         AvaloniaApp.UseFeed(folder);
     }
@@ -353,6 +358,76 @@ public sealed class AspireApp : SharedProject
         Assert.True(installed.Succeeded, $"Aspire templates did not install into the private hive:\n{installed.Output}{installed.Error}");
         return hive;
     }
+
+    /// <summary>An AppHost of Aspire 13's SDK as its template writes one, but taking its dashboard and orchestrator from
+    /// its packages, adding a web service with <c>AddProject</c> (<see cref="Service13"/>, which says it has started and
+    /// answers a request at its root through <c>string answer</c>), its HTTP launch profile kept to the run, restored: the
+    /// AppHost's project.</summary>
+    public static async Task<string> Make13Async(string folder)
+    {
+        string host = Path.Combine(folder, $"{Host13}/{Host13}.csproj");
+        TestFolders.Write(folder, $"{Host13}/{Host13}.csproj", $"""
+            <Project Sdk="Aspire.AppHost.Sdk/{Version13}">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>{TestProjects.Framework}</TargetFramework>
+                <ImplicitUsings>enable</ImplicitUsings>
+                <Nullable>enable</Nullable>
+              </PropertyGroup>
+              <ItemGroup>
+                <ProjectReference Include="../{Service13}/{Service13}.csproj" />
+              </ItemGroup>
+            </Project>
+            """);
+        TestFolders.Write(folder, $"{Host13}/AppHost.cs", $"""
+            var builder = DistributedApplication.CreateBuilder(args);
+            builder.AddProject<Projects.{Service13}>("{Resource13}");
+            builder.Build().Run();
+            """);
+        TestFolders.Write(folder, $"{Host13}/Properties/launchSettings.json", """
+            { "profiles": { "http": { "commandName": "Project", "environmentVariables": { "ASPNETCORE_ENVIRONMENT": "Development", "DOTNET_ENVIRONMENT": "Development" } } } }
+            """);
+        KeepToTheRun(Path.Combine(folder, Host13));
+        TestFolders.Write(folder, $"{Service13}/{Service13}.csproj", $"""
+            <Project Sdk="Microsoft.NET.Sdk.Web">
+              <PropertyGroup>
+                <TargetFramework>{TestProjects.Framework}</TargetFramework>
+                <ImplicitUsings>enable</ImplicitUsings>
+                <Nullable>enable</Nullable>
+              </PropertyGroup>
+            </Project>
+            """);
+        TestFolders.Write(folder, $"{Service13}/Program.cs", $$"""
+            var builder = WebApplication.CreateBuilder(args);
+            var app = builder.Build();
+            app.MapGet("/", () =>
+            {
+                string answer = "{{Answer13}}";
+                return answer;
+            });
+            Console.WriteLine("{{Started13}}");
+            app.Run();
+            """);
+        TestFolders.Write(folder, $"{Service13}/Properties/launchSettings.json",
+            $$"""{ "profiles": { "http": { "commandName": "Project", "applicationUrl": "http://localhost:{{FreePort()}}" } } }""");
+        UseFeed(folder);
+        ChildResult restored = await Run(["restore", host], folder);
+        Assert.True(restored.Succeeded, $"Aspire {Version13}'s AppHost did not restore from the run's feed and package cache:\n{restored.Output}{restored.Error}");
+        return PathNames.Canonical(host);
+    }
+
+    /// <summary>The Aspire 13 AppHost's project and folder name (<see cref="Make13Async"/>).</summary>
+    public const string Host13 = "Aspire13Host";
+
+    /// <summary>The web service it adds with AddProject, by its project's name and its resource's.</summary>
+    public const string Service13 = "Aspire13Api";
+
+    public const string Resource13 = "api13";
+
+    /// <summary>What the service answers at its root, and writes as it starts.</summary>
+    public const string Answer13 = "Passenger on Aspire 13";
+
+    public const string Started13 = "Passenger's Aspire 13 service started";
 
     private static Task<ChildResult> Run(IReadOnlyList<string> arguments, string? folder) =>
         ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(arguments, folder), limit: TimeSpan.FromMinutes(3).Scaled());

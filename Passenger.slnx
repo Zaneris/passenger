@@ -43,6 +43,7 @@
   <Folder Name="/tests/AspireGraphs/">
     <Project Path="tests/AspireGraphs/ApiService/AspireGraphs.ApiService.csproj" />
     <Project Path="tests/AspireGraphs/AppHost/AspireGraphs.AppHost.csproj" />
+    <Project Path="tests/AspireGraphs/AppHost13/AspireGraphs.AppHost13.csproj" />
     <Project Path="tests/AspireGraphs/FileAppHost/AspireGraphs.FileAppHost.csproj" />
     <Project Path="tests/AspireGraphs/Functions/AspireGraphs.Functions.csproj" />
     <Project Path="tests/AspireGraphs/FunctionsHost/AspireGraphs.FunctionsHost.csproj" />
