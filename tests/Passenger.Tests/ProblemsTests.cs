@@ -54,6 +54,8 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     public void The_Problems_list_filters_counts_and_goes_to_each_problem_and_a_key_lists_only_the_open_files_however_many_the_solution_has()
     {
         Flow.StepApart("warnings turned off and a filter's text leave only the matching errors, and the counts follow", () => new ProblemsTests(project), t => t.Warnings_turned_off_and_a_filters_text_leave_only_the_matching_errors_and_the_counts_follow());
+        Flow.StepApart("Next and Previous Error in Solution step through the Solution tab's errors from the caret, wrapping, and say why with the analysis off", () => new ProblemsTests(project), t => t.Next_and_previous_error_in_solution_step_through_the_solution_tabs_errors_from_the_caret_wrapping_and_say_why_with_the_analysis_off());
+        Flow.StepApart("Run Inspection by Name runs the rule chosen over the solution whatever its severity and lists its places in the Inspection tab", () => new ProblemsTests(project), t => t.Run_inspection_by_name_runs_the_rule_chosen_over_the_solution_whatever_its_severity_and_lists_its_places_in_the_inspection_tab());
         Flow.StepApart("a use breaking the folder's layer rules is marked in the editor, Problems and the map, and its fix lets the layer use the other", () => new ProblemsTests(project), t => t.A_use_breaking_the_folders_layer_rules_is_marked_in_the_editor_Problems_and_the_map_and_its_fix_lets_the_layer_use_the_other());
         Flow.StepApart("a problem below line breaks only Roslyn counts is listed and gone to at its own line", () => new ProblemsTests(project), t => t.A_problem_below_line_breaks_only_roslyn_counts_is_listed_and_gone_to_at_its_own_line());
         Flow.StepApart("a typing pause lists again only the open file's problems, however many the solution has", () => new ProblemsTests(project), t => t.A_typing_pause_lists_again_only_the_open_files_problems_however_many_the_solution_has());
@@ -548,6 +550,70 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         int at = text.IndexOf(from, StringComparison.Ordinal);
         window.EditorArea.CodeEditor.Selections = SelectionSet.Single(new Selection(at, at + from.Length));
         window.KeyTextInput(to);
+    }
+
+    /// <summary>Next and Previous Error in Solution, from their keys, go to the solution's errors in the Solution tab's order from
+    /// the caret, from a file with none the first, each chosen in the tab and said with which of how many it is, wrapping at
+    /// either end; with solution-wide analysis off they say why.</summary>
+    private void Next_and_previous_error_in_solution_step_through_the_solution_tabs_errors_from_the_caret_wrapping_and_say_why_with_the_analysis_off()
+    {
+        Write("Caller.cs", "static class Caller\n{\n    public static int Four() => Helper.Thrice(2);\n}\n");
+        MainWindow window = project.Open("Helper.cs");
+        ProblemsModel problems = window.BottomPanel.Problems;
+        window.ApplySettings(window.Settings with { SolutionWideAnalysis = false });
+        Assert.Equal(Refusals.SolutionAnalysisOff, window.Actions.WhyNot(AppActions.NextErrorInSolution, window.Actions.Context()));
+
+        AnalyseSolution(window);
+        Ui.WaitFor(() => problems.SolutionErrorsListed.Count == 2,
+            () => $"the errors of Bad.cs and Caller.cs; Problems lists [{string.Join("; ", problems.SolutionErrorsListed.Select(p => $"{p.Where} {p.Message}"))}]");
+        problems.Shown = ProblemsTab.Solution;
+        Problem bad = problems.SolutionErrorsListed[0];
+        Problem caller = problems.SolutionErrorsListed[1];
+        Assert.True(bad.Path!.EndsWith("Bad.cs", StringComparison.Ordinal) && caller.Path!.EndsWith("Caller.cs", StringComparison.Ordinal),
+            $"The Solution tab's errors are in {bad.Where} and {caller.Where}, not Bad.cs's then Caller.cs's");
+        window.EditorArea.CodeEditor.Focus();
+        foreach ((string action, Problem expected, int which) in new[]
+        {
+            (AppActions.NextErrorInSolution, bad, 1), (AppActions.NextErrorInSolution, caller, 2), (AppActions.NextErrorInSolution, bad, 1), (AppActions.PreviousErrorInSolution, caller, 2),
+        })
+        {
+            Ui.Press(window, Ui.Shortcut(action));
+            Ui.Settle();
+            Assert.True(window.EditorArea.Active?.Path == expected.Path && window.EditorArea.CodeEditor.CaretPosition == expected.Position && problems.Selected == expected
+                && window.Status == $"{expected.Message} ({which} of 2 errors in the solution)",
+                $"{Ui.Shortcut(action)} went to {window.EditorArea.Active?.Name} at {window.EditorArea.CodeEditor.CaretPosition}, the Solution tab choosing "
+                + $"{problems.Selected?.Where ?? "nothing"} and the status bar saying \"{window.Status}\", not {expected.Where}, the error {which} of 2");
+        }
+        window.Close();
+    }
+
+    /// <summary>Run Inspection by Name, from its keys, lists the analyzers' rules to find one by its id, runs it over the solution
+    /// whatever its severity (an unnecessary assignment, a suggestion the Solution tab would leave to the editor) and lists
+    /// where it reports in the Inspection tab, shown, under what it ran, the filter letting its severity through.</summary>
+    private void Run_inspection_by_name_runs_the_rule_chosen_over_the_solution_whatever_its_severity_and_lists_its_places_in_the_inspection_tab()
+    {
+        Write("Unread.cs", "static class Unread\n{\n    public static int Count()\n    {\n        int value = 1;\n        value = 2;\n        return value;\n    }\n}\n");
+        MainWindow window = project.Open("Unread.cs");
+        ProblemsModel problems = window.BottomPanel.Problems;
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Press(window, Ui.Shortcut(AppActions.RunInspectionByName));
+        Ui.WaitFor(() => window.Popup is Passenger.App.Vcs.ChoicePopup, () => $"the rules to choose from; the window says {window.Status}");
+        Passenger.App.Vcs.ChoicePopup rules = (Passenger.App.Vcs.ChoicePopup)window.Popup!;
+        rules.Query = "IDE0059";
+        Ui.Settle();
+        Assert.True(rules.Rows.FirstOrDefault()?.Detail.StartsWith("IDE0059 ", StringComparison.Ordinal) == true,
+            $"Searching the rules for IDE0059 found [{string.Join("; ", rules.Rows.Take(5).Select(r => $"{r.Label} {r.Detail}"))}]");
+        string title = rules.Rows[0].Label;
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => problems.InspectionProblems is not null, () => $"IDE0059's run over the solution; the window says {window.Status}", TimeSpan.FromMinutes(1));
+        Problem found = Assert.Single(problems.InspectionProblems!);
+        Assert.True(found.Code == "IDE0059" && found.Path!.EndsWith("Unread.cs", StringComparison.Ordinal) && found.Position == new TextPosition(4, 12),
+            $"IDE0059 was reported {found.Code} at {found.Where}, not at the value assigned to value first");
+        Assert.True(problems.Shown == ProblemsTab.Inspection && problems.Rows.Any(r => r.Problem == found) && window.DockHost.IsShown(ToolWindowIds.Problems),
+            $"The Inspection tab {(problems.Shown == ProblemsTab.Inspection ? "shows" : $"is not shown, {problems.Shown} is")}, its rows [{string.Join("; ", problems.Rows.Select(r => r.Label))}]");
+        Assert.True(problems.InspectionSaid == $"IDE0059 {title}: 1 place in 1 file" && window.Status == problems.InspectionSaid,
+            $"The Inspection tab says \"{problems.InspectionSaid}\" and the status bar \"{window.Status}\", not what IDE0059's run came to");
+        window.Close();
     }
 
     /// <summary>Problems filtered as a person does it: Warnings turned off leaves the file's errors, the counts on its tab and

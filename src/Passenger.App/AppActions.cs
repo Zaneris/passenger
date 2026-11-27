@@ -397,7 +397,8 @@ public static class AppActions
     public const string OpenInTerminal = "app.explorer.openInTerminal";
 
     // An HTML file opened in the person's browser (Rider's WebOpenInAction): its plugin's Alt+F2 for $default, which every
-    // keymap takes from it, and Ctrl+Alt+F2 beside it in the Visual Studio keymap for Windows and Linux.
+    // keymap takes from it, and Ctrl+Alt+F2 beside it in the Visual Studio keymap for Windows and Linux. Every keymap but
+    // Visual Studio's gives Alt+F2 to Next Error in Solution too, which an HTML page takes it from (KeysIn).
     public const string OpenInBrowser = "app.explorer.openInBrowser";
 
     public const string Build = "app.build";
@@ -574,6 +575,19 @@ public static class AppActions
     public const string ContextHelp = "app.contextHelp";
     public const string NextError = "app.code.nextError";
     public const string PreviousError = "app.code.previousError";
+
+    // Rider's ReSharperGotoNextErrorInSolution and ReSharperGotoPrevErrorInSolution: Problems' solution errors stepped
+    // through in its Solution tab's order. Alt+F2 in $default's, which Open in Browser takes in an HTML file (KeysIn).
+    public const string NextErrorInSolution = "app.code.nextErrorInSolution";
+    public const string PreviousErrorInSolution = "app.code.previousErrorInSolution";
+
+    // Rider's InspectThis: what the caret's symbol's value comes from and goes to, its callers and callees, its base and
+    // derived types, offered at the caret and shown in the Hierarchy window.
+    public const string InspectThis = "app.hierarchy.inspectThis";
+
+    // Rider's RunInspection: one analyzer rule chosen by name and run over the solution, whatever its severity, its places
+    // listed in Problems.
+    public const string RunInspectionByName = "app.code.runInspectionByName";
     public const string FocusEditor = "app.focusEditor";
 
     // The keys to the window's next and previous region (the toolbar, each tool window shown, the editor, the status bar),
@@ -996,6 +1010,7 @@ public static class AppActions
         DatabaseRunStop => Stop,
         DatabaseHistory when HistoryKeyHolder(Preset) is { } holder => holder,
         CancelBuild when Preset is KeymapPreset.IntelliJ or KeymapPreset.Emacs => Build,
+        OpenInBrowser when Preset != KeymapPreset.VisualStudio => NextErrorInSolution,
         NewBranch when Preset != KeymapPreset.VisualStudio => Inline,
         Rerun when Preset == KeymapPreset.IntelliJ && OperatingSystem.IsMacOS() => Replace,
         NextOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: true),
@@ -1384,6 +1399,10 @@ public static class AppActions
                 .Bind(ContextHelp, "F1", "shift F1", "meta F1")
                 .Bind(NextError, "alt PAGE_DOWN")
                 .Bind(PreviousError, "alt PAGE_UP")
+                .Bind(NextErrorInSolution, "alt shift PAGE_DOWN")
+                .Bind(PreviousErrorInSolution, "alt shift PAGE_UP")
+                .Bind(InspectThis, "meta alt shift A")
+                .Bind(RunInspectionByName, "meta alt shift I")
                 .Bind(OpenInNewWindow, "shift F4")
                 .Bind(SoftWrap, "meta E , W", "meta E , meta W")
                 .Bind(ShowWhitespaces, "meta R , W", "meta R , meta W")
@@ -1534,6 +1553,10 @@ public static class AppActions
             .Bind(ContextHelp, "F1", "shift F1")
             .Bind(NextError, "alt PAGE_DOWN")
             .Bind(PreviousError, "alt PAGE_UP")
+            .Bind(NextErrorInSolution, "alt shift PAGE_DOWN")
+            .Bind(PreviousErrorInSolution, "alt shift PAGE_UP")
+            .Bind(InspectThis, "control alt shift A")
+            .Bind(RunInspectionByName, "control alt shift I")
             .Bind(OpenInNewWindow, "shift F4")
             .Bind(SoftWrap, "control E , W", "control E , control W")
             .Bind(ShowWhitespaces, "control R , W", "control R , control W")
@@ -1586,7 +1609,8 @@ public static class AppActions
                 .Bind(NewFile, "meta N")
                 .Bind(CopyPath, "meta alt C", "meta K , P")
                 .Bind(RevealInFileManager, "meta K , R", "meta alt R")
-                .Bind(OpenInBrowser, "alt F2")
+                .Bind(NextErrorInSolution, "alt F2")
+                .Bind(PreviousErrorInSolution, "alt shift F2")
                 .Bind(Build, "meta shift B")
                 .Bind(RunProgram, "control F5")
                 .Bind(Stop, "shift F5")
@@ -1626,6 +1650,8 @@ public static class AppActions
                 .Bind(ContextHelp, "meta shift F1", "shift F1")
                 .Bind(NextError, "alt F8")
                 .Bind(PreviousError, "shift F8", "alt shift F8")
+                .Bind(InspectThis, "meta alt shift A")
+                .Bind(RunInspectionByName, "meta alt shift I")
                 .Bind(ToggleBreakpoint, "F9")
                 .Bind(ToggleTemporaryBreakpoint, "meta alt shift F8")
                 .Bind(Resume, "F5")
@@ -1716,7 +1742,8 @@ public static class AppActions
             .Bind(SelectOpenedFile, "control K , E")
             .Bind(CopyPath, "shift alt C", "control K , P")
             .Bind(RevealInFileManager, "shift alt R", "control K , R")
-            .Bind(OpenInBrowser, "alt F2")
+            .Bind(NextErrorInSolution, "alt F2")
+            .Bind(PreviousErrorInSolution, "alt shift F2")
             .Bind(Build, "control shift B")
             .Bind(RunProgram, "control F5")
             .Bind(Stop, "shift F5")
@@ -1758,6 +1785,8 @@ public static class AppActions
             .Bind(ContextHelp, "shift F1")
             .Bind(NextError, "alt F8")
             .Bind(PreviousError, "alt shift F8", "shift F8")
+            .Bind(InspectThis, "control alt shift A")
+            .Bind(RunInspectionByName, "control alt shift I")
             .Bind(ToggleBreakpoint, "F9")
             .Bind(ToggleTemporaryBreakpoint, "control alt shift F8")
             .Bind(Resume, "F5")
@@ -1858,7 +1887,8 @@ public static class AppActions
                 .Bind(FindInSelection, "control alt E")
                 .Bind(FocusExplorer, "meta 1")
                 .Bind(CopyPath, "meta shift C")
-                .Bind(OpenInBrowser, "alt F2")
+                .Bind(NextErrorInSolution, "alt F2")
+                .Bind(PreviousErrorInSolution, "alt shift F2")
                 .Bind(Build, "meta F9")
                 .Bind(RunProgram, "control R")
                 .Bind(Debug, "control D")
@@ -1916,6 +1946,8 @@ public static class AppActions
                 .Bind(ContextHelp, "meta shift F1", "shift F1")
                 .Bind(NextError, "F2")
                 .Bind(PreviousError, "shift F2")
+                .Bind(InspectThis, "meta alt shift A")
+                .Bind(RunInspectionByName, "meta alt shift I")
                 .Bind(ToggleBreakpoint, "meta F8")
                 .Bind(ToggleTemporaryBreakpoint, "meta alt shift F8")
                 .Bind(Resume, "meta alt R", "F9")
@@ -1991,7 +2023,8 @@ public static class AppActions
             .Bind(FindInSelection, "control alt E")
             .Bind(FocusExplorer, "alt 1")
             .Bind(CopyPath, "control shift C")
-            .Bind(OpenInBrowser, "alt F2")
+            .Bind(NextErrorInSolution, "alt F2")
+            .Bind(PreviousErrorInSolution, "alt shift F2")
             .Bind(Build, "control F9")
             .Bind(RunProgram, "shift F10")
             .Bind(Debug, "shift F9")
@@ -2047,6 +2080,8 @@ public static class AppActions
             .Bind(ContextHelp, "F1", "shift F1")
             .Bind(NextError, "F2")
             .Bind(PreviousError, "shift F2")
+            .Bind(InspectThis, "control alt shift A")
+            .Bind(RunInspectionByName, "control alt shift I")
             .Bind(ToggleBreakpoint, "control F8")
             .Bind(ToggleTemporaryBreakpoint, "control alt shift F8")
             .Bind(Resume, "F9")

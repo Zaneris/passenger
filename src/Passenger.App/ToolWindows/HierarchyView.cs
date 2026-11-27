@@ -55,9 +55,9 @@ public sealed class HierarchyRow(HierarchyNode node, int depth) : Observable, IT
     internal Task? Opening { get; set; }
 }
 
-/// <summary>The Hierarchy window, for calls (Ctrl+Alt+H) and types (Ctrl+E, H): the symbol at the top, and under it
-/// a tree going one way, callers or callees, supertypes or subtypes, each level asked of the language server as it is
-/// opened. The toggles switch the direction; Enter, F4, a double-click or a row's menu goes to a row, Right and Left
+/// <summary>The Hierarchy window, for calls (Ctrl+Alt+H), types (Ctrl+E, H) and a value's flow (Inspect This): the symbol
+/// at the top, and under it a tree going one way, callers or callees, supertypes or subtypes, where its value comes from or
+/// where it goes, each level asked of the language server as it is opened. The toggles switch the direction; Enter, F4, a double-click or a row's menu goes to a row, Right and Left
 /// open and close (<see cref="TreeKeys"/>).</summary>
 public sealed class HierarchyView : DockPanel
 {
@@ -109,7 +109,7 @@ public sealed class HierarchyView : DockPanel
         ]);
         placeholder = new EmptyState();
         placeholder.SayWithKeys(keys =>
-            $"{ActionTips.Named("Call Hierarchy", keys(AppActions.CallHierarchy))} and {ActionTips.Named("Type Hierarchy", keys(AppActions.TypeHierarchy))} show the symbol at the caret here");
+            $"{ActionTips.Named("Call Hierarchy", keys(AppActions.CallHierarchy))}, {ActionTips.Named("Type Hierarchy", keys(AppActions.TypeHierarchy))} and {ActionTips.Named("Inspect This", keys(AppActions.InspectThis))} show the symbol at the caret here");
         Children.Add(new Panel { Children = { list, placeholder } });
     }
 
@@ -126,8 +126,8 @@ public sealed class HierarchyView : DockPanel
     /// <summary>Which direction the tree goes: the first toggle's or the second's.</summary>
     public bool IsFirst => ways.Choice;
 
-    /// <summary>Shows a symbol's hierarchy, the first direction open from the top.</summary>
-    public Task ShowAsync(string heading, HierarchyNode top, HierarchyDirection one, HierarchyDirection other)
+    /// <summary>Shows a symbol's hierarchy, the first direction (or with <paramref name="first"/> false the second) open from the top.</summary>
+    public Task ShowAsync(string heading, HierarchyNode top, HierarchyDirection one, HierarchyDirection other, bool first = true)
     {
         title.Text = heading;
         // Narrowed beside the toggles it ends in an ellipsis; the whole heading is its tip.
@@ -138,7 +138,7 @@ public sealed class HierarchyView : DockPanel
         ways[false].Content = other.Label;
         bar.IsVisible = true;
         placeholder.IsVisible = false;
-        return ChooseAsync(first: true);
+        return ChooseAsync(first);
     }
 
     /// <summary>Switches the tree's direction, opening it again from the top.</summary>

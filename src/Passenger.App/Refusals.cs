@@ -211,6 +211,23 @@ public static class Refusals
     /// <summary>Error Description where the caret's line has no problem.</summary>
     public const string NoProblemHere = "No problem is marked on the caret's line";
 
+    /// <summary>Next or Previous Error in Solution with solution-wide analysis off, whose errors they step through.</summary>
+    public const string SolutionAnalysisOff = "Solution-wide analysis is off: Toggle Solution-Wide Analysis lists every file's errors to step through";
+
+    /// <summary>Next or Previous Error in Solution where Problems lists no error of the solution, its filter showing none or the
+    /// analysis finding none (<paramref name="hidden"/> errors the filter hides).</summary>
+    public static string NoSolutionErrors(int hidden) => hidden > 0
+        ? $"Problems' filter hides the solution's {Plural.Of(hidden, "error")}"
+        : "Solution-wide analysis has found no error in the solution";
+
+    /// <summary>Inspect This where the caret's symbol (named, where there is one) has no value, calls or types to inspect.</summary>
+    public static string NothingToInspect(string? symbol) => symbol is null
+        ? "No C# symbol is at the caret to inspect"
+        : $"{symbol} has no value, calls or types to inspect";
+
+    /// <summary>Run Inspection by Name's list where no analyzer of the solution's reports a rule whose severity can be set.</summary>
+    public const string NoInspections = "No analyzer of the solution reports a rule to run";
+
     /// <summary>Expression Type Info where no expression with a type stands at the caret.</summary>
     public const string NoExpressionType = "No expression with a type is at the caret";
 

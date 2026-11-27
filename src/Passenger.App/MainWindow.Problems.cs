@@ -24,7 +24,36 @@ public partial class MainWindow
         Editors.ActiveChanged += (_, _) => FollowActiveFile();
         Bottom.Problems.LinkClicked += (_, link) => Browse(link);
         ShowAnalysis();
+        Add(AppActions.NextErrorInSolution, "Next Error in Solution", "Navigate", _ => StepSolutionErrors(forward: true), _ => WhyNotStepSolutionErrors(),
+            ("Navigate", 3, 2), words: ["Go to Next Error in Solution"]);
+        Add(AppActions.PreviousErrorInSolution, "Previous Error in Solution", "Navigate", _ => StepSolutionErrors(forward: false), _ => WhyNotStepSolutionErrors(),
+            ("Navigate", 3, 3), words: ["Go to Previous Error in Solution"]);
+        AddInspections();
     }
+
+    /// <summary>Next or Previous Error in Solution: the solution's error after the caret (before it, going back) as Problems'
+    /// Solution tab lists them, wrapping, gone to and chosen there, the status bar saying it and which of how many it is.</summary>
+    private void StepSolutionErrors(bool forward)
+    {
+        ProblemsModel problems = Bottom.Problems;
+        OpenDocument? file = Editors.Active is { Diff: null, Tool: null } shown ? shown : null;
+        TextPosition caret = file is null ? new TextPosition(0, 0) : Editors.CodeEditor.Document.Snapshot.GetPosition(Editors.CodeEditor.Selections.Primary.Caret);
+        if (problems.SolutionErrorFrom(file?.Path, caret, forward) is not { Path: { } path } error)
+        {
+            return;
+        }
+        IReadOnlyList<Problem> errors = problems.SolutionErrorsListed;
+        NavigateTo(path, error.Position);
+        problems.ChooseInSolution(error);
+        Say($"{error.Message} ({Numbers.Said(errors.ToList().IndexOf(error) + 1)} of {Plural.Of(errors.Count, "error")} in the solution)");
+    }
+
+    /// <summary>Why Next or Previous Error in Solution has nothing to step through: no C#, the analysis off, or no error listed.</summary>
+    private string? WhyNotStepSolutionErrors() =>
+        session.CSharp is null ? session.WhyNoCSharp
+        : !Bottom.Problems.ListsSolution ? Refusals.SolutionAnalysisOff
+        : Bottom.Problems.SolutionErrorsListed.Count == 0 ? Refusals.NoSolutionErrors(Bottom.Problems.SolutionErrors)
+        : null;
 
     /// <summary>The Problems window's view, built as it is asked for; what it lists is <see cref="ToolViews.Problems"/>,
     /// kept while it is not.</summary>

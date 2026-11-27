@@ -397,6 +397,10 @@ public sealed class CodeAssist
     /// <summary>What the open list of choices is titled ("Select expression to parenthesize"); null with none open.</summary>
     public string? OfferedTitle => popups.OfferedTitle;
 
+    /// <summary>A titled list of choices at the caret (Inspect This), the one chosen handed on, or null where it was given up.</summary>
+    public void OfferAtCaret(string title, IReadOnlyList<Choice> choices, Func<Choice?, Task> done) =>
+        popups.ShowModal(new ChoicePopup(title, choices), context.Caret, title, done);
+
     /// <summary>While the debugger is paused, the value of what the pointer rests on, which the hover card shows
     /// instead of the symbol's description; in a debugged app's .axaml file, a binding's.</summary>
     public Func<int, CancellationToken, Task<DebuggerHover?>>? DebuggerValue

@@ -41,7 +41,7 @@ public sealed class EditorConfigKeys : IExtensionWorkspaceMessageHandler<EditorC
         foreach (AnalyzerReference reference in solution.AnalyzerReferences.Concat(reading.SelectMany(p => p.AnalyzerReferences)))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            foreach (EditorConfigDiagnostic diagnostic in Reported.GetValue(reference, DiagnosticsOf))
+            foreach (EditorConfigDiagnostic diagnostic in ReportedBy(reference))
             {
                 diagnostics.TryAdd(diagnostic.Id, diagnostic);
             }
@@ -50,8 +50,11 @@ public sealed class EditorConfigKeys : IExtensionWorkspaceMessageHandler<EditorC
             [.. reading.Select(p => NameOf(p)).Distinct(StringComparer.Ordinal)]));
     }
 
+    /// <summary>The diagnostics a reference's C# analyzers report whose severity can be set, each id once, read once.</summary>
+    internal static IReadOnlyList<EditorConfigDiagnostic> ReportedBy(AnalyzerReference reference) => Reported.GetValue(reference, DiagnosticsOf);
+
     /// <summary>A project's name without the framework the server adds to each of a multi-targeted project's.</summary>
-    private static string NameOf(Project project) =>
+    internal static string NameOf(Project project) =>
         project.Name.EndsWith(')') && project.Name.LastIndexOf(" (", StringComparison.Ordinal) is int framework and > 0 ? project.Name[..framework] : project.Name;
 
     /// <summary>The severities a code style option's value may end in, as the server's own words for them.</summary>

@@ -1055,8 +1055,8 @@ public partial class MainWindow
             Menus = [new MenuPlace("Git", 2, 4)],
             KeysOf = () => AppActions.Stage,
         });
-        Add(AppActions.NextChange, "Next Change", _ => GoToChange(1), new("Navigate", 3, 2), onFile: true);
-        Add(AppActions.PreviousChange, "Previous Change", _ => GoToChange(-1), new("Navigate", 3, 3), onFile: true);
+        Add(AppActions.NextChange, "Next Change", _ => GoToChange(1), new("Navigate", 3, 4), onFile: true);
+        Add(AppActions.PreviousChange, "Previous Change", _ => GoToChange(-1), new("Navigate", 3, 5), onFile: true);
         // A diff's own, whatever it compares: how its differences are highlighted.
         actions!.Add(new IdeAction(AppActions.DiffSettings, "Diff Settings", "Git", context => DiffWithKeys(context)!.ShowSettings())
         {

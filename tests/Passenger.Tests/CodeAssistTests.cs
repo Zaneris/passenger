@@ -134,6 +134,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("Find Usages gives its results the keys, so Down and Enter open the next usage", () => new CodeAssistTests(project), t => t.Find_usages_gives_its_results_the_keys_so_Down_and_Enter_open_the_next_usage());
         Flow.StepApart("Find Usages in a file another program has just written lists the caller it wrote beside it", () => new CodeAssistTests(project), t => t.Find_usages_in_a_file_another_program_has_just_written_lists_the_caller_it_wrote_beside_it());
         Flow.StepApart("the call hierarchy at a use in another file and at a record's positional property shows its callers", () => new CodeAssistTests(project), t => t.Call_hierarchy_at_a_use_in_another_file_and_at_a_records_positional_property_shows_its_callers());
+        Flow.StepApart("Inspect This offers what the caret's symbol has to inspect and follows where its value comes from and goes", () => new CodeAssistTests(project), t => t.Inspect_this_offers_what_the_carets_symbol_has_to_inspect_and_follows_where_its_value_comes_from_and_goes());
         Flow.StepApart("signposts above each type and member count what uses and implements it, a press shows them and Settings turns them off", () => new CodeAssistTests(project), t => t.Signposts_above_each_type_and_member_count_what_uses_and_implements_it_a_press_shows_them_and_settings_turns_them_off());
         Flow.StepApart("a function's cognitive complexity shows in its signpost in its colour, a press showing what each line adds", () => new CodeAssistTests(project), t => t.Complexity_signposts_toggle_the_increments_at_the_line_ends_and_follow_edits());
         Flow.StepApart("the dependency map opens at the caret and reads its nodes and edges as the compiler binds them", () => new CodeAssistTests(project), t => t.The_dependency_map_opens_at_the_caret_and_reads_its_nodes_and_edges_as_the_compiler_binds_them());
@@ -3622,6 +3623,50 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.WaitFor(() => callees.IsCompleted, "what Release.Version calls");
         Assert.Equal(["Release.Version Releases.cs:1"], Listed());
         window.Close();
+
+        string[] Listed() => [.. window.Hierarchy.Rows.Select(r => $"{new string(' ', r.Depth * 2)}{r.Node.Item.Name} {Path.GetFileName(r.Node.Path)}:{r.Node.Where.Line + 1}")];
+    }
+
+    /// <summary>Inspect This, from its keys, offers at the caret what its symbol has to inspect: at a method its value's origins
+    /// and destinations beside its callers and callees, at a local its value's alone. The method's value goes where each call
+    /// of it lands whole (Main's local) and comes from what it returns; the local's comes from its declaration.</summary>
+    private void Inspect_this_offers_what_the_carets_symbol_has_to_inspect_and_follows_where_its_value_comes_from_and_goes()
+    {
+        MainWindow window = project.Open("Helper.cs");
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "static int Tw");
+        Inspect(["Value Origins", "Value Destinations", "Callers", "Callees"], "Value Destinations");
+        Ui.WaitFor(() => window.Hierarchy.Title == "Value of Twice" && window.Hierarchy.Rows.Count > 1, () => $"where Twice's value goes; the Hierarchy window shows "
+            + $"{window.Hierarchy.Title}: [{string.Join("; ", Listed())}], the window saying {window.Status}");
+        Assert.False(window.Hierarchy.IsFirst);
+        Assert.Equal(["Twice Helper.cs:3", "  int result = Helper.Twice(2); Program.cs:5"], Listed());
+        Assert.Equal("local result", window.Hierarchy.Rows[1].Node.Item.Detail);
+
+        Task origins = window.Hierarchy.ChooseAsync(first: true);
+        Ui.WaitFor(() => origins.IsCompleted, "where Twice's value comes from");
+        Assert.True(Listed() is ["Twice Helper.cs:3", .. var returned] && returned.Length > 0 && returned.All(r => r == "  public static int Twice(int value) => value * 2; Helper.cs:3"),
+            $"Twice's value comes from [{string.Join("; ", Listed())}], not what it returns");
+
+        window.OpenFile(project.PathOf("Program.cs"));
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "int resu");
+        Inspect(["Value Origins", "Value Destinations"], "Value Origins");
+        Ui.WaitFor(() => window.Hierarchy.Title == "Value of result" && window.Hierarchy.Rows.Count > 1, () => $"where result's value comes from; the Hierarchy window shows "
+            + $"{window.Hierarchy.Title}: [{string.Join("; ", Listed())}], the window saying {window.Status}");
+        Assert.Equal(["result Program.cs:5", "  int result = Helper.Twice(2); Program.cs:5"], Listed());
+        window.Close();
+
+        void Inspect(string[] offered, string chosen)
+        {
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Press(window, Ui.Shortcut(AppActions.InspectThis));
+            Ui.WaitFor(() => window.Assist.OfferedTitle == "Inspect This", () => $"Inspect This's choices; the window says {window.Status}");
+            Assert.Equal(offered, window.Assist.Offered);
+            for (int i = 0; i < Array.IndexOf(offered, chosen); i++)
+            {
+                Ui.Press(window, "DOWN");
+            }
+            Ui.Press(window, "ENTER");
+        }
 
         string[] Listed() => [.. window.Hierarchy.Rows.Select(r => $"{new string(' ', r.Depth * 2)}{r.Node.Item.Name} {Path.GetFileName(r.Node.Path)}:{r.Node.Where.Line + 1}")];
     }

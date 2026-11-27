@@ -78,6 +78,10 @@ public static class Handlers
     public const string ExpressionType = "Passenger.Roslyn.Extension.ExpressionType";
     public const string SymbolReference = "Passenger.Roslyn.Extension.SymbolReference";
     public const string TypeFits = "Passenger.Roslyn.Extension.TypeFits";
+    public const string InspectAt = "Passenger.Roslyn.Extension.InspectAt";
+    public const string ValueFlow = "Passenger.Roslyn.Extension.ValueFlow";
+    public const string Inspections = "Passenger.Roslyn.Extension.Inspections";
+    public const string RunInspection = "Passenger.Roslyn.Extension.RunInspection";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -87,7 +91,7 @@ public static class Handlers
         ComponentClass, GeneratedTexts, GeneratedNamed, GeneratedListed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames, GeneratedMembers,
         MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover, XamlCodeCompletion, XamlCodeSymbol, XamlCodeChecks,
         CompletionCall, RenameSuggestions, StepBindings, EditorConfigKeys, EditorConfigValues, Signposts, CodeClones, ExtractClones, Dependencies, DependencyAt, LayerChecks,
-        TestDoublesOffered, CreateFake, FillArguments, ExpressionType, SymbolReference, TypeFits,
+        TestDoublesOffered, CreateFake, FillArguments, ExpressionType, SymbolReference, TypeFits, InspectAt, ValueFlow, Inspections, RunInspection,
     ];
 }
 
@@ -520,6 +524,60 @@ public sealed record Caret([property: JsonPropertyName("at")] Place At);
 
 /// <summary>The type of the expression at a caret as C# writes it there (<see cref="Handlers.ExpressionType"/>); null for none.</summary>
 public sealed record ExpressionTyped([property: JsonPropertyName("type")] string? Type);
+
+/// <summary>What Inspect This offers of the symbol at a caret (<see cref="Handlers.InspectAt"/>): its name, its value's place
+/// to follow where it comes from and goes to (a variable, a parameter, a field, a property or what a method returns), and
+/// whether it has callers and callees, or supertypes and subtypes; no name where no symbol is there.</summary>
+public sealed record Inspected(
+    [property: JsonPropertyName("name")] string? Name,
+    [property: JsonPropertyName("value")] ValueFlowItem? Value,
+    [property: JsonPropertyName("calls")] bool Calls,
+    [property: JsonPropertyName("types")] bool Types);
+
+/// <summary>A place a value comes from or goes to: the code there (its line), what holds the value there, its kind as the
+/// language server protocol numbers a symbol's, its file and place, its span in the file and its symbol's key to follow it
+/// on, the place it was found from (<see cref="Parent"/>, its own parent left out) and whether it is the caret's own.</summary>
+public sealed record ValueFlowItem(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("detail")] string Detail,
+    [property: JsonPropertyName("kind")] int Kind,
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("from")] Place From,
+    [property: JsonPropertyName("to")] Place To,
+    [property: JsonPropertyName("start")] int Start,
+    [property: JsonPropertyName("length")] int Length,
+    [property: JsonPropertyName("symbol")] string Symbol,
+    [property: JsonPropertyName("root")] bool Root,
+    [property: JsonPropertyName("parent")] ValueFlowItem? Parent);
+
+/// <summary>Where a place's value comes from (<paramref name="Origins"/>), or where it goes (<see cref="Handlers.ValueFlow"/>).</summary>
+public sealed record ValueFlowAsked([property: JsonPropertyName("item")] ValueFlowItem Item, [property: JsonPropertyName("origins")] bool Origins);
+
+/// <summary>The places a value comes from or goes to, one level of them.</summary>
+public sealed record ValueFlowFound([property: JsonPropertyName("items")] IReadOnlyList<ValueFlowItem> Items);
+
+/// <summary>Every rule the solution's and its projects' analyzers report, to run one by name (<see cref="Handlers.Inspections"/>).</summary>
+public sealed record InspectionsAsked;
+
+/// <summary>The rules, each once, by id.</summary>
+public sealed record InspectionsFound([property: JsonPropertyName("rules")] IReadOnlyList<EditorConfigDiagnostic> Rules);
+
+/// <summary>One rule run over every C# project, whatever its severity (<see cref="Handlers.RunInspection"/>).</summary>
+public sealed record InspectionAsked([property: JsonPropertyName("id")] string Id);
+
+/// <summary>A place a rule reports: its file and place in the server's lines, what it says there, its severity there as
+/// .editorconfig writes it (none or silent where it is turned off), and its project.</summary>
+public sealed record InspectionPlace(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("message")] string Message,
+    [property: JsonPropertyName("severity")] string Severity,
+    [property: JsonPropertyName("project")] string Project);
+
+/// <summary>Where a rule reports, each place once, and how many projects run an analyzer of it.</summary>
+public sealed record InspectionFound(
+    [property: JsonPropertyName("places")] IReadOnlyList<InspectionPlace> Places,
+    [property: JsonPropertyName("projects")] int Projects);
 
 /// <summary>The symbol at a caret named whole, its namespace and the types it is in before it (<see cref="Handlers.SymbolReference"/>):
 /// <c>Shop.Pet.Describe</c>; null where the caret stands on no symbol named apart from its method (a local, a parameter).</summary>

@@ -232,6 +232,7 @@ public partial class MainWindow
         {
             WhyNot = c => PathOnDisk(c) is { } path ? whyNot?.Invoke(path) : RowOf(c) is { } row ? $"{row.Name} is in no folder on disk" : Refusals.NoFile,
             TitleIn = titleInMenu is null ? null : c => c.ExplorerRow is null ? title : titleInMenu,
+            KeysOf = () => AppActions.KeysIn(id) is var keys && keys != id ? keys : null,
         });
 
     private string? PathOnDisk(ActionContext context) => RowOf(context) is { } row

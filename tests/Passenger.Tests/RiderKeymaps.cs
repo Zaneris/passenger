@@ -173,6 +173,8 @@ internal static class RiderKeymaps
         ([AppActions.RunToCursor], ["RunToCursor"]), ([AppActions.SetNextStatement], ["JumpToStatement"]),
         ([AppActions.ExtendSelection], ["EditorSelectWord"]), ([AppActions.ShrinkSelection], ["EditorUnSelectWord"]),
         ([AppActions.CallHierarchy], ["CallHierarchy"]), ([AppActions.TypeHierarchy], ["TypeHierarchy"]),
+        ([AppActions.NextErrorInSolution], ["ReSharperGotoNextErrorInSolution"]), ([AppActions.PreviousErrorInSolution], ["ReSharperGotoPrevErrorInSolution"]),
+        ([AppActions.InspectThis], ["InspectThis"]), ([AppActions.RunInspectionByName], ["RunInspection"]),
         ([AppActions.ShowExecutionPoint], ["ShowExecutionPoint"]),
         ([AppActions.AttachToProcess], ["XDebugger.AttachToProcess"]),
         ([AppActions.ReattachToProcess], ["RiderReattach"]), ([AppActions.Detach], ["RiderDetachDebuggerAction"]),
