@@ -214,7 +214,8 @@ public sealed partial class VimTests
         ("A characterwise visual change of one line made after $ and made again by . takes from the caret to its line's end, "
             + "as . makes a visual change again from the caret, where Vim's takes that only from the line's first two columns and "
             + "from any other the line's start to the caret, whatever the stretch was: Vim's . there follows no rule of its own",
-            (vimCase, _, _) => vimCase.Commands.Select((command, at) => (command, at)).Any(made => made.command.Keys[0] == "v"
+            (vimCase, _, passenger) => vimCase.Commands.Select((command, at) => (command, at)).Any(made => (made.command.Keys[0] == "v"
+                || (made.command.Keys[0] is "V" or VimKeys.CtrlV && passenger.Seen.Contains(CharwiseChange)))
                 && (made.command.Keys.Contains("$") || (made.at > 0 && vimCase.Commands[made.at - 1].Keys[^1] == "$"))
                 && vimCase.Commands.Skip(made.at).SelectMany(after => after.Keys).Contains("."))),
         ("A block's < leaves Vim's cursor at the block's top left even past the end of a top line nothing shifted, where no "
@@ -230,6 +231,7 @@ public sealed partial class VimTests
     private const string MarksAlone = "a text of end marks, closers and white alone";
     private const string BlankOpening = "a line of blanks opening the text or a paragraph";
     private const string MarkWord = "an end mark or closer standing alone";
+    private const string CharwiseChange = "a visual change of a characterwise stretch";
 
     /// <summary>A case of 1 to 6 lines and 1 to 4 commands, the cursor anywhere on a character; a visual stretch the
     /// keys leave is left only by the last command, the others' ended by Escape.</summary>
@@ -574,8 +576,11 @@ public sealed partial class VimTests
         foreach (string key in keys)
         {
             Observe(text, seen);
+            bool charwise = vim.Mode == VimMode.Visual;
             VimResult result = vim.Press(key, text, carets, view);
             seen.UnionWith(result.Action is not null || result.Request is { Kind: not VimRequestKind.Commands } ? [Asked] : []);
+            // A key ending a characterwise stretch other than by leaving or yanking it changed it, its text or not.
+            seen.UnionWith(charwise && !Vim.IsVisual(vim.Mode) && key is not (VimKeys.Escape or "v" or "y" or "Y" or ":") ? [CharwiseChange] : []);
             if (result.Replay is { } replay)
             {
                 // What the key did lands before the keys it presses, as the editor follows a result before replaying.
