@@ -179,11 +179,16 @@ public sealed partial class SettingsDialog : IdeWindow
     /// <summary>The settings as the options now stand.</summary>
     public AppSettings Working { get; private set; }
 
-    /// <summary>The Live Templates page.</summary>
-    public LiveTemplatesPane Templates { get; private set; } = null!;
+    /// <summary>The Live Templates page, made as it is first shown or asked for.</summary>
+    public LiveTemplatesPane Templates =>
+        templates ??= new LiveTemplatesPane(TemplateChange.Applied(Working.LiveTemplates), list => Change(s => s with { LiveTemplates = TemplateChange.Of(list) }));
 
-    /// <summary>The Postfix Completion page.</summary>
-    public PostfixTemplatesPane Postfix { get; private set; } = null!;
+    private LiveTemplatesPane? templates;
+
+    /// <summary>The Postfix Completion page, made as it is first shown or asked for.</summary>
+    public PostfixTemplatesPane Postfix => postfix ??= new PostfixTemplatesPane(Working, Change);
+
+    private PostfixTemplatesPane? postfix;
 
     public string Query
     {
@@ -201,7 +206,10 @@ public sealed partial class SettingsDialog : IdeWindow
     }
 
     /// <summary>The options the chosen page shows now, by their labels.</summary>
-    public IReadOnlyList<string> Shown => [.. options.Where(o => o.Page == Page && o.Row.IsVisible).Select(o => o.Label)];
+    public IReadOnlyList<string> Shown => [.. options.Where(o => o.Page == Page && o.Kept).Select(o => o.Label)];
+
+    /// <summary>How many options' rows are made: those of the pages shown so far that a search kept.</summary>
+    public int RowsMade => options.Count(o => o.Made is not null);
 
     /// <summary>Why the options as they stand cannot be put in force, naming the setting whose value Settings refuses;
     /// null when they can.</summary>
@@ -248,10 +256,10 @@ public sealed partial class SettingsDialog : IdeWindow
         Func<Option, bool> byShortcut = ShortcutFiltered();
         foreach (Option option in options)
         {
-            option.Row.IsVisible = words.All(w => option.Words.Contains(w, StringComparison.OrdinalIgnoreCase)) && byShortcut(option);
+            option.Kept = words.All(w => option.Words.Contains(w, StringComparison.OrdinalIgnoreCase)) && byShortcut(option);
         }
         string? was = Page;
-        string[] listed = [.. Order.Where(p => options.Any(o => o.Page == p && o.Row.IsVisible)
+        string[] listed = [.. Order.Where(p => options.Any(o => o.Page == p && o.Kept)
             || (p == KeymapPage && (shortcutFilter is not null || FindsKeymapChoice(words))))];
         // A new list chooses no page for a moment, which would take the Keymap page's top, Find Shortcut with it, away.
         if (!listed.SequenceEqual(Pages))
@@ -268,7 +276,8 @@ public sealed partial class SettingsDialog : IdeWindow
         body.Children.Clear();
         heading.Text = Page ?? string.Empty;
         pageTop.Child = Page == KeymapPage ? keymapHeader : null;
-        foreach (Option option in options.Where(o => o.Page == Page))
+        // Only the rows the search keeps, each made as it is first shown.
+        foreach (Option option in options.Where(o => o.Page == Page && o.Kept))
         {
             body.Children.Add(option.Row);
         }
@@ -313,32 +322,36 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.SoundOnSaveRefused);
 
         Add(Declared.ReopenProjectsOnStartup);
-        StackPanel openIn = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Group };
-        foreach ((OpenProjectIn choice, string name) in OpenProjectChoices)
+        Add(SystemPage, "Open project in", () =>
         {
-            RadioButton radio = new() { Content = name, GroupName = "openProjectIn", IsChecked = Working.OpenProjectIn == choice };
-            radio.IsCheckedChanged += (_, _) =>
+            StackPanel openIn = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Group };
+            foreach ((OpenProjectIn choice, string name) in OpenProjectChoices)
             {
-                if (radio.IsChecked == true)
+                RadioButton radio = new() { Content = name, GroupName = "openProjectIn", IsChecked = Working.OpenProjectIn == choice };
+                radio.IsCheckedChanged += (_, _) =>
                 {
-                    Change(s => s with { OpenProjectIn = choice });
-                }
-            };
-            openIn.Children.Add(radio);
-        }
-        Add(SystemPage, "Open project in", openIn,
-            "open solution project folder new window current window this window ask confirm where frame");
+                    if (radio.IsChecked == true)
+                    {
+                        Change(s => s with { OpenProjectIn = choice });
+                    }
+                };
+                openIn.Children.Add(radio);
+            }
+            return openIn;
+        }, "open solution project folder new window current window this window ask confirm where frame");
         Add(Declared.ConfirmBeforeClosing);
         Add(Declared.SaveOnDeactivation);
-        NumericUpDown seconds = Declared.IdleSeconds.Box(Working, Change);
-        seconds.IsEnabled = Working.SaveWhenIdle;
-        CheckBox idle = Check(Working.SaveWhenIdle, v =>
+        Add(SystemPage, "Save when idle for", () =>
         {
-            Change(s => s with { SaveWhenIdle = v });
-            seconds.IsEnabled = v;
-        });
-        Add(SystemPage, "Save when idle for", new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { idle, NumberSetting.WithUnit(seconds, "seconds") } },
-            "autosave files idle inactive seconds");
+            NumericUpDown seconds = Declared.IdleSeconds.Box(Working, Change);
+            seconds.IsEnabled = Working.SaveWhenIdle;
+            CheckBox idle = Check(Working.SaveWhenIdle, v =>
+            {
+                Change(s => s with { SaveWhenIdle = v });
+                seconds.IsEnabled = v;
+            });
+            return new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { idle, NumberSetting.WithUnit(seconds, "seconds") } };
+        }, "autosave files idle inactive seconds");
 
         AddTrust();
         Add(Declared.CheckForUpdates);
@@ -357,7 +370,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.ShowNavigationBar);
         Add(Declared.RainbowBraces);
         Add(Declared.VimMode);
-        Add(Declared.VimKeysToKeymap, Declared.VimKeysToKeymap.Box(Working, Change, stroke => KeymapDoes(actions, stroke)));
+        Add(Declared.VimKeysToKeymap, () => Declared.VimKeysToKeymap.Box(Working, Change, stroke => KeymapDoes(actions, stroke)));
         Add(Declared.CloseTags);
         Add(Declared.TabStepsOverClosers);
         Add(Declared.CompletionParentheses);
@@ -374,17 +387,19 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.SignpostComplexityMinimum);
         Add(Declared.SignpostComplexityYellowFrom);
         Add(Declared.SignpostComplexityRedFrom);
-        TextBox masks = new() { Text = Working.SoftWrapFiles, PlaceholderText = "No files", IsEnabled = Working.SoftWrap };
-        ToolTip.SetTip(masks, "Use * and ? as wildcards and ; to separate patterns");
-        masks.TextChanged += (_, _) => Change(s => s with { SoftWrapFiles = masks.Text ?? string.Empty });
-        CheckBox wrapFiles = Check(Working.SoftWrap, v =>
+        Add(EditorPage, "Soft-wrap these files", () =>
         {
-            Change(s => s with { SoftWrap = v });
-            masks.IsEnabled = v;
-        });
-        DockPanel.SetDock(wrapFiles, Dock.Left);
-        Add(EditorPage, "Soft-wrap these files", new DockPanel { HorizontalSpacing = 8, MaxWidth = OptionRow.EditorWidth, Children = { wrapFiles, masks } },
-            "soft wrap wrapping long lines width markdown text files masks");
+            TextBox masks = new() { Text = Working.SoftWrapFiles, PlaceholderText = "No files", IsEnabled = Working.SoftWrap };
+            ToolTip.SetTip(masks, "Use * and ? as wildcards and ; to separate patterns");
+            masks.TextChanged += (_, _) => Change(s => s with { SoftWrapFiles = masks.Text ?? string.Empty });
+            CheckBox wrapFiles = Check(Working.SoftWrap, v =>
+            {
+                Change(s => s with { SoftWrap = v });
+                masks.IsEnabled = v;
+            });
+            DockPanel.SetDock(wrapFiles, Dock.Left);
+            return new DockPanel { HorizontalSpacing = 8, MaxWidth = OptionRow.EditorWidth, Children = { wrapFiles, masks } };
+        }, "soft wrap wrapping long lines width markdown text files masks");
         Add(Declared.SoftWrapIndent);
         Add(Declared.ShowWhitespaces);
         Add(Declared.WheelZoom);
@@ -409,27 +424,29 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.GDScriptFormatOnSave);
         Add(Declared.SqlKeywords);
 
-        Postfix = new PostfixTemplatesPane(Working, Change);
-        AddPage(PostfixPage, Postfix, "postfix templates completion expression dot autopopup "
+        AddPage(PostfixPage, () => Postfix, "postfix templates completion expression dot autopopup "
             + string.Join(' ', Languages.CSharp.PostfixTemplates.All.Select(t => $"{t.Name} {t.Description} {t.Example}")));
-        Templates = new LiveTemplatesPane(TemplateChange.Applied(Working.LiveTemplates), list => Change(s => s with { LiveTemplates = TemplateChange.Of(list) }));
-        AddPage(LiveTemplatesPage, Templates, "live templates c# shortcut abbreviation snippet expand tab surround with generation availability mnemonic variables macros "
+        AddPage(LiveTemplatesPage, () => Templates, "live templates c# shortcut abbreviation snippet expand tab surround with generation availability mnemonic variables macros "
             + string.Join(' ', CSharp.LiveTemplates.BuiltIn.Select(t => $"{t.Abbreviation} {t.Description}")));
 
         Add(Declared.OpenDiffsIn);
         Add(Declared.DiffHighlighting);
         Add(Declared.ChangesAtCheckout);
 
-        CheckBox implicitly = Check(Working.OpenBuildWindowOnImplicitBuild, v => Change(s => s with { OpenBuildWindowOnImplicitBuild = v }));
-        implicitly.IsEnabled = Working.OpenBuildWindowOnBuild;
-        CheckBox explicitly = Check(Working.OpenBuildWindowOnBuild, v =>
+        Lazy<(CheckBox Explicitly, CheckBox Implicitly)> buildWindow = new(() =>
         {
-            Change(s => s with { OpenBuildWindowOnBuild = v });
-            implicitly.IsEnabled = v;
+            CheckBox implicitly = Check(Working.OpenBuildWindowOnImplicitBuild, v => Change(s => s with { OpenBuildWindowOnImplicitBuild = v }));
+            implicitly.IsEnabled = Working.OpenBuildWindowOnBuild;
+            CheckBox explicitly = Check(Working.OpenBuildWindowOnBuild, v =>
+            {
+                Change(s => s with { OpenBuildWindowOnBuild = v });
+                implicitly.IsEnabled = v;
+            });
+            return (explicitly, implicitly);
         });
-        Add(BuildPage, "Tool Window: when build is explicitly invoked, open the build progress view in a tool window", explicitly,
+        Add(BuildPage, "Tool Window: when build is explicitly invoked, open the build progress view in a tool window", () => buildWindow.Value.Explicitly,
             "build tool window open progress view start explicitly invoked solution rebuild clean toolset presentation");
-        Add(BuildPage, "Tool Window: open the build progress view even when the build is invoked implicitly (i.e. Run/Debug)", implicitly,
+        Add(BuildPage, "Tool Window: open the build progress view even when the build is invoked implicitly (i.e. Run/Debug)", () => buildWindow.Value.Implicitly,
             "build tool window open progress view start implicitly run debug profile before launch toolset presentation");
         Add(Declared.ShowBuildResults);
         Add(Declared.ContinuousTesting);
@@ -447,10 +464,12 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.Browser);
 
         Add(Declared.WebRuntime);
-        string? onPath = Passenger.Core.Programs.Node();
-        TextBox node = new() { Text = Working.NodeInterpreter ?? string.Empty, PlaceholderText = onPath ?? "Not found on the PATH", MaxWidth = OptionRow.EditorWidth };
-        node.TextChanged += (_, _) => Change(s => s with { NodeInterpreter = string.IsNullOrWhiteSpace(node.Text) ? null : node.Text.Trim() });
-        Add(NodePage, "Node interpreter", node, "node nodejs interpreter javascript typescript html css json language server npm path",
+        Add(NodePage, "Node interpreter", () =>
+        {
+            TextBox node = new() { Text = Working.NodeInterpreter ?? string.Empty, PlaceholderText = Passenger.Core.Programs.Node() ?? "Not found on the PATH", MaxWidth = OptionRow.EditorWidth };
+            node.TextChanged += (_, _) => Change(s => s with { NodeInterpreter = string.IsNullOrWhiteSpace(node.Text) ? null : node.Text.Trim() });
+            return node;
+        }, "node nodejs interpreter javascript typescript html css json language server npm path",
             "The Node.js the JavaScript, TypeScript, HTML, CSS and JSON language servers run on where they run on Node.js. Empty, "
             + "it is the first on the PATH, as the login shell finds it. Without one, those files keep their colours only.");
         AddCodeQualityTools();
@@ -473,36 +492,35 @@ public sealed partial class SettingsDialog : IdeWindow
 
         AddAgents(agents);
 
-        ComboBox shows = Declared.DiscordShows.Box(Working, Change);
-        shows.IsEnabled = Working.ShowInDiscord;
-        NumericUpDown idleMinutes = Declared.DiscordIdleMinutes.Box(Working, Change);
-        idleMinutes.IsEnabled = Working.ShowInDiscord && Working.DiscordIdle;
-        CheckBox whenIdle = Check(Working.DiscordIdle, v =>
+        Lazy<(CheckBox Discord, ComboBox Shows, Control Idle)> discordRows = new(() =>
         {
-            Change(s => s with { DiscordIdle = v });
-            idleMinutes.IsEnabled = Working.ShowInDiscord && v;
-        });
-        whenIdle.IsEnabled = Working.ShowInDiscord;
-        CheckBox discord = Check(Working.ShowInDiscord, v =>
-        {
-            Change(s => s with { ShowInDiscord = v });
-            shows.IsEnabled = v;
-            whenIdle.IsEnabled = v;
-            idleMinutes.IsEnabled = v && Working.DiscordIdle;
+            ComboBox shows = Declared.DiscordShows.Box(Working, Change);
+            shows.IsEnabled = Working.ShowInDiscord;
+            NumericUpDown idleMinutes = Declared.DiscordIdleMinutes.Box(Working, Change);
+            idleMinutes.IsEnabled = Working.ShowInDiscord && Working.DiscordIdle;
+            CheckBox whenIdle = Check(Working.DiscordIdle, v =>
+            {
+                Change(s => s with { DiscordIdle = v });
+                idleMinutes.IsEnabled = Working.ShowInDiscord && v;
+            });
+            whenIdle.IsEnabled = Working.ShowInDiscord;
+            CheckBox discord = Check(Working.ShowInDiscord, v =>
+            {
+                Change(s => s with { ShowInDiscord = v });
+                shows.IsEnabled = v;
+                whenIdle.IsEnabled = v;
+                idleMinutes.IsEnabled = v && Working.DiscordIdle;
+            });
+            return (discord, shows, new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { whenIdle, NumberSetting.WithUnit(idleMinutes, "minutes") } });
         });
         const string Discord = "discord rich presence activity status playing";
-        Add(DiscordPage, "Show activity in Discord", discord, $"{Discord} friends share game",
+        Add(DiscordPage, "Show activity in Discord", () => discordRows.Value.Discord, $"{Discord} friends share game",
             "Discord shows Playing Passenger with its icon, what is chosen below and how long the solution has been open, to "
             + "whoever can see your activity. Passenger tells the Discord app on this computer alone. Off, it tells Discord nothing.");
-        Add(DiscordPage, "Show", shows, $"{Discord} solution project file name details visibility privacy",
+        Add(DiscordPage, "Show", () => discordRows.Value.Shows, $"{Discord} solution project file name details visibility privacy",
             "Passenger only: that you are using Passenger, and nothing of your work. The solution: its name too. The solution and "
             + "the file: the name of the file you are editing as well. Whoever can see your Discord activity sees these names.");
-        Add(DiscordPage, "Only Passenger when idle for", new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = Gaps.Normal,
-            Children = { whenIdle, NumberSetting.WithUnit(idleMinutes, "minutes") },
-        }, $"{Discord} idle inactive away timeout minutes");
+        Add(DiscordPage, "Only Passenger when idle for", () => discordRows.Value.Idle, $"{Discord} idle inactive away timeout minutes");
 
         Add(Declared.TraceProtocols);
         Add(Declared.LogEveryProgram);
@@ -511,21 +529,28 @@ public sealed partial class SettingsDialog : IdeWindow
         AddKeymap();
     }
 
-    /// <summary>A declared setting's own row, on its page, its editor made from the declaration.</summary>
-    private void Add(Setting setting) => Add(setting, setting.Editor(Working, Change));
+    /// <summary>A declared setting's own row, on its page, its editor made from the declaration as the page is first shown.</summary>
+    private void Add(Setting setting) => Add(setting, () => setting.Editor(Working, Change));
 
     /// <summary>A declared setting's own row, its editor made by the dialog round what only the dialog knows.</summary>
-    private void Add(Setting setting, Control editor)
+    private void Add(Setting setting, Control editor) => Add(setting, () => editor);
+
+    /// <summary>A declared setting's own row, its editor made as its page is first shown.</summary>
+    private void Add(Setting setting, Func<Control> editor)
     {
         SettingRow row = setting.Row ?? throw new ArgumentException("A setting with no row of its own goes in a row the dialog builds", nameof(setting));
-        Add(row.Page, row.Label, editor, row.Words, row.NoteShown, over: row.Over);
-        if (row.When is { } when)
+        Add(row.Page, row.Label, () =>
         {
-            // Greyed, saying why, while the setting it follows leaves it no effect.
-            ToolTip.SetShowOnDisabled(editor, true);
-            dependents.Add((row.Label, editor, when));
-            Follow(editor, when);
-        }
+            Control made = editor();
+            if (row.When is { } when)
+            {
+                // Greyed, saying why, while the setting it follows leaves it no effect.
+                ToolTip.SetShowOnDisabled(made, true);
+                dependents.Add((row.Label, made, when));
+                Follow(made, when);
+            }
+            return made;
+        }, row.Words, row.NoteShown, over: row.Over);
     }
 
     /// <summary>The rows another setting greys, each with what it takes effect under.</summary>
@@ -538,7 +563,10 @@ public sealed partial class SettingsDialog : IdeWindow
 
     /// <summary>Why a row is greyed as the settings stand; null where it takes effect, or is no row another greys.</summary>
     public string? WhyGreyed(string label) =>
-        dependents.FirstOrDefault(d => d.Label == label) is { Editor: { } editor, When: { } when } && !when.Holds(Working) && !editor.IsEnabled ? when.Why : null;
+        Made(label) && dependents.FirstOrDefault(d => d.Label == label) is { Editor: { } editor, When: { } when } && !when.Holds(Working) && !editor.IsEnabled ? when.Why : null;
+
+    /// <summary>Makes the row of a label, if not made yet, as its page shows it; whether there is one.</summary>
+    private bool Made(string label) => options.FirstOrDefault(o => o.Label == label) is { } option && option.Row is not null;
 
     /// <summary>What the folder's .editorconfig files set over the rows, followed while the dialog is open.</summary>
     private readonly FolderEditorConfigs? editorConfigs;
@@ -551,7 +579,10 @@ public sealed partial class SettingsDialog : IdeWindow
 
     /// <summary>What the folder's .editorconfig files set over a row, by its label, a line to each key as the row shows them;
     /// null where they set nothing over it.</summary>
-    public string? SaidOver(string label) => saidOver.FirstOrDefault(s => s.Label == label).Said is { IsVisible: true } said ? said.Text : null;
+    public string? SaidOver(string label) => Made(label) && saidOver.FirstOrDefault(s => s.Label == label).Said is { IsVisible: true } said ? said.Text : null;
+
+    /// <summary>What the folder's .editorconfig files set as last read, which a row made since says too.</summary>
+    private EditorConfigLines? saidRead;
 
     private void EditorConfigsChanged(object? sender, EventArgs e) => IdeErrors.Observe(ShowSaidOverAsync());
 
@@ -564,21 +595,51 @@ public sealed partial class SettingsDialog : IdeWindow
         {
             return;
         }
+        saidRead = read;
         foreach ((_, EditorConfigOver over, TextBlock said) in saidOver)
         {
-            IReadOnlyList<string> lines = read.Shortly(over);
-            said.Text = string.Join('\n', lines);
-            said.IsVisible = lines.Count > 0;
+            Say(read, over, said);
         }
     }
 
-    /// <summary>A page that is one control of its own (the live templates' list and editor), the whole of its width, found
-    /// by a search for any of its words.</summary>
-    private void AddPage(string page, Control content, string keywords) => options.Add(new Option(page, page, content, $"{page} {keywords}"));
+    /// <summary>What the .editorconfig files set over a row, said under it.</summary>
+    private static void Say(EditorConfigLines read, EditorConfigOver over, TextBlock said)
+    {
+        IReadOnlyList<string> lines = read.Shortly(over);
+        said.Text = string.Join('\n', lines);
+        said.IsVisible = lines.Count > 0;
+    }
+
+    /// <summary>A page that is one control of its own (the live templates' list and editor), the whole of its width, made
+    /// as it is first shown, found by a search for any of its words.</summary>
+    private void AddPage(string page, Func<Control> content, string keywords) => options.Add(new Option(page, page, content, $"{page} {keywords}"));
+
+    /// <summary>An option's row (<see cref="Add(string, string, Func{Control}, string, string?, string?, EditorConfigOver?, Action{OptionRow}?)"/>)
+    /// of an editor already made.</summary>
+    private Option Add(string page, string label, Control editor, string keywords, string? note = null, string? action = null, EditorConfigOver? over = null) =>
+        Add(page, label, () => editor, keywords, note, action, over);
 
     /// <summary>An option's row: its label, what edits it, and a note under the editor when it needs saying what it
-    /// does; a keymap row names its action, and one the folder's .editorconfig files may set the keys it is said over by.</summary>
-    private Control Add(string page, string label, Control editor, string keywords, string? note = null, string? action = null, EditorConfigOver? over = null)
+    /// does; a keymap row names its action, and one the folder's .editorconfig files may set the keys it is said over by.
+    /// Found by a search from its words alone, it is made, then given to <paramref name="made"/>, as its page is first shown.</summary>
+    private Option Add(string page, string label, Func<Control> editor, string keywords, string? note = null, string? action = null, EditorConfigOver? over = null,
+        Action<OptionRow>? made = null)
+    {
+        // A row an .editorconfig says over is found by the keys that do, as a person reads them in the file.
+        string keys = over is null ? string.Empty : $" editorconfig {string.Join(' ', over.Keys.Concat(over.Aliases))}";
+        Option option = new(page, label, () =>
+        {
+            OptionRow row = Row(label, editor(), note, over);
+            made?.Invoke(row);
+            return row;
+        }, $"{page} {label} {keywords}{keys}", action);
+        options.Add(option);
+        return option;
+    }
+
+    /// <summary>An option's row as its page first shows it: its label, its editor, its note, and what the folder's
+    /// .editorconfig files set over it, as last read.</summary>
+    private OptionRow Row(string label, Control editor, string? note, EditorConfigOver? over)
     {
         // Beside an editor of several lines the label stands level with its first line.
         double firstLine = editor switch
@@ -607,12 +668,12 @@ public sealed partial class SettingsDialog : IdeWindow
         {
             setOver = new TextBlock { TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false, Classes = { StyleClasses.SaidOver } };
             saidOver.Add((label, over, setOver));
+            if (saidRead is { } read)
+            {
+                Say(read, over, setOver);
+            }
         }
-        OptionRow row = new(name, editor, said, firstLine, setOver);
-        // A row an .editorconfig says over is found by the keys that do, as a person reads them in the file.
-        string keys = over is null ? string.Empty : $" editorconfig {string.Join(' ', over.Keys.Concat(over.Aliases))}";
-        options.Add(new Option(page, label, row, $"{page} {label} {keywords}{keys}", action));
-        return row;
+        return new OptionRow(name, editor, said, firstLine, setOver);
     }
 
     private static CheckBox Check(bool value, Action<bool> changed)
@@ -622,5 +683,23 @@ public sealed partial class SettingsDialog : IdeWindow
         return box;
     }
 
-    private sealed record Option(string Page, string Label, Control Row, string Words, string? Action = null);
+    /// <summary>An option as a search finds it, by its page, label and words, its row made as its page is first shown
+    /// (<see cref="Row"/>); whether the search keeps it.</summary>
+    private sealed class Option(string page, string label, Func<Control> make, string words, string? action = null)
+    {
+        public string Page { get; } = page;
+
+        public string Label { get; } = label;
+
+        public string Words { get; set; } = words;
+
+        public string? Action { get; } = action;
+
+        public bool Kept { get; set; } = true;
+
+        /// <summary>The row, once made.</summary>
+        public Control? Made { get; private set; }
+
+        public Control Row => Made ??= make();
+    }
 }
