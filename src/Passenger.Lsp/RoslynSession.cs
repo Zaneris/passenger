@@ -1008,7 +1008,21 @@ public sealed class LspDocument : IDisposable
         List<CodeAction> actions = Shapes.CodeActions(result);
         if (LanguageId == LanguageIds.CSharp)
         {
-            ClientCommands.UsePrimaryConstructor(actions);
+            // Roslyn resolves from the action's data, so the original titles can use the field-removing edits.
+            const string title = "Use primary constructor";
+            foreach (string label in new[] { title, $"Fix All: {title}" })
+            {
+                string fields = $"{label} (and remove fields)";
+                string members = $"{label} (and remove members)";
+                int original = actions.FindIndex(a => a.Title == label);
+                int removal = actions.FindIndex(a => a.Disabled is null && (a.Title == fields || a.Title == members));
+                if (original >= 0 && removal >= 0)
+                {
+                    actions[removal].Title = label;
+                    actions[original] = actions[removal];
+                    actions.RemoveAt(removal);
+                }
+            }
         }
         return actions;
     }

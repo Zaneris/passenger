@@ -15,34 +15,6 @@ public static class ClientCommands
 
     public const string FixAllCodeAction = "roslyn.client.fixAllCodeAction";
 
-    /// <summary>Use Roslyn's field-removing edit for the existing primary constructor fix when offered. Roslyn resolves
-    /// the edit and Fix All from the action's original data, so its path and scopes stay intact.</summary>
-    internal static void UsePrimaryConstructor(List<CodeAction> actions)
-    {
-        const string title = "Use primary constructor";
-        UseFieldRemoval(title);
-        UseFieldRemoval($"Fix All: {title}");
-
-        void UseFieldRemoval(string label)
-        {
-            int original = actions.FindIndex(a => a.Title == label);
-            if (original < 0)
-            {
-                return;
-            }
-            string fields = $"{label} (and remove fields)";
-            string members = $"{label} (and remove members)";
-            int removal = actions.FindIndex(a => a.Disabled is null && (a.Title == fields || a.Title == members));
-            if (removal >= 0)
-            {
-                CodeAction action = actions[removal];
-                action.Title = label;
-                actions[original] = action;
-                actions.RemoveAt(removal);
-            }
-        }
-    }
-
     /// <summary>Between the steps of a nested choice's words.</summary>
     public const string Step = " → ";
 
