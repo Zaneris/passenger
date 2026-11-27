@@ -51,9 +51,10 @@ public class SimulatorTargetsTests
 
     private void Run_launches_the_app_afresh_on_its_simulator_with_its_output_on_simctls_own_and_its_own_arguments_as_its_launcher_takes_them()
     {
-        Assert.Equal(["launch", "--console", "--terminate-running-process", "B7339FFC-A65B-4992-9FF7-440A256F2635", "com.companyname.mauiapp1"], App.Launch());
+        Assert.Equal(["launch", "--console", "--terminate-running-process", "B7339FFC-A65B-4992-9FF7-440A256F2635", "com.companyname.mauiapp1"], App.Launch([]));
         Assert.Equal(["terminate", "B7339FFC-A65B-4992-9FF7-440A256F2635", "com.companyname.mauiapp1"], App.Terminate());
-        Assert.Equal(["-app-arg=--server", "-app-arg=--client-host", "-app-arg=127.0.0.1"], ((string[])["--server", "--client-host", "127.0.0.1"]).Select(SimulatorApp.AppArgument));
+        Assert.Equal(["launch", "--console", "--terminate-running-process", "B7339FFC-A65B-4992-9FF7-440A256F2635", "com.companyname.mauiapp1",
+            "-app-arg=--server", "-app-arg=--client-host", "-app-arg=127.0.0.1", "-app-arg=two words"], App.Launch(["--server", "--client-host", "127.0.0.1", "two words"]));
     }
 
     private void The_apps_process_is_the_one_running_its_bundles_copy_installed_on_its_own_simulator()

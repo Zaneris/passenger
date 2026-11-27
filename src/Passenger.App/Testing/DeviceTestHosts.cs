@@ -107,7 +107,7 @@ public sealed class DeviceTestApp(MacCatalystApp? catalyst, SimulatorApp? simula
                 ended => MacCatalystApps.EndWithAsync(app, ended));
         }
         SimulatorApp launched = simulator! with { Process = new AppProcess() };
-        return (ChildProcesses.Command(launched.Simctl, [.. launched.Launch(), .. server.Select(SimulatorApp.AppArgument)], null,
+        return (ChildProcesses.Command(launched.Simctl, launched.Launch(server), null,
             SimulatorApp.Given(launched.Variables(environment, null, null, null))), ended => EndAsync(launched, ended));
 
         static async Task EndAsync(SimulatorApp app, Task ended)

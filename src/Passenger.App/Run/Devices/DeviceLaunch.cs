@@ -208,11 +208,12 @@ public static class DeviceLaunches
             return (null, $"{name} could not be installed on {target.Name}: {uninstalled}");
         }
         string? unshown = await AppleSimulators.ShowAsync(tools, target, unseen, cancel);
+        IReadOnlyList<string> launch = app.Launch(plan.OwnArguments);
         return (plan with
         {
             Program = tools.Simctl,
-            Arguments = app.Launch(),
-            Leading = app.Launch().Count,
+            Arguments = launch,
+            Leading = launch.Count - plan.OwnArguments.Count(),
             WorkingDirectory = Path.GetDirectoryName(project)!,
             Device = device with { App = app },
             Notes = unshown is null ? plan.Notes : [.. plan.Notes, unshown],

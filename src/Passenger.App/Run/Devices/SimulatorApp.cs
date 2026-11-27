@@ -29,12 +29,11 @@ public sealed partial record SimulatorApp(string Udid, string Simctl, string Pac
     public const string RelayPortVariable = "PASSENGER_DEBUG_PORT";
 
     /// <summary>simctl's arguments starting the app afresh with its output on simctl's own (<c>--console</c>), until the app
-    /// ends: what the Run window shows as the program. simctl says the app's process first (<see cref="StartedIn"/>).</summary>
-    public IReadOnlyList<string> Launch() => ["launch", "--console", "--terminate-running-process", Udid, Package];
-
-    /// <summary>An argument of the app's own on simctl's command line after <see cref="Launch"/>, as the app's launcher takes
-    /// it (<c>-app-arg=</c>): it keeps every other argument for itself, and hands the app none of them.</summary>
-    public static string AppArgument(string argument) => $"-app-arg={argument}";
+    /// ends, what the Run window shows as the program, with <paramref name="own"/> after them as the app's own arguments,
+    /// each as the app's launcher takes one (<c>-app-arg=</c>, one argument of simctl's whatever it holds): it keeps every
+    /// other argument for itself and hands the app none of them. simctl says the app's process first (<see cref="StartedIn"/>).</summary>
+    public IReadOnlyList<string> Launch(IEnumerable<string> own) =>
+        ["launch", "--console", "--terminate-running-process", Udid, Package, .. own.Select(argument => $"-app-arg={argument}")];
 
     /// <summary>The environment simctl's launch is given: each of the app's variables under <see cref="ChildPrefix"/>, which
     /// simctl hands the app alone, and its own words unbuffered.</summary>

@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.LiveTree;
+using Passenger.App.Run;
 using Passenger.App.Run.Devices;
 using Passenger.Core;
 using Passenger.Workspace;
@@ -11,8 +12,8 @@ namespace Passenger.Tests;
 /// <summary>Avalonia's cross-platform solution (<c>dotnet new avalonia.xplat</c>) with its iOS head taken to the first .NET
 /// whose iOS apps run on CoreCLR, run on an iOS simulator chosen beside its run configuration, the iOS head's run path
 /// (<see cref="MauiSimulatorTests"/> holds its debug path): Run builds it for the simulator, boots one that is shut down
-/// with no window, installs and starts the app with Passenger's inspector carried into its data container, whose tree
-/// shows the shared view and takes a XAML edit saved; Stop ends the app and takes out what was carried, and a simulator
+/// with no window, installs and starts the app with its run configuration's arguments and Passenger's inspector carried
+/// into its data container, whose tree shows the shared view and takes a XAML edit saved; Stop ends the app and takes out what was carried, and a simulator
 /// the window booted is shut down as it closes. Skips, saying why, off a Mac, without the iOS workload, Xcode or an
 /// iPhone simulator, the simulator's relay, or nuget.org's Avalonia iOS packages. Alone, the simulator its own; its
 /// waits end within the run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
@@ -26,15 +27,32 @@ public sealed class AvaloniaSimulatorTests
 
     private const string Head = $"{Name}.iOS";
 
+    /// <summary>The run configuration giving the head arguments of its own, one of two words.</summary>
+    private const string WithArguments = $"{Head} with arguments";
+
+    /// <summary>The file the head's Main writes the arguments it was given to, a line each, in the app's own temporary folder.</summary>
+    private const string ArgumentsFile = "arguments.txt";
+
+    /// <summary>The template's Main's start of the app, before which the head writes its arguments.</summary>
+    private const string Starts = "UIApplication.Main(args, null, typeof(AppDelegate));";
+
     [AvaloniaFact]
-    public void An_avalonia_apps_ios_head_run_on_a_simulator_shows_its_tree_and_takes_a_xaml_edit()
+    public void An_avalonia_apps_ios_head_run_on_a_simulator_takes_its_arguments_shows_its_tree_and_takes_a_xaml_edit()
     {
         using IDisposable hang = Limits.BeginHang();
         (string folder, string project, DeviceTarget target, AppleTools tools) = Prepared("avalonia-ios-run");
+        string main = Path.Combine(folder, Head, "Main.cs");
+        string written = File.ReadAllText(main);
+        Assert.True(written.Contains(Starts, StringComparison.Ordinal), $"The template's {Head} Main.cs no longer has {Starts}:\n{written}");
+        File.WriteAllText(main, written.Replace(Starts,
+            $"System.IO.File.WriteAllLines(System.IO.Path.Combine(System.IO.Path.GetTempPath(), \"{ArgumentsFile}\"), args);\n        {Starts}", StringComparison.Ordinal));
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
         {
             Choose(window, project, target);
+            RunConfiguration generated = window.Configurations.First(c => c.Name == Head);
+            window.SetConfigurations([generated with { Name = WithArguments, Generated = false, Arguments = "--greeting \"two words\"" }], WithArguments);
+            Ui.Settle();
             Ui.Launched(window, window.RunAsync(), "the build, the install and the start on the simulator", Slow);
             Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, () => $"the inspector in the app on the simulator to say hello; it is "
                 + $"{window.Session.RunApp?.State.ToString() ?? "not made"} ({window.Session.RunApp?.Problem}): {Ui.Said(window)}\n{Output(window)}", Slow);
@@ -43,6 +61,9 @@ public sealed class AvaloniaSimulatorTests
             string? started = Started(window);
             Assert.True(started is not null, $"simctl did not say the app's process in the Run window:\n{Output(window)}");
             string carried = Carried(window);
+            string given = Path.Combine(Path.GetDirectoryName(carried)!, ArgumentsFile);
+            Assert.True(File.Exists(given), $"The app wrote no {ArgumentsFile} in its temporary folder as it started: simctl was run with {string.Join(' ', window.Session.RunPlan!.Arguments)}");
+            Assert.Equal(["--greeting", "two words"], File.ReadAllLines(given));
             TreeAsked tree = new(app);
             // The app's Application says hello before its scene shows the shared view.
             Ui.WaitFor(() => tree.Holds(e => e.Type == "MainView") && tree.Holds(e => e.Type == "TextBox"),
