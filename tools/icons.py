@@ -133,6 +133,10 @@ ICONS = [
     ("HotReload", "Fire", "20_regular"),
     # The Hierarchy window's stripe button: a type over the types it derives from or that derive from it.
     ("Hierarchy", "Diagram", "20_regular"),
+    # The Modules window's stripe button: the pieces a debugged program has loaded.
+    ("Modules", "Puzzle Piece", "20_regular"),
+    # The Compiled Code window's stripe button: the code a build made of the file shown.
+    ("CompiledCode", "Code", "20_regular"),
     # The Endpoints window's stripe button: the requests of the folder's .http files, sent over the web.
     ("Endpoints", "Globe", "20_regular"),
     # The Requests window's stripe button: what the running web apps are asked and answer.

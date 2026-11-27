@@ -912,7 +912,7 @@ public partial class MainWindow : IdeWindow
             ActionTitle = "Debug Tool Window",
             Tools = () => debugView?.HeaderTools,
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Modules, "Modules", IconKeys.Reference, MakeModules, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Modules, "Modules", IconKeys.Modules, MakeModules, Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowModules,
