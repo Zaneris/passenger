@@ -1247,12 +1247,41 @@ public sealed class FolderWatchBytesTests
 {
     /// <summary>What a file made or deleted costs Go to File among twenty thousand against two thousand, and what a
     /// change under build output no watch matches costs, each held to the small case, counted on every thread as this
-    /// class runs alone.</summary>
+    /// class runs alone; and what the watcher's record keeps of names many folders list alike.</summary>
     [AvaloniaFact]
     public async Task What_a_file_change_and_a_childs_kill_cost_stays_the_same_as_the_folder_and_the_machine_grow()
     {
         Flow.StepApart<FolderWatchBytesTests>("a file made or deleted among twenty thousand costs Go to File what it does among two thousand", t => t.A_file_made_or_deleted_among_twenty_thousand_costs_go_to_file_what_it_does_among_two_thousand());
         Flow.StepApart<WatcherChurnTests>("a change under build output no registration matches costs no allocation", t => t.A_change_under_build_output_no_registration_matches_costs_no_allocation());
+        Flow.StepApart<FolderWatchBytesTests>("names a hundred folders list alike are recorded once", t => t.Names_a_hundred_folders_list_alike_are_recorded_once());
+    }
+
+    /// <summary>A hundred folders listing the same fifty names, as each project's build output lists its packages' files:
+    /// the record the watcher keeps of what is in them, for finding what a burst of changes lost, holds each name once and
+    /// a slot of its folder's for each entry, under 24 bytes an entry, where each folder's own set of its own copies took
+    /// about a hundred.</summary>
+    private void Names_a_hundred_folders_list_alike_are_recorded_once()
+    {
+        string root = PathNames.Canonical(TestFolders.Create("watch-alike-"));
+        try
+        {
+            TestFolders.WriteAll(root, Enumerable.Range(0, 100 * 50).Select(file => (Path.Combine($"Project{file / 50}", "Output", $"Package{file % 50}.Library.dll"), string.Empty)));
+            MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+            window.Show();
+            window.OpenFolder(root);
+            Ui.WaitFor(() => window.FileIndex.Count >= 5000 && !window.FileIndex.IsWalking && window.FolderWatcher!.RecordSize.Entries >= 5200,
+                () => $"the folder's 5,000 files indexed and recorded ({window.FileIndex.Count} indexed, {window.FolderWatcher?.RecordSize.Entries} entries recorded)");
+            Ui.Settle();
+            (long held, string most) = HeldBytes.Of(window.FolderWatcher!.RecordedNames, _ => false);
+            int entries = window.FolderWatcher.RecordSize.Entries;
+            window.Close();
+            Assert.True(held / entries < 24, $"The watcher's record of {entries:N0} entries, fifty names in a hundred folders alike, holds {held / 1024:N0} KB, "
+                + $"{held / entries:N0} bytes an entry ({most}): a name each folder lists is kept again for each, as a large solution's build output holds megabytes of");
+        }
+        finally
+        {
+            TestFolders.Delete(root);
+        }
     }
 
     /// <summary>A file made in the folder joins Go to File, and one deleted leaves it, without a walk of the folder: over

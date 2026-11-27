@@ -139,6 +139,10 @@ public abstract class WatchedTree : IDisposable
     /// cref="Begin"/>'s walk's), a moment old elsewhere.</summary>
     public (int Folders, int Entries) RecordSize => (record.Count, Volatile.Read(ref recorded));
 
+    /// <summary>The names the record keeps of each folder, for a test to measure what they hold: as they are in the work
+    /// that keeps the record, a moment old elsewhere.</summary>
+    public IReadOnlyList<IReadOnlyList<string>> RecordedNames => [.. record.Values.Select(listed => listed.Names)];
+
     /// <summary>Whether the watcher handed over, from its first walk, whatever was written since before it watched, so a burst
     /// begun before its record was made, or made again, is listed against the record rather than taken for lost.</summary>
     protected virtual bool FoundFromStart => false;
@@ -880,7 +884,7 @@ public abstract class WatchedTree : IDisposable
         foreach ((string at, Listed listed) in before ?? [])
         {
             record.TryGetValue(at, out Listed? now);
-            foreach (string name in listed.Names.Where(n => now?.Names.Contains(n) != true))
+            foreach (string name in listed.Names.Where(n => now?.Contains(n) != true))
             {
                 string path = Path.Join(at, name);
                 if (!File.Exists(path) && !Directory.Exists(path))
@@ -946,7 +950,7 @@ public abstract class WatchedTree : IDisposable
         DateTime stamp = Directory.GetLastWriteTimeUtc(at);
         try
         {
-            FileSystemEnumerable<Entry> entries = new(at, (ref FileSystemEntry entry) => new Entry(entry.FileName.ToString(), entry.IsDirectory,
+            FileSystemEnumerable<Entry> entries = new(at, (ref FileSystemEntry entry) => new Entry(SharedNames.Of(entry.FileName), entry.IsDirectory,
                 entry.IsDirectory && FileLinks.Is(ref entry), written && !entry.IsDirectory ? entry.LastWriteTimeUtc.UtcDateTime : default,
                 since is null || Passes(entry.FileName, entry.IsDirectory)), Everything)
             {
@@ -992,8 +996,36 @@ public abstract class WatchedTree : IDisposable
     /// it is one the watcher may record (<see cref="Passes"/>), not listed for its time alone.</summary>
     private readonly record struct Entry(string Name, bool Folder, bool Link, DateTime Written, bool Passed);
 
-    /// <summary>A folder as the record last had it.</summary>
-    private sealed record Listed(HashSet<string> Names, DateTime Stamp);
+    /// <summary>A folder as the record last had it: its stamp, and its entries' names in ordinal order, each the string every
+    /// listing of that name shares (<see cref="SharedNames"/>), as a build's output repeats its files' names in each
+    /// project's folder.</summary>
+    private sealed class Listed(string[] names, DateTime stamp)
+    {
+        public string[] Names { get; private set; } = names;
+
+        public DateTime Stamp { get; } = stamp;
+
+        public int Count => Names.Length;
+
+        public static Listed Of(IEnumerable<string> names, DateTime stamp)
+        {
+            string[] sorted = [.. names];
+            Array.Sort(sorted, StringComparer.Ordinal);
+            return new(sorted, stamp);
+        }
+
+        public bool Contains(string name) => Array.BinarySearch(Names, name, StringComparer.Ordinal) >= 0;
+
+        /// <summary>Takes in names come and lets go of names gone, in one array made anew: how many more it holds.</summary>
+        public int Change(List<string> came, List<string> went)
+        {
+            string[] now = [.. Names.Except(went, StringComparer.Ordinal).Union(came, StringComparer.Ordinal)];
+            Array.Sort(now, StringComparer.Ordinal);
+            int more = now.Length - Names.Length;
+            Names = now;
+            return more;
+        }
+    }
 
     /// <summary>Records a folder as listed, unless the record is past its limit.</summary>
     private void Keep(string at, DateTime stamp, List<Entry> entries)
@@ -1002,15 +1034,15 @@ public abstract class WatchedTree : IDisposable
         {
             return;
         }
-        recorded += entries.Count - (record.TryGetValue(at, out Listed? was) ? was.Names.Count : 0);
-        record[at] = new(new HashSet<string>(entries.Select(e => e.Name), StringComparer.Ordinal), stamp);
+        recorded += entries.Count - (record.TryGetValue(at, out Listed? was) ? was.Count : 0);
+        record[at] = Listed.Of(entries.Select(e => e.Name), stamp);
     }
 
     /// <summary>Keeps the record of what a batch handed over came or went: each name in or out of its folder's record as it
     /// was when handed, so a change since, which what it was handed to may not have seen, still differs from the record
     /// and is found if it goes unheard; a folder come recorded with what is in it, what the batch did not hand found, and
     /// one gone let go of with every folder recorded under it. The folders' stamps stay as they were, so a change lost
-    /// beside these still shows.</summary>
+    /// beside these still shows. Each folder's names change once for the batch, however many of them it changed.</summary>
     private void Keep(List<Seen> batch)
     {
         if (recordedAt is null)
@@ -1018,6 +1050,7 @@ public abstract class WatchedTree : IDisposable
             return;
         }
         HashSet<string> handedOver = new(batch.Select(seen => seen.Path), StringComparer.Ordinal);
+        Dictionary<string, (Listed Listed, List<string> Came, List<string> Went)> changed = new(StringComparer.Ordinal);
         // A folder before what is in it, so its files are kept as handed once it is recorded.
         foreach (Seen seen in batch.OrderBy(seen => seen.Path.Length))
         {
@@ -1025,10 +1058,14 @@ public abstract class WatchedTree : IDisposable
             {
                 continue;
             }
-            string name = Path.GetFileName(seen.Path);
+            string name = SharedNames.Of(Path.GetFileName(seen.Path.AsSpan()));
+            if (!changed.TryGetValue(parent, out (Listed Listed, List<string> Came, List<string> Went) changes) || !ReferenceEquals(changes.Listed, listed))
+            {
+                changed[parent] = changes = (listed, [], []);
+            }
             if (seen.There && Records(parent, name, seen.Path, seen.Folder))
             {
-                recorded += listed.Names.Add(name) ? 1 : 0;
+                changes.Came.Add(name);
                 if (seen.Folder && !record.ContainsKey(seen.Path) && Kept(seen.Path))
                 {
                     WatchFrom(seen.Path, file =>
@@ -1042,8 +1079,16 @@ public abstract class WatchedTree : IDisposable
             }
             else if (!seen.There)
             {
-                recorded -= listed.Names.Remove(name) ? 1 : 0;
+                changes.Went.Add(name);
                 Forget(seen.Path);
+            }
+        }
+        foreach ((string at, (Listed listed, List<string> came, List<string> went)) in changed)
+        {
+            // A folder let go of since its names changed keeps none of them.
+            if (record.TryGetValue(at, out Listed? now) && ReferenceEquals(now, listed))
+            {
+                recorded += listed.Change(came, went);
             }
         }
     }
@@ -1062,7 +1107,7 @@ public abstract class WatchedTree : IDisposable
             {
                 gone?.Invoke(Path.Join(under, name));
             }
-            recorded -= record[under].Names.Count;
+            recorded -= record[under].Count;
             record.Remove(under);
         }
     }
@@ -1273,7 +1318,7 @@ public abstract class WatchedTree : IDisposable
             foreach (Entry entry in entries)
             {
                 string path = Path.Join(at, entry.Name);
-                if (!was.Names.Contains(entry.Name) || entry.Folder && !entry.Link && Kept(path) && !record.ContainsKey(path))
+                if (!was.Contains(entry.Name) || entry.Folder && !entry.Link && Kept(path) && !record.ContainsKey(path))
                 {
                     // Come, or a folder now where a file was: what is in it comes with it.
                     Find(path, created: true);
