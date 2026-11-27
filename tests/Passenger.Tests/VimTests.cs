@@ -223,16 +223,17 @@ public sealed partial class VimTests
             + "on to the \"{\"; from the blank ending \".H \" after an empty line it goes back to the \"H\", from the \"o\" of \".P o\" "
             + "back to the line's start, and from the blank under \".H\" back to its \"H\", a block's becoming characterwise",
             (vimCase, _, passenger) => vimCase.Uses(SentenceObject) && passenger.Seen.Contains(VisualSentenceNearMacro)),
-        ("A block's A or C whose edge cuts a character of several columns in two (a control character's mark, a wide one, a "
-            + "tab) types as Vim's does by no rule found: A appends after it on the line the block began on and puts that "
+        ("A block's A, C or c whose edge cuts a character of several columns in two (a control character's mark, a wide one, "
+            + "a tab) types as Vim's does by no rule found: A appends after it on the line the block began on and puts that "
             + "character before the typed text on the others (for a wide one U+FFFD), as the block was made top down or bottom "
-            + "up, and C types before the part it leaves, where Vim mode makes the character the spaces it shows first",
-            (vimCase, _, passenger) => vimCase.Commands.Any(command => command.Keys[0] == VimKeys.CtrlV && (command.Keys.Contains("A") || command.Keys.Contains("C")))
-                && passenger.Seen.Contains(HoldsControl)),
-        ("A block's > over a control character's mark at its left edge shifts as Vim's does by no rule found: before the "
-            + "character where the block's column came by k onto it, after it where it came by b, and after it where the edge cuts "
-            + "its second column, where Vim shifts a wide character cut so from before it",
-            (vimCase, _, passenger) => vimCase.Commands.Any(command => command.Keys[0] == VimKeys.CtrlV && command.Keys.Contains(">"))
+            + "up, and C and c type before the part they leave, where Vim mode makes the character the spaces it shows first",
+            (vimCase, _, passenger) => vimCase.Commands.Any(command => command.Keys[0] == VimKeys.CtrlV && (command.Keys.Contains("A") || command.Keys.Contains("C")
+                || command.Keys.Contains("c"))) && passenger.Seen.Contains(HoldsControl)),
+        ("A block's > or < over a control character's mark at its left edge shifts as Vim's does by no rule found: > before "
+            + "the character where the block's column came by k onto it, after it where it came by b, and after it where the edge "
+            + "cuts its second column, where Vim shifts a wide character cut so from before it; after < that makes the mark a "
+            + "space, Vim's cursor stands on that space, Vim mode's on the character after it",
+            (vimCase, _, passenger) => vimCase.Commands.Any(command => command.Keys[0] == VimKeys.CtrlV && (command.Keys.Contains(">") || command.Keys.Contains("<")))
                 && passenger.Seen.Contains(HoldsControl)),
         ("A visual A over a line whose first character is several columns wide (a tab, a control character's mark) goes in "
             + "Vim's ways of their own: carried up from a later line in linewise mode Vim's puts its text after that character, as "

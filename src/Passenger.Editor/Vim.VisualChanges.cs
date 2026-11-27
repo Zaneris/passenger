@@ -73,8 +73,15 @@ public sealed partial class Vim
             : (TextNavigation.VisualColumn(text, stretch.Low, tab), CaretColumn(text, stretch.High, tab));
         // A tab or other character of several columns the block's edge cuts in two (r: any it takes) is first made the spaces it shows.
         EditPlan? split = block && !lines && (op is "I" or "A" or "r" or "p" or "P" or "<" || basic is "d" or "c" or "y")
-            ? SplitCells(text, top, bottom, left, right, tab, cutsLeft: op != "A", cutsRight: op is not ("I" or "<"), inside: op == "r")
+            ? SplitCells(text, top, bottom, left, right, tab, cutsLeft: op != "A", cutsRight: op is not ("I" or "<"), inside: op == "r", tabsLeftAlone: op == "I")
             : null;
+        if (split is not null && op == "r" && BlockPiece(text, top, left, right, tab) is { } cutTop && TextNavigation.VisualColumn(text, cutTop.Start, tab) < left)
+        {
+            // r leaves the cursor where the character its edge cut in two began, as Vim's does.
+            VimResult replaced = AfterSplit(split, Acted(text.Apply(split.Edits)), text, keepsText: false, tab);
+            int at = TextEditing.MapOffset(cutTop.Start, split.Edits, afterInsertions: false);
+            return replaced.Edits is [.., var lastPlan] ? replaced with { Edits = [.. replaced.Edits.Take(replaced.Edits.Count - 1), lastPlan with { Selections = SelectionSet.Single(at) }] } : replaced;
+        }
         return split is null ? Acted(text) : AfterSplit(split, Acted(text.Apply(split.Edits)), text, keepsText: basic == "y" && op is not ("I" or "A" or "r"), tab);
 
         VimResult Acted(TextSnapshot text)
@@ -173,9 +180,10 @@ public sealed partial class Vim
     }
 
     /// <summary>The tabs and other characters of several columns (wide ones, control characters' marks) of a block's
-    /// lines that its left or right edge cuts in two (with <paramref name="inside"/>, every such it takes) made as many
-    /// spaces as the cells they show; null where there are none.</summary>
-    private static EditPlan? SplitCells(TextSnapshot text, int top, int bottom, int left, int right, int tab, bool cutsLeft, bool cutsRight, bool inside)
+    /// lines that its left or right edge cuts in two (with <paramref name="inside"/>, every such it takes; with <paramref
+    /// name="tabsLeftAlone"/>, only tabs at the left) made as many spaces as the cells they show; null where there are none.</summary>
+    private static EditPlan? SplitCells(TextSnapshot text, int top, int bottom, int left, int right, int tab, bool cutsLeft, bool cutsRight, bool inside,
+        bool tabsLeftAlone = false)
     {
         List<TextEdit> edits = [];
         for (int line = top; line <= bottom; line++)
@@ -188,7 +196,8 @@ public sealed partial class Vim
             {
                 next = TextNavigation.NextGrapheme(text, p);
                 to = TextNavigation.ColumnAfter(text, p, next, from, tab);
-                if ((text[p] == '\t' || to - from > 1) && (inside || (cutsLeft && from < left) || (cutsRight && right != int.MaxValue && to > right + 1)))
+                if ((text[p] == '\t' || to - from > 1)
+                    && (inside || (cutsLeft && from < left && (text[p] == '\t' || !tabsLeftAlone)) || (cutsRight && right != int.MaxValue && to > right + 1)))
                 {
                     edits.Add(new TextEdit(p, next - p, new string(' ', to - from)));
                 }
@@ -224,9 +233,9 @@ public sealed partial class Vim
             return new VisualExtent(Mode, lines, right == int.MaxValue ? 0 : right - left, blockColumns.ToEnd);
         }
         int tab = view.Indent.TabWidth;
-        // Within a line, the cells from the first character's first to the last one's last, a tab counting all it shows.
+        // In a line, the cells from the first character's first to the last's last; over lines the last's last, a tab's first.
         int columns = lines == 0 ? TextNavigation.VisualColumn(text, r.High, tab) + CellsOf(text, r.High, tab) - 1 - TextNavigation.VisualColumn(text, r.Low, tab)
-            : TextNavigation.VisualColumn(text, r.High, tab);
+            : TextNavigation.VisualColumn(text, r.High, tab) + (r.High < text.Length && text[r.High] == '\t' ? 0 : CellsOf(text, r.High, tab) - 1);
         // A stretch $ took to its lines' ends takes . to them too.
         bool toEnd = Mode == VimMode.Visual && visualAims.Length == regions.Count && visualAims[Math.Clamp(visualPrimary, 0, regions.Count - 1)] == int.MaxValue;
         return new VisualExtent(Mode, lines, columns, toEnd);
@@ -384,7 +393,13 @@ public sealed partial class Vim
                 // A line ending just where the block begins takes it at its end; one ending before is passed over.
                 if (width >= left)
                 {
-                    places.Add(width == left ? span.End : BlockPiece(text, line, left, right, tab)!.Value.Start);
+                    int place = width == left ? span.End : BlockPiece(text, line, left, right, tab)!.Value.Start;
+                    if (place < span.End && TextNavigation.VisualColumn(text, place, tab) is var cut && cut < left)
+                    {
+                        // A character of several columns the block's edge cuts stays whole after the text, spaces before it to the edge.
+                        pads.Add(new TextEdit(place, 0, new string(' ', left - cut)));
+                    }
+                    places.Add(place);
                     padded.Add(0);
                 }
                 continue;
@@ -788,7 +803,9 @@ public sealed partial class Vim
             lastAt = text.Length + shift + added.Length - value.Parts[^1].Length;
         }
         TextSnapshot after = text.Apply(edits);
-        int landing = cursorAfter ? Settled(after, Math.Min(lastAt + (width * times), VimMotions.LineOf(after, lastAt).End), breakEnds) : Settled(after, firstAt, breakEnds);
+        // gp and gP land past the last line's piece as put, its characters with their padding, whatever columns they show.
+        int putLength = value.Parts[^1].Length + Math.Max(0, width - widths[^1]);
+        int landing = cursorAfter ? Settled(after, Math.Min(lastAt + (putLength * times), VimMotions.LineOf(after, lastAt).End), breakEnds) : Settled(after, firstAt, breakEnds);
         return new VimResult(true, Edits: [new EditPlan(edits, SelectionSet.Single(landing), EditKind.Other)]);
     }
 }
