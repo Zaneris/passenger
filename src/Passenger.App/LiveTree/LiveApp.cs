@@ -86,7 +86,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             string inspector = kind switch
             {
                 LiveAppKind.Wpf => WpfInspectorPath,
-                LiveAppKind.WinUI => WinUIInspectorPath(plan.DesktopApp()?.File) ?? InspectorPath,
+                LiveAppKind.WinUI => WinUIInspectorPath(plan.Program) ?? InspectorPath,
                 LiveAppKind.WinForms => WinFormsInspectorPath,
                 _ => InspectorPath,
             };
@@ -143,8 +143,9 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>A Windows Forms app's inspector, which only a Windows build carries.</summary>
     public static string WinFormsInspectorPath => Path.Combine(AppContext.BaseDirectory, "inspector", "winforms", "Passenger.Inspector.WinForms.dll");
 
-    /// <summary>A WinUI app's inspector, for the processor its program runs on (inspector/winui/x64/, arm64/, each with the COM
-    /// host WinUI's diagnostics load it through), which only a Windows build carries; null for a program of another processor.</summary>
+    /// <summary>A WinUI app's inspector, for the processor the program a start runs runs on (its apphost, or the dotnet that
+    /// runs its assembly; inspector/winui/x64/, arm64/, each with the COM host WinUI's diagnostics load it through), which
+    /// only a Windows build carries; null for a program of another processor.</summary>
     public static string? WinUIInspectorPath(string? program) =>
         program is null ? null : (ProgramProcessors.Of(program) is [var processor, ..] ? processor : RuntimeInformation.OSArchitecture) switch
         {
@@ -308,7 +309,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         plan.DesktopApp() is not { PastHooks: null, File: var started } ? null
         : DesktopPrograms.BesideAvalonia(started) && File.Exists(InspectorPath) ? (started, LiveAppKind.Avalonia)
         : wpf && OperatingSystem.IsWindows() && File.Exists(WpfInspectorPath) && IsWpf(started) ? (started, LiveAppKind.Wpf)
-        : OperatingSystem.IsWindows() && DesktopPrograms.BesideWinUI(started) && WinUIInspectorPath(started) is { } winui && File.Exists(winui) ? (started, LiveAppKind.WinUI)
+        : OperatingSystem.IsWindows() && DesktopPrograms.BesideWinUI(started) && WinUIInspectorPath(plan.Program) is { } winui && File.Exists(winui) ? (started, LiveAppKind.WinUI)
         : OperatingSystem.IsWindows() && File.Exists(WinFormsInspectorPath) && IsWinForms(started) ? (started, LiveAppKind.WinForms)
         : null;
 
