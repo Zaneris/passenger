@@ -588,13 +588,27 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         console.Raise();
     }
 
-    /// <summary>Adds a connection made by hand, kept for the folder, its secrets in the system's store.</summary>
+    /// <summary>Adds a connection made by hand, kept for the folder, its secrets in the system's store (said where they are
+    /// kept for this session alone).</summary>
     public void Add(DatabaseSource source)
     {
         UiThread.Check();
-        made.Add(Kept(source with { Found = null }, keepsOld: false));
+        (DatabaseSource kept, bool lasting) = Kept(source with { Found = null }, keepsOld: false);
+        made.Add(kept);
         Keep();
+        TellWhereSecretsLast(kept, lasting);
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Says that a connection's secrets are kept for this session alone, where the system's store refused them or
+    /// there is none: after Passenger restarts the connection has none.</summary>
+    private void TellWhereSecretsLast(DatabaseSource source, bool lasting)
+    {
+        if (!lasting)
+        {
+            Tell($"{source.Name}'s secrets are kept for this session alone: {(SystemCredentials.Kept ? "the system's credential store refused them"
+                : "this system has no credential store Passenger reaches")}, so give them again after Passenger restarts");
+        }
     }
 
     /// <summary>Puts <paramref name="replacement"/> in a connection's place; a found one keeps what its files say and takes
@@ -604,7 +618,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         UiThread.Check();
         if (original.Found is not null)
         {
-            DatabaseSource given = KeptOver(original with
+            (DatabaseSource given, bool overLasting) = KeptOver(original with
             {
                 Mark = replacement.Mark, Over = replacement.Over, Tunnel = replacement.Tunnel, TunnelSecret = replacement.TunnelSecret, SignIn = replacement.SignIn,
             });
@@ -612,10 +626,11 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             connected.Remove(original.Id);
             SshTunnels.Close([original.Id]);
             Keep();
+            TellWhereSecretsLast(given, overLasting);
             Changed?.Invoke(this, EventArgs.Empty);
             return;
         }
-        DatabaseSource changed = Kept(replacement with { Id = original.Id, Found = null }, keepsOld: original.SecretKept);
+        (DatabaseSource changed, bool lasting) = Kept(replacement with { Id = original.Id, Found = null }, keepsOld: original.SecretKept);
         int at = made.FindIndex(s => s.Id == original.Id);
         if (at >= 0)
         {
@@ -632,6 +647,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             SshTunnels.Close([original.Id]);
         }
         Keep();
+        TellWhereSecretsLast(changed, lasting);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -654,28 +670,27 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
     }
 
     /// <summary>A connection as kept: its secret parts, and its tunnel's password or passphrase, put in the system's store
-    /// and taken out of it. Where <paramref name="keepsOld"/> (an edit), a part not given again keeps the one stored.</summary>
-    private static DatabaseSource Kept(DatabaseSource source, bool keepsOld)
+    /// and taken out of it, and whether those given will last past this session. Where <paramref name="keepsOld"/> (an edit),
+    /// a part not given again keeps the one stored.</summary>
+    private static (DatabaseSource Kept, bool Lasting) Kept(DatabaseSource source, bool keepsOld)
     {
         (string rest, string secret) = KeptConnection.Split(source.Kind, source.ConnectionString);
-        KeepSecret(source.Account, secret, keepsOld);
-        KeepTunnelSecret(source, keepsOld);
-        return source with { ConnectionString = rest, SecretKept = true, TunnelSecret = null };
+        bool lasting = KeepSecret(source.Account, secret, keepsOld) & KeepTunnelSecret(source, keepsOld);
+        return (source with { ConnectionString = rest, SecretKept = true, TunnelSecret = null }, lasting);
     }
 
     /// <summary>A found connection's own settings as kept: the secret parts of its SSL and its tunnel's password or
-    /// passphrase put in the system's store, each not given again keeping the one stored.</summary>
-    private static DatabaseSource KeptOver(DatabaseSource source)
+    /// passphrase put in the system's store, each not given again keeping the one stored, and whether those given last.</summary>
+    private static (DatabaseSource Kept, bool Lasting) KeptOver(DatabaseSource source)
     {
         (string rest, string secret) = source.Over.Length > 0 ? KeptConnection.Split(source.Kind, source.Over) : (string.Empty, string.Empty);
-        KeepSecret(source.OverAccount, rest.Length > 0 ? secret : null, keepsOld: rest.Length > 0);
-        KeepTunnelSecret(source, keepsOld: true);
-        return source with { Over = rest, TunnelSecret = null };
+        bool lasting = KeepSecret(source.OverAccount, rest.Length > 0 ? secret : null, keepsOld: rest.Length > 0) & KeepTunnelSecret(source, keepsOld: true);
+        return (source with { Over = rest, TunnelSecret = null }, lasting);
     }
 
     /// <summary>Stores secret parts under an account, laid over those stored where <paramref name="keepsOld"/>; none given
-    /// and none kept forgets them.</summary>
-    private static void KeepSecret(string account, string? secret, bool keepsOld)
+    /// and none kept forgets them. False where those given are kept for this session alone.</summary>
+    private static bool KeepSecret(string account, string? secret, bool keepsOld)
     {
         string? old = keepsOld ? SystemCredentials.Read(CredentialService, account) : null;
         if (secret is { Length: > 0 })
@@ -686,24 +701,27 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             {
                 merged[key] = given[key];
             }
-            SystemCredentials.Store(CredentialService, account, merged.ConnectionString);
+            return SystemCredentials.Store(CredentialService, account, merged.ConnectionString) && SystemCredentials.Kept;
         }
-        else if (!keepsOld)
+        if (!keepsOld)
         {
             SystemCredentials.Forget(CredentialService, account);
         }
+        return true;
     }
 
-    private static void KeepTunnelSecret(DatabaseSource source, bool keepsOld)
+    /// <summary>Stores a tunnel's password or passphrase given, or forgets it; false where it is kept for this session alone.</summary>
+    private static bool KeepTunnelSecret(DatabaseSource source, bool keepsOld)
     {
         if (source is { Tunnel: not null, TunnelSecret.Length: > 0 })
         {
-            SystemCredentials.Store(CredentialService, source.TunnelAccount, source.TunnelSecret);
+            return SystemCredentials.Store(CredentialService, source.TunnelAccount, source.TunnelSecret) && SystemCredentials.Kept;
         }
-        else if (source.Tunnel is null || !keepsOld)
+        if (source.Tunnel is null || !keepsOld)
         {
             SystemCredentials.Forget(CredentialService, source.TunnelAccount);
         }
+        return true;
     }
 
     /// <summary>Forgets that a connection was opened, so its explorer reads it again when next opened.</summary>

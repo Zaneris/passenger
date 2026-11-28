@@ -18,10 +18,10 @@ internal static partial class DatabaseClient
 {
     internal const int PageSize = 100;
 
-    /// <summary>Opens a connection, its secret parts read from the system's store where they are kept there, through its SSH
-    /// tunnel where it has one (its certificate still checked against its server's own name). A read-only connection is
-    /// one the server holds read-only too where it can: SQLite's file opened read-only, PostgreSQL's and MySQL's sessions'
-    /// transactions read-only, SQL Server's asked for a read-only session.</summary>
+    /// <summary>Opens a connection, whole (<see cref="Whole"/>), through its SSH tunnel where it has one (its certificate still
+    /// checked against its server's own name). A read-only connection is one the server holds read-only too where it can:
+    /// SQLite's file opened read-only, PostgreSQL's and MySQL's sessions' transactions read-only, SQL Server's asked for a
+    /// read-only session.</summary>
     internal static async Task<DbConnection> OpenAsync(DatabaseSource source, CancellationToken cancel)
     {
         if (!DatabaseKinds.SpeaksSql(source.Kind))
@@ -39,18 +39,7 @@ internal static partial class DatabaseClient
                 throw new IOException(Refusals.NoDuckDbEngine(failed.Message), failed);
             }
         }
-        string whole = source.ConnectionString;
-        if (source.SecretKept && SystemCredentials.Read(DatabaseController.CredentialService, source.Account) is { Length: > 0 } secret)
-        {
-            MarkSecrets(secret);
-            whole = KeptConnection.Joined(source.Kind, whole, secret);
-        }
-        if (source.Over.Length > 0)
-        {
-            string? overSecret = SystemCredentials.Read(DatabaseController.CredentialService, source.OverAccount);
-            MarkSecrets(overSecret);
-            whole = DatabaseKinds.LaidOver(source.Kind, whole, KeptConnection.Joined(source.Kind, source.Over, overSecret));
-        }
+        string whole = Whole(source);
         string? accessToken = null;
         if (source.SignIn is { } signIn)
         {
@@ -117,6 +106,25 @@ internal static partial class DatabaseClient
             await connection.DisposeAsync();
             throw;
         }
+    }
+
+    /// <summary>A connection's string whole, as every client of it opens it: its secret parts read from the system's store
+    /// where they are kept there, and a found connection's own settings laid over it, each secret marked so no message says it.</summary>
+    internal static string Whole(DatabaseSource source)
+    {
+        string whole = source.ConnectionString;
+        if (source.SecretKept && SystemCredentials.Read(DatabaseController.CredentialService, source.Account) is { Length: > 0 } secret)
+        {
+            MarkSecrets(secret);
+            whole = KeptConnection.Joined(source.Kind, whole, secret);
+        }
+        if (source.Over.Length > 0)
+        {
+            string? overSecret = SystemCredentials.Read(DatabaseController.CredentialService, source.OverAccount);
+            MarkSecrets(overSecret);
+            whole = DatabaseKinds.LaidOver(source.Kind, whole, KeptConnection.Joined(source.Kind, source.Over, overSecret));
+        }
+        return whole;
     }
 
     /// <summary>A Redshift connection as Npgsql reaches Redshift: none of PostgreSQL's types read from its catalog, which holds

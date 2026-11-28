@@ -190,7 +190,7 @@ internal static class CassandraClient
     /// the driver's failures said as an <see cref="IOException"/> holding no secret.</summary>
     private static async Task<T> Session<T>(DatabaseSource source, string? keyspace, Func<ISession, Task<T>> work)
     {
-        string connection = source.ConnectionString;
+        string connection = DatabaseClient.Whole(source);
         (string host, int port) = DatabaseKinds.Endpoint(DatabaseKind.Cassandra, connection);
         Builder builder = Cluster.Builder()
             .AddContactPoints((DatabaseKinds.Value(connection, "Contact Points", "ContactPoints", "Host") ?? host).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))

@@ -281,7 +281,7 @@ internal static class DocumentClient
     /// its host, port, user and password, signing in against admin unless it names another source.</summary>
     internal static MongoClient Mongo(DatabaseSource source)
     {
-        string connection = source.ConnectionString;
+        string connection = DatabaseClient.Whole(source);
         MongoClientSettings settings;
         string? password = DatabaseKinds.Value(connection, "Password");
         if (DatabaseKinds.Value(connection, "Uri") is { } uri)
@@ -311,7 +311,7 @@ internal static class DocumentClient
     /// taken only where its connection string says to (DisableServerCertificateValidation, as Aspire's does).</summary>
     private static CosmosClient Cosmos(DatabaseSource source)
     {
-        string connection = source.ConnectionString;
+        string connection = DatabaseClient.Whole(source);
         string endpoint = DatabaseKinds.Value(connection, "AccountEndpoint") ?? throw new InvalidOperationException("The connection names no AccountEndpoint");
         string key = DatabaseKinds.Value(connection, "AccountKey") ?? string.Empty;
         CosmosClientOptions options = new()

@@ -660,21 +660,44 @@ public sealed class DatabaseTests
                 Field<TextBox>("DatabaseName").Text = "reports";
                 Field<TextBox>("DatabaseUser").Text = "app";
                 Field<TextBox>("DatabasePassword").Text = "kept-elsewhere-secret";
+                // A test run keeps secrets in memory, as a system with no credential store does: the dialog and the window say so.
+                Assert.Contains(dialog.GetVisualDescendants().OfType<TextBlock>(), t => t.Text?.Contains("kept for this session alone", StringComparison.Ordinal) == true);
+                List<string> said = [];
+                window.Database.Changed += (_, _) => said.Add(window.Database.Said);
                 Ui.ClickButton(dialog, "Connect");
                 Ui.WaitFor(() => !window.Database.Busy && window.Database.Sources.Any(s => s.Name == "Reports"), () => window.Database.Said);
+                Assert.Contains(said, s => s.StartsWith("Reports's secrets are kept for this session alone", StringComparison.Ordinal));
                 DatabaseSource reports = window.Database.Sources.Single(s => s.Name == "Reports");
                 Assert.Contains("kept-elsewhere-secret", SystemCredentials.Read(DatabaseController.CredentialService, reports.Account), StringComparison.Ordinal);
                 Assert.DoesNotContain("kept-elsewhere-secret", window.Database.Said, StringComparison.Ordinal);
+                // A password written inside a MongoDB URI or a Redis configuration is kept apart as one in a field of its own.
+                foreach ((DatabaseKind kind, string name, string written) in (ReadOnlySpan<(DatabaseKind, string, string)>)[
+                    (DatabaseKind.MongoDb, "Docs", "mongodb://app:kept-in-uri@127.0.0.1:9/shop"), (DatabaseKind.Redis, "Keys", "127.0.0.1:9,password=kept-in-configuration")])
+                {
+                    Assert.True(window.Perform(AppActions.DatabaseAdd), "New Database Connection did not run");
+                    Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "the connection dialog");
+                    dialog = window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible);
+                    Field<ComboBox>("DatabaseProvider").SelectedIndex = (int)kind;
+                    Field<TextBox>("DatabaseConnectionName").Text = name;
+                    Field<TextBox>("DatabaseConnectionString").Text = written;
+                    Ui.ClickButton(dialog, "Connect");
+                    Ui.WaitFor(() => !window.Database.Busy && window.Database.Sources.Any(s => s.Name == name), () => window.Database.Said);
+                }
+                Assert.Contains("kept-in-uri", SystemCredentials.Read(DatabaseController.CredentialService, window.Database.Sources.Single(s => s.Name == "Docs").Account),
+                    StringComparison.Ordinal);
                 window.Close();
                 Ui.Settle();
                 string kept = File.ReadAllText(Assert.Single(Directory.GetFiles(Path.Combine(settings, "workspaces"), "database.json", SearchOption.AllDirectories)));
                 Assert.Contains("Reports", kept, StringComparison.Ordinal);
                 Assert.DoesNotContain("kept-elsewhere-secret", kept, StringComparison.Ordinal);
+                Assert.DoesNotContain("kept-in-uri", kept, StringComparison.Ordinal);
+                Assert.DoesNotContain("kept-in-configuration", kept, StringComparison.Ordinal);
+                Assert.Contains("mongodb://app@127.0.0.1:9/shop", kept, StringComparison.Ordinal);
                 Assert.DoesNotContain("Password", JsonDocument.Parse(kept).RootElement.ToString(), StringComparison.OrdinalIgnoreCase);
                 window = Open(folder, settings);
                 window.ShowToolWindow(ToolWindowIds.Database);
                 Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
-                Assert.Equal("Reports", window.Database.Sources[0].Name);
+                Assert.Equal(["Reports", "Docs", "Keys"], window.Database.Sources.Take(3).Select(s => s.Name));
                 Assert.True(window.Database.Sources[0].SecretKept);
                 Ui.WaitFor(() => !window.Database.Busy && window.Database.Sources.Any(s => s.Name == "Shop"),
                     () => $"{window.Database.Said} [{string.Join(", ", window.Database.Sources.Select(s => s.Name))}] of {window.Session.Projects.Count} projects");

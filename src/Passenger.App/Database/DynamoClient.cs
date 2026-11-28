@@ -275,7 +275,7 @@ internal static class DynamoClient
     /// and secret, else its AWS profile, else the environment's or the default profile's (<see cref="AwsProfiles"/>).</summary>
     private static async Task<AmazonDynamoDBClient> ClientAsync(DatabaseSource source, CancellationToken cancel)
     {
-        string connection = source.ConnectionString;
+        string connection = DatabaseClient.Whole(source);
         AmazonDynamoDBConfig config = new() { Timeout = TimeSpan.FromSeconds(30), MaxErrorRetry = 1 };
         string region = source.Database;
         if (DatabaseKinds.Value(connection, "ServiceURL", "Endpoint") is { } endpoint)

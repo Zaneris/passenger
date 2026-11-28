@@ -1,4 +1,6 @@
+using System.Buffers;
 using System.Data.Common;
+using System.Globalization;
 using System.Text.Json.Nodes;
 using Passenger.App.Containers;
 using Passenger.App.State;
@@ -83,7 +85,12 @@ public sealed record SqlRan(string Statement, DateTime At, string Outcome, bool 
 public sealed record KeptConnection(Guid Id, string Name, DatabaseKind Kind, string ConnectionString, DatabaseMark Mark = DatabaseMark.None, SshTunnel? Tunnel = null,
     CloudSignIn? SignIn = null)
 {
-    /// <summary>A connection's string split in two: what may be kept in a file, and its secret parts as a connection string.</summary>
+    /// <summary>What a secret held inside another part's value is kept under: MongoDB's URI's password as "Uri password".</summary>
+    private const string Inside = " password";
+
+    /// <summary>A connection's string split in two: what may be kept in a file, and its secret parts as a connection string,
+    /// a password inside a part's value too (a URL's user's, StackExchange.Redis's configuration's password=) under
+    /// <see cref="Inside"/>.</summary>
     public static (string Kept, string Secret) Split(DatabaseKind kind, string connection)
     {
         DbConnectionStringBuilder kept = new() { ConnectionString = connection };
@@ -95,11 +102,17 @@ public sealed record KeptConnection(Guid Id, string Name, DatabaseKind Kind, str
                 secret[key] = kept[key];
                 kept.Remove(key);
             }
+            else if (Convert.ToString(kept[key], CultureInfo.InvariantCulture) is { } value && PasswordIn(key, value) is { } inside)
+            {
+                kept[key] = inside.Without;
+                secret[key + Inside] = inside.Password;
+            }
         }
         return (DatabaseKinds.Builder(kind, kept.ConnectionString).ConnectionString, secret.ConnectionString);
     }
 
-    /// <summary>A kept connection's string with its secret parts put back.</summary>
+    /// <summary>A kept connection's string with its secret parts put back, a password kept from inside a part's value put
+    /// back inside it.</summary>
     public static string Joined(DatabaseKind kind, string kept, string? secret)
     {
         DbConnectionStringBuilder joined = new() { ConnectionString = kept };
@@ -108,9 +121,70 @@ public sealed record KeptConnection(Guid Id, string Name, DatabaseKind Kind, str
             DbConnectionStringBuilder parts = new() { ConnectionString = secret };
             foreach (string key in parts.Keys)
             {
-                joined[key] = parts[key];
+                string value = Convert.ToString(parts[key], CultureInfo.InvariantCulture) ?? string.Empty;
+                string outer = key.EndsWith(Inside, StringComparison.OrdinalIgnoreCase) ? key[..^Inside.Length] : string.Empty;
+                if (outer.Length > 0 && joined.TryGetValue(outer, out object? held) && Convert.ToString(held, CultureInfo.InvariantCulture) is { } within && HoldsPassword(outer, within))
+                {
+                    joined[outer] = WithPassword(outer, within, value);
+                }
+                else
+                {
+                    joined[key] = value;
+                }
             }
         }
         return DatabaseKinds.Builder(kind, joined.ConnectionString).ConnectionString;
     }
+
+    /// <summary>The password a part's value holds inside it, and the value without it: a URL's user's (mongodb://app:pw@host,
+    /// as written there), or StackExchange.Redis's configuration's password= part; null where it holds none.</summary>
+    private static (string Without, string Password)? PasswordIn(string key, string value)
+    {
+        if (key.Equals("Configuration", StringComparison.OrdinalIgnoreCase) && !value.Contains("://", StringComparison.Ordinal))
+        {
+            string[] options = value.Split(',');
+            int at = Array.FindIndex(options, o => o.Trim().StartsWith("password=", StringComparison.OrdinalIgnoreCase));
+            return at < 0 || options[at].Trim().Length == "password=".Length ? null
+                : (string.Join(',', options.Where((_, i) => i != at)), options[at].Trim()["password=".Length..]);
+        }
+        if (UserInfo(value) is not { } user)
+        {
+            return null;
+        }
+        int colon = value.IndexOf(':', user.Start, user.End - user.Start);
+        return colon < 0 || colon + 1 == user.End ? null : (value[..colon] + value[user.End..], value[(colon + 1)..user.End]);
+    }
+
+    /// <summary>A part's value with a kept password put back inside it, where it has a user and no password of its own.</summary>
+    private static string WithPassword(string key, string value, string password)
+    {
+        if (key.Equals("Configuration", StringComparison.OrdinalIgnoreCase) && !value.Contains("://", StringComparison.Ordinal))
+        {
+            return value.Split(',').Any(o => o.Trim().StartsWith("password=", StringComparison.OrdinalIgnoreCase)) ? value : $"{value},password={password}";
+        }
+        return UserInfo(value) is { } user && value.IndexOf(':', user.Start, user.End - user.Start) < 0
+            ? value[..user.End] + ":" + password + value[user.End..] : value;
+    }
+
+    /// <summary>Where a URL's user (and its password) stand, from after its scheme's // to its @; null where it names none.</summary>
+    private static (int Start, int End)? UserInfo(string value)
+    {
+        int scheme = value.IndexOf("://", StringComparison.Ordinal);
+        if (scheme <= 0 || value.AsSpan(0, scheme).ContainsAnyExcept(SchemeCharacters))
+        {
+            return null;
+        }
+        int from = scheme + 3;
+        int end = value.IndexOfAny(['/', '?', '#'], from) is var stop and >= 0 ? stop : value.Length;
+        int at = end > from ? value.LastIndexOf('@', end - 1, end - from) : -1;
+        return at > from ? (from, at) : null;
+    }
+
+    /// <summary>Whether a part's value is one a password is kept from inside of: StackExchange.Redis's configuration, a URL
+    /// naming a user.</summary>
+    private static bool HoldsPassword(string key, string value) =>
+        key.Equals("Configuration", StringComparison.OrdinalIgnoreCase) && !value.Contains("://", StringComparison.Ordinal) || UserInfo(value) is not null;
+
+    private static readonly SearchValues<char> SchemeCharacters =
+        SearchValues.Create("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+-.");
 }
