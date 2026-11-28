@@ -1574,8 +1574,8 @@ public static class VimMotions
                 int after = AfterLineStart(text, last, line);
                 bool closes = after >= 0 && (CharAt(text, after) is ' ' or '\t' || IsCloser(CharAt(text, after)))
                     || MarksOnly(text, LineOf(text, y)) && JoinsLineBefore(text, last, LineOf(text, y));
-                // Alone on its line before text that is no end mark, a line's or the text's end, the place is in the gap.
-                if (!closes && (held >= 0 || line.Length != 1 || after >= 0 && IsSentenceEnd(CharAt(text, after))))
+                // Alone on its line before a macro line, text that is no end mark, a line's or the text's end, the place is in the gap.
+                if (!closes && (held >= 0 || line.Length != 1 || after >= 0 && IsSentenceEnd(CharAt(text, after)) && !BoundAt(text, after)))
                 {
                     break;
                 }
