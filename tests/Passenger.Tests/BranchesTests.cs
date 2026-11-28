@@ -937,6 +937,14 @@ public sealed class BranchesTests : IDisposable
             Ui.WaitFor(() => !File.Exists(feature), () => $"Undo to take Feature.cs away again ({window.Status})");
             Ui.Run(window, Passenger.Editor.EditorActions.Undo);
             Ui.WaitFor(() => File.ReadAllText(shop) == longer, () => $"Undo to put Shop.cs's long back ({window.Status})");
+
+            // A revision holding a symbolic link where the file is: its blob is the link's target, never the file's text.
+            string target = TestGit.Feed(folder, "Feature.cs", "hash-object", "-w", "--stdin").Trim();
+            string tree = TestGit.Feed(folder, $"120000 blob {target}\tShop.cs\n", "mktree").Trim();
+            Git("tag", "linked", TestGit.Run(folder, "commit-tree", tree, "-m", "Linked").Trim());
+            VcsOutcome linked = Ui.Await(window.GetFromAsync("linked", "linked", [(shop, shop, null)]), "Get from linked");
+            Assert.Equal((false, "Shop.cs is a symbolic link in linked: Get from Branch takes a text file's version alone"), (linked.Succeeded, linked.Message));
+            Assert.Equal(longer, File.ReadAllText(shop));
             window.Close();
         }
         finally

@@ -13,7 +13,8 @@ public partial class MainWindow
     /// <summary>Each file takes <paramref name="revision"/>'s text of it (at <c>Then</c>, else at <c>Origin</c>, where the last
     /// commit has a file renamed since), written in that version's encoding and line breaks, the open ones showing it; a file
     /// the revision has none of goes to the Trash. One command Undo takes back whole; refused, nothing written, where a file is
-    /// binary in the revision or, in a folder not trusted, stored through a filter. What came of it, said in the status bar.</summary>
+    /// binary in the revision, a symbolic link in it or here (whose text is a link's target, never a file's) or, in a folder
+    /// not trusted, stored through a filter. What came of it, said in the status bar.</summary>
     public async Task<VcsOutcome> GetFromAsync(string revision, string version, IReadOnlyList<(string Path, string Then, string? Origin)> files)
     {
         VcsController vcs = session.Vcs;
@@ -29,10 +30,20 @@ public partial class MainWindow
         List<string> deletes = [];
         foreach ((string path, string then, string? origin) in files)
         {
+            if (new FileInfo(path).LinkTarget is not null)
+            {
+                return Told(false, $"{Path.GetFileName(path)} is a symbolic link here: Get from Branch takes a text file's version alone");
+            }
+            string at = then;
             FileVersion? was = await vcs.VersionAsync(revision, then, path);
             if (was is null && origin is not null && !PathNames.Same(origin, then))
             {
+                at = origin;
                 was = await vcs.VersionAsync(revision, origin, path);
+            }
+            if (was is not null && await vcs.IsLinkAtAsync(revision, at))
+            {
+                return Told(false, $"{Path.GetFileName(path)} is a symbolic link in {version}: Get from Branch takes a text file's version alone");
             }
             if (was is { Stored: null })
             {

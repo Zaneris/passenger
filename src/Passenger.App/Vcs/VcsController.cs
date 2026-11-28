@@ -2734,6 +2734,13 @@ public sealed class VcsController : IDisposable
         return await ReadAsync(repository.StoredAtAsync(revision, [path]), encoding, readAs);
     }
 
+    /// <summary>Whether a revision holds a symbolic link at a path, which is no text of a file's (<see cref="Git.IsLinkAtAsync"/>).</summary>
+    public Task<bool> IsLinkAtAsync(string revision, string path)
+    {
+        UiThread.Check();
+        return git is { } repository ? repository.IsLinkAtAsync(revision, path) : Task.FromResult(false);
+    }
+
     /// <summary>The encoding the open file at a path is read in, or null when none holds its text.</summary>
     private System.Text.Encoding? EncodingOf(string path) => Holding(path)?.Encoding;
 
