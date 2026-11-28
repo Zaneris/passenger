@@ -8,15 +8,20 @@ namespace Passenger.App;
 /// offline, and read from there as the theme is laid. Called on any thread.</summary>
 public static class VsCodeIconSets
 {
-    /// <summary>The folder a theme's icon themes are kept in beside its file: one of an extension under its id, at their
-    /// paths in the extension, and one beside the theme's file under <see cref="BesideFolder"/>, at their paths there.</summary>
+    /// <summary>The folder a theme's icon themes are kept in beside its file: one of an extension under its id (with the
+    /// version it is pinned to, so a dark and a light theme pinned to two versions of one keep both), at their paths in the
+    /// extension, and one beside the theme's file under <see cref="BesideFolder"/>, at their paths there.</summary>
     public const string Folder = "iconTheme";
 
     /// <summary>Where an icon theme named as a file beside its theme is kept under <see cref="Folder"/>, never an id.</summary>
     private const string BesideFolder = "beside";
 
     /// <summary>Where an icon theme's files are kept beside its theme's file, its folders joined by /.</summary>
-    public static string KeptUnder(VsCodeBase wanted) => $"{Folder}/{wanted.Id ?? BesideFolder}";
+    public static string KeptUnder(VsCodeBase wanted) =>
+        wanted is { Id: { } id, Version: { } pinned } ? $"{Folder}/{id}@{pinned}" : $"{Folder}/{wanted.Id ?? BesideFolder}";
+
+    /// <summary>Where a pinned icon theme was kept before its version named its folder: under its id alone.</summary>
+    private static string KeptUnderId(VsCodeBase wanted) => $"{Folder}/{wanted.Id}";
 
     /// <summary>An icon theme fetched from Open VSX: its extension at the version pinned (else its newest), its <c>.vsix</c>
     /// and the theme in it with its SVGs; why not, saying which.</summary>
@@ -97,7 +102,20 @@ public static class VsCodeIconSets
 
     /// <summary>The version of an icon theme kept beside its theme by its extension's id, or null where none is kept.</summary>
     public static string? KeptVersion(VsCodeBase wanted, Func<string, byte[]?> beside) =>
-        beside($"{KeptUnder(wanted)}/{VsCodeThemes.Manifest}") is { } manifest ? VsCodeThemes.ReadManifest(VsCodeThemes.Manifest, manifest).Read?.Version : null;
+        Manifest(wanted, beside) is { } manifest ? VsCodeThemes.ReadManifest(VsCodeThemes.Manifest, manifest.Bytes).Read?.Version : null;
+
+    /// <summary>An icon theme's kept manifest and the folder it is kept in: its own, else for one pinned the one under its id
+    /// alone where that holds the version pinned.</summary>
+    private static (byte[] Bytes, string Under)? Manifest(VsCodeBase wanted, Func<string, byte[]?> beside)
+    {
+        string under = KeptUnder(wanted);
+        if (beside($"{under}/{VsCodeThemes.Manifest}") is { } own)
+        {
+            return (own, under);
+        }
+        return wanted is { Id: not null, Version: { } pinned } && beside($"{KeptUnderId(wanted)}/{VsCodeThemes.Manifest}") is { } earlier
+            && VsCodeThemes.ReadManifest(VsCodeThemes.Manifest, earlier).Read?.Version == pinned ? (earlier, KeptUnderId(wanted)) : null;
+    }
 
     /// <summary>An icon theme as kept beside its theme, its files read through <paramref name="beside"/> by their paths beside
     /// the theme's file, and what reads each SVG it draws by its path in the extension: null with no why where none is kept
@@ -110,14 +128,14 @@ public static class VsCodeIconSets
         string name = json is null ? wanted.Theme! : NameOf(json);
         if (json is null)
         {
-            if (beside($"{under}/{VsCodeThemes.Manifest}") is not { } manifest
-                || VsCodeThemes.ReadManifest(VsCodeThemes.Manifest, manifest).Read is not { } extension || extension.Id != wanted.Id
+            if (Manifest(wanted, beside) is not { } manifest
+                || VsCodeThemes.ReadManifest(VsCodeThemes.Manifest, manifest.Bytes).Read is not { } extension || extension.Id != wanted.Id
                 || (wanted.Version is { } pinned && extension.Version != pinned)
                 || (extension.IconThemes.FirstOrDefault(t => t.Label == wanted.Theme) ?? extension.IconThemes.FirstOrDefault(t => t.Id == wanted.Theme)) is not { } contributed)
             {
                 return null;
             }
-            (json, name) = (contributed.Path, contributed.Label);
+            (json, name, under) = (contributed.Path, contributed.Label, manifest.Under);
         }
         if (beside($"{under}/{json}") is not { } bytes)
         {

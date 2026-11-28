@@ -306,7 +306,7 @@ public static class ContainerTools
         }
         finally
         {
-            await engine.RunAsync(ContainerLabels.Removing([container]), cancel: CancellationToken.None).ConfigureAwait(false);
+            await engine.RunAsync(ContainerLabels.RemovingWhole([container]), cancel: CancellationToken.None).ConfigureAwait(false);
         }
     }
 

@@ -9,17 +9,23 @@ using Passenger.Workspace;
 
 namespace Passenger.App.Migrations;
 
-/// <summary>The connection a context connects with, by its name in configuration (ConnectionStrings:NAME): the one its
-/// registration in code reads (<c>AddDbContext&lt;ShopContext&gt;(… GetConnectionString("Shop") …)</c>, through a local
-/// it is read into too, or an Aspire integration's connection name), else the one the context reads itself, else the one
-/// configured under the context's own name ("ShopContext" or "Shop"). Never the first one configured: where none of these
-/// tells, there is no name.</summary>
+/// <summary>The connection a context connects with, by its name in configuration (ConnectionStrings:NAME): where the code
+/// has a design-time factory of the context (<c>IDesignTimeDbContextFactory&lt;ShopContext&gt;</c>), which dotnet ef makes it
+/// by before any registration, the one that factory reads alone; else the one its registration in code reads
+/// (<c>AddDbContext&lt;ShopContext&gt;(… GetConnectionString("Shop") …)</c>, through a local it is read into too, or an
+/// Aspire integration's connection name), else the one the context reads itself, else the one configured under the
+/// context's own name ("ShopContext" or "Shop"). Never the first one configured: where none of these tells, there is no
+/// name.</summary>
 public static class EfConnections
 {
     /// <summary>The connection's name, and where it was told; null where nothing tells it.</summary>
     public static (string Name, string Told)? NameOf(string context, IEnumerable<(string Path, string Text)> code, CSharpParseOptions options, IReadOnlyList<string> configured)
     {
         List<SyntaxNode> roots = [.. code.Select(c => CSharpParsing.Parse(c.Text, options, c.Path).GetRoot())];
+        if (Factory(context, roots) is { } factory)
+        {
+            return Read(factory, factory.SyntaxTree.GetRoot()) is { } read ? (read, $"its design-time factory, {factory.Identifier.ValueText}") : null;
+        }
         foreach (SyntaxNode root in roots)
         {
             foreach (InvocationExpressionSyntax registration in root.DescendantNodes().OfType<InvocationExpressionSyntax>().Where(i => Registers(i, context)))
@@ -51,10 +57,27 @@ public static class EfConnections
     public static string? WrittenOf(string context, IEnumerable<(string Path, string Text)> code, CSharpParseOptions options)
     {
         List<SyntaxNode> roots = [.. code.Select(c => CSharpParsing.Parse(c.Text, options, c.Path).GetRoot())];
-        IEnumerable<SyntaxNode> places = roots.SelectMany(root => root.DescendantNodes().OfType<InvocationExpressionSyntax>().Where(i => Registers(i, context)).Cast<SyntaxNode>())
+        IEnumerable<SyntaxNode> places = Factory(context, roots) is { } factory ? [factory] : roots.SelectMany(root => root.DescendantNodes().OfType<InvocationExpressionSyntax>().Where(i => Registers(i, context)).Cast<SyntaxNode>())
             .Concat(roots.SelectMany(root => root.DescendantNodes().OfType<ClassDeclarationSyntax>().Where(c => c.Identifier.ValueText == context)));
         return places.SelectMany(place => place.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>()).Select(Written).FirstOrDefault(s => s is not null);
     }
+
+    /// <summary>The name of the code's design-time factory of a context, which dotnet ef makes the context by; null where it
+    /// has none.</summary>
+    public static string? FactoryOf(string context, IEnumerable<(string Path, string Text)> code, CSharpParseOptions options) =>
+        Factory(context, [.. code.Select(c => CSharpParsing.Parse(c.Text, options, c.Path).GetRoot())])?.Identifier.ValueText;
+
+    /// <summary>A class implementing <c>IDesignTimeDbContextFactory&lt;context&gt;</c>.</summary>
+    private static ClassDeclarationSyntax? Factory(string context, IReadOnlyList<SyntaxNode> roots) =>
+        roots.SelectMany(root => root.DescendantNodes().OfType<ClassDeclarationSyntax>()).FirstOrDefault(c => c.BaseList?.Types.Any(t => (t.Type switch
+        {
+            QualifiedNameSyntax { Right: GenericNameSyntax right } => right,
+            GenericNameSyntax named => named,
+            _ => null,
+        }) is { Identifier.ValueText: "IDesignTimeDbContextFactory", TypeArgumentList.Arguments: [var type] } && Bare(type) == context) == true);
+
+    /// <summary>A type's name without its namespace.</summary>
+    private static string? Bare(TypeSyntax type) => type is QualifiedNameSyntax { Right.Identifier.ValueText: var right } ? right : (type as IdentifierNameSyntax)?.Identifier.ValueText;
 
     /// <summary>The connection string a provider's Use… call is given as a literal.</summary>
     private static string? Written(InvocationExpressionSyntax call) =>
@@ -101,7 +124,7 @@ public static class EfConnections
             _ => null,
         }) is { Identifier.ValueText: { } method, TypeArgumentList.Arguments: [var type] }
         && method.StartsWith("Add", StringComparison.Ordinal)
-        && (type is QualifiedNameSyntax { Right.Identifier.ValueText: var right } ? right : (type as IdentifierNameSyntax)?.Identifier.ValueText) == context;
+        && Bare(type) == context;
 
     /// <summary>The name a node's GetConnectionString("NAME") reads, directly or through a local or field read into it.</summary>
     private static string? Read(SyntaxNode node, SyntaxNode root)

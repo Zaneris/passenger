@@ -3410,7 +3410,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>Every theme key and icon the code names (TokenKeys and IconKeys, a literal still shaped like one in C#, a
     /// resource in XAML) is one the app's resources give, dark and light: a misspelt or missing one finds nothing, drawn as
     /// nothing (Transparent, no icon) with no error. A literal of that shape naming something else (a project's assembly, a
-    /// diagnostic's source) is passed over; a key made at run time ($"Icon.{kind}") is its own code's to check.</summary>
+    /// diagnostic's source) is passed over; a key made at run time ($"Icon.{kind}") is its own code's to check. An icon is
+    /// named in XAML as a dynamic resource, which a theme's own icon of its key replaces.</summary>
     [Gate]
     [AvaloniaFact]
     public void Every_theme_key_and_icon_the_code_names_is_one_the_resources_give_dark_and_light()
@@ -3420,6 +3421,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Regex resource = new(@"\{(?:DynamicResource|StaticResource)\s+((?:Passenger|Icon)\.[\w.]+)\}");
         string root = Passenger.Tests.Debugging.Helpers.Debuggees.Root;
         List<string> missing = [];
+        List<string> held = [];
         int named = 0;
         foreach (System.Reflection.FieldInfo key in typeof(TokenKeys).GetFields().Concat(typeof(IconKeys).GetFields()))
         {
@@ -3453,12 +3455,18 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                     {
                         missing.Add($"{path}:{i + 1}: {key}");
                     }
+                    // A theme may give an icon of its own, which a control resolving its key once never takes.
+                    if (match.Value.StartsWith("{StaticResource Icon.", StringComparison.Ordinal))
+                    {
+                        held.Add($"{path}:{i + 1}: {key}");
+                    }
                 }
             }
         }
         Assert.True(named > 500, $"Only {named} keys were found named in the code: the search no longer reads it");
         Assert.True(missing.Count == 0, $"{missing.Count} keys the code names are no resource, dark or light, so what reads them draws nothing: give each in "
             + $"the theme (Tokens.axaml and every look, or Icons.axaml) or name the one that is there:\n{string.Join("\n", missing)}");
+        Assert.True(held.Count == 0, $"{held.Count} icons are named as static resources, so a theme's own icon for them never shows: name each as a DynamicResource:\n{string.Join("\n", held)}");
 
         bool Assembly(string name) => Enumerable.Range(2, name.Count(c => c == '.')).Any(parts =>
             Directory.Exists(Path.Combine(root, "src", string.Join('.', name.Split('.').Take(parts)))));

@@ -355,6 +355,11 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         Assert.True(held.IsChecked == true && held.IsEffectivelyVisible, "The Timer is not shown chosen in the component tray");
         Ui.WaitFor(() => window.FormProperties?.Rows.Any(r => r.Name == "Interval") == true, () => $"the Timer's properties to be listed, not \"{window.FormProperties?.Said}\"");
         window.ShowToolWindow(ToolWindowIds.Structure);
+        // A timer is off unless its code turns it on, so its Enabled set true is written, as a control's never is.
+        Ui.WaitFor(() => window.FormProperties?.EditorOf("Enabled") is ComboBox, "the Timer's Enabled to offer True and False");
+        Pick((ComboBox)window.FormProperties!.EditorOf("Enabled")!, "True");
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("timer1.Enabled = true;", StringComparison.Ordinal),
+            () => $"the Timer's Enabled to be written, where the status bar says {window.Status}");
         Ui.WaitFor(() => window.StructureView.Rows.Any(r => r is { Name: "timer1", Depth: 1 }),
             () => $"the Structure window to outline the Timer under the form, not [{string.Join(", ", window.StructureView.Rows.Select(r => $"{r.Name}@{r.Depth}"))}]");
         window.Close();
@@ -436,12 +441,25 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         ListBox rows = properties.GetVisualDescendants().OfType<ListBox>().First();
         Keyed(rows, properties.Chosen!);
         Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => properties.Typing is { IsFocused: true }, "Enter to open MouseEnter's handler to type");
+        Ui.Press(window, "ENTER");
         Ui.WaitFor(() => File.ReadAllText(designer).Contains("Count.MouseEnter += Count_MouseEnter;", StringComparison.Ordinal), () => $"MouseEnter's handler to be hooked, where the status bar says {window.Status}");
         Assert.Contains("        Count.Click += OnCount;\n        Count.MouseEnter += Count_MouseEnter;\n", File.ReadAllText(designer).ReplaceLineEndings("\n"));
         string handled = window.EditorArea.TextOf(code)!.ToString().ReplaceLineEndings("\n");
         Assert.True(handled.Contains("    private void Count_MouseEnter(object? sender, EventArgs e)\n    {\n\n    }\n}", StringComparison.Ordinal),
             $"MouseEnter's handler is not declared at MainForm's end, which reads:\n{handled[Math.Max(0, handled.Length - 400)..]}");
         Ui.WaitFor(() => window.EditorArea.FormLayout.View == PaneView.Editor, "the new handler's code to be shown");
+
+        // A handler the code has already, typed for another event, is hooked by its name.
+        Ui.Press(window, "shift F7");
+        pane = Drawn(window);
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        Ui.Click(pane.Frame, new Point(count.X + (count.Width / 2), count.Y + (count.Height / 2)));
+        properties = window.FormProperties ?? throw new Xunit.Sdk.XunitException("The Structure window shows no properties under its outline");
+        properties.ShowsEvents = true;
+        Ui.WaitFor(() => properties.Rows.Any(r => r.Name == "MouseLeave"), () => $"Count's events to be listed again, not \"{properties.Said}\"");
+        Type(window, properties, "MouseLeave", "OnCount");
+        Ui.WaitFor(() => File.ReadAllText(designer).Contains("Count.MouseLeave += OnCount;", StringComparison.Ordinal), () => $"MouseLeave to be hooked to OnCount, where the status bar says {window.Status}");
         window.Close();
     }
 

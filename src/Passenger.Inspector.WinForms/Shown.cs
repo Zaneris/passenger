@@ -115,7 +115,7 @@ internal static class Shown
     {
         string? text = component switch
         {
-            TextBox { UseSystemPasswordChar: true } or TextBox { PasswordChar: not '\0' } or MaskedTextBox { UseSystemPasswordChar: true } => Words.Dots(((Control)component).Text),
+            _ when HidesText(component) => Words.Dots(((Control)component).Text),
             TextBoxBase or ComboBox or UpDownBase => ((Control)component).Text,
             Control { Text.Length: > 0 } control => control.Text,
             ToolStripItem { Text.Length: > 0 } item => item.Text,
@@ -123,6 +123,15 @@ internal static class Shown
         };
         return Words.Shows(text);
     }
+
+    /// <summary>Whether a component is a password's box, whose text it shows as dots: a text box or masked text box with a
+    /// password character of its own or the system's.</summary>
+    private static bool HidesText(Component component) => component switch
+    {
+        TextBox box => box.UseSystemPasswordChar || box.PasswordChar != '\0',
+        MaskedTextBox box => box.UseSystemPasswordChar || box.PasswordChar != '\0',
+        _ => false,
+    };
 
     /// <summary>The class whose designer code makes a component and its field there: the nearest form or user control of the
     /// app's own around it, which made it with its name; a form or user control of the app's own with none around it is its
@@ -148,12 +157,19 @@ internal static class Shown
     public static Dictionary<string, string>? Values(Component component, IReadOnlyList<string> names) =>
         Words.Values(names, name => TypeDescriptor.GetProperties(component)[name] is { } property ? Format(Read(property, component), property.Converter) : null);
 
-    /// <summary>A property's value, or what its getter threw.</summary>
-    public static object? Read(PropertyDescriptor property, object owner)
+    /// <summary>A property's value, or what its getter threw; a password box's text as the box shows it, a dot for each
+    /// character (<see cref="HidesText"/>).</summary>
+    public static object? Read(PropertyDescriptor property, Component owner)
     {
         try
         {
-            return property.GetValue(owner);
+            object? value = property.GetValue(owner);
+            return !HidesText(owner) ? value : value switch
+            {
+                string text when property.Name is nameof(TextBoxBase.Text) or nameof(TextBoxBase.SelectedText) => Words.Dots(text),
+                string[] lines when property.Name is nameof(TextBoxBase.Lines) => (string[])[.. lines.Select(Words.Dots)],
+                _ => value,
+            };
         }
         catch (Exception error)
         {

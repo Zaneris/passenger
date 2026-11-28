@@ -11,9 +11,15 @@ namespace Passenger.Languages.WinForms;
 /// fields with their types as written, where its InitializeComponent is named, and that method's statements in order;
 /// with where each statement and each field's declaration lies (<see cref="DesignerLayout"/>), which a change is written by.</summary>
 /// <summary>What an edit of a class's designer code changed: the class, the code after it, the statements it writes otherwise
-/// than before (new, or written anew) in order, each one's line in the text after it, from one, and the components it no
-/// longer makes.</summary>
-public sealed record DesignerEdit(string Class, DesignerSource Source, IReadOnlyList<DesignerStatement> Statements, IReadOnlyList<int> Lines, IReadOnlyList<string> Gone);
+/// than before (new, or written anew) in order, each one's line in the text after it, from one, the components it no
+/// longer makes, the handlers it no longer hooks (as the text before hooked them), and why a running form cannot take it
+/// where it took out or moved what a running form keeps as it was (null where it can).</summary>
+public sealed record DesignerEdit(string Class, DesignerSource Source, IReadOnlyList<DesignerStatement> Statements, IReadOnlyList<int> Lines, IReadOnlyList<string> Gone)
+{
+    public IReadOnlyList<DesignerStatement> Unhooked { get; init; } = [];
+
+    public string? Unapplied { get; init; }
+}
 
 public sealed record DesignerSource(string? Namespace, IReadOnlyList<string> Usings, IReadOnlyList<DesignerField> Fields, int Method,
     IReadOnlyList<DesignerStatement> Statements)
@@ -96,17 +102,45 @@ public static class DesignerCode
                 continue;
             }
             DesignerSource? was = Read(before, designed);
-            HashSet<string> written = was is null ? [] : [.. was.Layout.Statements.Select(s => before[s.Start..s.End])];
-            List<int> changed = [.. Enumerable.Range(0, now.Statements.Count).Where(i => !written.Contains(after[now.Layout.Statements[i].Start..now.Layout.Statements[i].End]))];
+            List<string> wasTexts = was is null ? [] : [.. was.Layout.Statements.Select(s => before[s.Start..s.End])];
+            List<string> nowTexts = [.. now.Layout.Statements.Select(s => after[s.Start..s.End])];
+            HashSet<string> written = [.. wasTexts];
+            HashSet<string> writes = [.. nowTexts];
+            List<int> changed = [.. Enumerable.Range(0, now.Statements.Count).Where(i => !written.Contains(nowTexts[i]))];
             HashSet<string> making = [.. now.Statements.Where(s => s.Act == DesignerAct.Create).Select(s => s.Target)];
             List<string> gone = was is null ? [] : [.. was.Statements.Where(s => s.Act == DesignerAct.Create && !making.Contains(s.Target)).Select(s => s.Target).Distinct()];
-            if (changed.Count > 0 || gone.Count > 0)
+            // What it no longer writes, nor writes anew (its key gone too), but what went with a component it no longer makes.
+            HashSet<string> keys = [.. now.Statements.Select(DesignerKeys.Of).OfType<string>()];
+            List<DesignerStatement> dropped = was is null ? [] : [.. Enumerable.Range(0, was.Statements.Count)
+                .Where(i => !writes.Contains(wasTexts[i]) && (DesignerKeys.Of(was.Statements[i]) is not { } key || !keys.Contains(key)) && !gone.Any(g => Names(wasTexts[i], g)))
+                .Select(i => was.Statements[i])];
+            List<DesignerStatement> unhooked = [.. dropped.Where(s => s.Act == DesignerAct.Hook)];
+            string? unapplied = dropped.Any(s => s.Act != DesignerAct.Hook)
+                ? "a statement taken out of InitializeComponent is not undone in the running form"
+                : !wasTexts.Where(writes.Contains).SequenceEqual(nowTexts.Where(written.Contains))
+                    ? "statements moved in InitializeComponent (a control's place among its siblings) keep their first order in the running form"
+                    : null;
+            if (changed.Count > 0 || gone.Count > 0 || unhooked.Count > 0 || unapplied is not null)
             {
                 edits.Add(new DesignerEdit(designed, now, [.. changed.Select(i => now.Statements[i])],
-                    [.. changed.Select(i => after.AsSpan(0, now.Statements[i].At).Count('\n') + 1)], gone));
+                    [.. changed.Select(i => after.AsSpan(0, now.Statements[i].At).Count('\n') + 1)], gone) { Unhooked = unhooked, Unapplied = unapplied });
             }
         }
         return edits;
+    }
+
+    /// <summary>Whether a statement's text names a field as a whole word (this.button1, button1.Text, Controls.Add(button1)).</summary>
+    private static bool Names(string statement, string field)
+    {
+        for (int at = statement.IndexOf(field, StringComparison.Ordinal); at >= 0; at = statement.IndexOf(field, at + 1, StringComparison.Ordinal))
+        {
+            int end = at + field.Length;
+            if ((at == 0 || !SyntaxFacts.IsIdentifierPartCharacter(statement[at - 1])) && (end >= statement.Length || !SyntaxFacts.IsIdentifierPartCharacter(statement[end])))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>The classes a file's text gives an InitializeComponent of no parameters, by their full names.</summary>

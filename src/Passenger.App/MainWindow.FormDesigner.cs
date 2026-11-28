@@ -180,7 +180,7 @@ public partial class MainWindow
         FormDesignPane pane = new(design);
         Debounce typing = new(DesignSettle, design.UpdateAsync);
         EventHandler<DocumentChangedEventArgs> changed = (_, _) => typing.Restart();
-        foreach (OpenDocument open in Editors.Documents.Where(d => PathNames.Same(d.Path, files.Designer) || PathNames.Same(d.Path, files.Code)))
+        foreach (OpenDocument open in Editors.Documents.Where(d => files.Reads(d.Path)))
         {
             open.Text.Changed += changed;
         }
@@ -608,12 +608,13 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Files changed on disk: the designs reading them draw them again (an open file's change is its text's own).</summary>
+    /// <summary>Files changed on disk: the designs reading them draw them again, a .resx of the form's too (an open file's
+    /// change is its text's own).</summary>
     private void FormFilesChanged(IReadOnlyCollection<string> paths, bool every)
     {
         foreach (ShownDesign shown in designs.Values)
         {
-            if (every || paths.Any(p => PathNames.Same(p, shown.Design.Files.Designer) || PathNames.Same(p, shown.Design.Files.Code)))
+            if (every || paths.Any(shown.Design.Files.Reads))
             {
                 shown.Typing.Restart();
             }
@@ -639,29 +640,33 @@ public partial class MainWindow
     private static string? BuiltFor(IReadOnlyList<ProjectModel> projects, FormFiles files) =>
         ProjectModel.Owning(projects, files.Designer)?.Property(Passenger.Host.CarriedProperties.TargetPath) is { } built && File.Exists(built) ? built : null;
 
-    /// <summary>The namespaces a form's project's global usings bring, as its build last wrote them (its obj folder's
-    /// GlobalUsings.g.cs); none where it has written none. Read off the window's thread.</summary>
+    /// <summary>The namespaces a form's project's global usings bring: those its build last wrote (its obj folder's
+    /// GlobalUsings.g.cs, else the SDK's implicit ones where it has written none) and those its own C# files declare.
+    /// Read off the window's thread.</summary>
     private static IReadOnlyList<string> GlobalUsingsOf(IReadOnlyList<ProjectModel> projects, FormFiles files)
     {
-        if (ProjectModel.Owning(projects, files.Designer)?.Property(Passenger.Host.CarriedProperties.ProjectAssetsFile) is not { } assets
-            || Path.GetDirectoryName(assets) is not { } obj || !Directory.Exists(obj))
+        if (ProjectModel.Owning(projects, files.Designer) is not { } project)
         {
             return [];
+        }
+        IReadOnlyList<string> declared = SourceGlobalUsings.Of(project);
+        if (project.Property(Passenger.Host.CarriedProperties.ProjectAssetsFile) is not { } assets
+            || Path.GetDirectoryName(assets) is not { } obj || !Directory.Exists(obj))
+        {
+            return declared.Count == 0 ? [] : [.. FormDesign.ImplicitUsings.Union(declared, StringComparer.Ordinal)];
         }
         try
         {
             FileInfo? newest = new DirectoryInfo(obj).EnumerateFiles("*.GlobalUsings.g.cs", SearchOption.AllDirectories).MaxBy(f => f.LastWriteTimeUtc);
             if (newest is null)
             {
-                return [];
+                return declared.Count == 0 ? [] : [.. FormDesign.ImplicitUsings.Union(declared, StringComparer.Ordinal)];
             }
-            const string Lead = "global using global::";
-            return [.. File.ReadLines(newest.FullName).Select(l => l.Trim()).Where(l => l.StartsWith(Lead, StringComparison.Ordinal) && !l.Contains('='))
-                .Select(l => l[Lead.Length..].TrimEnd(';').Trim())];
+            return [.. File.ReadLines(newest.FullName).Select(SourceGlobalUsings.Named).OfType<string>().Union(declared, StringComparer.Ordinal)];
         }
         catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
         {
-            return [];
+            return declared;
         }
     }
 

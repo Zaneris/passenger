@@ -74,12 +74,13 @@ public static class WinUIApps
         return made.ToString();
     }
 
-    /// <summary>A package identity name of a project's: letters, digits, dots and hyphens alone, at most 50 of them.</summary>
+    /// <summary>A package identity name of a project's: letters, digits, dots and hyphens alone, at most 50 of them, the
+    /// project's name cut short before its unique part ever is, so two projects of one long name never share one.</summary>
     public static string IdentityOf(string name, Guid unique)
     {
-        string kept = new([.. name.Where(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-')]);
-        string made = $"{(kept.Length > 0 ? kept : "App")}.{unique:N}";
-        return made.Length <= 50 ? made : made[..50];
+        string suffix = $".{unique:N}";
+        string kept = new([.. name.Where(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-').Take(50 - suffix.Length)]);
+        return (kept.TrimEnd('.') is { Length: > 0 } head ? head : "App") + suffix;
     }
 
     private static string Project(string space, string framework, bool packaged)

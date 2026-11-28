@@ -188,7 +188,7 @@ public sealed class SolutionLaunchTests : IDisposable
         + "        { \"script\": \"build:watch\", \"package\": \"web/package.json\", \"readyWhen\": { \"line\": \"built in\" } },\n"
         + "        { \"project\": \"Api/Api.csproj\", \"launchProfile\": \"https\", \"action\": \"startWithoutDebugging\", \"readyWhen\": \"listening\", \"kept\": 1 },\n"
         + "        { \"command\": \"redis-server --port 6380\", \"folder\": \"tools\", \"environment\": { \"A\": \"1\", \"B\": 2 }, \"readyWhen\": { \"listening\": \"localhost:6380\" } }\n"
-        + "      ]\n    },\n    {\n      \"name\": \"Odd\",\n      \"parts\": [ { \"lambda\": \"x\" }, { \"command\": \"x\", \"readyWhen\": \"soon\" } ]\n    }\n  ]\n}\n";
+        + "      ]\n    },\n    {\n      \"name\": \"Odd\",\n      \"parts\": [ { \"lambda\": \"x\" }, \"step\", { \"command\": \"x\", \"readyWhen\": \"soon\" } ]\n    }\n  ]\n}\n";
 
     private void A_folders_runs_are_read_with_each_parts_kind_readiness_and_variables_and_a_part_or_format_it_cannot_read_says_why()
     {
@@ -207,7 +207,7 @@ public sealed class SolutionLaunchTests : IDisposable
         Assert.True(web[3].Command == "redis-server --port 6380" && web[3].Folder == At("tools") && web[3].Environment.Count == 2 && web[3].Environment["B"] == "2",
             "A command's folder or variables are not read as written");
         Assert.Equal(["web: install", "web: build:watch", "Api: https", "redis-server"], web.Select(p => RunsFile.NameOf(p)));
-        Assert.True(web.All(p => p.Unread is null) && runs[1].Parts.All(p => p.Unread is not null),
+        Assert.True(web.All(p => p.Unread is null) && runs[1].Parts.Count == 3 && runs[1].Parts.All(p => p.Unread is not null),
             "A part of a kind or readiness Passenger does not know is not said to be one, so its run would start something else");
         Assert.False(web.All(p => p.FitsSolutionLaunch), "A run of a script and a command is taken for one Visual Studio's file can hold");
         const string Composed = "{ \"runs\": [ { \"name\": \"Stack\", \"parts\": [ { \"compose\": [\"compose.yaml\", \"compose.dev.yaml\"], \"services\": [\"db\"] },"
@@ -235,6 +235,9 @@ public sealed class SolutionLaunchTests : IDisposable
             && changed.Contains("{ \"lambda\": \"x\" }", StringComparison.Ordinal),
             $"A changed run lost what Passenger does not model, a comment or a run it left alone:\n{changed}");
         Assert.Equal(runs[0].Parts.Select(p => p.Kind), RunsFile.Parse(changed!, root).Runs[0].Parts.Select(p => p.Kind));
+        string? renamed = RunsFile.Written(Runs, [runs[0], runs[1] with { Name = "Odder" }], root).Text;
+        Assert.True(renamed is not null && renamed.Contains("\"Odder\"", StringComparison.Ordinal) && renamed.Contains("\"step\"", StringComparison.Ordinal),
+            $"A run written back lost its part that is no object, so it would run without it:\n{renamed}");
 
         RunsFileRun made = new("Up", [new RunPart(At("Api", "Api.csproj"), ProjectLaunchAction.Start, string.Empty),
             new RunPart(string.Empty, ProjectLaunchAction.Start, string.Empty) { Kind = RunPartKind.Command, Command = "make watch", Ready = ReadyWhen.Line, ReadyText = "ready" }]);

@@ -98,6 +98,10 @@ public sealed class SqlTextTests
         {
             ("redis-cli's words: a double quote's escapes read, a single quote's taken as written", "SET k \"a b\\n\\x41\" 'c\\d'", ["SET", "k", "a b\nA", "c\\d"]),
         }, row => Assert.Equal(row.Words, RedisCommands.Words(row.Run)), row => row.Holds);
+        Cases.Each(new (string Holds, string Text, int Caret, (int, int) Word)[]
+        {
+            ("a key's word completion replaces runs to white space, its punctuation in it", "GET user:42 x", 8, (4, 11)),
+        }, row => Assert.Equal(row.Word, RedisCommands.WordAt(row.Text, row.Caret)), row => row.Holds);
         Cases.Each(new (string Holds, DatabaseKind Kind, string Sql, SqlTransaction? Transaction)[]
         {
             ("COMMIT and its words", DatabaseKind.Postgres, "commit work;", SqlTransaction.Commit),

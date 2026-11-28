@@ -4,13 +4,15 @@
        the app as built or shipped, and it answers over the socket Passenger names (Protocol.cs). It references nothing of
        the Windows App SDK's: the app's own WinUI is reached through WinUI's XAML diagnostics, whose service .NET's COM
        host hands it in the app (EnableComHosting, a COM host for one processor's apps per RuntimeIdentifier), and through
-       reflection. Built on every system for win-x64, and carried under inspector/winui/<processor>/ only by Passenger's
-       Windows builds, where WinUI runs. -->
+       reflection. Built on every system for win-x64, and carried under inspector/winui/<processor>/ (x64, arm64, x86) only
+       by Passenger's Windows builds, where WinUI runs. -->
   <PropertyGroup>
     <!-- The oldest .NET a WinUI app Passenger runs is on (CoreCLR alone), so it loads into any of them. -->
     <TargetFramework>net8.0-windows</TargetFramework>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <!-- A 32-bit WinUI app's COM host too, which Passenger's Windows builds carry beside the x64 and Arm64 ones. -->
+    <RuntimeIdentifiers>$(RuntimeIdentifiers);win-x86</RuntimeIdentifiers>
     <SelfContained>false</SelfContained>
     <EnableComHosting>true</EnableComHosting>
     <!-- The COM host comes from the host pack of its processor, which a build for one downloads. -->

@@ -190,10 +190,12 @@ public sealed record RebasePlan(string? Base, IReadOnlyList<PlannedCommit> Commi
 
     /// <summary>Git's list of steps for the plan, oldest first: a head picked (or edited) as it is, or as its twin from
     /// <paramref name="twins"/> (by its commit's hash) after a drop of the commit itself, which git then finds still
-    /// listed; each folded commit a fixup, as the head's message is the whole commit's; a dropped one a drop.</summary>
+    /// listed; each folded commit a fixup, as the head's message is the whole commit's; a dropped one a drop. Its first line,
+    /// a comment to git, names the commits it was planned from (<see cref="RebaseTodo.Planned"/>).</summary>
     public string Todo(IReadOnlyDictionary<string, string> twins)
     {
         StringBuilder todo = new();
+        todo.Append(RebaseTodo.Planned).Append(string.Concat(Commits.OrderBy(c => c.Place).Select(c => $" {c.Commit.Hash}"))).Append('\n');
         foreach (PlannedCommit step in Commits)
         {
             string hash = step.Commit.Hash;

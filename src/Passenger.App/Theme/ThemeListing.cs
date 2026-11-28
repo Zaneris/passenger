@@ -129,10 +129,11 @@ public static class ThemeListing
                 (VsCodeTaken? taken, string? why) = await VsCodeBases.FetchAsync(wanted with { Version = newest.Version }, CancellationToken.None);
                 said.Add(taken is null ? why : KeptThemes.KeepBase(source, code, name, taken.Files));
             }
-            // A file icon theme by its extension's id, as a base.
-            foreach ((ThemeSource source, string name, VsCodeBase wanted) in iconSets)
+            // A file icon theme by its extension's id, as a base: each one's kept version read before any is taken anew, as a
+            // dark and a light theme of one extension share its manifest, and the first taken would pass the second over.
+            foreach ((ThemeSource source, string name, VsCodeBase wanted, string? kept) in iconSets.Select(i =>
+                (i.Source, i.Name, i.IconTheme, VsCodeIconSets.KeptVersion(i.IconTheme, path => KeptThemes.Beside(i.Source, false, i.Name, path)))).ToList())
             {
-                string? kept = VsCodeIconSets.KeptVersion(wanted, path => KeptThemes.Beside(source, false, name, path));
                 if (wanted.Version is { } pinned && kept == pinned)
                 {
                     continue;

@@ -106,6 +106,10 @@ internal sealed class SqlAssist(AssistContext context, CodeCompletion completion
     {
         string text = context.Editor.Document.Snapshot.ToString();
         int end = context.Caret;
+        if (context.Editors.Active is { } shown && IsRedis(shown))
+        {
+            end = RedisCommands.WordAt(text, end).End;
+        }
         while (end < text.Length && NamePart(text[end]))
         {
             end++;

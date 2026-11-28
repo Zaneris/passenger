@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Languages.WinForms;
 using Passenger.Xaml.Localization;
 
@@ -13,6 +14,12 @@ public sealed record FormFiles(string Code, string Designer, string Class)
 
     /// <summary>The .resx of a culture beside its code (MainForm.fr.resx), there or not; its own for the empty culture.</summary>
     public string ResourcesOf(string culture) => culture.Length == 0 ? Resources : Path.ChangeExtension(Code, $".{culture}.resx");
+
+    /// <summary>Whether its design is read from a file: its code, its designer file, or a .resx of it, its own or a culture's.</summary>
+    public bool Reads(string path) =>
+        PathNames.Same(path, Code) || PathNames.Same(path, Designer) || PathNames.Same(path, Resources)
+        || (path.EndsWith(".resx", StringComparison.OrdinalIgnoreCase) && ResourceFiles.CultureOf(Path.GetFileNameWithoutExtension(path)) is { Length: > 0 } culture
+            && PathNames.Same(path, ResourcesOf(culture)));
 
     /// <summary>The cultures it has a .resx of beside its code, as MSBuild takes a .resx's culture from its name.</summary>
     public IReadOnlyList<string> Cultures()

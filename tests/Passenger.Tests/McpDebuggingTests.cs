@@ -222,17 +222,21 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's temporary breakpoint and one waiting for a tracepoint that holds at the loop's third turn are listed
     /// so by debug_state; the temporary one stops at the first turn and is listed no more, and the waiting one stops at the
     /// third turn alone, each stop saying how long the program ran to it (two turns' sleeps to the second); the list marked
-    /// at the first stop is read by its label at the second.</summary>
+    /// at the first stop is read by its label at the second, as is a list assigned and marked in one call; one waiting for
+    /// no breakpoint is refused and never set.</summary>
     private async Task An_agents_temporary_breakpoint_and_one_waiting_for_a_tracepoint_stop_as_they_say_and_are_listed_so()
     {
         await TakeFolderAsync();
-        Write("Program.cs", "int total = 0; List<int> seen = [];\nfor (int i = 1; i <= 3; i++)\n{\n    total += i; seen.Add(i);\n    Console.WriteLine($\"at {i}\");\n    Thread.Sleep(150);\n}\n"
+        Write("Program.cs", "int total = 0; List<int> seen = []; List<int> other = [9]; List<int> picked = [];\nfor (int i = 1; i <= 3; i++)\n{\n    total += i; seen.Add(i);\n    Console.WriteLine($\"at {i}\");\n    Thread.Sleep(150);\n}\n"
             + "Console.WriteLine($\"total {total}\");\n");
         await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
         await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 4, ["temporary"] = true });
         await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 5, ["condition"] = "i == 3", ["suspend"] = false });
         await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 6, ["waitFor"] = "Program.cs:5" });
+        CallToolResult unwaited = await Result(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 8, ["waitFor"] = "Program.cs:2" });
+        Assert.True(unwaited.IsError == true, $"breakpoint_set waiting for no breakpoint answered {Text(unwaited)}");
         JsonElement listed = await Call(client, McpTools.DebugState, new() { ["of"] = "breakpoints" });
+        Assert.True(Listed(listed, 8) is null, $"breakpoint_set refused for what it waits for left its breakpoint set: {listed}");
         Assert.True(Listed(listed, 4) is { } once && once.TryGetProperty("temporary", out JsonElement temporary) && temporary.GetBoolean()
             && Listed(listed, 6) is { } waiting && waiting.TryGetProperty("waitsFor", out JsonElement waits) && waits.GetString() == "Program.cs:5",
             $"debug_state listed the temporary breakpoint and the one waiting for Program.cs:5 as {listed}");
@@ -247,11 +251,15 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             $"debug_state of modules listed {modules}, where Sum.dll, user code with its symbols loaded, comes first and CoreLib is not user code");
         JsonElement marked = await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "seen", ["mark"] = true });
         Assert.True(marked.TryGetProperty("mark", out JsonElement label) && label.GetString() == "$1", $"debug_evaluate with mark answered {marked}, where it marks seen as $1");
+        JsonElement picked = await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "picked", ["value"] = "other", ["mark"] = true });
+        Assert.True(picked.TryGetProperty("mark", out JsonElement named) && named.GetString() == "$2", $"debug_evaluate with value and mark answered {picked}, where it marks picked, assigned other, as $2");
         listed = await Call(client, McpTools.DebugState, new() { ["of"] = "breakpoints" });
         Assert.True(Listed(listed, 4) is null, $"The temporary breakpoint was still listed once it stopped: {listed}");
         stop = await Call(client, McpTools.DebugContinue);
         Assert.Equal(("Program.cs:6:5", "3"), (stop.GetProperty("location").GetString(), Local(stop, "i")));
         Assert.Equal("3", (await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "$1.Count" })).GetProperty("value").GetString());
+        Assert.Equal(("1", "9"), ((await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "picked.Count" })).GetProperty("value").GetString(),
+            (await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "$2[0]" })).GetProperty("value").GetString()));
         string? elapsed = stop.GetProperty("elapsed").GetString();
         Assert.True(elapsed is not null && System.Text.RegularExpressions.Regex.Match(elapsed, @"^([\d.,]+) (ms|s) since the last stop$") is { Success: true } said
             && double.Parse(said.Groups[1].Value.Replace(",", "", StringComparison.Ordinal), System.Globalization.CultureInfo.InvariantCulture) * (said.Groups[2].Value == "s" ? 1000 : 1) >= 300,

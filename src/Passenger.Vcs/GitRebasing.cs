@@ -5,10 +5,18 @@ namespace Passenger.Vcs;
 
 /// <summary>Passenger as git's sequence editor for an interactive rebase it runs: git, given <see cref="Marker"/> after
 /// the program, hands it the list of steps it made (git-rebase-todo), and it writes over it the list the person
-/// planned, from the file <see cref="Variable"/> names. Every helper of git's that Passenger is shares git's environment,
-/// so the marker, never the variable alone, tells this one apart.</summary>
+/// planned, from the file <see cref="Variable"/> names, once git's list names the commits the plan was made from
+/// (<see cref="Moved"/>). Every helper of git's that Passenger is shares git's environment, so the marker, never the
+/// variable alone, tells this one apart.</summary>
 public static class RebaseTodo
 {
+    /// <summary>What a planned list's first line begins with, a comment to git: then the commits the plan was made from,
+    /// oldest first.</summary>
+    internal const string Planned = "# Passenger planned from:";
+
+    /// <summary>Why a planned rebase is not run where the branch is no longer as it was planned.</summary>
+    public const string MovedSince = "The branch moved since the rebase was planned, so it did not run: plan it again";
+
     /// <summary>The variable naming the file of the planned list of steps.</summary>
     [IdentifierHome]
     public const string Variable = "PASSENGER_REBASE_TODO";
@@ -27,7 +35,14 @@ public static class RebaseTodo
         }
         try
         {
-            AtomicFile.Write(todo, File.ReadAllBytes(planned));
+            byte[] plan = File.ReadAllBytes(planned);
+            if (Moved(File.ReadAllText(todo), Encoding.UTF8.GetString(plan)))
+            {
+                // Git ends the rebase where its editor fails, before it changes anything.
+                Console.Error.WriteLine(MovedSince);
+                return 1;
+            }
+            AtomicFile.Write(todo, plan);
             return 0;
         }
         catch (Exception unwritten) when (unwritten is IOException or UnauthorizedAccessException)
@@ -35,6 +50,25 @@ public static class RebaseTodo
             Console.Error.WriteLine($"Passenger could not write the rebase's steps: {unwritten.Message}");
             return 1;
         }
+    }
+
+    /// <summary>Whether git's own list of steps (<paramref name="listed"/>) picks other commits than those the plan was made
+    /// from (<see cref="Planned"/>), or in another order: a commit made on the branch, or one taken away, since it was planned.
+    /// Git names a commit by a prefix of its hash.</summary>
+    public static bool Moved(string listed, string planned)
+    {
+        string first = planned.Split('\n', 2)[0].TrimEnd('\r');
+        string[] meant = first.StartsWith(Planned, StringComparison.Ordinal)
+            ? first[Planned.Length..].Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : [];
+        List<string> picked = [];
+        foreach (string line in listed.Split('\n'))
+        {
+            if (line.Trim().Split(' ', 3, StringSplitOptions.RemoveEmptyEntries) is ["pick" or "p", { } commit, ..])
+            {
+                picked.Add(commit);
+            }
+        }
+        return meant.Length == 0 || picked.Count != meant.Length || picked.Zip(meant).Any(p => !p.Second.StartsWith(p.First, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>The sequence editor git runs <paramref name="program"/> as, through its shell: the program's path as one word
@@ -86,9 +120,13 @@ public sealed partial class Git
     /// (<see cref="RebaseTodo"/>, <paramref name="program"/>): the person's changes kept aside and put back at its end
     /// (--autostash), each commit signed as git's config has it through <paramref name="signer"/>, and every message the
     /// plan's, a commit made under another message picked as a twin of it (<see cref="TwinAsync"/>), so git asks for none.
-    /// It stops where git does: at an edit, or for conflicts.</summary>
+    /// It runs only on the branch as planned (<see cref="RebaseTodo.MovedSince"/>), and stops at an edit or for conflicts.</summary>
     public async Task<GitResult> InteractiveRebaseAsync(RebasePlan plan, string program, Signer? signer = null)
     {
+        if (plan.Commits.MaxBy(c => c.Place) is { } newest && await CommitOfAsync("HEAD") != newest.Commit.Hash)
+        {
+            return new GitResult(1, string.Empty, RebaseTodo.MovedSince);
+        }
         if (await MayFilterAsync() && await UnfilteredAsync(() => InteractivelyRebasedAsync(plan), plan.Base is { } upon ? [upon, "HEAD"] : ["HEAD"]) is { } unfiltered)
         {
             return unfiltered;

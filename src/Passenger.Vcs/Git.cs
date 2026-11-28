@@ -1753,6 +1753,55 @@ public sealed partial class Git
     public Task<StoredBytes?> StoredAtAsync(string revision, IReadOnlyList<string> paths) => BackgroundWork.Run(async () =>
         await StoredAsync(revision, paths, StoredRead.ReadAsync) is (true, { } read) ? read : null);
 
+    /// <summary>Whether a revision holds a symbolic link at a path (an entry of mode 120000, whose blob is the link's
+    /// target), read from the tree of the path's folder named on git's input; false where it holds none there.</summary>
+    public Task<bool> IsLinkAtAsync(string revision, string path) => BackgroundWork.Run(async () =>
+    {
+        if (!IsInside(path))
+        {
+            return false;
+        }
+        string relative = Relative(path);
+        if (relative.AsSpan().IndexOfAny('\n', '\r') >= 0)
+        {
+            // The batch takes a name a line: a name of several lines is never git's link.
+            return false;
+        }
+        string name = GitForm(relative, !Ascii.IsValid(relative) && await ComposesAsync());
+        int slash = name.LastIndexOf('/');
+        (_, byte[]? tree) = await RunAsync(Root, ["cat-file", "--batch"], WholeAsync, Encoding.UTF8.GetBytes($"{revision}:{(slash < 0 ? string.Empty : name[..slash])}\n"));
+        return ModeIn(tree ?? [], Encoding.UTF8.GetBytes(name[(slash + 1)..])) == "120000";
+    });
+
+    /// <summary>The mode of a tree's entry by its name, from the tree as git cat-file --batch gives it (its header line, then
+    /// each entry's mode, a space, its name, a NUL and its object's hash); null where the object is no tree or holds none.</summary>
+    internal static string? ModeIn(ReadOnlySpan<byte> batch, ReadOnlySpan<byte> name)
+    {
+        int header = batch.IndexOf((byte)'\n');
+        if (header < 0 || Encoding.ASCII.GetString(batch[..header]).Split(' ') is not [{ } id, "tree", { } size] || !int.TryParse(size, out int length))
+        {
+            return null;
+        }
+        // A tree holds each object's hash whole, in half as many bytes as the header's hexadecimal.
+        int hash = id.Length / 2;
+        ReadOnlySpan<byte> entries = batch.Slice(header + 1, Math.Min(length, batch.Length - header - 1));
+        while (entries.Length > 0)
+        {
+            int space = entries.IndexOf((byte)' ');
+            int end = entries.IndexOf((byte)0);
+            if (space < 0 || end < space || end + 1 + hash > entries.Length)
+            {
+                return null;
+            }
+            if (entries[(space + 1)..end].SequenceEqual(name))
+            {
+                return Encoding.ASCII.GetString(entries[..space]);
+            }
+            entries = entries[(end + 1 + hash)..];
+        }
+        return null;
+    }
+
     /// <summary>How the file at <paramref name="disk"/> differs from a revision's where either is binary, both read as they
     /// come and never held whole: the revision's at the first of <paramref name="paths"/> it has, as checking it out would
     /// write it; null where neither is.</summary>

@@ -247,9 +247,14 @@ public static partial class ContainerLabels
         }
     }
 
-    /// <summary>The words that remove containers Passenger made, with the anonymous volumes they hold (an image's VOLUME, a
-    /// <c>-v /path</c>), which nothing mounts again once their container is gone; a named volume the engine keeps.</summary>
-    public static string[] Removing(IEnumerable<string> containers) => ["rm", "-f", "-v", .. containers];
+    /// <summary>The words that remove containers Passenger made, keeping the anonymous volumes they hold (an image's VOLUME,
+    /// a database's data, a <c>-v /path</c>) on the engine as Compose's down keeps them: a person's data goes only by a choice
+    /// of theirs.</summary>
+    public static string[] Removing(IEnumerable<string> containers) => ["rm", "-f", .. containers];
+
+    /// <summary>The words that remove a container Passenger made for its own use alone, which holds nothing of the person's,
+    /// with its anonymous volumes.</summary>
+    public static string[] RemovingWhole(IEnumerable<string> containers) => ["rm", "-f", "-v", .. containers];
 
     /// <summary>The shell command that removes this process's containers and networks, for the watchdog, which runs it with
     /// its own environment: the engine the IDE's commands reach is put in it, the CLIs' variables as the IDE has them and

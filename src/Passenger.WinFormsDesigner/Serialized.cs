@@ -58,9 +58,10 @@ internal sealed record Serialized(IReadOnlyList<SerializedLine> Lines, IReadOnly
                 }
                 continue;
             }
-            if (statement is CodeAssignStatement { Left: CodePropertyReferenceExpression { PropertyName: "Enabled" or "Visible" }, Right: CodePrimitiveExpression { Value: true } })
+            if (statement is CodeAssignStatement { Left: CodePropertyReferenceExpression { PropertyName: "Enabled" or "Visible", TargetObject: var owner }, Right: CodePrimitiveExpression { Value: true } }
+                && ComponentOf(host, owner) is System.Windows.Forms.Control or System.Windows.Forms.ToolStripItem)
             {
-                // The control designers' shadows of these say a default is to be written; their designer never writes it.
+                // A control designer's shadow asks for its default; a timer's Enabled, whose default is false, is kept.
                 continue;
             }
             DesignerStatement neutral = Neutral(statement, fields);
@@ -74,6 +75,17 @@ internal sealed record Serialized(IReadOnlyList<SerializedLine> Lines, IReadOnly
         }
         return new Serialized(lines, [.. declared.Members.OfType<CodeMemberField>().Select(f => new SerializedField(f.Name, text.Field(f)))], written);
     }
+
+    /// <summary>The object a statement's target names: the root, a component by its field, or a property of either (a split
+    /// container's panel); null for anything else.</summary>
+    private static object? ComponentOf(IDesignerHost host, CodeExpression target) => target switch
+    {
+        CodeThisReferenceExpression => host.RootComponent,
+        CodeFieldReferenceExpression { TargetObject: CodeThisReferenceExpression, FieldName: var field } => host.Container.Components[field],
+        CodePropertyReferenceExpression { TargetObject: var owner, PropertyName: var property } when ComponentOf(host, owner) is { } holder =>
+            TypeDescriptor.GetProperties(holder)[property]?.GetValue(holder),
+        _ => null,
+    };
 
     /// <summary>A statement as Passenger's reader reads the same code, as far as its key needs: what it does to which
     /// component's which member, a call's components, a hook's method.</summary>

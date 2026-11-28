@@ -221,9 +221,12 @@ public partial class MainWindow
         {
             return (null, unread.Message);
         }
+        IReadOnlyList<RunConfiguration> ownBefore = [.. configurations.Own.Where(c => c.IsMultiple)];
+        bool ownChanging = own.Count > 0 || ownBefore.Count > 0;
+        // The person's own runs change in the same command as the files, so Undo puts back a run that moved between them.
+        using CommandHistory.Recording? made = changing.Count > 0 || ownChanging ? Editors.Commands.Record("Change Runs of Several Parts") : null;
         if (changing.Count > 0)
         {
-            using CommandHistory.Recording made = Editors.Commands.Record("Change Runs of Several Parts");
             string? refused = await ChangeFileAsync([.. changing.Select(c => c.File)], () =>
             {
                 // Read again as the change writes: what was open was saved first.
@@ -251,12 +254,21 @@ public partial class MainWindow
             }, made);
             if (refused is not null)
             {
-                return (null, $"The runs could not be written: {await made.TakenBackAsync(refused)}");
+                return (null, $"The runs could not be written: {await made!.TakenBackAsync(refused)}");
             }
         }
-        if (own.Count > 0 || configurations.Own.Any(c => c.IsMultiple))
+        if (ownChanging)
         {
             configurations.SetOwnRuns(own);
+            IReadOnlyList<RunConfiguration> ownAfter = [.. configurations.Own.Where(c => c.IsMultiple)];
+            if (ownAfter.Count != ownBefore.Count || ownAfter.Zip(ownBefore).Any(p => !ConfigurationEdit.Same(p.First, p.Second)))
+            {
+                made!.Also(new CommandHistory.Part("your own runs of several parts", _ => null, redo =>
+                {
+                    configurations.SetOwnRuns(redo ? ownAfter : ownBefore);
+                    return Task.FromResult<string?>(null);
+                }));
+            }
         }
         configurations.Configure(Projects);
         return (configurations.Several, null);

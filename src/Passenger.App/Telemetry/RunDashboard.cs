@@ -178,7 +178,7 @@ public sealed class RunDashboard : ITelemetryRun, IDisposable
         {
             OtlpKey = keys.OtlpKey,
         };
-        containers.StartedProject(dashboard.Compose);
+        containers.StartedProject(dashboard.Compose, engine);
         try
         {
             ChildResult up = await engine.RunAsync([.. dashboard.Compose, "up", "--detach", "--wait", "--", ContainerTelemetry.Service], TimeSpan.FromMinutes(10), cancel, runsIn);

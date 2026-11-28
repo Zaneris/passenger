@@ -2440,6 +2440,18 @@ public sealed partial class VcsTests : IDisposable
         Ui.WaitFor(() => history.Snapshot().Events.Any(e => e.Name == "Git rebase" && e.Path?.EndsWith("Five.txt", StringComparison.Ordinal) == true),
             "the dropped commit's file kept in Local History under the rebase");
         Assert.Single(history.Snapshot().Events.Where(e => e.Name == "Git rebase").Select(e => e.Set).Distinct());
+
+        // A commit made on the branch while the next plan is open: the plan does not run, and the commit stays.
+        dialog = PlanRebase(window, "Four");
+        dialog.Chosen = dialog.RowOf("Two");
+        Ui.ChooseFromMenu(Find(dialog, dialog.Rows), "Drop");
+        File.WriteAllText(Path.Combine(folder, "Six.txt"), "Six\n");
+        Git("add", "Six.txt");
+        Git("commit", "-q", "-m", "Six");
+        Ui.Click(dialog.StartButton);
+        Ui.Landed(() => window.InteractiveRebaseWindow is null && !window.Vcs.IsBusy, "the refused rebase's end");
+        Assert.Equal(RebaseTodo.MovedSince, window.Status);
+        Assert.Equal(["Six", .. shown, "First"], Git("log", "--format=%s").Split('\n', StringSplitOptions.RemoveEmptyEntries));
         window.Close();
     }
 

@@ -1525,6 +1525,26 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             Ui.WaitFor(() => window.RunConfigurationsDialog is null, () => $"the dialog to close once the runs are written ({dialog.Problem})");
             Assert.Equal(Launch, File.ReadAllText(launches));
             Assert.Equal("{\n  \"passengerRuns\": 1,\n  \"runs\": []\n}\n", File.ReadAllText(runs));
+
+            // Given a command again as the person's own, it leaves the .slnLaunch for their state; Undo puts it back there alone.
+            dialog = window.ShowRunConfigurations();
+            Assert.True(dialog.Choose("Both"));
+            Ui.Click(dialog.AddPartButton);
+            Ui.Click(Assert.IsType<ContextMenu>(dialog.PartMenu).Items.OfType<MenuItem>().Single(i => (string?)i.Header == "Command"));
+            Type(dialog.StartsTable.Rows[2].Fields["Command"], "dotnet --version");
+            dialog.SharedBox.IsChecked = false;
+            Ui.Settle();
+            Heard(window, launches, () => Ui.Click(dialog.OkButton));
+            Ui.WaitFor(() => window.RunConfigurationsDialog is null, () => $"the dialog to close once the runs are written ({dialog.Problem})");
+            Assert.True(window.Configurations.SingleOrDefault(c => c.Name == "Both") is { Shared: false, Starts.Count: 3 }, $"The run is not the person's own with its three parts: {string.Join(", ", Names(window))}");
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            window.ExplorerView.Reveal(Path.Combine(folder, "Hello", "Hello.csproj"));
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Name.StartsWith("Hello", StringComparison.Ordinal)));
+            Heard(window, launches, () => Ui.Run(window, Passenger.Editor.EditorActions.Undo));
+            Assert.Equal(Launch, File.ReadAllText(launches));
+            Ui.WaitFor(() => window.Configurations.Count(c => c.Name == "Both") == 1 && window.Configurations.Single(c => c.Name == "Both").Starts.Count == 2,
+                () => $"Undo to leave the run in Shop.slnLaunch alone, not also as the person's own ({string.Join(", ", window.Configurations.Select(c => $"{c.Name} of {c.Starts.Count}"))})");
         }
         finally
         {

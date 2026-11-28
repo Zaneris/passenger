@@ -16,7 +16,9 @@ public partial class MainWindow
     private readonly List<Uri> browsed = [];
 
     /// <summary>Ends the wait for the last launch's program to listen, once it ended or another launched.</summary>
-    private CancellationTokenSource? browserWait;
+    /// <summary>Each launch's wait to open its browser, by its name: a launch of the same name again (a restart) ends the
+    /// one before, a run's other parts never.</summary>
+    private readonly Dictionary<string, CancellationTokenSource> browserWaits = new(StringComparer.Ordinal);
 
     /// <summary>Every address the window opened in the person's browser, in order, kept since the headless platform's
     /// launcher opens nothing.</summary>
@@ -293,17 +295,17 @@ public partial class MainWindow
 
     /// <summary>Open browser after launch: the plan's browser URL opens once its program listens there (its port takes
     /// a connection), or a container's service answers HTTP there, the status adding to what it says meanwhile that it
-    /// waits, and saying what it said alone once the page opens; never once the program ended, nor for a launch that came
-    /// after it.</summary>
+    /// waits, and saying what it said alone once the page opens; never once the program ended, nor for a launch of the same
+    /// name that came after it. Each part of a run waits for its own.</summary>
     private void OpenBrowserOnceListening(LaunchPlan plan, Task ended)
     {
-        browserWait?.Cancel();
-        browserWait = null;
         if (BrowserLaunch.Address(plan.BrowserUrl) is not { } address)
         {
             return;
         }
-        CancellationTokenSource waiting = browserWait = new CancellationTokenSource();
+        string name = plan.Name;
+        browserWaits.GetValueOrDefault(name)?.Cancel();
+        CancellationTokenSource waiting = browserWaits[name] = new CancellationTokenSource();
         IdeErrors.Observe(ended.ContinueWith(_ => waiting.Cancel(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default));
         string? service = plan.BrowserService;
         TimeSpan limit = Waits.Of(BrowserLaunch.AnswerLimit);
@@ -320,9 +322,13 @@ public partial class MainWindow
             UiThread.Post(() =>
             {
                 // The wait's words give way to those before, unless anything since (a later launch's wait too) took their place.
-                if (saying is not null && ReferenceEquals(browserWait, waiting) && status.Text == saying && up != false)
+                if (saying is not null && ReferenceEquals(browserWaits.GetValueOrDefault(name), waiting) && status.Text == saying && up != false)
                 {
                     status.SayAgain(before);
+                }
+                if (ReferenceEquals(browserWaits.GetValueOrDefault(name), waiting))
+                {
+                    browserWaits.Remove(name);
                 }
                 if (up is null || waiting.IsCancellationRequested)
                 {
