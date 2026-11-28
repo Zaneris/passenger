@@ -35,7 +35,7 @@ public sealed class Signposts : IExtensionDocumentMessageHandler<SignpostsAsked,
                 counts.Add(new SignpostCount(null, null));
                 continue;
             }
-            string key = symbol.GetDocumentationCommentId() ?? symbol.ToDisplayString();
+            (ProjectId, string) key = (document.Project.Id, symbol.GetDocumentationCommentId() ?? symbol.ToDisplayString());
             IReadOnlyList<(Document Document, TextSpan Span)>? uses = null;
             if (message.Usages && !kept.Uses.TryGetValue(key, out uses))
             {
@@ -102,12 +102,13 @@ public sealed class Signposts : IExtensionDocumentMessageHandler<SignpostsAsked,
         return named;
     }
 
-    /// <summary>What one version of the solution was found to have: each symbol's uses and what inherits from it.</summary>
+    /// <summary>What one version of the solution was found to have: each symbol's uses and what inherits from it, by the
+    /// project declaring it and its id, which another project may give a symbol of its own.</summary>
     private sealed class Found
     {
-        public ConcurrentDictionary<string, IReadOnlyList<(Document Document, TextSpan Span)>> Uses { get; } = [];
+        public ConcurrentDictionary<(ProjectId, string), IReadOnlyList<(Document Document, TextSpan Span)>> Uses { get; } = [];
 
-        public ConcurrentDictionary<string, int?> Inheriting { get; } = [];
+        public ConcurrentDictionary<(ProjectId, string), int?> Inheriting { get; } = [];
     }
 
     /// <summary>What implements an interface or its member, overrides an abstract or virtual member, or derives from an

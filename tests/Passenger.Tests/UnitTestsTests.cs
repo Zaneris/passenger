@@ -393,13 +393,15 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
 
     /// <summary>Show Context Actions at an interface's name offers Create Fake into the test project that sees it, first, and at
     /// a sealed class the seam it needs beside it; the fake is made as one command of global Undo, and tests that stand it in
-    /// for the greeter's clock run green (#2087).</summary>
+    /// for the greeter's clock run green (#2087). A signpost counts the usages of its own project's type where another
+    /// project's has the same name.</summary>
     private void A_fake_made_of_a_dependency_from_show_context_actions_stands_in_for_it_in_a_test_that_runs_green()
     {
         string solution = NewFolder();
         Write(solution, "Shop/Shop.csproj", TestProjects.Library("<Nullable>enable</Nullable>", "<ImplicitUsings>enable</ImplicitUsings>"));
         Write(solution, "Shop/Greeter.cs", McpTests.ClockedGreeter);
         Write(solution, "Shop.Tests/Shop.Tests.csproj", TestProject(TestProjects.Framework).With("  <ItemGroup>\n    <ProjectReference Include=\"../Shop/Shop.csproj\" />\n  </ItemGroup>\n"));
+        Write(solution, "Shop.Tests/Diary.cs", "namespace Shop;\n\npublic sealed class Calendar\n{\n}\n\npublic static class Diary\n{\n    public static Calendar Make() => new Calendar();\n}\n");
         Write(solution, "Shop.slnx", "<Solution>\n  <Project Path=\"Shop/Shop.csproj\" />\n  <Project Path=\"Shop.Tests/Shop.Tests.csproj\" />\n</Solution>\n");
         Restore.Run(Path.Combine(solution, "Shop.slnx"));
         MainWindow window = Ui.OpenFolder(solution);
@@ -407,6 +409,15 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.OpenFile(Path.Combine(solution, "Shop", "Greeter.cs"));
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;
+
+        // The test project's own Calendar has the id of Shop's, and each signpost counts its own project's.
+        string Said(int line) => string.Join(" / ", editor.RowsAbove.Where(r => editor.Document.Snapshot.GetLineFromOffset(r.Offset) == line).SelectMany(r => r.Words).Select(w => w.Text));
+        Ui.WaitFor(() => Said(9) == "no usages", () => $"Shop's Calendar's signpost says '{Said(9)}', where nothing uses it");
+        window.OpenFile(Path.Combine(solution, "Shop.Tests", "Diary.cs"));
+        Ui.Settle();
+        Ui.WaitFor(() => Said(2) == "2 usages", () => $"Shop.Tests' own Calendar's signpost says '{Said(2)}', where its Diary uses it twice and Shop's Calendar of the same id is unused");
+        window.OpenFile(Path.Combine(solution, "Shop", "Greeter.cs"));
+        Ui.Settle();
 
         Ui.PlaceAfter(editor, "class Calen");
         Ui.Run(window, AppActions.QuickFix);
