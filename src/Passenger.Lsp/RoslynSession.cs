@@ -1061,6 +1061,11 @@ public sealed class LspDocument : IDisposable
     public async Task<Roslyn.Extension.NamedSymbol?> SymbolAtAsync(int offset, CancellationToken cancel = default) =>
         (await ExtensionAsync<Roslyn.Extension.SymbolsFound>(Roslyn.Extension.Handlers.SymbolAt, new Roslyn.Extension.Caret(PlaceOf(offset)), cancel).ConfigureAwait(false)).Symbols.FirstOrDefault();
 
+    /// <summary>The aliases the parameter list at an offset names, each with the type it stands for written whole, as the
+    /// compiler binds them: the file's own and those its project's every file takes.</summary>
+    public async Task<IReadOnlyList<Roslyn.Extension.AliasFound>> ParameterAliasesAsync(int offset, CancellationToken cancel = default) =>
+        (await ExtensionAsync<Roslyn.Extension.AliasesFound>(Roslyn.Extension.Handlers.ParameterAliases, new Roslyn.Extension.Caret(PlaceOf(offset)), cancel).ConfigureAwait(false)).Aliases;
+
     /// <summary>The uses of what the MVVM Toolkit makes of the field or method at an offset, with the names they take as it
     /// is renamed to <paramref name="name"/> (<see cref="Roslyn.Extension.ToolkitFound"/>); none for any other symbol.</summary>
     public Task<Roslyn.Extension.ToolkitFound> ToolkitRenamesAsync(int offset, string name, CancellationToken cancel = default) =>

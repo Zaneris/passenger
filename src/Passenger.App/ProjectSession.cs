@@ -206,6 +206,7 @@ public sealed class ProjectSession : IAsyncDisposable
             Folder = folder,
             Own = () => folder is null ? Reached : [folder, .. Reached],
             Server = () => CSharp?.Session,
+            ServerOf = document => CSharp?.For(document)?.Lsp,
             Reads = () => Workspace,
             HotReloadOn = () => setup.Settings().HotReloadWhileDebugging,
             X86Debugger = setup.X86Debugger,

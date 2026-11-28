@@ -51,7 +51,22 @@ public class FunctionBreakpointResolverTests
             ("Shapes<TItem>.N((int Count, string Name))", "Int32 N(System.ValueTuple`2[System.Int32,System.String])"),
         ], row => Assert.Equal([row.Item2], Members(row.Item1)))),
         ("a primary constructor binds by its parameters", () => Assert.Equal(["Void .ctor(Int32, Int32)"], Members("Pair..ctor(int, int)"))),
+        ("an alias another file declares binds as the type the server says it stands for", An_alias_another_file_declares_binds_as_the_type_the_server_says_it_stands_for),
         ("each declaration named as toggle method breakpoint names it binds in that member alone", Each_declaration_named_as_toggle_method_breakpoint_names_it_binds_in_that_member_alone));
+
+    /// <summary>A parameter typed by an alias its file never declares (a project's global using, the SDK's for a Using item) names
+    /// a type the metadata has none of, and binds nowhere, until the server's word of what it stands for is read in.</summary>
+    private static void An_alias_another_file_declares_binds_as_the_type_the_server_says_it_stands_for()
+    {
+        const string Source = "static class Overloads\n{\n    public static int M(Number value) => value;\n}\n";
+        ParsedText parsed = new(CSharpParsing.Parse(Source), TextSnapshot.From(Source));
+        int caret = Source.IndexOf("M(", StringComparison.Ordinal);
+        Assert.Empty(Members(MethodBreakpoints.At(parsed, caret)!.Value.Name));
+        MethodBreakpoints.Method named = MethodBreakpoints.At(parsed, caret, new Dictionary<string, string> { ["Number"] = "int" })!.Value;
+        Assert.Equal("Overloads.M(int)", named.Name);
+        Assert.Equal(["Int32 M(Int32)"], Members(named.Name));
+        Assert.Equal(["Int32 M(Int32)"], Members(MethodBreakpoints.At(parsed, caret, new Dictionary<string, string> { ["Number"] = "global::System.Int32" })!.Value.Name));
+    }
 
     private static void Each_declaration_named_as_toggle_method_breakpoint_names_it_binds_in_that_member_alone()
     {
