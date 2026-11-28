@@ -499,6 +499,9 @@ public static class VimMotions
         private LineSpan quotesOf = LineOf(text, from);
         private List<(int Start, int End)> quotes = Quoted(text, LineOf(text, from));
 
+        /// <summary>How many quotes stand on the place's line before each column of it, counted once it is asked.</summary>
+        private int[]? quotesBefore;
+
         public bool Counts(int p)
         {
             if (Escaped(text, p) != escaped || InCharacterQuotes(text, p))
@@ -518,12 +521,17 @@ public static class VimMotions
             {
                 return true;
             }
-            int between = 0;
-            for (int q = Math.Min(p, from) + 1; q < Math.Max(p, from); q++)
+            if (quotesBefore is null)
             {
-                between += IsQuote(text, home, q) ? 1 : 0;
+                quotesBefore = new int[home.Length + 1];
+                for (int q = home.Start; q < home.End; q++)
+                {
+                    quotesBefore[q - home.Start + 1] = quotesBefore[q - home.Start] + (IsQuote(text, home, q) ? 1 : 0);
+                }
             }
-            return between % 2 == 0;
+            int low = Math.Min(p, from) + 1 - home.Start;
+            int high = Math.Max(p, from) - home.Start;
+            return (high > low ? quotesBefore[high] - quotesBefore[low] : 0) % 2 == 0;
         }
     }
 
