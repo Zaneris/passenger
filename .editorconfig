@@ -53,3 +53,6 @@ dotnet_diagnostic.PSG0012.severity = warning
 
 [src/Passenger.App/DependencyMap/**.cs]
 dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/IlViewer/**.cs]
+dotnet_diagnostic.PSG0012.severity = warning

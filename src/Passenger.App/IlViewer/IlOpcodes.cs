@@ -5,10 +5,11 @@ using System.Reflection.Emit;
 using System.Xml;
 using System.Xml.Linq;
 using ICSharpCode.Decompiler.Documentation;
+using Passenger.Core;
 
 namespace Passenger.App.IlViewer;
 
-internal sealed record OpcodeHelp(string Name, string Description, string Detail);
+internal sealed record OpcodeHelp(string Name, Words Description, Words Detail);
 
 /// <summary>Opcode names and stack effects come from the runtime, with summaries from ILSpy's .NET XML documentation loader.</summary>
 internal static class IlOpcodes
@@ -26,15 +27,15 @@ internal static class IlOpcodes
 
     private static OpcodeHelp Describe(string name, OpCode code, string field)
     {
-        string description = Summary(field) ?? Fallback(name, code.FlowControl);
-        return new OpcodeHelp(name, description, $"Stack   pop {Count(code.StackBehaviourPop)} · push {Count(code.StackBehaviourPush)}");
+        Words description = Summary(field) is { } summary ? Words.Verbatim(summary) : Fallback(name, code.FlowControl);
+        return new OpcodeHelp(name, description, IlWords.Stack(Count(code.StackBehaviourPop), Count(code.StackBehaviourPush)));
     }
 
-    private static string Count(StackBehaviour behavior) => behavior switch
+    private static Words Count(StackBehaviour behavior) => behavior switch
     {
-        StackBehaviour.Pop0 or StackBehaviour.Push0 => "0",
-        StackBehaviour.Varpop or StackBehaviour.Varpush => "varies",
-        _ => (behavior.ToString().Count(ch => ch == '_') + 1).ToString(CultureInfo.InvariantCulture),
+        StackBehaviour.Pop0 or StackBehaviour.Push0 => Words.Verbatim("0"),
+        StackBehaviour.Varpop or StackBehaviour.Varpush => IlWords.Varies,
+        _ => Words.Verbatim((behavior.ToString().Count(ch => ch == '_') + 1).ToString(CultureInfo.InvariantCulture)),
     };
 
     private static string? Summary(string field)
@@ -60,37 +61,37 @@ internal static class IlOpcodes
         }
     }
 
-    private static string Fallback(string name, FlowControl flow) => name switch
+    private static Words Fallback(string name, FlowControl flow) => name switch
     {
-        "nop" => "Performs no operation.",
-        "add" => "Adds the top two stack values.",
-        "sub" => "Subtracts the top value from the value below it.",
-        "mul" => "Multiplies the top two stack values.",
-        "div" => "Divides the second stack value by the top value.",
-        "ldfld" => "Loads an instance field's value.",
-        "stfld" => "Stores a value in an instance field.",
-        "ldsfld" => "Loads a static field's value.",
-        "stsfld" => "Stores a value in a static field.",
-        "ldstr" => "Pushes a reference to the literal string.",
-        "ldnull" => "Pushes a null reference.",
-        "newobj" => "Creates an object by calling its constructor.",
-        "dup" => "Duplicates the value on top of the stack.",
-        "pop" => "Discards the value on top of the stack.",
-        "ret" => "Returns to the caller, with the result for a non-void method.",
-        _ when name.StartsWith("ldc.", StringComparison.Ordinal) => "Pushes a numeric constant onto the stack.",
-        _ when name.StartsWith("ldarga", StringComparison.Ordinal) => "Pushes the address of an argument.",
-        _ when name.StartsWith("ldarg", StringComparison.Ordinal) => "Pushes the value of an argument.",
-        _ when name.StartsWith("ldloca", StringComparison.Ordinal) => "Pushes the address of a local variable.",
-        _ when name.StartsWith("ldloc", StringComparison.Ordinal) => "Pushes the value of a local variable.",
-        _ when name.StartsWith("stloc", StringComparison.Ordinal) => "Stores the top stack value in a local variable.",
+        "nop" => IlWords.Nop,
+        "add" => IlWords.Add,
+        "sub" => IlWords.Sub,
+        "mul" => IlWords.Mul,
+        "div" => IlWords.Div,
+        "ldfld" => IlWords.Ldfld,
+        "stfld" => IlWords.Stfld,
+        "ldsfld" => IlWords.Ldsfld,
+        "stsfld" => IlWords.Stsfld,
+        "ldstr" => IlWords.Ldstr,
+        "ldnull" => IlWords.Ldnull,
+        "newobj" => IlWords.Newobj,
+        "dup" => IlWords.Dup,
+        "pop" => IlWords.Pop,
+        "ret" => IlWords.Ret,
+        _ when name.StartsWith("ldc.", StringComparison.Ordinal) => IlWords.Ldc,
+        _ when name.StartsWith("ldarga", StringComparison.Ordinal) => IlWords.Ldarga,
+        _ when name.StartsWith("ldarg", StringComparison.Ordinal) => IlWords.Ldarg,
+        _ when name.StartsWith("ldloca", StringComparison.Ordinal) => IlWords.Ldloca,
+        _ when name.StartsWith("ldloc", StringComparison.Ordinal) => IlWords.Ldloc,
+        _ when name.StartsWith("stloc", StringComparison.Ordinal) => IlWords.Stloc,
         _ => flow switch
         {
-            FlowControl.Call => "Invokes the specified member.",
-            FlowControl.Branch => "Transfers control to another IL offset.",
-            FlowControl.Cond_Branch => "Chooses a branch target based on the stack values.",
-            FlowControl.Throw => "Raises an exception.",
-            FlowControl.Meta => "Modifies how the next instruction is executed.",
-            _ => string.Empty,
+            FlowControl.Call => IlWords.Call,
+            FlowControl.Branch => IlWords.Branch,
+            FlowControl.Cond_Branch => IlWords.CondBranch,
+            FlowControl.Throw => IlWords.Throw,
+            FlowControl.Meta => IlWords.Meta,
+            _ => Words.Verbatim(string.Empty),
         },
     };
 }

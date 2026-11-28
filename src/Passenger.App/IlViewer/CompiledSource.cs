@@ -29,7 +29,7 @@ internal readonly record struct CompiledSequencePoint(TextPosition Start, TextPo
 
 /// <summary>A source file's methods as emitted by the build, located through the matching portable PDB.</summary>
 internal sealed record CompiledSource(string Text, IReadOnlyList<CompiledSection> Sections,
-    IReadOnlyList<CompiledSequencePoint> SequencePoints, InstructionColours? Colours = null, string? Message = null,
+    IReadOnlyList<CompiledSequencePoint> SequencePoints, InstructionColours? Colours = null, Words? Message = null,
     TextLink[]? Links = null)
 {
     private static readonly Guid Sha1 = new("ff1816ec-aa5e-4d10-87f7-6f4963833460");
@@ -68,7 +68,7 @@ internal sealed record CompiledSource(string Text, IReadOnlyList<CompiledSection
     {
         if (!File.Exists(request.Assembly))
         {
-            return Say($"Build the project to see the compiled code for {Path.GetFileName(request.Source)}.");
+            return Say(IlWords.NeedsBuild(Words.Verbatim(Path.GetFileName(request.Source))));
         }
         try
         {
@@ -76,7 +76,7 @@ internal sealed record CompiledSource(string Text, IReadOnlyList<CompiledSection
             if (!image.Reader.TryOpenAssociatedPortablePdb(request.Assembly, OpenShared, out MetadataReaderProvider? provider, out _)
                 || provider is null)
             {
-                return Say("This build has no matching portable PDB. Build with portable or embedded debug information.");
+                return Say(IlWords.NoPdb);
             }
             using (provider)
             {
@@ -86,7 +86,7 @@ internal sealed record CompiledSource(string Text, IReadOnlyList<CompiledSection
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or BadImageFormatException
             or InvalidOperationException or MetadataFileNotSupportedException or DecompilerException)
         {
-            return Say($"Could not read the compiled code. {error.Message}");
+            return Say(IlWords.Unread(Words.Verbatim(error.Message)));
         }
     }
 
@@ -100,7 +100,7 @@ internal sealed record CompiledSource(string Text, IReadOnlyList<CompiledSection
         MethodSource[] methods = [.. Methods(symbols, documents, cancel).OrderBy(method => method.FirstLine)];
         if (methods.Length == 0)
         {
-            return Say($"No compiled methods map to {Path.GetFileName(request.Source)} in this build.");
+            return Say(IlWords.NoMethods(Words.Verbatim(Path.GetFileName(request.Source))));
         }
 
         bool sourceMatchesBuild = documents.Any(handle => MatchesChecksum(symbols, handle, request.Source));
@@ -243,7 +243,7 @@ internal sealed record CompiledSource(string Text, IReadOnlyList<CompiledSection
         return new CSharpDecompiler(image, resolver, settings) { CancellationToken = cancel };
     }
 
-    private static CompiledSource Say(string message) => new(string.Empty, [], [], Message: message);
+    private static CompiledSource Say(Words message) => new(string.Empty, [], [], Message: message);
 
     private readonly record struct MethodSource(MethodDefinitionHandle Handle, MethodDefinitionHandle Kickoff,
         IReadOnlyList<(SequencePoint Point, int EndOffset)> Points)

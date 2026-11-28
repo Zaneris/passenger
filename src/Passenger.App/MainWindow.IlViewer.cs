@@ -76,7 +76,7 @@ public partial class MainWindow
         }
         else
         {
-            Say($"Could not open {symbol.Name}. Try refreshing Compiled Code.");
+            Say(IlViewer.IlWords.CouldNotOpen(Words.Verbatim(symbol.Name)));
         }
     }
 
@@ -119,7 +119,7 @@ public partial class MainWindow
         }
 
         OpenDocument? document = Editors.Active;
-        (CompiledRequest? request, string? reason) = IlRequestFor(document, pane.Mode);
+        (CompiledRequest? request, Words? reason) = IlRequestFor(document, pane.Mode);
         if (request is not null && request == ilRequest && !refresh)
         {
             FollowIlCaret();
@@ -131,7 +131,7 @@ public partial class MainWindow
         ilRequest = request;
         if (request is not null)
         {
-            pane.Say("Reading compiled code…", Path.GetFileName(request.Source));
+            pane.Say(IlViewer.IlWords.Reading, Path.GetFileName(request.Source));
             IdeErrors.Observe(ReadCompiledAsync(cancel => ReadIlAsync(pane, request, document!.Text.Snapshot, cancel)));
         }
         else if (reason is not null)
@@ -160,22 +160,22 @@ public partial class MainWindow
         }
     }
 
-    private (CompiledRequest? Request, string? Message) IlRequestFor(OpenDocument? document, CompiledView mode)
+    private (CompiledRequest? Request, Words? Message) IlRequestFor(OpenDocument? document, CompiledView mode)
     {
         if (document is null || document.Language != Language.CSharp)
         {
-            return (null, "Open a C# file to see its compiled code.");
+            return (null, IlViewer.IlWords.NotCSharp);
         }
         string? context = document.ProjectContext;
         ProjectModel? project = CompilationSymbols.Named(session.Projects, document.Path, context) ?? session.ProjectOf(document.Path);
         if (project is null)
         {
-            return (null, "Open a C# file that belongs to a loaded project.");
+            return (null, IlViewer.IlWords.NoProject);
         }
         string? framework = (context is null ? null : ProjectContext.FrameworkOf(context)) ?? session.Frameworks.Of(project);
         string? target = ProjectSession.BuildOutputOf(project, framework);
         return string.IsNullOrEmpty(target)
-            ? (null, "Waiting for the project to provide its build output path.")
+            ? (null, IlViewer.IlWords.NoOutputPath)
             : (new CompiledRequest(document.Path, Path.GetFullPath(target, project.Folder), mode), null);
     }
 

@@ -36,7 +36,7 @@ internal sealed class IlViewerPane : UserControl
 
     public IlViewerPane(Action changeMode, Action<string> request, Action<CompiledSymbol> navigate)
     {
-        AutomationProperties.SetName(output, "Compiled code");
+        ShownWords.Set(output, AutomationProperties.NameProperty, IlWords.CompiledCode);
         ToolTip.SetPlacement(output, PlacementMode.Pointer);
         output.Hovered += (_, hover) => ShowOpcodeTip(hover.Offset);
         output.HoverEnded += (_, _) => CloseOpcodeTip();
@@ -49,11 +49,11 @@ internal sealed class IlViewerPane : UserControl
                 navigate(symbol);
             }
         };
-        modes.Add(CompiledView.Il, "IL", "IlViewerIl");
-        modes.Add(CompiledView.LowLevelCSharp, "Low-Level C#", "IlViewerCSharp");
+        modes.Add(CompiledView.Il, IlWords.Il, "IlViewerIl");
+        modes.Add(CompiledView.LowLevelCSharp, IlWords.LowLevelCSharp, "IlViewerCSharp");
         modes.Choice = CompiledView.Il;
         modes.Chosen += (_, _) => changeMode();
-        Button reload = ToolButtons.Of(AppActions.IlViewerRefresh, IconKeys.Rerun, "Refresh compiled code", request);
+        Button reload = ToolButtons.Of(AppActions.IlViewerRefresh, IconKeys.Rerun, IlWords.Refresh, request);
         ToolFlow bar = new()
         {
             Margin = new Thickness(Gaps.Small, Gaps.Hair),
@@ -82,12 +82,12 @@ internal sealed class IlViewerPane : UserControl
         return new ArraySegment<TextLink>(links, start, end - start);
     }
 
-    public void Say(string message, string? file = null) => Render(file, message);
+    public void Say(Words message, string? file = null) => Render(file, message);
 
     public void Show(CompiledRequest request, CompiledSource result) =>
         Render(Path.GetFileName(request.Source), result.Message, result, $"{request.Source}\n{request.Assembly}");
 
-    private void Render(string? caption, string? message, CompiledSource? result = null, string? captionTip = null)
+    private void Render(string? caption, Words? message, CompiledSource? result = null, string? captionTip = null)
     {
         CloseOpcodeTip();
         highlighted = null;
@@ -96,7 +96,7 @@ internal sealed class IlViewerPane : UserControl
         source.Text = caption;
         source.IsVisible = caption is not null;
         ToolTip.SetTip(source, hasCode ? captionTip ?? caption : null);
-        empty.Text = message;
+        ShownWords.Set(empty, TextBlock.TextProperty, message);
         empty.IsVisible = !hasCode;
         output.IsVisible = hasCode;
 
@@ -145,11 +145,11 @@ internal sealed class IlViewerPane : UserControl
                 new TextBlock { Classes = { StyleClasses.Code, StyleClasses.Strong }, Text = opcode.Name },
                 new TextBlock
                 {
-                    Text = opcode.Description,
+                    [ShownWords.TextProperty] = opcode.Description,
                     TextWrapping = TextWrapping.Wrap,
-                    IsVisible = opcode.Description.Length > 0,
+                    IsVisible = !opcode.Description.IsEmpty,
                 },
-                new TextBlock { Classes = { StyleClasses.Caption, StyleClasses.Muted }, Text = opcode.Detail, TextWrapping = TextWrapping.Wrap },
+                new TextBlock { Classes = { StyleClasses.Caption, StyleClasses.Muted }, [ShownWords.TextProperty] = opcode.Detail, TextWrapping = TextWrapping.Wrap },
             },
         };
         ToolTip.SetTip(output, tip);
