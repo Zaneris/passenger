@@ -981,8 +981,8 @@ public static class VimMotions
                 if (MacroStart(text, last, sentence) && LineOf(text, sentence) is var macroLine && text.GetLine(macroLine.Line + 1).Start is var below
                     && WhiteEnd(text, last, sentence, below) is var linesWhite && WrittenIn(text, below, linesWhite) && text[below] is not (' ' or '\t'))
                 {
-                    // A macro line after the white is a sentence whose white, an unindented next line's sentence, goes with it.
-                    (to, next, toEmpty) = (linesWhite, linesWhite, false);
+                    // A macro line after the white is a sentence whose white, an unindented next line's sentence without the white after it, goes with it.
+                    (to, next, toEmpty) = (MacroWhiteText(text, below, linesWhite), linesWhite, false);
                     continue;
                 }
                 LineSpan sentenceLine = LineOf(text, sentence);
@@ -1031,9 +1031,14 @@ public static class VimMotions
                     (to, next, toEmpty) = (textUntil, after, false);
                     continue;
                 }
-                if (!closes && i < n - 1 && textUntil == until.Start && until.Line > sentenceLine.Line && until.Line < last && MacroLine(text, until.Line))
+                if (!closes && i < n - 1 && textUntil == until.Start && until.Line > sentenceLine.Line && MacroLine(text, until.Line)
+                    && (until.Line < last || MacroStart(text, last, sentence)))
                 {
-                    // Counted on to a macro line below, the sentence ends at its line's end, the macro line taken next with the break before it.
+                    // Counted on to a macro line below, the sentence ends at its line's end, the macro line taken next with the break before it; one ending the text, after another, is none.
+                    if (until.Line == last)
+                    {
+                        return new VimSpan(from, MacroWhiteText(text, text.GetLineStart(until.Line - 1), text.GetLine(until.Line - 1).End), false);
+                    }
                     (to, next, toEmpty) = (text.GetLine(until.Line - 1).End, textUntil, false);
                     continue;
                 }
@@ -1105,6 +1110,27 @@ public static class VimMotions
             from = WhiteBefore(text, blankFrom);
         }
         return new VimSpan(from, Math.Max(from, to), false);
+    }
+
+    /// <summary>Where the sentence a macro line's white holds, from <paramref name="start"/> to before <paramref name="white"/>,
+    /// ends: before the blanks and breaks after it, and where it has no end mark, before a last word of one character after
+    /// blanks, which as leaves out.</summary>
+    private static int MacroWhiteText(TextSnapshot text, int start, int white)
+    {
+        int end = white;
+        while (end > start && text[end - 1] is ' ' or '\t' or '\n' or '\r')
+        {
+            end--;
+        }
+        if (!EndsWithMark(text, start, end) && end - 2 > start && text[end - 2] is ' ' or '\t')
+        {
+            end -= 2;
+            while (end > start && text[end - 1] is ' ' or '\t')
+            {
+                end--;
+            }
+        }
+        return end;
     }
 
     /// <summary>The macro line a place is on, short of the last line; null on any other.</summary>
