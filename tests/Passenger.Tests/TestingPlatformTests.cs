@@ -224,8 +224,8 @@ public sealed class TestingPlatformSettingsTests : TestingPlatformFolders
 }
 
 /// <summary>Coverage measured as a run of tests runs, a step of <see cref="TestingPlatformTests"/>' flow: a VSTest project's
-/// tests through Coverlet's collector and a platform project's under Coverlet's console, both over one library, whose
-/// branches the two runs take together.</summary>
+/// tests through Coverlet's collector and a platform project's under Coverlet's console over a copy of its output, both over
+/// one library, whose branches the two runs take together.</summary>
 public sealed class TestingPlatformCoverageTests : TestingPlatformFolders
 {
     /// <summary>The library both projects test: a method each runs, one whose two branches each runs one of and whose last
@@ -393,6 +393,13 @@ public sealed class TestingPlatformCoverageTests : TestingPlatformFolders
         Assert.True(window.Perform(AppActions.ClearCoverage));
         Assert.Null(gutter.Coverage.Lines);
         Assert.Empty(view.Rows);
+
+        // Coverlet measures a copy of the platform project's output, so a run stopped partway leaves none of the build's instrumented.
+        string built = Directory.EnumerateFiles(Path.Combine(solution, "Store.Tests", "bin"), "Shapes.dll", SearchOption.AllDirectories).Single();
+        FileStamp? before = FileStamp.Of(built);
+        Assert.True(window.Perform(AppActions.CoverAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy && window.Tests.Coverage is not null, () => $"the second run with coverage: {window.BottomPanel.Tests.Status}", TimeSpan.FromSeconds(300));
+        Assert.True(FileStamp.Of(built) == before, "The run with coverage wrote the platform project's built Shapes.dll, where Coverlet measures a copy of it");
         window.Close();
     }
 }
