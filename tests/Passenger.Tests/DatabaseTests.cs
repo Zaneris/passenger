@@ -299,6 +299,17 @@ public sealed class DatabaseTests
                 Ui.ClickButton(asked, "Cancel");
                 Ui.WaitFor(() => sql.Said == "Not run.", () => sql.Said);
 
+                // Each statement's numbered places are its own, SQLite refusing one whose first place is never bound.
+                Replace(window, "SELECT Name FROM Products WHERE Id = ?;\nSELECT Name FROM Products WHERE Id = ?5;");
+                window.EditorArea.CodeEditor.Selections = SelectionSet.Single(0);
+                Assert.True(window.Perform(AppActions.DatabaseRunFile), "Run SQL File did not run");
+                asked = Confirm(window);
+                asked.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "SqlParameter0").Text = "3";
+                asked.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "SqlParameter1").Text = "6";
+                Ui.ClickButton(asked, "Run");
+                Ui.WaitFor(() => !sql.Running && sql.Results.Count == 2, () => sql.Said);
+                Assert.Equal(["Product 3", "Product 6"], sql.Results.Select(r => r.Error ?? r.Sets[0].Cell(0, 0)));
+
                 Replace(window, "UPDATE Products SET Note = 'one' WHERE Id = 3;\nSELECT Note FROM Products WHERE Id = 3;\nSELECT * FROM Nope;\nUPDATE Products SET Note = 'never' WHERE Id = 3;");
                 window.EditorArea.CodeEditor.Selections = SelectionSet.Single(0);
                 Assert.True(window.Perform(AppActions.DatabaseRunFile), "Run SQL File did not run");

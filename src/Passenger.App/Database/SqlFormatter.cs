@@ -450,7 +450,7 @@ public static class SqlFormatter
             }
             else
             {
-                i += Operator(sql, i);
+                i += Operator(sql, i, kind);
                 kindOf = Kind.Symbol;
             }
             pieces.Add(new Piece(kindOf, sql[start..i], start, i, breaks));
@@ -459,10 +459,40 @@ public static class SqlFormatter
         return pieces;
     }
 
-    private static readonly string[] Operators = ["->>", "#>>", "<=>", "::", "<=", ">=", "<>", "!=", "||", "->", "#>", ":=", "=>", "@>", "<@", "&&", "**", "!~*", "~*", "!~"];
+    /// <summary>The operators of more than one character the databases read whole, the longest first: SQLite's ==, the shifts,
+    /// SQL Server's compound assignments.</summary>
+    private static readonly string[] Operators =
+    [
+        "->>", "#>>", "<=>", "!~*", "::", "<=", ">=", "<>", "!=", "==", "<<", ">>", "||", "->", "#>", ":=", "=>", "@>", "<@", "&&", "**", "~*", "!~",
+        "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=",
+    ];
 
-    private static int Operator(string sql, int at)
+    /// <summary>The characters PostgreSQL's lexer reads an operator of, and those that let one end in + or -.</summary>
+    private const string PostgresOperator = "+-*/<>=~!@#%^&|`?";
+
+    private const string EndsInSign = "~!@#%^&|`?";
+
+    /// <summary>How long the operator at <paramref name="at"/> is: PostgreSQL's and DuckDB's as their lexer reads one (the
+    /// longest run of its characters, short of a comment's start, a + or - at its end its own unless the run holds one of
+    /// <see cref="EndsInSign"/>), every other database's the longest it knows, else one character.</summary>
+    private static int Operator(string sql, int at, DatabaseKind kind)
     {
+        if ((DatabaseKinds.SpeaksPostgres(kind) || kind == DatabaseKind.DuckDb) && PostgresOperator.Contains(sql[at], StringComparison.Ordinal))
+        {
+            int end = at;
+            while (end < sql.Length && PostgresOperator.Contains(sql[end], StringComparison.Ordinal)
+                && !(end + 1 < sql.Length && (sql[end] == '-' && sql[end + 1] == '-' || sql[end] == '/' && sql[end + 1] == '*')))
+            {
+                end++;
+            }
+            end = Math.Max(end, at + 1);
+            bool signed = sql.AsSpan(at, end - at).IndexOfAny(EndsInSign) >= 0;
+            while (end > at + 1 && sql[end - 1] is '+' or '-' && !signed)
+            {
+                end--;
+            }
+            return end - at;
+        }
         foreach (string op in Operators)
         {
             if (string.CompareOrdinal(sql, at, op, 0, op.Length) == 0)

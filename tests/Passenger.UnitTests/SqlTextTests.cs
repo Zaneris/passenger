@@ -119,7 +119,14 @@ public sealed class SqlTextTests
             ("SQLite's ?, ?NNN, :name, @name and $name, none in a comment", DatabaseKind.Sqlite,
                 ["SELECT ?, ?5, :a, @b, $c FROM t -- :no"], [":a", "@b", "$c", "?1", "?5"]),
             ("a routine's definition declares its own", DatabaseKind.SqlServer, ["CREATE PROCEDURE p @id int AS SELECT @id"], []),
+            ("SQL Server's DECLAREd variable lives through its GO batch alone", DatabaseKind.SqlServer, ["DECLARE @x int = 1; SELECT @x", "SELECT @x"], ["@x"]),
         }, row => Assert.Equal(row.Asked, SqlParameters.Asked(SqlParameters.Of(row.Runs, row.Kind))), row => row.Holds);
+        Cases.Each(new (string Holds, string[] Runs, string[] Places)[]
+        {
+            ("SQLite's numbered places are each run's own from its first, a name taking its place in turn, so none is skipped or shared",
+                ["SELECT ?", "SELECT :a, ?, ?5, ?, ?5"], ["?1 at ?1", "?2 at ?2, ?5 at ?3, ?3 at ?4"]),
+        }, row => Assert.Equal(row.Places, SqlParameters.Of(row.Runs, DatabaseKind.Sqlite).Select(found => string.Join(", ", SqlParameters.Places(found).Select(p => $"{p.Key} at {p.Value}")))),
+            row => row.Holds);
         Cases.Each(new (string Holds, DatabaseKind Kind, string Written, object Value)[]
         {
             ("NULL is no value", DatabaseKind.MySql, " null ", DBNull.Value),
@@ -150,6 +157,14 @@ public sealed class SqlTextTests
             ("a schema's table named whole, quoted", DatabaseKind.Postgres,
                 "ALTER TABLE \"public\".\"products\" ADD COLUMN \"price\" numeric(6,2);\nCREATE VIEW \"public\".\"cheap\" AS SELECT products.id FROM products WHERE products.price < 3 AND price > 1", []),
         }, row => Assert.Equal(row.Marked, SqlChecks.Of(row.Sql, row.Kind, row.Kind == DatabaseKind.Postgres ? served : shop).Select(p => row.Sql[p.Start..p.End])), row => row.Holds);
+        SqlCatalog schemas = new([new SqlTableInfo("other", "orders", [("id", "integer")]), new SqlTableInfo("other", "items", [("id", "integer")]),
+            new SqlTableInfo("public", "orders", [("id", "integer")])]);
+        Cases.Each(new (string Holds, string? Default, string[] Inserts)[]
+        {
+            ("the session's schema's table written bare, another schema's of its name with its schema, both offered", "public", ["other.orders", "orders"]),
+            ("where the session says no schema of several, each table written with its own", null, ["other.orders", "public.orders"]),
+        }, row => Assert.Equal(row.Inserts, SqlCompletions.At("SELECT * FROM ord", 17, DatabaseKind.Postgres, schemas with { Default = row.Default }).Items
+            .Where(i => i is { Kind: SqlCompletions.Kind.Table, Label: "orders" }).Select(i => i.Insert)), row => row.Holds);
         Cases.Each(new (string Holds, Func<PlanStep> Read, string[] Steps, string? Costliest)[]
         {
             ("PostgreSQL's JSON, a join's type with its node's, each step's cost its own less its steps'", () => SqlPlans.FromPostgres("""
@@ -215,6 +230,9 @@ public sealed class SqlTextTests
                 "INSERT INTO t (a, b)\nVALUES (1, 'x'),\n       (2, 'y');\nDELETE FROM t\nWHERE a IN (\n    SELECT a\n    FROM u\n    WHERE b = -1\n);"),
             ("a table's columns one to a line", DatabaseKind.Sqlite, "create table t (id integer primary key, name text not null, price decimal(6,2))",
                 "CREATE TABLE t (\n    id integer PRIMARY KEY,\n    name text NOT NULL,\n    price decimal(6, 2)\n)"),
+            ("an operator of several characters kept whole, SQLite's == and the shifts", DatabaseKind.Sqlite, "select 4<<1, 8>>1 where 1==1", "SELECT 4 << 1,\n       8 >> 1\nWHERE 1 == 1"),
+            ("PostgreSQL's operators read as its lexer reads them, a sign after one its number's", DatabaseKind.Postgres, "select a<<=b, c @-d where e=-1 and f<->g",
+                "SELECT a <<= b,\n       c @- d\nWHERE e = -1\n    AND f <-> g"),
         }, row =>
         {
             Assert.Equal(row.Laid, SqlFormatter.Format(row.Sql, row.Kind));

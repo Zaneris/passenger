@@ -623,8 +623,19 @@ internal static partial class DatabaseClient
             _ => "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns WHERE table_schema <> 'INFORMATION_SCHEMA' ORDER BY 1, 2, ordinal_position",
         };
         DatabaseRows rows = await ReadAsync(connection, sql, [], cancel, limit: 50000);
+        // The schema a name with no schema is read in, as the session reads it: the first of PostgreSQL's search path that is there.
+        string? own = source.Kind switch
+        {
+            DatabaseKind.Sqlite => string.Empty,
+            DatabaseKind.Postgres or DatabaseKind.Redshift or DatabaseKind.DuckDb => "SELECT current_schema()",
+            DatabaseKind.SqlServer => "SELECT SCHEMA_NAME()",
+            DatabaseKind.MySql => "SELECT DATABASE()",
+            DatabaseKind.ClickHouse => "SELECT currentDatabase()",
+            _ => "SELECT CURRENT_SCHEMA()",
+        } is { Length: > 0 } asked ? (await ReadAsync(connection, asked, [], cancel, limit: 1)).Rows is [[{ } value, ..], ..] && value is not DBNull ? Text(value) : null
+            : string.Empty;
         return new SqlCatalog([.. rows.Rows.GroupBy(r => (Schema: Text(r[0]), Table: Text(r[1])))
-            .Select(g => new SqlTableInfo(g.Key.Schema, g.Key.Table, [.. g.Select(r => (Text(r[2]), Text(r[3])))]))]);
+            .Select(g => new SqlTableInfo(g.Key.Schema, g.Key.Table, [.. g.Select(r => (Text(r[2]), Text(r[3])))]))], own);
 
         static string Text(object? value) => Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
     }
@@ -719,7 +730,8 @@ internal static partial class DatabaseClient
     }
 
     /// <summary>A run with its parameters given the values asked, as its driver binds them: by name, a place's in its
-    /// order with no name (PostgreSQL's $n, MySQL's ?), SQLite's bare ? written as its number, which SQLite binds by.</summary>
+    /// order with no name (PostgreSQL's $n, MySQL's ?), SQLite's ? and ?NNN written as the number of their place in this
+    /// run alone, each place from the first taken (<see cref="SqlParameters.Places"/>), which SQLite binds by.</summary>
     internal static string Bind(DbCommand command, string run, IReadOnlyList<SqlParameter> found, IReadOnlyDictionary<string, string> values, DatabaseKind kind)
     {
         if (found.Count == 0)
@@ -739,13 +751,14 @@ internal static partial class DatabaseClient
             return run;
         }
         string sql = run;
-        foreach (SqlParameter parameter in found.Where(p => p.Name.Length > 1 && p.Name[0] == '?').Reverse())
+        Dictionary<string, string> numbered = kind == DatabaseKind.Sqlite ? SqlParameters.Places(found) : [];
+        foreach (SqlParameter parameter in found.Where(p => numbered.ContainsKey(p.Name)).Reverse())
         {
-            sql = sql[..parameter.Start] + parameter.Name + sql[parameter.End..];
+            sql = sql[..parameter.Start] + numbered[parameter.Name] + sql[parameter.End..];
         }
         foreach (string name in found.Select(p => p.Name).Distinct(StringComparer.Ordinal))
         {
-            command.Parameters.Add(Made(command, name, values.GetValueOrDefault(name, "NULL"), kind));
+            command.Parameters.Add(Made(command, numbered.GetValueOrDefault(name, name), values.GetValueOrDefault(name, "NULL"), kind));
         }
         return sql;
     }
