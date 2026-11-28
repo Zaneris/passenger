@@ -209,7 +209,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             File.WriteAllText(Path.Combine(folder, "Web", "Message.cs"), "public static class Message\n{\n    public const string Text = \"web 2\";\n}\n");
             File.WriteAllText(Path.Combine(engine, "fail-restart"), string.Empty);
             Assert.Equal($"{Name}'s services did not restart: docker compose restart ended with exit code 1",
-                Ui.Await(window.Builds.RerunAsync(), "the Rerun whose restart fails", TimeSpan.FromMinutes(3)));
+                Ui.Await(window.Builds.RerunAsync(), "the Rerun whose restart fails", TimeSpan.FromMinutes(3))?.English);
             Assert.False(File.Exists(Path.Combine(engine, "fail-restart")), "The Rerun did not ask the engine to restart web");
             Assert.Equal("web 1", Served(window, project, "web"));
 
@@ -1277,7 +1277,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         try
         {
             Assert.Equal("None starts nothing: every service it would start is marked Don't start (Run > Edit Configurations)",
-                Ui.Await(window.RunAsync(), "Run to refuse", TimeSpan.FromMinutes(2)));
+                Ui.Await(window.RunAsync(), "Run to refuse", TimeSpan.FromMinutes(2))?.English);
             Assert.Equal(string.Empty, Docker.Run("ps", "-aq", "--filter", $"label=com.docker.compose.project={project}"));
         }
         finally
@@ -1422,7 +1422,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
                 $"The run took {project}-cache-1 from the other window's run asking nothing: {(started.IsCompleted ? started.Result : null)}");
             Press(DialogButtonsTests.Check(taking.ReplaceQuestion!).CancelButton);
             Assert.Equal($"Compose: compose.yaml was not run: {project}-cache-1 of {project}, which Passenger did not make for this folder, were left as they are",
-                Ui.Await(started, "Run to end once Cancel was answered", TimeSpan.FromMinutes(1)));
+                Ui.Await(started, "Run to end once Cancel was answered", TimeSpan.FromMinutes(1))?.English);
             Assert.Equal(theirs, Container(project, "cache"));
             Assert.Equal("running", Docker.State(theirs));
         }

@@ -169,7 +169,7 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
             OwnEnvironment.Set(EngineVariables.DockerConfig, had);
             Assert.Equal(BuildStatus.Refused, ended.Status);
             Assert.Equal($"Shipped (Pushed) was not pushed: No docker login for {registry.Host} was found in {PathNames.Shown(config, null)}: "
-                + $"run docker login {registry.Host} in a terminal, then publish again", ended.Message);
+                + $"run docker login {registry.Host} in a terminal, then publish again", ended.Message.English);
             Assert.False(window.IsBuilding, "The refused push started a build");
             Assert.Equal(["GET /v2/"], registry.Requests);
         }
@@ -201,7 +201,7 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
             OwnEnvironment.Set(EngineVariables.DockerConfig, had);
             Assert.True(ended.Succeeded, $"The push was not taken: {ended.Message}\n{string.Join('\n', ended.Output)}\nThe registry was asked: {string.Join(", ", registry.Requests)}");
             Assert.Equal($"{registry.Host}/pushed:t1", ended.Image);
-            Assert.Equal($"Published Shipped (Pushed): pushed the image {registry.Host}/pushed:t1", ended.Message);
+            Assert.Equal($"Published Shipped (Pushed): pushed the image {registry.Host}/pushed:t1", ended.Message.English);
             Assert.Contains("/v2/pushed/manifests/t1", registry.Pushed);
         }
         finally

@@ -151,7 +151,20 @@ internal static class Rules
             + "where Words go or to a control's words would stay English, and Words joined into a string are said in one "
             + "language and break the sentence a translation keeps whole, as Words said in one language and made Words again keep "
             + "that language for every reader. Turned on folder by folder in .editorconfig as "
-            + "each area's words move into resources.");
+            + "each area's words move into resources; a sweep's passenger_words_sweep there (messages, verbatim) asks for an "
+            + "exception's message made Words and any other string made Words as it is.");
+
+    public static readonly DiagnosticDescriptor WordsComparedWithString = new(
+        "PSG0013",
+        "Words are compared with a string",
+        "{0} compares Words with a string: it holds only while the Words are verbatim, so compare their English (.English), or Words made as they are",
+        Category,
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "A string compared with Words is made Words (verbatim) or compared as an object, so the check compiles "
+            + "and holds only while the Words compared are verbatim too: once they are a resource's, it fails, and only when "
+            + "run. A check of what Words say compares their English; one of which words they are compares Words made the "
+            + "same way.");
 
     public static readonly DiagnosticDescriptor KeysUnread = new(
         "PSG9001",
