@@ -30,6 +30,25 @@ public sealed partial class CodeEditor
 
     public void SetFoldRegions(IReadOnlyList<FoldRegion> regions) => decorations.SetFoldRegions(regions);
 
+    /// <summary>Whether this editor itself is setting which regions fold (a key, a chevron, a caret landing in one, a line
+    /// moved): the view keeps its height then, where regions set from outside keep its place (<see cref="KeepPlace"/>).</summary>
+    private bool foldingHere;
+
+    /// <summary>Sets the regions as this editor's own act, the place a GoTo put the caret on no longer kept.</summary>
+    private void SetOwnFolds(IReadOnlyList<FoldRegion> regions)
+    {
+        placed = null;
+        foldingHere = true;
+        try
+        {
+            decorations.SetFoldRegions(regions);
+        }
+        finally
+        {
+            foldingHere = false;
+        }
+    }
+
     /// <summary>The regions in lines for the text as it stands.</summary>
     private FoldLines Folding
     {
@@ -184,7 +203,7 @@ public sealed partial class CodeEditor
         {
             return;
         }
-        decorations.SetFoldRegions(next);
+        SetOwnFolds(next);
         TextSnapshot text = document.Snapshot;
         if (selections.Items.Any(s => IsHidden(text.GetLineFromOffset(s.Caret))))
         {
@@ -232,7 +251,7 @@ public sealed partial class CodeEditor
                     End = TextEditing.MapOffset(region.End, plan.Edits, afterInsertions: true),
                 };
         }
-        SetFoldRegions(carried);
+        SetOwnFolds(carried);
         FoldsToggled?.Invoke(this, FoldRegions);
     }
 
@@ -263,7 +282,7 @@ public sealed partial class CodeEditor
         {
             return;
         }
-        decorations.SetFoldRegions([.. FoldRegions.Select(r => r.Folded && FoldLines.EndLineOf(text, r) is int end and >= 0 && lines.Any(l => l > FoldLines.StartLineOf(text, r) && l <= end) ? r with { Folded = false } : r)]);
+        SetOwnFolds([.. FoldRegions.Select(r => r.Folded && FoldLines.EndLineOf(text, r) is int end and >= 0 && lines.Any(l => l > FoldLines.StartLineOf(text, r) && l <= end) ? r with { Folded = false } : r)]);
         UpdateScrollBars();
         FoldsToggled?.Invoke(this, FoldRegions);
     }

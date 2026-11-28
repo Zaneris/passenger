@@ -30,7 +30,7 @@ public readonly record struct FoldRegion(int Start, int End, string Placeholder,
 /// the doc comments' actions fold.</summary>
 public enum FoldKind : byte
 {
-    /// <summary>Braces that hold code (a namespace's, a type's, a lambda's), a JSON object or array.</summary>
+    /// <summary>Braces that hold code (a namespace's, a type's, a lambda's, a switch's, a statement's), a JSON object or array.</summary>
     Code,
 
     /// <summary>An XML element.</summary>

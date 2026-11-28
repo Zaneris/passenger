@@ -40,7 +40,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     public InfoCard(string called, Action<Uri> browse)
     {
         Called = called;
-        documentationPage = new MarkdownPage(browse);
+        documentationPage = new MarkdownPage(link => Follow(link, browse)) { SymbolLinks = () => OpenDeclaration is not null };
         Classes.Add(StyleClasses.Popup);
         Padding = PopupFrame.CardInset;
         MaxWidth = PopupFrame.Medium;
@@ -59,8 +59,20 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     /// <summary>Plays a sound a preview offers; nothing without it.</summary>
     public Action<string>? Play { get; set; }
 
-    /// <summary>Opens a signature part by its displayed name and the symbol key Roslyn gave it.</summary>
+    /// <summary>Opens a signature part, or a symbol the documentation links, by its displayed name and the symbol key Roslyn
+    /// gave it; the documentation's links to symbols are drawn as links only while it is set.</summary>
     public Action<string, string>? OpenDeclaration { get; set; }
+
+    /// <summary>A link of the documentation followed: a symbol's to its declaration, any other through the window.</summary>
+    private void Follow(Uri link, Action<Uri> browse)
+    {
+        if (Roslyn.Extension.SymbolLinks.Read(link.OriginalString) is { } symbol)
+        {
+            OpenDeclaration?.Invoke(symbol.Words, symbol.Key);
+            return;
+        }
+        browse(link);
+    }
 
     /// <summary>The largest a preview's picture is drawn, in logical units.</summary>
     private const double PictureSize = 128;

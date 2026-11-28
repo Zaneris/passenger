@@ -159,6 +159,29 @@ public static class CodeParts
     public const string OverloadFits = "passengerOverloadFits";
 }
 
+/// <summary>A link in a C# hover's words to a symbol they name, which the client follows to its declaration: the scheme, then
+/// the symbol's key and the words, each escaped, the words after a <c>#</c>.</summary>
+public static class SymbolLinks
+{
+    public const string Scheme = "passenger-symbol";
+
+    public static string Of(string key, string words) => $"{Scheme}:{Uri.EscapeDataString(key)}#{Uri.EscapeDataString(words)}";
+
+    /// <summary>The symbol's key and the words a link names it by; null for a link of another scheme.</summary>
+    public static (string Key, string Words)? Read(string link)
+    {
+        if (!link.StartsWith(Scheme + ":", StringComparison.Ordinal))
+        {
+            return null;
+        }
+        string rest = link[(Scheme.Length + 1)..];
+        int words = rest.IndexOf('#', StringComparison.Ordinal);
+        return words < 0
+            ? (Uri.UnescapeDataString(rest), string.Empty)
+            : (Uri.UnescapeDataString(rest[..words]), Uri.UnescapeDataString(rest[(words + 1)..]));
+    }
+}
+
 /// <summary>A stretch of code, its semantic token type, and the symbol key of a navigable hover signature part.</summary>
 public sealed record CodePart(
     [property: JsonPropertyName("text")] string Text,

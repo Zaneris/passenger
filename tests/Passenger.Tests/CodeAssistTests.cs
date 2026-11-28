@@ -267,6 +267,14 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             .GetVisualDescendants().OfType<SelectableTextBlock>().Single();
         Point from = code.TranslatePoint(new Point(1, code.Bounds.Height / 2), window)!.Value;
         Point to = code.TranslatePoint(new Point(code.Bounds.Width - 1, code.Bounds.Height / 2), window)!.Value;
+        // Along its word the card neither goes nor is placed again (#2415).
+        Point placed = card.TranslatePoint(default, window)!.Value;
+        window.MouseMove(word + new Point(4, 0), Avalonia.Input.RawInputModifiers.None);
+        Ui.Hold(TimeSpan.FromMilliseconds(400), "past the pause a card waits once the pointer left its word");
+        Assert.True(window.Assist.HoverCard == card, "The hover card went as the pointer moved along the word it is of, so it can never be reached");
+        Ui.Hold(TimeSpan.FromMilliseconds(300), "past the rest that asks for a card");
+        Assert.True(window.Assist.HoverCard == card && card.TranslatePoint(default, window) == placed,
+            $"The hover card was placed again from {placed} to {card.TranslatePoint(default, window)} as the pointer rested on along the word it is of");
         // Across the gap between the word's line and the card, onto it.
         window.MouseMove(new Point(word.X, card.TranslatePoint(default, window)!.Value.Y - 1), Avalonia.Input.RawInputModifiers.None);
         window.MouseMove(from, Avalonia.Input.RawInputModifiers.None);
@@ -3198,6 +3206,24 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Equal(guide, window.Browsed.LastOrDefault());
         Ui.Press(window, "ESCAPE");
 
+        // What the documentation names is a link to it, a keyword it names alone code (#2415).
+        Ui.Run(window, AppActions.QuickDocumentation);
+        Ui.WaitFor(() => window.Assist.HoverText?.Contains("Use the", StringComparison.Ordinal) == true, "Echo's documentation in hover again");
+        MarkdownText[] blocks = [.. window.Assist.HoverCard!.GetVisualDescendants().OfType<MarkdownText>()];
+        (string Words, Uri Target)[] symbols = [.. blocks.SelectMany(b => b.Links).Where(l => l.Target.Scheme == Passenger.Roslyn.Extension.SymbolLinks.Scheme)];
+        string[] named = [.. symbols.Select(l => l.Words)];
+        // The cref is written as its minimal name, Documented.Related(), each name in it a link to its own symbol.
+        Assert.True(named.Length == 4 && named[0] == "Documented" && named[1] == "Related" && named[2] == "value" && named[3] is "T" or "int",
+            $"The documentation's cref, paramref and typeparamref are links [{string.Join(", ", named)}]");
+        Avalonia.Controls.Documents.Run[] runs = [.. blocks.SelectMany(b => b.Inlines!.OfType<Avalonia.Controls.Documents.Run>())];
+        FontFamily code = runs.First(run => run.Text == "<b>literal</b>").FontFamily;
+        Assert.Contains(runs, run => run.Text == "null" && run.FontFamily == code);
+        MarkdownText related = blocks.First(b => b.Links.Any(l => l.Words == "Related"));
+        Ui.Click(related, related.PointOf(symbols[1].Target));
+        Ui.WaitFor(() => editor.CaretPosition.Line == editor.Document.Snapshot.GetLineFromOffset(editor.Document.Snapshot.ToString().IndexOf("int Related()", StringComparison.Ordinal)),
+            "the caret at Related's declaration");
+        Assert.Null(window.Assist.HoverCard);
+
         Ui.PlaceAfter(editor, "public static int Run()\n    {\n");
         window.KeyTextInput("        Documented");
         window.KeyTextInput(".");
@@ -3242,7 +3268,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
         static MarkdownText AssertDocumentation(Border card, string bold, string label, Uri target)
         {
-            MarkdownText words = Assert.Single(card.GetVisualDescendants().OfType<MarkdownText>(), block => block.Links.Any());
+            MarkdownText words = Assert.Single(card.GetVisualDescendants().OfType<MarkdownText>(), block => block.Links.Any(link => link.Target == target));
             Assert.Contains((label, target), words.Links);
             Assert.Contains(words.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == bold && run.FontWeight == FontWeight.Bold);
             Assert.DoesNotContain("<see", words.Shown, StringComparison.Ordinal);

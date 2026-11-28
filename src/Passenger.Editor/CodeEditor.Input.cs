@@ -22,6 +22,10 @@ public sealed partial class CodeEditor
     private Avalonia.Threading.DispatcherTimer? hover;
     private Point hoverAt;
     private bool hovering;
+
+    /// <summary>The word a rest on the text was told of (<see cref="Hovered"/>), in the text it was told in: while the rest
+    /// lasts, the pointer moving over it neither ends the rest nor tells it again.</summary>
+    private (TextSnapshot Text, TextRange Word)? restedWord;
     private Drag drag;
     private EditorInputMethod? inputMethod;
 
@@ -552,12 +556,15 @@ public sealed partial class CodeEditor
             return;
         }
         hovering = true;
-        Hovered?.Invoke(this, new HoverEventArgs(offset, hoverAt, HintUnder(hoverAt)));
+        InlayHint? hint = HintUnder(hoverAt);
+        TextRange under = TextNavigation.WordAt(text, offset);
+        restedWord = hint is null && under.Length > 0 && TextNavigation.IsWholeWord(text, under) ? (text, under) : null;
+        Hovered?.Invoke(this, new HoverEventArgs(offset, hoverAt, hint));
     });
 
     private void RestartHover(Point position)
     {
-        if (Math.Abs(position.X - hoverAt.X) < 2 && Math.Abs(position.Y - hoverAt.Y) < 2)
+        if ((Math.Abs(position.X - hoverAt.X) < 2 && Math.Abs(position.Y - hoverAt.Y) < 2) || (hovering && drag.Mode == DragMode.None && OnRestedWord(position)))
         {
             return;
         }
@@ -574,11 +581,25 @@ public sealed partial class CodeEditor
 
     private void EndHover()
     {
+        restedWord = null;
         if (hovering)
         {
             hovering = false;
             HoverEnded?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>Whether a point is on the word the rest was told of, the text unchanged since: from its first character's
+    /// left to its last's right, on its row.</summary>
+    private bool OnRestedWord(Point position)
+    {
+        if (restedWord is not { } rested || !ReferenceEquals(rested.Text, document.Snapshot))
+        {
+            return false;
+        }
+        Point start = PointOf(rested.Word.Start);
+        Point end = PointOf(rested.Word.End);
+        return start.Y == end.Y && position.Y >= start.Y && position.Y < start.Y + metrics.LineHeight && position.X >= start.X && position.X <= end.X;
     }
 
     /// <summary>The offset under a point in the control, its row clamped to the document.</summary>
