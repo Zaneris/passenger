@@ -513,7 +513,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         Ui.Press(window, "ESCAPE");
         Ui.Run(window, AppActions.Save);
         Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Name == "Passenger.Sample"), "the Dependencies to show the package the saved project references");
-        Assert.Contains(("Passenger.Sample", "2.0.0"), Children(window, "Dependencies").Select(name => (name, Row(window, name).Detail)));
+        Assert.Contains(("Passenger.Sample", "2.0.0"), Children(window, "Dependencies").Select(name => (name, Row(window, name).Detail?.English)));
         Ui.WaitFor(() => Loads() > before, "the language server to load the saved project again");
         window.Close();
     }

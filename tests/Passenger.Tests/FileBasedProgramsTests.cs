@@ -161,7 +161,7 @@ public sealed class FileBasedProgramsTests : IDisposable
             Assert.Equal(["Lib.csproj", "app.cs"], window.Projects.Select(p => Path.GetFileName(p.Path)).Order(StringComparer.Ordinal));
             Ui.WaitFor(() => window.ExplorerView.Tree.Root?.Children is [{ Name: "Lib" }, { Name: "app", IsProgram: true }],
                 () => $"the Solution view to list Lib, then the program app; it lists {string.Join(", ", window.ExplorerView.Tree.Root?.Children?.Select(c => c.Name) ?? [])}");
-            Assert.Equal("2 projects", window.ExplorerView.Tree.Root!.Detail);
+            Assert.Equal("2 projects", window.ExplorerView.Tree.Root!.Detail?.English);
             Ui.WaitFor(() => window.Projects.Single(p => PathNames.Same(p.Path, App)).IsEvaluated, "the program evaluated", TimeSpan.FromMinutes(2));
             ExplorerNode program = window.ExplorerView.Tree.Root.Children![1];
             window.ExplorerView.Tree.Expand(program);

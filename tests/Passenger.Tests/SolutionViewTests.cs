@@ -990,7 +990,7 @@ public sealed class SolutionViewTests : IDisposable
             tree.UpdateLayout();
             string heard = ControlAutomationPeer.CreatePeerForElement(tree.ContainerFromItem(row)!).GetName();
             Assert.True(heard.StartsWith($"{name}, {words}, level", StringComparison.Ordinal), $"A screen reader hears {name}'s row as \"{heard}\", not as a {words}");
-            Assert.True(row.Hover?.StartsWith(string.Concat(words[..1].ToUpperInvariant(), words[1..]), StringComparison.Ordinal) == true,
+            Assert.True(row.Hover?.English.StartsWith(string.Concat(words[..1].ToUpperInvariant(), words[1..]), StringComparison.Ordinal) == true,
                 $"Hovering {name}'s row says \"{row.Hover}\", not that it is a {words}");
         }
 
@@ -1112,7 +1112,7 @@ public sealed class SolutionViewTests : IDisposable
         {
             Assert.True(ReferenceEquals(Resource(icon), Drawn(window, Show(window, path)).Data), $"The File System view does not draw {path} with {icon}");
         }
-        Assert.Equal(served, Show(window, webRoot).Kept);
+        Assert.Equal(served, Show(window, webRoot).Kept?.English);
         window.Close();
     }
 
@@ -1527,7 +1527,7 @@ public sealed class SolutionViewTests : IDisposable
             Assert.Equal(("Shop.App", PathNames.Canonical(filter)), (window.Session.Workspace?.Name, window.Session.Workspace?.OpenedAs));
             string Loaded() => string.Join(", ", window.ExplorerView.Tree.Rows.Where(r => r.Kind == NodeKind.Project).Select(r => $"{r.Name} {(r.IsDimmed ? "unloaded" : "loaded")}"));
             Assert.Equal("Shop.App loaded, Shop.Core unloaded", Loaded());
-            Assert.Equal("(unloaded)", Row(window, NodeKind.Project, "Shop.Core").Detail);
+            Assert.Equal("(unloaded)", Row(window, NodeKind.Project, "Shop.Core").Detail?.English);
 
             Ui.WaitFor(() => window.CSharpService?.Session is { IsLoaded: true }, "the language server to load the filter's project", TimeSpan.FromMinutes(2));
             int Found(string name) => Ui.Await(window.CSharpService!.Session!.SymbolsNamedAsync(name, 5), $"the language server's symbols named {name}", TimeSpan.FromMinutes(1)).Symbols.Count;
@@ -1822,7 +1822,7 @@ public sealed class SolutionViewTests : IDisposable
         }
 
         static string Loaded(MainWindow shown) => string.Join(", ", shown.ExplorerView.Tree.Rows.Where(r => r.Kind == NodeKind.Project)
-            .Select(r => $"{r.Name} {(!r.IsDimmed ? "loaded" : r.Detail == "(unloaded)" ? "unloaded" : "missing")}").Order(StringComparer.Ordinal));
+            .Select(r => $"{r.Name} {(!r.IsDimmed ? "loaded" : r.Detail?.English == "(unloaded)" ? "unloaded" : "missing")}").Order(StringComparer.Ordinal));
     }
 
     /// <summary>A file deleted takes its own row out, and Unload Project and Reload Project make the project's row again,

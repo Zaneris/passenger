@@ -20,4 +20,9 @@
     <value>{first}, {then}</value>
     <comment>Two things named one after the other in a sentence, apart as a list of names is: the services a restart restarted.</comment>
   </data>
+  <data name="Below" xml:space="preserve">
+    <value>{first}
+{then}</value>
+    <comment>Two things said one under the other, each its own sentence: a project's kind over why it runs only on Windows, in its tip.</comment>
+  </data>
 </root>

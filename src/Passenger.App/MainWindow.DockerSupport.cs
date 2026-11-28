@@ -160,7 +160,7 @@ public partial class MainWindow
         {
             x64.CanChoose = state?.Amd64 is not (Amd64Runs.Emulated or Amd64Runs.Never);
             bool arm = state?.ServerArch is { } arch ? arch is "arm64" or "aarch64" : RuntimeInformation.OSArchitecture == Architecture.Arm64;
-            dialog.Note = (!x64.CanChoose ? Refusals.X64OnlyUnrunnable(service.X64Only!, state!) : arm ? service.Note : null)?.Shown;
+            dialog.Note = !x64.CanChoose ? Refusals.X64OnlyUnrunnable(service.X64Only!, state!) : arm ? service.Note : null;
         }
 
         async Task ApplyAsync()

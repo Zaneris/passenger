@@ -332,7 +332,7 @@ public sealed class NoDotnetTests : IAsyncDisposable
             $"Nothing of the SDK is in {Installs}: {string.Join(", ", Directory.EnumerateFileSystemEntries(Installs).Select(Path.GetFileName))}");
         Assert.DoesNotContain(Directory.EnumerateDirectories(Installs), d => Path.GetFileName(d).StartsWith(".passenger-install-", StringComparison.Ordinal));
 
-        Ui.WaitFor(() => window.Session.Models.MissingSdk is null && window.ExplorerView.Tree.Rows.Any(r => r.Kind == NodeKind.Project && r.Detail == TestProjects.Framework),
+        Ui.WaitFor(() => window.Session.Models.MissingSdk is null && window.ExplorerView.Tree.Rows.Any(r => r.Kind == NodeKind.Project && r.Detail?.English == TestProjects.Framework),
             () => $"App to be evaluated with the SDK installed: App's row says {window.ExplorerView.Tree.Rows.FirstOrDefault(r => r.Name == "App")?.Detail} ({window.Status})", TimeSpan.FromMinutes(2));
         Assert.True(PathNames.Same(Environment.GetEnvironmentVariable(RuntimeVariables.Root) ?? string.Empty, Installs)
             && PathNames.Same((Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator)[0], Installs),
@@ -472,7 +472,7 @@ public sealed class NoDotnetTests : IAsyncDisposable
         Dotnet.PlacesStandIn = [Path.Combine(own, DotnetName)];
         string solution = Shop(folder);
         MainWindow window = Ui.OpenFolder(solution, languageServer: false);
-        Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Kind == NodeKind.Project && r.Detail == TestProjects.Framework),
+        Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Kind == NodeKind.Project && r.Detail?.English == TestProjects.Framework),
             () => $"App to be evaluated with the SDK in {own}: App's row says {window.ExplorerView.Tree.Rows.FirstOrDefault(r => r.Name == "App")?.Detail} ({window.Status})", TimeSpan.FromMinutes(2));
         Assert.Equal(DotnetLack.OffPath, window.DotnetWant.Lack);
         Assert.True(window.DotnetSaid == $"Passenger uses the .NET SDK {Archive.Value.Version} in {PathNames.Shown(own, null)}, which your shell's PATH does not name, so a terminal outside Passenger finds no dotnet",

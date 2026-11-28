@@ -118,7 +118,7 @@ public partial class MainWindow
         });
         ActionButtons.Bind(Explorer.ViewSwitchButton, A.SwitchExplorerView, actions, id => Request(id));
 
-        static string? Holds(ExplorerNode row) => NewGoesIn(row) is { } into ? ExplorerNode.KeptOut(into) : $"Nothing new goes in {row.Name}";
+        static Words? Holds(ExplorerNode row) => NewGoesIn(row) is { } into ? ExplorerNode.KeptOut(into) : $"Nothing new goes in {row.Name}";
         static string? Referencing(ExplorerNode row) => row.Kind == NodeKind.Project && !row.IsProgram ? row.Path
             : row.Kind == NodeKind.Dependencies && row.Owner is { } owner && !Passenger.Host.ProgramFiles.IsProgram(owner) ? owner : null;
     }
@@ -216,7 +216,7 @@ public partial class MainWindow
     private (string Root, IReadOnlyList<string> Files)? IndexedFiles() => session.Index.Root is { } root ? (root, session.Index.Files) : null;
 
     /// <summary>One of the Explorer's own actions, on its row.</summary>
-    private void Row(string id, Words title, Action<ExplorerNode> run, Func<ExplorerNode, string?> whyNot, Func<ExplorerNode, Words>? titleIn = null) =>
+    private void Row(string id, Words title, Action<ExplorerNode> run, Func<ExplorerNode, Words?> whyNot, Func<ExplorerNode, Words>? titleIn = null) =>
         actions!.Add(new IdeAction(id, title, ActionGroups.Explorer, c => run(RowOf(c)!))
         {
             WhyNot = c => RowOf(c) is { } row ? whyNot(row) : NoRow,
@@ -327,7 +327,7 @@ public partial class MainWindow
     /// <summary>Why Delete cannot take the row, or a row chosen with it: a folder the SDK reads, a row nothing deletes, or
     /// among several, one that only leaves the solution or its project, which Remove takes chosen alone, its questions
     /// its own.</summary>
-    private string? WhyNotDeleted(ExplorerNode row)
+    private Words? WhyNotDeleted(ExplorerNode row)
     {
         IReadOnlyList<ExplorerNode> rows = RowsDeleted(row);
         foreach (ExplorerNode each in rows)
@@ -341,9 +341,9 @@ public partial class MainWindow
                 return $"{each.Name} cannot be deleted";
             }
         }
-        return (rows.Count > 1 && rows.FirstOrDefault(n => n.LeavesFilesBehind) is { } leaving
+        return rows.Count > 1 && rows.FirstOrDefault(n => n.LeavesFilesBehind) is { } leaving
             ? Refusals.RemovedAlone(leaving.Name, leaving is { Kind: NodeKind.ProjectReference or NodeKind.SharedProject, Owner: { } owner } ? Path.GetFileNameWithoutExtension(owner) : "the solution")
-            : null)?.Shown;
+            : null;
     }
 
     /// <summary>A row's menu, its items the window's actions run on the row: Build, Rebuild and Clean for the solution or

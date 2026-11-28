@@ -488,7 +488,7 @@ public partial class MainWindow
         : action is E.Cut or E.Copy or E.Paste or E.Delete or E.Backspace && RowOf(context) is not null;
 
     /// <summary>Why one of the editor's actions cannot run on the Explorer's row; null when it can.</summary>
-    private string? WhyNotOnRow(string action, ActionContext context) => RowOf(context) is not { } row ? null : action switch
+    private Words? WhyNotOnRow(string action, ActionContext context) => RowOf(context) is not { } row ? null : action switch
     {
         E.Cut or E.Copy when !row.IsMovable => $"{row.Name} cannot be moved",
         E.Cut when RowsHeld(row).FirstOrDefault(n => n.Kept is not null) is { Kept: { } kept } => kept,

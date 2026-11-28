@@ -4,6 +4,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Workspace;
 
 namespace Passenger.App;
@@ -17,7 +19,7 @@ public interface ICheckChoice
     /// <summary>The project it stands for, whose kind its row draws before its name; null for a choice of anything else.</summary>
     ProjectModel? Project => null;
 
-    string Detail { get; }
+    Words Detail { get; }
 
     bool CanChoose { get; }
 
@@ -27,7 +29,7 @@ public interface ICheckChoice
 /// <summary>A choice a list of check rows offers, with what it stands for (a project or a backing service Add > Docker
 /// Compose offers, a service project Add Aspire Orchestration does), checked while it is to be taken; one that cannot be
 /// (a service the engine cannot run) is greyed, unchecked.</summary>
-public sealed class CheckChoice(string name, string detail, bool chosen, object value) : Observable, ICheckChoice
+public sealed class CheckChoice(string name, Words detail, bool chosen, object value) : Observable, ICheckChoice
 {
     private bool isChosen = chosen;
 
@@ -37,7 +39,7 @@ public sealed class CheckChoice(string name, string detail, bool chosen, object 
 
     public ProjectModel? Project { get; init; } = value as ProjectModel;
 
-    public string Detail { get; } = detail;
+    public Words Detail { get; } = detail;
 
     public bool CanChoose
     {
@@ -119,7 +121,7 @@ public static class CheckRows
             check.IsEnabled = choice.CanChoose;
             setting = false;
             name.Show(choice.Project, choice.Name);
-            detail.Text = choice.Detail;
+            ShownWords.Set(detail, TextBlock.TextProperty, choice.Detail);
             ListRow.Dim(row, !choice.CanChoose);
         });
     }

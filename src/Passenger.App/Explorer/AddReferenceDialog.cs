@@ -5,6 +5,8 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Workspace;
 
 namespace Passenger.App.Explorer;
@@ -22,7 +24,7 @@ public sealed class ReferenceChoice(ProjectModel project, string where, bool cho
     public ProjectModel Project { get; } = project;
 
     /// <summary>Where it is, and why it cannot be chosen when it cannot.</summary>
-    public string Detail { get; } = circular ? $"{where} (references this project)" : where;
+    public Words Detail { get; } = circular ? ExplorerWords.ReferencesThis(Words.Verbatim(where)) : Words.Verbatim(where);
 
     public bool CanChoose { get; } = !circular;
 
@@ -43,7 +45,7 @@ public sealed class AddReferenceDialog : IdeWindow
     public AddReferenceDialog(string project, IReadOnlyList<ReferenceChoice> choices)
     {
         Choices = choices;
-        Title = "Add Reference";
+        ShownWords.Set(this, TitleProperty, ActionTitles.AddReference.TrimmedEnd('…'));
         Width = DialogWidths.Form;
         Height = 420;
         MinWidth = 360;
@@ -61,7 +63,7 @@ public sealed class AddReferenceDialog : IdeWindow
         {
             [DockPanel.DockProperty] = Dock.Top,
             Classes = { StyleClasses.PaneTitle },
-            Text = $"Projects {project} references",
+            [ShownWords.TextProperty] = ExplorerWords.ReferencedBy(Words.Verbatim(project)),
             Margin = new Thickness(0, 0, 0, Gaps.Wide),
         };
         Content = DialogFooter.Page(new DockPanel { [DialogFooter.InsetProperty] = true, Children = { heading, rows } }, DialogFooter.OkCancel(ok, () => Close(null)));

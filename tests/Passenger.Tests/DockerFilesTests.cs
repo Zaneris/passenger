@@ -725,9 +725,9 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             DockerComposeDialog dialog = DialogButtonsTests.Check(Assert.Single(window.OwnedWindows.OfType<DockerComposeDialog>()));
             UiRulesTests.HoldsToRowHeight("Add Docker Compose", dialog);
             Assert.Equal([("Api", "no Dockerfile: Docker Support adds one"), ("Worker", "no Dockerfile: Docker Support adds one")],
-                dialog.Projects.Select(p => (p.Name, p.Detail)));
+                dialog.Projects.Select(p => (p.Name, p.Detail.English)));
             CheckChoice postgres = Assert.Single(dialog.Services);
-            Assert.Equal(("postgres", "postgres:18, for Api"), (postgres.Name, postgres.Detail));
+            Assert.Equal(("postgres", "postgres:18, for Api"), (postgres.Name, postgres.Detail.English));
             dialog.Projects.Single(p => p.Name == "Worker").IsChosen = false;
             dialog.Close(true);
             Ui.Settle();
@@ -1041,10 +1041,10 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             Machine(rosetta: true, emulates: true);
             DockerComposeDialog dialog = Opened();
             CheckChoice sql = Assert.Single(dialog.Services);
-            Assert.Equal(("sqlserver", "mcr.microsoft.com/mssql/server:2025-latest, for Orders", true, true), (sql.Name, sql.Detail, sql.CanChoose, sql.IsChosen));
+            Assert.Equal(("sqlserver", "mcr.microsoft.com/mssql/server:2025-latest, for Orders", true, true), (sql.Name, sql.Detail.English, sql.CanChoose, sql.IsChosen));
             Assert.Equal("SQL Server's image is built for x86-64 alone: on Apple silicon it runs only where the container engine translates it with Rosetta "
-                + "(Docker Desktop's Use Rosetta for x86_64/amd64 emulation, on the Apple Virtualization framework)", dialog.Note);
-            Assert.True(dialog.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == dialog.Note && t.IsEffectivelyVisible), "The dialog did not show its note on SQL Server");
+                + "(Docker Desktop's Use Rosetta for x86_64/amd64 emulation, on the Apple Virtualization framework)", dialog.Note?.English);
+            Assert.True(dialog.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == dialog.Note?.English && t.IsEffectivelyVisible), "The dialog did not show its note on SQL Server");
             dialog.Close(null);
 
             // Podman's machine is asked of Rosetta on a Mac alone.
@@ -1053,14 +1053,14 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
                 Machine(rosetta: false, emulates: true);
                 dialog = Opened();
                 Assert.Equal((false, "SQL Server can't run on this Mac: its image is built for x86-64 alone, and Podman emulates x86-64 here without Rosetta, "
-                    + "under which SQL Server fails as it starts. Run it on a Podman machine that uses Rosetta"), (Assert.Single(dialog.Services).CanChoose, dialog.Note));
+                    + "under which SQL Server fails as it starts. Run it on a Podman machine that uses Rosetta"), (Assert.Single(dialog.Services).CanChoose, dialog.Note?.English));
                 dialog.Close(null);
             }
             Machine(rosetta: false, emulates: false);
             dialog = Opened();
             sql = Assert.Single(dialog.Services);
             string never = $"SQL Server can't run on this {mac}: its image is built for x86-64 alone, and Podman runs no x86-64 image here. Run it on a Podman machine that uses Rosetta";
-            Assert.Equal((false, false, never), (sql.CanChoose, sql.IsChosen, dialog.Note));
+            Assert.Equal((false, false, never), (sql.CanChoose, sql.IsChosen, dialog.Note?.English));
             dialog.Close(null);
 
             Assert.Null(Ui.Await(window.AddDockerComposeAsync([Path.Combine(PathNames.Canonical(folder), "Orders", "Orders.csproj")], ["sqlserver"]), "compose.yaml added"));

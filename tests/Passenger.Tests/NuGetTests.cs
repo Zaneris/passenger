@@ -517,18 +517,18 @@ public sealed class NuGetTests : IDisposable
             ?? OpenedRow(window, window.ExplorerView.Tree.Rows.Single(r => r.Kind == NodeKind.Project && r.Name == "Lib")).Single(r => r.Kind == NodeKind.Dependencies);
         List<ExplorerNode> referenced = OpenedRow(window, dependencies);
         ExplorerNode charts = referenced.Single(r => r.Name == Charts);
-        Assert.True(referenced.Single(r => r.Name == Id) is { Detail: "1.1.0", HasChildren: false } && charts.HasChildren,
+        Assert.True(referenced.Single(r => r.Name == Id) is { Detail.English: "1.1.0", HasChildren: false } && charts.HasChildren,
             $"Lib's packages are [{string.Join(", ", referenced.Select(r => $"{r.Name} {r.Detail}{(r.HasChildren ? " >" : "")}"))}], where {Charts} opens to what it brings");
         List<ExplorerNode> brought = OpenedRow(window, charts);
-        Assert.Equal([(Drawing, "1.0.0", true), (Id, "1.1.0 · asked ≥ 1.0.0", false)], brought.Select(r => (r.Name, r.Detail, r.HasChildren)));
-        Assert.Equal($"{Charts} asks for 1.0.0 or later; the restore resolved 1.1.0", brought[1].Tip);
+        Assert.Equal([(Drawing, "1.0.0", true), (Id, "1.1.0 · asked ≥ 1.0.0", false)], brought.Select(r => (r.Name, r.Detail?.English, r.HasChildren)));
+        Assert.Equal($"{Charts} asks for 1.0.0 or later; the restore resolved 1.1.0", brought[1].Tip?.English);
         ExplorerNode again = Assert.Single(OpenedRow(window, brought[0]));
-        Assert.True(again is { Name: Id, Detail: "1.1.0 · asked ≥ 1.0.0" }, $"{Drawing} brings {again.Name} {again.Detail}, where it brings {Id} as {Charts} does");
+        Assert.True(again is { Name: Id, Detail.English: "1.1.0 · asked ≥ 1.0.0" }, $"{Drawing} brings {again.Name} {again.Detail}, where it brings {Id} as {Charts} does");
         Assert.Equal(restoring, feed.Requests.Count);
 
         File.WriteAllText(project, File.ReadAllText(project).Replace("1.1.0", "1.0.1", StringComparison.Ordinal));
         Restore.Run(Passenger.Core.PathNames.Canonical(project));
-        Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Count(r => r.Name == Id && r.Detail == "1.0.1 · asked ≥ 1.0.0") == 2,
+        Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Count(r => r.Name == Id && r.Detail?.English == "1.0.1 · asked ≥ 1.0.0") == 2,
             () => $"the open rows to show the restore written since: [{string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => $"{r.Name} {r.Detail}"))}]");
         Assert.True(window.ExplorerView.Tree.Rows.Where(r => r.Name is Charts or Drawing).All(r => r.IsExpanded),
             $"Reading the restore again closed {Charts} or {Drawing}");

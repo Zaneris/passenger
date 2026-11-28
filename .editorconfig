@@ -83,3 +83,6 @@ dotnet_diagnostic.PSG0014.severity = warning
 [src/Passenger.App/Mcp/{AgentAdmissionDialog.cs,AgentToolDialog.cs}]
 dotnet_diagnostic.PSG0012.severity = warning
 dotnet_diagnostic.PSG0014.severity = none
+
+[src/Passenger.App/Explorer/**.cs]
+dotnet_diagnostic.PSG0012.severity = warning

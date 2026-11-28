@@ -40,7 +40,7 @@ public partial class ExplorerView : UserControl
     /// <summary>How long typing in the filter pauses before the rows follow it.</summary>
     private static readonly TimeSpan FilterPause = TimeSpan.FromMilliseconds(150);
 
-    private readonly TextBox filter = SearchBox.Finding("Filter files");
+    private readonly TextBox filter = SearchBox.Finding(ExplorerWords.FilterFiles);
     private readonly Border filterBar;
     private readonly Debounce filtering;
 
@@ -63,6 +63,10 @@ public partial class ExplorerView : UserControl
     public ExplorerView()
     {
         InitializeComponent();
+        ShownWords.Set(ViewSwitch, ToolTip.TipProperty, ExplorerWords.SwitchView);
+        ShownWords.Set(ViewName, TextBlock.TextProperty, ExplorerWords.SolutionView);
+        ShownWords.Set(OwnTitle, TextBlock.TextProperty, ToolWindowTitles.Explorer);
+        Hint.Say(ExplorerWords.NothingOpen);
         filter.Margin = new Thickness(Gaps.Small, 0, Gaps.Tight, 0);
         filterBar = ToolWindows.ToolBars.Top(filter);
         filterBar.IsVisible = false;
@@ -357,17 +361,17 @@ public partial class ExplorerView : UserControl
         if (solutionView && solution is not null)
         {
             Tree.LoadSolution(solution, programs);
-            ViewName.Text = "Solution";
+            ShownWords.Set(ViewName, TextBlock.TextProperty, ExplorerWords.SolutionView);
         }
         else if (solutionView && project is not null)
         {
             Tree.LoadProject(project);
-            ViewName.Text = "Solution";
+            ShownWords.Set(ViewName, TextBlock.TextProperty, ExplorerWords.SolutionView);
         }
         else if (folder is not null)
         {
             Tree.LoadFileSystem(folder, projects);
-            ViewName.Text = "Files";
+            ShownWords.Set(ViewName, TextBlock.TextProperty, ExplorerWords.FilesView);
         }
     }
 
@@ -438,7 +442,7 @@ public partial class ExplorerView : UserControl
         {
             return [];
         }
-        return [ToolWindows.ListMenus.Sub("Appearance", ToolWindows.ListMenus.Item("File Nesting…", () => NestingAsked?.Invoke(this, EventArgs.Empty)))];
+        return [ToolWindows.ListMenus.Sub(MenuTitles.Appearance, ToolWindows.ListMenus.Item(ExplorerWords.FileNesting, () => NestingAsked?.Invoke(this, EventArgs.Empty)))];
     }
 
     /// <summary>Gives the tree the keys on its chosen row (the first when none is): the view itself cannot take the
@@ -530,7 +534,7 @@ public partial class ExplorerView : UserControl
             return;
         }
         Tree.Filter(found.Files);
-        more.Text = $"{Numbers.Said(found.More)} more {Plural.Noun(found.More, "file")} {Plural.Agreeing(found.More, "matches", "match")}: a longer filter narrows them";
+        more.Say(ExplorerWords.MoreMatch(found.More));
         more.IsVisible = found.More > 0;
         ShowHint();
     }
@@ -569,7 +573,7 @@ public partial class ExplorerView : UserControl
     private void ShowHint()
     {
         bool none = Rows.IsVisible && Tree.IsFiltered && !Tree.Rows.Any(r => r.IsFile);
-        Hint.Text = none ? "No file matches" : "Nothing open";
+        Hint.Say(none ? ExplorerWords.NoFileMatches : ExplorerWords.NothingOpen);
         Hint.IsVisible = none || !Rows.IsVisible;
     }
 
@@ -653,9 +657,6 @@ public partial class ExplorerView : UserControl
         }
     }
 
-    /// <summary>What a screen reader hears of a row whose name the error's wave underlines.</summary>
-    private const string ErrorsWords = "Has errors";
-
     /// <summary>A row for whichever file or folder the list hands its container: its chevron, icon, name (waved where it
     /// has errors) and detail.</summary>
     private Control Row()
@@ -673,15 +674,15 @@ public partial class ExplorerView : UserControl
         {
             row.Margin = node.Indent;
             row.Opacity = node.Opacity;
-            ToolTip.SetTip(row, node.Hover);
+            ShownWords.Set(row, ToolTip.TipProperty, node.Hover);
             AutomationProperties.SetName(row, node.Said);
             glyphs.HasChevron = node.HasChildren;
             glyphs.Turned = node.IsExpanded;
             glyphs.IconKey = node.IconKey;
             glyphs.IconBrushKey = node.IconBrushKey;
-            name.Text = node.Name;
+            ShownWords.Set(name, TextBlock.TextProperty, node.Shown);
             name.HasErrors = node.HasErrors;
-            AutomationProperties.SetHelpText(name, node.HasErrors ? ErrorsWords : null);
+            ShownWords.Set(name, AutomationProperties.HelpTextProperty, node.HasErrors ? ExplorerWords.HasErrors : null);
             foreach (TextBlock coloured in (TextBlock[])[name, change])
             {
                 coloured.Classes.Set(StyleClasses.VcsModified, node.IsVcsModified);
@@ -693,7 +694,7 @@ public partial class ExplorerView : UserControl
             change.IsVisible = node.Change is not null;
             ToolTip.SetTip(change, node.Change is { } said ? Vcs.ChangedFileRow.WordOf(said) : null);
             AutomationProperties.SetName(change, node.Change is { } named ? Vcs.ChangedFileRow.WordOf(named) : null);
-            detail.Text = node.Detail;
+            ShownWords.Set(detail, TextBlock.TextProperty, node.Detail);
         });
     }
 

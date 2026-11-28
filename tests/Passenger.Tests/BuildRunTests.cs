@@ -146,13 +146,13 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             ExplorerTree tree = window.ExplorerView.Tree;
             tree.Expand(Assert.Single(tree.Rows, r => r.Kind == NodeKind.SolutionFolder && r.Name == "src"));
             ExplorerNode loaded = Assert.Single(tree.Rows, r => r.Kind == NodeKind.Project && r.Name == "Hello");
-            Assert.Equal(TestProjects.Framework, loaded.Detail);
+            Assert.Equal(TestProjects.Framework, loaded.Detail?.English);
             string hello = loaded.Path!;
             Assert.Equal(["Hello"], window.Configurations.Select(c => c.Name));
 
             window.SetUnloaded(hello, unloaded: true);
             ExplorerNode unloaded = Assert.Single(tree.Rows, r => r.Kind == NodeKind.Project && r.Name == "Hello");
-            Assert.Equal("(unloaded)", unloaded.Detail);
+            Assert.Equal("(unloaded)", unloaded.Detail?.English);
             Assert.True(unloaded.IsDimmed);
             Assert.False(unloaded.HasChildren);
             Assert.Empty(window.Configurations);
@@ -161,7 +161,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
 
             window.SetUnloaded(hello, unloaded: false);
             Assert.Equal(["Hello"], window.Configurations.Select(c => c.Name));
-            Assert.Equal(TestProjects.Framework, Assert.Single(tree.Rows, r => r.Kind == NodeKind.Project && r.Name == "Hello").Detail);
+            Assert.Equal(TestProjects.Framework, Assert.Single(tree.Rows, r => r.Kind == NodeKind.Project && r.Name == "Hello").Detail?.English);
         }
         finally
         {

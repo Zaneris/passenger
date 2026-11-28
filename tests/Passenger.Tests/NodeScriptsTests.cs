@@ -64,12 +64,12 @@ public sealed class NodeScriptsTests
                 () => $"each package's scripts but the hook run before dev, where the configurations are {string.Join(", ", window.Configurations.Select(c => c.Name))}");
 
             ExplorerTree tree = window.ExplorerView.Tree;
-            Assert.Equal("mono · pnpm workspace of 2 packages", tree.Root!.Detail);
+            Assert.Equal("mono · pnpm workspace of 2 packages", tree.Root!.Detail?.English);
             tree.Expand(Assert.Single(tree.Rows, r => r.Kind == NodeKind.Folder && r.Name == "packages"));
-            Assert.Equal("@mono/web · pnpm", Assert.Single(tree.Rows, r => r.Name == "web").Detail);
+            Assert.Equal("@mono/web · pnpm", Assert.Single(tree.Rows, r => r.Name == "web").Detail?.English);
             ExplorerNode api = Assert.Single(tree.Rows, r => r.Name == "api");
-            Assert.Equal("@mono/api · pnpm", api.Detail);
-            Assert.Equal("Node package @mono/api, run with pnpm (pnpm-lock.yaml): its scripts start and test run from the run configurations", api.Tip);
+            Assert.Equal("@mono/api · pnpm", api.Detail?.English);
+            Assert.Equal("Node package @mono/api, run with pnpm (pnpm-lock.yaml): its scripts start and test run from the run configurations", api.Tip?.English);
 
             // The package.json's scripts have run icons, whose menu runs a script and greys what only .NET's programs take.
             window.OpenFile(Path.Combine(folder, "packages", "web", "package.json"));

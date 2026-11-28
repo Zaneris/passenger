@@ -126,8 +126,8 @@ public sealed class ShprojTests : IDisposable
         try
         {
             ExplorerNode shared = Row(window, "Shop.Shared");
-            Assert.True(shared is { Kind: NodeKind.Project, Detail: "shared" }, $"Shop.Shared shows as a {shared.Kind} saying '{shared.Detail}', not as a shared project");
-            Assert.Equal("Shared project: its files are compiled into Shop.Api and Shop.Web, which import Shop.Shared.projitems", shared.Tip);
+            Assert.True(shared is { Kind: NodeKind.Project, Detail.English: "shared" }, $"Shop.Shared shows as a {shared.Kind} saying '{shared.Detail}', not as a shared project");
+            Assert.Equal("Shared project: its files are compiled into Shop.Api and Shop.Web, which import Shop.Shared.projitems", shared.Tip?.English);
             Assert.Equal(["Models", "Greeting.cs"], shared.Children!.Select(r => r.Name));
             Assert.Equal(["Order.cs"], shared.Children![0].Children!.Select(r => r.Name));
             foreach (string importing in (string[])["Shop.Api", "Shop.Web"])
@@ -486,7 +486,7 @@ public sealed class ShprojTests : IDisposable
             Ui.ChooseFromRowMenu(window, Row(window, "Shop.Api"), "Add", "Reference…");
             AddReferenceDialog dialog = Assert.Single(window.OwnedWindows.OfType<AddReferenceDialog>());
             ReferenceChoice offered = Assert.Single(dialog.Choices, c => c.Name == "Shop.Shared");
-            Assert.True(offered is { IsChosen: true, CanChoose: true } && offered.Detail.StartsWith("shared", StringComparison.Ordinal),
+            Assert.True(offered is { IsChosen: true, CanChoose: true } && offered.Detail.English.StartsWith("shared", StringComparison.Ordinal),
                 $"Shop.Shared was offered chosen {offered.IsChosen}, saying {offered.Detail}, where Shop.Api imports it");
             offered.IsChosen = false;
             dialog.Accept();
@@ -534,7 +534,7 @@ public sealed class ShprojTests : IDisposable
                 return Task.FromResult<IReadOnlyList<string>>([Path.Combine(Shared, "Shop.Shared.shproj")]);
             };
             Ui.ChooseFromRowMenu(window, window.ExplorerView.Tree.Root!, "Add", "Existing Project…");
-            Ui.WaitFor(() => window.ExplorerView.Tree.Root!.Children!.Any(r => r is { Name: "Shop.Shared", Detail: "shared" }), () => $"Shop.Shared added as a shared project: {window.Status}");
+            Ui.WaitFor(() => window.ExplorerView.Tree.Root!.Children!.Any(r => r is { Name: "Shop.Shared", Detail.English: "shared" }), () => $"Shop.Shared added as a shared project: {window.Status}");
             Assert.Contains("<Project Path=\"Shop.Shared/Shop.Shared.shproj\" />", File.ReadAllText(solution), StringComparison.Ordinal);
         }
         finally

@@ -8,20 +8,19 @@
         <DockPanel Name="OwnHeader" DockPanel.Dock="Top" Margin="{x:Static explorer:ExplorerView.HeaderMargin}">
             <!-- The view switch: the solution's projects, or the folder as it is on disk. Narrowed, its name gives way, down
                  to a letter or two as the toolbar's widgets do, then it goes whole. -->
-            <Button Name="ViewSwitch" DockPanel.Dock="Right" Classes="widget" MinWidth="52" IsVisible="False"
-                    ToolTip.Tip="Switch between the solution and the files on disk">
+            <Button Name="ViewSwitch" DockPanel.Dock="Right" Classes="widget" MinWidth="52" IsVisible="False">
                 <DockPanel>
                     <PathIcon DockPanel.Dock="Right" Classes="chevron" Data="{DynamicResource Icon.ChevronDown}" />
-                    <TextBlock Name="ViewName" Classes="caption" Text="Solution" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Name="ViewName" Classes="caption" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                 </DockPanel>
             </Button>
-            <TextBlock Classes="paneTitle" Text="Explorer" VerticalAlignment="Center" />
+            <TextBlock Name="OwnTitle" Classes="paneTitle" VerticalAlignment="Center" />
         </DockPanel>
         <!-- The filter's bar goes in the first row, after the tree among the parts, so the Explorer's action gives the
              tree's row the keys and only Find's keys give them to the filter; the last row says what it left out. -->
         <Grid Name="Body" RowDefinitions="Auto,*,Auto">
             <Panel Name="Surface" Grid.Row="1">
-                <toolWindows:EmptyState Name="Hint" Text="Nothing open" />
+                <toolWindows:EmptyState Name="Hint" />
                 <app:TreeList Name="Rows" Classes="tree" IsVisible="False" SelectionMode="Multiple" />
             </Panel>
         </Grid>

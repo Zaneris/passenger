@@ -2010,7 +2010,7 @@ public sealed class NewProjectDialog : IdeWindow
 
         public string Name => RepositoryFiles.NameOf(File);
 
-        public string Detail => missing ?? File switch
+        public Words Detail => missing ?? File switch
         {
             RepositoryFile.GitIgnore => "dotnet new gitignore's, with what Passenger's runs leave",
             RepositoryFile.GitAttributes => "LF line breaks on every system, binary files marked",

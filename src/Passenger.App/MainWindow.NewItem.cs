@@ -78,7 +78,7 @@ public partial class MainWindow
         {
             return [];
         }
-        string? whyNot = ExplorerNode.KeptOut(into);
+        string? whyNot = ExplorerNode.KeptOut(into)?.Shown;
         ItemTarget target = ItemTargetOf(into);
         List<ListedItem> kinds = [];
         foreach (IReadOnlyList<ProjectTemplate> group in ItemKinds.Common(target, ProjectTemplates.Ready(TemplatesFolder(into))))
