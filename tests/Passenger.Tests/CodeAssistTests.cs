@@ -225,8 +225,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Equal(["Program.cs", "Program"], window.Breadcrumbs);
 
         int at = editor.Document.Snapshot.ToString().IndexOf("Twice", StringComparison.Ordinal) + 2;
-        Point point = editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value;
-        window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
+        Point point = Ui.RestOn(editor, at);
         Ui.WaitFor(() => window.Assist.HoverText is not null, "the hover card");
         Assert.Contains("int Helper.Twice(int value)", window.Assist.HoverText, StringComparison.Ordinal);
         TheCardIsReachedSelectedAndCopied(window, editor, point);
@@ -393,8 +392,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
             Ui.WaitFor(() => window.Assist.HoverText is null, "the previous hover card has closed");
             int offset = text.IndexOf(usage, StringComparison.Ordinal) + usage.IndexOf(name, StringComparison.Ordinal) + 1;
-            Point point = editor.TranslatePoint(editor.PointOf(offset) + new Point(1, editor.LineHeight / 2), window)!.Value;
-            window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
+            Ui.RestOn(editor, offset);
             Ui.WaitFor(() => window.Assist.HoverText is not null, $"the hover for {usage}");
             return window.Assist.HoverText!;
         }
@@ -429,8 +427,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             Ui.Settle();
             CodeEditor editor = window.EditorArea.CodeEditor;
             int at = editor.Document.Snapshot.ToString().IndexOf("GetOrder", StringComparison.Ordinal) + 2;
-            Point word = editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value;
-            window.MouseMove(word, Avalonia.Input.RawInputModifiers.None);
+            Point word = Ui.RestOn(editor, at);
             Ui.WaitFor(() => window.Assist.HoverText?.Contains("GetOrder(Customer", StringComparison.Ordinal) == true, "the chosen overload in the hover card");
 
             Border card = window.Assist.HoverCard!;
@@ -2834,7 +2831,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
         editor.Focus();
         int key = editor.Document.Snapshot.ToString().IndexOf("csharp_style_var_elsewhere", StringComparison.Ordinal) + 1;
-        window.MouseMove(editor.TranslatePoint(editor.PointOf(key) + new Point(1, editor.LineHeight / 2), window)!.Value, Avalonia.Input.RawInputModifiers.None);
+        Ui.RestOn(editor, key);
         Ui.WaitFor(() => window.Assist.HoverText is not null, "the key's hover card");
         string card = window.Assist.HoverText!;
         Assert.True(card.Contains("var preferences", StringComparison.Ordinal) && card.Contains("Takes true or false", StringComparison.Ordinal)

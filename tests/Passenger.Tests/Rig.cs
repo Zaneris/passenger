@@ -1797,18 +1797,21 @@ public static class Ui
         Settle();
     }
 
-    /// <summary>The pointer brought to rest on an offset of an editor's text as <see cref="Hover"/> brings it, the text
-    /// scrolled into view first where it lies past the editor's edge, as a person scrolls to what they point at; then lets
-    /// what it ran land.</summary>
-    public static void RestOn(CodeEditor editor, int offset)
+    /// <summary>The pointer brought to rest on a character of an editor's text, the one way a test points at text: the
+    /// text scrolled into view first where it lies past the editor's edge, as a person scrolls to what they point at, and
+    /// aimed as <see cref="Hover"/> aims, so the rest lands on the text and not on what covers it or lies past it. It waits
+    /// for nothing after, the caller waiting for what it checks (a card, a link, the window's loop run); where it rests,
+    /// in its window.</summary>
+    public static Point RestOn(CodeEditor editor, int offset)
     {
         double at = editor.PointOf(offset).Y;
         if (at < 0 || at + editor.LineHeight > editor.Bounds.Height)
         {
             editor.ScrollTo(new Vector(editor.ScrollOffset.X, editor.ScrollOffset.Y + at - (editor.Bounds.Height / 3)));
-            Settle();
         }
-        Hover(editor, editor.PointOf(offset) + new Point(1, editor.LineHeight / 2));
+        (TopLevel top, Point point) = Aim(editor, editor.PointOf(offset) + new Point(1, editor.LineHeight / 2));
+        top.MouseMove(point, RawInputModifiers.None);
+        return point;
     }
 
     /// <summary>The words a control's open tip shows, as the tip lays them out; fails where none of its is open.</summary>

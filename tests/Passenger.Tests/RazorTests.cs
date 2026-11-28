@@ -127,8 +127,7 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
         MainWindow window = app.Open("Components/Pages/Home.razor");
         CodeEditor editor = window.EditorArea.CodeEditor;
         int tag = editor.Document.Snapshot.ToString().IndexOf("<Greeting", StringComparison.Ordinal) + 3;
-        Point point = editor.TranslatePoint(editor.PointOf(tag) + new Point(1, editor.LineHeight / 2), window)!.Value;
-        window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
+        Ui.RestOn(editor, tag);
         Ui.WaitFor(() => window.Assist.HoverText is not null, "the hover card on the component's tag");
         Assert.Contains("Shop.Components.Greeting", window.Assist.HoverText, StringComparison.Ordinal);
 

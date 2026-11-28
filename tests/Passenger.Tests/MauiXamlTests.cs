@@ -715,8 +715,7 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
         Ui.WaitFor(() => window.Assist.HoverText is null, "the last card to go");
         string written = editor.Document.Snapshot.ToString();
         int at = written.IndexOf(text, StringComparison.Ordinal) + text.IndexOf(name, StringComparison.Ordinal) + 1;
-        Avalonia.Point point = editor.TranslatePoint(editor.PointOf(at) + new Avalonia.Point(1, editor.LineHeight / 2), window)!.Value;
-        window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
+        Ui.RestOn(editor, at);
         Ui.WaitFor(() => window.Assist.HoverText is not null, $"the card on {name} in {text}");
         return window.Assist.HoverText!;
     }

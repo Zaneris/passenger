@@ -441,12 +441,14 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
                 span is { Kind: TokenKind.Keyword } && span.Start == opcode && span.Length == "ldc.i4.1".Length);
             Assert.Contains(output.Highlighter.GetSpans(output.Document.Snapshot, opcode - 9, 17), span =>
                 span is { Kind: TokenKind.Constant } && span.Start < opcode);
-            Ui.Hover(output, output.PointOf(opcode + 1) + new Point(0, output.LineHeight / 2));
+            Ui.RestOn(output, opcode + 1);
+            Ui.Settle();
             Ui.WaitFor(() => ToolTip.GetIsOpen(output), "the opcode tooltip");
             StackPanel tip = Assert.IsType<StackPanel>(ToolTip.GetTip(output));
             Assert.Contains(tip.Children.OfType<TextBlock>(), text => text.Text == "ldc.i4.1");
             Assert.Contains(tip.Children.OfType<TextBlock>(), text => text.Text?.Contains("pop 0 · push 1", StringComparison.Ordinal) == true);
-            Ui.Hover(output, output.PointOf(opcode - 5) + new Point(0, output.LineHeight / 2));
+            Ui.RestOn(output, opcode - 5);
+            Ui.Settle();
             Ui.WaitFor(() => !ToolTip.GetIsOpen(output), "the tooltip dismissing over the IL offset");
 
             Ui.Click(tool.Content.GetVisualDescendants().OfType<ToggleButton>().Single(button => button.Name == "IlViewerCSharp"));
@@ -1670,9 +1672,9 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         string place = frame[(frame.IndexOf(" in ", StringComparison.Ordinal) + 4)..];
         int link = start + frame.Length - place.Length;
 
-        Rest(window, run.Editor, start + frame.IndexOf("Orders.Load", StringComparison.Ordinal));
+        Rest(run.Editor, start + frame.IndexOf("Orders.Load", StringComparison.Ordinal));
         Assert.Null(run.Editor.HoveredLink);
-        Rest(window, run.Editor, link + 3);
+        Rest(run.Editor, link + 3);
         TextLink hovered = run.Editor.HoveredLink ?? throw new Xunit.Sdk.XunitException($"The pointer rests on the frame's file but nothing is underlined:\n{frame}");
         Assert.Equal(place, run.Document.Snapshot.GetText(hovered.Range.Start, hovered.Range.Length));
         Assert.Contains(run.Editor.Highlighter!.GetSpans(run.Document.Snapshot, start, frame.Length), span => span.Kind == TokenKind.Link && span.Start == link && span.Length == place.Length);
@@ -1714,8 +1716,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Ui.Settle();
             int line = editor.LinesShown.Last - 2;
             TextLink link = Assert.Single(editor.Links!(editor.Document.Snapshot, line));
-            Point on = editor.TranslatePoint(editor.PointOf(link.Range.Start + 2 + i) + new Point(1, editor.LineHeight / 2), window)!.Value;
-            window.MouseMove(on, Avalonia.Input.RawInputModifiers.None);
+            Ui.RestOn(editor, link.Range.Start + 2 + i);
             Ui.Settle();
             Assert.Equal(link.Range, editor.HoveredLink?.Range);
         }
@@ -1917,9 +1918,9 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     }
 
     /// <summary>The pointer brought to rest on a character of a console.</summary>
-    private static void Rest(MainWindow window, CodeEditor editor, int offset)
+    private static void Rest(CodeEditor editor, int offset)
     {
-        window.MouseMove(At(window, editor, offset));
+        Ui.RestOn(editor, offset);
         Ui.Settle();
     }
 

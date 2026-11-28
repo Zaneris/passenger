@@ -2355,10 +2355,9 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.True(shown < 16 << 20, $"Showing the stop's values allocated {shown >> 20} MB on the UI thread: the 8 MB string was laid out whole");
         Assert.Equal(4_000_002, Row(window, "big")!.Value.Length);
 
-        Point at = editor.TranslatePoint(editor.PointOf(editor.Document.Snapshot.ToString().IndexOf("big.Length", StringComparison.Ordinal) + 1)
-            + new Point(1, editor.LineHeight / 2), window)!.Value;
+        // The rest begins the hover, whose card comes after its pause, counted from here.
+        Ui.RestOn(editor, editor.Document.Snapshot.ToString().IndexOf("big.Length", StringComparison.Ordinal) + 1);
         before = GC.GetAllocatedBytesForCurrentThread();
-        window.MouseMove(at, RawInputModifiers.None);
         Ui.WaitFor(() => window.Assist.HoverText is not null, "the hover card on big");
         Ui.Settle();
         long hovered = GC.GetAllocatedBytesForCurrentThread() - before;

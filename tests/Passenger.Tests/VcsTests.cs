@@ -2243,7 +2243,7 @@ public sealed partial class VcsTests : IDisposable
         Ui.WaitFor(() => Marked().SequenceEqual(marked), () => $"The .gitignore's marks are {string.Join("; ", Marked())}");
         CodeEditor editor = window.EditorArea.CodeEditor;
         editor.Focus();
-        window.MouseMove(editor.TranslatePoint(editor.PointOf(1) + new Avalonia.Point(1, editor.LineHeight / 2), window)!.Value, Avalonia.Input.RawInputModifiers.None);
+        Ui.RestOn(editor, 1);
         Ui.WaitFor(() => window.Assist.HoverText?.Contains("Ignores 1 path here: a.log", StringComparison.Ordinal) == true, () => $"The card on *.log says {window.Assist.HoverText}");
         window.MouseMove(new Avalonia.Point(1, 1), Avalonia.Input.RawInputModifiers.None);
 

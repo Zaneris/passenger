@@ -113,8 +113,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         MainWindow window = app.Open("Components/Pages/Styled.razor", before: w => w.ApplySettings(w.Settings with { DownloadStylesheets = true }));
         CodeEditor editor = window.EditorArea.CodeEditor;
         int written = editor.Document.Snapshot.ToString().IndexOf("btn-primary", StringComparison.Ordinal) + 4;
-        Point point = editor.TranslatePoint(editor.PointOf(written) + new Point(1, editor.LineHeight / 2), window)!.Value;
-        window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
+        Ui.RestOn(editor, written);
         Ui.WaitFor(() => window.Assist.HoverText?.Contains(".btn-primary {", StringComparison.Ordinal) == true, () => $"the class's rule on the card; it says {window.Assist.HoverText}");
         Assert.Contains("background-color: #0d6efd;", window.Assist.HoverText, StringComparison.Ordinal);
         Assert.Contains("bootstrap.min.css", window.Assist.HoverText, StringComparison.Ordinal);

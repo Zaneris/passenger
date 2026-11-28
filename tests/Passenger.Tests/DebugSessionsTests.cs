@@ -721,7 +721,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
         window.MouseMove(new Point(0, 0), Avalonia.Input.RawInputModifiers.None);
         Ui.WaitFor(() => window.Assist.HoverText is null, "the last card to go");
         int at = editor.Document.Snapshot.ToString().IndexOf(text, StringComparison.Ordinal) + letter;
-        window.MouseMove(editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value, Avalonia.Input.RawInputModifiers.None);
+        Ui.RestOn(editor, at);
         Ui.WaitFor(() => window.Assist.HoverText is not null, $"the card on {text}");
         return window.Assist.HoverText!;
     }

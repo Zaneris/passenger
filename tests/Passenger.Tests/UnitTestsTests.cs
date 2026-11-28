@@ -115,8 +115,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         int frame = shown.IndexOf("Two_and_two_make_five() in ", StringComparison.Ordinal) + "Two_and_two_make_five() in ".Length + 1;
         // Away from the file's line first, so the click is what brings it back there.
         editor.GoTo(new TextPosition(0, 0));
-        Avalonia.Point at = details.TranslatePoint(details.PointOf(frame) + new Avalonia.Vector(2, details.LineHeight / 2), window)!.Value;
-        window.MouseMove(at);
+        Avalonia.Point at = Ui.RestOn(details, frame);
         Ui.Settle();
         Assert.True(details.HoveredLink is not null, $"The pointer rests on the frame's file in the details, but it is no link:\n{shown}");
         window.MouseDown(at, Avalonia.Input.MouseButton.Left);
