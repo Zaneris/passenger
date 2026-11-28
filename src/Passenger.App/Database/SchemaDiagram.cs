@@ -65,10 +65,10 @@ public sealed class SchemaDiagramTab : IDatabaseTab
             Children =
             {
                 ToolFlow.Spring(),
-                ToolButtons.Of(IconKeys.ZoomIn, ActionTips.Named("Zoom In", KeyWords.Of(ZoomedPicture.ZoomInKey)), canvas.ZoomIn),
-                ToolButtons.Of(IconKeys.ZoomOut, ActionTips.Named("Zoom Out", KeyWords.Of(ZoomedPicture.ZoomOutKey)), canvas.ZoomOut),
-                ToolButtons.Of(IconKeys.ActualSize, ActionTips.Named("Actual Size", KeyWords.Of(ZoomedPicture.ActualSizeKey)), canvas.ActualSize),
-                ToolButtons.Of(IconKeys.ZoomFit, "Fit Zoom to Window", canvas.Fit),
+                ToolButtons.Of(IconKeys.ZoomIn, ActionTips.Named(SharedWords.ZoomIn, KeyWords.Of(ZoomedPicture.ZoomInKey)), canvas.ZoomIn),
+                ToolButtons.Of(IconKeys.ZoomOut, ActionTips.Named(SharedWords.ZoomOut, KeyWords.Of(ZoomedPicture.ZoomOutKey)), canvas.ZoomOut),
+                ToolButtons.Of(IconKeys.ActualSize, ActionTips.Named(SharedWords.ActualSize, KeyWords.Of(ZoomedPicture.ActualSizeKey)), canvas.ActualSize),
+                ToolButtons.Of(IconKeys.ZoomFit, SharedWords.FitZoom, canvas.Fit),
                 Named(ToolButtons.Of(IconKeys.Rerun, "Read the Schema Again", () => IdeErrors.Observe(ReadAgainAsync())), "DatabaseDiagramReadAgain"),
                 Named(ToolButtons.Of(IconKeys.Rollback, "Lay Out Again", () =>
                 {

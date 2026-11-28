@@ -280,7 +280,7 @@ public sealed class MapPicture : Control
         if (over != tipped)
         {
             tipped = over;
-            ToolTip.SetTip(this, over is null ? null : TipOf(over));
+            ShownWords.Set(this, ToolTip.TipProperty, over is null ? null : TipOf(over));
         }
     }
 
@@ -349,10 +349,10 @@ public sealed class MapPicture : Control
     }
 
     /// <summary>What a node's tip says: its name and kind, and what it uses and what uses it, counted.</summary>
-    private string TipOf(MapNode node)
+    private Words TipOf(MapNode node)
     {
         (IReadOnlyList<MapEdge> uses, IReadOnlyList<MapEdge> used) = MapGraph.Crossing(node, edges);
-        return $"{node.Name} ({node.Kind}): uses {Plural.Of(uses.Count, "node")}, used by {Plural.Of(used.Count, "node")}";
+        return MapWords.NodeTip(Words.Verbatim(node.Name), MapWords.NodeKind(node.Kind), uses.Count, used.Count);
     }
 
     private void Restyle()
@@ -629,19 +629,7 @@ public sealed class MapPicture : Control
     }
 
     /// <summary>An edge's kinds in words, the most first ("calls 3, uses 1").</summary>
-    public static string KindsOf(MapEdge edge) =>
-        string.Join(", ", edge.Kinds.OrderByDescending(k => k.Value).ThenBy(k => DependencyKinds.All.ToList().IndexOf(k.Key)).Select(k => $"{KindWords(k.Key)} {Numbers.Said(k.Value)}"));
-
-    /// <summary>A kind as the map says it.</summary>
-    public static string KindWords(string kind) => kind switch
-    {
-        DependencyKinds.References => "references",
-        DependencyKinds.Inherits => "inherits",
-        DependencyKinds.Implements => "implements",
-        DependencyKinds.Calls => "calls",
-        DependencyKinds.FieldType => "field types",
-        DependencyKinds.ParameterType => "parameter types",
-        DependencyKinds.Attribute => "attributes",
-        _ => "uses",
-    };
+    public static Words KindsOf(MapEdge edge) => edge.Kinds.Count == 0 ? Words.Verbatim(string.Empty) :
+        edge.Kinds.OrderByDescending(k => k.Value).ThenBy(k => DependencyKinds.All.ToList().IndexOf(k.Key)).Select(k => MapWords.KindCounted(MapWords.Kind(k.Key), k.Value))
+            .Aggregate(MapWords.KindsListed);
 }

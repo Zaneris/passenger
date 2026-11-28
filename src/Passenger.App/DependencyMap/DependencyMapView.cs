@@ -31,13 +31,16 @@ public sealed record MapEdgeRow(MapEdge Edge, bool Out, MapNode Chosen, bool Bro
 
     /// <summary>The row's words: which way, the other end, the node below the chosen one it is of where it is, whether it
     /// breaks the layer rules, and the uses by kind.</summary>
-    public string Words
+    public Words Words
     {
         get
         {
             MapNode own = Out ? Edge.From : Edge.To;
-            string way = own == Chosen ? (Out ? "Uses" : "Used by") : $"{own.Name} {(Out ? "uses" : "used by")}";
-            return $"{way} {Other.Name}{(Broken ? ", breaking the layer rules" : string.Empty)}: {MapPicture.KindsOf(Edge)}";
+            Words other = Core.Words.Verbatim(Other.Name);
+            string broken = Broken ? "true" : "false";
+            Words kinds = MapPicture.KindsOf(Edge);
+            return own == Chosen ? (Out ? MapWords.EdgeUses(other, broken, kinds) : MapWords.EdgeUsedBy(other, broken, kinds))
+                : Out ? MapWords.EdgeOfUses(Core.Words.Verbatim(own.Name), other, broken, kinds) : MapWords.EdgeOfUsedBy(Core.Words.Verbatim(own.Name), other, broken, kinds);
         }
     }
 }
@@ -54,7 +57,7 @@ public sealed class DependencyMapView : DockPanel
     private readonly Dictionary<MapNode, MapRow> rowOf = [];
     private readonly TreeList tree;
     private readonly ListBox edgeList;
-    private readonly TextBox filter = SearchBox.Finding("Filter nodes");
+    private readonly TextBox filter = SearchBox.Finding(MapWords.FilterNodes);
     private readonly FilterMenu kinds;
     private readonly HashSet<string> hidden = new(StringComparer.Ordinal);
     private readonly EmptyState placeholder = new();
@@ -76,7 +79,7 @@ public sealed class DependencyMapView : DockPanel
         Picture.Opened += (_, node) => GoToRequested?.Invoke(this, node);
         filter.Margin = new Thickness(0, 0, Gaps.Small, 0);
         filter.TextChanged += (_, _) => ListRows();
-        kinds = new FilterMenu("Kinds of Edge Shown", () => [.. DependencyKinds.All.Select(kind => (Control)ListMenus.Toggle(Capitalised(MapPicture.KindWords(kind)), !hidden.Contains(kind), on =>
+        kinds = new FilterMenu(MapWords.KindsShown, () => [.. DependencyKinds.All.Select(kind => (Control)ListMenus.Toggle(MapWords.KindShown(kind), !hidden.Contains(kind), on =>
         {
             if (!on)
             {
@@ -99,11 +102,11 @@ public sealed class DependencyMapView : DockPanel
             {
                 filter,
                 ToolFlow.Spring(),
-                ToolButtons.Of(IconKeys.ZoomIn, ActionTips.Named("Zoom In", KeyWords.Of(ZoomedPicture.ZoomInKey)), Picture.ZoomIn),
-                ToolButtons.Of(IconKeys.ZoomOut, ActionTips.Named("Zoom Out", KeyWords.Of(ZoomedPicture.ZoomOutKey)), Picture.ZoomOut),
-                ToolButtons.Of(IconKeys.ActualSize, ActionTips.Named("Actual Size", KeyWords.Of(ZoomedPicture.ActualSizeKey)), Picture.ActualSize),
-                ToolButtons.Of(IconKeys.ZoomFit, "Fit Zoom to Window", Picture.Fit),
-                ToolButtons.Of(IconKeys.Rerun, "Read the Map Again", () => IdeErrors.Observe(RefreshAsync())),
+                ToolButtons.Of(IconKeys.ZoomIn, ActionTips.Named(SharedWords.ZoomIn, KeyWords.Of(ZoomedPicture.ZoomInKey)), Picture.ZoomIn),
+                ToolButtons.Of(IconKeys.ZoomOut, ActionTips.Named(SharedWords.ZoomOut, KeyWords.Of(ZoomedPicture.ZoomOutKey)), Picture.ZoomOut),
+                ToolButtons.Of(IconKeys.ActualSize, ActionTips.Named(SharedWords.ActualSize, KeyWords.Of(ZoomedPicture.ActualSizeKey)), Picture.ActualSize),
+                ToolButtons.Of(IconKeys.ZoomFit, SharedWords.FitZoom, Picture.Fit),
+                ToolButtons.Of(IconKeys.Rerun, MapWords.ReadAgain, () => IdeErrors.Observe(RefreshAsync())),
             },
         }));
 
@@ -124,7 +127,7 @@ public sealed class DependencyMapView : DockPanel
         ListMenus.Attach(tree, () => tree.SelectedItem is not MapRow chosen ? [] :
         [
             ListMenus.Source(() => GoToRequested?.Invoke(this, chosen.Node), chosen.Node.Given.Path is null ? Refusals.MapNodeUnplaced : null),
-            ListMenus.Item("Copy Name", () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Node.Name))),
+            ListMenus.Item(SharedWords.CopyName, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Node.Name))),
         ]);
         edgeList = new ListBox { Classes = { StyleClasses.Tree } };
         ReusedRows.Use(edgeList, EdgeRow);
@@ -146,7 +149,7 @@ public sealed class DependencyMapView : DockPanel
         side.Children.Add(lists);
         Panel drawn = new() { Children = { Picture, placeholder } };
         Children.Add(new PaneSplit(side, drawn, "2*,1,3*"));
-        placeholder.Text = "The map shows here once the C# language server has read the solution";
+        placeholder.Say(MapWords.ShowsOnceRead);
     }
 
     /// <summary>The picture of the map.</summary>
@@ -246,9 +249,9 @@ public sealed class DependencyMapView : DockPanel
     private bool fitted;
 
     /// <summary>Says why there is no map, in its place.</summary>
-    public void Say(string why)
+    public void Say(Words why)
     {
-        placeholder.Text = why;
+        placeholder.Say(why);
         placeholder.IsVisible = true;
     }
 
@@ -367,12 +370,12 @@ public sealed class DependencyMapView : DockPanel
         }
         catch (Exception failed) when (failed is Lsp.LanguageServerFailed or InvalidOperationException or TimeoutException)
         {
-            string why = $"The dependency map could not read {of?.Name ?? "the solution's projects"}: {failed.Message}";
+            Words why = MapWords.CouldNotRead(of is null ? MapWords.TheProjects : Core.Words.Verbatim(of.Name), Core.Words.Verbatim(failed.Message));
             if (!graph.HasRoots)
             {
                 Say(why);
             }
-            Failed?.Invoke(this, why);
+            Failed?.Invoke(this, why.Shown);
             return false;
         }
         finally
@@ -500,7 +503,7 @@ public sealed class DependencyMapView : DockPanel
             tree.SelectedItem = row;
             tree.ScrollIntoView(row);
         }
-        heading.Text = $"{node.Name} ({node.Kind})";
+        ShownWords.Set(heading, TextBlock.TextProperty, MapWords.Heading(Core.Words.Verbatim(node.Name), MapWords.NodeKind(node.Kind)));
         (IReadOnlyList<MapEdge> leaving, IReadOnlyList<MapEdge> coming) = MapGraph.Crossing(node, shown);
         edgeList.ItemsSource = (IReadOnlyList<MapEdgeRow>)[.. leaving.Select(e => new MapEdgeRow(e, Out: true, node, e.Broken)).OrderBy(e => e.Edge.From != node).ThenBy(e => e.Other.Name, StringComparer.OrdinalIgnoreCase),
             .. coming.Select(e => new MapEdgeRow(e, Out: false, node, e.Broken)).OrderBy(e => e.Edge.To != node).ThenBy(e => e.Other.Name, StringComparer.OrdinalIgnoreCase)];
@@ -516,8 +519,6 @@ public sealed class DependencyMapView : DockPanel
             e.Handled = true;
         }
     }
-
-    private static string Capitalised(string words) => words.Length == 0 ? words : char.ToUpperInvariant(words[0]) + words[1..];
 
     /// <summary>A node's row: its chevron, its name, and its kind with what it uses and what uses it.</summary>
     private Control Row()
@@ -539,9 +540,10 @@ public sealed class DependencyMapView : DockPanel
             chevron.IsOpen = row.IsExpanded;
             name.Text = row.Node.Name;
             (IReadOnlyList<MapEdge> uses, IReadOnlyList<MapEdge> used) = MapGraph.Crossing(row.Node, shown);
-            detail.Text = $"{row.Node.Kind} · uses {Numbers.Said(uses.Count)} · used by {Numbers.Said(used.Count)}";
+            Words said = MapWords.RowDetail(MapWords.NodeKind(row.Node.Kind), uses.Count, used.Count);
+            ShownWords.Set(detail, TextBlock.TextProperty, said);
             // Cut short where the pane is narrow, as a list's rows are, the whole row is its tip.
-            ToolTip.SetTip(line, $"{row.Node.Name}: {detail.Text}");
+            ShownWords.Set(line, ToolTip.TipProperty, MapWords.RowTip(Core.Words.Verbatim(row.Node.Name), said));
         });
     }
 
@@ -551,8 +553,8 @@ public sealed class DependencyMapView : DockPanel
         Border line = new() { Height = ListRow.Height, Child = words };
         return line.Showing<MapEdgeRow>(row =>
         {
-            words.Text = row.Words;
-            ToolTip.SetTip(line, row.Words);
+            ShownWords.Set(words, TextBlock.TextProperty, row.Words);
+            ShownWords.Set(line, ToolTip.TipProperty, row.Words);
         });
     }
 }

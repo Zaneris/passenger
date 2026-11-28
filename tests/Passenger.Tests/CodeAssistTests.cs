@@ -3947,7 +3947,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Equal(["Sample project", "  <global namespace> namespace", "    Readings class", "      Both(Dial, IGauge) method"],
             [.. map.Rows.Where(r => r.Node.Name is "Sample" or "<global namespace>" or "Readings" || r.Node.Parent?.Name == "Readings")
                 .Select(r => $"{new string(' ', r.Depth * 2)}{r.Node.Name} {r.Node.Kind}")]);
-        Assert.Equal(["Uses Dial: calls 1, parameter types 1", "Uses IGauge: calls 1, parameter types 1"], [.. map.EdgeRows.Select(e => e.Words)]);
+        Assert.Equal(["Uses Dial: calls 1, parameter types 1", "Uses IGauge: calls 1, parameter types 1"], [.. map.EdgeRows.Select(e => e.Words.English)]);
         Assert.True(map.Picture.Boxes.ContainsKey(map.Chosen!), "the method chosen stands in the picture");
         // A row the side pane's width cuts short says itself whole in its tip.
         Assert.Equal("Both(Dial, IGauge): method · uses 2 · used by 0", TipOf(Ui.Row(map.Tree, map.Rows.Single(r => r.Node == map.Chosen))));
@@ -3955,11 +3955,11 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         MapNode readings = map.Chosen!.Parent!;
         map.Choose(readings, fromPicture: false);
         Assert.Equal(["Both(Dial, IGauge) uses Dial: calls 1, parameter types 1", "Both(Dial, IGauge) uses IGauge: calls 1, parameter types 1"],
-            [.. map.EdgeRows.Select(e => e.Words)]);
+            [.. map.EdgeRows.Select(e => e.Words.English)]);
 
         MapNode dial = map.Graph.Roots[0].Children!.Single(n => n.Name == "<global namespace>").Children!.Single(n => n.Name == "Dial");
         map.Choose(dial, fromPicture: false);
-        Assert.Contains("Uses IGauge: implements 1", map.EdgeRows.Select(e => e.Words));
+        Assert.Contains("Uses IGauge: implements 1", map.EdgeRows.Select(e => e.Words.English));
         Assert.Contains(map.ShownEdges, e => e.From == dial && e.To.Name == "IGauge" && e.Kinds.ContainsKey(DependencyKinds.Implements));
 
         Ui.Click(map.Kinds.Button);
@@ -3999,7 +3999,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "any.Read()");
         window.KeyTextInput(" + Area.Of(1, 1)");
         window.ShowToolWindow(ToolWindowIds.DependencyMap);
-        Ui.WaitFor(() => map.EdgeRows.Any(e => e.Words == "Uses Area: calls 1"),
+        Ui.WaitFor(() => map.EdgeRows.Any(e => e.Words.English == "Uses Area: calls 1"),
             () => $"the map following Both's call of Area.Of, its edges [{string.Join("; ", map.EdgeRows.Select(e => e.Words))}]");
         window.OpenFile(project.PathOf("Gauges.cs"));
         Ui.Press(window, "meta Z");

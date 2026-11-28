@@ -72,10 +72,10 @@ public sealed class ZoomedPicture : ScrollViewer
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                ToolButtons.Of(IconKeys.ZoomIn, ActionTips.Named("Zoom In", KeyWords.Of(ZoomInKey)), ZoomIn),
-                ToolButtons.Of(IconKeys.ZoomOut, ActionTips.Named("Zoom Out", KeyWords.Of(ZoomOutKey)), ZoomOut),
-                ToolButtons.Of(IconKeys.ActualSize, ActionTips.Named("Actual Size", KeyWords.Of(ActualSizeKey)), () => ZoomTo(1)),
-                ToolButtons.Of(IconKeys.ZoomFit, "Fit Zoom to Window", FitToWindow),
+                ToolButtons.Of(IconKeys.ZoomIn, ActionTips.Named(SharedWords.ZoomIn, KeyWords.Of(ZoomInKey)), ZoomIn),
+                ToolButtons.Of(IconKeys.ZoomOut, ActionTips.Named(SharedWords.ZoomOut, KeyWords.Of(ZoomOutKey)), ZoomOut),
+                ToolButtons.Of(IconKeys.ActualSize, ActionTips.Named(SharedWords.ActualSize, KeyWords.Of(ActualSizeKey)), () => ZoomTo(1)),
+                ToolButtons.Of(IconKeys.ZoomFit, SharedWords.FitZoom, FitToWindow),
                 zoomText,
             },
         };

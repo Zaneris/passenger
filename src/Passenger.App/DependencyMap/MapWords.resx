@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="EdgeUses" xml:space="preserve">
+    <value>Uses {other}{broken, select, true {, breaking the layer rules} other {}}: {kinds}</value>
+    <comment>An edge's row under the chosen node: what it uses; {kinds} counts the uses by kind (calls 3, uses 1).</comment>
+  </data>
+  <data name="EdgeUsedBy" xml:space="preserve">
+    <value>Used by {other}{broken, select, true {, breaking the layer rules} other {}}: {kinds}</value>
+    <comment>An edge's row under the chosen node: what uses it; {kinds} counts the uses by kind.</comment>
+  </data>
+  <data name="EdgeOfUses" xml:space="preserve">
+    <value>{own} uses {other}{broken, select, true {, breaking the layer rules} other {}}: {kinds}</value>
+    <comment>An edge's row: what a node inside the chosen one uses; {own} is that node.</comment>
+  </data>
+  <data name="EdgeOfUsedBy" xml:space="preserve">
+    <value>{own} used by {other}{broken, select, true {, breaking the layer rules} other {}}: {kinds}</value>
+    <comment>An edge's row: what uses a node inside the chosen one; {own} is that node.</comment>
+  </data>
+  <data name="KindCounted" xml:space="preserve">
+    <value>{kind} {count, number}</value>
+    <comment>One kind of use and how many there are (calls 3).</comment>
+  </data>
+  <data name="KindsListed" xml:space="preserve">
+    <value>{first}, {then}</value>
+    <comment>Kinds of use counted, one after another (calls 3, uses 1).</comment>
+  </data>
+  <data name="References" xml:space="preserve">
+    <value>references</value>
+    <comment>A kind of use: a project's reference to another.</comment>
+  </data>
+  <data name="Inherits" xml:space="preserve">
+    <value>inherits</value>
+    <comment>A kind of use: a type's base.</comment>
+  </data>
+  <data name="Implements" xml:space="preserve">
+    <value>implements</value>
+    <comment>A kind of use: an interface a type implements.</comment>
+  </data>
+  <data name="Calls" xml:space="preserve">
+    <value>calls</value>
+    <comment>A kind of use: a method or constructor called.</comment>
+  </data>
+  <data name="FieldTypes" xml:space="preserve">
+    <value>field types</value>
+    <comment>A kind of use: a type a field, property or event is of.</comment>
+  </data>
+  <data name="ParameterTypes" xml:space="preserve">
+    <value>parameter types</value>
+    <comment>A kind of use: a type a method takes or returns.</comment>
+  </data>
+  <data name="Attributes" xml:space="preserve">
+    <value>attributes</value>
+    <comment>A kind of use: an attribute a declaration carries.</comment>
+  </data>
+  <data name="Uses" xml:space="preserve">
+    <value>uses</value>
+    <comment>A kind of use: any other.</comment>
+  </data>
+  <data name="ReferencesShown" xml:space="preserve">
+    <value>References</value>
+    <comment>The edge filter's item for a project's references.</comment>
+  </data>
+  <data name="InheritsShown" xml:space="preserve">
+    <value>Inherits</value>
+    <comment>The edge filter's item for a type's base.</comment>
+  </data>
+  <data name="ImplementsShown" xml:space="preserve">
+    <value>Implements</value>
+    <comment>The edge filter's item for implemented interfaces.</comment>
+  </data>
+  <data name="CallsShown" xml:space="preserve">
+    <value>Calls</value>
+    <comment>The edge filter's item for calls.</comment>
+  </data>
+  <data name="FieldTypesShown" xml:space="preserve">
+    <value>Field types</value>
+    <comment>The edge filter's item for field types.</comment>
+  </data>
+  <data name="ParameterTypesShown" xml:space="preserve">
+    <value>Parameter types</value>
+    <comment>The edge filter's item for parameter types.</comment>
+  </data>
+  <data name="AttributesShown" xml:space="preserve">
+    <value>Attributes</value>
+    <comment>The edge filter's item for attributes.</comment>
+  </data>
+  <data name="UsesShown" xml:space="preserve">
+    <value>Uses</value>
+    <comment>The edge filter's item for any other use.</comment>
+  </data>
+  <data name="KindProject" xml:space="preserve">
+    <value>project</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindNamespace" xml:space="preserve">
+    <value>namespace</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindInterface" xml:space="preserve">
+    <value>interface</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindStruct" xml:space="preserve">
+    <value>struct</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindEnum" xml:space="preserve">
+    <value>enum</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindDelegate" xml:space="preserve">
+    <value>delegate</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindClass" xml:space="preserve">
+    <value>class</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindRecord" xml:space="preserve">
+    <value>record</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindRecordStruct" xml:space="preserve">
+    <value>record struct</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindConstructor" xml:space="preserve">
+    <value>constructor</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindOperator" xml:space="preserve">
+    <value>operator</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindMethod" xml:space="preserve">
+    <value>method</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindProperty" xml:space="preserve">
+    <value>property</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindEnumMember" xml:space="preserve">
+    <value>enum member</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindConstant" xml:space="preserve">
+    <value>constant</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindField" xml:space="preserve">
+    <value>field</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindEvent" xml:space="preserve">
+    <value>event</value>
+    <comment>A node's kind.</comment>
+  </data>
+  <data name="KindSymbol" xml:space="preserve">
+    <value>symbol</value>
+    <comment>A node's kind where it is none of the others.</comment>
+  </data>
+  <data name="FilterNodes" xml:space="preserve">
+    <value>Filter nodes</value>
+    <comment>The map's search field.</comment>
+  </data>
+  <data name="KindsShown" xml:space="preserve">
+    <value>Kinds of Edge Shown</value>
+    <comment>The filter's menu choosing which kinds of use the map draws.</comment>
+  </data>
+  <data name="ReadAgain" xml:space="preserve">
+    <value>Read the Map Again</value>
+    <comment>The map's button reading every open level again.</comment>
+  </data>
+  <data name="ShowsOnceRead" xml:space="preserve">
+    <value>The map shows here once the C# language server has read the solution</value>
+    <comment>The map's place while the language server reads the solution.</comment>
+  </data>
+  <data name="CouldNotRead" xml:space="preserve">
+    <value>The dependency map could not read {what}: {why}</value>
+    <comment>A failed read; {what} names a node or the solution's projects, {why} the server's words.</comment>
+  </data>
+  <data name="TheProjects" xml:space="preserve">
+    <value>the solution's projects</value>
+    <comment>What a failed read could not read where it was no node's.</comment>
+  </data>
+  <data name="Heading" xml:space="preserve">
+    <value>{name} ({kind})</value>
+    <comment>The chosen node over its edges: its name and kind.</comment>
+  </data>
+  <data name="RowDetail" xml:space="preserve">
+    <value>{kind} · uses {uses, number} · used by {used, number}</value>
+    <comment>A node's row after its name: its kind and how many nodes it uses and are using it.</comment>
+  </data>
+  <data name="RowTip" xml:space="preserve">
+    <value>{name}: {detail}</value>
+    <comment>A node's row's tip: its name and the row's detail.</comment>
+  </data>
+  <data name="NodeTip" xml:space="preserve">
+    <value>{name} ({kind}): uses {uses, plural, one {# node} other {# nodes}}, used by {used, plural, one {# node} other {# nodes}}</value>
+    <comment>A node's tip in the picture.</comment>
+  </data>
+</root>

@@ -56,4 +56,24 @@
     <value>File Manager</value>
     <comment>A Linux desktop's file manager, whichever it has.</comment>
   </data>
+  <data name="ZoomIn" xml:space="preserve">
+    <value>Zoom In</value>
+    <comment>A zoomed picture's button (a diagram, an image, the dependency map).</comment>
+  </data>
+  <data name="ZoomOut" xml:space="preserve">
+    <value>Zoom Out</value>
+    <comment>A zoomed picture's button.</comment>
+  </data>
+  <data name="ActualSize" xml:space="preserve">
+    <value>Actual Size</value>
+    <comment>A zoomed picture's button showing it at its own size.</comment>
+  </data>
+  <data name="FitZoom" xml:space="preserve">
+    <value>Fit Zoom to Window</value>
+    <comment>A zoomed picture's button fitting it whole in its place.</comment>
+  </data>
+  <data name="CopyName" xml:space="preserve">
+    <value>Copy Name</value>
+    <comment>A list's row menu item copying the row's name.</comment>
+  </data>
 </root>
