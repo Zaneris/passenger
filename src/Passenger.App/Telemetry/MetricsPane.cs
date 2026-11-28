@@ -354,7 +354,7 @@ public sealed class MetricsPane : DockPanel
     private void Showing()
     {
         bool none = charts.Count == 0;
-        ShownWords.Set(waiting, TextBlock.TextProperty, said);
+        waiting.Say(said);
         waiting.IsVisible = none;
         ShownWords.Set(status, TextBlock.TextProperty, said);
         status.IsVisible = !none && !said.IsEmpty;

@@ -130,8 +130,8 @@ public sealed class SettingsTests : IDisposable
 
     /// <summary>Settings' Language row offers the system's language, named in itself, English and each carried language; a
     /// language put in force (the pseudo-locale, as --language puts it) says again in place every word the open dialog shows
-    /// through ShownWords, and English chosen, or the system's languages followed (the test run's en-US), each in force as
-    /// it is applied.</summary>
+    /// through ShownWords (which refuses a property the control lacks), and English chosen, or the system's languages followed
+    /// (the test run's en-US), each in force as it is applied.</summary>
     private void The_language_chosen_is_in_force_at_once_and_the_words_shown_follow_it_in_place()
     {
         MainWindow window = Open();
@@ -153,6 +153,8 @@ public sealed class SettingsTests : IDisposable
             UiLanguage.Put(UiLanguage.English);
             Ui.Settle();
             Assert.True(label.Text == "Language", $"The Language row's label reads \"{label.Text}\" once English is in force again");
+            // Words given to a property the control lacks would be seen by nobody: refused at once, as an empty state's text is its own.
+            Assert.Throws<InvalidOperationException>(() => ShownWords.Set(new Passenger.App.ToolWindows.EmptyState(), TextBlock.TextProperty, Words.Verbatim("unseen")));
 
             dialog.Change(s => s with { DisplayLanguage = LanguageSetting.English });
             dialog.Apply();

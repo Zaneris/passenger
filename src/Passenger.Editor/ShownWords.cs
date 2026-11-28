@@ -59,9 +59,13 @@ public sealed class ShownWords
     }
 
     /// <summary>Gives <paramref name="target"/>'s <paramref name="property"/> the words, said in the language in force; null
-    /// clears it.</summary>
+    /// clears it. A property the control has no registration of is refused at once: it would hold words nobody sees.</summary>
     public static void Set(AvaloniaObject target, AvaloniaProperty property, Words? words)
     {
+        if (!AvaloniaPropertyRegistry.Instance.IsRegistered(target, property))
+        {
+            throw new InvalidOperationException($"{target.GetType().Name} has no {property.OwnerType.Name}.{property.Name} for ShownWords to say its words into");
+        }
         Dictionary<AvaloniaProperty, Words> given = Kept.GetOrCreateValue(target);
         if (words is null)
         {
