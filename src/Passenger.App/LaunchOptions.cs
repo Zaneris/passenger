@@ -289,7 +289,7 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
                     break;
                 case "--click-name":
                     string controlName = Value(args, ref i, flag);
-                    steps.Add(controlName.Length > 0 && controlName.All(c => char.IsLetterOrDigit(c) || c == '_')
+                    steps.Add(controlName.Length > 0 && controlName.All(CSharp.AssistContext.IsIdentifierChar)
                         ? new ScriptStep.ClickNamed(controlName)
                         : throw new FormatException($"--click-name takes a control's x:Name, not '{controlName}'"));
                     break;

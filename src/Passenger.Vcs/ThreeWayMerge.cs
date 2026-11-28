@@ -120,8 +120,9 @@ public static class ThreeWayMerge
         return text.Length == 0 ? [] : text.Split('\n');
     }
 
-    /// <summary>A text as the word-by-word comparison sees it: a run of letters, digits and underscores is a word, a run of
-    /// spaces and tabs is one, and each line break and each other character stands alone.</summary>
+    /// <summary>A text as the word-by-word comparison sees it: a word's characters (<see cref="WordCharacters"/>) with the
+    /// marks that carry them on are a word, a run of spaces and tabs is one, and each line break and each other character
+    /// stands alone.</summary>
     private static string[] Words(string text)
     {
         List<string> words = [];
@@ -130,9 +131,9 @@ public static class ThreeWayMerge
         {
             int start = i;
             char c = text[i];
-            if (char.IsLetterOrDigit(c) || c == '_')
+            if (WordCharacters.IsWord(c))
             {
-                while (i < text.Length && (char.IsLetterOrDigit(text[i]) || text[i] == '_'))
+                while (i < text.Length && (WordCharacters.IsWord(text[i]) || WordCharacters.Extends(text[i])))
                 {
                     i++;
                 }

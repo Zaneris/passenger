@@ -394,8 +394,9 @@ public sealed class Navigator
             return null;
         }
         Selection primary = Editors.CodeEditor.Selections.Primary;
-        string selected = primary.IsEmpty ? string.Empty : Editors.CodeEditor.Document.Snapshot.GetText(primary.Start, primary.Length);
-        return selected.Length is > 0 and < 80 && selected.All(c => char.IsLetterOrDigit(c) || c == '_') ? selected : null;
+        TextSnapshot text = Editors.CodeEditor.Document.Snapshot;
+        return primary.Length is > 0 and < 80 && Enumerable.Range(primary.Start, primary.Length).All(at => WordCharacters.IsWordAt(text, at))
+            ? text.GetText(primary.Start, primary.Length) : null;
     }
 
     private async Task<IReadOnlyList<SymbolRow>> SearchSymbols(string query, CancellationToken cancel)

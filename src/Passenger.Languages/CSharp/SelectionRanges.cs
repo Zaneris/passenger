@@ -88,20 +88,10 @@ public static class SelectionRanges
         int line = text.GetLineFromOffset(selection.Start);
         LineSpan span = text.GetLine(line);
         string content = text.GetText(span.Start, span.Length);
-        int at = selection.Start - span.Start;
-        int start = at;
-        int end = at;
-        while (start > 0 && IsWordChar(content[start - 1]))
+        // The word a double-click takes there, never its punctuation or spaces.
+        if (TextNavigation.WordAt(text, selection.Start) is { Length: > 0 } word && WordCharacters.IsWordAt(text, word.Start))
         {
-            start--;
-        }
-        while (end < content.Length && IsWordChar(content[end]))
-        {
-            end++;
-        }
-        if (end > start)
-        {
-            yield return TextRange.FromBounds(span.Start + start, span.Start + end);
+            yield return word;
         }
         int indent = content.Length - content.TrimStart().Length;
         yield return TextRange.FromBounds(span.Start + indent, span.Start + content.TrimEnd().Length);
@@ -111,6 +101,4 @@ public static class SelectionRanges
         }
         yield return new TextRange(0, text.Length);
     }
-
-    private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
 }
