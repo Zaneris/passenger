@@ -63,7 +63,7 @@ public sealed class WordsComparisons() : HomeOnlyRule(Rules.WordsComparedWithStr
         }
     }
 
-    /// <summary>The value, and each element of it where it is a collection written in place.</summary>
+    /// <summary>The value, and each element of it where it is a collection or a tuple written in place, and theirs.</summary>
     private static IEnumerable<IOperation> Elements(IOperation value)
     {
         yield return value;
@@ -71,9 +71,10 @@ public sealed class WordsComparisons() : HomeOnlyRule(Rules.WordsComparedWithStr
         {
             ICollectionExpressionOperation collection => collection.Elements,
             IArrayCreationOperation { Initializer: { } initializer } => initializer.ElementValues,
+            ITupleOperation tuple => tuple.Elements,
             _ => [],
         };
-        foreach (IOperation element in elements)
+        foreach (IOperation element in elements.SelectMany(Elements))
         {
             yield return element;
         }

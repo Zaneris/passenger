@@ -39,6 +39,7 @@ public class UnextractedWordsTests
         ("Assert.Equal<object>(\"Saved\", Words.Verbatim(name));", "Equal compares Words with a string", null),
         ("Assert.Equal([name], new List<Words>());", "Equal compares Words with a string", null),
         ("Assert.Contains(name, new List<Words>());", "Contains compares Words with a string", null),
+        ("Assert.Equal([(true, name)], new List<(bool, Words)>());", "Equal compares Words with a string", null),
         ("bool same = Words.Verbatim(name).Equals(name);", "Equals compares Words with a string", null),
         ("bool same = Words.Verbatim(name) == name;", "== compares Words with a string", null),
         ("bool same = Words.Verbatim(name) != Words.Verbatim(name);", null, null),
