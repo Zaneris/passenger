@@ -309,7 +309,7 @@ public sealed class DatabaseTests
                 Assert.Contains("-- 1 row changed", output, StringComparison.Ordinal);
                 Assert.Contains("no such table: Nope", output, StringComparison.Ordinal);
 
-                Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.DatabaseHistory)[0].First.Notation());
+                Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.KeysIn(AppActions.DatabaseHistory))[0].First.Notation());
                 SqlConsoleView view = window.EditorArea.ActiveGroup.Console!;
                 Ui.WaitFor(() => Tab<ListBox>(window, "ConsoleHistory").IsEffectivelyVisible, "the console's history");
                 Assert.Equal(["SELECT * FROM Nope", "SELECT Note FROM Products WHERE Id = 3", "UPDATE Products SET Note = 'one' WHERE Id = 3"],
