@@ -62,7 +62,7 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools", 0, 4)],
             Chosen = () => requestsView?.Chosen,
         });
-        actions!.Add(new IdeAction(AppActions.RequestsCommandConsole, "Open Command in SQL Console", "Requests",
+        actions!.Add(new IdeAction(AppActions.RequestsCommandConsole, ActionTitles.RequestsCommandConsole, ActionGroups.Requests,
             _ => IdeErrors.Observe(CommandIntoConsoleAsync((RequestsView.CommandRow)requestsView!.Chosen!)))
         {
             WhyNot = _ => requestsView?.Chosen is not RequestsView.CommandRow chosen ? Refusals.NoRequestCommand

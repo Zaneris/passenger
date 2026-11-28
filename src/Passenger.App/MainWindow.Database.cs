@@ -93,43 +93,43 @@ public partial class MainWindow
             }
         };
         Closed += (_, _) => controller.Stop();
-        actions!.Add(new IdeAction(AppActions.DatabaseCancel, "Stop Database Operation", "Database", _ => controller.CancelOperation())
+        actions!.Add(new IdeAction(AppActions.DatabaseCancel, ActionTitles.DatabaseCancel, ActionGroups.Database, _ => controller.CancelOperation())
         {
             WhyNot = _ => controller.Busy ? null : Refusals.NoDatabaseOperation,
         });
-        Add(AppActions.DatabaseAdd, "New Database Connection…", () => EditDatabaseConnectionAsync(null), () => Folder is null ? Refusals.NoFolder : PersonsOwn());
-        Add(AppActions.DatabaseConnectionEdit, "Edit Database Connection…", () => EditDatabaseConnectionAsync(ChosenConnection()),
+        Add(AppActions.DatabaseAdd, ActionTitles.DatabaseAdd, () => EditDatabaseConnectionAsync(null), () => Folder is null ? Refusals.NoFolder : PersonsOwn());
+        Add(AppActions.DatabaseConnectionEdit, ActionTitles.DatabaseConnectionEdit, () => EditDatabaseConnectionAsync(ChosenConnection()),
             () => ChosenConnection() is not { } chosen ? Refusals.NoDatabaseConnection : controller.InTransaction(chosen) ? Refusals.TransactionOpen : PersonsOwn());
-        Add(AppActions.DatabaseConnectionRename, "Rename Database Connection…", RenameDatabaseConnectionAsync,
+        Add(AppActions.DatabaseConnectionRename, ActionTitles.DatabaseConnectionRename, RenameDatabaseConnectionAsync,
             () => ChosenConnection() is null ? Refusals.NoDatabaseConnection : PersonsOwn());
-        Add(AppActions.DatabaseConnectionRemove, "Remove Database Connection…", RemoveDatabaseConnectionAsync,
+        Add(AppActions.DatabaseConnectionRemove, ActionTitles.DatabaseConnectionRemove, RemoveDatabaseConnectionAsync,
             () => ChosenConnection() is not { } chosen ? Refusals.NoDatabaseConnection : controller.InTransaction(chosen) ? Refusals.TransactionOpen : PersonsOwn());
-        Add(AppActions.DatabaseOpenTable, "Open Table Data", OpenDatabaseTableAsync,
+        Add(AppActions.DatabaseOpenTable, ActionTitles.DatabaseOpenTable, OpenDatabaseTableAsync,
             () => databaseExplorer?.Chosen is not { Table: not null } chosen ? Refusals.NoDatabaseTable : WhyNotOpened(chosen.Source) ?? PersonsOwn());
-        Add(AppActions.DatabaseRefresh, "Refresh Database Connections", controller.RefreshAsync, () => Folder is null ? Refusals.NoFolder : null);
-        Add(AppActions.DatabaseConnect, "Open Database Connection", OpenChosenConnectionAsync,
+        Add(AppActions.DatabaseRefresh, ActionTitles.DatabaseRefresh, controller.RefreshAsync, () => Folder is null ? Refusals.NoFolder : null);
+        Add(AppActions.DatabaseConnect, ActionTitles.DatabaseConnect, OpenChosenConnectionAsync,
             () => ChosenConnection() is not { } chosen ? Refusals.NoDatabaseConnection : WhyNotOpened(chosen) ?? PersonsOwn());
-        Add(AppActions.DatabaseConsole, "Open Query Console", () => OpenSqlConsoleAsync(),
+        Add(AppActions.DatabaseConsole, ActionTitles.DatabaseConsole, () => OpenSqlConsoleAsync(),
             () => ChosenConnection() is not { } chosen ? Refusals.NoDatabaseConnection : WhyNotOpened(chosen) ?? PersonsOwn());
-        Add(AppActions.DatabaseShowDdl, "Show DDL", ShowDdlAsync, WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 0));
-        Add(AppActions.DatabaseScriptCreate, "Generate Create Script", () => ScriptIntoConsoleAsync(DdlScript.Create), WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 1));
-        Add(AppActions.DatabaseScriptAlter, "Generate Alter Script", () => ScriptIntoConsoleAsync(DdlScript.Alter), WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 2));
-        Add(AppActions.DatabaseScriptDrop, "Generate Drop Script", () => ScriptIntoConsoleAsync(DdlScript.Drop), WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 3));
-        Add(AppActions.DatabaseDiagram, "Show Schema Diagram", ShowDiagramAsync, WhyNotSchema, menu: new MenuPlace("Tools/Database", 6, 0));
-        Add(AppActions.DatabaseCompare, "Compare Schemas…", CompareSchemasAsync, WhyNotSchema, menu: new MenuPlace("Tools/Database", 6, 1));
-        actions!.Add(new IdeAction(AppActions.DatabaseRun, "Run Statement", "Database", _ => IdeErrors.Observe(RunSqlAsync()))
+        Add(AppActions.DatabaseShowDdl, ActionTitles.DatabaseShowDdl, ShowDdlAsync, WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 0));
+        Add(AppActions.DatabaseScriptCreate, ActionTitles.DatabaseScriptCreate, () => ScriptIntoConsoleAsync(DdlScript.Create), WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 1));
+        Add(AppActions.DatabaseScriptAlter, ActionTitles.DatabaseScriptAlter, () => ScriptIntoConsoleAsync(DdlScript.Alter), WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 2));
+        Add(AppActions.DatabaseScriptDrop, ActionTitles.DatabaseScriptDrop, () => ScriptIntoConsoleAsync(DdlScript.Drop), WhyNotObject, menu: new MenuPlace("Tools/Database", 4, 3));
+        Add(AppActions.DatabaseDiagram, ActionTitles.DatabaseDiagram, ShowDiagramAsync, WhyNotSchema, menu: new MenuPlace("Tools/Database", 6, 0));
+        Add(AppActions.DatabaseCompare, ActionTitles.DatabaseCompare, CompareSchemasAsync, WhyNotSchema, menu: new MenuPlace("Tools/Database", 6, 1));
+        actions!.Add(new IdeAction(AppActions.DatabaseRun, ActionTitles.DatabaseRun, ActionGroups.Database, _ => IdeErrors.Observe(RunSqlAsync()))
         {
             WhyNot = _ => Editors.Active is not { Language: var language } || !SqlConsole.Speaks(language) ? Refusals.NoSqlFile
                 : controller.ConsoleOf(Editors.Active.Path) is { Running: true } ? Refusals.SqlRunning : PersonsOwn(),
             Menus = [new MenuPlace("Tools/Database", 1, 0)],
             KeysOf = () => AppActions.KeysIn(AppActions.DatabaseRun) is var keys && keys != AppActions.DatabaseRun ? keys : null,
         });
-        actions!.Add(new IdeAction(AppActions.DatabaseRunFile, "Run SQL File", "Database", context => IdeErrors.Observe(RunSqlFileAsync(SqlFileOf(context))))
+        actions!.Add(new IdeAction(AppActions.DatabaseRunFile, ActionTitles.DatabaseRunFile, ActionGroups.Database, context => IdeErrors.Observe(RunSqlFileAsync(SqlFileOf(context))))
         {
             WhyNot = context => SqlFileOf(context) is not { } file ? Refusals.NoSqlFile : controller.ConsoleOf(file) is { Running: true } ? Refusals.SqlRunning : PersonsOwn(),
             Menus = [new MenuPlace("Tools/Database", 1, 4)],
         });
-        actions!.Add(new IdeAction(AppActions.DatabaseExplain, "Explain Plan", "Database", _ => IdeErrors.Observe(ExplainSqlAsync()))
+        actions!.Add(new IdeAction(AppActions.DatabaseExplain, ActionTitles.DatabaseExplain, ActionGroups.Database, _ => IdeErrors.Observe(ExplainSqlAsync()))
         {
             WhyNot = _ => Editors.Active is not { Language: var language } || !SqlConsole.Speaks(language) ? Refusals.NoSqlFile
                 : controller.ConsoleOf(Editors.Active.Path) is { Running: true } ? Refusals.SqlRunning
@@ -137,32 +137,32 @@ public partial class MainWindow
                     ? Refusals.NotSql(DatabaseKinds.Title(explained.Kind)) : PersonsOwn(),
             Menus = [new MenuPlace("Tools/Database", 1, 6)],
         });
-        actions!.Add(new IdeAction(AppActions.DatabaseHistory, "Query History", "Database", _ => Editors.ActiveGroup.Console?.ShowHistory())
+        actions!.Add(new IdeAction(AppActions.DatabaseHistory, ActionTitles.DatabaseHistory, ActionGroups.Database, _ => Editors.ActiveGroup.Console?.ShowHistory())
         {
             WhyNot = _ => Editors.Active is not { Language: var language } file || !SqlConsole.Speaks(language) || controller.ConsoleOf(file.Path) is not { Connection: not null }
                 || Editors.ActiveGroup.Console is null ? Refusals.NoSqlConsole : null,
             Menus = [new MenuPlace("Tools/Database", 1, 5)],
         });
-        actions!.Add(new IdeAction(AppActions.DatabaseRunStop, "Stop Statement", "Database", _ => (Editors.Active is { } file ? controller.ConsoleOf(file.Path) : null)?.Stop())
+        actions!.Add(new IdeAction(AppActions.DatabaseRunStop, ActionTitles.DatabaseRunStop, ActionGroups.Database, _ => (Editors.Active is { } file ? controller.ConsoleOf(file.Path) : null)?.Stop())
         {
             WhyNot = _ => Editors.Active is { } file && controller.ConsoleOf(file.Path) is { Running: true } ? null : Refusals.NoSqlRunning,
             Menus = [new MenuPlace("Tools/Database", 1, 1)],
             KeysOf = () => AppActions.KeysIn(AppActions.DatabaseRunStop) is var keys && keys != AppActions.DatabaseRunStop ? keys : null,
         });
-        Transaction(AppActions.DatabaseCommit, "Commit", commit: true, 2);
-        Transaction(AppActions.DatabaseRollback, "Roll Back", commit: false, 3);
-        Table(AppActions.DatabaseSubmit, "Submit Changes", table => IdeErrors.Observe(table.SubmitAsync()), table => table.WhyNotSubmit?.Shown, 0);
-        Table(AppActions.DatabaseRevert, "Revert Changes", table => table.Revert(), table => table.WhyNotRevert?.Shown, 1);
-        Table(AppActions.DatabaseAddRow, "Add Row", table => table.AddRow(), table => table.WhyNotAddRow?.Shown, 2, noun => $"Add {noun}");
-        Table(AppActions.DatabaseDeleteRows, "Delete Rows", table => table.DeleteRows(), table => table.WhyNotDeleteRows?.Shown, 3, noun => $"Delete {noun}s");
-        actions!.Add(new IdeAction(AppActions.DatabaseExpire, "Set Time to Live…", "Database", _ => IdeErrors.Observe(ExpireKeyAsync()))
+        Transaction(AppActions.DatabaseCommit, ActionTitles.DatabaseCommit, commit: true, 2);
+        Transaction(AppActions.DatabaseRollback, ActionTitles.DatabaseRollback, commit: false, 3);
+        Table(AppActions.DatabaseSubmit, ActionTitles.DatabaseSubmit, table => IdeErrors.Observe(table.SubmitAsync()), table => table.WhyNotSubmit?.Shown, 0);
+        Table(AppActions.DatabaseRevert, ActionTitles.DatabaseRevert, table => table.Revert(), table => table.WhyNotRevert?.Shown, 1);
+        Table(AppActions.DatabaseAddRow, ActionTitles.DatabaseAddRow, table => table.AddRow(), table => table.WhyNotAddRow?.Shown, 2, noun => ActionTitles.DatabaseAddNamedRow(noun));
+        Table(AppActions.DatabaseDeleteRows, ActionTitles.DatabaseDeleteRows, table => table.DeleteRows(), table => table.WhyNotDeleteRows?.Shown, 3, noun => ActionTitles.DatabaseDeleteNamedRows(noun));
+        actions!.Add(new IdeAction(AppActions.DatabaseExpire, ActionTitles.DatabaseExpire, ActionGroups.Database, _ => IdeErrors.Observe(ExpireKeyAsync()))
         {
             WhyNot = _ => controller.Busy ? Refusals.DatabaseBusy : ChosenKey() is not { } chosen ? Refusals.NoRedisKey
                 : chosen.Source.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(chosen.Source.Name) : WhyNotOpened(chosen.Source) ?? PersonsOwn(),
             Menus = [new MenuPlace("Tools/Database", 2, 4)],
             Words = ["TTL", "EXPIRE", "PERSIST", "Redis"],
         });
-        actions!.Add(new IdeAction(AppActions.DatabaseSignIn, "Sign In…", "Database", _ => IdeErrors.Observe(SignInToCloudAsync()))
+        actions!.Add(new IdeAction(AppActions.DatabaseSignIn, ActionTitles.DatabaseSignIn, ActionGroups.Database, _ => IdeErrors.Observe(SignInToCloudAsync()))
         {
             WhyNot = _ => ChosenConnection() is not { } chosen ? Refusals.NoDatabaseConnection
                 : !CloudSignIns.SignsInToEntra(chosen) && (CloudSignIns.ProfileOf(chosen) is not { } profile || !AwsProfiles.SignsInThroughIdentityCenter(profile))
@@ -171,23 +171,31 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools/Database", 3, 2)],
             Words = ["AWS", "IAM Identity Center", "SSO", "aws sso login", "Azure", "Microsoft Entra ID", "az login"],
         });
-        Mark(AppActions.DatabaseReadOnly, "Read-Only Connection", DatabaseMark.ReadOnly);
-        Mark(AppActions.DatabaseProduction, "Production Connection", DatabaseMark.Production);
-        actions!.Add(new IdeAction(AppActions.DatabaseExport, "Export Data…", "Database", context => IdeErrors.Observe(ExportDataAsync(context)))
+        Mark(AppActions.DatabaseReadOnly, ActionTitles.DatabaseReadOnly, DatabaseMark.ReadOnly);
+        Mark(AppActions.DatabaseProduction, ActionTitles.DatabaseProduction, DatabaseMark.Production);
+        actions!.Add(new IdeAction(AppActions.DatabaseExport, ActionTitles.DatabaseExport, ActionGroups.Database, context => IdeErrors.Observe(ExportDataAsync(context)))
         {
             WhyNot = context => WhyNotExport(context) ?? PersonsOwn(),
             Menus = [new MenuPlace("Tools/Database", 5, 0)],
             Words = ["CSV", "JSON", "SQL inserts", "Save Rows"],
         });
-        actions!.Add(new IdeAction(AppActions.DatabaseImport, "Import Data…", "Database", context => IdeErrors.Observe(ImportDataAsync(context)))
+        actions!.Add(new IdeAction(AppActions.DatabaseImport, ActionTitles.DatabaseImport, ActionGroups.Database, context => IdeErrors.Observe(ImportDataAsync(context)))
         {
             WhyNot = context => WhyNotImport(context) ?? PersonsOwn(),
             Menus = [new MenuPlace("Tools/Database", 5, 1)],
             Words = ["CSV", "JSON", "Load Rows"],
         });
-        foreach ((string id, string format) in Tables.CellGrid.CopyFormats)
+        foreach ((string id, string _) in Tables.CellGrid.CopyFormats)
         {
-            actions!.Add(new IdeAction(id, $"Copy as {format}", "Edit", context =>
+            Words title = id switch
+            {
+                AppActions.CopyAsCsv => ActionTitles.CopyAsCsv,
+                AppActions.CopyAsTsv => ActionTitles.CopyAsTsv,
+                AppActions.CopyAsJson => ActionTitles.CopyAsJson,
+                AppActions.CopyAsInserts => ActionTitles.CopyAsInserts,
+                _ => throw new InvalidOperationException($"No title for the copy {id}"),
+            };
+            actions!.Add(new IdeAction(id, title, ActionGroups.Edit, context =>
             {
                 if (context.Focused is Tables.CellGrid grid)
                 {
@@ -200,9 +208,9 @@ public partial class MainWindow
             });
         }
 
-        void Transaction(string id, string title, bool commit, int at)
+        void Transaction(string id, Words title, bool commit, int at)
         {
-            actions!.Add(new IdeAction(id, title, "Database", _ =>
+            actions!.Add(new IdeAction(id, title, ActionGroups.Database, _ =>
             {
                 if (Editors.Active is { } file && controller.ConsoleOf(file.Path) is { } console)
                 {
@@ -217,9 +225,9 @@ public partial class MainWindow
         }
 
         // A collection's tab names its rows as the documents (DynamoDB's items) they are.
-        void Table(string id, string title, Action<DatabaseTableTab> run, Func<DatabaseTableTab, string?> why, int at, Func<string, string>? named = null)
+        void Table(string id, Words title, Action<DatabaseTableTab> run, Func<DatabaseTableTab, string?> why, int at, Func<string, Words>? named = null)
         {
-            actions!.Add(new IdeAction(id, title, "Database", _ =>
+            actions!.Add(new IdeAction(id, title, ActionGroups.Database, _ =>
             {
                 if (Editors.Active?.DatabaseTable is { } table)
                 {
@@ -233,9 +241,9 @@ public partial class MainWindow
             });
         }
 
-        void Mark(string id, string title, DatabaseMark mark)
+        void Mark(string id, Words title, DatabaseMark mark)
         {
-            actions!.Add(new IdeAction(id, title, "Database", _ =>
+            actions!.Add(new IdeAction(id, title, ActionGroups.Database, _ =>
             {
                 if (ChosenConnection() is { } chosen)
                 {
@@ -248,9 +256,9 @@ public partial class MainWindow
             });
         }
 
-        void Add(string id, string title, Func<Task> run, Func<Words?> why, MenuPlace? menu = null)
+        void Add(string id, Words title, Func<Task> run, Func<Words?> why, MenuPlace? menu = null)
         {
-            actions!.Add(new IdeAction(id, title, "Database", _ => IdeErrors.Observe(run()))
+            actions!.Add(new IdeAction(id, title, ActionGroups.Database, _ => IdeErrors.Observe(run()))
             {
                 WhyNot = _ => controller.Busy ? Refusals.DatabaseBusy : why(),
                 Menus = [menu ?? new MenuPlace("Tools/Database", 0, 0)],

@@ -59,7 +59,7 @@ public partial class MainWindow
 
     private void AddMobile()
     {
-        actions!.Add(new IdeAction(AppActions.InstallWorkloads, "Install Workloads…", "IDE", context => IdeErrors.Observe(InstallWorkloadsAsync()))
+        actions!.Add(new IdeAction(AppActions.InstallWorkloads, ActionTitles.InstallWorkloads, ActionGroups.Ide, context => IdeErrors.Observe(InstallWorkloadsAsync()))
         {
             WhyNot = context => AskedByAgent(context) ? Refusals.AgentInstallsMobile
                 : MobileWant.Workloads.Count == 0 ? Refusals.NoWorkloadLacking
@@ -68,7 +68,7 @@ public partial class MainWindow
             Words = ["dotnet workload", "MAUI", "Android", "iOS"],
             Works = AppActions.InstallWorkloads,
         });
-        actions.Add(new IdeAction(AppActions.InstallAndroidDependencies, "Install Android SDK and Java…", "IDE", _ => IdeErrors.Observe(InstallAndroidAsync()))
+        actions.Add(new IdeAction(AppActions.InstallAndroidDependencies, ActionTitles.InstallAndroidDependencies, ActionGroups.Ide, _ => IdeErrors.Observe(InstallAndroidAsync()))
         {
             WhyNot = context => AskedByAgent(context) ? Refusals.AgentInstallsMobile
                 : Untrusted() ?? (!MobileWant.AndroidLacks ? Refusals.NothingAndroidLacking : null),
@@ -76,13 +76,13 @@ public partial class MainWindow
             Words = ["Android SDK", "JDK", "Java", "sdkmanager", MSBuildNames.InstallAndroidDependencies],
             Works = AppActions.InstallAndroidDependencies,
         });
-        actions.Add(new IdeAction(AppActions.MakeMobileEdits, "Make the Mobile Edits", "IDE", _ => IdeErrors.Observe(MakeMobileEditsAsync(null)))
+        actions.Add(new IdeAction(AppActions.MakeMobileEdits, ActionTitles.MakeMobileEdits, ActionGroups.Ide, _ => IdeErrors.Observe(MakeMobileEditsAsync(null)))
         {
             WhyNot = _ => MobileWant.Heads.Any(h => h.Makes) ? null : Refusals.NoMobileEdits,
             Words = ["iOS", "Android", "Mac Catalyst", "Info.plist", MSBuildNames.SupportedOSPlatformVersion, AppManifests.MinimumOSVersion, AppManifests.SceneManifest],
             Works = AppActions.MakeMobileEdits,
         });
-        actions.Add(new IdeAction(AppActions.KeepAssembliesWhole, "Keep .NET's Assemblies Whole in Debug", "IDE",
+        actions.Add(new IdeAction(AppActions.KeepAssembliesWhole, ActionTitles.KeepAssembliesWhole, ActionGroups.Ide,
             _ => IdeErrors.Observe(KeepWholeAsync(wholeAsked ?? MobileWant.Trimmed.FirstOrDefault()?.Project)))
         {
             WhyNot = _ => wholeAsked is not null || MobileWant.Trimmed.Count > 0 ? null : Refusals.NothingTrimmed,
@@ -313,7 +313,7 @@ public partial class MainWindow
     {
         UiThread.Check();
         wholeAsked = project;
-        BottomPanel.Run.ShowOffer($"{name}'s Debug build trims .NET's own assemblies, so {MacCatalystApp.KeptOut}", actions![AppActions.KeepAssembliesWhole]!.Title,
+        BottomPanel.Run.ShowOffer($"{name}'s Debug build trims .NET's own assemblies, so {MacCatalystApp.KeptOut}", actions![AppActions.KeepAssembliesWhole]!.Title.Shown,
             () => Request(AppActions.KeepAssembliesWhole));
     }
 
@@ -371,7 +371,7 @@ public partial class MainWindow
         if (MobileWant.Trimmed.FirstOrDefault(h => PathNames.Same(h.Project, file.Path)) is { } trimmed
             && MobileHeads.CatalystPlaces(text).Any(p => line >= p.Start && line <= p.End))
         {
-            fixes.Add(new CSharp.EditorFix(actions![AppActions.KeepAssembliesWhole]!.Title, $"{trimmed.Name}'s Debug build trims .NET's own assemblies, so {MacCatalystApp.KeptOut}",
+            fixes.Add(new CSharp.EditorFix(actions![AppActions.KeepAssembliesWhole]!.Title.Shown, $"{trimmed.Name}'s Debug build trims .NET's own assemblies, so {MacCatalystApp.KeptOut}",
                 new TextRange(offset, 0), string.Empty)
             {
                 Elsewhere = async (_, _) =>
@@ -387,7 +387,7 @@ public partial class MainWindow
         {
             return fixes;
         }
-        return [.. fixes, new CSharp.EditorFix(actions![AppActions.MakeMobileEdits]!.Title, head.Said, new TextRange(offset, 0), string.Empty)
+        return [.. fixes, new CSharp.EditorFix(actions![AppActions.MakeMobileEdits]!.Title.Shown, head.Said, new TextRange(offset, 0), string.Empty)
         {
             Elsewhere = async (_, _) =>
             {

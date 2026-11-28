@@ -17,7 +17,7 @@ public partial class MainWindow
 {
     private void AddTargetFramework()
     {
-        actions!.Add(new IdeAction(A.TargetFramework, "Target Framework", "Code", context => ShowTargetFrameworks(context.File!))
+        actions!.Add(new IdeAction(A.TargetFramework, ActionTitles.TargetFramework, ActionGroups.Code, context => ShowTargetFrameworks(context.File!))
         {
             WhyNot = context => context.File is not { } file ? Refusals.NoFile
                 : file.ProjectContexts.Count < 2 ? $"{file.Name} is compiled for one target framework only"

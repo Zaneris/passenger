@@ -892,7 +892,7 @@ public partial class MainWindow : IdeWindow
             Action = AppActions.FocusExplorer,
             HeaderTools = Explorer.TakeHeaderTools(),
             Options = ExplorerOptions,
-            HeaderAction = (AppActions.SelectOpenedFile, IconKeys.Locate, SelectOpenedFileTitle),
+            HeaderAction = (AppActions.SelectOpenedFile, IconKeys.Locate, ActionTitles.SelectOpenedFile),
             Chosen = () => Explorer.SelectedNodes,
             // Opening every row would read every folder on disk, build output and packages too: it closes them alone.
             CollapseAll = Explorer.Tree.CollapseAll,
@@ -908,13 +908,13 @@ public partial class MainWindow : IdeWindow
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowRun,
-            ActionTitle = "Run Tool Window",
+            ActionTitle = ActionTitles.ShowRun,
         });
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Debug, "Debug", IconKeys.Debug, () => debugView = new ToolWindows.DebugView(Bottom.Debug), Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowDebug,
-            ActionTitle = "Debug Tool Window",
+            ActionTitle = ActionTitles.ShowDebug,
             Tools = () => debugView?.HeaderTools,
         });
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Modules, "Modules", IconKeys.Modules, MakeModules, Docking.ToolAnchor.BottomLeft)
@@ -927,7 +927,7 @@ public partial class MainWindow : IdeWindow
         {
             Serves = ToolWindowServes.AppHosts,
             Action = AppActions.ShowAspire,
-            ActionTitle = "Aspire Tool Window",
+            ActionTitle = ActionTitles.ShowAspire,
         });
         Closed += (_, _) =>
         {
@@ -947,13 +947,13 @@ public partial class MainWindow : IdeWindow
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowBuild,
-            ActionTitle = "Build Tool Window",
+            ActionTitle = ActionTitles.ShowBuild,
         });
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Problems, "Problems", IconKeys.Problems, () => new ToolWindows.ProblemsView(Bottom.Problems), Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowProblems,
-            ActionTitle = "Problems",
+            ActionTitle = ActionTitles.ShowProblems,
         });
     }
 

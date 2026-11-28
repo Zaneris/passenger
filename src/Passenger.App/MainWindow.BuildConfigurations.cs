@@ -14,7 +14,7 @@ public partial class MainWindow
 {
     private void AddBuildConfigurations()
     {
-        actions!.Add(new IdeAction(A.ChooseBuildConfiguration, "Choose Build Configuration…", "Build", _ => ShowBuildConfigurations())
+        actions!.Add(new IdeAction(A.ChooseBuildConfiguration, ActionTitles.ChooseBuildConfiguration, ActionGroups.Build, _ => ShowBuildConfigurations())
         {
             WhyNot = _ => WhyNotChooseBuild(),
         });

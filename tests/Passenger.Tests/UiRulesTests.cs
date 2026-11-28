@@ -713,7 +713,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 foreach (string service in services)
                 {
                     Button button = view.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains(StyleClasses.Tool) && ActionButtons.GetAction(b) == service);
-                    Assert.Equal(window.Actions[service]!.Title, ActionTips.Of(button) ?? ToolTip.GetTip(button) as string);
+                    Assert.Equal(window.Actions[service]!.Title.English, ActionTips.Of(button) ?? ToolTip.GetTip(button) as string);
                 }
             }
         }
@@ -1773,8 +1773,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             ActionContext here = window.Actions.Context();
             foreach (IdeAction action in window.Actions.All)
             {
-                Check(action.Id, action.Title);
-                Check($"{action.Id} in the editor", action.TitleWhere(here));
+                Check(action.Id, action.Title.English);
+                Check($"{action.Id} in the editor", action.TitleWhere(here).English);
             }
             foreach (NativeMenuItem item in MainWindow.ApplicationMenu is { } application ? Native(application) : [])
             {

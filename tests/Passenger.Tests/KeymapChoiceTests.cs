@@ -173,12 +173,12 @@ public sealed class KeymapChoiceTests : IDisposable
                 "A shortcut set over IntelliJ IDEA's keymap was kept over Visual Studio's or VS Code's too");
 
             IntelliJKeysWork(window, ownKey);
-            NativeMenuItem goToFileItem = Ui.Submenu(window.MenuBar, "Navigate").Items.OfType<NativeMenuItem>().First(i => i.Header == window.Actions[AppActions.GoToFile]!.Title);
+            NativeMenuItem goToFileItem = Ui.Submenu(window.MenuBar, "Navigate").Items.OfType<NativeMenuItem>().First(i => i.Header == window.Actions[AppActions.GoToFile]!.Title.English);
             Keystroke intelliJs = Keystroke.Parse(goToFile);
             Assert.Equal(new KeyGesture(intelliJs.Key, intelliJs.Modifiers), goToFileItem.Gesture);
             Ui.Press(window, $"{Cmd} shift A");
             ActionPopup findAction = Assert.IsType<ActionPopup>(window.Popup);
-            findAction.Query = window.Actions[AppActions.GoToEverything]!.Title;
+            findAction.Query = window.Actions[AppActions.GoToEverything]!.Title.English;
             Ui.Settle();
             string doubleShift = Shortcut.Parse("shift , shift").Display();
             Assert.True(findAction.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == doubleShift && t.IsEffectivelyVisible),
@@ -276,7 +276,7 @@ public sealed class KeymapChoiceTests : IDisposable
         MainWindow window = Open();
         try
         {
-            string goToFile = window.Actions[AppActions.GoToFile]!.Title;
+            string goToFile = window.Actions[AppActions.GoToFile]!.Title.English;
             SettingsDialog dialog = Settings(window);
             string visualStudios = Shortcut.Parse($"{Cmd} shift T").Display();
             string vsCodes = Shortcut.Parse($"{Cmd} P").Display();
@@ -522,7 +522,7 @@ public sealed class KeymapChoiceTests : IDisposable
             Assert.Equal("Refresh", ToolTip.GetTip(refresh));
             window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VSCode });
             Ui.Settle();
-            NativeMenuItem goToFile = Ui.Submenu(window.MenuBar, "Navigate").Items.OfType<NativeMenuItem>().First(i => i.Header == window.Actions[AppActions.GoToFile]!.Title);
+            NativeMenuItem goToFile = Ui.Submenu(window.MenuBar, "Navigate").Items.OfType<NativeMenuItem>().First(i => i.Header == window.Actions[AppActions.GoToFile]!.Title.English);
             Keystroke quickOpen = Keystroke.Parse($"{Cmd} P");
             Assert.Equal(new KeyGesture(quickOpen.Key, quickOpen.Modifiers), goToFile.Gesture);
         }

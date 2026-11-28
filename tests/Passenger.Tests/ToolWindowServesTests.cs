@@ -137,11 +137,11 @@ public sealed class ToolWindowServesTests
             Assert.All(dock.Windows.Where(w => !OfAKind.Any(k => k.Id == w.Id)), w =>
                 Assert.True(tools.Items.OfType<NativeMenuItem>().Single(i => i.Header == w.Title).IsEnabled, $"View › Tool Windows greys {w.Title} in a plain console solution"));
             // What works in such a window greys as the window does, saying the same: Find Action and an agent's ide_actions read it.
-            IdeAction[] within = [.. window.Actions.All.Where(a => a.Group == "Aspire" || a.Id == AppActions.EndpointsRefresh)];
+            IdeAction[] within = [.. window.Actions.All.Where(a => a.Group.English == "Aspire" || a.Id == AppActions.EndpointsRefresh)];
             Assert.True(within.Length > 10, $"Only {within.Length} actions work in the Aspire and Endpoints windows");
             foreach (IdeAction action in within)
             {
-                string why = action.Group == "Aspire" ? Refusals.NoAppHost.Shown : Refusals.NoWebRequests.Shown;
+                string why = action.Group.English == "Aspire" ? Refusals.NoAppHost.Shown : Refusals.NoWebRequests.Shown;
                 Assert.True(window.Actions.WhyNot(action.Id, window.Actions.Context())?.Shown == why,
                     $"{action.Title} says \"{window.Actions.WhyNot(action.Id, window.Actions.Context())?.Shown}\" in a plain console solution, not \"{why}\" as its window does");
             }

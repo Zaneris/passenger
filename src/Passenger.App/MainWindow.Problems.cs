@@ -24,9 +24,9 @@ public partial class MainWindow
         Editors.ActiveChanged += (_, _) => FollowActiveFile();
         Bottom.Problems.LinkClicked += (_, link) => Browse(link);
         ShowAnalysis();
-        Add(AppActions.NextErrorInSolution, "Next Error in Solution", "Navigate", _ => StepSolutionErrors(forward: true), _ => WhyNotStepSolutionErrors(),
+        Add(AppActions.NextErrorInSolution, ActionTitles.NextErrorInSolution, ActionGroups.Navigate, _ => StepSolutionErrors(forward: true), _ => WhyNotStepSolutionErrors(),
             ("Navigate", 3, 2), words: ["Go to Next Error in Solution"]);
-        Add(AppActions.PreviousErrorInSolution, "Previous Error in Solution", "Navigate", _ => StepSolutionErrors(forward: false), _ => WhyNotStepSolutionErrors(),
+        Add(AppActions.PreviousErrorInSolution, ActionTitles.PreviousErrorInSolution, ActionGroups.Navigate, _ => StepSolutionErrors(forward: false), _ => WhyNotStepSolutionErrors(),
             ("Navigate", 3, 3), words: ["Go to Previous Error in Solution"]);
         AddInspections();
     }

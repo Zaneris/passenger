@@ -13,8 +13,10 @@ public sealed record MenuPlace(string Path, int Group, int Order);
 
 /// <summary>One of the window's actions, declared once by the feature it belongs to: its id (what keymaps bind and agents
 /// name), its title and group as Find Action lists it, where the menus list it, what it does, and whether it can run
-/// where it is asked to. Its keys, its menu items, Find Action and an agent's ide_action all run it the same way.</summary>
-public sealed record IdeAction(string Id, string Title, string Group, Action<ActionContext> Run)
+/// where it is asked to. Its keys, its menu items, Find Action and an agent's ide_action all run it the same way. Its title
+/// and its group are a resource's words (ActionTitles, keyed by its id's name in <see cref="AppActions"/>, and
+/// ActionGroups), said in the person's language where the window shows them and in English to an agent.</summary>
+public sealed record IdeAction(string Id, Words Title, Words Group, Action<ActionContext> Run)
 {
     /// <summary>Null when it can run in this context, else why not in words for the status bar and an agent ("No file is
     /// open"). Its menu items are disabled and Find Action greys it while it says why not.</summary>
@@ -28,7 +30,7 @@ public sealed record IdeAction(string Id, string Title, string Group, Action<Act
 
     /// <summary>Its title in a menu opened where it would run, when that says more than <see cref="Title"/> (Unpin Tab on
     /// a pinned tab, Close on a tab's own menu); Find Action lists it by its title.</summary>
-    public Func<ActionContext, string>? TitleIn { get; init; }
+    public Func<ActionContext, Words>? TitleIn { get; init; }
 
     /// <summary>For an action that turns something on and off (Soft-Wrap), whether it is on where it would run: its
     /// menu item shows a check then.</summary>
@@ -60,7 +62,7 @@ public sealed record IdeAction(string Id, string Title, string Group, Action<Act
     public bool CanRun(ActionContext context) => WhyNot(context) is null;
 
     /// <summary>Its title in a menu opened in this context.</summary>
-    public string TitleWhere(ActionContext context) => TitleIn?.Invoke(context) ?? Title;
+    public Words TitleWhere(ActionContext context) => TitleIn?.Invoke(context) ?? Title;
 }
 
 /// <summary>Where an action runs: the file the editor shows and its caret, the expression there, what has the keys (an

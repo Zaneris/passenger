@@ -45,26 +45,26 @@ public partial class MainWindow
         AddNewProjectActions();
         // The system's panels ask the person, never an agent.
         Func<ActionContext, Words?> persons = c => c.ByAgent ? Refusals.AsksThePerson : null;
-        actions!.Add(new IdeAction(AppActions.OpenSolution, "Open Solution…", "IDE", _ => IdeErrors.Observe(PickSolutionAsync()))
+        actions!.Add(new IdeAction(AppActions.OpenSolution, ActionTitles.OpenSolution, ActionGroups.Ide, _ => IdeErrors.Observe(PickSolutionAsync()))
         {
             WhyNot = persons,
             Menus = [new MenuPlace("File", 0, -1)],
             KeepsMenuOrder = true,
             Words = ["Open Project"],
         });
-        actions.Add(new IdeAction(AppActions.OpenFolder, "Open Folder…", "IDE", _ => IdeErrors.Observe(OpenPickedFolderAsync()))
+        actions.Add(new IdeAction(AppActions.OpenFolder, ActionTitles.OpenFolder, ActionGroups.Ide, _ => IdeErrors.Observe(OpenPickedFolderAsync()))
         {
             WhyNot = persons,
             Menus = [new MenuPlace("File", 0, 0)],
             KeepsMenuOrder = true,
         });
-        actions.Add(new IdeAction(AppActions.OpenFile, "Open File…", "IDE", _ => IdeErrors.Observe(PickFileAsync()))
+        actions.Add(new IdeAction(AppActions.OpenFile, ActionTitles.OpenFile, ActionGroups.Ide, _ => IdeErrors.Observe(PickFileAsync()))
         {
             WhyNot = persons,
             Menus = [new MenuPlace("File", 0, 1)],
             KeepsMenuOrder = true,
         });
-        actions.Add(new IdeAction(AppActions.CloneRepository, "Clone Repository…", "Git", _ => ShowCloneRepository())
+        actions.Add(new IdeAction(AppActions.CloneRepository, ActionTitles.CloneRepository, ActionGroups.Git, _ => ShowCloneRepository())
         {
             Menus = [new MenuPlace("File", 0, 2), new MenuPlace("Git", 4, 0)],
         });

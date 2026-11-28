@@ -16,9 +16,7 @@ namespace Passenger.App;
 /// Rider's Visual Studio keymap gives Compare Files (CompareTwoFiles) the same Ctrl+D (Cmd+D on macOS).</summary>
 public partial class MainWindow
 {
-    private const string ExplorerGroup = "Explorer";
     private const string NoRow = "Nothing is chosen in the Explorer";
-    private const string SelectOpenedFileTitle = "Select Opened File";
 
     /// <summary>The Explorer's view the person last switched to in the open folder, which the folder keeps
     /// (<see cref="Workspace.WorkspaceState.ExplorerView"/>) and the Explorer opens it in.</summary>
@@ -27,72 +25,72 @@ public partial class MainWindow
     private void AddExplorerActions()
     {
         Explorer.MenuFor = ExplorerMenu;
-        Row(A.NewFile, "New File…", row => AskName("New File", string.Empty, name => CreateFile(NewGoesIn(row)!, name, string.Empty)), Holds);
-        Row(A.NewFolder, "New Folder…", row => AskName("New Folder", string.Empty, name => CreateFolderAsync(NewGoesIn(row)!, name)), Holds);
+        Row(A.NewFile, ActionTitles.NewFile, row => AskName("New File", string.Empty, name => CreateFile(NewGoesIn(row)!, name, string.Empty)), Holds);
+        Row(A.NewFolder, ActionTitles.NewFolder, row => AskName("New Folder", string.Empty, name => CreateFolderAsync(NewGoesIn(row)!, name)), Holds);
         // Class, Interface, Record, Struct and Enum share this place, chosen in its popup.
-        Row(A.NewType, "Class/Interface…", row => AskType(NewGoesIn(row)!), Holds);
+        Row(A.NewType, ActionTitles.NewType, row => AskType(NewGoesIn(row)!), Holds);
         AddNewItemAction();
         AddRepositoryFileActions();
-        Row(A.NewSolutionFolder, "New Solution Folder…", row => AskName("New Solution Folder", string.Empty, name => AddSolutionFolderAsync(row.SolutionPath, name)),
+        Row(A.NewSolutionFolder, ActionTitles.NewSolutionFolder, row => AskName("New Solution Folder", string.Empty, name => AddSolutionFolderAsync(row.SolutionPath, name)),
             row => row.Kind is NodeKind.Solution or NodeKind.SolutionFolder ? null : "A solution folder goes in the solution or one of its folders");
-        Row(A.AddExistingProject, "Add Existing Project…", row => IdeErrors.Observe(AddExistingProjectsAsync(row.SolutionPath)),
+        Row(A.AddExistingProject, ActionTitles.AddExistingProject, row => IdeErrors.Observe(AddExistingProjectsAsync(row.SolutionPath)),
             row => row.Kind is NodeKind.Solution or NodeKind.SolutionFolder ? null : "A project is added to the solution or one of its folders", _ => "Existing Project…");
-        Row(A.AddExistingItem, "Add Existing Item…", row => IdeErrors.Observe(AddExistingItemsAsync(row.SolutionPath!)),
+        Row(A.AddExistingItem, ActionTitles.AddExistingItem, row => IdeErrors.Observe(AddExistingItemsAsync(row.SolutionPath!)),
             row => row is { Kind: NodeKind.SolutionFolder, SolutionPath: not null } ? null : "An existing item is added to a solution folder", _ => "Existing Item…");
-        Row(A.AddReference, "Add Reference…", row => ShowAddReference(Referencing(row)!),
+        Row(A.AddReference, ActionTitles.AddReference, row => ShowAddReference(Referencing(row)!),
             row => (row.IsShared ? Refusals.SharedProject(row.Name) : Referencing(row) is null ? $"{row.Name} takes no reference" : null)?.Shown,
             row => row.Kind == NodeKind.Project ? "Reference…" : "Add Reference…");
-        Row(A.AddDockerSupport, "Add Docker Support…", row => ShowDockerSupport(row.Path!),
+        Row(A.AddDockerSupport, ActionTitles.AddDockerSupport, row => ShowDockerSupport(row.Path!),
             row => (row.IsShared ? Refusals.SharedProject(row.Name)
                 : row is { Kind: NodeKind.Project, Path: { } project, IsProgram: false } ? DockerSupportWhyNot(project) : "Docker support is added to a project")?.Shown, _ => "Docker Support…");
-        Row(A.AddDockerCompose, "Add Docker Compose…", _ => ShowDockerCompose(),
+        Row(A.AddDockerCompose, ActionTitles.AddDockerCompose, _ => ShowDockerCompose(),
             row => row.Kind == NodeKind.Solution ? null : "Docker Compose is added to the solution", _ => "Docker Compose…");
         // The solution's, from its row or a solution folder's, and from Find Action wherever a solution is open.
-        actions!.Add(new IdeAction(A.AddAspireOrchestration, "Add Aspire Orchestration…", ExplorerGroup, _ => ShowAddAspireOrchestration())
+        actions!.Add(new IdeAction(A.AddAspireOrchestration, ActionTitles.AddAspireOrchestration, ActionGroups.Explorer, _ => ShowAddAspireOrchestration())
         {
             WhyNot = c => RowOf(c) is { } row
                 ? row.Kind is NodeKind.Solution or NodeKind.SolutionFolder ? null : "Aspire orchestration is added to the solution"
                 : Solution is null ? Refusals.NoSolution : null,
-            TitleIn = c => c.ExplorerRow is null ? "Add Aspire Orchestration…" : "Aspire Orchestration…",
+            TitleIn = c => c.ExplorerRow is null ? ActionTitles.AddAspireOrchestration : ActionTitles.AddAspireOrchestrationInMenu,
         });
-        Row(A.ManageNuGet, "Manage NuGet Packages", _ => ShowToolWindow(ToolWindowIds.NuGet),
+        Row(A.ManageNuGet, ActionTitles.ManageNuGet, _ => ShowToolWindow(ToolWindowIds.NuGet),
             row => (row.IsShared ? Refusals.SharedProject(row.Name) : row is { Kind: NodeKind.Project } or { Kind: NodeKind.Dependencies, Owner: not null } ? null : $"{row.Name} has no packages")?.Shown);
         // The solution's row, and Find Action wherever a solution is open: the NuGet window over every project.
-        actions!.Add(new IdeAction(A.ManageNuGetForSolution, "Manage NuGet Packages for Solution", ExplorerGroup, ManageSolutionPackages)
+        actions!.Add(new IdeAction(A.ManageNuGetForSolution, ActionTitles.ManageNuGetForSolution, ActionGroups.Explorer, ManageSolutionPackages)
         {
             WhyNot = c => RowOf(c) is { } row
                 ? row.Kind == NodeKind.Solution ? null : "The solution's packages are managed from its row"
                 : Solution is null ? Refusals.NoSolution : null,
         });
         // A shared project's file is its items file, which names its files.
-        Row(A.EditProjectFile, "Edit Project File", row => OpenFile(row.IsShared ? Passenger.Workspace.SharedProjects.ItemsFileOf(row.Path!) : row.Path!),
+        Row(A.EditProjectFile, ActionTitles.EditProjectFile, row => OpenFile(row.IsShared ? Passenger.Workspace.SharedProjects.ItemsFileOf(row.Path!) : row.Path!),
             row => (row is { Kind: NodeKind.Project, Path: not null } ? null : Refusals.NotAProject(row.Name))?.Shown);
-        Row(A.UnloadProject, "Unload Project", row => SetUnloaded(row.Path!, true),
+        Row(A.UnloadProject, ActionTitles.UnloadProject, row => SetUnloaded(row.Path!, true),
             row => (row is not { Kind: NodeKind.Project, Path: { } project } ? Refusals.NotAProject(row.Name) : row.IsShared ? Refusals.SharedProject(row.Name)
                 : Explorer.Tree.Unloaded.Contains(project) ? $"{row.Name} is unloaded" : null)?.Shown);
-        Row(A.ReloadProject, "Reload Project", row => SetUnloaded(row.Path!, false),
+        Row(A.ReloadProject, ActionTitles.ReloadProject, row => SetUnloaded(row.Path!, false),
             row => (row is not { Kind: NodeKind.Project, Path: { } project } ? Refusals.NotAProject(row.Name) : row.IsShared ? Refusals.SharedProject(row.Name)
                 : Explorer.Tree.Unloaded.Contains(project) ? null : $"{row.Name} is loaded")?.Shown);
         // A shared project's file its items file leaves out, or names: the chosen ones taken in, or left out on disk.
-        Row(A.IncludeInProject, "Include in Project", row => SetShared(SharedRows(row, unlisted: true), include: true),
+        Row(A.IncludeInProject, ActionTitles.IncludeInProject, row => SetShared(SharedRows(row, unlisted: true), include: true),
             row => (SharedRows(row, unlisted: true).Count > 0 ? null : Refusals.NotLeftOut(row.Name))?.Shown);
-        Row(A.ExcludeFromProject, "Exclude from Project", row => SetShared(SharedRows(row, unlisted: false), include: false),
+        Row(A.ExcludeFromProject, ActionTitles.ExcludeFromProject, row => SetShared(SharedRows(row, unlisted: false), include: false),
             row => (SharedRows(row, unlisted: false).Count > 0 ? null : Refusals.NotSharedFile(row.Name))?.Shown);
         // Compare With... for one file, Compare Files for two chosen together.
-        actions!.Add(new IdeAction(A.CompareFiles, "Compare Files", ExplorerGroup, c => IdeErrors.Observe(CompareAsync(RowOf(c)!)))
+        actions!.Add(new IdeAction(A.CompareFiles, ActionTitles.CompareFiles, ActionGroups.Explorer, c => IdeErrors.Observe(CompareAsync(RowOf(c)!)))
         {
             WhyNot = c => RowOf(c) is not { } row ? NoRow : row is { Kind: NodeKind.File, IsSolutionItem: false, Path: not null } ? null : "Choose a file in the Explorer",
-            TitleIn = c => RowOf(c) is { } row && Explorer.SelectedNodes.Contains(row) && Explorer.SelectedNodes.Count(n => n.IsFile) == 2 ? "Compare Files" : "Compare With…",
+            TitleIn = c => RowOf(c) is { } row && Explorer.SelectedNodes.Contains(row) && Explorer.SelectedNodes.Count(n => n.IsFile) == 2 ? ActionTitles.CompareFiles : ActionTitles.CompareWith,
             KeysOf = () => AppActions.KeysIn(A.CompareFiles) is var keys && keys != A.CompareFiles ? keys : null,
         });
         // The path of what is chosen in the Explorer, else of the file shown.
-        OnDisk(A.CopyPath, "Copy Path", path => IdeErrors.Observe(CopyAsync(path)));
-        OnDisk(A.RevealInFileManager, FileManager.Showing, ShowInFileManager, FileManager.Name);
-        OnDisk(A.OpenInTerminal, "Open in Terminal", path => IdeErrors.Observe(OpenTerminalAt(Directory.Exists(path) ? path : Path.GetDirectoryName(path)!)), "Terminal");
-        OnDisk(A.OpenInBrowser, "Open in Browser", path => Browse(new Uri(path)), "Browser",
+        OnDisk(A.CopyPath, ActionTitles.CopyPath, path => IdeErrors.Observe(CopyAsync(path)));
+        OnDisk(A.RevealInFileManager, OperatingSystem.IsMacOS() ? ActionTitles.RevealInFinder : ActionTitles.RevealInFileManager(FileManager.Name), ShowInFileManager, FileManager.Name);
+        OnDisk(A.OpenInTerminal, ActionTitles.OpenInTerminal, path => IdeErrors.Observe(OpenTerminalAt(Directory.Exists(path) ? path : Path.GetDirectoryName(path)!)), ActionTitles.OpenInTerminalInMenu);
+        OnDisk(A.OpenInBrowser, ActionTitles.OpenInBrowser, path => Browse(new Uri(path)), ActionTitles.OpenInBrowserInMenu,
             path => Languages.Language.ForPath(path) == Languages.Language.Html ? null : $"{Path.GetFileName(path)} is not an HTML page");
         // Rider's RenameElement: the Explorer's row where its menu or keys ask, else what is at the editor's caret.
-        actions.Add(new IdeAction(A.Rename, "Rename…", "Code", c =>
+        actions.Add(new IdeAction(A.Rename, ActionTitles.Rename, ActionGroups.Code, c =>
         {
             if (RowOf(c) is { } row)
             {
@@ -108,12 +106,12 @@ public partial class MainWindow
             Menus = [new MenuPlace("Refactor", 1, 0)],
         });
 
-        actions.Add(new IdeAction(A.SelectOpenedFile, SelectOpenedFileTitle, ExplorerGroup, SelectOpenedFile)
+        actions.Add(new IdeAction(A.SelectOpenedFile, ActionTitles.SelectOpenedFile, ActionGroups.Explorer, SelectOpenedFile)
         {
             WhyNot = c => c.File is null ? Refusals.NoFile : Explorer.Tree.Root is null ? Refusals.NoFolder : null,
             Words = ["Locate in Explorer", "Sync with Active Document", "Scroll from Source"],
         });
-        actions.Add(new IdeAction(A.SwitchExplorerView, "Switch Explorer View", ExplorerGroup, SwitchExplorerView)
+        actions.Add(new IdeAction(A.SwitchExplorerView, ActionTitles.SwitchExplorerView, ActionGroups.Explorer, SwitchExplorerView)
         {
             WhyNot = _ => Explorer.Tree.Root is null ? Refusals.NoFolder : Explorer.HasSolutionView ? null : Refusals.NoSolutionView,
             Words = ["Solution View", "Files View", "File System View", "Show Files on Disk"],
@@ -218,8 +216,8 @@ public partial class MainWindow
     private (string Root, IReadOnlyList<string> Files)? IndexedFiles() => session.Index.Root is { } root ? (root, session.Index.Files) : null;
 
     /// <summary>One of the Explorer's own actions, on its row.</summary>
-    private void Row(string id, string title, Action<ExplorerNode> run, Func<ExplorerNode, string?> whyNot, Func<ExplorerNode, string>? titleIn = null) =>
-        actions!.Add(new IdeAction(id, title, ExplorerGroup, c => run(RowOf(c)!))
+    private void Row(string id, Words title, Action<ExplorerNode> run, Func<ExplorerNode, string?> whyNot, Func<ExplorerNode, Words>? titleIn = null) =>
+        actions!.Add(new IdeAction(id, title, ActionGroups.Explorer, c => run(RowOf(c)!))
         {
             WhyNot = c => RowOf(c) is { } row ? whyNot(row) : NoRow,
             TitleIn = titleIn is null ? null : c => RowOf(c) is { } row ? titleIn(row) : title,
@@ -227,8 +225,8 @@ public partial class MainWindow
 
     /// <summary>An action on what is on disk: the Explorer's row while its menu or keys ask, else the file shown; one that
     /// takes only some files says why not of the others (<paramref name="whyNot"/>).</summary>
-    private void OnDisk(string id, string title, Action<string> run, string? titleInMenu = null, Func<string, string?>? whyNot = null) =>
-        actions!.Add(new IdeAction(id, title, ExplorerGroup, c => run(PathOnDisk(c)!))
+    private void OnDisk(string id, Words title, Action<string> run, Words? titleInMenu = null, Func<string, string?>? whyNot = null) =>
+        actions!.Add(new IdeAction(id, title, ActionGroups.Explorer, c => run(PathOnDisk(c)!))
         {
             WhyNot = c => PathOnDisk(c) is { } path ? whyNot?.Invoke(path) : RowOf(c) is { } row ? $"{row.Name} is in no folder on disk" : Refusals.NoFile,
             TitleIn = titleInMenu is null ? null : c => c.ExplorerRow is null ? title : titleInMenu,

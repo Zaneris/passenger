@@ -31,7 +31,7 @@ public partial class MainWindow
     private void AddPublishing()
     {
         // A Godot project's game is exported through its presets, any other project published through its profiles.
-        actions!.Add(new IdeAction(A.Publish, "Publish…", "Build", c =>
+        actions!.Add(new IdeAction(A.Publish, ActionTitles.Publish, ActionGroups.Build, c =>
         {
             if (GodotExportOf(c) is { } game)
             {
@@ -56,7 +56,7 @@ public partial class MainWindow
             Words = ["dotnet publish", "Publish Profile", "Deploy", "Export", "Godot Export Presets", "Container Image", MSBuildNames.PublishContainer, "aspire publish", "Docker Compose"],
             Works = A.Publish,
         });
-        actions.Add(new IdeAction(A.PublishAgain, "Publish Again", "Build", c => IdeErrors.Observe(PublishAgainAsync(c)))
+        actions.Add(new IdeAction(A.PublishAgain, ActionTitles.PublishAgain, ActionGroups.Build, c => IdeErrors.Observe(PublishAgainAsync(c)))
         {
             WhyNot = c => Untrusted() ?? AgainTarget(c).Why,
             Menus = [new MenuPlace("Build", 2, 1)],

@@ -432,9 +432,6 @@ public sealed class VcsController : IDisposable
         }
     }
 
-    /// <summary>Create Git Repository's title, its action's and the empty states' that offer it where the folder is in none.</summary>
-    public const string CreateRepository = "Create Git Repository";
-
     /// <summary>Why Create Git Repository cannot run, or null where it can: no folder is open, the folder is in a working
     /// tree already, or git refuses the one it is in or is not installed.</summary>
     public Words? WhyNotCreate => lookIn is null ? Refusals.NoFolder : git is not null ? Refusals.InRepository : Refused;

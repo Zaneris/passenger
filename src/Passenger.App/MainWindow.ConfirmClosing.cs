@@ -15,10 +15,6 @@ public partial class MainWindow
     /// <summary>What the person's quit is called here, the question's title and answer: Quit on macOS, Exit elsewhere.</summary>
     public static readonly string QuitWord = OperatingSystem.IsMacOS() ? "Quit" : "Exit";
 
-    /// <summary>The quit's action as named here: as the application menu names it on macOS (Quit Passenger), as File's
-    /// item elsewhere (Exit).</summary>
-    public static readonly string QuitTitle = OperatingSystem.IsMacOS() ? $"{QuitWord} Passenger" : QuitWord;
-
     /// <summary>The answer of the question before a window closes.</summary>
     public const string CloseWord = "Close";
 

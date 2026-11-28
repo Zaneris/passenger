@@ -41,7 +41,7 @@ public partial class MainWindow
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowFind,
-            ActionTitle = "Find Tool Window",
+            ActionTitle = ActionTitles.ShowFind,
             ExpandAll = () => Find.ExpandAll(),
             CollapseAll = () => Find.CollapseAll(),
         });

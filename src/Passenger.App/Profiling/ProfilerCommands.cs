@@ -88,7 +88,7 @@ public sealed class ProfilerCommands
             Menus = [new MenuPlace("Tools", 0, 1)],
         };
         parts.Dock.Add(window);
-        parts.Actions.Add(new IdeAction(AppActions.Profile, "Profile", "Run", context => IdeErrors.Observe(ProfileReportingAsync()))
+        parts.Actions.Add(new IdeAction(AppActions.Profile, ActionTitles.Profile, ActionGroups.Run, context => IdeErrors.Observe(ProfileReportingAsync()))
         {
             WhyNot = _ => WhyNotProfile(Session) ?? (Session.Configurations.Chosen is null ? Session.NothingTo("profile")
                 : Session.Configurations.Chosen is { IsMultiple: true } several ? LaunchPlan.SeveralProjects(several.Name)
@@ -96,12 +96,12 @@ public sealed class ProfilerCommands
             Menus = [new MenuPlace("Run", 0, 2)],
         });
         // Nothing of the folder's running, it offers the programs of the engine's running containers to choose from.
-        parts.Actions.Add(new IdeAction(AppActions.AttachProfiler, "Attach Profiler to Running Program", "Run", context => IdeErrors.Observe(AttachReportingAsync()))
+        parts.Actions.Add(new IdeAction(AppActions.AttachProfiler, ActionTitles.AttachProfiler, ActionGroups.Run, context => IdeErrors.Observe(AttachReportingAsync()))
         {
             WhyNot = _ => Busy(Session) ?? (Attachable(out string? _) is { } target ? Paused(target) : null),
             Menus = [new MenuPlace("Run", 3, 0)],
         });
-        parts.Actions.Add(new IdeAction(AppActions.MemorySnapshot, "Get Memory Snapshot", "Run", context => IdeErrors.Observe(MemorySnapshotAsync()))
+        parts.Actions.Add(new IdeAction(AppActions.MemorySnapshot, ActionTitles.MemorySnapshot, ActionGroups.Run, context => IdeErrors.Observe(MemorySnapshotAsync()))
         {
             WhyNot = _ => Session.Profiling is not { } run ? NoneProfiling : Held(ToTakeHeap) ?? run.WhyNoHeap,
         });

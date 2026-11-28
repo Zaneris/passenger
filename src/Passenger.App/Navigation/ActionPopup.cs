@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Editor;
 
 namespace Passenger.App.Navigation;
 
@@ -49,10 +50,10 @@ public sealed class ActionPopup : SearchPopup<IdeAction>
         });
         return row.Showing<IdeAction>(action =>
         {
-            title.Text = action.Title;
+            ShownWords.Set(title, TextBlock.TextProperty, action.Title);
             // Listed, so it can be found, but greyed: it cannot run here.
             title.Classes.Set(StyleClasses.Muted, !action.CanRun(context));
-            group.Text = action.Group;
+            ShownWords.Set(group, TextBlock.TextProperty, action.Group);
             keys.Text = actions.ShortcutsShown(action.Id) ?? string.Empty;
         });
     }

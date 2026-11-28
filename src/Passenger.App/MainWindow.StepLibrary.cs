@@ -55,7 +55,7 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools", 0, 5)],
             Chosen = () => stepLibrary?.Chosen,
         });
-        actions!.Add(new IdeAction(AppActions.InsertStep, "Insert Step into Feature", "Step Library",
+        actions!.Add(new IdeAction(AppActions.InsertStep, ActionTitles.InsertStep, ActionGroups.StepLibrary,
             context => IdeErrors.Observe(InsertStepAsync(stepLibrary!.Chosen!, context)))
         {
             WhyNot = _ => stepLibrary?.Chosen is null ? Refusals.NoStepChosen : assist.Languages.Gherkin.WhyNotInsertStep(),

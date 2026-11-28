@@ -26,36 +26,36 @@ public partial class MainWindow
         // The actions first: the window's toolbar and menu take their titles, and they act on its row chosen.
         ContainerRow? Chosen() => containersView?.Chosen;
         Words? OneContainer(ActionContext _) => Chosen()?.Container is null ? "No container is chosen in the Containers window" : null;
-        foreach ((string id, string title, string action) in (ReadOnlySpan<(string, string, string)>)[
-            (AppActions.ContainerStart, "Start", "start"),
-            (AppActions.ContainerStop, "Stop", "stop"),
-            (AppActions.ContainerRestart, "Restart", "restart"),
-            (AppActions.ContainerPause, "Pause or Unpause", "pause"),
-            (AppActions.ContainerRemove, "Remove", "remove"),
-            (AppActions.ContainerPull, "Pull", "pull")])
+        foreach ((string id, Words title, string action) in (ReadOnlySpan<(string, Words, string)>)[
+            (AppActions.ContainerStart, ActionTitles.ContainerStart, "start"),
+            (AppActions.ContainerStop, ActionTitles.ContainerStop, "stop"),
+            (AppActions.ContainerRestart, ActionTitles.ContainerRestart, "restart"),
+            (AppActions.ContainerPause, ActionTitles.ContainerPause, "pause"),
+            (AppActions.ContainerRemove, ActionTitles.ContainerRemove, "remove"),
+            (AppActions.ContainerPull, ActionTitles.ContainerPull, "pull")])
         {
-            actions!.Add(new IdeAction(id, title, "Containers", context => IdeErrors.Observe(id == AppActions.ContainerRemove ? RemoveAsync(Chosen()!) : ContainerActAsync(id, action, Chosen()!)))
+            actions!.Add(new IdeAction(id, title, ActionGroups.Containers, context => IdeErrors.Observe(id == AppActions.ContainerRemove ? RemoveAsync(Chosen()!) : ContainerActAsync(id, action, Chosen()!)))
             {
                 WhyNot = _ => ContainerCommands.For(action, Chosen(), (containersView?.EngineOf(Chosen()) ?? Engine).Known) is { Words: null } refused
                     ? refused.WhyNot ?? $"{Chosen()?.Name} cannot {action}" : null,
                 Works = id,
             });
         }
-        actions!.Add(new IdeAction(AppActions.ContainersRefresh, "Refresh", "Containers", context => IdeErrors.Observe(ContainersWindow.RefreshAsync())));
-        actions.Add(new IdeAction(AppActions.ContainerScale, "Scale Service…", "Containers", context => IdeErrors.Observe(ScaleAsync(Chosen()!)))
+        actions!.Add(new IdeAction(AppActions.ContainersRefresh, ActionTitles.ContainersRefresh, ActionGroups.Containers, context => IdeErrors.Observe(ContainersWindow.RefreshAsync())));
+        actions.Add(new IdeAction(AppActions.ContainerScale, ActionTitles.ContainerScale, ActionGroups.Containers, context => IdeErrors.Observe(ScaleAsync(Chosen()!)))
         {
             WhyNot = _ => Chosen() is { Kind: ContainerRowKind.Service, Project: not null } chosen
                 ? chosen.LeftUnstarted ? ContainerCommands.NotStarted(chosen) : null : "No Compose service is chosen in the Containers window",
             Works = AppActions.ContainerScale,
         });
-        actions.Add(new IdeAction(AppActions.ContainerPrune, "Prune…", "Containers", context => IdeErrors.Observe(PruneAsync(Chosen())))
+        actions.Add(new IdeAction(AppActions.ContainerPrune, ActionTitles.ContainerPrune, ActionGroups.Containers, context => IdeErrors.Observe(PruneAsync(Chosen())))
         {
             // An engine not asked yet is asked as Prune runs: only one known not to serve refuses, saying why.
             WhyNot = _ => Engine.Known is { IsReady: false } known ? known.Problem ?? Refusals.EngineNotRunning : null,
             Works = AppActions.ContainerPrune,
         });
         // A Dockerfile's base images are asked of Docker Scout only as the person asks, which then follows its saves.
-        actions.Add(new IdeAction(AppActions.ScoutBaseImages, "Check Base Images with Docker Scout", "Containers", context =>
+        actions.Add(new IdeAction(AppActions.ScoutBaseImages, ActionTitles.ScoutBaseImages, ActionGroups.Containers, context =>
         {
             if (Editors.Active is { } file && session.Web?.Checks.Scout(file) == true)
             {
@@ -68,16 +68,26 @@ public partial class MainWindow
                 : Engine.Known is { IsWslc: true } ? Refusals.WslcNoScout : null,
             Words = ["docker scout", "CVE", "Vulnerabilities", "Base Image"],
         });
-        actions.Add(new IdeAction(AppActions.ContainerInspect, "Inspect", "Containers", context => IdeErrors.Observe(InspectAsync(Chosen()!)))
+        actions.Add(new IdeAction(AppActions.ContainerInspect, ActionTitles.ContainerInspect, ActionGroups.Containers, context => IdeErrors.Observe(InspectAsync(Chosen()!)))
         {
             WhyNot = _ => Chosen() is { Kind: not ContainerRowKind.Group and not ContainerRowKind.Project and not ContainerRowKind.AppHost } ? null
                 : "No container, image, volume or network is chosen in the Containers window",
         });
-        actions.Add(new IdeAction(AppActions.ContainerShell, "Open Shell", "Containers", context => IdeErrors.Observe(OpenShellAsync(Chosen()!.Container!))) { WhyNot = OneContainer, Words = ["docker exec", "Attach"] });
+        actions.Add(new IdeAction(AppActions.ContainerShell, ActionTitles.ContainerShell, ActionGroups.Containers, context => IdeErrors.Observe(OpenShellAsync(Chosen()!.Container!))) { WhyNot = OneContainer, Words = ["docker exec", "Attach"] });
         foreach (string tab in ContainersView.Pages)
         {
             // Log and Stats are every row's; the rest are a chosen row's, which a window not yet built has none of.
-            actions.Add(new IdeAction(ContainersView.PageAction(tab), $"Show Container {tab}", "Containers", _ =>
+            string shows = ContainersView.PageAction(tab);
+            Words title = shows switch
+            {
+                AppActions.ContainersLog => ActionTitles.ContainersLog,
+                AppActions.ContainersStats => ActionTitles.ContainersStats,
+                AppActions.ContainersFiles => ActionTitles.ContainersFiles,
+                AppActions.ContainersDetails => ActionTitles.ContainersDetails,
+                AppActions.ContainersTelemetry => ActionTitles.ContainersTelemetry,
+                _ => throw new InvalidOperationException($"No title for the Containers window's {tab} tab"),
+            };
+            actions.Add(new IdeAction(shows, title, ActionGroups.Containers, _ =>
             {
                 ShowToolWindow(ToolWindowIds.Containers);
                 ContainersWindow.ShowTab(tab);
@@ -87,17 +97,17 @@ public partial class MainWindow
                     : containersView is { } view ? view.WhyNotTab(tab) : $"Nothing chosen in the Containers window has a {tab} tab",
             });
         }
-        actions.Add(new IdeAction(AppActions.ContainersLogFind, "Find in Container Logs", "Containers", _ =>
+        actions.Add(new IdeAction(AppActions.ContainersLogFind, ActionTitles.ContainersLogFind, ActionGroups.Containers, _ =>
         {
             ShowToolWindow(ToolWindowIds.Containers);
             ContainersWindow.ShowTab(RunWindows.LogTab);
             ContainersWindow.Log.OpenFind();
         }));
-        actions.Add(new IdeAction(AppActions.ContainersShowTrace, "Show Container Log Trace", "Containers", _ => ContainersWindow.Telemetry.ShowSelectedTrace())
+        actions.Add(new IdeAction(AppActions.ContainersShowTrace, ActionTitles.ContainersShowTrace, ActionGroups.Containers, _ => ContainersWindow.Telemetry.ShowSelectedTrace())
         {
             WhyNot = _ => containersView?.Telemetry.SelectedLog is { TraceId.Length: > 0 } ? null : "No log with a trace is selected",
         });
-        actions.Add(new IdeAction(AppActions.ContainersShowRelatedLogs, "Show Related Container Logs", "Containers", _ => ContainersWindow.Telemetry.ShowRelatedLogs())
+        actions.Add(new IdeAction(AppActions.ContainersShowRelatedLogs, ActionTitles.ContainersShowRelatedLogs, ActionGroups.Containers, _ => ContainersWindow.Telemetry.ShowRelatedLogs())
         {
             WhyNot = _ => containersView?.Telemetry is { SelectedTrace: not null, SelectedSpan: not null } ? null : "No trace span is selected",
         });
@@ -117,7 +127,7 @@ public partial class MainWindow
     /// <summary>The Containers window's view, as it is first shown or asked for.</summary>
     private ContainersView MakeContainers()
     {
-        ContainersView view = new(new ContainersParts(() => Engine, work, Say, BrowsePage, () => StateFolder, id => actions![id]!.Title, RowMenuItem));
+        ContainersView view = new(new ContainersParts(() => Engine, work, Say, BrowsePage, () => StateFolder, id => actions![id]!.Title.Shown, RowMenuItem));
         containersView = view;
         view.Metrics.Paused = MetricsPaused;
         view.RowChosen += (_, _) => lastServiceWindow = ToolWindowIds.Containers;

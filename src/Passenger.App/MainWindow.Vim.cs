@@ -309,15 +309,17 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>:action: the IDE's action of the id given, else the one whose title is the words given, run as its keys
-    /// run it; one that cannot run says why, as its keys would.</summary>
+    /// <summary>:action: the IDE's action of the id given, else the one whose title is the words given (as the person reads
+    /// it, or in English), run as its keys run it; one that cannot run says why, as its keys would.</summary>
     private void RunNamed(string named)
     {
         string words = named.Trim().TrimEnd('…', '.');
         string id = actions![named.Trim()] is { } byId ? byId.Id
-            : actions.All.FirstOrDefault(a => string.Equals(a.Title.TrimEnd('…'), words, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(a.Title.TrimEnd('…').Replace(" ", string.Empty, StringComparison.Ordinal), words, StringComparison.OrdinalIgnoreCase))?.Id ?? named.Trim();
+            : actions.All.FirstOrDefault(a => Titled(a.Title.Shown) || Titled(a.Title.English))?.Id ?? named.Trim();
         Request(id);
+
+        bool Titled(string title) => string.Equals(title.TrimEnd('…'), words, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(title.TrimEnd('…').Replace(" ", string.Empty, StringComparison.Ordinal), words, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>:wq and :x: the file shown as asked saved as Save saves it where it changed, then its tab closed in the split

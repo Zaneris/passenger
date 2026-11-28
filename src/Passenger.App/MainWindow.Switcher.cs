@@ -38,8 +38,8 @@ public partial class MainWindow
         Editors.Closed += (_, document) => tabsUsed.Went(document);
         Editors.TabsGone += (_, document) => tabsUsed.Went(document);
         // In no menu: macOS's menu bar would take its keys as a key equivalent, never telling how long they are held.
-        Add(A.Switcher, "Switcher", "IDE", c => Switch(c, 1), _ => NothingToSwitchTo());
-        Add(A.SwitcherBackward, "Switcher Backward", "IDE", c => Switch(c, -1), _ => NothingToSwitchTo());
+        Add(A.Switcher, ActionTitles.Switcher, ActionGroups.Ide, c => Switch(c, 1), _ => NothingToSwitchTo());
+        Add(A.SwitcherBackward, ActionTitles.SwitcherBackward, ActionGroups.Ide, c => Switch(c, -1), _ => NothingToSwitchTo());
     }
 
     private string? NothingToSwitchTo() =>

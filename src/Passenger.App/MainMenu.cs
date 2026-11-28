@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.App;
 
 /// <summary>One entry of a menu: an action (titled as it is registered), a submenu, a separator, or a submenu the window
@@ -106,4 +108,46 @@ public static class MainMenu
     }
 
     private static string Name(string path) => path[(path.LastIndexOf('/') + 1)..];
+
+    /// <summary>A menu's or submenu's name, as <see cref="MenuEntry.Title"/> and the actions' places name it, in the words
+    /// the person reads (MenuTitles); a name of none of the menus as written.</summary>
+    public static Words TitleOf(string name) => name switch
+    {
+        "File" => MenuTitles.File,
+        "Edit" => MenuTitles.Edit,
+        "View" => MenuTitles.View,
+        "Navigate" => MenuTitles.Navigate,
+        "Code" => MenuTitles.Code,
+        "Refactor" => MenuTitles.Refactor,
+        "Build" => MenuTitles.Build,
+        "Run" => MenuTitles.Run,
+        "Tests" => MenuTitles.Tests,
+        "Tools" => MenuTitles.Tools,
+        "Git" => MenuTitles.Git,
+        "Window" => MenuTitles.Window,
+        "Help" => MenuTitles.Help,
+        "Tool Windows" => MenuTitles.ToolWindows,
+        "Active Editor" => MenuTitles.ActiveEditor,
+        "Appearance" => MenuTitles.Appearance,
+        "Recent Solutions" => MenuTitles.RecentSolutions,
+        "Line Separators" => MenuTitles.LineSeparators,
+        "Local History" => MenuTitles.LocalHistory,
+        "Find" => MenuTitles.Find,
+        "Bookmarks" => MenuTitles.Bookmarks,
+        "Avalonia Debug Overlays" => MenuTitles.AvaloniaDebugOverlays,
+        "Migrations" => MenuTitles.Migrations,
+        "Database" => MenuTitles.Database,
+        "Code Completion" => MenuTitles.CodeCompletion,
+        "Folding" => MenuTitles.Folding,
+        "Expand to Level" => MenuTitles.ExpandToLevel,
+        "Expand All to Level" => MenuTitles.ExpandAllToLevel,
+        "Layout Settings" => MenuTitles.LayoutSettings,
+        "Editor Tabs" => MenuTitles.EditorTabs,
+        "Open Solution Windows" => MenuTitles.OpenSolutionWindows,
+        "New" => MenuTitles.New,
+        "Go To" => MenuTitles.GoTo,
+        "Add" => MenuTitles.Add,
+        "Open In" => MenuTitles.OpenIn,
+        _ => name,
+    };
 }

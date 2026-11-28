@@ -129,7 +129,7 @@ public sealed class MenuTests : IDisposable
         Ui.Settle();
         MenuItem openIn = tab.ContextMenu!.Items.OfType<MenuItem>().FirstOrDefault(i => (string?)i.Header == "Open In")
             ?? throw new Xunit.Sdk.XunitException("The tab's menu has no Open In");
-        Assert.Equal([window.Actions[AppActions.RevealInFileManager]!.Title, "Open in Terminal"], openIn.Items.OfType<MenuItem>().Select(i => i.Header as string));
+        Assert.Equal([window.Actions[AppActions.RevealInFileManager]!.Title.English, "Open in Terminal"], openIn.Items.OfType<MenuItem>().Select(i => i.Header as string));
         Assert.True(openIn.Items.OfType<MenuItem>().All(i => i.IsEnabled), "Open In's items are greyed on a file shown in a tab");
         tab.ContextMenu.Close();
 

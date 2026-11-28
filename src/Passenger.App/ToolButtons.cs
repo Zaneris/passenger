@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App;
 
@@ -16,20 +17,20 @@ namespace Passenger.App;
 /// takes it, or bound by <see cref="ActionButtons"/>. UiRulesTests fails an icon button styled anywhere else.</summary>
 public static class ToolButtons
 {
-    public static Button Of(string icon, string tip, Action? run = null) => Clicks(Made(new Button(), Icon(icon), tip), run);
+    public static Button Of(string icon, Words tip, Action? run = null) => Clicks(Made(new Button(), Icon(icon), tip), run);
 
     /// <summary>A toolbar button whose mark is drawn otherwise than one icon of the theme's (two over each other, one
     /// turned, a change's own arrow), at the size an icon is.</summary>
-    public static Button Of(Control mark, string tip, Action? run = null) => Clicks(Made(new Button(), mark, tip), run);
+    public static Button Of(Control mark, Words tip, Action? run = null) => Clicks(Made(new Button(), mark, tip), run);
 
     /// <summary>A toolbar button whose mark is a glyph, a step smaller than an icon: a × that closes or removes what it
     /// stands beside (a row's, the find bar's), a tool window header's own Options and Hide.</summary>
-    public static Button Glyph(string glyph, string tip, Action? run = null) => Clicks(Made(new Button(), GlyphOf(glyph), tip), run);
+    public static Button Glyph(string glyph, Words tip, Action? run = null) => Clicks(Made(new Button(), GlyphOf(glyph), tip), run);
 
     /// <summary>A glyph's button no larger than its square, inside what it acts on: a chip's × that clears it, a field's
     /// + that opens its menu, a tab's pin and ×. It keeps the keys' reach a plain button has; one inside a field that takes
     /// every key is made unfocusable there.</summary>
-    public static Button Small(string glyph, string tip, Action? run = null)
+    public static Button Small(string glyph, Words tip, Action? run = null)
     {
         Button button = new() { Classes = { StyleClasses.Small }, Content = RowIcon.Glyph(glyph) };
         return Clicks(Tip(button, tip), run);
@@ -39,7 +40,7 @@ public static class ToolButtons
     /// toolbar's icon button, <paramref name="mark"/> a class its icon takes (the title bar's Run in its own colour).
     /// <paramref name="keys"/> keeps it where Tab reaches it, as a bar the keys go through has its buttons (the title
     /// bar's, the find bar's); a tool window's leaves the keys with what it acts on.</summary>
-    public static T Give<T>(T button, string icon, string tip, bool keys = false, bool glyph = false, [IdentifierOf(typeof(StyleClasses))] string? mark = null)
+    public static T Give<T>(T button, string icon, Words tip, bool keys = false, bool glyph = false, [IdentifierOf(typeof(StyleClasses))] string? mark = null)
         where T : Button
     {
         Control shown = glyph ? GlyphOf(icon) : Icon(icon);
@@ -52,7 +53,7 @@ public static class ToolButtons
 
     /// <summary>Makes a button the toolbar's icon button with a mark drawn otherwise than one icon of the theme's, kept
     /// where Tab reaches it for <paramref name="keys"/> (a page's, which the keys go through).</summary>
-    public static T Give<T>(T button, Control mark, string tip, bool keys = false)
+    public static T Give<T>(T button, Control mark, Words tip, bool keys = false)
         where T : Button
     {
         Made(button, mark, tip);
@@ -63,7 +64,7 @@ public static class ToolButtons
     /// <summary>A button that asks for one of the window's actions its view's way (<paramref name="request"/>, given the
     /// action): named by the action, its tip naming the action's keys as the keymap in force has them
     /// (<see cref="ActionTips"/>), and marked so the window shows the action's work on it (<see cref="ActionButtons.ShowMarked"/>).</summary>
-    public static Button Of(string action, string icon, string tip, Action<string> request)
+    public static Button Of(string action, string icon, Words tip, Action<string> request)
     {
         Button button = Of(icon, tip, () => request(action));
         button.Name = action;
@@ -74,7 +75,7 @@ public static class ToolButtons
 
     /// <summary>A list's filter for one kind of its rows (a test's outcome, a problem's severity): the kind's icon in its
     /// colour and how many rows are of it, pressed while the kind is chosen; <paramref name="count"/> is the count's words.</summary>
-    public static ToggleButton Counted(string icon, string brush, string tip, out TextBlock count)
+    public static ToggleButton Counted(string icon, string brush, Words tip, out TextBlock count)
     {
         PathIcon mark = Icon(icon);
         mark.Bind(PathIcon.ForegroundProperty, mark.GetResourceObservable(brush));
@@ -89,15 +90,15 @@ public static class ToolButtons
     }
 
     /// <summary>A toolbar's button that stays pressed while what it turns on is on (Mute Breakpoints, Select Element).</summary>
-    public static ToggleButton Toggle(string icon, string tip) => Made(new ToggleButton(), Icon(icon), tip);
+    public static ToggleButton Toggle(string icon, Words tip) => Made(new ToggleButton(), Icon(icon), tip);
 
     /// <summary>Gives a button with no words on it its tip, and those words as the name a screen reader says for it; with
     /// <paramref name="keys"/>, the keys that do the same, which the tip names after its words as every tip does.</summary>
-    public static T Tip<T>(T button, string tip, string? keys = null)
+    public static T Tip<T>(T button, Words tip, string? keys = null)
         where T : Control
     {
-        ToolTip.SetTip(button, ActionTips.Named(tip, keys));
-        AutomationProperties.SetName(button, tip);
+        ShownWords.Set(button, ToolTip.TipProperty, keys is null ? tip : SharedWords.WithKeys(tip, keys));
+        ShownWords.Set(button, AutomationProperties.NameProperty, tip);
         return button;
     }
 
@@ -105,14 +106,14 @@ public static class ToolButtons
     /// name, as a refusal follows what it stopped ("Delete: main is checked out"), or alone on one of words, which names
     /// itself; null gives it back its <paramref name="tip"/> while it can act, else its name alone. A screen reader names it
     /// as before. UiRulesTests fails a control greyed with why by hand.</summary>
-    public static void Grey(Control button, Words? why, string? tip = null)
+    public static void Grey(Control button, Words? why, Words? tip = null)
     {
-        string? name = AutomationProperties.GetName(button);
+        Words? name = ShownWords.Of(button, AutomationProperties.NameProperty) ?? AutomationProperties.GetName(button);
         button.IsEnabled = why is null;
-        ToolTip.SetTip(button, why is null ? tip ?? name : name is null ? why.Shown : $"{name}: {why.Shown}");
+        ShownWords.Set(button, ToolTip.TipProperty, why is null ? tip ?? name : name is null ? why : SharedWords.Refused(name, why));
     }
 
-    private static T Made<T>(T button, Control mark, string tip)
+    private static T Made<T>(T button, Control mark, Words tip)
         where T : Button
     {
         button.Classes.Add(StyleClasses.Tool);
@@ -151,11 +152,11 @@ public static class ToolButtons
 /// (a width, a margin, a caption's smaller size).</summary>
 public static class MutedText
 {
-    public static TextBlock Of(string text) =>
-        new() { Classes = { StyleClasses.Muted }, Text = text, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+    public static TextBlock Of(Words text) =>
+        new() { Classes = { StyleClasses.Muted }, [ShownWords.TextProperty] = text, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
 
     /// <summary>A muted note that wraps to its column, as a page's explanations do.</summary>
-    public static TextBlock Wrapped(string text)
+    public static TextBlock Wrapped(Words text)
     {
         TextBlock note = Of(text);
         note.TextWrapping = TextWrapping.Wrap;
@@ -163,7 +164,7 @@ public static class MutedText
     }
 
     /// <summary>A muted note at the caption's step: a field's note, a row's detail.</summary>
-    public static TextBlock Caption(string text)
+    public static TextBlock Caption(Words text)
     {
         TextBlock note = Of(text);
         note.Classes.Add(StyleClasses.Caption);
@@ -171,7 +172,7 @@ public static class MutedText
     }
 
     /// <summary>A muted note at the caption's step that wraps to its column, as a field's note under it does.</summary>
-    public static TextBlock CaptionWrapped(string text)
+    public static TextBlock CaptionWrapped(Words text)
     {
         TextBlock note = Wrapped(text);
         note.Classes.Add(StyleClasses.Caption);

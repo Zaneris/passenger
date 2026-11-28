@@ -41,7 +41,7 @@ public partial class MainWindow
 
     private void AddDotnet()
     {
-        actions!.Add(new IdeAction(AppActions.InstallDotnetSdk, "Install .NET SDK…", "IDE", context => IdeErrors.Observe(InstallDotnetAsync(context)))
+        actions!.Add(new IdeAction(AppActions.InstallDotnetSdk, ActionTitles.InstallDotnetSdk, ActionGroups.Ide, context => IdeErrors.Observe(InstallDotnetAsync(context)))
         {
             WhyNot = context => AskedByAgent(context) && (AgentsOwn || AgentsUnattended) ? Refusals.AgentInstalls
                 : DotnetWant.Installs is null ? Refusals.NothingToInstall(machine, DotnetWant)
@@ -50,7 +50,7 @@ public partial class MainWindow
             Words = ["dotnet", "Download .NET"],
             Works = AppActions.InstallDotnetSdk,
         });
-        actions.Add(new IdeAction(AppActions.AddDotnetToPath, "Add .NET to the Shell's PATH…", "IDE", _ => IdeErrors.Observe(AddDotnetToPathAsync()))
+        actions.Add(new IdeAction(AppActions.AddDotnetToPath, ActionTitles.AddDotnetToPath, ActionGroups.Ide, _ => IdeErrors.Observe(AddDotnetToPathAsync()))
         {
             WhyNot = context => AskedByAgent(context) ? Refusals.AgentChangesPath
                 : machine?.Found is not { } found ? Refusals.NoDotnet

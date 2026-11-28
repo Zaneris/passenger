@@ -1058,7 +1058,7 @@ public sealed class DatabaseServersTests
                 Assert.True(data.Shown!.IsAbsent(Row("tea"), note) && !data.Shown.IsAbsent(Row("milk"), note) && data.Shown.Cell(Row("milk"), note) == "NULL",
                     "A field the document lacks reads as NULL does");
                 Assert.Equal(["Add Document", "Delete Documents"], new[] { AppActions.DatabaseAddRow, AppActions.DatabaseDeleteRows }
-                    .Select(id => window.Actions[id]!.TitleWhere(window.Actions.Context())));
+                    .Select(id => window.Actions[id]!.TitleWhere(window.Actions.Context()).English));
                 grid.Choose((Row("tea"), named), (Row("tea"), named));
                 DocumentTree tree = Tab<DocumentTree>(window, "DatabaseTabDocument");
                 Ui.WaitFor(() => tree.Rows.Any(r => r.Name == "address" && r.Value == "1 field"), () => string.Join(", ", tree.Rows.Select(r => $"{r.Name}={r.Value}")));
@@ -1672,7 +1672,7 @@ public sealed class DatabaseServersTests
                 int Row(string order) => Enumerable.Range(0, data.Rows!.RowCount).Single(r => data.Rows.Cell(r, named) == order);
                 Assert.True(data.Shown!.IsAbsent(Row("coffee"), note) && !data.Shown.IsAbsent(Row("milk"), note), "A missing attribute reads as a null one does");
                 Assert.Equal(["Add Item", "Delete Items"], new[] { AppActions.DatabaseAddRow, AppActions.DatabaseDeleteRows }
-                    .Select(id => window.Actions[id]!.TitleWhere(window.Actions.Context())));
+                    .Select(id => window.Actions[id]!.TitleWhere(window.Actions.Context()).English));
                 grid.Choose((Row("tea"), named), (Row("tea"), named));
                 DocumentTree tree = Tab<DocumentTree>(window, "DatabaseTabDocument");
                 Ui.WaitFor(() => tree.Rows.Any(r => r.Name == "address" && r.Value == "1 field"), () => string.Join(", ", tree.Rows.Select(r => $"{r.Name}={r.Value}")));

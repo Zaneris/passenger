@@ -38,8 +38,8 @@ public partial class MainWindow
     /// <summary>Attach to Process and Reattach to Process, in the Run menu before Edit Configurations.</summary>
     private void AddAttaching()
     {
-        Add(A.AttachToProcess, "Attach to Process…", "Debug", _ => ShowAttachToProcess(), menu: ("Run", 0, 3));
-        Add(A.ReattachToProcess, "Reattach to Process…", "Debug", context => IdeErrors.Observe(Reattach()),
+        Add(A.AttachToProcess, ActionTitles.AttachToProcess, ActionGroups.Debug, _ => ShowAttachToProcess(), menu: ("Run", 0, 3));
+        Add(A.ReattachToProcess, ActionTitles.ReattachToProcess, ActionGroups.Debug, context => IdeErrors.Observe(Reattach()),
             _ => attachedTo.Count == 0 ? "Nothing has been attached to in this window: Attach to Process chooses a program" : null, ("Run", 0, 4));
     }
 

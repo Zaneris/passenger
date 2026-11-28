@@ -42,24 +42,24 @@ public partial class MainWindow
             Tools = () => localHistoryView?.Tabs,
         });
         // The menus' names, and Find Action's (Show Local History...) beside the Git window's Show History.
-        actions!.Add(new IdeAction(AppActions.ShowLocalHistory, "Show Local History…", "Local History", context => ShowLocalHistory(Target(context, fileOnly: false)!))
+        actions!.Add(new IdeAction(AppActions.ShowLocalHistory, ActionTitles.ShowLocalHistory, ActionGroups.LocalHistory, context => ShowLocalHistory(Target(context, fileOnly: false)!))
         {
-            TitleIn = _ => "Show History…",
+            TitleIn = _ => ActionTitles.ShowLocalHistoryInMenu,
             WhyNot = context => NeedsFolder(context) ?? WhyNoTarget(context, fileOnly: false),
             Menus = [new MenuPlace(LocalHistoryMenu, 0, 0)],
         });
-        actions.Add(new IdeAction(AppActions.ShowProjectHistory, "Show Local History for Project…", "Local History", _ => ShowLocalHistory(Folder!))
+        actions.Add(new IdeAction(AppActions.ShowProjectHistory, ActionTitles.ShowProjectHistory, ActionGroups.LocalHistory, _ => ShowLocalHistory(Folder!))
         {
-            TitleIn = _ => "Show Project History…",
+            TitleIn = _ => ActionTitles.ShowProjectHistoryInMenu,
             WhyNot = NeedsFolder,
             Menus = [new MenuPlace(LocalHistoryMenu, 1, 0)],
         });
-        actions.Add(new IdeAction(AppActions.RecentChanges, "Recent Changes", "Local History", context => IdeErrors.Observe(ShowRecentChangesAsync()))
+        actions.Add(new IdeAction(AppActions.RecentChanges, ActionTitles.RecentChanges, ActionGroups.LocalHistory, context => IdeErrors.Observe(ShowRecentChangesAsync()))
         {
             WhyNot = NeedsFolder,
             Menus = [new MenuPlace(LocalHistoryMenu, 1, 1)],
         });
-        actions.Add(new IdeAction(AppActions.PutLabel, "Put Label…", "Local History", _ => ShowPutLabel())
+        actions.Add(new IdeAction(AppActions.PutLabel, ActionTitles.PutLabel, ActionGroups.LocalHistory, _ => ShowPutLabel())
         {
             WhyNot = NeedsFolder,
             Menus = [new MenuPlace(LocalHistoryMenu, 1, 2)],
@@ -68,7 +68,7 @@ public partial class MainWindow
         // What an agent's Passenger on the same state kept while the person was away is listed as they come back.
         Activated += (_, _) => session.LocalHistory?.LookAgain();
         // A refactoring's activity; another action since (a quick fix) is not the refactoring.
-        actions.Running += (_, running) => refactoring = running.Action.Menus.Any(m => m.Path == "Refactor") ? running.Action.Title.TrimEnd('…') : null;
+        actions.Running += (_, running) => refactoring = running.Action.Menus.Any(m => m.Path == "Refactor") ? running.Action.Title.Shown.TrimEnd('…') : null;
         // What a refactoring writes to files not open is one change set under its name; a quick fix's is not named.
         Editors.Recording = () =>
         {

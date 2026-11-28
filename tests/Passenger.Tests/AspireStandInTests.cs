@@ -2279,7 +2279,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             FindAction(window, "Show Aspire Resources");
             Ui.WaitFor(() => window.Aspire.Rows.Count == 2, "the API's and the cache's rows");
             string[] services = ["Debug Service", "Attach to Service", "Run Service without Debugger", "Profile Service"];
-            Assert.Equal(services, window.AspireWindow.Tools.Keys.Skip(2).Take(4).Select(id => window.Actions[id]!.Title));
+            Assert.Equal(services, window.AspireWindow.Tools.Keys.Skip(2).Take(4).Select(id => window.Actions[id]!.Title.English));
 
             ContextMenu menu = RowMenu(window, "cache");
             MenuItem[] first = [.. menu.Items.OfType<Control>().TakeWhile(item => item is MenuItem).Cast<MenuItem>()];
@@ -2295,7 +2295,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             window.KeyTextInput("Service");
             Ui.Settle();
             Passenger.App.Navigation.ActionPopup popup = Assert.IsType<Passenger.App.Navigation.ActionPopup>(window.Popup);
-            Assert.All(services, title => Assert.Single(popup.Rows, row => row.Title == title));
+            Assert.All(services, title => Assert.Single(popup.Rows, row => row.Title.English == title));
             Ui.Press(window, "ESCAPE");
 
             Ui.Choose(RowMenu(window, "apiservice"), "Debug Service");
@@ -3561,7 +3561,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         window.KeyTextInput(title);
         Ui.Settle();
         Passenger.App.Navigation.ActionPopup popup = Assert.IsType<Passenger.App.Navigation.ActionPopup>(window.Popup);
-        Assert.Equal(title, popup.Rows[0].Title);
+        Assert.Equal(title, popup.Rows[0].Title.English);
         Ui.Press(window, "ENTER");
     }
 

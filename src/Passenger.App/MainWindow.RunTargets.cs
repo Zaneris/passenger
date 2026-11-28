@@ -22,7 +22,7 @@ public partial class MainWindow
 
     private void AddRunTargets()
     {
-        actions!.Add(new IdeAction(A.ChooseRunTarget, "Choose Where It Runs…", "Run", _ => IdeErrors.Observe(ChooseRunTargetAsync()))
+        actions!.Add(new IdeAction(A.ChooseRunTarget, ActionTitles.ChooseRunTarget, ActionGroups.Run, _ => IdeErrors.Observe(ChooseRunTargetAsync()))
         {
             // Listing a project's targets runs its workload's targets, which a folder not trusted never runs.
             WhyNot = _ => Untrusted() ?? (TargetProject() is null ? "The run configuration chosen runs no app on a device, an emulator or a simulator" : null),
@@ -166,7 +166,7 @@ public partial class MainWindow
         }
         else if (menu.Items.Count == 0)
         {
-            menu.Items.Add(ToolWindows.ListMenus.Notice(Refusals.NoTargets.Shown));
+            menu.Items.Add(ToolWindows.ListMenus.Notice(Refusals.NoTargets));
         }
         menu.Items.Add(new Separator());
         menu.Items.Add(ToolWindows.ListMenus.Item("Look Again", () => IdeErrors.Observe(LookAgainAsync())));

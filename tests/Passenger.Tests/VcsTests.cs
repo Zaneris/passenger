@@ -2134,9 +2134,9 @@ public sealed partial class VcsTests : IDisposable
         Ui.Settle();
         Assert.True(window.Vcs.Repository is null && window.GitBranches.Rows.Count == 0,
             $"The Git window of a folder in no repository lists [{string.Join(", ", window.GitBranches.Rows.Select(r => r.Title))}]");
-        Assert.Contains(window.GitLog.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Content as string == VcsController.CreateRepository);
+        Assert.Contains(window.GitLog.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Content as string == ActionTitles.CreateRepository.English);
 
-        Ui.ClickButton(commit, VcsController.CreateRepository);
+        Ui.ClickButton(commit, ActionTitles.CreateRepository.English);
         string[] Listed() => [.. commit.Rows.OfType<CommitRow>().Select(r => Path.GetRelativePath(solution, r.Change.Path).Replace('\\', '/')).Order(StringComparer.Ordinal)];
         Ui.WaitFor(() => window.Vcs.Repository is not null && Listed().Contains(".gitignore"),
             () => $"the repository made with its .gitignore, where the Commit window lists [{string.Join(", ", Listed())}] and the status bar says '{window.Status}'");
@@ -2148,7 +2148,7 @@ public sealed partial class VcsTests : IDisposable
         Assert.Equal($"Created a Git repository in {Path.GetFileName(solution)}", window.Status);
         Ui.WaitFor(() => window.GitBranches.Rows.Count > 0, "the Git window to list the new repository's HEAD");
         Assert.Equal(Refusals.InRepository.Shown, window.Actions.WhyNot(AppActions.CreateRepository, window.Actions.Context())?.Shown);
-        Assert.DoesNotContain(commit.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Content as string == VcsController.CreateRepository);
+        Assert.DoesNotContain(commit.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Content as string == ActionTitles.CreateRepository.English);
         window.Close();
     }
 

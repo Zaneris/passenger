@@ -5,6 +5,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App.ToolWindows;
 
@@ -17,7 +18,7 @@ namespace Passenger.App.ToolWindows;
 public static class ListMenus
 {
     /// <summary>F4's item in every list: what goes to the row's place in the code or the file.</summary>
-    public const string GoToSource = "Go to Source";
+    public static Words GoToSource => SharedWords.GoToSource;
 
     /// <summary>Gives a list a right-click menu for its chosen row, so a right-click or the menu key finds it ready, and none
     /// with nothing to offer. One open stays as it opened while the list is read again (its rows made anew, the same one
@@ -68,9 +69,9 @@ public static class ListMenus
 
     /// <summary>An item, greyed while <paramref name="whyNot"/> says why it cannot run, which its tip says; with
     /// <paramref name="icon"/> (a key of <see cref="IconKeys"/>), that icon before its words.</summary>
-    public static MenuItem Item(string header, Action run, Words? whyNot = null, string? icon = null)
+    public static MenuItem Item(Words header, Action run, Words? whyNot = null, string? icon = null)
     {
-        MenuItem item = new() { Header = header };
+        MenuItem item = new() { [ShownWords.HeaderProperty] = header };
         if (icon is not null)
         {
             item.Icon = Glyph(icon);
@@ -82,21 +83,21 @@ public static class ListMenus
 
     /// <summary>An item that runs an action of the editor's or the window's its place's own way, with the keys the keymap in
     /// force gives that action.</summary>
-    public static MenuItem Keyed(string header, string action, Action run, Words? whyNot = null) => KeysOf(Item(header, run, whyNot), action);
+    public static MenuItem Keyed(Words header, string action, Action run, Words? whyNot = null) => KeysOf(Item(header, run, whyNot), action);
 
     /// <summary>What Enter and a double click do on a list's row (<see cref="ListActs.Open"/>), in the list's words for it.</summary>
-    public static MenuItem Open(string header, Action run, Words? whyNot = null) => Act(header, ListKeys.OpenKey, run, whyNot);
+    public static MenuItem Open(Words header, Action run, Words? whyNot = null) => Act(header, ListKeys.OpenKey, run, whyNot);
 
     /// <summary>What F4 does on a list's row (<see cref="ListActs.Source"/>): <see cref="GoToSource"/> in every list.</summary>
     public static MenuItem Source(Action run, Words? whyNot = null) => Act(GoToSource, ListKeys.SourceKey, run, whyNot);
 
     /// <summary>What F2 does on a list's row (<see cref="ListActs.Edit"/>), in the list's words for it.</summary>
-    public static MenuItem Edit(string header, Action run, Words? whyNot = null) => Act(header, ListKeys.EditKey, run, whyNot);
+    public static MenuItem Edit(Words header, Action run, Words? whyNot = null) => Act(header, ListKeys.EditKey, run, whyNot);
 
     /// <summary>What Delete does on a list's row (<see cref="ListActs.Remove"/>), in the list's words for it.</summary>
-    public static MenuItem Remove(string header, Action run, Words? whyNot = null) => Act(header, ListKeys.RemoveKey, run, whyNot);
+    public static MenuItem Remove(Words header, Action run, Words? whyNot = null) => Act(header, ListKeys.RemoveKey, run, whyNot);
 
-    private static MenuItem Act(string header, Key key, Action run, Words? whyNot)
+    private static MenuItem Act(Words header, Key key, Action run, Words? whyNot)
     {
         MenuItem item = Item(header, run, whyNot);
         item.InputGesture = new KeyGesture(key);
@@ -106,7 +107,7 @@ public static class ListMenus
     /// <summary>An item turning something on or off, ticked while it is on, greyed as <see cref="Item"/> is; with
     /// <paramref name="icon"/>, that icon before its words; with <paramref name="action"/>, the keys the keymap gives the
     /// action it runs, as <see cref="Keyed"/>'s.</summary>
-    public static MenuItem Toggle(string header, bool on, Action<bool> turn, Words? whyNot = null, string? icon = null, string? action = null)
+    public static MenuItem Toggle(Words header, bool on, Action<bool> turn, Words? whyNot = null, string? icon = null, string? action = null)
     {
         MenuItem item = Item(header, () => turn(!on), whyNot, icon);
         item.ToggleType = MenuItemToggleType.CheckBox;
@@ -115,10 +116,10 @@ public static class ListMenus
     }
 
     /// <summary>A submenu of items.</summary>
-    public static MenuItem Sub(string header, params IEnumerable<Control> items) => new() { Header = header, ItemsSource = items.ToArray() };
+    public static MenuItem Sub(Words header, params IEnumerable<Control> items) => new() { [ShownWords.HeaderProperty] = header, ItemsSource = items.ToArray() };
 
     /// <summary>A submenu whose items are made as it first opens (<see cref="MadeOnOpen"/>): a remote's branches.</summary>
-    public static MenuItem Sub(string header, Func<IReadOnlyList<Control>> made) => MadeOnOpen(new MenuItem { Header = header }, made);
+    public static MenuItem Sub(Words header, Func<IReadOnlyList<Control>> made) => MadeOnOpen(new MenuItem { [ShownWords.HeaderProperty] = header }, made);
 
     /// <summary>Gives <paramref name="item"/> a submenu whose items are made as it first opens, so one whose submenu stays shut
     /// costs nothing: a stand-in until then shows it opens one, which a click or Enter opens.</summary>
@@ -139,22 +140,22 @@ public static class ListMenus
 
     /// <summary>The heading over a group of a menu's items (a list of branches, of solutions): words at the caption's step,
     /// muted, which the keys and the pointer pass over, and a screen reader hears as a heading.</summary>
-    public static MenuItem Heading(string words)
+    public static MenuItem Heading(Words words)
     {
-        MenuItem item = new() { Header = words, IsEnabled = false, Classes = { StyleClasses.MenuHeading, StyleClasses.Caption } };
+        MenuItem item = new() { [ShownWords.HeaderProperty] = words, IsEnabled = false, Classes = { StyleClasses.MenuHeading, StyleClasses.Caption } };
         AutomationProperties.SetHeadingLevel(item, 1);
         return item;
     }
 
     /// <summary>Words a menu says in place of the items it has none of, or of what they lack (Git is not installed, no
     /// executable projects): muted, wrapping in the menu's width, which the keys and the pointer pass over.</summary>
-    public static MenuItem Notice(string words) => new() { Header = words, IsEnabled = false, Classes = { StyleClasses.MenuNotice } };
+    public static MenuItem Notice(Words words) => new() { [ShownWords.HeaderProperty] = words, IsEnabled = false, Classes = { StyleClasses.MenuNotice } };
 
     /// <summary>Greys an item while it cannot run, its tip saying why (<paramref name="whyNot"/>); null enables it again.</summary>
     public static void Grey(MenuItem item, Words? whyNot)
     {
         item.IsEnabled = whyNot is null;
-        ToolTip.SetTip(item, whyNot?.Shown);
+        ShownWords.Set(item, ToolTip.TipProperty, whyNot);
     }
 
     public static async Task CopyAsync(Visual from, string text)

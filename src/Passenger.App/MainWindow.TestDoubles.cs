@@ -15,13 +15,13 @@ public partial class MainWindow
 {
     private void AddTestDoubles()
     {
-        actions!.Add(new IdeAction(AppActions.CreateFake, "Create Fake…", "Code", _ => IdeErrors.Observe(DoublesAtCaretAsync(fakes: true)))
+        actions!.Add(new IdeAction(AppActions.CreateFake, ActionTitles.CreateFake, ActionGroups.Code, _ => IdeErrors.Observe(DoublesAtCaretAsync(fakes: true)))
         {
             WhyNot = context => WhyNoDoubles(context) ?? (TestProjects().Count == 0 ? Refusals.NoTestProject : null),
             Menus = [new MenuPlace("Code", 4, 0)],
             Words = ["stub", "test double", "mock", "isolate"],
         });
-        actions.Add(new IdeAction(AppActions.FillArgumentsWithDoubles, "Fill Arguments with Doubles", "Code", _ => IdeErrors.Observe(DoublesAtCaretAsync(fakes: false)))
+        actions.Add(new IdeAction(AppActions.FillArgumentsWithDoubles, ActionTitles.FillArgumentsWithDoubles, ActionGroups.Code, _ => IdeErrors.Observe(DoublesAtCaretAsync(fakes: false)))
         {
             WhyNot = context => WhyNoDoubles(context) ?? context.ReadOnlyWhy,
             Menus = [new MenuPlace("Code", 4, 1)],
@@ -37,7 +37,7 @@ public partial class MainWindow
         [.. session.Projects.Where(p => p.IsTestProject && p.Path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)).Select(p => p.Path)];
 
     /// <summary>An action's title as the registry has it, without the dots of one that asks more.</summary>
-    private string TitleOf(string id) => actions?[id]?.Title.TrimEnd('…') ?? id;
+    private string TitleOf(string id) => actions?[id]?.Title.Shown.TrimEnd('…') ?? id;
 
     /// <summary>The test doubles offered at an offset of a C# file the server answers for (<see cref="DoubleFixesAsync"/>),
     /// fakes then fills.</summary>

@@ -1142,7 +1142,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         }
         placeholder.Text = vcs.Repository is null ? vcs.NoRepository : "No changes";
         bool creates = vcs.Repository is null && vcs.WhyNotCreate is null;
-        placeholder.Offer(creates ? AppActions.CreateRepository : null, VcsController.CreateRepository);
+        placeholder.Offer(creates ? AppActions.CreateRepository : null, ActionTitles.CreateRepository);
         placeholder.IsVisible = rows.Count == 0;
         // Nothing of the form can be used before there is a repository, and the window is its empty state's.
         form.IsVisible = vcs.Repository is not null;

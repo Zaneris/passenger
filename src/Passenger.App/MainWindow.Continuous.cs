@@ -20,7 +20,7 @@ public partial class MainWindow
 
     private void AddContinuousTesting()
     {
-        actions!.Add(new IdeAction(A.ContinuousTesting, "Continuous Testing", "Unit Tests",
+        actions!.Add(new IdeAction(A.ContinuousTesting, ActionTitles.ContinuousTesting, ActionGroups.UnitTests,
             _ => Questions.Set(Declared.ContinuousTesting, !Questions.IsOn(Declared.ContinuousTesting)))
         {
             WhyNot = NeedsTestBuild,
@@ -135,7 +135,7 @@ public partial class MainWindow
                 }));
             }
             menu.Items.Add(new Separator());
-            menu.Items.Add(ToolWindows.ListMenus.Item(TestingWords.RunTheseTests(nodes.Count).Shown, () => RunTests(() => session.Tests.RunAsync(Folder!, nodes)),
+            menu.Items.Add(ToolWindows.ListMenus.Item(TestingWords.RunTheseTests(nodes.Count), () => RunTests(() => session.Tests.RunAsync(Folder!, nodes)),
                 session.Tests.IsBusy ? "Tests are already running" : nodes.Count == 0 ? "None of these tests is in the Unit Tests window" : null));
         }
         ReachMenu = menu;

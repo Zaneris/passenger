@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App;
 
@@ -55,20 +57,20 @@ public sealed class Banner : Border
     public string? Said => IsVisible ? words.Text : null;
 
     /// <summary>Shows the banner saying <paramref name="said"/>, or hides it for null.</summary>
-    public void Say(string? said)
+    public void Say(Words? said)
     {
-        words.Text = said;
-        ToolTip.SetTip(words, words.TextWrapping == TextWrapping.Wrap ? null : said);
+        ShownWords.Set(words, TextBlock.TextProperty, said);
+        ShownWords.Set(words, ToolTip.TipProperty, words.TextWrapping == TextWrapping.Wrap ? null : said);
         IsVisible = said is not null;
     }
 
     /// <summary>A link at the banner's right, left of those before it, running <paramref name="run"/> when clicked.</summary>
-    public Button Link(string? text, Action run)
+    public Button Link(Words? text, Action run)
     {
         Button link = new()
         {
             Classes = { StyleClasses.Link, StyleClasses.Caption },
-            Content = text,
+            [ShownWords.ContentProperty] = text,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, Gaps.Wide, 0),
             [DockPanel.DockProperty] = Dock.Right,

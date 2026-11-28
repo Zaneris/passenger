@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
 
 namespace Passenger.App;
 
@@ -18,7 +19,7 @@ public sealed class ColumnTitles : Border
     private readonly Grid grid;
     private readonly TextBlock[] titles;
 
-    private ColumnTitles(string columns, IReadOnlyList<string> named, double inset, double cell, bool numbers)
+    private ColumnTitles(string columns, IReadOnlyList<Words> named, double inset, double cell, bool numbers)
     {
         this.columns = columns;
         grid = new Grid { ColumnDefinitions = new ColumnDefinitions(columns), Height = ListRow.Height, Margin = new Thickness(inset, 0) };
@@ -48,12 +49,12 @@ public sealed class ColumnTitles : Border
     /// <param name="inset">Where the rows' grid starts from each side of the table: <see cref="OverList"/> over a tree list.</param>
     /// <param name="cell">Where words start inside a column, as the rows' cells have them.</param>
     /// <param name="numbers">Whether every column after the first holds numbers, its title at its right.</param>
-    public static ColumnTitles Of(string columns, IReadOnlyList<string> titles, double inset = 0, double cell = Gaps.Normal, bool numbers = false) =>
+    public static ColumnTitles Of(string columns, IReadOnlyList<Words> titles, double inset = 0, double cell = Gaps.Normal, bool numbers = false) =>
         new(columns, titles, inset, cell, numbers);
 
     /// <summary>A tree list's titles: its first column a name, taking the width the others leave, the rest numbers of the
     /// widths given.</summary>
-    public static ColumnTitles OfNumbers(params (string Title, double Width)[] columns) =>
+    public static ColumnTitles OfNumbers(params (Words Title, double Width)[] columns) =>
         new(string.Join(",", columns.Select((c, i) => i == 0 ? "*" : c.Width.ToString(System.Globalization.CultureInfo.InvariantCulture))),
             [.. columns.Select(c => c.Title)], OverList, cell: 0, numbers: true);
 

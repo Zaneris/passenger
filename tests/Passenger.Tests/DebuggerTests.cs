@@ -762,7 +762,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             MainWindow first = Keeping(settings);
             CodeEditor editor = first.EditorArea.CodeEditor;
             editor.GoTo(new TextPosition(3, 6));
-            Assert.Equal(DebugController.PinToLineTitle, first.Actions[AppActions.PinToLine]!.TitleWhere(first.Actions.Context()));
+            Assert.Equal(DebugController.PinToLineTitle, first.Actions[AppActions.PinToLine]!.TitleWhere(first.Actions.Context()).English);
             Assert.True(first.Perform(AppActions.PinToLine), $"Pin to Line did not run: {Ui.Said(first)}");
             Assert.Equal([(3, "total")], Pinned(first));
             Ui.Run(first, AppActions.ToggleBreakpoint);
@@ -791,7 +791,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             MainWindow second = Keeping(settings);
             Ui.WaitFor(() => Pinned(second) is [(3, "total")], () => $"the pin the folder kept, not {string.Join(" | ", Pinned(second))}");
             second.EditorArea.CodeEditor.GoTo(new TextPosition(3, 6));
-            Assert.Equal(DebugController.UnpinFromLineTitle, second.Actions[AppActions.PinToLine]!.TitleWhere(second.Actions.Context()));
+            Assert.Equal(DebugController.UnpinFromLineTitle, second.Actions[AppActions.PinToLine]!.TitleWhere(second.Actions.Context()).English);
             Assert.True(second.Perform(AppActions.PinToLine), $"Unpin from Line did not run: {Ui.Said(second)}");
             Assert.Empty(second.Debugger.Breakpoints.Pins.All);
             Assert.Empty(Pinned(second));

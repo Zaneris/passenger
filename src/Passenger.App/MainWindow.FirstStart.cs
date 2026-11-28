@@ -54,7 +54,7 @@ public partial class MainWindow
         {
             return shown;
         }
-        FirstStartView page = new(() => settingsStore.Effective, change => settingsStore.Update(change), id => actions![id]?.Title ?? id);
+        FirstStartView page = new(() => settingsStore.Effective, change => settingsStore.Update(change), id => actions![id]?.Title.Shown ?? id);
         page.Ended += (_, _) => EndFirstStart();
         Grid.SetRow(page, 1);
         Grid.SetRowSpan(page, 2);

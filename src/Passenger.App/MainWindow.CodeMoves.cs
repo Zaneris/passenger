@@ -16,15 +16,15 @@ public partial class MainWindow
 {
     private void AddCodeMoves()
     {
-        Add(A.MoveStatementUp, "Move Statement Up", "Editor", _ => MoveStatement(up: true), WhyNoChange, ("Code", 3, 0), words: ["Move Member Up"]);
-        Add(A.MoveStatementDown, "Move Statement Down", "Editor", _ => MoveStatement(up: false), WhyNoChange, ("Code", 3, 1), words: ["Move Member Down"]);
-        Add(A.MoveElementLeft, "Move Element Left", "Editor", _ => MoveElement(right: false), WhyNoChange, ("Code", 3, 2),
+        Add(A.MoveStatementUp, ActionTitles.MoveStatementUp, ActionGroups.Editor, _ => MoveStatement(up: true), WhyNoChange, ("Code", 3, 0), words: ["Move Member Up"]);
+        Add(A.MoveStatementDown, ActionTitles.MoveStatementDown, ActionGroups.Editor, _ => MoveStatement(up: false), WhyNoChange, ("Code", 3, 1), words: ["Move Member Down"]);
+        Add(A.MoveElementLeft, ActionTitles.MoveElementLeft, ActionGroups.Editor, _ => MoveElement(right: false), WhyNoChange, ("Code", 3, 2),
             words: ["Move Argument Left", "Move Parameter Left", "Move Attribute Left"]);
-        Add(A.MoveElementRight, "Move Element Right", "Editor", _ => MoveElement(right: true), WhyNoChange, ("Code", 3, 3),
+        Add(A.MoveElementRight, ActionTitles.MoveElementRight, ActionGroups.Editor, _ => MoveElement(right: true), WhyNoChange, ("Code", 3, 3),
             words: ["Move Argument Right", "Move Parameter Right", "Move Attribute Right"]);
-        Add(A.Unwrap, "Unwrap", "Editor", _ => Unwrap(), WhyNoCSharpChange, ("Code", 3, 4), words: ["Remove Enclosing Statement", "Unwrap/Remove"]);
+        Add(A.Unwrap, ActionTitles.Unwrap, ActionGroups.Editor, _ => Unwrap(), WhyNoCSharpChange, ("Code", 3, 4), words: ["Remove Enclosing Statement", "Unwrap/Remove"]);
         FollowModes();
-        Add(A.AutoIndentLines, "Auto-Indent Lines", "Editor", _ => IdeErrors.Observe(AutoIndentLinesAsync()), context => actions!.WhyNot(A.Reformat, context),
+        Add(A.AutoIndentLines, ActionTitles.AutoIndentLines, ActionGroups.Editor, _ => IdeErrors.Observe(AutoIndentLinesAsync()), context => actions!.WhyNot(A.Reformat, context),
             ("Code", 3, 5), words: ["Reindent", "Indent Lines"]);
     }
 

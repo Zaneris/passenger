@@ -374,7 +374,7 @@ public sealed class AspireView : DockPanel, IDisposable
         graphPage.ContextMenu = graphMenu;
         foreach ((Button button, string action) in tools)
         {
-            ActionTips.Set(button, action, actions[action]?.Title ?? ToolTip.GetTip(button) as string ?? action);
+            ActionTips.Set(button, action, actions[action]?.Title ?? (Words?)(ToolTip.GetTip(button) as string) ?? action);
         }
     }
 

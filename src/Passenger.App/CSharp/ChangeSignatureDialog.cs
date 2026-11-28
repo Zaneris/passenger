@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Roslyn.Extension;
 
@@ -18,7 +19,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
     private const string Columns = "110,*,*,*";
 
     /// <summary>The parameters' columns' titles, which name their cells for a screen reader too.</summary>
-    private static readonly string[] Titles = ["Modifier", "Type", "Name", "Default value"];
+    private static readonly Words[] Titles = ["Modifier", "Type", "Name", "Default value"];
 
     /// <summary>The signature's kind for a GDScript function.</summary>
     public const string GDScriptKind = "gdscript";
@@ -283,7 +284,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
         for (int i = 0; i < parts.Length; i++)
         {
             // A cell is heard by its column's title, the words a person sees over it.
-            AutomationProperties.SetName(parts[i], Titles[i]);
+            ShownWords.Set(parts[i], AutomationProperties.NameProperty, Titles[i]);
             Grid.SetColumn(parts[i], i);
             cells.Children.Add(parts[i]);
         }

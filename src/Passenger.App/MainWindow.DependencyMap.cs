@@ -41,7 +41,7 @@ public partial class MainWindow
                 document.Text.Changed += (_, _) => dependencyMap?.CodeMoved();
             }
         };
-        actions!.Add(new IdeAction(AppActions.ShowDependencyMap, "Show Dependency Map", "IDE", context => IdeErrors.Observe(ShowDependencyMapAsync(context)))
+        actions!.Add(new IdeAction(AppActions.ShowDependencyMap, ActionTitles.ShowDependencyMap, ActionGroups.Ide, context => IdeErrors.Observe(ShowDependencyMapAsync(context)))
         {
             WhyNot = _ => session.CSharp is null ? Refusals.CSharpNotRunningSentence : null,
             Menus = [new MenuPlace("Navigate", 2, 8)],

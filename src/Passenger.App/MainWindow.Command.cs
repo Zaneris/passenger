@@ -26,7 +26,7 @@ public partial class MainWindow
     {
         string[] words = ["command line", "terminal", "shell", "PATH", "launcher", "CLI"];
         MenuPlace[] Tools(int order) => OperatingSystem.IsMacOS() ? [new MenuPlace("Tools", 1, order)] : [];
-        actions!.Add(new IdeAction(AppActions.AddCommand, $"Add the {PassengerCommand.Name} Command…", "IDE", _ => IdeErrors.Observe(AddCommandAsync()))
+        actions!.Add(new IdeAction(AppActions.AddCommand, ActionTitles.AddCommand(PassengerCommand.Name), ActionGroups.Ide, _ => IdeErrors.Observe(AddCommandAsync()))
         {
             WhyNot = context => AskedByAgent(context) ? Refusals.CommandIsThePersons
                 : Refusals.CommandMadeElsewhere ?? (macCommand is { } read ? NotAdded(read) : Refusals.CommandStillRead),
@@ -34,7 +34,7 @@ public partial class MainWindow
             Words = words,
             Works = AppActions.AddCommand,
         });
-        actions.Add(new IdeAction(AppActions.RemoveCommand, $"Remove the {PassengerCommand.Name} Command…", "IDE", _ => IdeErrors.Observe(RemoveCommandAsync()))
+        actions.Add(new IdeAction(AppActions.RemoveCommand, ActionTitles.RemoveCommand(PassengerCommand.Name), ActionGroups.Ide, _ => IdeErrors.Observe(RemoveCommandAsync()))
         {
             WhyNot = context => AskedByAgent(context) ? Refusals.CommandIsThePersons
                 : Refusals.CommandMadeElsewhere ?? (macCommand is { } read ? NotRemoved(read) : Refusals.CommandStillRead),

@@ -45,7 +45,7 @@ public sealed class MouseShortcutSettingsTests : IDisposable
             Assert.False(mouse.OkButton.IsEnabled, "Mouse Shortcut's OK could be pressed before any gesture was");
             Ui.Click(mouse.Pad, modifiers: Mac ? RawInputModifiers.Meta : RawInputModifiers.Control);
             Assert.Equal(gesture.Display(), mouse.Shown);
-            Assert.True(mouse.Conflicts.Any(c => c.StartsWith(window.Actions[AppActions.GoToDeclaration]!.Title, StringComparison.Ordinal)),
+            Assert.True(mouse.Conflicts.Any(c => c.StartsWith(window.Actions[AppActions.GoToDeclaration]!.Title.English, StringComparison.Ordinal)),
                 $"{gesture.Display()}, Go to Declaration's, was said to be assigned to [{string.Join("; ", mouse.Conflicts)}]");
             Ui.Click(mouse.OkButton);
             ConfirmDialog warning = Asked(dialog);
@@ -62,7 +62,7 @@ public sealed class MouseShortcutSettingsTests : IDisposable
             Ui.Run(window, AppActions.FindAction);
             Ui.WaitFor(() => window.Popup is ActionPopup, "Find Action");
             ActionPopup actions = (ActionPopup)window.Popup!;
-            actions.Query = window.Actions[AppActions.SplitRight]!.Title;
+            actions.Query = window.Actions[AppActions.SplitRight]!.Title.English;
             Ui.Settle();
             string shown = actions.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? string.Empty).FirstOrDefault(t => t.EndsWith(gesture.Display(), StringComparison.Ordinal))
                 ?? string.Empty;

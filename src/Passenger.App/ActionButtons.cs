@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Passenger.Core;
 
 namespace Passenger.App;
 
@@ -30,7 +31,7 @@ public static class ActionButtons
     public static void Bind(Button button, string id, ActionRegistry actions, Func<string, bool> request)
     {
         button.Click += (_, _) => request(id);
-        ActionTips.Set(button, id, ToolTip.GetTip(button) as string ?? actions[id]?.Title ?? id);
+        ActionTips.Set(button, id, (Words?)(ToolTip.GetTip(button) as string) ?? actions[id]?.Title ?? id);
         Show(button, id, actions);
     }
 

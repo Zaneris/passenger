@@ -86,13 +86,13 @@ public partial class MainWindow
 
     private void AddProjectWindows()
     {
-        actions!.Add(new IdeAction(AppActions.NextProjectWindow, "Next Solution Window", "Window", _ => PassengerApp.Step(this, 1))
+        actions!.Add(new IdeAction(AppActions.NextProjectWindow, ActionTitles.NextProjectWindow, ActionGroups.Window, _ => PassengerApp.Step(this, 1))
         {
             WhyNot = _ => OtherWindows(),
             Menus = [new MenuPlace("Window", 4, 0)],
             FromTerminal = true,
         });
-        actions.Add(new IdeAction(AppActions.PreviousProjectWindow, "Previous Solution Window", "Window", _ => PassengerApp.Step(this, -1))
+        actions.Add(new IdeAction(AppActions.PreviousProjectWindow, ActionTitles.PreviousProjectWindow, ActionGroups.Window, _ => PassengerApp.Step(this, -1))
         {
             WhyNot = _ => OtherWindows(),
             Menus = [new MenuPlace("Window", 4, 1)],

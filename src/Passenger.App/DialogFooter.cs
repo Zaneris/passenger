@@ -3,6 +3,8 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App;
 
@@ -26,13 +28,13 @@ public static class DialogFooter
 
     /// <summary>A dialog's default button, OK unless its words say what it does (Next, Publish, Create): Enter clicks it,
     /// and it wears the accent.</summary>
-    public static Button Default(string words = "OK") => new() { Content = words, IsDefault = true, Classes = { StyleClasses.Primary } };
+    public static Button Default(Words? words = null) => new() { [ShownWords.ContentProperty] = words ?? SharedWords.Ok, IsDefault = true, Classes = { StyleClasses.Primary } };
 
     /// <summary>A dialog's Cancel, or the answer that stands for it (No): Escape clicks it too, and a click does what
     /// <paramref name="cancelled"/> does.</summary>
-    public static Button Cancel(Action cancelled, string words = "Cancel")
+    public static Button Cancel(Action cancelled, Words? words = null)
     {
-        Button cancel = new() { Content = words, IsCancel = true };
+        Button cancel = new() { [ShownWords.ContentProperty] = words ?? SharedWords.Cancel, IsCancel = true };
         cancel.Click += (_, _) => cancelled();
         return cancel;
     }
@@ -51,7 +53,7 @@ public static class DialogFooter
     /// its keys too, so its Cancel takes none of them.</summary>
     public static StackPanel Popup(Button chosen, Action cancelled)
     {
-        Button cancel = new() { Content = "Cancel" };
+        Button cancel = new() { [ShownWords.ContentProperty] = SharedWords.Cancel };
         cancel.Click += (_, _) => cancelled();
         StackPanel answers = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal };
         answers.Children.AddRange(Ordered(chosen, cancel, []));
@@ -112,12 +114,12 @@ public static class DialogFooter
     /// <summary>A step's whole content (a refactoring's, Publish's): its title in bold over what it does, on a band ruled
     /// off from the page; the page under it; and the footer's bar, inset as the page is, so the default button ends where
     /// the page's fields do and a problem starts where its labels do.</summary>
-    public static DockPanel Headed(string title, Control about, Control page, Border bar)
+    public static DockPanel Headed(Words title, Control about, Control page, Border bar)
     {
         StackPanel header = new()
         {
             Spacing = Gaps.Tight,
-            Children = { new TextBlock { Classes = { StyleClasses.DialogTitle }, Text = title }, about },
+            Children = { new TextBlock { Classes = { StyleClasses.DialogTitle }, [ShownWords.TextProperty] = title }, about },
         };
         BySides(header, Layoutable.MarginProperty, null, Gaps.Wide);
         Border top = new() { BorderThickness = Hairlines.Below, Child = header };
@@ -132,17 +134,17 @@ public static class DialogFooter
     /// <see cref="Paragraph"/>, or what it is about, as a list), each wrapping, at one width and as tall as they are; its
     /// answers in the footer's bar, and what goes beside them (Don't ask again) at the bar's left. Its words are the
     /// window's description too, for a screen reader to say with its title.</summary>
-    public static void Question(Window dialog, string title, IEnumerable<Control> paragraphs, StackPanel answers, Control? left = null)
+    public static void Question(Window dialog, Words title, IEnumerable<Control> paragraphs, StackPanel answers, Control? left = null)
     {
         Control[] said = [.. paragraphs];
         AutomationProperties.SetHelpText(dialog, string.Join(" ", said.OfType<TextBlock>().Select(words => words.Text)));
-        dialog.Title = title;
+        ShownWords.Set(dialog, Window.TitleProperty, title);
         dialog.Width = DialogWidths.Question;
         dialog.SizeToContent = SizeToContent.Height;
         dialog.CanResize = false;
         dialog.WindowStartupLocation = WindowStartupLocation.CenterOwner;
         StackPanel page = new() { [InsetProperty] = true, Spacing = Gaps.Wide };
-        page.Children.Add(new TextBlock { Classes = { StyleClasses.DialogTitle }, Text = title, TextWrapping = TextWrapping.Wrap });
+        page.Children.Add(new TextBlock { Classes = { StyleClasses.DialogTitle }, [ShownWords.TextProperty] = title, TextWrapping = TextWrapping.Wrap });
         page.Children.AddRange(said);
         // On a screen too short for its words, they scroll above the answers, which stay in reach.
         dialog.Content = Page(new ScrollViewer { Content = page }, Bar(answers, left, holdsLeft: true));
@@ -150,10 +152,10 @@ public static class DialogFooter
 
     /// <summary>A question's Don't ask again, which goes beside its answers (<see cref="Question"/>'s left): ticked as the
     /// person agrees, the asker keeps the answer in Settings.</summary>
-    public static CheckBox DontAskAgain() => new() { Content = "Don't ask again" };
+    public static CheckBox DontAskAgain() => new() { [ShownWords.ContentProperty] = SharedWords.DontAskAgain };
 
     /// <summary>A question's paragraph of words, wrapping to its width.</summary>
-    public static TextBlock Paragraph(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap };
+    public static TextBlock Paragraph(Words text) => new() { [ShownWords.TextProperty] = text, TextWrapping = TextWrapping.Wrap };
 
     /// <summary>Gives a part of a dialog the footer's sides, its top and foot those sides too unless given.</summary>
     private static void BySides(Control part, StyledProperty<Thickness> property, double? top, double? bottom) =>

@@ -4,6 +4,8 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App.ToolWindows;
 
@@ -46,7 +48,7 @@ public static class ToolTabs
         }
 
         /// <summary>Adds a tab for <paramref name="key"/>, closed, as <see cref="Tab"/> makes it, named <paramref name="name"/>.</summary>
-        public ToggleButton Add(TKey key, object title, Action? close = null, string closeTip = "Close", string? name = null)
+        public ToggleButton Add(TKey key, object title, Action? close = null, Words? closeTip = null, string? name = null)
         {
             if (close is null)
             {
@@ -60,14 +62,24 @@ public static class ToolTabs
         }
     }
 
-    public static ToggleButton Tab(object title, Action? close = null, string closeTip = "Close")
+    /// <summary>A tab named <paramref name="title"/>: words, said again as the language changes, or a control of its own.</summary>
+    public static ToggleButton Tab(object title, Action? close = null, Words? closeTip = null)
     {
         if (close is null)
         {
-            return new ChoiceToggle { Classes = { StyleClasses.PanelTab }, Content = title };
+            ChoiceToggle plain = new() { Classes = { StyleClasses.PanelTab } };
+            if (title is Words said)
+            {
+                plain[ShownWords.ContentProperty] = said;
+            }
+            else
+            {
+                plain.Content = title;
+            }
+            return plain;
         }
-        Control name = title as Control ?? new TextBlock { Text = title.ToString(), VerticalAlignment = VerticalAlignment.Center };
-        Button button = ToolButtons.Small(IconKeys.Close, closeTip);
+        Control name = title as Control ?? new TextBlock { [ShownWords.TextProperty] = title as Words ?? title.ToString(), VerticalAlignment = VerticalAlignment.Center };
+        Button button = ToolButtons.Small(IconKeys.Close, closeTip ?? SharedWords.Close);
         button.Classes.Add(StyleClasses.TabClose);
         button.Margin = new Thickness(Gaps.Small, 0, 0, 0);
         DockPanel.SetDock(button, Dock.Right);

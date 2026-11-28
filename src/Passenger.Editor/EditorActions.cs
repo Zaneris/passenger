@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.Editor;
 
 /// <summary>The editor's actions, by the name a keymap binds. Movements extend the selection when
@@ -108,39 +110,49 @@ public static class EditorActions
     public const string ColumnSelectionDrag = "editor.columnSelectionDrag";
     public const string AddColumnSelectionDrag = "editor.addColumnSelectionDrag";
 
-    /// <summary>Every editor action and its name for people (Rider's where it has one), which the IDE lists and runs.</summary>
-    public static IReadOnlyList<(string Id, string Title)> All { get; } =
+    /// <summary>Every editor action and its name for people (Rider's where it has one), which the IDE lists and runs: its words
+    /// in EditorActionTitles, keyed by its name here.</summary>
+    public static IReadOnlyList<(string Id, Words Title)> All { get; } =
     [
-        (Left, "Left"), (Right, "Right"), (Up, "Up"), (Down, "Down"), (WordLeft, "Word Left"), (WordRight, "Word Right"),
-        (LineStart, "Line Start"), (LineEnd, "Line End"), (TextStart, "Text Start"), (TextEnd, "Text End"), (PageUp, "Page Up"),
-        (PageDown, "Page Down"), (ScrollUp, "Scroll Up"), (ScrollDown, "Scroll Down"), (Backspace, "Backspace"), (Delete, "Delete"),
-        (DeleteWordLeft, "Delete Word Left"), (DeleteWordRight, "Delete Word Right"), (NewLine, "New Line"),
-        (StartNewLine, "Start New Line"), (StartNewLineBefore, "Start New Line Before"), (Indent, "Indent"), (Outdent, "Outdent"),
-        (Duplicate, "Duplicate"), (DeleteLine, "Delete Line"), (MoveLineUp, "Move Line Up"), (MoveLineDown, "Move Line Down"),
-        (ToggleLineComment, "Comment with Line Comment"), (ToggleBlockComment, "Comment with Block Comment"), (Comment, "Comment"), (Uncomment, "Uncomment"), (JoinLines, "Join Lines"),
-        (ToggleCase, "Toggle Case"), (CutToLineEnd, "Cut to Line End"), (SplitLine, "Split Line"),
-        (DeleteToLineStart, "Delete to Line Start"), (DeleteToLineEnd, "Delete to Line End"), (Transpose, "Transpose"),
-        (ToggleOverwrite, "Toggle Insert/Overwrite"), (ToggleColumnMode, "Column Selection Mode"), (Undo, "Undo"), (Redo, "Redo"), (Cut, "Cut"), (Copy, "Copy"),
-        (Paste, "Paste"), (PasteAsPlainText, "Paste as Plain Text"), (ExpandWord, "Cyclic Expand Word"),
-        (ExpandWordBackward, "Cyclic Expand Word (Backward)"), (SelectAll, "Select All"), (SelectNextOccurrence, "Select Next Occurrence"),
-        (UnselectOccurrence, "Unselect Occurrence"), (SelectAllOccurrences, "Select All Occurrences"), (CaretPerLine, "Caret Per Line"),
-        (CloneCaretAbove, "Clone Caret Above"), (CloneCaretBelow, "Clone Caret Below"), (Escape, "Escape"),
-        (ToggleFold, "Toggle Folding"), (Fold, "Collapse"), (Unfold, "Expand"), (FoldAll, "Collapse All"), (UnfoldAll, "Expand All"),
-        (FoldToDefinitions, "Collapse to Definitions"), (UnfoldDocComments, "Expand Doc Comments"), (FoldDocComments, "Collapse Doc Comments"),
-        (UnfoldRecursively, "Expand Recursively"), (FoldRecursively, "Collapse Recursively"),
-        (UnfoldToLevel1, "Expand to Level 1"), (UnfoldToLevel2, "Expand to Level 2"), (UnfoldToLevel3, "Expand to Level 3"),
-        (UnfoldToLevel4, "Expand to Level 4"), (UnfoldToLevel5, "Expand to Level 5"),
-        (UnfoldAllToLevel1, "Expand All to Level 1"), (UnfoldAllToLevel2, "Expand All to Level 2"), (UnfoldAllToLevel3, "Expand All to Level 3"),
-        (UnfoldAllToLevel4, "Expand All to Level 4"), (UnfoldAllToLevel5, "Expand All to Level 5"),
-        (MatchBrace, "Move Caret to Matching Brace"),
+        (Left, EditorActionTitles.Left), (Right, EditorActionTitles.Right), (Up, EditorActionTitles.Up), (Down, EditorActionTitles.Down),
+        (WordLeft, EditorActionTitles.WordLeft), (WordRight, EditorActionTitles.WordRight), (LineStart, EditorActionTitles.LineStart),
+        (LineEnd, EditorActionTitles.LineEnd), (TextStart, EditorActionTitles.TextStart), (TextEnd, EditorActionTitles.TextEnd),
+        (PageUp, EditorActionTitles.PageUp), (PageDown, EditorActionTitles.PageDown), (ScrollUp, EditorActionTitles.ScrollUp),
+        (ScrollDown, EditorActionTitles.ScrollDown), (Backspace, EditorActionTitles.Backspace), (Delete, EditorActionTitles.Delete),
+        (DeleteWordLeft, EditorActionTitles.DeleteWordLeft), (DeleteWordRight, EditorActionTitles.DeleteWordRight),
+        (NewLine, EditorActionTitles.NewLine), (StartNewLine, EditorActionTitles.StartNewLine),
+        (StartNewLineBefore, EditorActionTitles.StartNewLineBefore), (Indent, EditorActionTitles.Indent), (Outdent, EditorActionTitles.Outdent),
+        (Duplicate, EditorActionTitles.Duplicate), (DeleteLine, EditorActionTitles.DeleteLine), (MoveLineUp, EditorActionTitles.MoveLineUp),
+        (MoveLineDown, EditorActionTitles.MoveLineDown), (ToggleLineComment, EditorActionTitles.ToggleLineComment),
+        (ToggleBlockComment, EditorActionTitles.ToggleBlockComment), (Comment, EditorActionTitles.Comment), (Uncomment, EditorActionTitles.Uncomment),
+        (JoinLines, EditorActionTitles.JoinLines), (ToggleCase, EditorActionTitles.ToggleCase), (CutToLineEnd, EditorActionTitles.CutToLineEnd),
+        (SplitLine, EditorActionTitles.SplitLine), (DeleteToLineStart, EditorActionTitles.DeleteToLineStart),
+        (DeleteToLineEnd, EditorActionTitles.DeleteToLineEnd), (Transpose, EditorActionTitles.Transpose),
+        (ToggleOverwrite, EditorActionTitles.ToggleOverwrite), (ToggleColumnMode, EditorActionTitles.ToggleColumnMode),
+        (Undo, EditorActionTitles.Undo), (Redo, EditorActionTitles.Redo), (Cut, EditorActionTitles.Cut), (Copy, EditorActionTitles.Copy),
+        (Paste, EditorActionTitles.Paste), (PasteAsPlainText, EditorActionTitles.PasteAsPlainText), (ExpandWord, EditorActionTitles.ExpandWord),
+        (ExpandWordBackward, EditorActionTitles.ExpandWordBackward), (SelectAll, EditorActionTitles.SelectAll),
+        (SelectNextOccurrence, EditorActionTitles.SelectNextOccurrence), (UnselectOccurrence, EditorActionTitles.UnselectOccurrence),
+        (SelectAllOccurrences, EditorActionTitles.SelectAllOccurrences), (CaretPerLine, EditorActionTitles.CaretPerLine),
+        (CloneCaretAbove, EditorActionTitles.CloneCaretAbove), (CloneCaretBelow, EditorActionTitles.CloneCaretBelow),
+        (Escape, EditorActionTitles.Escape), (ToggleFold, EditorActionTitles.ToggleFold), (Fold, EditorActionTitles.Fold),
+        (Unfold, EditorActionTitles.Unfold), (FoldAll, EditorActionTitles.FoldAll), (UnfoldAll, EditorActionTitles.UnfoldAll),
+        (FoldToDefinitions, EditorActionTitles.FoldToDefinitions), (UnfoldDocComments, EditorActionTitles.UnfoldDocComments),
+        (FoldDocComments, EditorActionTitles.FoldDocComments), (UnfoldRecursively, EditorActionTitles.UnfoldRecursively),
+        (FoldRecursively, EditorActionTitles.FoldRecursively), (UnfoldToLevel1, EditorActionTitles.UnfoldToLevel1),
+        (UnfoldToLevel2, EditorActionTitles.UnfoldToLevel2), (UnfoldToLevel3, EditorActionTitles.UnfoldToLevel3),
+        (UnfoldToLevel4, EditorActionTitles.UnfoldToLevel4), (UnfoldToLevel5, EditorActionTitles.UnfoldToLevel5),
+        (UnfoldAllToLevel1, EditorActionTitles.UnfoldAllToLevel1), (UnfoldAllToLevel2, EditorActionTitles.UnfoldAllToLevel2),
+        (UnfoldAllToLevel3, EditorActionTitles.UnfoldAllToLevel3), (UnfoldAllToLevel4, EditorActionTitles.UnfoldAllToLevel4),
+        (UnfoldAllToLevel5, EditorActionTitles.UnfoldAllToLevel5), (MatchBrace, EditorActionTitles.MatchBrace),
     ];
 
     /// <summary>The mouse's own actions and their names for people, which no list of actions holds but a gesture's
     /// conflict names.</summary>
-    public static IReadOnlyList<(string Id, string Title)> Gestures { get; } =
+    public static IReadOnlyList<(string Id, Words Title)> Gestures { get; } =
     [
-        (AddOrRemoveCaret, "Add or Remove Caret"), (ColumnSelectionFromCaret, "Column Selection from Caret"),
-        (ColumnSelectionDrag, "Column Selection"), (AddColumnSelectionDrag, "Add Column Selection"),
+        (AddOrRemoveCaret, EditorActionTitles.AddOrRemoveCaret), (ColumnSelectionFromCaret, EditorActionTitles.ColumnSelectionFromCaret),
+        (ColumnSelectionDrag, EditorActionTitles.ColumnSelectionDrag), (AddColumnSelectionDrag, EditorActionTitles.AddColumnSelectionDrag),
     ];
 
     private static readonly HashSet<string> Movements =

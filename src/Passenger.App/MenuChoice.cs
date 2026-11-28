@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App;
 
@@ -9,7 +11,15 @@ public static class MenuChoice
 {
     public static MenuItem Of(object header, bool current, Action choose)
     {
-        MenuItem item = new() { Header = header, ToggleType = MenuItemToggleType.Radio, IsChecked = current };
+        MenuItem item = new() { ToggleType = MenuItemToggleType.Radio, IsChecked = current };
+        if (header is Words words)
+        {
+            item[ShownWords.HeaderProperty] = words;
+        }
+        else
+        {
+            item.Header = header;
+        }
         item.Click += (_, _) =>
         {
             if (!current)
@@ -24,16 +34,20 @@ public static class MenuChoice
     /// that menu and nothing is done until one of its items is chosen, made as it first opens
     /// (<see cref="ToolWindows.ListMenus.MadeOnOpen"/>). Where given, <paramref name="detail"/> follows its name muted (a
     /// local branch's upstream), giving way first where the menu is narrow; a screen reader names it by its name alone.</summary>
-    public static MenuItem Holding(string name, bool current, Func<IReadOnlyList<Control>> items, string? detail = null)
+    public static MenuItem Holding(Words name, bool current, Func<IReadOnlyList<Control>> items, Words? detail = null)
     {
-        MenuItem item = new() { Header = name, ToggleType = MenuItemToggleType.Radio, IsChecked = current };
-        if (detail is not null)
+        MenuItem item = new() { ToggleType = MenuItemToggleType.Radio, IsChecked = current };
+        if (detail is null)
         {
-            TextBlock after = new() { Text = detail, Classes = { StyleClasses.Caption, StyleClasses.Muted }, Margin = new Avalonia.Thickness(Gaps.Normal, 0, 0, 0),
+            item[ShownWords.HeaderProperty] = name;
+        }
+        else
+        {
+            TextBlock after = new() { [ShownWords.TextProperty] = detail, Classes = { StyleClasses.Caption, StyleClasses.Muted }, Margin = new Avalonia.Thickness(Gaps.Normal, 0, 0, 0),
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
-            item.Header = new ShrinkingRow { Children = { new TextBlock { Text = name }, after } };
-            Avalonia.Automation.AutomationProperties.SetName(item, name);
-            Avalonia.Automation.AutomationProperties.SetHelpText(item, detail);
+            item.Header = new ShrinkingRow { Children = { new TextBlock { [ShownWords.TextProperty] = name }, after } };
+            item[ShownWords.NameProperty] = name;
+            item[ShownWords.HelpTextProperty] = detail;
         }
         return ToolWindows.ListMenus.MadeOnOpen(item, items);
     }
