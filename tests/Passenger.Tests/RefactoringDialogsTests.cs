@@ -196,7 +196,7 @@ public sealed class RefactoringDialogsTests
         window.ClonesWindow.Choose(window.ClonesWindow.Found.Sets[0]);
         Ui.Settle();
         Assert.Equal("a at Aliases.cs:14 stands for x and y at Aliases.cs:7 and is set there, which one method taking them apart can't do",
-            window.Actions.WhyNot(AppActions.ExtractClones, window.Actions.Context()));
+            window.Actions.WhyNot(AppActions.ExtractClones, window.Actions.Context())?.Shown);
     }
 
     /// <summary>Change Signature adds, removes and reorders parameters, and every call passes its arguments in the new order,
