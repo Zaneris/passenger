@@ -355,6 +355,11 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         Assert.True(held.IsChecked == true && held.IsEffectivelyVisible, "The Timer is not shown chosen in the component tray");
         Ui.WaitFor(() => window.FormProperties?.Rows.Any(r => r.Name == "Interval") == true, () => $"the Timer's properties to be listed, not \"{window.FormProperties?.Said}\"");
         window.ShowToolWindow(ToolWindowIds.Structure);
+        // A timer is off unless its code turns it on, so its Enabled set true is written, as a control's never is.
+        Ui.WaitFor(() => window.FormProperties?.EditorOf("Enabled") is ComboBox, "the Timer's Enabled to offer True and False");
+        Pick((ComboBox)window.FormProperties!.EditorOf("Enabled")!, "True");
+        Ui.WaitFor(() => File.ReadAllText(file).Contains("timer1.Enabled = true;", StringComparison.Ordinal),
+            () => $"the Timer's Enabled to be written, where the status bar says {window.Status}");
         Ui.WaitFor(() => window.StructureView.Rows.Any(r => r is { Name: "timer1", Depth: 1 }),
             () => $"the Structure window to outline the Timer under the form, not [{string.Join(", ", window.StructureView.Rows.Select(r => $"{r.Name}@{r.Depth}"))}]");
         window.Close();
