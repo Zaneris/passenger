@@ -81,7 +81,7 @@ internal sealed class DockDrag
     {
         if (OverEditors(at) && window.Mode != ToolMode.Editor)
         {
-            return new DropZone(host.EditorBounds.Deflate(4), $"{window.Title}: Editor Tab");
+            return new DropZone(host.EditorBounds.Deflate(4), DockingWords.DropInEditors(window.Title));
         }
         if (Target(at) is not { } place)
         {
@@ -108,7 +108,7 @@ internal sealed class DockDrag
             ToolAnchor.BottomLeft => new Rect(from, upperHeight, across / 2, bottom),
             _ => new Rect(from + (across / 2), upperHeight, across / 2, bottom),
         };
-        return new DropZone(zone, $"{window.Title}: {ToolWindow.Name(place)}");
+        return new DropZone(zone, DockingWords.DropIn(window.Title, ToolWindow.Name(place)));
     }
 
     /// <summary>Docks a window where it was let go: in the place under the point, among its buttons on a stripe, or in an

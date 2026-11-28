@@ -68,8 +68,8 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     }
 
     /// <summary>Some of Passenger's own fixes listed as Show Context Actions lists them, under a title, the one chosen made.</summary>
-    internal void ShowOwnFixes(string title, OpenDocument document, IReadOnlyList<EditorFix> fixes) =>
-        popups.ShowModal(new ChoicePopup(title, [.. fixes.Select(f => new Choice(f.Title, f.Detail, f))]), Editor.Selections.Primary.Caret, title,
+    internal void ShowOwnFixes(Words title, OpenDocument document, IReadOnlyList<EditorFix> fixes) =>
+        popups.ShowModal(new ChoicePopup(title, [.. fixes.Select(f => new Choice(f.Title, f.Detail, f))]), Editor.Selections.Primary.Caret, title.Shown,
             choice => choice?.Value is EditorFix fix ? ApplyOwnFix(document, fix) : Task.CompletedTask);
 
     /// <summary>One of Passenger's own fixes made in the file shown, as one undoable edit: worked out again on its text as it

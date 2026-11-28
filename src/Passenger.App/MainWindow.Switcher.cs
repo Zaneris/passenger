@@ -55,8 +55,8 @@ public partial class MainWindow
         List<OpenDocument> tabs = [.. Editors.Groups.SelectMany(g => g.Tabs).Select(t => t.Document).Where(d => d.Tool is null).Distinct()
             .OrderBy(d => RankIn(recent, d))];
         List<SwitcherRow> rows = [.. tabsUsed.Of(tabs).Select(d => new SwitcherRow(d.Title, d.Diff is null && root is not null ? Path.GetDirectoryName(PathNames.Shown(d.Path, root)) ?? string.Empty : string.Empty, d, null))];
-        rows.AddRange(Dock.Windows.Where(w => w.Unserved is null && w.Action is not null).OrderBy(w => w.Title, StringComparer.CurrentCultureIgnoreCase)
-            .Select(w => new SwitcherRow(w.Title, actions!.Shortcut(w.Action!) ?? string.Empty, null, w)));
+        rows.AddRange(Dock.Windows.Where(w => w.Unserved is null && w.Action is not null).OrderBy(w => w.Title.Shown, StringComparer.CurrentCultureIgnoreCase)
+            .Select(w => new SwitcherRow(w.Title.Shown, actions!.Shortcut(w.Action!) ?? string.Empty, null, w)));
         return rows;
 
         static int RankIn(IReadOnlyList<string> recent, OpenDocument document)

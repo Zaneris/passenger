@@ -32,7 +32,7 @@ public partial class MainWindow
 
     private void AddCoverage()
     {
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Coverage, "Coverage", IconKeys.Coverage, () =>
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Coverage, ToolWindowTitles.Coverage, IconKeys.Coverage, () =>
         {
             CoverageView view = new();
             coverage = view;

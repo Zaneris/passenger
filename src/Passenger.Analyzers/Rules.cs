@@ -161,7 +161,7 @@ internal static class Rules
         Category,
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: "A string compared with Words is made Words (verbatim) or compared as an object, so the check compiles "
+        description: "A string compared with Words (by a comparison's method, or == and !=) is made Words (verbatim) or compared as an object, so the check compiles "
             + "and holds only while the Words compared are verbatim too: once they are a resource's, it fails, and only when "
             + "run. A check of what Words say compares their English; one of which words they are compares Words made the "
             + "same way.");

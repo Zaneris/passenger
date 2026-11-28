@@ -95,7 +95,7 @@ public partial class MainWindow
             return true;
         };
         // Each built as it is first shown or asked for, over the session's Git then.
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Commit, "Commit", IconKeys.Commit, MakeCommit, Docking.ToolAnchor.LeftTop)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Commit, ToolWindowTitles.Commit, IconKeys.Commit, MakeCommit, Docking.ToolAnchor.LeftTop)
         {
             // Outside a repository it offers to create one, as Git does.
             Serves = ToolWindowServes.EveryFolder,
@@ -103,7 +103,7 @@ public partial class MainWindow
             ActionTitle = ActionTitles.ShowCommit,
             Menus = [new MenuPlace("Git", 3, 0)],
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Git, "Git", IconKeys.Branch, MakeGit, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Git, ToolWindowTitles.Git, IconKeys.Branch, MakeGit, Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowGit,
@@ -589,8 +589,8 @@ public partial class MainWindow
         ActionRegistry registry = actions!;
         Choice[] runnable = [.. MainMenu.ActionsIn(MainMenu.Of(registry.All, "Git"))
             .Where(id => id != AppActions.VcsOperations && registry.WhyNot(id, context) is null)
-            .Select(id => new Choice(registry[id]!.TitleWhere(context).Shown, registry.ShortcutsShown(id) ?? string.Empty, id))];
-        ChoicePopup popup = new(TitleOf(AppActions.VcsOperations), "Search Git actions", runnable, Refusals.NoVcsOperations.Shown);
+            .Select(id => new Choice(registry[id]!.TitleWhere(context), Words.Verbatim(registry.ShortcutsShown(id) ?? string.Empty), id))];
+        ChoicePopup popup = new(TitleOf(AppActions.VcsOperations), "Search Git actions", runnable, Refusals.NoVcsOperations);
         popups.Show(popup, chosen =>
         {
             if (chosen?.Value is string id)

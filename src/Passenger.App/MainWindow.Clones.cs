@@ -34,7 +34,7 @@ public partial class MainWindow
 
     private void AddClones()
     {
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Clones, "Clones", IconKeys.Copy, () =>
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Clones, ToolWindowTitles.Clones, IconKeys.Copy, () =>
         {
             ClonesView view = new() { WhyNotExtracted = set => clonesExtracted.TryGetValue(set, out StrongBox<Words?>? why) ? why.Value : null };
             clones = view;

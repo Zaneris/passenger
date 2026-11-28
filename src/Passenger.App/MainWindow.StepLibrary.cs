@@ -26,7 +26,7 @@ public partial class MainWindow
     private void AddStepLibrary()
     {
         // Built as it is first shown or asked for, over the session's bindings then.
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.StepLibrary, "Step Library", IconKeys.StepLibrary, () =>
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.StepLibrary, ToolWindowTitles.StepLibrary, IconKeys.StepLibrary, () =>
         {
             StepLibraryView view = new(RowMenuItem);
             stepLibrary = view;

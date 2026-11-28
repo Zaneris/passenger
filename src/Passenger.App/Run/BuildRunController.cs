@@ -876,7 +876,7 @@ public sealed partial class BuildRunController
         parts.Views.Problems.Show(problems);
         if (parts.Dock[ToolWindowIds.Problems] is { } problemsWindow)
         {
-            problemsWindow.Title = problems.Count == 0 ? "Problems" : $"Problems {Numbers.Said(problems.Count)}";
+            problemsWindow.Title = problems.Count == 0 ? ToolWindowTitles.Problems : ToolWindowTitles.ProblemsCounted(problems.Count);
         }
     }
 

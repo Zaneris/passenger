@@ -53,8 +53,9 @@ public sealed class ActionsTests : IDisposable
             Assert.True(unlisted.Length == 0, $"Keys are bound to actions Find Action does not list, and run nothing: {string.Join(", ", unlisted)}");
             Dictionary<string, string> named = typeof(AppActions).GetFields().Concat(typeof(EditorActions).GetFields())
                 .Where(f => f.IsLiteral && f.FieldType == typeof(string)).ToDictionary(f => f.Name, f => (string)f.GetRawConstantValue()!, StringComparer.Ordinal);
-            // A tool window's own action is titled by the window.
-            string[] mistitled = [.. listed.Where(a => a.Title.IsVerbatim ? window.DockHost.Windows.All(w => w.Action != a.Id) : named.TryGetValue(a.Title.Key, out string? of) && of != a.Id)
+            // A tool window's own action may be titled by the window's name, ToolWindowTitles' words.
+            string[] mistitled = [.. listed.Where(a => window.DockHost.Windows.All(w => w.Action != a.Id || w.Title != a.Title)
+                    && (a.Title.IsVerbatim || named.TryGetValue(a.Title.Key, out string? of) && of != a.Id))
                 .Select(a => a.Title.IsVerbatim ? $"{a.Id} ('{a.Title.English}', words written in the code)" : $"{a.Id} ('{a.Title.English}', {named[a.Title.Key]}'s title)")];
             Assert.True(mistitled.Length == 0, $"Actions a translation never reaches, or titled by another action's words, which a translation of one changes in both: {string.Join(", ", mistitled)}");
 

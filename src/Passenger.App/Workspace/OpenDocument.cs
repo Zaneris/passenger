@@ -976,7 +976,7 @@ public sealed class OpenDocument : Observable
 
     /// <summary>What its tab is called: its name, a diff's title ("Shop.cs: HEAD and your version"), or for release notes the
     /// app carries what they are ("What's New in 0.2.0").</summary>
-    public string Title => DatabaseTab?.Title ?? Tool?.Window.Title ?? Diff?.Shown.Title ?? (Updates.ReleaseNotes.VersionOf(Path) is { } version ? Updates.ReleaseNotes.TitleOf(version) : Name);
+    public string Title => DatabaseTab?.Title ?? Tool?.Window.Title.Shown ?? Diff?.Shown.Title ?? (Updates.ReleaseNotes.VersionOf(Path) is { } version ? Updates.ReleaseNotes.TitleOf(version) : Name);
 
     /// <summary>Whether this is release notes the app carries, which its tab shows rendered (What's New), read-only.</summary>
     public bool IsReleaseNotes => Updates.ReleaseNotes.VersionOf(Path) is not null;

@@ -19,7 +19,7 @@ public partial class MainWindow
 
     private void AddIlViewer()
     {
-        ToolWindow window = new(ToolWindowIds.IlViewer, "Compiled Code", IconKeys.CompiledCode,
+        ToolWindow window = new(ToolWindowIds.IlViewer, ToolWindowTitles.IlViewer, IconKeys.CompiledCode,
             () => ilViewer = new IlViewerPane(() => FollowIlViewer(), action => Request(action),
                 symbol => IdeErrors.Observe(OpenCompiledSymbolAsync(symbol))), ToolAnchor.RightTop)
         {

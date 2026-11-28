@@ -36,8 +36,8 @@ public partial class MainWindow
     private IReadOnlyList<string> TestProjects() =>
         [.. session.Projects.Where(p => p.IsTestProject && p.Path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)).Select(p => p.Path)];
 
-    /// <summary>An action's title as the registry has it, without the dots of one that asks more.</summary>
-    private string TitleOf(string id) => actions?[id]?.Title.Shown.TrimEnd('…') ?? id;
+    /// <summary>An action's title as the registry has it, without the dots of one that asks more (<see cref="IdeAction.PlainTitle"/>).</summary>
+    private Words TitleOf(string id) => actions?[id]?.PlainTitle ?? Words.Verbatim(id);
 
     /// <summary>The test doubles offered at an offset of a C# file the server answers for (<see cref="DoubleFixesAsync"/>),
     /// fakes then fills.</summary>
@@ -67,7 +67,7 @@ public partial class MainWindow
             return ([], []);
         }
         TextRange here = new(offset, 0);
-        string fill = TitleOf(AppActions.FillArgumentsWithDoubles);
+        string fill = TitleOf(AppActions.FillArgumentsWithDoubles).Shown;
         IReadOnlyList<EditorFix> fills = file.ReadOnlyWhy is not null ? [] : [.. offered.Libraries.Select(library =>
             new EditorFix(offered.Libraries.Count == 1 ? fill : $"{fill} of {library}", library, here, string.Empty)
             {
@@ -84,11 +84,11 @@ public partial class MainWindow
         {
             return [];
         }
-        string title = TitleOf(AppActions.CreateFake);
+        string title = TitleOf(AppActions.CreateFake).Shown;
         if (offered.Seam is { } seam)
         {
-            string extract = TitleOf(AppActions.ExtractInterface);
-            string introduce = TitleOf(AppActions.IntroduceParameter);
+            string extract = TitleOf(AppActions.ExtractInterface).Shown;
+            string introduce = TitleOf(AppActions.IntroduceParameter).Shown;
             string why = Refusals.FakeNeedsSeam(type, seam, extract, introduce).Shown;
             return [new EditorFix($"{title} of {type}", $"{Refusals.SeamOf(seam)}: {extract}, then {introduce}", here, string.Empty)
             {

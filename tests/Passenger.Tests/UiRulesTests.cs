@@ -150,7 +150,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 MenuFlyout options = window.DockHost.OpenOptions ?? throw new Xunit.Sdk.XunitException("The Explorer's Options opened no menu");
                 MenuItem[] made = [.. options.Items.OfType<MenuItem>()];
                 Ui.GreyedSayWhy(made, "The Explorer's Options");
-                string place = Passenger.App.Docking.ToolWindow.Name(window.DockHost.Windows.Single(w => w.Id == ToolWindowIds.Explorer).Anchor);
+                string place = Passenger.App.Docking.ToolWindow.Name(window.DockHost.Windows.Single(w => w.Id == ToolWindowIds.Explorer).Anchor).English;
                 foreach ((string sub, string current) in (ReadOnlySpan<(string, string)>)[("View Mode", "Dock"), ("Move to", place)])
                 {
                     MenuItem parent = made.Single(i => Header(i) == sub);
@@ -1620,7 +1620,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             {
                 window.DockHost.Show(tool.Id);
                 Ui.Settle();
-                Check(tool.Title, window);
+                Check(tool.Title.English, window);
             }
             settings = window.ShowSettings();
             Ui.Settle();

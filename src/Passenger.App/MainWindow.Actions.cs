@@ -112,7 +112,7 @@ public partial class MainWindow
 
     /// <summary>Why an action working in a tool window that serves one kind of project cannot run: the window serves nothing
     /// in the open folder, in the words its own action greys with (<see cref="Docking.ToolWindow.Unserved"/>).</summary>
-    private string? Unserved([IdentifierOf(typeof(ToolWindowIds))] string window) => Dock[window].Unserved;
+    private Words? Unserved([IdentifierOf(typeof(ToolWindowIds))] string window) => Dock[window].Unserved;
 
     /// <summary>Why Expand All or Collapse All cannot run: no tool window with rows to open or close has the keys.</summary>
     private static string? NoTree(ActionContext context, Action? does, string verb) =>

@@ -16,7 +16,7 @@ public sealed class ActionPopup : SearchPopup<IdeAction>
     private readonly IReadOnlyList<string> recent;
 
     public ActionPopup(ActionRegistry actions, ActionContext context, IReadOnlyList<string> recent, string? initialQuery = null)
-        : base("Actions", "Type an action's name", PopupFrame.Wide, initialQuery)
+        : base(NavigationWords.Actions, NavigationWords.TypeAction, PopupFrame.Wide, initialQuery)
     {
         this.actions = actions;
         this.context = context;
@@ -31,7 +31,7 @@ public sealed class ActionPopup : SearchPopup<IdeAction>
         {
             found = [.. recent.Select(id => found.FirstOrDefault(a => a.Id == id)).OfType<IdeAction>(), .. found.Where(a => !recent.Contains(a.Id))];
         }
-        Show(found, "No actions match");
+        Show(found, NavigationWords.NoActionsMatch);
     }
 
     /// <summary>An action's row: its title, greyed where it cannot run, its group, and its shortcuts at the right.</summary>

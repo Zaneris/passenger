@@ -885,8 +885,8 @@ public partial class MainWindow : IdeWindow
     private void AddToolWindows()
     {
         // Each shows only while the open folder holds what it serves, every one added later too.
-        Dock.WhyUnserved = window => window.Serves.WhyNot(session.Folder is null ? null : session.Holds)?.Shown;
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Explorer, "Explorer", IconKeys.Explorer, Explorer, Docking.ToolAnchor.LeftTop)
+        Dock.WhyUnserved = window => window.Serves.WhyNot(session.Folder is null ? null : session.Holds);
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Explorer, ToolWindowTitles.Explorer, IconKeys.Explorer, Explorer, Docking.ToolAnchor.LeftTop)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.FocusExplorer,
@@ -899,31 +899,31 @@ public partial class MainWindow : IdeWindow
             OpenAtFirst = true,
         });
         // Shown however it is (its action, its stripe button, a layout), it asks for the file shown then itself.
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Structure, "Structure", IconKeys.Structure, MakeStructure, Docking.ToolAnchor.LeftBottom)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Structure, ToolWindowTitles.Structure, IconKeys.Structure, MakeStructure, Docking.ToolAnchor.LeftBottom)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowStructure,
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Run, "Run", IconKeys.RunOutline, Bottom.RunWindow, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Run, ToolWindowTitles.Run, IconKeys.RunOutline, Bottom.RunWindow, Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowRun,
             ActionTitle = ActionTitles.ShowRun,
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Debug, "Debug", IconKeys.Debug, () => debugView = new ToolWindows.DebugView(Bottom.Debug), Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Debug, ToolWindowTitles.Debug, IconKeys.Debug, () => debugView = new ToolWindows.DebugView(Bottom.Debug), Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowDebug,
             ActionTitle = ActionTitles.ShowDebug,
             Tools = () => debugView?.HeaderTools,
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Modules, "Modules", IconKeys.Modules, MakeModules, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Modules, ToolWindowTitles.Modules, IconKeys.Modules, MakeModules, Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowModules,
             Menus = [new MenuPlace("Run", 1, 12)],
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Aspire, "Aspire", IconKeys.Aspire, MakeAspire, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Aspire, ToolWindowTitles.Aspire, IconKeys.Aspire, MakeAspire, Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.AppHosts,
             Action = AppActions.ShowAspire,
@@ -934,7 +934,7 @@ public partial class MainWindow : IdeWindow
             Bottom.Aspire.Dispose();
             aspireView?.Dispose();
         };
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Tests, "Unit Tests", IconKeys.Tests, Bottom.Tests, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Tests, ToolWindowTitles.Tests, IconKeys.Tests, Bottom.Tests, Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowTests,
@@ -943,13 +943,13 @@ public partial class MainWindow : IdeWindow
             ExpandAll = Bottom.TestTree.ExpandAll,
             CollapseAll = Bottom.TestTree.CollapseAll,
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Build, "Build", IconKeys.Build, Bottom.Build, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Build, ToolWindowTitles.Build, IconKeys.Build, Bottom.Build, Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowBuild,
             ActionTitle = ActionTitles.ShowBuild,
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Problems, "Problems", IconKeys.Problems, () => new ToolWindows.ProblemsView(Bottom.Problems), Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Problems, ToolWindowTitles.Problems, IconKeys.Problems, () => new ToolWindows.ProblemsView(Bottom.Problems), Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowProblems,

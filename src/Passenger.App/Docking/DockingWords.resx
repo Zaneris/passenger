@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="LeftTop" xml:space="preserve">
+    <value>Left Top</value>
+    <comment>A tool window's place: the upper half of the left side, in its Move to menu and where it is dropped.</comment>
+  </data>
+  <data name="LeftBottom" xml:space="preserve">
+    <value>Left Bottom</value>
+    <comment>A tool window's place: the lower half of the left side.</comment>
+  </data>
+  <data name="RightTop" xml:space="preserve">
+    <value>Right Top</value>
+    <comment>A tool window's place: the upper half of the right side.</comment>
+  </data>
+  <data name="RightBottom" xml:space="preserve">
+    <value>Right Bottom</value>
+    <comment>A tool window's place: the lower half of the right side.</comment>
+  </data>
+  <data name="BottomLeft" xml:space="preserve">
+    <value>Bottom Left</value>
+    <comment>A tool window's place: the left half of the bottom.</comment>
+  </data>
+  <data name="BottomRight" xml:space="preserve">
+    <value>Bottom Right</value>
+    <comment>A tool window's place: the right half of the bottom.</comment>
+  </data>
+  <data name="ExpandAll" xml:space="preserve">
+    <value>Expand All</value>
+    <comment>The tip of a tool window's header button opening every row of its tree.</comment>
+  </data>
+  <data name="CollapseAll" xml:space="preserve">
+    <value>Collapse All</value>
+    <comment>The tip of a tool window's header button closing every row of its tree.</comment>
+  </data>
+  <data name="Options" xml:space="preserve">
+    <value>Options</value>
+    <comment>The tip of a tool window's header button opening its menu.</comment>
+  </data>
+  <data name="Hide" xml:space="preserve">
+    <value>Hide</value>
+    <comment>A tool window's header button and menu item putting it away.</comment>
+  </data>
+  <data name="AutoHide" xml:space="preserve">
+    <value>Auto Hide</value>
+    <comment>A tool window's header button, under titled tabs, sending its place's windows to the window's edge.</comment>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>Close</value>
+    <comment>A tool window's header button and menu item taking it off its stripe.</comment>
+  </data>
+  <data name="Dock" xml:space="preserve">
+    <value>Dock</value>
+    <comment>A tool window's header button and menu item docking it where it was shown over the editors.</comment>
+  </data>
+  <data name="HiddenToolWindows" xml:space="preserve">
+    <value>Hidden Tool Windows</value>
+    <comment>The tip of the button listing a place's tabs that have no room.</comment>
+  </data>
+  <data name="MoreToolWindows" xml:space="preserve">
+    <value>More Tool Windows</value>
+    <comment>The tip of a stripe's button listing the windows it has no room for.</comment>
+  </data>
+  <data name="MoveTo" xml:space="preserve">
+    <value>Move to</value>
+    <comment>A tool window's menu of the places it can stand in.</comment>
+  </data>
+  <data name="ViewMode" xml:space="preserve">
+    <value>View Mode</value>
+    <comment>A tool window's menu of how it is shown.</comment>
+  </data>
+  <data name="Docked" xml:space="preserve">
+    <value>Dock</value>
+    <comment>A tool window's view mode: docked in its place.</comment>
+  </data>
+  <data name="Floating" xml:space="preserve">
+    <value>Float</value>
+    <comment>A tool window's view mode: in a window kept over the IDE's.</comment>
+  </data>
+  <data name="Windowed" xml:space="preserve">
+    <value>Window</value>
+    <comment>A tool window's view mode: in a window of its own the system manages.</comment>
+  </data>
+  <data name="InEditor" xml:space="preserve">
+    <value>Editor Tab</value>
+    <comment>A tool window's view mode: a tab among the editors.</comment>
+  </data>
+  <data name="Maximize" xml:space="preserve">
+    <value>Maximize</value>
+    <comment>A tool window's menu item giving it the window's room.</comment>
+  </data>
+  <data name="RestoreSize" xml:space="preserve">
+    <value>Restore Size</value>
+    <comment>A maximised tool window's menu item giving it back its own room.</comment>
+  </data>
+  <data name="LeftEdge" xml:space="preserve">
+    <value>Hidden tool windows, left edge</value>
+    <comment>What a screen reader hears entering the left edge's tabs of hidden tool windows.</comment>
+  </data>
+  <data name="RightEdge" xml:space="preserve">
+    <value>Hidden tool windows, right edge</value>
+    <comment>What a screen reader hears entering the right edge's tabs of hidden tool windows.</comment>
+  </data>
+  <data name="BottomEdge" xml:space="preserve">
+    <value>Hidden tool windows, bottom edge</value>
+    <comment>What a screen reader hears entering the bottom edge's tabs of hidden tool windows.</comment>
+  </data>
+  <data name="DropInEditors" xml:space="preserve">
+    <value>{window}: Editor Tab</value>
+    <comment>Where a tool window dragged over the editors goes; {window} is its name.</comment>
+  </data>
+  <data name="DropIn" xml:space="preserve">
+    <value>{window}: {place}</value>
+    <comment>Where a dragged tool window goes; {window} is its name and {place} the place, as Left Top.</comment>
+  </data>
+</root>

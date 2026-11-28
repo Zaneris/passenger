@@ -57,6 +57,11 @@
         <target state="new">Not yet translated</target>
         <note />
       </trans-unit>
+      <trans-unit id="AsksMore">
+        <source>Rename…</source>
+        <target state="translated">Renommer…</target>
+        <note>An action's title ending in the dots that say it asks more.</note>
+      </trans-unit>
     </body>
   </file>
 </xliff>

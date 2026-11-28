@@ -31,7 +31,7 @@ public partial class MainWindow
 
     private void AddGamePane()
     {
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Game, "Game", IconKeys.Preview, () => GamePane, Docking.ToolAnchor.RightTop)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Game, ToolWindowTitles.Game, IconKeys.Preview, () => GamePane, Docking.ToolAnchor.RightTop)
         {
             Serves = ToolWindowServes.GodotProjects,
             Action = AppActions.ShowGame,

@@ -21,11 +21,11 @@ public enum ToolMode
 /// <summary>A tool window (Explorer, Debug, Unit Tests): its content, its button on a stripe, and where it docks.
 /// The person moves it by dragging its button or its header, or with Move to in its header's menu. One given how to
 /// build its view builds it when first shown or asked for, so a window's start makes no view it hides (#233).</summary>
-public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, string title, string icon, Func<Control> build, ToolAnchor anchor) : Observable
+public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, Words title, string icon, Func<Control> build, ToolAnchor anchor) : Observable
 {
     private ToolAnchor anchor = anchor;
     private bool isShown;
-    private string title = title;
+    private Words title = title;
     private Control? content;
     private Control? headerTools;
 
@@ -36,7 +36,7 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     private RowWithKeys? hadRow;
 
     /// <summary>A tool window whose view is made already (the Explorer's, open at first).</summary>
-    public ToolWindow(string id, string title, string icon, Control content, ToolAnchor anchor) : this(id, title, icon, () => content, anchor)
+    public ToolWindow(string id, Words title, string icon, Control content, ToolAnchor anchor) : this(id, title, icon, () => content, anchor)
     {
         this.content = content;
         FollowKeys(content);
@@ -45,8 +45,8 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     [IdentifierOf(typeof(ToolWindowIds))]
     public string Id { get; } = id;
 
-    /// <summary>Its name on its header and button, a count with it when it has one ("Problems 3").</summary>
-    public string Title
+    /// <summary>Its name on its header and button, a count with it when it has one ("Problems 3"): ToolWindowTitles' words.</summary>
+    public Words Title
     {
         get => title;
         set => Set(ref title, value);
@@ -202,7 +202,7 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     /// <summary>Why it serves nothing in the open folder (<see cref="ToolWindowServes.WhyNot"/>), which keeps it off the
     /// stripes, its place and its tabs, its action greyed saying so, its place in the layout kept; null while it serves the
     /// folder, as a window of every folder always does.</summary>
-    public string? Unserved { get; internal set; }
+    public Words? Unserved { get; internal set; }
 
     /// <summary>The action that shows it, as the dock adds it: an agent's shows it with the keys left where they are.</summary>
     internal IdeAction? ShowAction(DockHost dock) => Action is { } id
@@ -252,13 +252,13 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     public bool IsClosed { get; internal set; }
 
     /// <summary>The name a menu gives a place: "Left Top", "Bottom Right".</summary>
-    public static string Name(ToolAnchor anchor) => anchor switch
+    public static Words Name(ToolAnchor anchor) => anchor switch
     {
-        ToolAnchor.LeftTop => "Left Top",
-        ToolAnchor.LeftBottom => "Left Bottom",
-        ToolAnchor.RightTop => "Right Top",
-        ToolAnchor.RightBottom => "Right Bottom",
-        ToolAnchor.BottomLeft => "Bottom Left",
-        _ => "Bottom Right",
+        ToolAnchor.LeftTop => DockingWords.LeftTop,
+        ToolAnchor.LeftBottom => DockingWords.LeftBottom,
+        ToolAnchor.RightTop => DockingWords.RightTop,
+        ToolAnchor.RightBottom => DockingWords.RightBottom,
+        ToolAnchor.BottomLeft => DockingWords.BottomLeft,
+        _ => DockingWords.BottomRight,
     };
 }

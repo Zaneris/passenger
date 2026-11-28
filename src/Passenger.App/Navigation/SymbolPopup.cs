@@ -128,7 +128,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
             {
                 return;
             }
-            Show(found, "Nothing matches", Initial is { } initial && Query.Length == 0 ? initial(found) : 0);
+            Show(found, SharedWords.NothingMatches, Initial is { } initial && Query.Length == 0 ? initial(found) : 0);
             IsSettled = true;
         }
         catch (OperationCanceledException)
@@ -136,7 +136,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
         }
         catch (LanguageServerFailed failed)
         {
-            Say(failed.Message);
+            Say(Words.Verbatim(failed.Message));
             IsSettled = true;
         }
         finally

@@ -68,7 +68,7 @@ public partial class MainWindow
         Editors.FormLayoutChanged += (_, _) => structure?.FollowActive();
         AddDesignEdits();
         // Built as it is first shown, over the design shown then.
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Toolbox, "Toolbox", IconKeys.FormsApp, () =>
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Toolbox, ToolWindowTitles.Toolbox, IconKeys.FormsApp, () =>
         {
             ToolboxView view = new();
             toolbox = view;

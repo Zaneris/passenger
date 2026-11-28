@@ -1,12 +1,13 @@
 using Avalonia;
 using Avalonia.Input;
+using Passenger.Core;
 
 namespace Passenger.App.Docking;
 
 /// <summary>Where a drag would drop what it carries: the place to light up, in its overlay's coordinates, and what goes
 /// there when there is a name to give; the overlay is the gesture's own unless another is named (a tab over another
 /// window's editors lights up that window's).</summary>
-public readonly record struct DropZone(Rect Place, string? Name = null, DropOverlay? Overlay = null);
+public readonly record struct DropZone(Rect Place, Words? Name = null, DropOverlay? Overlay = null);
 
 /// <summary>Something pressed on to be dragged to a drop place (a tool window by its stripe button or header, an editor
 /// tab): it is a drag, and no click, once the pointer has gone <see cref="Threshold"/> from the press; meanwhile the

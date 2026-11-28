@@ -75,6 +75,8 @@ public class WordsTests
             ("numbers in Canadian French", TestWords.Measured(1234.5, 7.6).In(canada), $"{Grouped(1234.5)} sur 8"),
             ("apostrophes quoting and standing for themselves", TestWords.Quoted.English, "The folder's {braces} and it's quoted"),
             ("verbatim words in French", ((Words)"Api.csproj").In(canada), "Api.csproj"),
+            ("words without their dots, in English", TestWords.AsksMore.TrimmedEnd('…').English, "Rename"),
+            ("words without their dots, in French", TestWords.AsksMore.TrimmedEnd('…').In(canada), "Renommer"),
         ], row => Assert.True(row.Item2 == row.Item3, $"{row.Item1} reads \"{row.Item2}\", not \"{row.Item3}\""), row => row.Item1);
     }
 
@@ -122,6 +124,9 @@ public class WordsTests
         string greeting = TestWords.Greeting.In(pseudo);
         Assert.True(greeting.StartsWith("[Ĥéļļö", StringComparison.Ordinal) && greeting.EndsWith(']') && greeting.Length >= "[Hello]".Length + 2,
             $"The pseudo-locale says \"Hello\" as \"{greeting}\", where it accents each letter, makes the words 40% longer and brackets them");
+        string trimmed = TestWords.AsksMore.TrimmedEnd('…').In(pseudo);
+        Assert.True(trimmed.StartsWith("[Ŕéñåɱé·", StringComparison.Ordinal) && trimmed.EndsWith(']'),
+            $"The pseudo-locale says \"Rename…\" without its dots as \"{trimmed}\", where it takes them off before it lengthens and brackets the words");
         string named = TestWords.NotAProject("Api").In(pseudo);
         Assert.True(named.StartsWith("[Api ", StringComparison.Ordinal), $"The pseudo-locale says a project's name as \"{named}\": a name is said as written");
         Assert.True(In(UiLanguage.MirroredTag).RightToLeft && !pseudo.RightToLeft, "The mirrored pseudo-locale lays windows out right to left, and the other left to right");

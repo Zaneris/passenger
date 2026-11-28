@@ -14,7 +14,7 @@ public sealed partial class GoToFilePopup : SearchPopup<FileHit>
     private readonly IReadOnlyList<string> recent;
 
     public GoToFilePopup(FileIndex index, IReadOnlyList<string> recent)
-        : base("Go to File", "File name, CamelHumps or a path with /", PopupFrame.Wide)
+        : base(NavigationWords.GoToFile, NavigationWords.FilePlaceholder, PopupFrame.Wide)
     {
         this.index = index;
         this.recent = recent;
@@ -48,7 +48,7 @@ public sealed partial class GoToFilePopup : SearchPopup<FileHit>
         IEnumerable<string> paths = query.Trim().Length == 0
             ? recent.Select(full => Core.PathNames.Shown(full, root))
             : index.Search(query);
-        Show([.. paths.Select(p => new FileHit(Path.Combine(root, p), p))], query.Trim().Length == 0 ? "No recent files" : "Nothing matches");
+        Show([.. paths.Select(p => new FileHit(Path.Combine(root, p), p))], query.Trim().Length == 0 ? NavigationWords.NoRecentFiles : SharedWords.NothingMatches);
     }
 
     /// <summary>A file's row: its icon, its name and its folder at the row's end, as every popup row's detail.</summary>
