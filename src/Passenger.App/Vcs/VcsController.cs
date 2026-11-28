@@ -2149,8 +2149,7 @@ public sealed class VcsController : IDisposable
             IReadOnlyList<string> tracking = await TrackingAsync(name);
             GitResult removed = await repository.RemoveRemoteAsync(name);
             await RefreshAsync();
-            string untracked = tracking.Count == 0 ? string.Empty : $"; {Plural.Listed(tracking)} {(tracking.Count == 1 ? "tracks" : "track")} nothing now";
-            return removed.Succeeded ? Report(true, $"Removed the remote {name} and its branches here{untracked}: the repository it named keeps everything")
+            return removed.Succeeded ? Report(true, VcsWords.RemovedRemote(name, tracking.Count, Plural.Listed(tracking)).Shown)
                 : Report(false, $"The remote {name} was not removed: {removed.Message}");
         }, refused => refused);
     }

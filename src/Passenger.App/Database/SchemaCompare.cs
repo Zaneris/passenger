@@ -1,4 +1,5 @@
 using System.Text;
+using Passenger.Core;
 
 namespace Passenger.App.Database;
 
@@ -206,7 +207,7 @@ public static class SchemaCompare
     public static string Script(DatabaseKind kind, IReadOnlyList<SchemaDifference> differences, string from, string to)
     {
         StringBuilder script = new();
-        script.Append("-- Makes ").Append(to).Append(" as ").Append(from).Append(" is: ").Append(differences.Count).Append(differences.Count == 1 ? " difference" : " differences")
+        script.Append("-- Makes ").Append(to).Append(" as ").Append(from).Append(" is: ").Append(Plural.Of(differences.Count, "difference"))
             .Append(". Read it through before running it.\n");
         foreach (SchemaDifference difference in differences)
         {

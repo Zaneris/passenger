@@ -95,10 +95,7 @@ public partial class MainWindow
         VcsController vcs = session.Vcs;
         int branches = (await vcs.BranchTreeAsync()).Branches.Count(b => b.Kind == RefKind.Remote && b.Name.StartsWith(remote.Name + "/", StringComparison.Ordinal));
         IReadOnlyList<string> tracking = await vcs.TrackingAsync(remote.Name);
-        string its = branches == 0 ? "It has no branches here" : $"Its {Plural.Of(branches, "branch", "branches")} here {Plural.Agreeing(branches, "goes", "go")} with it";
-        string untracked = tracking.Count == 0 ? string.Empty : $", and {Plural.Listed(tracking)} {(tracking.Count == 1 ? "tracks" : "track")} nothing from then on";
-        string text = $"Remove the remote {remote.Name}? {its}{untracked}. The repository at {VcsController.UrlShown(remote.Url)} keeps everything: "
-            + "adding the remote again and fetching brings its branches back.";
+        string text = VcsWords.RemoveRemoteAsks(remote.Name, branches, tracking.Count, Plural.Listed(tracking), VcsController.UrlShown(remote.Url)).Shown;
         if (await ConfirmAsync("Remove Remote", text, "Remove", null) && vcs == session.Vcs)
         {
             await vcs.RemoveRemoteAsync(remote.Name);
