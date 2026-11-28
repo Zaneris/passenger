@@ -641,7 +641,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         {
             (3, 23, "Named", "FakeNamed.cs", "public override string Name { get; protected set; }"),
             (8, 18, "IStore<T>", "FakeStore.cs", "where T : unmanaged"),
-            (15, 22, "Outer<T>.IInner<U>", "FakeInner.cs", "class FakeInner<T, U> : Outer<T>.IInner<U>"),
+            (15, 22, "IInner<U>", "FakeInner.cs", "class FakeInner<T, U> : Outer<T>.IInner<U>"),
         })
         {
             await Call(client, McpTools.ApplyCodeAction, new() { ["path"] = "Shop/Doubled.cs", ["line"] = line, ["column"] = column, ["title"] = $"Create Fake of {type} in Shop.Tests" });
