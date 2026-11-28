@@ -47,3 +47,6 @@ dotnet_diagnostic.PSG0012.severity = warning
 
 [src/Passenger.App/CSharp/WorkspaceEdits.cs]
 dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/History/**.cs]
+dotnet_diagnostic.PSG0012.severity = warning

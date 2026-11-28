@@ -151,8 +151,8 @@ public partial class MainWindow
         }
         IReadOnlyList<HistoryEvent> events = history.Snapshot().Events;
         IReadOnlyList<HistoryRow> rows = await BackgroundWork.Run(() => HistoryRows.OfFolder(events, open));
-        ChoicePopup popup = new("Recent Changes", "Search by name",
-            [.. rows.Select(r => new Choice(r.Title, ToolWindows.GitLogView.When(r.Time), r))], "There are no changes");
+        ChoicePopup popup = new(History.HistoryWords.RecentChanges, History.HistoryWords.SearchByName,
+            [.. rows.Select(r => new Choice(r.Title, ToolWindows.GitLogView.When(r.Time), r))], History.HistoryWords.NoRecentChanges);
         popups.Show(popup, chosen =>
         {
             if (chosen?.Value is HistoryRow row)

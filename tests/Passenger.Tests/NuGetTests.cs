@@ -1130,8 +1130,8 @@ public sealed class NuGetTests : IDisposable
 
         string install = $"Install {Id} 1.1.0 in Lib";
         Passenger.App.History.HistoryTab history = window.ShowLocalHistory(folder) ?? throw new Xunit.Sdk.XunitException($"No history of the folder: {window.Status}");
-        Ui.WaitFor(() => history.Rows.Any(r => r.Title == install), () => $"the install in the folder's history, which keeps:\n{Kept(window, installed)}");
-        Assert.True(history.Rows.Select(r => r.Title).SequenceEqual([install]),
+        Ui.WaitFor(() => history.Rows.Any(r => r.Title.English == install), () => $"the install in the folder's history, which keeps:\n{Kept(window, installed)}");
+        Assert.True(history.Rows.Select(r => r.Title.English).SequenceEqual([install]),
             $"The folder's history lists [{string.Join(", ", history.Rows.Select(r => r.Title))}], not the install as one change set; it keeps:\n{Kept(window, installed)}");
         history.Select(history.Rows[0]);
         Ui.Settle();
@@ -1184,10 +1184,10 @@ public sealed class NuGetTests : IDisposable
 
         Passenger.App.History.HistoryTab project = window.ShowLocalHistory(lib) ?? throw new Xunit.Sdk.XunitException($"No history of Lib.csproj: {window.Status}");
         Ui.Landed(() => project.Rows.Count > 0, "the install in Lib.csproj's history");
-        Assert.True(project.Rows[0].Title == $"Install {Id} 1.1.0 in Lib", $"dotnet's write of Lib.csproj is kept as \"{project.Rows[0].Title}\", not as the install");
+        Assert.True(project.Rows[0].Title.English == $"Install {Id} 1.1.0 in Lib", $"dotnet's write of Lib.csproj is kept as \"{project.Rows[0].Title}\", not as the install");
         Passenger.App.History.HistoryTab saved = window.ShowLocalHistory(notes) ?? throw new Xunit.Sdk.XunitException($"No history of Notes.txt: {window.Status}");
         Ui.Landed(() => saved.Rows.Count > 0, "the save of Notes.txt");
-        Assert.True(saved.Rows[0].Title == "Change", $"The save of Notes.txt made as the install ran is kept as \"{saved.Rows[0].Title}\", not as the person's own change");
+        Assert.True(saved.Rows[0].Title.English == "Change", $"The save of Notes.txt made as the install ran is kept as \"{saved.Rows[0].Title}\", not as the person's own change");
         window.Close();
     }
 

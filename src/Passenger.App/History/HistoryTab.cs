@@ -9,6 +9,7 @@ using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Text;
 using Passenger.Vcs;
 
@@ -65,15 +66,15 @@ public sealed class HistoryTab : DockPanel
         list.SelectionChanged += (_, _) => IdeErrors.Observe(ShowAsync());
         ListMenus.Attach(list, () => Selected is null ? [] :
         [
-            ListMenus.Item("Revert Selected and Later Changes", () => IdeErrors.Observe(RevertAsync())),
+            ListMenus.Item(HistoryWords.RevertSelectedAndLater, () => IdeErrors.Observe(RevertAsync())),
         ]);
         placeholder = new EmptyState();
-        diffPlaceholder = new EmptyState("Select activity to view changes");
+        diffPlaceholder = new EmptyState(HistoryWords.SelectActivity);
         diffHost.Content = diffPlaceholder;
 
-        filter = SearchBox.Of(isFolder ? "Search changes by file name" : "Search changes by content");
+        filter = SearchBox.Of(isFolder ? HistoryWords.SearchByFileName : HistoryWords.SearchByContent);
         filter.TextChanged += (_, _) => IdeErrors.Observe(FilterAsync());
-        Button revert = ToolButtons.Of(IconKeys.Rollback, "Revert Selected and Later Changes", () => IdeErrors.Observe(RevertAsync()));
+        Button revert = ToolButtons.Of(IconKeys.Rollback, HistoryWords.RevertSelectedAndLater, () => IdeErrors.Observe(RevertAsync()));
         Border top = ToolBars.Top(new ToolFlow { Margin = new Thickness(Gaps.Normal, Gaps.Hair), Children = { filter, revert } });
 
         Control right = diffHost;
@@ -86,13 +87,13 @@ public sealed class HistoryTab : DockPanel
             };
             ReusedRows.Use(fileList, FileRow);
             fileList.SelectionChanged += (_, _) => IdeErrors.Observe(ShowFileAsync());
-            ListMenus.Attach(fileList, () => fileList.SelectedItems?.Count > 0 ? [ListMenus.Item("Revert Selection", () => IdeErrors.Observe(RevertSelectionAsync()))] : []);
+            ListMenus.Attach(fileList, () => fileList.SelectedItems?.Count > 0 ? [ListMenus.Item(HistoryWords.RevertSelection, () => IdeErrors.Observe(RevertSelectionAsync()))] : []);
             Border fileBar = ToolBars.Top(new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(Gaps.Tight, 0),
-                Children = { ToolButtons.Of(IconKeys.Rollback, "Revert Selection", () => IdeErrors.Observe(RevertSelectionAsync())) },
+                Children = { ToolButtons.Of(IconKeys.Rollback, HistoryWords.RevertSelection, () => IdeErrors.Observe(RevertSelectionAsync())) },
             });
             Grid split = new() { RowDefinitions = new RowDefinitions("*,1,2*") };
             DockPanel changes = new() { Children = { fileBar, fileList } };
@@ -235,7 +236,7 @@ public sealed class HistoryTab : DockPanel
         rows = kept;
         list.ItemsSource = rows;
         string name = System.IO.Path.GetFileName(System.IO.Path.TrimEndingDirectorySeparator(Path));
-        placeholder.Text = text.Length > 0 ? $"No matching activity in {name} detected" : $"No activity in {name} detected";
+        placeholder.Say(text.Length > 0 ? HistoryWords.NoMatchingActivity(Words.Verbatim(name)) : HistoryWords.NoActivity(Words.Verbatim(name)));
         placeholder.IsVisible = rows.Count == 0;
         HistoryRow? again = chosen is { } set ? rows.FirstOrDefault(r => r.Set == set) : null;
         list.SelectedItem = again ?? (rows.Count > 0 ? rows[0] : null);
@@ -255,7 +256,7 @@ public sealed class HistoryTab : DockPanel
             {
                 fileList.ItemsSource = files;
             }
-            ShowNothing("Select activity to view changes");
+            ShowNothing(HistoryWords.SelectActivity);
             return;
         }
         if (!IsFolder)
@@ -276,7 +277,7 @@ public sealed class HistoryTab : DockPanel
         fileList.ItemsSource = files;
         if (files.Count == 0)
         {
-            ShowNothing("No changes detected");
+            ShowNothing(HistoryWords.NoChanges);
             return;
         }
         fileList.SelectedItem = files.FirstOrDefault(f => chosen is not null && PathNames.Same(f.Path, chosen)) ?? files[0];
@@ -292,12 +293,13 @@ public sealed class HistoryTab : DockPanel
     }
 
     /// <summary>A row's version, as the diff's left side names it.</summary>
-    private static string Before(HistoryRow row) =>
-        $"{(row.IsLabel ? row.Title : $"Before {row.Title}")} · {GitLogView.When(row.Time)}";
+    private static Words Before(HistoryRow row) => row.IsLabel
+        ? HistoryWords.LabelVersion(row.Title, Words.Verbatim(GitLogView.When(row.Time)))
+        : HistoryWords.VersionBefore(row.Title, Words.Verbatim(GitLogView.When(row.Time)));
 
     /// <summary>A version of a file beside the file now: its document, borrowed when it is not open, so an arrow puts a
     /// change back in it; read-only and empty where the file is gone.</summary>
-    private async Task ShowDiffAsync(long set, string path, string? version, string title)
+    private async Task ShowDiffAsync(long set, string path, string? version, Words title)
     {
         if (shownDiff == (set, path, version) && Diff is not null)
         {
@@ -321,8 +323,8 @@ public sealed class HistoryTab : DockPanel
             lent?.Hold.Dispose();
             return;
         }
-        string right = document is not null ? "Current" : "File does not exist";
-        DiffView view = host.Diffs.ForFile(System.IO.Path.GetFileName(path), diff, mine, document, (version is null ? "File does not exist" : title, right), path, path,
+        Words right = document is not null ? HistoryWords.Current : HistoryWords.FileGone;
+        DiffView view = host.Diffs.ForFile(System.IO.Path.GetFileName(path), diff, mine, document, ((version is null ? HistoryWords.FileGone : title).Shown, right.Shown), path, path,
             version is null ? MergeSide.Left : document is null ? MergeSide.Right : null);
         diffHost.Content = view;
         shownDiff = (set, path, version);
@@ -342,11 +344,11 @@ public sealed class HistoryTab : DockPanel
         }
     }
 
-    private void ShowNothing(string why)
+    private void ShowNothing(Words why)
     {
         shows++;
         shownDiff = null;
-        diffPlaceholder.Text = why;
+        diffPlaceholder.Say(why);
         diffHost.Content = diffPlaceholder;
         Forget();
     }
@@ -366,7 +368,7 @@ public sealed class HistoryTab : DockPanel
             borrowed = null;
             shownDiff = null;
             diffHost.Content = diffPlaceholder;
-            diffPlaceholder.Text = "File does not exist";
+            diffPlaceholder.Say(HistoryWords.FileGone);
         }
     }
 
@@ -393,7 +395,7 @@ public sealed class HistoryTab : DockPanel
             tag.IsVisible = row.IsLabel;
             tag.DataKey = row.IsLabel ? IconKeys.Label : null;
             tag.ForegroundKey = !row.IsLabel ? null : row.System ? TokenKeys.TextMuted : TokenKeys.Accent;
-            title.Text = row.Title;
+            ShownWords.Set(title, TextBlock.TextProperty, row.Title);
             title.Classes.Set(StyleClasses.Strong, row.IsLabel);
         });
     }

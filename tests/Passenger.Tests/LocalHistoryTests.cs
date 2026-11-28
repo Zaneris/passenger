@@ -121,7 +121,7 @@ public sealed class LocalHistoryTests : IDisposable
         Assert.True(window.DockHost.IsShown(ToolWindowIds.LocalHistory), "Show History left the Local History window hidden");
         Assert.Equal(["Shop.cs"], window.LocalHistoryWindow.Titles);
         Ui.Landed(() => history.Rows.Count == 4, "the four versions: three saves and the change made elsewhere");
-        Assert.Equal(["External change", "Change", "Change", "Change"], history.Rows.Select(r => r.Title));
+        Assert.Equal(["External change", "Change", "Change", "Change"], history.Rows.Select(r => r.Title.English));
         Assert.True(history.Rows.Zip(history.Rows.Skip(1)).All(p => p.First.Time >= p.Second.Time), "The versions are not listed newest first");
 
         Assert.Same(history.Rows[0], history.Selected);
@@ -165,7 +165,7 @@ public sealed class LocalHistoryTests : IDisposable
         Assert.Equal(Saved1, Text(window));
         Assert.Equal(Saved1, File.ReadAllText(shop));
         Assert.False(window.EditorArea.Active!.IsModified, "The revert was not written to the file");
-        Ui.Landed(() => history.Rows.Count == 4 && history.Rows[0].Title.StartsWith("Revert to ", StringComparison.Ordinal), "the revert kept as a version of its own");
+        Ui.Landed(() => history.Rows.Count == 4 && history.Rows[0].Title.English.StartsWith("Revert to ", StringComparison.Ordinal), "the revert kept as a version of its own");
 
         window.EditorArea.CodeEditor.Focus();
         Ui.Run(window, EditorActions.Undo);
@@ -255,7 +255,7 @@ public sealed class LocalHistoryTests : IDisposable
 
         HistoryTab history = ShowFromFileMenu(window, "Show History…");
         Ui.Landed(() => history.Rows.Count == 3, "the two saves and the label between them");
-        Assert.Equal(["Change", "Before cleanup", "Change"], history.Rows.Select(r => r.Title));
+        Assert.Equal(["Change", "Before cleanup", "Change"], history.Rows.Select(r => r.Title.English));
         Assert.True(history.Rows[1].IsLabel, "The label is listed as a change, not a label");
         history.Select(history.Rows[1]);
         Ui.Landed(() => history.Diff?.Left.Document.Snapshot.ToString() == Saved1, "the file as it was when the label was put");
@@ -301,7 +301,7 @@ public sealed class LocalHistoryTests : IDisposable
         KeptAs("Notes.txt", "Git checkout", "main\n");
         HistoryTab shown = ShowFromFileMenu(window, "Show History…");
         Ui.WaitFor(() => shown.Rows.Count == 1, "the checkout's change to the open file");
-        Assert.Equal("Git checkout", shown.Rows[0].Title);
+        Assert.Equal("Git checkout", shown.Rows[0].Title.English);
         Ui.Landed(() => shown.Diff?.Left.Document.Snapshot.ToString() == Original, "the file as main had it");
         window.Close();
 
@@ -314,12 +314,12 @@ public sealed class LocalHistoryTests : IDisposable
                 (IReadOnlyList<HistoryEvent> events, IReadOnlyDictionary<string, string?> known) = history.Snapshot();
                 return HistoryRows.OfFile(events, known, path);
             }
-            Ui.WaitFor(() => Rows() is [{ } row, ..] && row.Title == title,
-                () => $"{name}, never opened, kept by {title}: its history lists [{string.Join(", ", Rows().Select(r => r.Title))}]");
+            Ui.WaitFor(() => Rows() is [{ } row, ..] && row.Title.English == title,
+                () => $"{name}, never opened, kept by {title}: its history lists [{string.Join(", ", Rows().Select(r => r.Title.English))}]");
             Ui.WaitFor(() => !history.IsRecording, "the history to keep what it heard");
             HistoryRow kept = Rows()[0];
-            Assert.True(kept.Title == title && kept.Version is { } version && Encoding.UTF8.GetString(history.Content(version)!) == before,
-                $"{name}, never opened, is kept by {title} as [{string.Join(", ", Rows().Select(r => r.Title))}], its row with {(kept.Version is { } held ? $"\"{Encoding.UTF8.GetString(history.Content(held)!)}\"" : "no file")} before it, not \"{before}\"");
+            Assert.True(kept.Title.English == title && kept.Version is { } version && Encoding.UTF8.GetString(history.Content(version)!) == before,
+                $"{name}, never opened, is kept by {title} as [{string.Join(", ", Rows().Select(r => r.Title.English))}], its row with {(kept.Version is { } held ? $"\"{Encoding.UTF8.GetString(history.Content(held)!)}\"" : "no file")} before it, not \"{before}\"");
         }
     }
 
@@ -363,9 +363,9 @@ public sealed class LocalHistoryTests : IDisposable
             window.OpenFile(Path.Combine(folder, name));
             Ui.Settle();
             HistoryTab history = ShowFromFileMenu(window, "Show History…");
-            Ui.WaitFor(() => history.Rows.Count > 0 && history.Rows[0].Title != LocalHistory.ExternalChange || history.Rows.Count > 1,
-                () => $"{name}'s resolution kept, its history listing [{string.Join(", ", history.Rows.Select(r => r.Title))}]");
-            Assert.True(history.Rows[0].Title == title, $"{name} resolved by {title} is kept as [{string.Join(", ", history.Rows.Select(r => r.Title))}]");
+            Ui.WaitFor(() => history.Rows.Count > 0 && history.Rows[0].Title.English != LocalHistory.ExternalChange || history.Rows.Count > 1,
+                () => $"{name}'s resolution kept, its history listing [{string.Join(", ", history.Rows.Select(r => r.Title.English))}]");
+            Assert.True(history.Rows[0].Title.English == title, $"{name} resolved by {title} is kept as [{string.Join(", ", history.Rows.Select(r => r.Title.English))}]");
             if (name == "Merged.txt")
             {
                 history.Select(history.Rows[0]);
@@ -398,8 +398,8 @@ public sealed class LocalHistoryTests : IDisposable
 
         (IReadOnlyList<HistoryEvent> events, IReadOnlyDictionary<string, string?> known) = history.Snapshot();
         IReadOnlyList<HistoryRow> rows = HistoryRows.OfFile(events, known, shop);
-        Assert.True(rows.Count == 2 && rows[0].Title == LocalHistory.ExternalChange && rows[1].Title == "Git checkout",
-            $"A change written after the checkout's moment was kept as {string.Join(", ", rows.Select(r => r.Title))}, not an external change above the checkout");
+        Assert.True(rows.Count == 2 && rows[0].Title.English == LocalHistory.ExternalChange && rows[1].Title.English == "Git checkout",
+            $"A change written after the checkout's moment was kept as {string.Join(", ", rows.Select(r => r.Title.English))}, not an external change above the checkout");
         Assert.Equal(Saved1, Encoding.UTF8.GetString(history.Content(rows[0].Version!)!));
         Assert.Equal(Original, Encoding.UTF8.GetString(history.Content(rows[1].Version!)!));
         window.Close();
@@ -446,8 +446,8 @@ public sealed class LocalHistoryTests : IDisposable
 
         (IReadOnlyList<HistoryEvent> events, IReadOnlyDictionary<string, string?> known) = history.Snapshot();
         IReadOnlyList<HistoryRow> rows = HistoryRows.OfFile(events, known, shop);
-        Assert.True(rows.Count == 2 && rows.All(r => r.Title == "Change"),
-            $"Two saves, the second written as the first's change heard was read, were kept as {string.Join(", ", rows.Select(r => r.Title))}, not two changes");
+        Assert.True(rows.Count == 2 && rows.All(r => r.Title.English == "Change"),
+            $"Two saves, the second written as the first's change heard was read, were kept as {string.Join(", ", rows.Select(r => r.Title.English))}, not two changes");
         Assert.Equal(Saved1, Encoding.UTF8.GetString(history.Content(rows[0].Version!)!));
         Assert.Equal(Original, Encoding.UTF8.GetString(history.Content(rows[1].Version!)!));
         window.Close();
@@ -472,7 +472,7 @@ public sealed class LocalHistoryTests : IDisposable
         Ui.WaitFor(() => !history.IsRecording, "the history to keep what it heard");
         IReadOnlyList<HistoryRow> rows = HistoryRows.OfFolder(history.Snapshot().Events, folder);
         Assert.True(!rows.Any(r => r.Files.Any(f => PathNames.Within(f, Path.GetDirectoryName(project)!))),
-            $"The folder Windows names as a file in it is first read is kept as changed by another program: {string.Join("; ", rows.Select(r => $"{r.Title} [{string.Join(", ", r.Files.Select(Path.GetFileName))}]"))}");
+            $"The folder Windows names as a file in it is first read is kept as changed by another program: {string.Join("; ", rows.Select(r => $"{r.Title.English} [{string.Join(", ", r.Files.Select(Path.GetFileName))}]"))}");
         window.Close();
     }
 
@@ -501,9 +501,9 @@ public sealed class LocalHistoryTests : IDisposable
         HistoryTab all = window.ShowLocalHistory(folder)!;
         Ui.Landed(() => all.Rows.Count > 0, "the folder's history");
         Assert.True(all.Rows.All(r => r.Files.All(f => !PathNames.IsUnder(f, library))),
-            $"The folder's history lists the tree brought in at once: {string.Join("; ", all.Rows.Select(r => $"{r.Title} [{string.Join(", ", r.Files)}]"))}");
-        Assert.True(all.Rows.Any(r => r.Title == LocalHistory.ExternalChange && r.Files.SequenceEqual([shop])),
-            $"A known file another program changed as the tree came is not kept as an external change: {string.Join("; ", all.Rows.Select(r => r.Title))}");
+            $"The folder's history lists the tree brought in at once: {string.Join("; ", all.Rows.Select(r => $"{r.Title.English} [{string.Join(", ", r.Files)}]"))}");
+        Assert.True(all.Rows.Any(r => r.Title.English == LocalHistory.ExternalChange && r.Files.SequenceEqual([shop])),
+            $"A known file another program changed as the tree came is not kept as an external change: {string.Join("; ", all.Rows.Select(r => r.Title.English))}");
 
         string opened = Path.Combine(library, "Part0", "Piece0.cs");
         window.OpenFile(opened);
@@ -513,7 +513,7 @@ public sealed class LocalHistoryTests : IDisposable
         Ui.WaitFor(() => Text(window) == Changed, "the tree's file opened following its change made elsewhere");
         HistoryTab its = ShowFromFileMenu(window, "Show History…");
         Ui.Landed(() => its.Rows.Count == 1, "the change made elsewhere to the tree's file once opened");
-        Assert.Equal(LocalHistory.ExternalChange, its.Rows[0].Title);
+        Assert.Equal(LocalHistory.ExternalChange, its.Rows[0].Title.English);
         Ui.Landed(() => its.Diff?.Left.Document.Snapshot.ToString() == "class Piece0\n{\n}\n", "the tree's file as it came");
         window.Close();
     }
@@ -554,7 +554,7 @@ public sealed class LocalHistoryTests : IDisposable
             Assert.True(own.Length == 0, $"Local History read {own.Length} files of its own state folder, which it keeps none of: {string.Join(", ", own.Take(5))}");
             HistoryRow[] rows = [.. HistoryRows.OfFolder(history.Snapshot().Events, folder)];
             Assert.True(rows.All(r => r.Files.All(f => !PathNames.Within(f, state))),
-                $"The folder's history lists the state folder's files: {string.Join("; ", rows.Select(r => $"{r.Title} [{string.Join(", ", r.Files)}]"))}");
+                $"The folder's history lists the state folder's files: {string.Join("; ", rows.Select(r => $"{r.Title.English} [{string.Join(", ", r.Files)}]"))}");
         }
         finally
         {
@@ -585,7 +585,7 @@ public sealed class LocalHistoryTests : IDisposable
         HistoryTab history = window.LocalHistoryWindow.Shown!;
         Assert.Equal("src", window.LocalHistoryWindow.Titles.Single());
         Ui.Landed(() => history.Rows.Count == 3, "A.cs's save, B.cs's save and B.cs's deletion");
-        Assert.Equal(["Delete B.cs", "Modify B.cs", "Modify A.cs"], history.Rows.Select(r => r.Title));
+        Assert.Equal(["Delete B.cs", "Modify B.cs", "Modify A.cs"], history.Rows.Select(r => r.Title.English));
 
         Ui.Landed(() => history.Files.Count == 1, "the file the deletion took");
         Assert.Equal((PathNames.Canonical(b), ChangeKind.Deleted), (history.Files[0].Path, history.Files[0].Kind));
@@ -594,7 +594,7 @@ public sealed class LocalHistoryTests : IDisposable
         Ui.WaitFor(() => reverting.IsCompleted, "the revert");
         Assert.Equal(savedB, File.ReadAllText(b));
 
-        history.Select(history.Rows.First(r => r.Title == "Modify A.cs"));
+        history.Select(history.Rows.First(r => r.Title.English == "Modify A.cs"));
         Ui.Landed(() => history.Files.Count == 2, "A.cs and B.cs changed since");
         Assert.Equal([(PathNames.Canonical(a), ChangeKind.Modified), (PathNames.Canonical(b), ChangeKind.Modified)], history.Files.Select(f => (f.Path, f.Kind)));
         window.Close();
@@ -621,7 +621,7 @@ public sealed class LocalHistoryTests : IDisposable
         // Asked as the history's tab asks it, with no diff borrowing a file the revert writes.
         string src = Path.Combine(folder, "src");
         Ui.WaitFor(() => !window.LocalHistory!.IsRecording, "the saves kept");
-        HistoryRow first = HistoryRows.OfFolder(window.LocalHistory!.Snapshot().Events, src).Single(r => r.Title == "Modify A.cs");
+        HistoryRow first = HistoryRows.OfFolder(window.LocalHistory!.Snapshot().Events, src).Single(r => r.Title.English == "Modify A.cs");
 
         List<string> onWindowThread = [];
         void Writing(string path)
@@ -687,7 +687,7 @@ public sealed class LocalHistoryTests : IDisposable
         }
         Ui.Settle();
         Ui.WaitFor(() => !window.LocalHistory!.IsRecording, "the save and the new file kept");
-        HistoryRow first = HistoryRows.OfFolder(window.LocalHistory!.Snapshot().Events, src).Single(r => r.Title == "Modify A.cs");
+        HistoryRow first = HistoryRows.OfFolder(window.LocalHistory!.Snapshot().Events, src).Single(r => r.Title.English == "Modify A.cs");
 
         Assert.Null(Ui.AwaitPumped(window.RevertLocalHistoryAsync(src, first.Set), "the revert"));
         Assert.True(File.ReadAllText(a) == A && !File.Exists(b), $"The revert did not put A.cs back and take B.cs away: {window.Status}");
@@ -735,10 +735,10 @@ public sealed class LocalHistoryTests : IDisposable
 
         HistoryTab history = ShowFromFileMenu(window, "Show History…");
         Ui.Landed(() => history.Rows.Count > 0, "Shop.cs's history");
-        Assert.Equal(["Change Signature"], history.Rows.Select(r => r.Title));
+        Assert.Equal(["Change Signature"], history.Rows.Select(r => r.Title.English));
         HistoryTab both = window.ShowLocalHistory(folder)!;
         Ui.Landed(() => both.Rows.Count > 0, "the folder's history");
-        Assert.Equal(["Modify Notes.txt", "Change Signature"], both.Rows.Select(r => r.Title));
+        Assert.Equal(["Modify Notes.txt", "Change Signature"], both.Rows.Select(r => r.Title.English));
         window.Close();
 
         static string Hash(string text) => LocalHistory.Hash(System.Text.Encoding.UTF8.GetBytes(text));
@@ -760,8 +760,8 @@ public sealed class LocalHistoryTests : IDisposable
         MainWindow later = Open(@"Shop\Copy.cs", state, new HistoryKeeping());
         HistoryTab history = ShowFromFileMenu(later, "Show History…");
         Ui.Settle();
-        Assert.True(history.Rows.Any(r => r.Title == "Change"),
-            $"A later Passenger on the same state listed none of the save kept for Shop\\Copy.cs, only [{string.Join(", ", history.Rows.Select(r => r.Title))}]: its history was kept under Shop/Copy.cs, another file's name");
+        Assert.True(history.Rows.Any(r => r.Title.English == "Change"),
+            $"A later Passenger on the same state listed none of the save kept for Shop\\Copy.cs, only [{string.Join(", ", history.Rows.Select(r => r.Title.English))}]: its history was kept under Shop/Copy.cs, another file's name");
         later.Close();
     }
 
@@ -831,7 +831,7 @@ public sealed class LocalHistoryTests : IDisposable
 
         Ui.ChooseFromRowMenu(window, Show(window, Path.Combine(folder, "src")), "Local History", "Show History…");
         HistoryTab history = window.LocalHistoryWindow.Shown!;
-        Ui.Landed(() => history.Rows.Count > 0 && history.Rows[0].Title == "Delete B.cs", "B.cs's deletion");
+        Ui.Landed(() => history.Rows.Count > 0 && history.Rows[0].Title.English == "Delete B.cs", "B.cs's deletion");
         Ui.Landed(() => history.Diff?.Left.Document.Snapshot.ToString() == "sealed class B\n{\n}\n", "B.cs as it was deleted");
         FilesFollowed.Check(window, "Revert of B.cs's deletion", [b], () =>
         {
@@ -878,7 +878,7 @@ public sealed class LocalHistoryTests : IDisposable
         Ui.ChooseFromRowMenu(window, Show(window, purchase), "Local History", "Show History…");
         HistoryTab history = window.LocalHistoryWindow.Shown!;
         Ui.Landed(() => history.Rows.Count == 3, "the saves under both names and the rename between them");
-        Assert.Equal(["Change", "Rename Order.cs to Purchase.cs", "Change"], history.Rows.Select(r => r.Title));
+        Assert.Equal(["Change", "Rename Order.cs to Purchase.cs", "Change"], history.Rows.Select(r => r.Title.English));
         history.Select(history.Rows[^1]);
         Ui.Landed(() => history.Diff?.Left.Document.Snapshot.ToString() == Original, "the file as it was under its old name");
         window.Close();
@@ -910,11 +910,11 @@ public sealed class LocalHistoryTests : IDisposable
 
             HistoryTab saved = ShowFromFileMenu(window, "Show History…");
             Ui.Landed(() => saved.Rows.Count == 1, "the save of Shop.cs");
-            Assert.True(saved.Rows[0].Title == "Change", $"The save made while the replace wrote is filed as '{saved.Rows[0].Title}', not as the person's own change");
+            Assert.True(saved.Rows[0].Title.English == "Change", $"The save made while the replace wrote is filed as '{saved.Rows[0].Title.English}', not as the person's own change");
             Ui.ChooseFromRowMenu(window, Show(window, notes), "Local History", "Show History…");
             HistoryTab replaced = window.LocalHistoryWindow.Shown!;
             Ui.Landed(() => replaced.Rows.Count > 0, "the replace's write of Notes.txt");
-            Assert.Equal(Passenger.App.Workspace.FilesReplaced.Title(query, "count"), replaced.Rows[0].Title);
+            Assert.Equal(Passenger.App.Workspace.FilesReplaced.Title(query, "count"), replaced.Rows[0].Title.English);
         }
         finally
         {

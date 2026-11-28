@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App.History;
 
@@ -20,7 +21,7 @@ public sealed class LocalHistoryView : DockPanel
     public LocalHistoryView()
     {
         empty = new EmptyState();
-        empty.SayWithKeys(AppActions.ShowLocalHistory, keys => $"{ActionTips.Named("Show Local History", keys)} on a file or folder lists its versions here");
+        empty.SayWithKeys(AppActions.ShowLocalHistory, keys => HistoryWords.ListsVersionsHere(ActionTips.Named(HistoryWords.ShowLocalHistory, keys)));
         body.Content = empty;
         Children.Add(body);
         tabs.Chosen += (_, tab) => Show(tab);
@@ -91,7 +92,7 @@ public sealed class LocalHistoryView : DockPanel
         tabs.Clear();
         foreach ((string path, string title, HistoryTab tab) in histories)
         {
-            ToolTip.SetTip(tabs.Add(tab, title, () => Close(tab)), path);
+            ShownWords.Set(tabs.Add(tab, Words.Verbatim(title), () => Close(tab)), ToolTip.TipProperty, Words.Verbatim(path));
         }
         if (Shown is not null)
         {

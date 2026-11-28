@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ShowLocalHistory" xml:space="preserve">
+    <value>Show Local History</value>
+    <comment>The action that lists a file's or folder's versions, named in a sentence; {keys} may follow it in brackets.</comment>
+  </data>
+  <data name="ListsVersionsHere" xml:space="preserve">
+    <value>{action} on a file or folder lists its versions here</value>
+    <comment>The Local History window's words while no history is open; {action} names the action with its keys.</comment>
+  </data>
+  <data name="RevertSelectedAndLater" xml:space="preserve">
+    <value>Revert Selected and Later Changes</value>
+    <comment>A history's button and row menu item: puts back what the chosen change set and those after it changed.</comment>
+  </data>
+  <data name="RevertSelection" xml:space="preserve">
+    <value>Revert Selection</value>
+    <comment>A folder's history: puts back the chosen files alone, as they were before the chosen change set.</comment>
+  </data>
+  <data name="SelectActivity" xml:space="preserve">
+    <value>Select activity to view changes</value>
+    <comment>The diff's place while no row of the history is chosen.</comment>
+  </data>
+  <data name="SearchByFileName" xml:space="preserve">
+    <value>Search changes by file name</value>
+    <comment>A folder's history's search field.</comment>
+  </data>
+  <data name="SearchByContent" xml:space="preserve">
+    <value>Search changes by content</value>
+    <comment>A file's history's search field.</comment>
+  </data>
+  <data name="NoMatchingActivity" xml:space="preserve">
+    <value>No matching activity in {name} detected</value>
+    <comment>A history's list where the search keeps no row; {name} is the file or folder.</comment>
+  </data>
+  <data name="NoActivity" xml:space="preserve">
+    <value>No activity in {name} detected</value>
+    <comment>A history's list where nothing was kept; {name} is the file or folder.</comment>
+  </data>
+  <data name="NoChanges" xml:space="preserve">
+    <value>No changes detected</value>
+    <comment>A folder's history where no file differs since the chosen change set.</comment>
+  </data>
+  <data name="LabelVersion" xml:space="preserve">
+    <value>{title} · {when}</value>
+    <comment>The diff's left side for a label: its name and when it was put.</comment>
+  </data>
+  <data name="VersionBefore" xml:space="preserve">
+    <value>Before {title} · {when}</value>
+    <comment>The diff's left side: the file before a change set, named by what the set did, and when.</comment>
+  </data>
+  <data name="Current" xml:space="preserve">
+    <value>Current</value>
+    <comment>The diff's right side: the file as it stands now.</comment>
+  </data>
+  <data name="FileGone" xml:space="preserve">
+    <value>File does not exist</value>
+    <comment>The diff's side, or its place, where the file did not exist then or does not now.</comment>
+  </data>
+  <data name="ChangedFiles" xml:space="preserve">
+    <value>Change {file} + {more, number} more</value>
+    <comment>A change set's title in a folder's history where it changed several files: the last, and how many others.</comment>
+  </data>
+  <data name="Created" xml:space="preserve">
+    <value>Create {file}</value>
+    <comment>A change set's title where it made a file.</comment>
+  </data>
+  <data name="Deleted" xml:space="preserve">
+    <value>Delete {file}</value>
+    <comment>A change set's title where it deleted a file.</comment>
+  </data>
+  <data name="Renamed" xml:space="preserve">
+    <value>Rename {file} to {name}</value>
+    <comment>A change set's title where it renamed a file in its folder.</comment>
+  </data>
+  <data name="Moved" xml:space="preserve">
+    <value>Move {file} to {folder}</value>
+    <comment>A change set's title where it moved a file to another folder.</comment>
+  </data>
+  <data name="Changed" xml:space="preserve">
+    <value>Change</value>
+    <comment>A change set's title in a file's own history, where it changed the file.</comment>
+  </data>
+  <data name="Modified" xml:space="preserve">
+    <value>Modify {file}</value>
+    <comment>A change set's title in a folder's history where it changed one file.</comment>
+  </data>
+  <data name="RecentChanges" xml:space="preserve">
+    <value>Recent Changes</value>
+    <comment>The popup listing the open folder's change sets.</comment>
+  </data>
+  <data name="SearchByName" xml:space="preserve">
+    <value>Search by name</value>
+    <comment>Recent Changes' search field.</comment>
+  </data>
+  <data name="NoRecentChanges" xml:space="preserve">
+    <value>There are no changes</value>
+    <comment>Recent Changes where Local History kept none.</comment>
+  </data>
+</root>

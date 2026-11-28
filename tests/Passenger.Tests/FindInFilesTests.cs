@@ -403,8 +403,8 @@ public sealed class FindInFilesTests : IDisposable
 
         Assert.True(window.Perform(AppActions.ShowProjectHistory), "Show Project History did not run");
         Passenger.App.History.HistoryTab history = window.LocalHistoryWindow.Shown!;
-        Ui.Landed(() => history.Rows.Any(r => r.Title == Named), "the replace's change set in Local History");
-        Assert.True(history.Rows.Count(r => r.Title == Named) == 1 && !history.Rows.Any(r => r.Title is "Modify Alpha.cs" or "Modify Gamma.cs"),
+        Ui.Landed(() => history.Rows.Any(r => r.Title.English == Named), "the replace's change set in Local History");
+        Assert.True(history.Rows.Count(r => r.Title.English == Named) == 1 && !history.Rows.Any(r => r.Title.English is "Modify Alpha.cs" or "Modify Gamma.cs"),
             $"Local History lists the replace's files as [{string.Join(", ", history.Rows.Select(r => r.Title))}], not one change set named for it");
 
         window.EditorArea.CodeEditor.Focus();

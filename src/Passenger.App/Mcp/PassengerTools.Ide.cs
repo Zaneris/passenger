@@ -559,7 +559,7 @@ public sealed partial class PassengerTools
         {
             (IReadOnlyList<string> files, string? more) = AgentAnswers.Listed(r.Files, MostRowFiles, "file", "local_history of a folder within names its own");
             return new(r.Set, r.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
-                r.Title, r.IsLabel, [.. files.Select(Relative)]) { More = more };
+                r.Title.English, r.IsLabel, [.. files.Select(Relative)]) { More = more };
         }
     });
 
