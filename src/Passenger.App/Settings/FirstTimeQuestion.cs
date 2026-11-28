@@ -60,5 +60,8 @@ public sealed record FirstTimeAnswersState : IStateDocument<FirstTimeAnswersStat
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
 
+    /// <summary>The questions asked, each apart: two processes asking two questions keep both.</summary>
+    public static IReadOnlyList<string> Sets { get; } = [nameof(Asked)];
+
     public FirstTimeAnswersState Clamped() => this with { Answers = Answers ?? [], Asked = Asked ?? [] };
 }
