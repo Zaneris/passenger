@@ -270,7 +270,7 @@ resized the new theme's size. What you moved, floated, put among the editors, op
   a tab to go back to, where the places Go to Declaration and the like find to choose from are listed too; left out, the
   popup.
 
-What the layout arranges beyond where the windows dock (`editorTabs`, `toolWindows`, `closedWindows`, `findResults`) is each a setting of Settings | Appearance: the
+What the layout arranges beyond where the windows dock (`editorTabs`, `toolWindows`, `closedWindows`, `findResults`) is each a setting of Settings | Appearance | Layout: the
 theme's is the default there, and the place you choose wins over it whatever theme you choose, until you choose Theme
 default again.
 
@@ -515,8 +515,8 @@ Passenger carries its own theme, `Tokens.axaml`, and beside it two in its built-
 and a smaller code size, to show what a theme can set; and High Contrast, every word at WCAG AAA's 7:1 on what it is read
 on, marks and edges at 4.5:1 and stronger rules, comments in italics, which Passenger shows in the chosen theme's place,
 dark or light as the system is, while the system asks for high contrast (a Windows contrast theme, macOS's Increase
-contrast, GNOME's High Contrast) and Settings | Appearance | Accessibility | Use High Contrast while the system asks for it is on;
-Settings | Appearance | Accessibility | Colours of states lays a colour-blind safe palette (blue, orange, vermilion and purple, after Okabe
+contrast, GNOME's High Contrast) and Settings | Accessibility | Use High Contrast while the system asks for it is on;
+Settings | Accessibility | Colours of states lays a colour-blind safe palette (blue, orange, vermilion and purple, after Okabe
 and Ito) over any theme for tests' results, changes and signatures, worked out from its grounds to read as its own do. Harbour, the ten generated themes and the Reef code colour scheme live in
 Passenger's themes repository, whose copy the tests carry in `tests/Passenger.Tests/Themes`. Harbour.json and Reef.json
 are written by hand; Cubicle, High Contrast and the ten are written by `tools/themes.py` from its palettes (`just themes

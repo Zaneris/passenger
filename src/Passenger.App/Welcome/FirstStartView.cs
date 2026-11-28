@@ -248,7 +248,7 @@ public sealed class FirstStartView : UserControl, IOwnKeys
         {
             title.Text = "Your keys";
             about.Text = $"Choose the keys your hands know. {SettingsDialog.PlaceOfPage(SettingsDialog.KeymapPage)} changes them and any shortcut "
-                + $"at any time, and {SettingsDialog.PlaceOfPage(SettingsDialog.EditorPage)} turns Vim mode on or off.";
+                + $"at any time, and {SettingsDialog.PlaceOfPage(SettingsDialog.TypingPage)} turns Vim mode on or off.";
             foreach (Passenger.Editor.KeymapPreset keymap in SettingsDialog.KeymapChoices)
             {
                 Add(Tile(KnownAs(keymap), PresetWords(keymap), null, settings.Keymap == keymap, () => ChooseKeymap(keymap), KeysOf(settings with { Keymap = keymap })));

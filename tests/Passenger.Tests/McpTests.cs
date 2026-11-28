@@ -1862,7 +1862,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(vimKeys.GetProperty("note").GetString()!.Contains("<C-v> (Vim mode: Visual block mode; keymap: ", StringComparison.Ordinal),
             $"settings said nothing of what each Ctrl key does on either side: {vimKeys.GetRawText()}");
         CallToolResult noKey = await Result(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["vimKeysToKeymap"] = "<C-v> <C-x>" } });
-        Assert.True(noKey.IsError == true && Text(noKey).Contains("Vim mode's Ctrl keys (Settings | Editor) has no key <C-x>", StringComparison.Ordinal),
+        Assert.True(noKey.IsError == true && Text(noKey).Contains("Vim mode's Ctrl keys (Settings | Editor | Typing) has no key <C-x>", StringComparison.Ordinal),
             $"settings_set of a Ctrl key Vim mode does not give answered: {Text(noKey)}");
         JsonElement given = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["vimKeysToKeymap"] = "<C-o> <C-v>" } })).EnumerateArray());
         Assert.True((given.GetProperty("before").GetString(), given.GetProperty("after").GetString()) == ("", "<C-o> <C-v>")

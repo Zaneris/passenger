@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using Passenger.App.Docking;
 using Passenger.App.Run;
+using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -75,6 +76,7 @@ public sealed class StatusBar
         this.icon = icon;
         this.working = working;
         this.vimMode = vimMode;
+        ToolTip.SetTip(vimMode, $"Vim mode's mode, and a command typed so far ({SettingsDialog.PlaceOfRow(SettingsDialog.TypingPage, "Vim mode")})");
         this.caretButton = caretButton;
         this.caret = caret;
         this.indentButton = indentButton;

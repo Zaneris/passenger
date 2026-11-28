@@ -227,7 +227,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
             }
 
             SettingsDialog taking = DialogButtonsTests.Check(third.ShowSettings());
-            taking.Page = SettingsDialog.McpPage;
+            taking.Page = SettingsDialog.AgentsPage;
             Ui.Settle();
             Assert.Equal([PathNames.Canonical(wanted)], taking.AgentFolderList.Items.OfType<string>());
             Assert.False(taking.RemoveAgentFolderButton.IsEnabled, "Remove was offered with no folder chosen");
@@ -371,7 +371,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         return asked;
     }
 
-    /// <summary>Settings' MCP Server page gives each agent its setup for this copy of Passenger, as the person pastes it: the
+    /// <summary>Settings' Agents page gives each agent its setup for this copy of Passenger, as the person pastes it: the
     /// running program's own path in every command and configuration, Claude Desktop's with the window's folder after
     /// --mcp-attach, the configurations JSON and TOML that read, and each Copy putting its text on the clipboard whole.</summary>
     private void Settings_gives_each_agent_its_setup_for_this_copy_and_copies_it_whole()
@@ -386,9 +386,9 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         {
             dialog.Query = "claude";
             Ui.Settle();
-            Assert.Equal([SettingsDialog.McpPage], dialog.Pages);
+            Assert.Equal([SettingsDialog.AgentsPage], dialog.Pages);
             dialog.Query = string.Empty;
-            dialog.Page = SettingsDialog.McpPage;
+            dialog.Page = SettingsDialog.AgentsPage;
             Ui.Settle();
             Dictionary<string, string> setups = dialog.AgentSetups.ToDictionary(s => s.Heading, s => s.Text);
             Assert.Equal(["Claude Code", "A repository's .mcp.json", "Codex", "Codex's config.toml", "Claude Desktop", "OpenCode", "OpenCode 2"], dialog.AgentSetups.Select(s => s.Heading));
@@ -1066,7 +1066,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", kept])), "the agent attaching");
         try
         {
-            dialog.Page = SettingsDialog.McpPage;
+            dialog.Page = SettingsDialog.AgentsPage;
             Ui.Settle();
             Assert.Equal([PathNames.Canonical(taken)], dialog.AgentFolderList.Items.OfType<string>());
 

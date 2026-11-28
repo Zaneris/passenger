@@ -552,7 +552,7 @@ public sealed class DockingTests
         Assert.True(Math.Abs(next.DockHost.RowDefinitions[2].ActualHeight - wide) < 1, $"After a restart, the wide layout's bottom area is {next.DockHost.RowDefinitions[2].ActualHeight} tall, not the {wide} it was given");
 
         SettingsDialog dialog = next.ShowSettings();
-        dialog.Page = SettingsDialog.Appearance;
+        dialog.Page = SettingsDialog.LayoutPage;
         Ui.Settle();
         SettingsTests.Editor<ComboBox>(dialog, "Wide layout").SelectedItem = "Never";
         Ui.Settle();
@@ -560,7 +560,7 @@ public sealed class DockingTests
         dialog.Ok();
         Sized(next, 1200, 800);
         dialog = next.ShowSettings();
-        dialog.Page = SettingsDialog.Appearance;
+        dialog.Page = SettingsDialog.LayoutPage;
         Ui.Settle();
         SettingsTests.Editor<ComboBox>(dialog, "Wide layout").SelectedItem = "Always";
         dialog.Ok();

@@ -29,7 +29,7 @@ public sealed class EditorConfigSettingsTests
         SettingsDialog settings = window.ShowSettings();
         try
         {
-            settings.Page = SettingsDialog.EditorPage;
+            settings.Page = SettingsDialog.SavingPage;
             Ui.Settle();
             Assert.Equal("./.editorconfig sets insert_final_newline = true for *", settings.SaidOver(FinalLineBreak));
             Assert.True(settings.SaidOver("Reformat on save") is null, "A row no .editorconfig key says over said something was set over it");

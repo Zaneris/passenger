@@ -52,8 +52,8 @@ public sealed class SettingsPreview : IDisposable
         store.EndPreview(this);
     }
 
-    /// <summary>The settings in force with the looks this dialog changed put over them: the Appearance page's, the
-    /// Editor page's but its behaviour, the terminal's font and cursor, and the consoles' size.</summary>
+    /// <summary>The settings in force with the looks this dialog changed put over them: the window's, the code's and what
+    /// is drawn over it, the terminal's font and cursor, and the consoles' size.</summary>
     internal AppSettings Over(AppSettings saved) => saved with
     {
         Theme = Shown(from.Theme, to.Theme, saved.Theme),

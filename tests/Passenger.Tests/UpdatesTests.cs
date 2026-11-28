@@ -418,7 +418,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Ui.Settle();
         dialog.Query = "updates";
         Ui.Settle();
-        Assert.Equal(SettingsDialog.UpdatesPage, dialog.Page);
+        Assert.Equal(SettingsDialog.GeneralPage, dialog.Page);
         Assert.Contains("Check for updates", dialog.Shown);
         dialog.Change(s => s with { CheckForUpdates = false });
         dialog.Ok();

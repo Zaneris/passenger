@@ -467,7 +467,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     public bool McpServer { get; init; }
 
     /// <summary>The folders whose window lets agents in without asking (the question's Always for this folder), whatever
-    /// <see cref="McpServer"/> says; Settings' MCP Server page lists them, each taken back by Remove. The person's alone:
+    /// <see cref="McpServer"/> says; Settings' Agents page lists them, each taken back by Remove. The person's alone:
     /// settings_set refuses it, as it refuses <see cref="McpServer"/>.</summary>
     public IReadOnlyList<string> AgentFolders { get; init; } = [];
 

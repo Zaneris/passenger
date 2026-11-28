@@ -8,7 +8,7 @@ using Passenger.Languages.CSharp;
 
 namespace Passenger.App.Settings;
 
-/// <summary>The Editor | General | Postfix Completion page: Enable postfix completion and Show postfix templates in
+/// <summary>The Editor | Postfix Completion page: Enable postfix completion and Show postfix templates in
 /// completion autopopup over the templates under their language, each with the check box that turns it on or off, and
 /// beside them the chosen one's Description, Before and After. Each change goes back to the settings being edited at
 /// once, the templates turned off kept by name.</summary>

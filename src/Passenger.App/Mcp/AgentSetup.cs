@@ -6,7 +6,7 @@ using Passenger.Terminal;
 
 namespace Passenger.App.Mcp;
 
-/// <summary>How an agent is given this copy of Passenger as its MCP server, as Settings' MCP Server page shows it: each
+/// <summary>How an agent is given this copy of Passenger as its MCP server, as Settings' Agents page shows it: each
 /// agent's command or configuration (Claude Code, Codex, Claude Desktop, OpenCode 1 and 2), naming this executable by its
 /// real path (inside the app bundle on macOS) with --mcp-attach, and Claude Desktop's with the folder to work in after
 /// it, since it starts its servers in no folder. The commands run in a terminal are written for the shell they are run

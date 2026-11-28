@@ -122,7 +122,7 @@ public sealed class WindowArrangementTests : IDisposable
                 $"The theme gives the tabs the right, where they stand {group.TabsPlace} at {Placed(window, group.TabStrip)}");
 
             SettingsDialog dialog = window.ShowSettings();
-            dialog.Page = SettingsDialog.Appearance;
+            dialog.Page = SettingsDialog.LayoutPage;
             Ui.Settle();
             ComboBox row = SettingsTests.Editor<ComboBox>(dialog, "Editor tabs");
             Assert.Equal("Theme default (Right)", row.SelectedItem as string);
@@ -133,7 +133,7 @@ public sealed class WindowArrangementTests : IDisposable
                 $"The person chose Top in Settings over the theme's right, and the tabs stand {group.TabsPlace}");
 
             dialog = window.ShowSettings();
-            dialog.Page = SettingsDialog.Appearance;
+            dialog.Page = SettingsDialog.LayoutPage;
             Ui.Settle();
             SettingsTests.Editor<ComboBox>(dialog, "Editor tabs").SelectedIndex = 0;
             dialog.Ok();

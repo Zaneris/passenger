@@ -87,7 +87,7 @@ public sealed class SettingsTests : IDisposable
         Flow.StepApart<SettingsTests>("every page at the least width cuts no word and lays nothing over anything", t => t.Every_page_at_the_least_width_cuts_no_word_and_lays_nothing_over_anything());
         Flow.StepApart<SettingsTests>("no row of any page runs under its scroll bar at the dialogs smallest size or its own", t => t.No_row_of_any_page_runs_under_its_scroll_bar_at_the_dialogs_smallest_size_or_its_own());
         Flow.StepApart<SettingsTests>("every family the font lists offer draws as its row comes into view", t => t.Every_family_the_font_lists_offer_draws_as_its_row_comes_into_view());
-        Flow.StepApart<SettingsTests>("the pages stand in a tree the keys and the pointer open and a search keeps the pages and options it matches under the pages above them, each row made as its page first shows it", t => t.The_pages_stand_in_a_tree_and_a_search_keeps_the_pages_and_options_it_matches_under_the_pages_above_them());
+        Flow.StepApart<SettingsTests>("the pages stand in a tree the keys and the pointer open, a page of no rows of its own listing those under it with what each is for, and a search keeps the pages and options it matches under the pages above them, each row made as its page first shows it", t => t.The_pages_stand_in_a_tree_and_a_search_keeps_the_pages_and_options_it_matches_under_the_pages_above_them());
     }
 
     /// <summary>Every family the code's and the window's font lists offer draws as its row comes into view, each list opened
@@ -139,7 +139,7 @@ public sealed class SettingsTests : IDisposable
         SettingsDialog dialog = window.ShowSettings();
         try
         {
-            dialog.Page = SettingsDialog.Appearance;
+            dialog.Page = SettingsDialog.GeneralPage;
             Ui.Settle();
             string[] offered = [.. Editor<ComboBox>(dialog, "Language").Items.Cast<object?>().Select(i => i?.ToString() ?? string.Empty)];
             string[] expected = ["System (English)", "English", .. LanguageSetting.Carried.Select(c => LanguageSetting.NameOf(LanguageSetting.InForce(c.Name)).Shown)];
@@ -191,6 +191,8 @@ public sealed class SettingsTests : IDisposable
             Ui.Settle();
             Editor<NumericUpDown>(dialog, "Font size").Value = 19;
             Ui.Click(Editor<CheckBox>(dialog, "Show line numbers"));
+            dialog.Page = SettingsDialog.AnalysisPage;
+            Ui.Settle();
             Assert.True(dialog.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text?.Contains("takes more processor time and memory", StringComparison.Ordinal) == true && t.IsEffectivelyVisible),
                 "Solution-wide analysis's row does not say what it costs");
             bool analysed = window.Settings.SolutionWideAnalysis;
@@ -643,48 +645,61 @@ public sealed class SettingsTests : IDisposable
         Ui.Settle();
         Assert.True(dialog.RowsMade == dialog.Shown.Count, $"Opening Settings made {dialog.RowsMade} rows where its first page shows {dialog.Shown.Count}: "
             + "every page's rows, the Keymap page's hundreds among them, are made as it opens");
-        string[] top = ["Appearance", "General", "Keymap", "Editor", "Explorer", "Version Control", "Build and Run", "Languages and Frameworks", "Tools"];
+        string[] top = ["Appearance", "Accessibility", "General", "Keymap", "Editor", "Explorer", "Terminal", "Version Control", "Build, Run and Debug",
+            "Languages and Frameworks", "Agents"];
         Assert.Equal(top, dialog.Listed);
-        Assert.Equal("Settings | Languages and Frameworks | Web | Node.js", SettingsDialog.PlaceOfPage(SettingsDialog.NodePage));
+        Assert.Equal("Settings | Editor | Code Style | GDScript", SettingsDialog.PlaceOfPage(SettingsDialog.GDScriptCodeStylePage));
+        // A page with no rows of its own lists those under it, each saying what it is for.
+        string[] unsaid = [.. SettingsDialog.EveryPage.Except(dialog.Pages).SelectMany(group => SettingsDialog.EveryPage.Where(p => SettingsDialog.ParentOf(p) == group))
+            .Where(p => SettingsDialog.AboutOf(p) is null)];
+        Assert.True(unsaid.Length == 0, $"{string.Join(", ", unsaid)} would be listed under a page of no rows with nothing said of what each is for");
 
-        // The keys: Right opens Tools, Down goes to its first page, Left back to Tools, Left again closes it.
-        Ui.Click(PageRow(dialog, SettingsDialog.ToolsPage));
+        // The keys: Right opens Build, Run and Debug, Down goes to its first page, Left back to it, Left again closes it.
+        Ui.Click(PageRow(dialog, SettingsDialog.BuildRunDebugPage));
+        Assert.Equal([.. new[] { SettingsDialog.BuildPage, SettingsDialog.RunPage, SettingsDialog.DebuggerPage, SettingsDialog.HotReloadPage, SettingsDialog.TestsPage }
+            .Select(p => (p, SettingsDialog.AboutOf(p)!))], dialog.Links);
         Ui.Press(dialog, "RIGHT");
-        Assert.Equal([.. top, "  Terminal", "  MCP Server", "  Discord", "  Diagnostics"], dialog.Listed);
+        Assert.Equal([.. top[..9], "  Build", "  Run", "  Debugger", "  Hot Reload", "  Unit Tests", .. top[9..]], dialog.Listed);
         Ui.Press(dialog, "DOWN");
-        Assert.True(dialog.Page == SettingsDialog.TerminalPage && dialog.Shown.Contains("Shell path"), $"Down from Tools chose {dialog.Page}, showing {string.Join(", ", dialog.Shown)}");
+        Assert.True(dialog.Page == SettingsDialog.BuildPage && dialog.Shown.Contains("Open the Build window as a build starts"),
+            $"Down from Build, Run and Debug chose {dialog.Page}, showing {string.Join(", ", dialog.Shown)}");
         Ui.Press(dialog, "LEFT");
         Ui.Press(dialog, "LEFT");
-        Assert.True(dialog.Page == SettingsDialog.ToolsPage && dialog.Listed.SequenceEqual(top), $"Left twice from Terminal left {dialog.Page} chosen over {string.Join(", ", dialog.Listed)}");
+        Assert.True(dialog.Page == SettingsDialog.BuildRunDebugPage && dialog.Listed.SequenceEqual(top),
+            $"Left twice from Build left {dialog.Page} chosen over {string.Join(", ", dialog.Listed)}");
 
         // The pointer: a chevron opens a group, whose page lists the pages under it, each going to its own.
         Ui.Click(PageRow(dialog, SettingsDialog.LanguagesPage).GetVisualDescendants().OfType<RowExpander>().Single());
-        Ui.Click(PageRow(dialog, SettingsDialog.WebPage));
-        Button node = dialog.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, SettingsDialog.NodePage) && b.IsEffectivelyVisible);
-        Ui.Click(node);
-        Assert.True(dialog.Page == SettingsDialog.NodePage && dialog.Shown.Contains("Runtime") && dialog.Listed.Contains("    Node.js"),
-            $"Web's link to Node.js chose {dialog.Page}, showing {string.Join(", ", dialog.Shown)}, under {string.Join(", ", dialog.Listed)}");
+        Ui.Click(PageRow(dialog, SettingsDialog.LanguagesPage));
+        Button web = dialog.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, SettingsDialog.WebPage) && b.IsEffectivelyVisible);
+        Ui.Click(web);
+        Assert.True(dialog.Page == SettingsDialog.WebPage && dialog.Shown.Contains("Runtime") && dialog.Shown.Contains("Allow downloading JSON Schemas from remote sources")
+            && dialog.Listed.Contains("  Web"), $"Languages and Frameworks' link to Web chose {dialog.Page}, showing {string.Join(", ", dialog.Shown)}, under {string.Join(", ", dialog.Listed)}");
 
         dialog.Query = "font";
         Ui.Settle();
-        // The Keymap page has Increase, Decrease and Reset Font Size; Run's and Terminal's show under their groups, opened for them.
-        Assert.Equal([SettingsDialog.Appearance, SettingsDialog.KeymapPage, SettingsDialog.EditorPage, SettingsDialog.RunPage, SettingsDialog.TerminalPage], dialog.Pages);
-        Assert.Equal(["Appearance", "Keymap", "Editor", "Build and Run", "  Run", "Tools", "  Terminal"], dialog.Listed);
+        // The Keymap page has Increase, Decrease and Reset Font Size; Run's shows under its group, opened for it.
+        Assert.Equal([SettingsDialog.Appearance, SettingsDialog.KeymapPage, SettingsDialog.EditorPage, SettingsDialog.TerminalPage, SettingsDialog.RunPage], dialog.Pages);
+        Assert.Equal(["Appearance", "Keymap", "Editor", "Terminal", "Build, Run and Debug", "  Run"], dialog.Listed);
         Assert.Equal(SettingsDialog.Appearance, dialog.Page);
         Assert.Equal(["Font family", "Display scale"], dialog.Shown);
         dialog.Page = SettingsDialog.EditorPage;
         Ui.Settle();
         Assert.Contains("Font size", dialog.Shown);
         Assert.DoesNotContain("Show line numbers", dialog.Shown);
+        // A group a search keeps only for a page under it names what the search found there.
+        dialog.Page = SettingsDialog.BuildRunDebugPage;
+        Ui.Settle();
+        Assert.Equal([(SettingsDialog.RunPage, "Console font size")], dialog.Links);
         dialog.Query = "code style";
         Ui.Settle();
         // The group's name finds the pages under it, whatever their own words.
-        Assert.True(string.Join("|", dialog.Listed).Contains("Editor|  Code Style|    XAML|    GDScript|    SQL", StringComparison.Ordinal),
+        Assert.True(string.Join("|", dialog.Listed).Contains("Editor|  Code Style|    C#|    XAML|    GDScript|    SQL", StringComparison.Ordinal),
             $"A search for the pages' group found {string.Join(", ", dialog.Pages)} under {string.Join(", ", dialog.Listed)}");
         dialog.Page = SettingsDialog.XamlCodeStylePage;
         dialog.Query = string.Empty;
         Ui.Settle();
-        Assert.True(dialog.Page == SettingsDialog.XamlCodeStylePage && dialog.Listed.Contains("    XAML") && dialog.Listed.Contains("    Node.js") && !dialog.Listed.Contains("  Terminal"),
+        Assert.True(dialog.Page == SettingsDialog.XamlCodeStylePage && dialog.Listed.Contains("    XAML") && dialog.Listed.Contains("  Web") && !dialog.Listed.Contains("  Build"),
             $"The search cleared left {dialog.Page} chosen under {string.Join(", ", dialog.Listed)}, where the pages opened before it stay open and its page shows");
 
         int made = dialog.RowsMade;
@@ -1038,7 +1053,7 @@ public sealed class SettingsTests : IDisposable
             Ui.WaitFor(() => again.TerminalPanel.Active is { } shell && TerminalTests.Screen(shell).Contains("could not start", StringComparison.Ordinal),
                 () => $"the new terminal tab to say why no shell started: {string.Join(", ", again.TerminalPanel.Tabs.Select(t => t.Name))}");
             string said = TerminalTests.Screen(again.TerminalPanel.Active!);
-            Assert.True(said.Contains("Passenger could not start a shell: the Shell path in Settings | Tools | Terminal names no program to start", StringComparison.Ordinal),
+            Assert.True(said.Contains("Passenger could not start a shell: the Shell path in Settings | Terminal names no program to start", StringComparison.Ordinal),
                 $"The terminal tab met with a shell path naming no program said:\n{said}");
 
             SettingsDialog dialog = TerminalPage(again);

@@ -36,7 +36,7 @@ public static class Declared
         new(D.Appearance, "Dark or light", "colour color theme dark light system sync os appearance mode"));
 
     public static readonly LanguageSetting DisplayLanguage = new(s => s.DisplayLanguage, (s, v) => s with { DisplayLanguage = v },
-        new(D.Appearance, SettingsWords.Language, SettingsWords.LanguageWords.English, SettingsWords.LanguageNote));
+        new(D.GeneralPage, SettingsWords.Language, SettingsWords.LanguageWords.English, SettingsWords.LanguageNote));
 
     public static readonly FontSetting WindowFontFamily = new(nameof(AppSettings.WindowFontFamily), s => s.WindowFontFamily, (s, v) => s with { WindowFontFamily = v }, null,
         FontChoices.Window, new(D.Appearance, "Font family", "font family typeface ui interface window words system segoe san francisco inter",
@@ -49,17 +49,17 @@ public static class Declared
             + "system's own display scaling. 100% is Passenger's own size; 125% or 150% suits a dense screen."));
 
     public static readonly ToggleSetting MainMenuBar = new(s => s.MainMenuBar, (s, v) => s with { MainMenuBar = v },
-        new(D.Appearance, "Show main menu as a menu bar", "main menu bar hamburger file edit view toolbar ribbon menus",
+        new(D.LayoutPage, "Show main menu as a menu bar", "main menu bar hamburger file edit view toolbar ribbon menus",
             "File, Edit, View and the rest side by side on the toolbar rather than behind its button. Those the toolbar has no room for go behind the button after them."));
 
     public static readonly ThemedChoiceSetting<EditorTabsPlace> EditorTabs = new(s => s.EditorTabs, s => s.TabsPlace(), (s, v) => s with { EditorTabs = v },
         [(EditorTabsPlace.Top, "Top"), (EditorTabsPlace.Left, "Left"), (EditorTabsPlace.Right, "Right")],
-        new(D.Appearance, "Editor tabs", "editor tabs tab well strip placement position vertical side left right top layout arrangement",
+        new(D.LayoutPage, "Editor tabs", "editor tabs tab well strip placement position vertical side left right top layout arrangement",
             "Where each editor's tabs stand: a row across its top, or a column down its left or right side, which fits more of them."));
 
     public static readonly ThemedChoiceSetting<ToolWindowLook> ToolWindowLook = new(s => s.ToolWindowLook, s => s.ToolWindowsAs(), (s, v) => s with { ToolWindowLook = v },
         [(Passenger.App.ToolWindowLook.StripeIcons, "Stripe icons"), (Passenger.App.ToolWindowLook.TitledTabs, "Titled tabs")],
-        new(D.Appearance, "Tool windows", "tool windows docked tabs titles names stripe icons wells side bottom panels layout arrangement",
+        new(D.LayoutPage, "Tool windows", "tool windows docked tabs titles names stripe icons wells side bottom panels layout arrangement",
             "How tool windows are named and gone between: by their icons on the stripes down the window's sides, or by tabs with "
             + "their names, no stripe standing: a place's windows along its foot, and a hidden one along the window's edge, a click "
             + "on which opens it over the editors until you work elsewhere. A drag on an icon, a tab or a header moves the window."));
@@ -67,13 +67,13 @@ public static class Declared
     public static readonly ThemedChoiceSetting<ClosedToolWindows> ClosedToolWindows = new(s => s.ClosedToolWindows, s => s.ClosedWindows(),
         (s, v) => s with { ClosedToolWindows = v },
         [(Passenger.App.ClosedToolWindows.KeepIcons, "Keep their icons or tabs"), (Passenger.App.ClosedToolWindows.LeaveStripe, "Leave until opened again")],
-        new(D.Appearance, "Closed tool windows", "tool windows close closed hide remove declutter stripe icons wells view menu reopen layout arrangement",
+        new(D.LayoutPage, "Closed tool windows", "tool windows close closed hide remove declutter stripe icons wells view menu reopen layout arrangement",
             "Whether a tool window closed by its × keeps its icon on the stripe (or its tab, under titled tabs), or leaves until it is "
             + "opened again from View | Tool Windows, Find Action or its keys. Hide always keeps it."));
 
     public static readonly ChoiceSetting<WideLayout> WideLayout = new(s => s.WideLayout, (s, v) => s with { WideLayout = v },
         [(Passenger.App.WideLayout.OnceWide, "Once the window is wide"), (Passenger.App.WideLayout.Always, "Always"), (Passenger.App.WideLayout.Never, "Never")],
-        new(D.Appearance, "Wide layout", "wide widescreen ultrawide layout full height tall side tool windows sidebars bottom panel between aspect ratio arrangement",
+        new(D.LayoutPage, "Wide layout", "wide widescreen ultrawide layout full height tall side tool windows sidebars bottom panel between aspect ratio arrangement",
             string.Create(System.Globalization.CultureInfo.InvariantCulture,
                 $"The left and right tool windows run the window's whole height, the bottom ones between them, so the lists at the sides show more. Once the window "
                 + $"is wide, it takes this layout while it is more than {Docking.DockHost.WideFrom} times as wide as it is high, as on an ultrawide screen, and goes back "
@@ -81,13 +81,13 @@ public static class Declared
 
     public static readonly ThemedChoiceSetting<FindResults> FindResults = new(s => s.FindResults, s => s.FindResultsIn(), (s, v) => s with { FindResults = v },
         [(Passenger.App.FindResults.Popup, "In its popup"), (Passenger.App.FindResults.FindWindow, "Kept in the Find window")],
-        new(D.Appearance, "Find in Files results", "find in files search results matches occurrences find window docked keep kept popup tool window layout arrangement",
+        new(D.LayoutPage, "Find in Files results", "find in files search results matches occurrences find window docked keep kept popup tool window layout arrangement",
             "Where Find in Files' matches stay once one is gone to: in its popup, which closes, or kept in the Find window as well, "
             + "a tab of their own to go back to; kept there, the places Go to Declaration, Go to Implementation and the like find "
             + "to choose from are listed there too. Open in Find Window in the popup puts the matches there either way."));
 
     public static readonly ToggleSetting PlainFolderIcons = new(s => s.PlainFolderIcons, (s, v) => s with { PlainFolderIcons = v },
-        new(D.Appearance, "Show icons on plain folders", "folder folders icon icons plain generic chevron explorer tree commit quiet minimal",
+        new(D.ExplorerPage, "Show icons on plain folders", "folder folders icon icons plain generic chevron explorer tree commit quiet minimal",
             "A folder Passenger draws nothing apart for shows a folder's icon beside its chevron in the Explorer and the Commit window. "
             + "Off, it shows its chevron alone, its name in line with its files'; a folder drawn apart (.git, .github, node_modules, Properties, "
             + "wwwroot, a solution folder) keeps its own."));
@@ -154,7 +154,7 @@ public static class Declared
             + "window) or before any of its windows closes. The question's Don't ask again sets this back to Never."));
 
     public static readonly ToggleSetting SaveOnDeactivation = new(s => s.SaveOnDeactivation, (s, v) => s with { SaveOnDeactivation = v },
-        new(D.GeneralPage, "Save when leaving the IDE", "autosave files switching to a different application or the built-in terminal focus frame deactivation"));
+        new(D.SavingPage, "Save when leaving the IDE", "autosave files switching to a different application or the built-in terminal focus frame deactivation"));
 
     public static readonly NumberSetting IdleSeconds = new(s => s.IdleSeconds, (s, v) => s with { IdleSeconds = (int)v }, 1, 3600, 1);
 
@@ -164,7 +164,7 @@ public static class Declared
         "seconds");
 
     public static readonly ToggleSetting CheckForUpdates = new(s => s.CheckForUpdates, (s, v) => s with { CheckForUpdates = v },
-        new(D.UpdatesPage, "Check for updates", "updates check new version release newer download github automatic install restart",
+        new(D.GeneralPage, "Check for updates", "updates check new version release newer download github automatic install restart",
             "Passenger asks GitHub for its latest release when it starts and once a day. When a newer one is out, an installed "
             + "Passenger downloads it, checks it against the SHA-256 the release gives, and installs it when it restarts; a "
             + "copy built from source says in the status bar that it is out. Nothing is sent but the requests, which name "
@@ -223,27 +223,27 @@ public static class Declared
         new(D.EditorPage, "Rainbow braces", "brackets parentheses colour color nesting"));
 
     public static readonly ToggleSetting VimMode = new(s => s.VimMode, (s, v) => s with { VimMode = v },
-        new(D.EditorPage, "Vim mode", "vim vi modal normal insert keys emulation"));
+        new(D.TypingPage, "Vim mode", "vim vi modal normal insert keys emulation"));
 
     public static readonly VimKeysSetting VimKeysToKeymap = new(nameof(AppSettings.VimKeysToKeymap), s => s.VimKeysToKeymap, (s, v) => s with { VimKeysToKeymap = v },
-        new(D.EditorPage, "Vim mode's Ctrl keys", "vim keys ctrl control conflict keymap redo visual block jump back forward older newer",
+        new(D.TypingPage, "Vim mode's Ctrl keys", "vim keys ctrl control conflict keymap redo visual block jump back forward older newer",
             "Each key does what Vim mode does with it, or what the keymap does.") { When = new(s => s.VimMode, "Vim mode is off") });
 
     public static readonly ToggleSetting CloseTags = new(s => s.CloseTags, (s, v) => s with { CloseTags = v },
-        new(D.EditorPage, "Close tags on '>' and '</'", "auto close closing end tags markup xml xaml html razor blazor msbuild elements"));
+        new(D.TypingPage, "Close tags on '>' and '</'", "auto close closing end tags markup xml xaml html razor blazor msbuild elements"));
 
     public static readonly ToggleSetting TabStepsOverClosers = new(s => s.TabStepsOverClosers, (s, v) => s with { TabStepsOverClosers = v },
-        new(D.EditorPage, "Tab steps over a closing bracket or quote typed for you", "tab out jump outside closing bracket parenthesis brace quote typing smart keys",
+        new(D.TypingPage, "Tab steps over a closing bracket or quote typed for you", "tab out jump outside closing bracket parenthesis brace quote typing smart keys",
             "Typing an opening bracket or quote writes its closer after the caret; with the caret still right before it, Tab steps over it. "
             + "Before a closer you typed yourself, or once the caret has left the pair, Tab indents as ever."));
 
     public static readonly ToggleSetting CompletionParentheses = new(s => s.CompletionParentheses, (s, v) => s with { CompletionParentheses = v },
-        new(D.EditorPage, "Add parentheses to a method chosen from completion", "completion parentheses brackets call method invocation arguments autocomplete",
+        new(D.TypingPage, "Add parentheses to a method chosen from completion", "completion parentheses brackets call method invocation arguments autocomplete",
             $"A C# method chosen by {KeyWords.Of(Avalonia.Input.Key.Enter)}, {KeyWords.Of(Avalonia.Input.Key.Tab)} or a click is written as a call, "
             + "the caret between its parentheses where it takes arguments. Where the code asks for the method itself, as an event's handler or a delegate, it stays a name."));
 
     public static readonly ToggleSetting FormatOnType = new(s => s.FormatOnType, (s, v) => s with { FormatOnType = v },
-        new(D.EditorPage, "Format a statement on ';' and a block on '}'", "format on type as you type typing semicolon brace statement block reformat layout auto c#",
+        new(D.CSharpCodeStylePage, "Format a statement on ';' and a block on '}'", "format on type as you type typing semicolon brace statement block reformat layout auto c#",
             $"In C#, the ';' that ends a statement lays the statement out, the '}}' that closes a block lays out the block, and {KeyWords.Of(Avalonia.Input.Key.Enter)} "
             + "between a '{' and its '}' puts the '{' where the block's layout has it, as Reformat Code does; one Undo takes the key "
             + "and its layout back together. A ';' in a for loop's header, a string or a comment stays as typed."));
@@ -255,35 +255,35 @@ public static class Declared
             + "any of them chosen in the others."));
 
     public static readonly ToggleSetting SolutionWideAnalysis = new(s => s.SolutionWideAnalysis, (s, v) => s with { SolutionWideAnalysis = v },
-        new(D.EditorPage, "Solution-wide analysis", "errors problems whole solution analysis inspections without build cost memory processor slow large",
+        new(D.AnalysisPage, "Solution-wide analysis", "errors problems whole solution analysis inspections without build cost memory processor slow large",
             "Every C# file's errors and warnings, open or not, are listed in Problems' Solution tab as the code changes, without a build. "
             + "The language server analyses the whole solution for it, which in a large solution takes more processor time and memory; "
             + "off, it analyses the open files alone. The status bar's analysis icon turns it on and off too."));
 
     public static readonly ToggleSetting ParameterHints = new(s => s.ParameterHints, (s, v) => s with { ParameterHints = v },
-        new(D.EditorPage, "Show parameter name hints", "inlay hints parameter names arguments"));
+        new(D.AnalysisPage, "Show parameter name hints", "inlay hints parameter names arguments"));
 
     public static readonly ToggleSetting TypeHints = new(s => s.TypeHints, (s, v) => s with { TypeHints = v },
-        new(D.EditorPage, "Show type name hints", "inlay hints type names var lambda parameters new inferred"));
+        new(D.AnalysisPage, "Show type name hints", "inlay hints type names var lambda parameters new inferred"));
 
     public static readonly ToggleSetting Signposts = new(s => s.Signposts, (s, v) => s with { Signposts = v },
-        new(D.EditorPage, "Show signposts above types and members", "signposts code vision lens usages references implementations overrides inheritors authors git blame hints above declarations",
+        new(D.AnalysisPage, "Show signposts above types and members", "signposts code vision lens usages references implementations overrides inheritors authors git blame hints above declarations",
             "A row above each C# type and member says how many places use it, what implements or overrides it, and who changed it most; "
             + "a press shows them. The language server searches the solution for those on screen as typing and scrolling pause, "
             + "which in a large solution takes processor time, and Git blames each open file once, again as it is saved."));
 
     public static readonly ToggleSetting SignpostUsages = new(s => s.SignpostUsages, (s, v) => s with { SignpostUsages = v },
-        new(D.EditorPage, "Signposts: usages", "signposts usages references count") { When = new(s => s.Signposts, "Signposts are off") });
+        new(D.AnalysisPage, "Signposts: usages", "signposts usages references count") { When = new(s => s.Signposts, "Signposts are off") });
 
     public static readonly ToggleSetting SignpostInheriting = new(s => s.SignpostInheriting, (s, v) => s with { SignpostInheriting = v },
-        new(D.EditorPage, "Signposts: implementations and overrides", "signposts implementations overrides inheritors interface abstract virtual")
+        new(D.AnalysisPage, "Signposts: implementations and overrides", "signposts implementations overrides inheritors interface abstract virtual")
         { When = new(s => s.Signposts, "Signposts are off") });
 
     public static readonly ToggleSetting SignpostAuthors = new(s => s.SignpostAuthors, (s, v) => s with { SignpostAuthors = v },
-        new(D.EditorPage, "Signposts: authors", "signposts authors git blame last changed who") { When = new(s => s.Signposts, "Signposts are off") });
+        new(D.AnalysisPage, "Signposts: authors", "signposts authors git blame last changed who") { When = new(s => s.Signposts, "Signposts are off") });
 
     public static readonly ToggleSetting SignpostComplexity = new(s => s.SignpostComplexity, (s, v) => s with { SignpostComplexity = v },
-        new(D.EditorPage, "Signposts: cognitive complexity", "signposts cognitive complexity score control flow nesting",
+        new(D.AnalysisPage, "Signposts: cognitive complexity", "signposts cognitive complexity score control flow nesting",
             "How hard each C# function's control flow is to follow, its branches and loops counting more the deeper they nest, "
             + "beside a dot of its colour; a press shows what each of its lines adds, at the line's end.")
         { When = new(s => s.Signposts, "Signposts are off") });
@@ -292,19 +292,19 @@ public static class Declared
 
     public static readonly NumberSetting SignpostComplexityMinimum = new(s => s.SignpostComplexityMinimum,
         (s, v) => s with { SignpostComplexityMinimum = (int)v }, 0, int.MaxValue, 1,
-        new(D.EditorPage, "Cognitive complexity: shown from", "signposts cognitive complexity minimum least score shown hidden",
+        new(D.AnalysisPage, "Cognitive complexity: shown from", "signposts cognitive complexity minimum least score shown hidden",
             "A function of a lower score shows none; 0 shows every function's.")
         { When = ComplexityShown });
 
     public static readonly NumberSetting SignpostComplexityYellowFrom = new(s => s.SignpostComplexityYellowFrom,
         (s, v) => s with { SignpostComplexityYellowFrom = (int)v }, 0, int.MaxValue, 1,
-        new(D.EditorPage, "Cognitive complexity: yellow from", "signposts cognitive complexity green yellow threshold score",
+        new(D.AnalysisPage, "Cognitive complexity: yellow from", "signposts cognitive complexity green yellow threshold score",
             "A score from it up to red's is yellow, a lower one green.")
         { When = ComplexityShown }, refused: YellowAboveRed);
 
     public static readonly NumberSetting SignpostComplexityRedFrom = new(s => s.SignpostComplexityRedFrom,
         (s, v) => s with { SignpostComplexityRedFrom = (int)v }, 0, int.MaxValue, 1,
-        new(D.EditorPage, "Cognitive complexity: red from", "signposts cognitive complexity yellow red threshold score",
+        new(D.AnalysisPage, "Cognitive complexity: red from", "signposts cognitive complexity yellow red threshold score",
             "A score from it up is red.")
         { When = ComplexityShown }, refused: YellowAboveRed);
 
@@ -324,20 +324,20 @@ public static class Declared
             "zoom font size mouse wheel scroll ctrl control command cmd"));
 
     public static readonly ToggleSetting ReformatOnSave = new(s => s.ReformatOnSave, (s, v) => s with { ReformatOnSave = v },
-        new(D.EditorPage, "Reformat on save", "save actions on save format on save reformat code formatting layout c# xaml",
+        new(D.SavingPage, "Reformat on save", "save actions on save format on save reformat code formatting layout c# xaml",
             "File, Save and Save All reformat each changed file first, as Reformat Code does, as one undoable edit; autosave never "
             + "does. A web file whose folder names Oxfmt or Biome is laid out by it, one Prettier's Run on save covers otherwise by "
             + $"Prettier alone, and GDScript's own Reformat on save ({SettingsDialog.PlaceOfPage(SettingsDialog.GDScriptCodeStylePage)}) "
             + "turns this on for scripts alone."));
 
     public static readonly ToggleSetting OptimizeImportsOnSave = new(s => s.OptimizeImportsOnSave, (s, v) => s with { OptimizeImportsOnSave = v },
-        new(D.EditorPage, "Optimize imports on save", "save actions on save optimize imports usings unused remove sort c#",
+        new(D.SavingPage, "Optimize imports on save", "save actions on save optimize imports usings unused remove sort c#",
             "File, Save and Save All first remove a changed C# file's unused usings and sort the rest, as Optimize Imports does, before "
             + "Reformat on save; autosave never does."));
 
     public static readonly ChoiceSetting<CSharpFormatter> CSharpFormatter = new(s => s.CSharpFormatter, (s, v) => s with { CSharpFormatter = v },
         [(Settings.CSharpFormatter.Passenger, "Passenger's own"), (Settings.CSharpFormatter.DotnetFormat, "dotnet format")],
-        new(D.EditorPage, "C# formatter", "c# formatter dotnet format reformat code cleanup on save layout whitespace style analyzers sdk editorconfig",
+        new(D.CSharpCodeStylePage, "C# formatter", "c# formatter dotnet format reformat code cleanup on save layout whitespace style analyzers sdk editorconfig",
             "What lays C# out for Reformat Code, Code Cleanup and Reformat on save, in the editor and over what the Explorer has chosen. "
             + "Passenger's own: the C# language server, at once, a selection alone where one is chosen. dotnet format: the folder's .NET SDK "
             + "runs dotnet format on the file's project or the solution, reading each .editorconfig as the build does, and the editor takes "
@@ -346,7 +346,7 @@ public static class Declared
             + "trusted folder."));
 
     public static readonly ToggleSetting EnsureFinalLineBreak = new(s => s.EnsureFinalLineBreak, (s, v) => s with { EnsureFinalLineBreak = v },
-        new(D.EditorPage, "Ensure a final line break on save", "save actions on save final line break newline end of file eol",
+        new(D.SavingPage, "Ensure a final line break on save", "save actions on save final line break newline end of file eol",
             "Every save, autosave too, ends a file with a line break; an insert_final_newline of false saves a file with none.")
         {
             Over = new(["insert_final_newline"]),
@@ -540,11 +540,11 @@ public static class Declared
         "Test Continuously?",
         "Passenger can build this repository's tests in a folder of its own as you save, and run again only the tests that run "
         + "what changed, each line showing whether its tests pass. It takes a little more memory than the tests take, and tests "
-        + $"that write to a database, files or containers do so at each save. {SettingsDialog.PlaceOfPage(SettingsDialog.BuildPage)} changes it later.",
+        + $"that write to a database, files or containers do so at each save. {SettingsDialog.PlaceOfPage(SettingsDialog.TestsPage)} changes it later.",
         "Turn On", "Not Now")
     {
         Default = false,
-        Row = new(D.BuildPage, "Test continuously as files are saved, in this repository", "continuous testing tests rerun run again save background build affected covered coverage unit",
+        Row = new(D.TestsPage, "Test continuously as files are saved, in this repository", "continuous testing tests rerun run again save background build affected covered coverage unit",
             "Passenger builds the test projects in a folder of its own and runs again, one at a time, the tests that ran the lines a save "
             + "changed, each line then showing whether its tests pass. It counts each line a test runs, which adds a little to the memory "
             + "the tests take: Passenger's own 606 unit tests peaked at 1.9 GB in their test host, about 0.1 GB above the same tests run one "
@@ -573,7 +573,7 @@ public static class Declared
     public static readonly FirstTimeQuestion SaveFormatting = new("saveFormatting", QuestionScope.Repository,
         "Tidy C# Files as You Save?",
         "Passenger can tidy each C# file as you save it, before writing it, each change one step of Undo; autosave never does. "
-        + $"What you choose applies in every folder, and {SettingsDialog.PlaceOfPage(SettingsDialog.EditorPage)} changes it later.",
+        + $"What you choose applies in every folder, and {SettingsDialog.PlaceOfPage(SettingsDialog.SavingPage)} changes it later.",
         "Turn On", "Not Now")
     {
         Settings = [ReformatOnSave, OptimizeImportsOnSave, EnsureFinalLineBreak],
@@ -611,19 +611,19 @@ public static class Declared
 
     public static readonly ChoiceSetting<DebuggerStop> WhenDebuggerStops = new(s => s.WhenDebuggerStops, (s, v) => s with { WhenDebuggerStops = v },
         [(DebuggerStop.ComeForward, "Bring Passenger to the front"), (DebuggerStop.AskForAttention, "Ask for attention"), (DebuggerStop.Nothing, "Nothing")],
-        new(D.RunPage, "When the debugger stops", "debugger debug stop stopped breakpoint hit exception step paused front foreground activate focus raise bring window attention bounce dock taskbar flash",
+        new(D.DebuggerPage, "When the debugger stops", "debugger debug stop stopped breakpoint hit exception step paused front foreground activate focus raise bring window attention bounce dock taskbar flash",
             "What a breakpoint, an exception or a step's end does while you are in another program, such as the app you debug: Passenger's window "
             + $"comes to the front, or, where the system keeps that program in front, asks for your attention ({(OperatingSystem.IsMacOS() ? "its Dock icon bounces" : "its taskbar button flashes")}), "
             + "as Ask for attention always does. An agent's debugging never brings the window forward."));
 
     public static readonly ToggleSetting ShowElapsedAtStops = new(s => s.ShowElapsedAtStops, (s, v) => s with { ShowElapsedAtStops = v },
-        new(D.RunPage, "Show how long the program ran at each stop",
+        new(D.DebuggerPage, "Show how long the program ran at each stop",
             "perftips perf tips elapsed time timing duration milliseconds ms since last stop step breakpoint debugger performance",
             "A chip after the line the program stopped at says how long it ran since its last continue, step or start, as Passenger "
             + "timed it, the debugger's own few milliseconds in it. On at first."));
 
     public static readonly ToggleSetting GreyCodeAhead = new(s => s.GreyCodeAhead, (s, v) => s with { GreyCodeAhead = v },
-        new(D.RunPage, "Grey the code a stop won't run",
+        new(D.DebuggerPage, "Grey the code a stop won't run",
             "debugger stop branch branches ahead predict prediction dead unreachable grey gray fade faded if else switch condition values ahead inline",
             "At a stop, the code ahead in its method that the values it stands with say won't run is faded (an if's other branch, a "
             + "switch's other sections, a loop that won't turn, what an early return skips), and the values its locals will take are "
@@ -663,14 +663,14 @@ public static class Declared
             "File, Save and Save All format each file the glob covers with Prettier first."));
 
     public static readonly ToggleSetting DownloadJsonSchemas = new(s => s.DownloadJsonSchemas, (s, v) => s with { DownloadJsonSchemas = v },
-        new(D.SchemasPage, "Allow downloading JSON Schemas from remote sources",
+        new(D.WebPage, "Allow downloading JSON Schemas from remote sources",
             "json schema schemas remote download web http https schemastore $schema validation completion",
             "A JSON file that names a schema on the web ($schema) has it downloaded to check and complete it. package.json, "
             + "tsconfig.json, jsconfig.json, appsettings.json, launchSettings.json and global.json use the schemas Passenger "
             + "carries from SchemaStore, which are never downloaded."));
 
     public static readonly ToggleSetting DownloadStylesheets = new(s => s.DownloadStylesheets, (s, v) => s with { DownloadStylesheets = v },
-        new(D.StylesheetsPage, "Allow downloading the stylesheets a page links from the web",
+        new(D.WebPage, "Allow downloading the stylesheets a page links from the web",
             "css stylesheet stylesheets class classes remote download web http https cdn bootstrap link completion html razor blazor",
             "A page's <link rel=\"stylesheet\"> to an address on the web (a CDN's Bootstrap) has the stylesheet downloaded once, kept in "
             + "Passenger's cache, to complete, describe and check the classes it defines; one whose link gives an integrity hash is "
@@ -678,7 +678,7 @@ public static class Declared
 
     public static readonly ChoiceSetting<RuntimeChoice> WebRuntime = new(s => s.WebRuntime, (s, v) => s with { WebRuntime = v },
         [(RuntimeChoice.FromLockfile, "As the folder's lockfile says"), (RuntimeChoice.Node, "Node.js"), (RuntimeChoice.Bun, "Bun"), (RuntimeChoice.Deno, "Deno")],
-        new(D.NodePage, "Runtime", "runtime node nodejs bun deno lockfile bun.lock deno.lock javascript typescript language server eslint prettier",
+        new(D.WebPage, "Runtime", "runtime node nodejs bun deno lockfile bun.lock deno.lock javascript typescript language server eslint prettier",
             "What the JavaScript, TypeScript, HTML, CSS, JSON, Dockerfile and YAML language servers, ESLint and Prettier run on. "
             + "As the folder's lockfile says, a folder with a bun.lock (or a packageManager field naming Bun) runs them on Bun, one "
             + "with a deno.lock on Deno, any other on Node.js. Bun and Deno are the first on the PATH."));
@@ -763,7 +763,7 @@ public static class Declared
         new(D.TerminalPage, "Cursor style", "cursor caret type style shape block line bar underline", "Programs can override this setting until the terminal is reset."));
 
     public static readonly ToggleSetting McpServer = new(s => s.McpServer, (s, v) => s with { McpServer = v },
-        new(D.McpPage, "Enable MCP Server", D.McpWords,
+        new(D.AgentsPage, "Enable MCP Server", D.McpWords,
             "Agents started with passenger --mcp-attach can use this window without asking to: read and change files, build, run and "
             + "debug, use Git, NuGet and the terminal. Off, the window asks before letting each agent in. Either way, the window asks "
             + "before each call of a tool that changes anything beyond saving, stopping and stepping, unless you allowed that tool, or every "

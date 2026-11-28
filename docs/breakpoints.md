@@ -109,5 +109,5 @@ code), each branch taken as those values decide, and the editor fades the code i
 switch's other sections, a loop that won't turn, what an early return or a throw skips. The values its locals will take
 on the lines ahead are shown after those lines, as inline values are. A condition only a call could answer (a method, a
 property with a body) leaves the rest of the method as it is, never guessed. It is read again at every stop and step and
-cleared once the program runs on; Settings › Build and Run › Run's Grey the code a stop won't run turns it off. An agent's `debug_state`
+cleared once the program runs on; Settings › Build, Run and Debug › Debugger's Grey the code a stop won't run turns it off. An agent's `debug_state`
 names the lines in `wontRun` and the values in `valuesAhead`.

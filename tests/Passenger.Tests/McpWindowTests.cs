@@ -1677,7 +1677,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             Ui.Settle();
             dialog.Query = "agents";
             Ui.Settle();
-            Assert.Equal([SettingsDialog.McpPage], dialog.Pages);
+            Assert.Equal([SettingsDialog.AgentsPage], dialog.Pages);
             Assert.Equal("Enable MCP Server", dialog.Shown[0]);
             dialog.Change(s => s with { McpServer = true });
             dialog.Ok();

@@ -16,7 +16,7 @@ namespace Passenger.App.Web;
 public sealed partial record NodeRuntime(string? Path, Version? Version, string? Problem)
 {
     /// <summary>Where Settings names the interpreter, for what the status bar and banner say.</summary>
-    public static readonly string SettingsPlace = SettingsDialog.PlaceOfPage(SettingsDialog.NodePage);
+    public static readonly string SettingsPlace = SettingsDialog.PlaceOfPage(SettingsDialog.WebPage);
 
     /// <summary>The empty Bun configuration carried beside the servers, which Bun takes in place of the folder's.</summary>
     public static string BunConfig => System.IO.Path.Combine(WebLanguages.Carried, "passenger", "bunfig.toml");

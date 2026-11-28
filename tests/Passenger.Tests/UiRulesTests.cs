@@ -1364,9 +1364,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                     settings.Page = SettingsDialog.KeymapPage;
                     Ui.Settle();
                     Radii(settings, "Settings' Keymap page");
-                    settings.Page = SettingsDialog.McpPage;
+                    settings.Page = SettingsDialog.AgentsPage;
                     Ui.Settle();
-                    Radii(settings, "Settings' MCP Server page");
+                    Radii(settings, "Settings' Agents page");
                 }
                 finally
                 {

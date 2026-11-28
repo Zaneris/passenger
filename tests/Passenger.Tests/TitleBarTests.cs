@@ -164,7 +164,7 @@ public sealed class TitleBarTests : IDisposable
             window.Close();
             return;
         }
-        Assert.Equal([SettingsDialog.Appearance], dialog.Pages);
+        Assert.Equal([SettingsDialog.LayoutPage], dialog.Pages);
         CheckBox merge = Editor<CheckBox>(dialog, "Merge main menu with window title");
         Assert.True(merge.IsChecked == true, "Merge main menu with window title is off before anyone turned it off");
         if (TitleBars.NotOnThisDesktop is { } why)

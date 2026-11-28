@@ -3475,7 +3475,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
         dialog.Query = "type name hints";
         Ui.Settle();
-        Assert.Equal(SettingsDialog.EditorPage, dialog.Page);
+        Assert.Equal(SettingsDialog.AnalysisPage, dialog.Page);
         Assert.Contains("Show type name hints", dialog.Shown);
         dialog.Change(s => s with { TypeHints = false });
         dialog.Ok();

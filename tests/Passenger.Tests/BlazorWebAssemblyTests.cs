@@ -69,7 +69,7 @@ public sealed class BlazorWebAssemblyTests : IDisposable
             {
                 Ui.WaitFor(() => window.Debugger.Session?.State is DebugState.Running or DebugState.Ended, "the development server to run under the debugger", TimeSpan.FromMinutes(1));
                 string notDebugged = "Wasm's components run in the browser on .NET's WebAssembly runtime, and their breakpoints are not hit: "
-                    + $"only the development server that serves them runs under the debugger. Settings | Build and Run | Run | Browser names {nowhere} as the browser to debug "
+                    + $"only the development server that serves them runs under the debugger. Settings | Build, Run and Debug | Run | Browser names {nowhere} as the browser to debug "
                     + "them in, and there is no program there: name a Chromium browser that is, or install Google Chrome (google.com/chrome) or Microsoft Edge (microsoft.com/edge)";
                 Answers(window, () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString());
                 Assert.Contains(notDebugged, window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);

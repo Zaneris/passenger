@@ -235,7 +235,7 @@
                     <!-- The file's widgets: a click on the caret's place goes to a line, on the line separator, encoding or
                          indent offers the others. Their frames reach into the spacing, so their words stand where the
                          other items' do. -->
-                    <TextBlock Name="VimModeText" Classes="status" IsVisible="False" ToolTip.Tip="Vim mode's mode, and a command typed so far (Settings › Editor › Vim mode)" />
+                    <TextBlock Name="VimModeText" Classes="status" IsVisible="False" />
                     <Button Name="CaretButton" Classes="statusItem reaching" Focusable="False" IsVisible="False" Click="OnCaretClicked"
                             app:ShrinkingRow.KeepsWidth="False" app:ShrinkingRow.Least="64">
                         <TextBlock Name="CaretText" Classes="status" TextTrimming="CharacterEllipsis" />

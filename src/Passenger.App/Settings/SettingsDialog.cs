@@ -18,54 +18,72 @@ namespace Passenger.App.Settings;
 public sealed partial class SettingsDialog : IdeWindow
 {
     public const string Appearance = "Appearance";
-    public const string GeneralPage = "General";
+    public const string LayoutPage = "Layout";
     public const string AccessibilityPage = "Accessibility";
-    public const string UpdatesPage = "Updates";
-    public const string ExplorerPage = "Explorer";
+    public const string GeneralPage = "General";
+    public const string DiscordPage = "Discord";
+    public const string DiagnosticsPage = "Diagnostics";
+    public const string KeymapPage = "Keymap";
     public const string EditorPage = "Editor";
+    public const string TypingPage = "Typing";
+    public const string AnalysisPage = "Analysis and Hints";
     public const string CodeFoldingPage = "Code Folding";
-    public const string LiveTemplatesPage = "Live Templates";
-    public const string PostfixPage = "Postfix Completion";
+    public const string SavingPage = "Saving";
     public const string CodeStylePage = "Code Style";
+    public const string CSharpCodeStylePage = "C#";
     public const string XamlCodeStylePage = "XAML";
     public const string GDScriptCodeStylePage = "GDScript";
     public const string SqlCodeStylePage = "SQL";
+    public const string LiveTemplatesPage = "Live Templates";
+    public const string PostfixPage = "Postfix Completion";
+    public const string ExplorerPage = "Explorer";
     public const string TerminalPage = "Terminal";
     public const string VersionControlPage = "Version Control";
+    public const string BuildRunDebugPage = "Build, Run and Debug";
     public const string BuildPage = "Build";
     public const string RunPage = "Run";
+    public const string DebuggerPage = "Debugger";
     public const string HotReloadPage = "Hot Reload";
-    public const string NodePage = "Node.js";
-    public const string EslintPage = "ESLint";
-    public const string PrettierPage = "Prettier";
-    public const string SchemasPage = "Remote JSON Schemas";
-    public const string StylesheetsPage = "Remote Stylesheets";
+    public const string TestsPage = "Unit Tests";
+    public const string LanguagesPage = "Languages and Frameworks";
     public const string DockerPage = "Docker";
     public const string GodotPage = "Godot";
-    public const string KeymapPage = "Keymap";
-    public const string McpPage = "MCP Server";
-    public const string DiscordPage = "Discord";
-    public const string DiagnosticsPage = "Diagnostics";
-    public const string BuildAndRunPage = "Build and Run";
-    public const string LanguagesPage = "Languages and Frameworks";
     public const string WebPage = "Web";
-    public const string ToolsPage = "Tools";
+    public const string EslintPage = "ESLint";
+    public const string PrettierPage = "Prettier";
+    public const string AgentsPage = "Agents";
 
-    /// <summary>Every page under the one it sits under (none at the top), in the order the tree lists them: the one
-    /// declaration of where a page stands, which the tree, a search and every path to a page follow.</summary>
-    private static readonly (string Page, string? Parent)[] Tree =
+    /// <summary>Every page under the one it sits under (none at the top), in the order the tree lists them, and, for a page
+    /// listed by one with no rows of its own, what it is for: the one declaration of where a page stands, which the tree, a
+    /// search and every path to a page follow.</summary>
+    private static readonly (string Page, string? Parent, string? About)[] Tree =
     [
-        (Appearance, null), (AccessibilityPage, Appearance),
-        (GeneralPage, null), (TrustPage, GeneralPage), (UpdatesPage, GeneralPage),
-        (KeymapPage, null),
-        (EditorPage, null), (CodeFoldingPage, EditorPage), (LiveTemplatesPage, EditorPage), (PostfixPage, EditorPage),
-        (CodeStylePage, EditorPage), (XamlCodeStylePage, CodeStylePage), (GDScriptCodeStylePage, CodeStylePage), (SqlCodeStylePage, CodeStylePage),
-        (ExplorerPage, null),
-        (VersionControlPage, null),
-        (BuildAndRunPage, null), (BuildPage, BuildAndRunPage), (RunPage, BuildAndRunPage), (HotReloadPage, BuildAndRunPage), (DockerPage, BuildAndRunPage),
-        (LanguagesPage, null), (GodotPage, LanguagesPage), (WebPage, LanguagesPage),
-        (NodePage, WebPage), (EslintPage, WebPage), (PrettierPage, WebPage), (SchemasPage, WebPage), (StylesheetsPage, WebPage),
-        (ToolsPage, null), (TerminalPage, ToolsPage), (McpPage, ToolsPage), (DiscordPage, ToolsPage), (DiagnosticsPage, ToolsPage),
+        (Appearance, null, null), (LayoutPage, Appearance, null),
+        (AccessibilityPage, null, null),
+        (GeneralPage, null, null), (TrustPage, GeneralPage, null), (DiscordPage, GeneralPage, null), (DiagnosticsPage, GeneralPage, null),
+        (KeymapPage, null, null),
+        (EditorPage, null, null), (TypingPage, EditorPage, null), (AnalysisPage, EditorPage, null), (CodeFoldingPage, EditorPage, null),
+        (SavingPage, EditorPage, null), (CodeStylePage, EditorPage, null),
+        (CSharpCodeStylePage, CodeStylePage, "Which formatter lays C# out, and laying a statement or block out as you type it"),
+        (XamlCodeStylePage, CodeStylePage, "How Reformat Code lays out .axaml and .xaml files"),
+        (GDScriptCodeStylePage, CodeStylePage, "How Reformat Code lays out scripts, by Godot's style guide"),
+        (SqlCodeStylePage, CodeStylePage, "How Reformat Code writes SQL's keywords"),
+        (LiveTemplatesPage, EditorPage, null), (PostfixPage, EditorPage, null),
+        (ExplorerPage, null, null),
+        (TerminalPage, null, null),
+        (VersionControlPage, null, null),
+        (BuildRunDebugPage, null, null),
+        (BuildPage, BuildRunDebugPage, "When the Build window opens, and when a build's end brings it forward"),
+        (RunPage, BuildRunDebugPage, "Starting a configuration again, the browser a web app opens in, and the consoles"),
+        (DebuggerPage, BuildRunDebugPage, "What a stop does: coming to the front, its timing, the code it won't run"),
+        (HotReloadPage, BuildRunDebugPage, "Changes applied to a running program as you save, debugged or not"),
+        (TestsPage, BuildRunDebugPage, "Running again, as you save, the tests that run what you changed"),
+        (LanguagesPage, null, null),
+        (DockerPage, LanguagesPage, "Dockerfiles' image tags and checks, and on Windows the container engine"),
+        (GodotPage, LanguagesPage, "The Godot games run on, a running game's values, its tests, and Godot's editor"),
+        (WebPage, LanguagesPage, "What the web's language servers, ESLint and Prettier run on, and what may be downloaded"),
+        (EslintPage, WebPage, null), (PrettierPage, WebPage, null),
+        (AgentsPage, null, null),
     ];
 
     /// <summary>Every page, in the tree's order.</summary>
@@ -150,6 +168,9 @@ public sealed partial class SettingsDialog : IdeWindow
     /// there is no search.</summary>
     private string[] kept = [];
 
+    /// <summary>Whether a search (or Find Actions by Shortcut) narrows the pages.</summary>
+    private bool searching;
+
     /// <summary>The pages open as the person left them, kept while a search opens those above what it keeps.</summary>
     private HashSet<string>? openBeforeSearch;
     private readonly TextBlock heading;
@@ -170,7 +191,7 @@ public sealed partial class SettingsDialog : IdeWindow
     private readonly Button applyButton = new() { Content = "Apply" };
 
     /// <param name="preview">An optional temporary visual overlay, released when this dialog closes.</param>
-    /// <param name="agents">The agents' setup the MCP Server page shows: this copy's, and the window's folder.</param>
+    /// <param name="agents">The agents' setup the Agents page shows: this copy's, and the window's folder.</param>
     /// <param name="editorConfigs">What the window's folder's .editorconfig files set over the rows, followed while it is open.</param>
     /// <param name="trust">The folders the person answered for, which the Trusted Folders page shows, where the window keeps them.</param>
     /// <param name="questions">The window's first-time questions, whose answers their rows show and change.</param>
@@ -364,7 +385,7 @@ public sealed partial class SettingsDialog : IdeWindow
                 && byShortcut(option);
         }
         string? was = Page;
-        bool searching = words.Length > 0 || shortcutFilter is not null;
+        searching = words.Length > 0 || shortcutFilter is not null;
         kept = !searching ? [.. EveryPage] : [.. EveryPage.Where(p => options.Any(o => o.Page == p && o.Kept)
             || (p == KeymapPage && (shortcutFilter is not null || FindsKeymapChoice(words))))];
         // A search opens the pages above what it keeps, the person's own opening coming back once it is cleared.
@@ -411,15 +432,26 @@ public sealed partial class SettingsDialog : IdeWindow
         }
     }
 
-    /// <summary>A page under the one shown, as that one lists it: its name, going to it, and the first of what it holds.</summary>
+    /// <summary>A page under the one shown, as that one lists it: its name, going to it, and what it is for, or, while a
+    /// search narrows the pages, the first of what the search kept of it.</summary>
     private Control PageLink(string page)
     {
         Button go = new() { Content = page, Classes = { StyleClasses.Link }, HorizontalAlignment = HorizontalAlignment.Left };
         go.Click += (_, _) => Page = page;
-        string[] holds = [.. options.Where(o => o.Kept && PathOf(o.Page).Contains(page)).Select(o => o.Label).Distinct().Take(4)];
+        string? about = searching ? null : AboutOf(page);
+        string[] holds = about is not null ? [about] : [.. options.Where(o => o.Kept && PathOf(o.Page).Contains(page)).Select(o => o.Label).Distinct().Take(4)];
         TextBlock said = new() { Text = string.Join(", ", holds), TextWrapping = TextWrapping.Wrap, Classes = { StyleClasses.Muted } };
         return new StackPanel { Spacing = Gaps.Tight, Children = { go, said } };
     }
+
+    /// <summary>What a page is for, as the page above it lists it where that one has no rows of its own; null for a page
+    /// listed only by a search.</summary>
+    public static string? AboutOf(string page) => Tree.Single(t => t.Page == page).About;
+
+    /// <summary>The pages the page chosen lists, each with the words under its link.</summary>
+    public IReadOnlyList<(string Page, string Said)> Links =>
+        [.. body.Children.OfType<StackPanel>().Select(p => p.Children is [Button go, TextBlock said] && go.Classes.Contains(StyleClasses.Link) ? (go.Content as string, said.Text) : (null, null))
+            .Where(l => l.Item1 is not null).Select(l => (l.Item1!, l.Item2 ?? string.Empty))];
 
     /// <summary>A page's row in the tree: its chevron where pages sit under it, and its name, indented by its level.</summary>
     private Control PageRowView()
@@ -463,11 +495,14 @@ public sealed partial class SettingsDialog : IdeWindow
     private void AddOptions(Mcp.AgentSetup agents)
     {
         AddThemes();
+        Add(Declared.WindowFontFamily);
+        Add(Declared.DisplayScale);
+
         if (TitleBars.Offered)
         {
             CheckBox merge = Check(Working.MergeMainMenuWithWindowTitle, v => Change(s => s with { MergeMainMenuWithWindowTitle = v }));
             merge.IsEnabled = TitleBars.NotOnThisDesktop is null;
-            Add(Appearance, "Merge main menu with window title", merge,
+            Add(LayoutPage, "Merge main menu with window title", merge,
                 "title bar window header toolbar decorations frame caption buttons minimize maximize close system linux",
                 TitleBars.NotOnThisDesktop ?? TitleBars.OwnFrame);
         }
@@ -475,15 +510,11 @@ public sealed partial class SettingsDialog : IdeWindow
         {
             Add(Declared.MainMenuBar);
         }
-        Add(Declared.DisplayLanguage);
-        Add(Declared.WindowFontFamily);
-        Add(Declared.DisplayScale);
         Add(Declared.EditorTabs);
         Add(Declared.ToolWindowLook);
         Add(Declared.ClosedToolWindows);
         Add(Declared.WideLayout);
         Add(Declared.FindResults);
-        Add(Declared.PlainFolderIcons);
 
         Add(Declared.FollowSystemContrast);
         Add(Declared.StatePalette);
@@ -499,6 +530,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.SoundOnTerminalFailure);
         Add(Declared.SoundOnSaveRefused);
 
+        Add(Declared.DisplayLanguage);
         Add(Declared.ReopenProjectsOnStartup);
         Add(GeneralPage, "Open project in", () =>
         {
@@ -518,164 +550,8 @@ public sealed partial class SettingsDialog : IdeWindow
             return openIn;
         }, "open solution project folder new window current window this window ask confirm where frame");
         Add(Declared.ConfirmBeforeClosing);
-        Add(Declared.SaveOnDeactivation);
-        Add(GeneralPage, "Save when idle for", () =>
-        {
-            NumericUpDown seconds = Declared.IdleSeconds.Box(Working, Change);
-            seconds.IsEnabled = Working.SaveWhenIdle;
-            CheckBox idle = Check(Working.SaveWhenIdle, v =>
-            {
-                Change(s => s with { SaveWhenIdle = v });
-                seconds.IsEnabled = v;
-            });
-            return new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { idle, NumberSetting.WithUnit(seconds, "seconds") } };
-        }, "autosave files idle inactive seconds");
-
-        AddTrust();
         Add(Declared.CheckForUpdates);
-
-        Add(Declared.AlwaysSelectOpenedFile);
-        Add(Declared.OpenFilesWithSingleClick);
-        Add(Declared.OpenProjectFileOnDoubleClick);
-        Add(Declared.NestFiles);
-
-        Add(Declared.EditorFontFamily);
-        Add(Declared.EditorFontSize);
-        Add(Declared.EditorLineSpacing);
-        Add(Declared.CaretWidth);
-        Add(Declared.Ligatures);
-        Add(Declared.ShowLineNumbers);
-        Add(Declared.ShowNavigationBar);
-        Add(Declared.RainbowBraces);
-        Add(Declared.VimMode);
-        Add(Declared.VimKeysToKeymap, () => Declared.VimKeysToKeymap.Box(Working, Change, stroke => KeymapDoes(actions, stroke)));
-        Add(Declared.CloseTags);
-        Add(Declared.TabStepsOverClosers);
-        Add(Declared.CompletionParentheses);
-        Add(Declared.FormatOnType);
-        Add(Declared.XamlWorkspace);
-        Add(Declared.SolutionWideAnalysis);
-        Add(Declared.ParameterHints);
-        Add(Declared.TypeHints);
-        Add(Declared.Signposts);
-        Add(Declared.SignpostUsages);
-        Add(Declared.SignpostInheriting);
-        Add(Declared.SignpostAuthors);
-        Add(Declared.SignpostComplexity);
-        Add(Declared.SignpostComplexityMinimum);
-        Add(Declared.SignpostComplexityYellowFrom);
-        Add(Declared.SignpostComplexityRedFrom);
-        Add(EditorPage, "Soft-wrap these files", () =>
-        {
-            TextBox masks = new() { Text = Working.SoftWrapFiles, PlaceholderText = "No files", IsEnabled = Working.SoftWrap };
-            ToolTip.SetTip(masks, "Use * and ? as wildcards and ; to separate patterns");
-            masks.TextChanged += (_, _) => Change(s => s with { SoftWrapFiles = masks.Text ?? string.Empty });
-            CheckBox wrapFiles = Check(Working.SoftWrap, v =>
-            {
-                Change(s => s with { SoftWrap = v });
-                masks.IsEnabled = v;
-            });
-            DockPanel.SetDock(wrapFiles, Dock.Left);
-            return new DockPanel { HorizontalSpacing = 8, MaxWidth = OptionRow.EditorWidth, Children = { wrapFiles, masks } };
-        }, "soft wrap wrapping long lines width markdown text files masks");
-        Add(Declared.SoftWrapIndent);
-        Add(Declared.ShowWhitespaces);
-        Add(Declared.WheelZoom);
-        Add(Declared.ReformatOnSave);
-        Add(Declared.OptimizeImportsOnSave);
-        Add(Declared.CSharpFormatter);
-        Add(Declared.EnsureFinalLineBreak);
-
-        Add(Declared.FoldFileHeader);
-        Add(Declared.FoldImports);
-        Add(Declared.FoldDocComments);
-        Add(Declared.FoldMethodBodies);
-        Add(Declared.FoldPreprocessorRegions);
-        Add(Declared.FoldComments);
-        Add(Declared.FoldXmlTags);
-
-        AddXamlCodeStyle();
-        Add(Declared.GDScriptWrapLongLines);
-        Add(Declared.GDScriptLineLength);
-        Add(Declared.GDScriptBlankLines);
-        Add(Declared.GDScriptTrailingCommas);
-        Add(Declared.GDScriptFormatOnSave);
-        Add(Declared.SqlKeywords);
-
-        AddPage(PostfixPage, () => Postfix, "postfix templates completion expression dot autopopup "
-            + string.Join(' ', Languages.CSharp.PostfixTemplates.All.Select(t => $"{t.Name} {t.Description} {t.Example}")));
-        AddPage(LiveTemplatesPage, () => Templates, "live templates c# shortcut abbreviation snippet expand tab surround with generation availability mnemonic variables macros "
-            + string.Join(' ', CSharp.LiveTemplates.BuiltIn.Select(t => $"{t.Abbreviation} {t.Description}")));
-
-        Add(Declared.OpenDiffsIn);
-        Add(Declared.DiffHighlighting);
-        Add(Declared.ChangesAtCheckout);
-
-        Lazy<(CheckBox Explicitly, CheckBox Implicitly)> buildWindow = new(() =>
-        {
-            CheckBox implicitly = Check(Working.OpenBuildWindowOnImplicitBuild, v => Change(s => s with { OpenBuildWindowOnImplicitBuild = v }));
-            implicitly.IsEnabled = Working.OpenBuildWindowOnBuild;
-            CheckBox explicitly = Check(Working.OpenBuildWindowOnBuild, v =>
-            {
-                Change(s => s with { OpenBuildWindowOnBuild = v });
-                implicitly.IsEnabled = v;
-            });
-            return (explicitly, implicitly);
-        });
-        Add(BuildPage, "Open the Build window as a build starts", () => buildWindow.Value.Explicitly,
-            "build tool window open progress view start explicitly invoked solution rebuild clean toolset presentation");
-        Add(BuildPage, "Open it too for the build before Run, Debug or Profile", () => buildWindow.Value.Implicitly,
-            "build tool window open progress view start implicitly run debug profile before launch toolset presentation");
-        Add(Declared.ShowBuildResults);
-        Add(Declared.ContinuousTesting);
-
-        Add(Declared.HotReloadWhileDebugging);
-        Add(Declared.HotReload);
-        Add(Declared.HotReloadOnSave);
-        Add(Declared.XamlHotReloadOnSave);
-        Add(Declared.RestartOnRudeEdit);
-        Add(Declared.WhenDebuggerStops);
-        Add(Declared.ShowElapsedAtStops);
-        Add(Declared.GreyCodeAhead);
-        Add(Declared.AskBeforeRerun);
-        Add(Declared.ConsoleBufferKb);
-        Add(Declared.ConsoleFontSize);
-        Add(Declared.Browser);
-
-        Add(Declared.WebRuntime);
-        Add(NodePage, "Node interpreter", () =>
-        {
-            TextBox node = new() { Text = Working.NodeInterpreter ?? string.Empty, PlaceholderText = Passenger.Core.Programs.Node() ?? "Not found on the PATH", MaxWidth = OptionRow.EditorWidth };
-            node.TextChanged += (_, _) => Change(s => s with { NodeInterpreter = string.IsNullOrWhiteSpace(node.Text) ? null : node.Text.Trim() });
-            return node;
-        }, "node nodejs interpreter javascript typescript html css json language server npm path",
-            "The Node.js the JavaScript, TypeScript, HTML, CSS and JSON language servers run on where they run on Node.js. Empty, "
-            + "it is the first on the PATH, as the login shell finds it. Without one, those files keep their colours only.");
-        AddCodeQualityTools();
-        Add(Declared.DownloadJsonSchemas);
-        Add(Declared.DownloadStylesheets);
-        // WSL Containers is Windows' alone, so elsewhere the engine is always docker's.
-        if (OperatingSystem.IsWindows())
-        {
-            Add(Declared.ContainerEngine);
-        }
-        Add(Declared.DockerHubTags);
-        Add(Declared.BuildKitChecks);
-        Add(Declared.GodotExecutable);
-        Add(Declared.GodotLiveValues);
-        Add(Declared.GodotTestsWindowed);
-        Add(Declared.GodotDebugPlays);
-        Add(Declared.GodotSelectionFollows);
-
-        Add(Declared.TerminalFontSize);
-        Add(Declared.TerminalFontFamily);
-        Add(Declared.TerminalCopyOnSelection);
-        Add(Declared.TerminalCursorBlinking);
-        Add(Declared.TerminalCursorStyle);
-        Add(Declared.TerminalShell);
-
-        AddAgents(agents);
-
+        AddTrust();
         Lazy<(CheckBox Discord, ComboBox Shows, Control Idle)> discordRows = new(() =>
         {
             ComboBox shows = Declared.DiscordShows.Box(Working, Change);
@@ -705,9 +581,169 @@ public sealed partial class SettingsDialog : IdeWindow
             "Passenger only: that you are using Passenger, and nothing of your work. The solution: its name too. The solution and "
             + "the file: the name of the file you are editing as well. Whoever can see your Discord activity sees these names.");
         Add(DiscordPage, "Only Passenger when idle for", () => discordRows.Value.Idle, $"{Discord} idle inactive away timeout minutes");
-
         Add(Declared.TraceProtocols);
         Add(Declared.LogEveryProgram);
+
+        Add(Declared.EditorFontFamily);
+        Add(Declared.EditorFontSize);
+        Add(Declared.EditorLineSpacing);
+        Add(Declared.Ligatures);
+        Add(Declared.WheelZoom);
+        Add(Declared.CaretWidth);
+        Add(Declared.ShowLineNumbers);
+        Add(Declared.ShowNavigationBar);
+        Add(Declared.ShowWhitespaces);
+        Add(Declared.RainbowBraces);
+        Add(EditorPage, "Soft-wrap these files", () =>
+        {
+            TextBox masks = new() { Text = Working.SoftWrapFiles, PlaceholderText = "No files", IsEnabled = Working.SoftWrap };
+            ToolTip.SetTip(masks, "Use * and ? as wildcards and ; to separate patterns");
+            masks.TextChanged += (_, _) => Change(s => s with { SoftWrapFiles = masks.Text ?? string.Empty });
+            CheckBox wrapFiles = Check(Working.SoftWrap, v =>
+            {
+                Change(s => s with { SoftWrap = v });
+                masks.IsEnabled = v;
+            });
+            DockPanel.SetDock(wrapFiles, Dock.Left);
+            return new DockPanel { HorizontalSpacing = 8, MaxWidth = OptionRow.EditorWidth, Children = { wrapFiles, masks } };
+        }, "soft wrap wrapping long lines width markdown text files masks");
+        Add(Declared.SoftWrapIndent);
+        Add(Declared.XamlWorkspace);
+
+        Add(Declared.VimMode);
+        Add(Declared.VimKeysToKeymap, () => Declared.VimKeysToKeymap.Box(Working, Change, stroke => KeymapDoes(actions, stroke)));
+        Add(Declared.CloseTags);
+        Add(Declared.TabStepsOverClosers);
+        Add(Declared.CompletionParentheses);
+
+        Add(Declared.SolutionWideAnalysis);
+        Add(Declared.ParameterHints);
+        Add(Declared.TypeHints);
+        Add(Declared.Signposts);
+        Add(Declared.SignpostUsages);
+        Add(Declared.SignpostInheriting);
+        Add(Declared.SignpostAuthors);
+        Add(Declared.SignpostComplexity);
+        Add(Declared.SignpostComplexityMinimum);
+        Add(Declared.SignpostComplexityYellowFrom);
+        Add(Declared.SignpostComplexityRedFrom);
+
+        Add(Declared.FoldFileHeader);
+        Add(Declared.FoldImports);
+        Add(Declared.FoldDocComments);
+        Add(Declared.FoldMethodBodies);
+        Add(Declared.FoldPreprocessorRegions);
+        Add(Declared.FoldComments);
+        Add(Declared.FoldXmlTags);
+
+        Add(Declared.SaveOnDeactivation);
+        Add(SavingPage, "Save when idle for", () =>
+        {
+            NumericUpDown seconds = Declared.IdleSeconds.Box(Working, Change);
+            seconds.IsEnabled = Working.SaveWhenIdle;
+            CheckBox idle = Check(Working.SaveWhenIdle, v =>
+            {
+                Change(s => s with { SaveWhenIdle = v });
+                seconds.IsEnabled = v;
+            });
+            return new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { idle, NumberSetting.WithUnit(seconds, "seconds") } };
+        }, "autosave files idle inactive seconds");
+        Add(Declared.ReformatOnSave);
+        Add(Declared.OptimizeImportsOnSave);
+        Add(Declared.EnsureFinalLineBreak);
+
+        Add(Declared.CSharpFormatter);
+        Add(Declared.FormatOnType);
+        AddXamlCodeStyle();
+        Add(Declared.GDScriptWrapLongLines);
+        Add(Declared.GDScriptLineLength);
+        Add(Declared.GDScriptBlankLines);
+        Add(Declared.GDScriptTrailingCommas);
+        Add(Declared.GDScriptFormatOnSave);
+        Add(Declared.SqlKeywords);
+
+        AddPage(PostfixPage, () => Postfix, "postfix templates completion expression dot autopopup "
+            + string.Join(' ', Languages.CSharp.PostfixTemplates.All.Select(t => $"{t.Name} {t.Description} {t.Example}")));
+        AddPage(LiveTemplatesPage, () => Templates, "live templates c# shortcut abbreviation snippet expand tab surround with generation availability mnemonic variables macros "
+            + string.Join(' ', CSharp.LiveTemplates.BuiltIn.Select(t => $"{t.Abbreviation} {t.Description}")));
+
+        Add(Declared.AlwaysSelectOpenedFile);
+        Add(Declared.OpenFilesWithSingleClick);
+        Add(Declared.OpenProjectFileOnDoubleClick);
+        Add(Declared.NestFiles);
+        Add(Declared.PlainFolderIcons);
+
+        Add(Declared.TerminalShell);
+        Add(Declared.TerminalFontFamily);
+        Add(Declared.TerminalFontSize);
+        Add(Declared.TerminalCursorStyle);
+        Add(Declared.TerminalCursorBlinking);
+        Add(Declared.TerminalCopyOnSelection);
+
+        Add(Declared.OpenDiffsIn);
+        Add(Declared.DiffHighlighting);
+        Add(Declared.ChangesAtCheckout);
+
+        Lazy<(CheckBox Explicitly, CheckBox Implicitly)> buildWindow = new(() =>
+        {
+            CheckBox implicitly = Check(Working.OpenBuildWindowOnImplicitBuild, v => Change(s => s with { OpenBuildWindowOnImplicitBuild = v }));
+            implicitly.IsEnabled = Working.OpenBuildWindowOnBuild;
+            CheckBox explicitly = Check(Working.OpenBuildWindowOnBuild, v =>
+            {
+                Change(s => s with { OpenBuildWindowOnBuild = v });
+                implicitly.IsEnabled = v;
+            });
+            return (explicitly, implicitly);
+        });
+        Add(BuildPage, "Open the Build window as a build starts", () => buildWindow.Value.Explicitly,
+            "build tool window open progress view start explicitly invoked solution rebuild clean toolset presentation");
+        Add(BuildPage, "Open it too for the build before Run, Debug or Profile", () => buildWindow.Value.Implicitly,
+            "build tool window open progress view start implicitly run debug profile before launch toolset presentation");
+        Add(Declared.ShowBuildResults);
+
+        Add(Declared.AskBeforeRerun);
+        Add(Declared.Browser);
+        Add(Declared.ConsoleBufferKb);
+        Add(Declared.ConsoleFontSize);
+
+        Add(Declared.WhenDebuggerStops);
+        Add(Declared.ShowElapsedAtStops);
+        Add(Declared.GreyCodeAhead);
+
+        Add(Declared.HotReloadWhileDebugging);
+        Add(Declared.HotReload);
+        Add(Declared.HotReloadOnSave);
+        Add(Declared.XamlHotReloadOnSave);
+        Add(Declared.RestartOnRudeEdit);
+
+        Add(Declared.ContinuousTesting);
+
+        // WSL Containers is Windows' alone, so elsewhere the engine is always docker's.
+        if (OperatingSystem.IsWindows())
+        {
+            Add(Declared.ContainerEngine);
+        }
+        Add(Declared.DockerHubTags);
+        Add(Declared.BuildKitChecks);
+        Add(Declared.GodotExecutable);
+        Add(Declared.GodotLiveValues);
+        Add(Declared.GodotTestsWindowed);
+        Add(Declared.GodotDebugPlays);
+        Add(Declared.GodotSelectionFollows);
+        Add(Declared.WebRuntime);
+        Add(WebPage, "Node interpreter", () =>
+        {
+            TextBox node = new() { Text = Working.NodeInterpreter ?? string.Empty, PlaceholderText = Passenger.Core.Programs.Node() ?? "Not found on the PATH", MaxWidth = OptionRow.EditorWidth };
+            node.TextChanged += (_, _) => Change(s => s with { NodeInterpreter = string.IsNullOrWhiteSpace(node.Text) ? null : node.Text.Trim() });
+            return node;
+        }, "node nodejs interpreter javascript typescript html css json language server npm path",
+            "The Node.js the JavaScript, TypeScript, HTML, CSS and JSON language servers run on where they run on Node.js. Empty, "
+            + "it is the first on the PATH, as the login shell finds it. Without one, those files keep their colours only.");
+        Add(Declared.DownloadJsonSchemas);
+        Add(Declared.DownloadStylesheets);
+        AddCodeQualityTools();
+
+        AddAgents(agents);
 
         Add(Declared.ChordWaitSeconds);
         AddKeymap();

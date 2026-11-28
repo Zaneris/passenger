@@ -18,7 +18,7 @@ public static partial class Refusals
     public static Words ZoomedAsFarAsItGoes(bool up) => up ? WindowAsLargeAsItGoes : WindowAsSmallAsItGoes;
 
     /// <summary>Closed tool windows keep their stripe icons or tabs, so Close is Hide.</summary>
-    public static Words ClosedKeepIcons => ClosedKeepIconsAt(SettingsDialog.PlaceOfPage(SettingsDialog.Appearance));
+    public static Words ClosedKeepIcons => ClosedKeepIconsAt(SettingsDialog.PlaceOfPage(SettingsDialog.LayoutPage));
 
     /// <summary>A regex stopped at its time limit, wherever that cuts an answer short (<see cref="TextSearch.RegexStopped"/>).</summary>
     public static Words RegexStopped => TextSearch.RegexStopped;
