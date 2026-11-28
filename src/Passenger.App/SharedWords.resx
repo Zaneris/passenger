@@ -76,4 +76,12 @@
     <value>Copy Name</value>
     <comment>A list's row menu item copying the row's name.</comment>
   </data>
+  <data name="CopyPath" xml:space="preserve">
+    <value>Copy Path</value>
+    <comment>A list's row menu item copying the row's path.</comment>
+  </data>
+  <data name="NothingMatches" xml:space="preserve">
+    <value>Nothing matches</value>
+    <comment>A list's words where its search keeps nothing.</comment>
+  </data>
 </root>

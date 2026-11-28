@@ -39,8 +39,8 @@ public sealed class FirstStartView : UserControl, IOwnKeys
     private readonly TextBlock systemWords = new() { VerticalAlignment = VerticalAlignment.Center };
     private readonly Button vim;
     private readonly PathIcon vimChosen = new() { Classes = { StyleClasses.FirstStartCheck } };
-    private readonly Button back = new() { Classes = { StyleClasses.Link, StyleClasses.FirstStartQuiet }, Content = "Back" };
-    private readonly Button keep = new() { Classes = { StyleClasses.Link, StyleClasses.FirstStartQuiet }, Content = "Keep the Defaults" };
+    private readonly Button back = new() { Classes = { StyleClasses.Link, StyleClasses.FirstStartQuiet }, [ShownWords.ContentProperty] = WelcomeWords.Back };
+    private readonly Button keep = new() { Classes = { StyleClasses.Link, StyleClasses.FirstStartQuiet }, [ShownWords.ContentProperty] = WelcomeWords.KeepDefaults };
 
     /// <param name="titleOf">An action's title, as the window's actions name it.</param>
     public FirstStartView(Func<AppSettings> now, Action<Func<AppSettings, AppSettings>> change, Func<string, Words> titleOf)
@@ -70,7 +70,7 @@ public sealed class FirstStartView : UserControl, IOwnKeys
         vim = new Button
         {
             Classes = { StyleClasses.FirstStartSystem },
-            Content = new StackPanel { Classes = { StyleClasses.FirstStartCaption }, Children = { vimChosen, new TextBlock { Text = "Vim mode over these keys", VerticalAlignment = VerticalAlignment.Center } } },
+            Content = new StackPanel { Classes = { StyleClasses.FirstStartCaption }, Children = { vimChosen, new TextBlock { [ShownWords.TextProperty] = WelcomeWords.VimOverKeys, VerticalAlignment = VerticalAlignment.Center } } },
         };
         vim.Click += (_, _) => ToggleVim();
         back.Click += (_, _) => Show(Shown == Screen.Keymap ? Screen.DarkOrLight : Screen.Theme);
@@ -130,7 +130,7 @@ public sealed class FirstStartView : UserControl, IOwnKeys
 
     /// <summary>A theme offered: Passenger's own (<see cref="Theme"/> null) or one it carries, its name and what it is like
     /// in a few words.</summary>
-    public sealed record Look(SourcedTheme? Theme, string Name, string Words)
+    public sealed record Look(SourcedTheme? Theme, string Name, Words Words)
     {
         /// <summary>Its picture in dark or light, among the app's resources.</summary>
         public Uri Picture(bool dark) => new($"avares://Passenger/Assets/FirstStart/{FirstStartPictures.FileOf(Name, dark)}");
@@ -162,12 +162,12 @@ public sealed class FirstStartView : UserControl, IOwnKeys
     /// <summary>Passenger's own theme and every theme it carries whose pictures it carries too.</summary>
     private static IEnumerable<Look> Carried()
     {
-        yield return new Look(null, "Passenger", "Roomy and rounded, in deep blues");
+        yield return new Look(null, "Passenger", WelcomeWords.PassengerLook);
         foreach (ListedTheme listed in BuiltInThemes.Listed(ThemeResources.Kinds).Listed)
         {
             if (!listed.Code && listed.Read.Read is { } theme && listed.Named is { } named)
             {
-                Look look = new(named, theme.Name, theme.Description.Split(':')[0].Trim());
+                Look look = new(named, theme.Name, Words.Verbatim(theme.Description.Split(':')[0].Trim()));
                 if (AssetLoader.Exists(look.Picture(dark: true)) && AssetLoader.Exists(look.Picture(dark: false)))
                 {
                     yield return look;
@@ -227,36 +227,34 @@ public sealed class FirstStartView : UserControl, IOwnKeys
         tiles.ColumnDefinitions.Clear();
         if (Shown == Screen.Theme)
         {
-            title.Text = "Welcome to Passenger";
-            about.Text = Themes.InHighContrast
-                ? $"Your system asks for high contrast, so {ThemeSource.HighContrast} shows while it does. Choose the theme for when it no longer asks, "
-                    + $"then dark or light. {SettingsDialog.PlaceOfPage(SettingsDialog.Appearance)} changes either at any time."
-                : $"Choose a theme to begin, then dark or light. {SettingsDialog.PlaceOfPage(SettingsDialog.Appearance)} changes either at any time.";
+            ShownWords.Set(title, TextBlock.TextProperty, WelcomeWords.WelcomeTitle);
+            Words place = Words.Verbatim(SettingsDialog.PlaceOfPage(SettingsDialog.Appearance));
+            ShownWords.Set(about, TextBlock.TextProperty, Themes.InHighContrast ? WelcomeWords.ChooseThemeContrast(Words.Verbatim(ThemeSource.HighContrast), place) : WelcomeWords.ChooseTheme(place));
             foreach (Look look in Looks)
             {
-                Add(Tile(look.Name, look.Words, look.Picture(dark), look.Theme == settings.Look, () => ChooseLook(look)));
+                Add(Tile(Words.Verbatim(look.Name), look.Words, look.Picture(dark), look.Theme == settings.Look, () => ChooseLook(look)));
             }
         }
         else if (Shown == Screen.DarkOrLight)
         {
             Look look = Looks.FirstOrDefault(l => l.Theme == settings.Look) ?? Looks[0];
-            title.Text = "Dark or light";
-            about.Text = $"{look.Name} comes in both. {SettingsDialog.PlaceOfPage(SettingsDialog.Appearance)} changes it at any time.";
-            Add(Tile("Dark", null, look.Picture(dark: true), settings.Theme == ThemeChoice.Dark, () => ChooseVariant(ThemeChoice.Dark)));
-            Add(Tile("Light", null, look.Picture(dark: false), settings.Theme == ThemeChoice.Light, () => ChooseVariant(ThemeChoice.Light)));
+            ShownWords.Set(title, TextBlock.TextProperty, WelcomeWords.DarkOrLight);
+            ShownWords.Set(about, TextBlock.TextProperty, WelcomeWords.ComesInBoth(Words.Verbatim(look.Name), Words.Verbatim(SettingsDialog.PlaceOfPage(SettingsDialog.Appearance))));
+            Add(Tile(WelcomeWords.Dark, null, look.Picture(dark: true), settings.Theme == ThemeChoice.Dark, () => ChooseVariant(ThemeChoice.Dark)));
+            Add(Tile(WelcomeWords.Light, null, look.Picture(dark: false), settings.Theme == ThemeChoice.Light, () => ChooseVariant(ThemeChoice.Light)));
         }
         else
         {
-            title.Text = "Your keys";
-            about.Text = $"Choose the keys your hands know. {SettingsDialog.PlaceOfPage(SettingsDialog.KeymapPage)} changes them and any shortcut "
-                + $"at any time, and {SettingsDialog.PlaceOfPage(SettingsDialog.TypingPage)} turns Vim mode on or off.";
+            ShownWords.Set(title, TextBlock.TextProperty, WelcomeWords.YourKeys);
+            ShownWords.Set(about, TextBlock.TextProperty, WelcomeWords.ChooseKeys(Words.Verbatim(SettingsDialog.PlaceOfPage(SettingsDialog.KeymapPage)),
+                Words.Verbatim(SettingsDialog.PlaceOfPage(SettingsDialog.TypingPage))));
             foreach (Passenger.Editor.KeymapPreset keymap in SettingsDialog.KeymapChoices)
             {
                 Add(Tile(KnownAs(keymap), PresetWords(keymap), null, settings.Keymap == keymap, () => ChooseKeymap(keymap), KeysOf(settings with { Keymap = keymap })));
             }
         }
         system.IsVisible = Shown == Screen.DarkOrLight;
-        systemWords.Text = SystemWords();
+        ShownWords.Set(systemWords, TextBlock.TextProperty, SystemWords());
         systemChosen.IsVisible = settings.Theme == ThemeChoice.System;
         system.Classes.Set(StyleClasses.Chosen, systemChosen.IsVisible);
         vim.IsVisible = Shown == Screen.Keymap;
@@ -266,24 +264,24 @@ public sealed class FirstStartView : UserControl, IOwnKeys
     }
 
     /// <summary>A keymap's name as people know it, whatever the system.</summary>
-    private static string KnownAs(Passenger.Editor.KeymapPreset keymap) => keymap switch
+    private static Words KnownAs(Passenger.Editor.KeymapPreset keymap) => Words.Verbatim(keymap switch
     {
         Passenger.Editor.KeymapPreset.VSCode => "VS Code",
         Passenger.Editor.KeymapPreset.IntelliJ => "IntelliJ IDEA",
         Passenger.Editor.KeymapPreset.Emacs => "Emacs",
         _ => "Visual Studio",
-    };
+    });
 
     /// <summary>Which of a keymap's own it is on this system, where they differ: Visual Studio for Mac's on the Mac.</summary>
-    private static string PresetWords(Passenger.Editor.KeymapPreset keymap) => (keymap, OperatingSystem.IsMacOS()) switch
+    private static Words PresetWords(Passenger.Editor.KeymapPreset keymap) => (keymap, OperatingSystem.IsMacOS()) switch
     {
-        (Passenger.Editor.KeymapPreset.VisualStudio, true) => "Visual Studio for Mac's keys",
-        (Passenger.Editor.KeymapPreset.VisualStudio, false) => "Visual Studio's keys",
-        (Passenger.Editor.KeymapPreset.VSCode, true) => "VS Code's keys on macOS",
-        (Passenger.Editor.KeymapPreset.VSCode, false) => "VS Code's keys",
-        (Passenger.Editor.KeymapPreset.IntelliJ, true) => "IntelliJ IDEA's keys on macOS",
-        (Passenger.Editor.KeymapPreset.IntelliJ, false) => "IntelliJ IDEA's keys",
-        _ => "Emacs's keys on every system",
+        (Passenger.Editor.KeymapPreset.VisualStudio, true) => WelcomeWords.VisualStudioMacKeys,
+        (Passenger.Editor.KeymapPreset.VisualStudio, false) => WelcomeWords.VisualStudioKeys,
+        (Passenger.Editor.KeymapPreset.VSCode, true) => WelcomeWords.VsCodeMacKeys,
+        (Passenger.Editor.KeymapPreset.VSCode, false) => WelcomeWords.VsCodeKeys,
+        (Passenger.Editor.KeymapPreset.IntelliJ, true) => WelcomeWords.IntelliJMacKeys,
+        (Passenger.Editor.KeymapPreset.IntelliJ, false) => WelcomeWords.IntelliJKeys,
+        _ => WelcomeWords.EmacsKeys,
     };
 
     /// <summary>A keymap's own keys for <see cref="KeysShown"/>, each action's name over its first shortcut in a box as the
@@ -319,7 +317,7 @@ public sealed class FirstStartView : UserControl, IOwnKeys
 
     /// <summary>A choice's tile: its picture (or what stands in it, a keymap's keys), its name and a few words, marked when
     /// it is the one in force.</summary>
-    private Button Tile(string name, string? words, Uri? picture, bool chosen, Action choose, Control? drawn = null)
+    private Button Tile(Words name, Words? words, Uri? picture, bool chosen, Action choose, Control? drawn = null)
     {
         Border frame = new() { Classes = { StyleClasses.FirstStartPicture }, Child = drawn };
         if (picture is not null)
@@ -332,8 +330,8 @@ public sealed class FirstStartView : UserControl, IOwnKeys
         PathIcon check = new() { Classes = { StyleClasses.FirstStartCheck }, IsVisible = chosen };
         check.Bind(PathIcon.DataProperty, check.GetResourceObservable(IconKeys.Check));
         // The name wraps beside the tick where a narrow tile has no room for it on one line.
-        TextBlock named = new() { Classes = { StyleClasses.FirstStartName }, Text = name, TextWrapping = TextWrapping.Wrap, [Grid.ColumnProperty] = 1 };
-        TextBlock said = new() { Classes = { StyleClasses.FirstStartWords }, Text = words, IsVisible = words is not null, TextWrapping = TextWrapping.Wrap };
+        TextBlock named = new() { Classes = { StyleClasses.FirstStartName }, [ShownWords.TextProperty] = name, TextWrapping = TextWrapping.Wrap, [Grid.ColumnProperty] = 1 };
+        TextBlock said = new() { Classes = { StyleClasses.FirstStartWords }, [ShownWords.TextProperty] = words, IsVisible = words is not null, TextWrapping = TextWrapping.Wrap };
         Button tile = new()
         {
             Classes = { StyleClasses.FirstStartTile },
@@ -343,13 +341,13 @@ public sealed class FirstStartView : UserControl, IOwnKeys
             },
         };
         tile.Classes.Set(StyleClasses.Chosen, chosen);
-        AutomationProperties.SetName(tile, name);
+        ShownWords.Set(tile, AutomationProperties.NameProperty, name);
         tile.Click += (_, _) => choose();
         return tile;
     }
 
     /// <summary>The small choice's words: to follow the system, saying which it is now where the system says.</summary>
-    private static string SystemWords()
+    private static Words SystemWords()
     {
         string? shown = Application.Current?.PlatformSettings?.GetColorValues().ThemeVariant switch
         {
@@ -357,7 +355,7 @@ public sealed class FirstStartView : UserControl, IOwnKeys
             Avalonia.Platform.PlatformThemeVariant.Light => "light",
             _ => null,
         };
-        return shown is null ? "Follow the system" : $"Follow the system ({shown} now)";
+        return shown is null ? WelcomeWords.FollowSystem : WelcomeWords.FollowSystemNow(shown);
     }
 
     /// <summary>A picture the app carries, read once while the page shows.</summary>
