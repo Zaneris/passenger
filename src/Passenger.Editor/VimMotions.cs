@@ -887,15 +887,30 @@ public static class VimMotions
         int end;
         int next;
         bool white = false;
-        if (MacroAt(text, last, caret) is { } macro && !(asText && caret > macro.Start) && !(Bound(text, macro.Line + 1) && text[macro.End - 1] is ' ' or '\t')
+        if (MacroAt(text, last, caret) is { } macro && !(asText && caret > macro.Start) && !BlanksAboveBound(text, last, macro)
             && !WhiteAfterMark(text, macro))
         {
+            if (text[caret] is ' ' or '\t' && EndIn(text, macro.Start, caret))
+            {
+                // In white past an end on a macro line, its text reads as any other.
+                return SentenceObject(text, caret, n, inner, breakEnds, asText: true);
+            }
             if (!(caret > macro.Start && OwnSentence(text, macro)) && SentenceBack(text, last, Forward(text, last, caret)) is var found && !BoundAt(text, found))
             {
                 // On a macro line the sentence is the one ( finds from where ) goes, past the line's first character read as any text.
                 return SentenceObject(text, found, n, inner, breakEnds, asText: true);
             }
             (start, end) = (macro.Start, text.GetLine(macro.Line + 1).Start);
+            if (inner && n == 1 && text[macro.End - 1] is ' ' or '\t' && !EndIn(text, macro.Start, caret))
+            {
+                // One is from a macro line that blanks end, short of the white after an end in it, takes its text alone.
+                int textTo = macro.End;
+                while (text[textTo - 1] is ' ' or '\t')
+                {
+                    textTo--;
+                }
+                return new VimSpan(start, textTo, false);
+            }
             next = WhiteEnd(text, last, start, end);
         }
         else if (EmptyAt(text, caret))
@@ -1731,6 +1746,25 @@ public static class VimMotions
             }
         }
         return true;
+    }
+
+    /// <summary>Whether a macro line ends in blanks above a bounding line, or with no sentence's end in it above a last line
+    /// of blanks alone, which is and as read as any other text.</summary>
+    private static bool BlanksAboveBound(TextSnapshot text, int last, LineSpan macro) => text[macro.End - 1] is ' ' or '\t'
+        && (Bound(text, macro.Line + 1) || macro.Line + 1 == last && text.GetLine(last) is var below && TextNavigation.IndentEnd(text, below) == below.End
+            && !EndIn(text, macro.Start, macro.End));
+
+    /// <summary>Whether a mark between two places on one line ends a sentence.</summary>
+    private static bool EndIn(TextSnapshot text, int from, int to)
+    {
+        for (int q = from; q < to; q++)
+        {
+            if (EndsSentenceAt(text, q))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>Whether a macro line ends in blanks after a sentence's end mark and the closers after it, which is and as
