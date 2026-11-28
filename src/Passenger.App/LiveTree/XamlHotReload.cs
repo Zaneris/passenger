@@ -412,10 +412,15 @@ public sealed class XamlHotReload(LiveApp app, Func<string, TextSnapshot?> texts
         IReadOnlyList<DesignerEdit> changed = await BackgroundWork.Run(() => DesignerCode.Changed(before, shown));
         List<string> objects = [];
         List<XamlProblem> problems = [];
+        if (changed.FirstOrDefault(e => e.Unapplied is not null) is { Unapplied: { } why })
+        {
+            return (file, new XamlReloaded([], $"{Path.GetFileName(file)}'s edit cannot reach {app.Name} as it runs: {why}, so restart it to see the change", []), text);
+        }
         foreach (DesignerEdit edit in changed)
         {
             DesignedChange change = new(file, edit.Class, [.. edit.Source.Usings, .. WinForms.FormDesign.ImplicitUsings],
-                JsonSerializer.Serialize([.. edit.Statements], FormDesignWire.Statements), edit.Lines, edit.Gone);
+                JsonSerializer.Serialize([.. edit.Statements], FormDesignWire.Statements), edit.Lines, edit.Gone,
+                edit.Unhooked.Count == 0 ? null : JsonSerializer.Serialize([.. edit.Unhooked], FormDesignWire.Statements));
             try
             {
                 XamlReloaded taken = await app.DesignedAsync(change);

@@ -23,6 +23,8 @@ internal static class Designed
     {
         List<DesignerStatement> statements = JsonSerializer.Deserialize(change.Statements, FormDesignWire.Statements)
             ?? throw new Refusal("The designer code's statements did not read");
+        List<DesignerStatement> unhooked = change.Unhooked is { } off ? JsonSerializer.Deserialize(off, FormDesignWire.Statements)
+            ?? throw new Refusal("The designer code's hooks taken out did not read") : [];
         List<Control> roots = [.. Application.OpenForms.Cast<Form>().SelectMany(Within).Where(c => c.GetType().FullName == change.Class)];
         HashSet<XamlProblem> problems = [];
         foreach (Control root in roots)
@@ -46,6 +48,18 @@ internal static class Designed
                     {
                         string why = (failed is TargetInvocationException { InnerException: { } inner } ? inner : failed).Message;
                         problems.Add(new XamlProblem($"{root.GetType().Name} did not take this line: {why}", i < change.Lines.Count ? change.Lines[i] : null, null, Error: false));
+                    }
+                }
+                Statements unhooking = new(root, made, values, named, new Unhooking(root));
+                foreach (DesignerStatement hook in unhooked)
+                {
+                    try
+                    {
+                        unhooking.Run(hook);
+                    }
+                    catch (Exception failed) when (failed is DesignerException or ArgumentException or InvalidOperationException)
+                    {
+                        problems.Add(new XamlProblem($"{root.GetType().Name} kept a handler the code no longer hooks: {failed.Message}", null, null, Error: false));
                     }
                 }
                 foreach (string gone in change.Gone)
@@ -83,6 +97,23 @@ internal static class Designed
         {
             declared.SetValue(root, null);
         }
+    }
+
+    /// <summary>A running form as a hook its designer code no longer makes is taken off it: the handler, the form's own
+    /// method, removed from the event; nothing is made.</summary>
+    private sealed class Unhooking(Control root) : IStatementPlace
+    {
+        public object Made(Type type, string field, DesignerValue made) => throw new DesignerException("A hook taken off makes nothing");
+
+        public void Hook(object on, EventDescriptor raised, string handler)
+        {
+            if (Delegate.CreateDelegate(raised.EventType, root, handler, ignoreCase: false, throwOnBindFailure: false) is { } called)
+            {
+                raised.RemoveEventHandler(on, called);
+            }
+        }
+
+        public object Resources() => throw new DesignerException("A hook taken off makes nothing");
     }
 
     /// <summary>A running form as designer code runs in it: a component made as the code makes it and kept in its field where

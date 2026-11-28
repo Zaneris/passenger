@@ -23,7 +23,8 @@ public sealed class WinFormsDesignerCodeTests
                 Deleted),
             ("a renamed component's Name and section comment take its new name, and an event's handler is declared at its class's end after a blank line, once",
                 Named),
-            ("an edit gives a running form the statements it writes otherwise, each at its line, and the components it no longer makes", Changed));
+            ("an edit gives a running form the statements it writes otherwise, each at its line, and the components it no longer makes", Changed),
+            ("a hook taken out or replaced is taken off a running form, and a statement taken out or moved says the form cannot take it", Undone));
     }
 
     private static void Changed()
@@ -37,6 +38,17 @@ public sealed class WinFormsDesignerCodeTests
         Assert.Equal(Array.FindIndex(edited.Split('\n'), l => l.Contains("new Point(20, 12)", StringComparison.Ordinal)) + 1, Assert.Single(edit.Lines));
         Assert.Equal(["Side"], edit.Gone);
         Assert.Empty(DesignerCode.Changed(Form, Form));
+    }
+
+    private static void Undone()
+    {
+        DesignerEdit rehooked = Assert.Single(DesignerCode.Changed(Form, Form.Replace("ok.Click += OnOk;", "ok.Click += OnAccept;")));
+        Assert.True(rehooked is { Unapplied: null, Statements: [{ Member: "Click" }], Unhooked: [{ Target: "ok", Member: "Click", Value.Name: "OnOk" }] },
+            $"Replacing ok's Click handler hooks the new one ({rehooked.Statements.Count} statements) and unhooks {string.Join(", ", rehooked.Unhooked.Select(u => u.Value?.Name))}, not OnOk");
+        Assert.True(Assert.Single(DesignerCode.Changed(Form, Form.Replace("            ok.Click += OnOk;\n", string.Empty))) is { Unapplied: null, Unhooked: [{ Value.Name: "OnOk" }] },
+            "A hook taken out is not taken off the running form");
+        Assert.NotNull(Assert.Single(DesignerCode.Changed(Form, Form.Replace("            ok.Name = \"ok\";\n", string.Empty))).Unapplied);
+        Assert.NotNull(Assert.Single(DesignerCode.Changed(Form, Form.Replace("            Controls.Add(Side);\n            Controls.Add(ok);\n", "            Controls.Add(ok);\n            Controls.Add(Side);\n"))).Unapplied);
     }
 
     private static void Named()

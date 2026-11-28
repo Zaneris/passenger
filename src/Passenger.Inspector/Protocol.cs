@@ -163,9 +163,10 @@ public sealed record Request(int Id, string Method, long? Element = null, bool? 
 
 /// <summary>A Windows Forms form's designer code as Hot Reload gives it to the app (its edit of InitializeComponent): its
 /// file, its class's full name, the usings its names are read in, the statements the edit changed (Passenger's
-/// DesignerStatement list as JSON, as its designer's peers write it), each one's line in the file, from one, and the
-/// components the code no longer makes.</summary>
-public sealed record DesignedChange(string File, string Class, IReadOnlyList<string> Usings, string Statements, IReadOnlyList<int> Lines, IReadOnlyList<string> Gone);
+/// DesignerStatement list as JSON, as its designer's peers write it), each one's line in the file, from one, the
+/// components the code no longer makes, and the hooks it no longer makes (statements as JSON, as the code before wrote them).</summary>
+public sealed record DesignedChange(string File, string Class, IReadOnlyList<string> Usings, string Statements, IReadOnlyList<int> Lines, IReadOnlyList<string> Gone,
+    string? Unhooked = null);
 
 /// <summary>A XAML file's text to apply to what the app made from it (XAML Hot Reload): the file's path as the disk names
 /// it, its text now and as the app has it (the build's, or the text last applied), the assembly its build compiled it
