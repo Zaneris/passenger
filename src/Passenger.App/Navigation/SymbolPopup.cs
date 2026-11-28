@@ -45,6 +45,29 @@ public sealed record SymbolRow(string Name, string? Detail, string? Where, Symbo
 
     /// <summary>An object element of a XAML file, a kind of Passenger's own as <see cref="NodeKind"/> is.</summary>
     public const SymbolKind ElementKind = (SymbolKind)104;
+
+    /// <summary>A kind in words: its name first, as a screen reader says it after a row's name, then the shorter words a
+    /// person types for it in an outline's search (<c>ctor</c>, <c>prop</c>), Passenger's own kinds by what they are.</summary>
+    public static IReadOnlyList<string> KindWords(SymbolKind kind) => kind switch
+    {
+        FileKind => ["file"],
+        NodeKind => ["node"],
+        HeadingKind => ["heading"],
+        ComponentKind => ["component"],
+        ElementKind => ["element"],
+        SymbolKind.Constructor => ["constructor", "ctor"],
+        SymbolKind.Property => ["property", "prop"],
+        SymbolKind.Constant => ["constant", "const"],
+        SymbolKind.Function => ["function", "func"],
+        SymbolKind.Variable => ["variable", "var"],
+        SymbolKind.TypeParameter => ["type parameter", "typeparam"],
+        _ => [SymbolKinds.Name(kind)],
+    };
+
+    /// <summary>Whether a word typed names a kind: one of its words (<see cref="KindWords"/>) whole, or the start of one
+    /// three letters on (<c>meth</c>).</summary>
+    public static bool KindNamed(SymbolKind kind, string word) =>
+        KindWords(kind).Any(w => w.Equals(word, StringComparison.OrdinalIgnoreCase) || word.Length >= 3 && w.StartsWith(word, StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>A query over symbols, answered as it is typed (a moment after the last key, the previous answer given

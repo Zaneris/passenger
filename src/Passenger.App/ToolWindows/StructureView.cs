@@ -272,9 +272,9 @@ public sealed class StructureView : DockPanel
         choosing = false;
     }
 
-    /// <summary>The outline as rows, a member's type after its name as Roslyn names it ("Main() : void"), at the editor's
-    /// lines of the text the server's lines are of; a row the outline <paramref name="before"/> has in its place unchanged
-    /// is that one. Made off the window's thread.</summary>
+    /// <summary>The outline as rows, a member's type after its name as Roslyn names it ("Main() : void"), a constructor a
+    /// constructor, at the editor's lines of the text the server's lines are of; a row the outline <paramref name="before"/>
+    /// has in its place unchanged is that one. Made off the window's thread.</summary>
     public static Outline<SymbolRow> OutlineOf(IReadOnlyList<DocumentSymbol> symbols, string path, ServerLines lines, Outline<SymbolRow>? before = null,
         CancellationToken cancel = default) =>
         Outline<SymbolRow>.Of(symbols, symbol => symbol.Children, (symbol, depth) =>
@@ -293,7 +293,9 @@ public sealed class StructureView : DockPanel
             type = name[(typed + 3)..];
             name = name[..typed];
         }
-        return new SymbolRow(name, type is null ? null : $": {type}", null, symbol.Kind, path,
+        // Roslyn's server gives a constructor a method's kind, its name with no type after it as every method of its has.
+        SymbolKind kind = symbol.Kind == SymbolKind.Method && type is null && name.EndsWith(')') && !name.StartsWith('~') ? SymbolKind.Constructor : symbol.Kind;
+        return new SymbolRow(name, type is null ? null : $": {type}", null, kind, path,
             lines.Text.GetPosition(lines.OffsetOf(symbol.SelectionRange.Start)), depth, lines.Text.GetLineFromOffset(lines.OffsetOf(symbol.Range.End)));
     }
 }
