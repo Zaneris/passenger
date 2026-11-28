@@ -187,6 +187,10 @@ public static partial class ThemeFiles
     /// <summary>Kinds of code drawn in the code's plain words unless a file colours them: one a file leaves out takes the
     /// file's <c>Editor.Text</c> where it gives that, so a file written before they were tokens draws them as it did.</summary>
     public static readonly IReadOnlyList<string> PlainKinds = ["Syntax.Parameter", "Syntax.Local", "Syntax.Namespace", "Syntax.Operator"];
+
+    /// <summary>A documentation comment's markup, drawn as its words unless a file colours it: one a file leaves out takes the
+    /// file's <c>Syntax.DocComment</c> where it gives that, so a file written before they were tokens draws as it did.</summary>
+    public static readonly IReadOnlyList<string> DocCommentParts = ["Syntax.DocCommentTag", "Syntax.DocCommentAttributeName", "Syntax.DocCommentAttributeValue"];
     private static readonly string[] Styles = ["Normal", "Bold", "Italic", "Bold Italic"];
     private static readonly string[] Sections = ["tokens", "dark", "light"];
 
@@ -264,7 +268,8 @@ public static partial class ThemeFiles
 
     /// <summary>A holder's tokens for both variants, Dark and Light, each in its section; <paramref name="language"/> names
     /// the language a theme's <c>languages</c> gives them for, whose tokens are the code's alone; with
-    /// <paramref name="plain"/>, the plain kinds it leaves out take its plain words (<see cref="PlainKinds"/>).</summary>
+    /// <paramref name="plain"/>, the plain kinds it leaves out take its plain words (<see cref="PlainKinds"/>) and a
+    /// documentation comment's markup its words' colour (<see cref="DocCommentParts"/>).</summary>
     private static Dictionary<string, TokenValue>[] TokenSections(string file, JsonElement root, IReadOnlyDictionary<string, ThemeTokenKind> tokens, bool code,
         string? language, bool plain, List<string> problems)
     {
@@ -304,17 +309,23 @@ public static partial class ThemeFiles
                 sections[i][token.Name] = Value(file, $"{token.Name} in {Sections[i]}{inLanguage}", kind, token.Value, problems);
             }
         }
-        foreach (string kind in PlainKinds.Where(k => plain && tokens.ContainsKey(k) && !sections.Any(s => s.ContainsKey(k))))
+        TakeLeftOut(PlainKinds, "Editor.Text");
+        TakeLeftOut(DocCommentParts, "Syntax.DocComment");
+        return sections;
+
+        void TakeLeftOut(IReadOnlyList<string> kinds, string from)
         {
-            foreach (Dictionary<string, TokenValue> section in sections)
+            foreach (string kind in kinds.Where(k => plain && tokens.ContainsKey(k) && !sections.Any(s => s.ContainsKey(k))))
             {
-                if (section.TryGetValue("Editor.Text", out TokenValue? words))
+                foreach (Dictionary<string, TokenValue> section in sections)
                 {
-                    section[kind] = words;
+                    if (section.TryGetValue(from, out TokenValue? given))
+                    {
+                        section[kind] = given;
+                    }
                 }
             }
         }
-        return sections;
     }
 
     /// <summary>The tokens a file written before them leaves out, worked out in each variant from its own colours there: the

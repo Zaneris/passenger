@@ -113,6 +113,13 @@ public static class VsCodeColours
         ("ControlKeyword", ["controlKeyword"], [["source.cs", "keyword.control"]], "Keyword"),
         ("Comment", ["comment"], [["source.cs", "comment.line.double-slash"], ["source.cs", "comment"]], null),
         ("DocComment", [], [["source.cs", "comment.block.documentation"], ["source.cs", "comment.documentation"]], "Comment"),
+        // A documentation comment's markup by the scopes the C# extension gives Roslyn's kinds of it, then the grammar's.
+        ("DocCommentTag", ["xmlDocCommentName", "xmlDocCommentDelimiter"], [["source.cs", "comment.documentation.name"], ["source.cs", "comment.documentation.delimiter"],
+            ["source.cs", "comment.block.documentation", "entity.name.tag"]], "DocComment"),
+        ("DocCommentAttributeName", ["xmlDocCommentAttributeName"], [["source.cs", "comment.documentation.attribute.name"],
+            ["source.cs", "comment.block.documentation", "entity.other.attribute-name"]], "DocComment"),
+        ("DocCommentAttributeValue", ["xmlDocCommentAttributeValue"], [["source.cs", "comment.documentation.attribute.value"],
+            ["source.cs", "comment.block.documentation", "string.quoted.double"]], "DocComment"),
         ("String", ["string"], [["source.cs", "string.quoted.double"], ["source.cs", "string"]], null),
         ("StringEscape", ["stringEscapeCharacter"], [["source.cs", "string.quoted.double", "constant.character.escape"]], "String"),
         ("Number", ["number"], [["source.cs", "constant.numeric"]], null),

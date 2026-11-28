@@ -120,6 +120,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("copy reference names the symbol at the caret whole and elsewhere the file's place", () => new CodeAssistTests(project), t => t.Copy_reference_names_the_symbol_at_the_caret_whole_and_elsewhere_the_files_place());
         Flow.StepApart("smart type completion lists only what fits the type expected at the caret", () => new CodeAssistTests(project), t => t.Smart_type_completion_lists_only_what_fits_the_type_expected_at_the_caret());
         Flow.StepApart("documentation shows bold, emphasis, underline, code and links in the hover, completion and parameter cards, tags written escaped too", () => new CodeAssistTests(project), t => t.Documentation_shows_its_tags_in_the_hover_completion_and_parameter_cards_tags_written_escaped_too());
+        Flow.StepApart("a documentation comment's tags, attributes' names and values and words take colours of their own and a cref's names keep those of what they name", () => new CodeAssistTests(project), t => t.A_documentation_comments_tags_attributes_names_and_values_and_words_take_colours_of_their_own_and_a_crefs_names_keep_those_of_what_they_name());
         Flow.StepApart("a hover's signature shows the attributes declared on the symbol and its parameters, those out of reach left out", () => new CodeAssistTests(project), t => t.A_hovers_signature_shows_the_attributes_declared_on_the_symbol_and_its_parameters_those_out_of_reach_left_out());
     }
 
@@ -3182,6 +3183,44 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>A documentation comment's /// and tags, its attributes' names, their values and its words each take a colour
+    /// of their own from the file's parse, four colours apart in either look; and the names a cref holds take the server's
+    /// colours of what they name, as their declarations and calls have them.</summary>
+    private void A_documentation_comments_tags_attributes_names_and_values_and_words_take_colours_of_their_own_and_a_crefs_names_keep_those_of_what_they_name()
+    {
+        MainWindow window = project.Open("Worker.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string text = editor.Document.Snapshot.ToString();
+        TokenKind? KindAt(int offset) => editor.Highlighter!.GetSpans(editor.Document.Snapshot, offset, 1)
+            .Where(s => s.Start <= offset && offset < s.End).Cast<SyntaxSpan?>().FirstOrDefault()?.Kind;
+        int At(string code, int into = 0) => text.IndexOf(code, StringComparison.Ordinal) + into;
+        (string Part, int Offset, TokenKind Kind)[] parts =
+        [
+            ("///", At("/// <summary>"), TokenKind.DocCommentTag), ("<summary>", At("<summary>Calls", 1), TokenKind.DocCommentTag),
+            ("Calls", At("Calls <see"), TokenKind.DocComment), ("cref", At("cref="), TokenKind.DocCommentAttributeName),
+            ("cref's quote", At("\"Worker.Reset"), TokenKind.DocCommentAttributeValue), ("/>", At("/> with"), TokenKind.DocCommentTag),
+            ("name", At("name=\"count\""), TokenKind.DocCommentAttributeName), ("The reset count", At("The reset count"), TokenKind.DocComment),
+        ];
+        foreach ((string part, int offset, TokenKind kind) in parts)
+        {
+            Assert.True(KindAt(offset) == kind, $"The documentation comment's {part} is coloured as {KindAt(offset)}, not as {kind}");
+        }
+        foreach (ThemeVariant look in (ThemeVariant[])[ThemeVariant.Dark, ThemeVariant.Light])
+        {
+            Color[] colours = [.. ((string[])[TokenKeys.Syntax_DocComment, TokenKeys.Syntax_DocCommentTag, TokenKeys.Syntax_DocCommentAttributeName,
+                TokenKeys.Syntax_DocCommentAttributeValue]).Select(key => editor.TryFindResource(key, look, out object? brush) && brush is ISolidColorBrush solid ? solid.Color : default)];
+            Assert.True(colours.Distinct().Count() == 4, $"In {look} a documentation comment's words, tags, attributes' names and values share colours: {string.Join(", ", colours)}");
+        }
+
+        int worker = At("cref=\"Worker", "cref=\"".Length);
+        int reset = worker + "Worker.".Length;
+        Ui.WaitFor(() => KindAt(worker) == TokenKind.Class && KindAt(reset) == TokenKind.Method,
+            () => $"the server's colours on the cref's names, which are {KindAt(worker)} and {KindAt(reset)}");
+        Assert.Equal(KindAt(At("class Worker", "class ".Length)), KindAt(worker));
+        Assert.Equal(KindAt(At("=> Reset", "=> ".Length)), KindAt(reset));
+        window.Close();
+    }
+
     private void Documentation_shows_its_tags_in_the_hover_completion_and_parameter_cards_tags_written_escaped_too()
     {
         MainWindow window = project.Open("Documented.cs");
@@ -4612,6 +4651,18 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Paths.cs"), "static class Paths\n{\n"
                 + "    /// <summary>Keeps its logs under <c>C:\\temp</c>, in C:\\temp\\logs, &quot;never&quot; elsewhere.</summary>\n"
                 + "    public static int Keep() => 1;\n}\n");
+            File.WriteAllText(PathOf("Worker.cs"), """
+                public sealed class Worker
+                {
+                    /// <summary>Calls <see cref="Worker.Reset(int)"/> with the requested count.</summary>
+                    /// <param name="count">The reset count.</param>
+                    public void Run(int count) => Reset(count);
+
+                    private void Reset(int count)
+                    {
+                    }
+                }
+                """);
             File.WriteAllText(PathOf("Documented.cs"), """
                 static class Documented
                 {

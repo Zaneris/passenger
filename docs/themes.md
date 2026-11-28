@@ -66,7 +66,11 @@ through exactly those (`Syntax.Brace5` counts only after `Syntax.Brace4`, `Synta
 five draws the sixth depth in `Syntax.Brace1`'s colour. It may also give `SyntaxStyle.Parameter`, how a parameter is set.
 `Syntax.Parameter`, `Syntax.Local`, `Syntax.Namespace` and `Syntax.Operator` are drawn in the code's plain words in
 Passenger's own theme; a file that leaves them out draws them in its own `Editor.Text`, unless it is laid over a VS Code
-theme, whose own they are.
+theme, whose own they are. A C# documentation comment's markup has colours of its own beside `Syntax.DocComment`, its
+words: `Syntax.DocCommentTag` its `///` and tags, `Syntax.DocCommentAttributeName` an attribute's name (`cref`, `name`)
+and `Syntax.DocCommentAttributeValue` its value with its quotes (a `cref`'s names keep the colours of what they name), all
+set in `SyntaxStyle.DocComment`; a file that leaves them out draws them in its own `Syntax.DocComment`, unless it is laid
+over a VS Code theme.
 A file that leaves out `ButtonHover`, `ButtonPressed` or `AccentPressed`, a button's grounds under the pointer and
 pressed, has them worked out in each variant from its own colours, as Passenger's themes work them out: a plain button's
 are its `Hover` and `Selected` laid over its `Button`, and the default button's pressed goes as far past its `AccentHover`
@@ -298,6 +302,9 @@ refused, saying so.
 | `Syntax.ControlKeyword` | `controlKeyword` | `keyword.control`, else `Syntax.Keyword` |
 | `Syntax.Comment` | `comment` | `comment.line.double-slash`, `comment` |
 | `Syntax.DocComment` | – | `comment.block.documentation`, `comment.documentation`, else `Syntax.Comment` |
+| `Syntax.DocCommentTag` | `xmlDocCommentName`, `xmlDocCommentDelimiter` | `comment.documentation.name`, `comment.documentation.delimiter`, a documentation comment's `entity.name.tag`, else `Syntax.DocComment` |
+| `Syntax.DocCommentAttributeName` | `xmlDocCommentAttributeName` | `comment.documentation.attribute.name`, a documentation comment's `entity.other.attribute-name`, else `Syntax.DocComment` |
+| `Syntax.DocCommentAttributeValue` | `xmlDocCommentAttributeValue` | `comment.documentation.attribute.value`, a documentation comment's `string.quoted.double`, else `Syntax.DocComment` |
 | `Syntax.String` | `string` | `string.quoted.double`, `string` |
 | `Syntax.StringEscape` | `stringEscapeCharacter` | `constant.character.escape`, else `Syntax.String` |
 | `Syntax.Number` | `number` | `constant.numeric` |

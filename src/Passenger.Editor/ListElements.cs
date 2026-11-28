@@ -88,5 +88,5 @@ public static class ListElements
 
     /// <summary>Whether an offset is inside a string or a comment, where a comma parts nothing.</summary>
     private static bool InWords(IReadOnlyList<SyntaxSpan> spans, int offset) =>
-        spans.Any(s => s.Start <= offset && offset < s.End && s.Kind is TokenKind.String or TokenKind.StringEscape or TokenKind.Comment or TokenKind.DocComment);
+        spans.Any(s => s.Start <= offset && offset < s.End && (s.Kind is TokenKind.String or TokenKind.StringEscape or TokenKind.Comment || TokenKinds.InDocComment(s.Kind)));
 }

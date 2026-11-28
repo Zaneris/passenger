@@ -99,8 +99,9 @@ public sealed partial class CodeEditor
         {
             if (run.Start <= column && column < run.Start + run.Length)
             {
-                if (run.Kind is TokenKind.Comment or TokenKind.DocComment or TokenKind.Punctuation or TokenKind.Operator
-                    or TokenKind.Brace1 or TokenKind.Brace2 or TokenKind.Brace3 or TokenKind.Brace4 or TokenKind.Brace5 or TokenKind.Brace6)
+                if (run.Kind is TokenKind.Comment or TokenKind.Punctuation or TokenKind.Operator
+                    or TokenKind.Brace1 or TokenKind.Brace2 or TokenKind.Brace3 or TokenKind.Brace4 or TokenKind.Brace5 or TokenKind.Brace6
+                    || TokenKinds.InDocComment(run.Kind))
                 {
                     break;
                 }
@@ -411,7 +412,7 @@ public sealed partial class CodeEditor
         return found is null ? [] : [.. found];
     }
 
-    private static bool HoldsAddresses(TokenKind kind) => kind is TokenKind.Comment or TokenKind.DocComment or TokenKind.String;
+    private static bool HoldsAddresses(TokenKind kind) => kind is TokenKind.Comment or TokenKind.String || TokenKinds.InDocComment(kind);
 
     /// <summary>The links' underlines on a row, in the link's underline colour, under the text's baseline: the decorations'
     /// links, its addresses and what a held gesture reaches.</summary>
