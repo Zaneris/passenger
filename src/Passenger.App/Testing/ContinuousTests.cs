@@ -60,10 +60,10 @@ public sealed class ContinuousTests : IDisposable
 
     /// <summary>Why the machine is the person's now (their build, tests, debugging or profiling), which no round runs beside;
     /// null while it is free.</summary>
-    public Func<string?> Paused { get; set; } = () => null;
+    public Func<Words?> Paused { get; set; } = () => null;
 
     /// <summary>Why the folder's code may not run (it is not trusted); null while it may.</summary>
-    public Func<string?> Refused { get; set; } = () => null;
+    public Func<Words?> Refused { get; set; } = () => null;
 
     /// <summary>Where its builds and runs' copies are: the folder's own, made by the first round.</summary>
     public string? Root { get; set; }
@@ -88,7 +88,7 @@ public sealed class ContinuousTests : IDisposable
     public IReadOnlyList<TestItem> LastRan { get; private set; } = [];
 
     /// <summary>What the last round came to, in words.</summary>
-    public string Said { get; private set; } = string.Empty;
+    public Words Said { get; private set; } = Words.Verbatim(string.Empty);
 
     /// <summary>A folder's continuous testing, its map as kept, on or off; no round until a save or its turning on.</summary>
     public void Open(string? opened, TestReachState map)
@@ -281,13 +281,13 @@ public sealed class ContinuousTests : IDisposable
         }
         using CancellationTokenSource stop = new();
         round = stop;
-        Working? work = Work?.Begin(RoundWork, "Testing continuously: building the tests in Passenger's own folder…");
+        Working? work = Work?.Begin(RoundWork, TestingWords.ContinuousBuildingAll);
         using CancellationTokenRegistration stopped = work?.Stopping.Register(stop.Cancel) ?? default;
         BackgroundWork.Begin();
         bool told = false;
         try
         {
-            string said = await RoundAsync(folder, work, stop.Token);
+            Words said = await RoundAsync(folder, work, stop.Token);
             Said = said;
             work?.Tell(true, said);
             told = true;
@@ -296,12 +296,12 @@ public sealed class ContinuousTests : IDisposable
         {
             // Put off for the person's work, or stopped: the changes stay for the next round.
             pending = IsOn;
-            Said = Paused() is { } why ? $"Continuous testing waits: {why}" : "Continuous testing stopped";
+            Said = Paused() is { } why ? TestingWords.ContinuousWaits(why) : TestingWords.ContinuousStopped;
         }
         catch (Exception failed) when (failed is IOException or InvalidOperationException or UnauthorizedAccessException or TimeoutException)
         {
-            Said = $"Continuous testing could not run the tests: {failed.Message}";
-            log(Said);
+            Said = TestingWords.ContinuousCouldNotRun(Words.Verbatim(failed.Message));
+            log(Said.English);
         }
         finally
         {
@@ -328,7 +328,7 @@ public sealed class ContinuousTests : IDisposable
 
     /// <summary>One round, the files saved since the last taken for it: given back for the next where it ends before its map
     /// is kept.</summary>
-    private async Task<string> RoundAsync(string opened, Working? work, CancellationToken cancel)
+    private async Task<Words> RoundAsync(string opened, Working? work, CancellationToken cancel)
     {
         string[] saved = [.. changed];
         bool every = everyFile;
@@ -337,7 +337,7 @@ public sealed class ContinuousTests : IDisposable
         bool kept = false;
         try
         {
-            (string said, kept) = await RoundAsync(opened, saved, every, work, cancel);
+            (Words said, kept) = await RoundAsync(opened, saved, every, work, cancel);
             return said;
         }
         finally
@@ -352,7 +352,7 @@ public sealed class ContinuousTests : IDisposable
 
     /// <summary>A round: the tests built, copied, their changed modules instrumented, found, and those to run run; what it came
     /// to, and whether the map took it.</summary>
-    private async Task<(string Said, bool Kept)> RoundAsync(string opened, string[] saved, bool every, Working? work, CancellationToken cancel)
+    private async Task<(Words Said, bool Kept)> RoundAsync(string opened, string[] saved, bool every, Working? work, CancellationToken cancel)
     {
         string given = Root ?? throw new InvalidOperationException("Continuous testing has no folder of its own");
         // Named as the disk names it, as MSBuild names what it builds there.
@@ -368,13 +368,13 @@ public sealed class ContinuousTests : IDisposable
         if (testProjects.Count == 0)
         {
             LastRan = [];
-            return ("Continuous testing found no test projects", true);
+            return (TestingWords.ContinuousNoProjects, true);
         }
         string built = Path.Combine(root, "build");
         foreach (ProjectModel project in testProjects)
         {
             Checked(cancel);
-            work?.Say($"Testing continuously: building {project.Name} in Passenger's own folder…");
+            work?.Say(TestingWords.ContinuousBuilding(project.Name));
             ChildResult build = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(
                 ["build", project.Path, "-nologo", "-nodeReuse:false", PropertySwitch.Of(MSBuildNames.UseArtifactsOutput, "true"), PropertySwitch.Of(MSBuildNames.ArtifactsPath, built),
                     .. model?.BuildArgumentsFor(project.Path) ?? []], opened), cancel: cancel);
@@ -382,11 +382,11 @@ public sealed class ContinuousTests : IDisposable
             {
                 string why = string.Join("; ", build.Output.Split('\n').Where(l => l.Contains(": error ", StringComparison.Ordinal)).Select(l => l.Trim()).Distinct().Take(3));
                 LastRan = [];
-                return ($"Continuous testing could not build {project.Name}: {(why.Length > 0 ? why : ExitCodes.Said(build.ExitCode))}", false);
+                return (TestingWords.ContinuousUnbuilt(project.Name, why.Length > 0 ? Words.Verbatim(why) : ExitCodes.Words(build.ExitCode)), false);
             }
         }
         Checked(cancel);
-        work?.Say("Testing continuously: finding what the build made…");
+        work?.Say(TestingWords.ContinuousFindingBuilt);
         Dictionary<string, string> own = new(StringComparer.OrdinalIgnoreCase) { [MSBuildNames.UseArtifactsOutput] = "true", [MSBuildNames.ArtifactsPath] = built };
         IReadOnlyList<TestAssembly> assemblies = await TestAssemblies.ResolveAsync(testProjects, opened, model, log, cancel, own);
         List<TestAssembly> copies = [];
@@ -415,7 +415,7 @@ public sealed class ContinuousTests : IDisposable
             (InstrumentedCode Code, FileStamp? Found, IReadOnlyList<TestItem> Tests) known = runs.GetValueOrDefault(run.Path, (InstrumentedCode.None, null, []));
             if (renewed.Length > 0)
             {
-                work?.Say($"Testing continuously: instrumenting {Plural.Listed(renewed)} for {assembly.Project.Name}…");
+                work?.Say(TestingWords.ContinuousInstrumenting(Plural.Listed(Words.Names(renewed)), assembly.Project.Name));
                 InstrumentedCode? code = null;
                 try
                 {
@@ -436,10 +436,10 @@ public sealed class ContinuousTests : IDisposable
         if (copies.Count == 0)
         {
             LastRan = [];
-            return ("Continuous testing built no test project in its own folder", true);
+            return (TestingWords.ContinuousBuiltNone, true);
         }
         Checked(cancel);
-        work?.Say("Testing continuously: finding the tests…");
+        work?.Say(TestingWords.ContinuousFinding);
         List<TestAssembly> unfound = [.. copies.Where(c => runs[c.Path].Found != FileStamp.Of(c.Path))];
         foreach (bool onVsTest in (bool[])[false, true])
         {
@@ -477,14 +477,14 @@ public sealed class ContinuousTests : IDisposable
         {
             LastRan = [];
             await KeepAsync(new(StringComparer.Ordinal), [], now, InstrumentedCode.None, cancel);
-            return ("Testing continuously: no test runs what changed", true);
+            return (TestingWords.ContinuousNoneReached, true);
         }
         return await RunAsync(copies, chosen, now, work, cancel);
     }
 
     /// <summary>The tests chosen run one at a time over their copies, the tree showing them as they run, the map taking each
     /// once every run ended whole; whether it took them, a run broken off leaving the change for the next round.</summary>
-    private async Task<(string Said, bool Kept)> RunAsync(List<TestAssembly> copies, List<TestItem> chosen, Dictionary<string, uint[]> now, Working? work, CancellationToken cancel)
+    private async Task<(Words Said, bool Kept)> RunAsync(List<TestAssembly> copies, List<TestItem> chosen, Dictionary<string, uint[]> now, Working? work, CancellationToken cancel)
     {
         string? brokeOff = null;
         // Each test's lines, told on the run's own threads as each test ends.
@@ -522,7 +522,7 @@ public sealed class ContinuousTests : IDisposable
                         }
                         ran[identity] = was;
                     }
-                    UiThread.Post(() => work?.Say($"Testing continuously: ran {Numbers.Said(++done)} of {Plural.Of(chosen.Count, "test")}…"));
+                    UiThread.Post(() => work?.Say(TestingWords.ContinuousRanOf(++done, chosen.Count)));
                 }
                 RunSummary summary = vsTestCopies.Contains(copy.Path) && vsTest is { } vs
                     ? await TestHitsRun.RunVsTestAsync(vs, its, code, Path.Combine(Root!, "hits"), UiThread.Marshal<IReadOnlyList<TestOutcome>>(Apply),
@@ -568,8 +568,7 @@ public sealed class ContinuousTests : IDisposable
             tests.EndContinuous(chosen, began);
             LastRan = chosen;
         }
-        return ($"Testing continuously: ran {Plural.Of(chosen.Count, "test")}, {Numbers.Said(outcomes.Count(o => o.State == TestState.Passed))} passed, "
-            + $"{Numbers.Said(outcomes.Count(o => o.State == TestState.Failed))} failed", true);
+        return (TestingWords.ContinuousRan(chosen.Count, outcomes.Count(o => o.State == TestState.Passed), outcomes.Count(o => o.State == TestState.Failed)), true);
     }
 
     /// <summary>The tests run so far taken into the map, each with its worst outcome, and the files they ran or could run and

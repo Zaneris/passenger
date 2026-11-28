@@ -67,7 +67,7 @@ public partial class MainWindow
             {
                 // Said in the Unit Tests window too, over the run's results, which is where to see more.
                 Say(message, StatusPlace.Window(Dock, ToolWindowIds.Tests));
-                Bottom.Tests.Status = message;
+                Bottom.Tests.Tell(message);
             }
         };
         // The Unit Tests window's Stop has something to end only while a run (or a look for the tests) goes on.
@@ -172,7 +172,7 @@ public partial class MainWindow
     }
 
     /// <summary>A run of tests shown in the Unit Tests window; what stopped it, if anything, in the status bar.</summary>
-    private void RunTests(Func<Task<string?>> run)
+    private void RunTests(Func<Task<Words?>> run)
     {
         if (Folder is null)
         {
@@ -187,7 +187,7 @@ public partial class MainWindow
 
         async Task Go()
         {
-            string? problem;
+            Words? problem;
             try
             {
                 problem = await run();
@@ -196,12 +196,12 @@ public partial class MainWindow
             {
                 // Nobody awaits the run: a failure no runner foresaw is an IDE error, said now rather than at a collection.
                 IdeErrors.Report(error);
-                problem = $"The tests could not run: {error.Message}";
+                problem = Testing.TestingWords.CouldNotRun(Words.Verbatim(error.Message));
             }
             if (session == running && !running.IsEnded && problem is not null)
             {
                 Say(problem, StatusPlace.Window(Dock, ToolWindowIds.Tests));
-                Bottom.Tests.Status = problem;
+                Bottom.Tests.Tell(problem);
             }
             ShowMeasured(covering && problem is null, running);
         }
@@ -216,8 +216,8 @@ public partial class MainWindow
             IReadOnlyList<Passenger.Workspace.Gherkin.ExampleRow> rows = testGutter.RowsOf(document);
             string shown = $"{outline.Method} [{row.Shown}]";
             MenuFlyout rowMenu = new();
-            rowMenu.Items.Add(ToolWindows.ListMenus.Item($"Run '{shown}'", () => RunRowAt(outline, row, rows, document.Path, debug: false)));
-            rowMenu.Items.Add(ToolWindows.ListMenus.Item($"Debug '{shown}'", () => RunRowAt(outline, row, rows, document.Path, debug: true)));
+            rowMenu.Items.Add(ToolWindows.ListMenus.Item(Testing.TestingWords.RunNamed(shown), () => RunRowAt(outline, row, rows, document.Path, debug: false)));
+            rowMenu.Items.Add(ToolWindows.ListMenus.Item(Testing.TestingWords.DebugNamed(shown), () => RunRowAt(outline, row, rows, document.Path, debug: true)));
             TestMarkMenu = rowMenu;
             rowMenu.Placement = Avalonia.Controls.PlacementMode.Pointer;
             rowMenu.ShowAt(editor, showAtPointer: true);
@@ -229,10 +229,10 @@ public partial class MainWindow
         }
         string name = chosen.Method ?? TypeNames.Short(chosen.Type);
         MenuFlyout menu = new();
-        menu.Items.Add(ToolWindows.ListMenus.Item($"Run '{name}'", () => RunTestsAt(chosen, document.Path, debug: false)));
-        menu.Items.Add(ToolWindows.ListMenus.Item($"Debug '{name}'", () => RunTestsAt(chosen, document.Path, debug: true)));
-        menu.Items.Add(ToolWindows.ListMenus.Item($"Run '{name}' Until Failure", () => RunTestsAt(chosen, document.Path, debug: false, untilFailure: true)));
-        menu.Items.Add(ToolWindows.ListMenus.Item($"Run '{name}' with Coverage", () => RunTestsAt(chosen, document.Path, debug: false, cover: true)));
+        menu.Items.Add(ToolWindows.ListMenus.Item(Testing.TestingWords.RunNamed(name), () => RunTestsAt(chosen, document.Path, debug: false)));
+        menu.Items.Add(ToolWindows.ListMenus.Item(Testing.TestingWords.DebugNamed(name), () => RunTestsAt(chosen, document.Path, debug: true)));
+        menu.Items.Add(ToolWindows.ListMenus.Item(Testing.TestingWords.RunNamedUntilFailure(name), () => RunTestsAt(chosen, document.Path, debug: false, untilFailure: true)));
+        menu.Items.Add(ToolWindows.ListMenus.Item(Testing.TestingWords.RunNamedWithCoverage(name), () => RunTestsAt(chosen, document.Path, debug: false, cover: true)));
         TestMarkMenu = menu;
         menu.Placement = Avalonia.Controls.PlacementMode.Pointer;
         menu.ShowAt(editor, showAtPointer: true);
@@ -248,7 +248,7 @@ public partial class MainWindow
     {
         if (!untilFailure && ChosenProjects(context) is { } projects)
         {
-            RunProjectTests(projects, Explorer.Selected?.Name ?? "the projects chosen", debug, cover);
+            RunProjectTests(projects, Explorer.Selected?.Name is { } named ? Words.Verbatim(named) : Testing.TestingWords.ProjectsChosen, debug, cover);
             return;
         }
         if (ChosenTests(context) is { } chosen)
@@ -283,7 +283,7 @@ public partial class MainWindow
         string workspace = Folder;
         RunTests(async () =>
         {
-            string? problem = await running.Tests.RunUntilFailureAsync(workspace, chosen);
+            Words? problem = await running.Tests.RunUntilFailureAsync(workspace, chosen);
             if (session == running && !running.IsEnded && running.Tests.FirstFailed(chosen) is { } failed)
             {
                 Bottom.Tests.Choose(failed);
@@ -314,7 +314,7 @@ public partial class MainWindow
             {
                 return await running.Tests.RunMatchingAsync(workspace, Matches, None, debug, cover);
             }
-            string? stopped = await running.Tests.RunUntilFailureAsync(workspace, Matches, None);
+            Words? stopped = await running.Tests.RunUntilFailureAsync(workspace, Matches, None);
             if (session == running && !running.IsEnded && running.Tests.FirstFailed(running.Tests.RunMethods) is { } failed)
             {
                 Bottom.Tests.Choose(failed);
@@ -327,7 +327,7 @@ public partial class MainWindow
                 && Testing.TestFinder.IsOf(test, projects ??= running.Tests.Finder.ProjectsOf(path)))
             || test.Places.Any(at => PathNames.Same(at.Path, path) && place.Holds(compiled is null ? at.Line : Testing.TestGutter.EditorLine(compiled, at.Line)));
 
-        string None(string? unfound) => Refusals.NoTestOf(method ?? type, unfound).Shown;
+        Words None(Words? unfound) => Refusals.NoTestOf(method ?? type, unfound);
     }
 
     /// <summary>Runs (or debugs) one example row of an outline: the row of the outline's test, as the tree has it once the
@@ -345,7 +345,7 @@ public partial class MainWindow
         RunTests(() => running.Tests.RunPickedAsync(workspace, methods => [.. methods
             .Where(test => test.Places.Any(at => PathNames.Same(at.Path, path) && outline.Holds(compiled is null ? at.Line : Testing.TestGutter.EditorLine(compiled, at.Line))))
             .SelectMany(test => test.Children.Where(c => c.Item is not null && Testing.TestGutter.Ran(c, row, rows)))],
-            unfound => Refusals.NoTestOf($"{outline.Method} [{row.Shown}]", unfound).Shown, debug, cover));
+            unfound => Refusals.NoTestOf($"{outline.Method} [{row.Shown}]", unfound), debug, cover));
     }
 
     /// <summary>A test host a runner would start, started under the debugger as a plan of its own (the runner built it, and
@@ -399,7 +399,7 @@ public partial class MainWindow
         if (unattached is not null)
         {
             reload?.Hook.Dispose();
-            Say(Refusals.Unattached("Tests", unattached));
+            Say(Refusals.Unattached(Testing.TestingWords.TestsProgram, unattached));
             return false;
         }
         CheckTestSession(running);

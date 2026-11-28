@@ -197,7 +197,7 @@ public sealed class GoDotTestTests : IDisposable
             int turns = GoDotTestGame.Line("int turns = 2;");
             editor.GoTo(new TextPosition(turns, 8));
             Ui.Run(window, AppActions.ToggleBreakpoint);
-            Task<string?> debugged = window.Tests.RunAsync(window.Folder!, [spins], debug: true);
+            Task<Words?> debugged = window.Tests.RunAsync(window.Folder!, [spins], debug: true);
             Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.Managed, State: DebugState.Paused } && editor.LineMarks.Contains(new LineMark(turns, LineMarkKind.ExecutionPoint)),
                 () => $"the stop in the test the game runs ({window.Debugger.Session?.Engine} {window.Debugger.Session?.State}; {window.BottomPanel.Tests.Status}; {window.Debugger.Output()})",
                 TimeSpan.FromMinutes(5));
@@ -353,7 +353,7 @@ public sealed class GoDotTestTests : IDisposable
             Assert.True(Method(window, "Spins")!.Duration > TimeSpan.Zero, "Spins was told with no time");
 
             File.Delete(Path.Combine(folder, "let-go"));
-            Task<string?> debugged = window.Tests.RunAsync(window.Folder!, debug: true, build: false);
+            Task<Words?> debugged = window.Tests.RunAsync(window.Folder!, debug: true, build: false);
             Assert.True(Ui.Pumped(() => Method(window, "Adds")?.State == TestState.Passed && Method(window, "Spins")?.State == TestState.Running
                     && window.Debugger.Session is not null, TimeSpan.FromMinutes(5)),
                 $"Adds was not told passed under Debug while Spins still ran ({Method(window, "Adds")?.State}, {Method(window, "Spins")?.State}; {window.BottomPanel.Tests.Status}; {window.Debugger.Output()})");

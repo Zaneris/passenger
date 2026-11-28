@@ -28,7 +28,7 @@ public partial class MainWindow
         Add(A.GoToTest, ActionTitles.GoToTest, ActionGroups.Navigate, c => IdeErrors.Observe(GoToTestAsync(c)), c => TypeAtCaret(c) is null ? Refusals.NoTypeForTest : null,
             ("Navigate", 1, 8), words: ["Go to Tested Type", "Linked Types", "Test Class"]);
 
-        string? NoTestsFor(ActionContext context) => (SessionTestsOf(context).Tests.Count == 0 ? Refusals.NoTestsForSession : null)?.Shown;
+        Words? NoTestsFor(ActionContext context) => SessionTestsOf(context).Tests.Count == 0 ? Refusals.NoTestsForSession : null;
     }
 
     /// <summary>The tests a session takes from where it was asked, and a name for a session of them: the Unit Tests window's
@@ -77,7 +77,7 @@ public partial class MainWindow
         }
         TestSession made = Bottom.TestTree.NewSession(name, tests);
         ShowToolWindow(ToolWindowIds.Tests);
-        Say($"New unit test session: {made.Name}", StatusPlace.Window(Dock, ToolWindowIds.Tests));
+        Say(TestingWords.SessionMade(made.Name), StatusPlace.Window(Dock, ToolWindowIds.Tests));
     }
 
     private void AppendToTestSession(ActionContext context)
@@ -90,7 +90,7 @@ public partial class MainWindow
         bool added = Bottom.TestTree.AddTo(current, tests);
         Bottom.TestTree.ShowSession(current);
         ShowToolWindow(ToolWindowIds.Tests);
-        Say(added ? $"Appended to {current.Name}" : $"{current.Name} holds them already", StatusPlace.Window(Dock, ToolWindowIds.Tests));
+        Say(added ? TestingWords.AppendedTo(current.Name) : TestingWords.HeldAlready(current.Name), StatusPlace.Window(Dock, ToolWindowIds.Tests));
     }
 
     /// <summary>Runs the current session's tests, shown in the Unit Tests window as they run: each method it holds whole, and
@@ -104,7 +104,7 @@ public partial class MainWindow
         Bottom.TestTree.ShowSession(current);
         ProjectSession running = session;
         string workspace = Folder;
-        RunTests(() => running.Tests.RunPickedAsync(workspace, methods => running.Tests.Tree.RunsOf(current, methods), _ => Refusals.SessionHoldsNone(current.Name).Shown));
+        RunTests(() => running.Tests.RunPickedAsync(workspace, methods => running.Tests.Tree.RunsOf(current, methods), _ => Refusals.SessionHoldsNone(current.Name)));
     }
 
     /// <summary>The Unit Tests window on a session's tests (every test for none), its tree given the keys.</summary>
@@ -128,8 +128,8 @@ public partial class MainWindow
         ActionRegistry registry = actions!;
         Vcs.Choice[] runnable = [.. MainMenu.ActionsIn(MainMenu.Of(registry.All, "Tests"))
             .Where(id => registry.WhyNot(id, context) is null)
-            .Select(id => new Vcs.Choice(registry[id]!.TitleWhere(context).Shown, registry.ShortcutsShown(id) ?? string.Empty, id))];
-        Vcs.ChoicePopup popup = new(TitleOf(A.TestsQuickList), "Search unit test actions", runnable, Refusals.NoTestOperations.Shown);
+            .Select(id => new Vcs.Choice(registry[id]!.TitleWhere(context), Words.Verbatim(registry.ShortcutsShown(id) ?? string.Empty), id))];
+        Vcs.ChoicePopup popup = new(ActionTitles.TestsQuickList, TestingWords.SearchActions, runnable, Refusals.NoTestOperations);
         popups.Show(popup, chosen =>
         {
             if (chosen?.Value is string id)

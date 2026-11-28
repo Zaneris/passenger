@@ -342,7 +342,7 @@ internal static class MauiApp
         Ui.Settle();
         window.EditorArea.CodeEditor.GoTo(new Passenger.Text.TextPosition(after, 8));
         Ui.Run(window, AppActions.ToggleBreakpoint);
-        Task<string?> debugged = window.Tests.RunAsync(window.Folder!, debug: true);
+        Task<Words?> debugged = window.Tests.RunAsync(window.Folder!, debug: true);
         for (int stops = 0; ; stops++)
         {
             Ui.WaitFor(() => window.Debugger.Session is { State: Passenger.App.Debugging.DebugState.Paused } paused

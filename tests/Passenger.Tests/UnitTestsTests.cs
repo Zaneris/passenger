@@ -172,7 +172,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
             "        int run = (File.Exists(path) ? int.Parse(File.ReadAllText(path)) : 0) + 1;\n        File.WriteAllText(path, run.ToString());\n" +
             "        Assert.True(run < 3, $\"failed on its run {run}\");\n    }\n}\n");
         MainWindow window = Open();
-        Task<string?> found = window.Tests.DiscoverAsync(window.Folder!);
+        Task<Words?> found = window.Tests.DiscoverAsync(window.Folder!);
         Assert.Null(Ui.Await(found, "the tests to be found", TimeSpan.FromSeconds(120)));
 
         window.Perform(AppActions.ShowTests);
@@ -579,7 +579,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Assert.True(window.Perform(AppActions.StopTests));
         Ui.WaitFor(() => !window.Tests.IsBusy, "the run to stop while it finds the tests", TimeSpan.FromSeconds(60));
         Assert.True(Processes.Gone(testHost, TimeSpan.FromSeconds(30)), $"The test host finding the tests ({Processes.Describe(testHost)}) still ran after Stop");
-        Assert.Equal(TestController.StoppedMessage, window.BottomPanel.Tests.Status);
+        Assert.Equal(TestingWords.Stopped.English, window.BottomPanel.Tests.Status);
         List<TestNode> shown = [.. window.Tests.Tree.Roots.SelectMany(r => r.Methods)];
         Assert.Contains(shown, m => m.Name == "Slow");
         Assert.All(shown, m => Assert.Equal(TestState.NotRun, m.State));
@@ -599,7 +599,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Tree(window);
         Ui.WaitFor(() => Method(window, "Never_ends") is not null && Method(window, "Two_and_two_make_four") is not null, "the tests in the Unit Tests window");
 
-        Task<string?> hanging = window.Tests.RunAsync(window.Folder!, [Method(window, "Never_ends")!]);
+        Task<Words?> hanging = window.Tests.RunAsync(window.Folder!, [Method(window, "Never_ends")!]);
         int testHost = Processes.WrittenId(host, "the test host running the test that never ends");
         Assert.True(window.Perform(AppActions.StopTests));
         Assert.True(Ui.Await(hanging, "the run of the test that never ends to stop", TimeSpan.FromSeconds(20)) is null,
@@ -881,15 +881,15 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         MainWindow window = Open();
         Tree(window);
         Ui.WaitFor(() => Method(window, "Before_its_rename") is not null, "the test from its code");
-        Task<string?> run = window.Tests.RunAsync(window.Folder!, [Method(window, "Before_its_rename")!]);
+        Task<Words?> run = window.Tests.RunAsync(window.Folder!, [Method(window, "Before_its_rename")!]);
         Processes.WrittenId(started, "the test host running the test to be renamed");
         File.WriteAllText(renamed, File.ReadAllText(renamed).Replace("Before_its_rename", "After_its_rename", StringComparison.Ordinal));
         // The run holds the window busy until the test ends, which waits for the rename to be seen.
         Ui.PumpUntil(() => Method(window, "After_its_rename") is not null && Method(window, "Before_its_rename") is null, "the renamed test in the tree by its new name");
         File.WriteAllText(go, "go");
         Ui.Launched(window, run, "the run of the renamed test", TimeSpan.FromSeconds(120));
-        Assert.True(window.Tests.Summary.StartsWith("Tests passed: 0, failed: 1 of 1", StringComparison.Ordinal),
-            $"The run of a test renamed as it ran did not count its failure: '{window.Tests.Summary}'");
+        Assert.True(window.Tests.Summary.English.StartsWith("Tests passed: 0, failed: 1 of 1", StringComparison.Ordinal),
+            $"The run of a test renamed as it ran did not count its failure: '{window.Tests.Summary.English}'");
 
         Assert.True(window.Perform(AppActions.RunAllTests));
         Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Deleted_soon")?.State == TestState.Passed, "the run of every test", TimeSpan.FromSeconds(120));
@@ -933,7 +933,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Tree(window);
         Ui.WaitFor(() => Method(window, "Exits") is not null, "the exiting test in the Unit Tests window");
         Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [Method(window, "Exits")!]), "the run of the test that exits", TimeSpan.FromSeconds(120));
-        string said = window.Tests.Summary;
+        string said = window.Tests.Summary.English;
         Assert.True(said.Contains(", broken off: ", StringComparison.Ordinal) && said.Contains("Test host process crashed", StringComparison.Ordinal)
             && said.EndsWith("while Sums.Tests.ExitingTests.Exits ran", StringComparison.Ordinal),
             $"A run whose test host crashed as Sums.Tests.ExitingTests.Exits ran did not say so: '{said}'");
@@ -952,7 +952,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         ListBox tree = Tree(window);
         Ui.WaitFor(() => Method(window, "Exits") is not null, "the exiting test in the Unit Tests window");
         Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [Method(window, "Exits")!]), "the run of the test that exits", TimeSpan.FromSeconds(120));
-        Assert.Contains(", broken off: ", window.Tests.Summary, StringComparison.Ordinal);
+        Assert.Contains(", broken off: ", window.Tests.Summary.English, StringComparison.Ordinal);
         Ui.WaitFor(() => Labels().Count > 0, "Local History's label of the run");
         Assert.True(Labels() is ["Tests Broken Off"], $"Local History labelled a run its test host's crash broke off [{string.Join(", ", Labels())}]");
 
