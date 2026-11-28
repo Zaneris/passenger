@@ -214,12 +214,68 @@ internal static class CSharpClassifier
                 _ when t.IsDirective => TokenKind.Preprocessor,
                 _ => null,
             };
-            if (kind is { } k)
+            if (kind == TokenKind.DocComment && t.GetStructure() is DocumentationCommentTriviaSyntax doc)
+            {
+                AddDocComment(doc, range, spans);
+            }
+            else if (kind is { } k)
             {
                 // A doc comment's first /// is its own leading trivia, outside its Span; FullSpan has it.
                 Add(spans, t.FullSpan.Start, t.FullSpan.Length, k);
             }
         }
+    }
+
+    /// <summary>A documentation comment's parts as its markup has them, each token reaching into the range: its /// and
+    /// tags, its attributes' names, their values with their quotes (a cref's keywords as keywords, its names as values
+    /// until the server says what they name), an inner comment as a comment, and its words.</summary>
+    private static void AddDocComment(DocumentationCommentTriviaSyntax doc, TextSpan range, List<SyntaxSpan> spans)
+    {
+        foreach (SyntaxToken token in doc.DescendantTokens())
+        {
+            if (token.FullSpan.End < range.Start)
+            {
+                continue;
+            }
+            if (token.FullSpan.Start > range.End)
+            {
+                break;
+            }
+            AddExterior(token.LeadingTrivia, spans);
+            Add(spans, token.SpanStart, token.Span.Length, DocKindOf(token));
+            AddExterior(token.TrailingTrivia, spans);
+        }
+    }
+
+    /// <summary>The /// (or a block's *) that begins each line of a documentation comment, as its markup.</summary>
+    private static void AddExterior(SyntaxTriviaList trivia, List<SyntaxSpan> spans)
+    {
+        foreach (SyntaxTrivia t in trivia)
+        {
+            if (t.IsKind(SyntaxKind.DocumentationCommentExteriorTrivia))
+            {
+                Add(spans, t.SpanStart, t.Span.Length, TokenKind.DocCommentTag);
+            }
+        }
+    }
+
+    private static TokenKind DocKindOf(SyntaxToken token)
+    {
+        SyntaxNode? parent = token.Parent;
+        if (parent?.FirstAncestorOrSelf<CrefSyntax>() is not null || parent is IdentifierNameSyntax { Parent: XmlNameAttributeSyntax })
+        {
+            return SyntaxFacts.IsKeywordKind(token.Kind()) ? TokenKind.Keyword : TokenKind.DocCommentAttributeValue;
+        }
+        return parent switch
+        {
+            XmlNameSyntax { Parent: XmlAttributeSyntax } or XmlPrefixSyntax { Parent: XmlNameSyntax { Parent: XmlAttributeSyntax } } => TokenKind.DocCommentAttributeName,
+            XmlAttributeSyntax when token.IsKind(SyntaxKind.EqualsToken) => TokenKind.DocCommentTag,
+            XmlAttributeSyntax => TokenKind.DocCommentAttributeValue,
+            XmlCommentSyntax => TokenKind.Comment,
+            XmlTextSyntax or XmlCDataSectionSyntax when token.IsKind(SyntaxKind.XmlTextLiteralToken) || token.IsKind(SyntaxKind.XmlTextLiteralNewLineToken) => TokenKind.DocComment,
+            DocumentationCommentTriviaSyntax => TokenKind.DocComment,
+            _ => TokenKind.DocCommentTag,
+        };
     }
 
     private static void AddToken(SyntaxToken token, List<SyntaxSpan> spans)

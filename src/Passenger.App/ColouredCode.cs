@@ -279,7 +279,7 @@ public sealed class ColouredCode : Border
     private void Look(TextRun run, TokenKind kind, bool strong = false)
     {
         run.Bind(TextElement.ForegroundProperty, this.GetResourceObservable($"Passenger.Syntax.{kind}"));
-        string style = $"Passenger.SyntaxStyle.{kind}";
+        string style = $"Passenger.SyntaxStyle.{TokenKinds.StyledAs(kind)}";
         if (!strong)
         {
             run.Bind(TextElement.FontWeightProperty, this.GetResourceObservable(style, set =>

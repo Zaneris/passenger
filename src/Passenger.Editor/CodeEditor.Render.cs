@@ -513,7 +513,7 @@ public sealed partial class CodeEditor
                 return runProperties[kind] = OwnRun(own);
             }
             IBrush brush = palette.Syntax(kind);
-            SyntaxStyle? style = palette.Style(kind);
+            SyntaxStyle? style = palette.Style(TokenKinds.StyledAs(kind));
             int set = style is not null ? 0 : kind switch
             {
                 TokenKind.UserInput or TokenKind.Italic => 1,

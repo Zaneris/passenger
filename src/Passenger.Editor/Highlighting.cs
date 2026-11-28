@@ -93,6 +93,28 @@ public enum TokenKind
     Brace4,
     Brace5,
     Brace6,
+
+    /// <summary>A documentation comment's markup: its <c>///</c>, a tag's brackets and name, an entity.</summary>
+    DocCommentTag,
+
+    /// <summary>A documentation comment's attribute's name (<c>cref</c>, <c>name</c>).</summary>
+    DocCommentAttributeName,
+
+    /// <summary>A documentation comment's attribute's value with its quotes, but for the names a <c>cref</c> holds, which
+    /// keep the colours of what they name.</summary>
+    DocCommentAttributeValue,
+}
+
+/// <summary>What the kinds say of the text they colour beside its colour.</summary>
+public static class TokenKinds
+{
+    /// <summary>Whether a kind is a documentation comment's: its words (<see cref="TokenKind.DocComment"/>) or its markup.</summary>
+    public static bool InDocComment(TokenKind kind) =>
+        kind is TokenKind.DocComment or TokenKind.DocCommentTag or TokenKind.DocCommentAttributeName or TokenKind.DocCommentAttributeValue;
+
+    /// <summary>The kind whose style (<c>Passenger.SyntaxStyle.{Kind}</c>) a kind's text is set in: a documentation comment's
+    /// markup in its words' own, so the comment is set alike throughout.</summary>
+    public static TokenKind StyledAs(TokenKind kind) => InDocComment(kind) ? TokenKind.DocComment : kind;
 }
 
 /// <summary>Where the pointer rested: the offset under it and the point, in the editor's coordinates, and the inlay

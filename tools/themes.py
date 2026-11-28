@@ -411,7 +411,8 @@ SHAPES = {
 # Kinds of code drawn in the code's plain words unless a palette's code roles name a hue for one (parameter, local, ...).
 PLAIN_KINDS = ["Parameter", "Local", "Namespace", "Operator"]
 
-SYNTAX_KINDS = ["Keyword", "ControlKeyword", "Comment", "DocComment", "String", "StringEscape", "Number",
+SYNTAX_KINDS = ["Keyword", "ControlKeyword", "Comment", "DocComment", "DocCommentTag", "DocCommentAttributeName",
+                "DocCommentAttributeValue", "String", "StringEscape", "Number",
                 "Preprocessor", "Class", "Interface", "Struct", "Enum", "Delegate", "TypeParameter", "Method",
                 "Property", "Event", "Field", "Constant", "EnumMember", "ErrorOutput", "UserInput", "Link",
                 "BuildError", "BuildWarning", "Brace1", "Brace2", "Brace3", "Tag", "AttributeName", "AttributeValue",
@@ -702,6 +703,9 @@ def variant(theme, p, dark):
     syntax = {
         "Keyword": pick("keyword"), "ControlKeyword": pick("keyword"), "Comment": hue("comment"),
         "DocComment": mix(hue("comment"), pick("type"), 0.35), "String": pick("string"), "StringEscape": pick("escape"),
+        # A documentation comment's markup quiet beside its words: tags the comments', attributes toward members and strings.
+        "DocCommentTag": hue("comment"), "DocCommentAttributeName": mix(hue("comment"), pick("member"), 0.7),
+        "DocCommentAttributeValue": mix(hue("comment"), pick("string"), 0.7),
         "Number": pick("number"), "Preprocessor": mix(muted, text, 0.2), "Class": pick("type"),
         "Interface": pick("type"), "Struct": mix(pick("struct"), text, 0.25), "Enum": mix(pick("struct"), text, 0.25),
         "Delegate": mix(pick("struct"), text, 0.25), "TypeParameter": pick("type"), "Method": pick("method"),
