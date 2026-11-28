@@ -385,6 +385,7 @@ public sealed partial class Vim
         List<int> places = [];
         List<int> padded = [];
         List<int> cutPads = [];
+        blockCutRest = null;
         for (int line = top; line <= bottom; line++)
         {
             LineSpan span = text.GetLine(line);
@@ -398,7 +399,8 @@ public sealed partial class Vim
                     int cutPad = place < span.End && TextNavigation.VisualColumn(text, place, tab) is var cut && cut < left ? left - cut : 0;
                     if (cutPad > 0 && line == top)
                     {
-                        // Where it cuts one on its first line, the text goes before that character there alone.
+                        // Where it cuts one on its first line, the text goes before that character there, the lines below taking what is typed past the columns cut.
+                        blockCutRest = PlacesBelowCut(text, top + 1, bottom, left, right, tab) is { } below ? (cutPad, below) : null;
                         (places, padded, cutPads) = ([place], [0], [0]);
                         break;
                     }
@@ -501,6 +503,29 @@ public sealed partial class Vim
         TextSnapshot after = text.Apply(edits);
         SelectionSet landed = carets.With(c => Selection.At(Settled(after, TextEditing.MapOffset(c.Caret, edits, false), breakEnds)));
         return new VimResult(true, Edits: [new EditPlan(edits, landed, EditKind.Other)]);
+    }
+
+    /// <summary>Where a block's I goes in on each line from <paramref name="first"/> to <paramref name="last"/>, as the line
+    /// and the offset in it, passing over lines that end before the block; null where the block's edge cuts a character there.</summary>
+    private static (int Line, int Offset)[]? PlacesBelowCut(TextSnapshot text, int first, int last, int left, int right, int tab)
+    {
+        List<(int Line, int Offset)> places = [];
+        for (int line = first; line <= last; line++)
+        {
+            LineSpan span = text.GetLine(line);
+            int width = TextNavigation.VisualColumn(text, span.End, tab);
+            if (width < left)
+            {
+                continue;
+            }
+            int place = width == left ? span.End : BlockPiece(text, line, left, right, tab)!.Value.Start;
+            if (place < span.End && TextNavigation.VisualColumn(text, place, tab) < left)
+            {
+                return null;
+            }
+            places.Add((line, place - span.Start));
+        }
+        return [.. places];
     }
 
     /// <summary>A block's &gt; and &lt; by columns. &gt; lays the blanks around its left edge out again (in spaces, or tabs

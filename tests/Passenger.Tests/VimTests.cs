@@ -226,10 +226,9 @@ public sealed partial class VimTests
         ("A block's A, C or c whose edge cuts a character of several columns in two (a control character's mark, a wide one, "
             + "a tab) types as Vim's does by no rule found: A appends after it on the line the block began on and puts that "
             + "character before the typed text on the others (for a wide one U+FFFD), as the block was made top down or bottom "
-            + "up, and C and c type before the part they leave, where Vim mode makes the character the spaces it shows first; "
-            + "an I made again by . over such a character types part of the text again on the lines below",
+            + "up, and C and c type before the part they leave, where Vim mode makes the character the spaces it shows first",
             (vimCase, _, passenger) => vimCase.Commands.Any(command => command.Keys[0] == VimKeys.CtrlV && (command.Keys.Contains("A") || command.Keys.Contains("C")
-                || command.Keys.Contains("c") || (command.Keys.Contains("I") && command.Keys.Contains(".")))) && passenger.Seen.Contains(HoldsControl)),
+                || command.Keys.Contains("c"))) && passenger.Seen.Contains(HoldsControl)),
         ("A block's > or < over a control character's mark at its left edge shifts as Vim's does by no rule found: > before "
             + "the character where the block's column came by k onto it, after it where it came by b, and after it where the edge "
             + "cuts its second column, where Vim shifts a wide character cut so from before it; after < that makes the mark a "

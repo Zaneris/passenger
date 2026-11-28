@@ -537,6 +537,15 @@ public sealed partial class Vim(VimRegisters registers)
             plans.Add(kept);
             (text, selections) = (text.Apply(kept.Edits), kept.Selections);
         }
+        if (blockCutRest is { } rest && typed is { } cutTyped && !cutTyped.Contains('\n', StringComparison.Ordinal) && cutTyped.Length > rest.Skip && rest.Places.Length > 0)
+        {
+            // A block's I that went in before a character its edge cut on its first line types on the lines below what it typed past the columns cut.
+            List<TextEdit> copies = [.. rest.Places.Select(p => new TextEdit(text.GetLineStart(p.Line) + p.Offset, 0, cutTyped[rest.Skip..]))];
+            EditPlan copied = new(copies, TextEditing.MapThrough(selections, copies), EditKind.Joined);
+            plans.Add(copied);
+            (text, selections) = (text.Apply(copied.Edits), copied.Selections);
+        }
+        blockCutRest = null;
         blockCutPads = null;
         blockStart = null;
         if (typingIntoEmptied && typed is "" && text.Length == view.LineEnding.Length && text.GetText(0, text.Length) == view.LineEnding)

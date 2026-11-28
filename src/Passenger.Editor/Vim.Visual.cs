@@ -83,6 +83,10 @@ public sealed partial class Vim
     /// the session types nothing.</summary>
     private int[]? blockCutPads;
 
+    /// <summary>Where a block's I that went in before a character its edge cut on the first line goes in on the lines below,
+    /// and how many of the columns it cut the text typed there leaves out.</summary>
+    private (int Skip, (int Line, int Offset)[] Places)? blockCutRest;
+
     /// <summary>A block's insert session as it began: the text then, each caret's line, top to bottom, and the spaces
     /// padding it, for what it types with a line break to go on the first line alone.</summary>
     private (TextSnapshot Text, int[] Lines, int[] Pads)? blockStart;
