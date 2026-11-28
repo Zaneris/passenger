@@ -952,6 +952,7 @@ public sealed class ExplorerTree
                     g.Key.Assembly)
                 {
                     Owner = project,
+                    Referenced = g.Key.Generator,
                     Tip = $"The source generator {g.Key.Generator}, in {g.Key.Assembly}",
                 })])
         {
@@ -1268,7 +1269,8 @@ public sealed class ExplorerNode : Observable, ITreeRow
     /// <summary>The project a dependency (the Dependencies row and each one under it) belongs to.</summary>
     public string? Owner { get; init; }
 
-    /// <summary>The project a project reference names, or the shared project (else its items file) a shared import names.</summary>
+    /// <summary>The project a project reference names, or the shared project (else its items file) a shared import names;
+    /// for a source generator's row its type's whole name, and for a generated document's its address.</summary>
     public string? Referenced { get; init; }
 
     /// <summary>For a file in a shared project's folder, its items file; null for every other row.</summary>
@@ -1468,9 +1470,10 @@ public sealed class ExplorerNode : Observable, ITreeRow
 
     /// <summary>What makes a row the same row when its parent is read again: its name is part of it, so a linked file
     /// whose Link changes shows its new name, a package's version, so one updated shows its new version, and what it
-    /// brings, so one restored again opens to them, what the SDK reads a folder as, so a web root found shows as one, and
-    /// whether a shared project leaves a file out.</summary>
-    private static string Identity(ExplorerNode node) => $"{node.Kind}/{node.Name}/{node.Path}/{node.Nested}/{(node.Path is null ? node.Detail : null)}/{node.SdkFolder}/{node.Unlisted}";
+    /// brings, so one restored again opens to them, what the SDK reads a folder as, so a web root found shows as one,
+    /// whether a shared project leaves a file out, and a source generator's whole type, as two of one short name differ.</summary>
+    private static string Identity(ExplorerNode node) =>
+        $"{node.Kind}/{node.Name}/{node.Path}/{node.Nested}/{(node.Path is null ? node.Detail : null)}/{node.SdkFolder}/{node.Unlisted}/{(node.Kind == NodeKind.Generator ? node.Referenced : null)}";
 
     public bool IsExpanded
     {
