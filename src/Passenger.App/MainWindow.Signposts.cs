@@ -50,7 +50,8 @@ public partial class MainWindow
             }
             return;
         }
-        if (NameBelow(editor.Document.Snapshot, press.Line, word.Name) is not int name)
+        // The declaration's own name where the row is of the text as it stands, never a word of its attributes above it.
+        if ((word.Version == editor.Document.Version ? word.NameOffset : NameBelow(editor.Document.Snapshot, press.Line, word.Name)) is not int name)
         {
             return;
         }
@@ -91,7 +92,7 @@ public partial class MainWindow
     }
 
     /// <summary>Where a declaration's name first stands as a whole word from the start of the line its signpost heads, a few
-    /// lines on at most; null where it is not there.</summary>
+    /// lines on at most, for a row of a text since changed; null where it is not there.</summary>
     private static int? NameBelow(TextSnapshot text, int line, string name)
     {
         for (int at = line; at < Math.Min(text.LineCount, line + SignpostReach); at++)

@@ -20,9 +20,9 @@ internal enum SignpostKind
     Authors,
 }
 
-/// <summary>A signpost's word as its row holds it: what it says, the name of the declaration under it, and for its authors
-/// the newest commit among them.</summary>
-internal sealed record SignpostWord(SignpostKind Kind, string Name, BlameLine? Commit = null);
+/// <summary>A signpost's word as its row holds it: what it says, the name of the declaration under it and where that name
+/// stands in the text of the version it was read from, and for its authors the newest commit among them.</summary>
+internal sealed record SignpostWord(SignpostKind Kind, string Name, int NameOffset, int Version, BlameLine? Commit = null);
 
 /// <summary>A complexity word and the document version its line offsets belong to.</summary>
 internal sealed record ComplexityWord(FunctionComplexity Function, int Version);
@@ -387,15 +387,15 @@ internal sealed class Signposts
             known.Counts.TryGetValue(key, out Counted counted);
             if (settings.SignpostUsages && counted.Usages is int usages)
             {
-                words.Add(new RowAboveWord(SignpostDeclarations.Usages(usages), new SignpostWord(SignpostKind.Usages, declaration.Name)));
+                words.Add(new RowAboveWord(SignpostDeclarations.Usages(usages), new SignpostWord(SignpostKind.Usages, declaration.Name, declaration.NameOffset, known.Version)));
             }
             if (settings.SignpostInheriting && declaration.Heritage != Heritage.None && counted.Inheriting is int inheriting)
             {
-                words.Add(new RowAboveWord(SignpostDeclarations.Inheriting(declaration.Heritage, inheriting), new SignpostWord(SignpostKind.Inheriting, declaration.Name)));
+                words.Add(new RowAboveWord(SignpostDeclarations.Inheriting(declaration.Heritage, inheriting), new SignpostWord(SignpostKind.Inheriting, declaration.Name, declaration.NameOffset, known.Version)));
             }
             if (blame is not null && BlameAuthors.Of(blame, declaration.FirstLine, declaration.LastLine) is { } authors)
             {
-                words.Add(new RowAboveWord(authors.Label, new SignpostWord(SignpostKind.Authors, declaration.Name, authors.Latest)));
+                words.Add(new RowAboveWord(authors.Label, new SignpostWord(SignpostKind.Authors, declaration.Name, declaration.NameOffset, known.Version, authors.Latest)));
             }
             said |= words.Count > 0;
             rows.Add(declaration.LineCode, words);
