@@ -112,7 +112,7 @@ public sealed class StepLibraryTests : IClassFixture<RestoredFolders>, IDisposab
                     (BindingKind.StepDefinition, "the calculator is cleared", 1, ""),
                 ],
                 library.Steps.Select(s => (s.Binding.Kind, s.Sample.Text, s.Uses ?? -1, string.Join(' ', s.Tags))));
-            Assert.Equal(["Given", "When", "Then", "Any step", "Hooks"], library.Rows.OfType<StepLibraryView.Heading>().Select(h => h.Title));
+            Assert.Equal(["Given", "When", "Then", "Any step", "Hooks"], library.Rows.OfType<StepLibraryView.Heading>().Select(h => h.Title.English));
             StepHook hook = Assert.Single(library.Hooks);
             Assert.Equal(("BeforeScenario", "@calc"), (hook.Kind, string.Join(' ', StepLibrary.TagsOf(hook.Scopes))));
             Ui.Settle();

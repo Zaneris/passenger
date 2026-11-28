@@ -19,15 +19,15 @@ namespace Passenger.App.Bdd;
 public sealed class StepLibraryView : DockPanel
 {
     /// <summary>A kind's heading over its rows, with how many are listed under it.</summary>
-    public sealed record Heading(string Title, int Count);
+    public sealed record Heading(Words Title, int Count);
 
     private readonly ListBox list;
     private readonly EmptyState empty;
-    private readonly TextBox filter = SearchBox.Finding("Filter steps");
+    private readonly TextBox filter = SearchBox.Finding(BddWords.FilterSteps);
     private readonly FilterMenu filters;
     private IReadOnlyList<LibraryStep> steps = [];
     private IReadOnlyList<StepHook> hooks = [];
-    private string? nothing;
+    private Words? nothing;
     private bool unusedOnly;
 
     /// <param name="item">A menu item of one of the window's actions, greyed with why where it can't run.</param>
@@ -45,7 +45,7 @@ public sealed class StepLibraryView : DockPanel
                 e.Handled = true;
             }
         };
-        filters = new FilterMenu("Filter Step Definitions", FilterItems);
+        filters = new FilterMenu(BddWords.FilterDefinitions, FilterItems);
         filters.Inside(filter);
         Children.Add(ToolBars.Top(filter));
 
@@ -69,9 +69,9 @@ public sealed class StepLibraryView : DockPanel
             [
                 item(AppActions.InsertStep),
                 ListMenus.Source(GoToChosen, chosen.Binding.MethodPlace is null ? Refusals.MethodUnplaced : null),
-                ListMenus.Item("Find Usages", () => UsagesRequested?.Invoke(this, chosen), chosen.Uses is > 0 ? null : Refusals.StepUses(chosen.Uses)),
+                ListMenus.Item(ActionTitles.FindUsages, () => UsagesRequested?.Invoke(this, chosen), chosen.Uses is > 0 ? null : Refusals.StepUses(chosen.Uses)),
                 new Separator(),
-                ListMenus.Item("Copy Phrase", () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Sample.Text))),
+                ListMenus.Item(BddWords.CopyPhrase, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Sample.Text))),
             ],
             StepHook hook => [ListMenus.Source(GoToChosen, hook.MethodPlace is null ? Refusals.MethodUnplaced : null)],
             _ => [],
@@ -137,7 +137,7 @@ public sealed class StepLibraryView : DockPanel
 
     /// <summary>Lists the definitions and hooks, or says <paramref name="none"/> in their place while there are none to list
     /// (the bindings not read yet, or no project binding any).</summary>
-    public void Show(IReadOnlyList<LibraryStep> definitions, IReadOnlyList<StepHook> found, string? none)
+    public void Show(IReadOnlyList<LibraryStep> definitions, IReadOnlyList<StepHook> found, Words? none)
     {
         UiThread.Check();
         steps = definitions;
@@ -162,7 +162,7 @@ public sealed class StepLibraryView : DockPanel
         StepHook[] running = unusedOnly ? [] : [.. hooks.Where(fits.Fits)];
         if (running.Length > 0)
         {
-            rows.Add(new Heading("Hooks", running.Length));
+            rows.Add(new Heading(BddWords.Hooks, running.Length));
             rows.AddRange(running);
         }
         list.ItemsSource = rows;
@@ -171,17 +171,16 @@ public sealed class StepLibraryView : DockPanel
             list.SelectedItem = rows.FirstOrDefault(r => r is LibraryStep step && StepLibrary.KeyOf(step.Binding) == chosen);
         }
         empty.IsVisible = rows.Count == 0;
-        empty.Text = nothing ?? (steps.Count == 0 && hooks.Count == 0
-            ? "No step definitions yet: a [Given], [When] or [Then] method of a [Binding] class is listed here"
-            : unusedOnly && fits.IsEmpty ? "Every step definition is used by a feature step"
-            : "No step definition fits the filter");
+        empty.Say(nothing ?? (steps.Count == 0 && hooks.Count == 0 ? BddWords.NoDefinitions
+            : unusedOnly && fits.IsEmpty ? BddWords.EveryUsed
+            : BddWords.NoneFits));
     }
 
     /// <summary>The filter menu: the unused alone, and each tag a definition's or hook's scope names, which puts it in the
     /// filter or takes it out.</summary>
     private IReadOnlyList<Control> FilterItems()
     {
-        List<Control> items = [ListMenus.Toggle("Unused Only", unusedOnly, on => UnusedOnly = on)];
+        List<Control> items = [ListMenus.Toggle(BddWords.UnusedOnly, unusedOnly, on => UnusedOnly = on)];
         string[] tags = [.. steps.SelectMany(s => s.Tags).Concat(hooks.SelectMany(h => StepLibrary.TagsOf(h.Scopes))).Distinct(StringComparer.Ordinal).Order(StringComparer.OrdinalIgnoreCase)];
         if (tags.Length > 0)
         {
@@ -190,18 +189,19 @@ public sealed class StepLibraryView : DockPanel
             foreach (string tag in tags)
             {
                 bool on = terms.Contains(tag, StringComparer.OrdinalIgnoreCase);
-                items.Add(ListMenus.Toggle(tag, on, turn => Filter = string.Join(' ', turn ? [.. terms, tag] : terms.Where(t => !string.Equals(t, tag, StringComparison.OrdinalIgnoreCase)))));
+                items.Add(ListMenus.Toggle(Words.Verbatim(tag), on, turn => Filter = string.Join(' ', turn ? [.. terms, tag] : terms.Where(t => !string.Equals(t, tag, StringComparison.OrdinalIgnoreCase)))));
             }
         }
         return items;
     }
 
-    private static string KindTitle(BindingKind kind) => kind switch
+    /// <summary>A keyword's heading: the attribute's own name, as a binding is written in every language.</summary>
+    private static Words KindTitle(BindingKind kind) => kind switch
     {
-        BindingKind.Given => "Given",
-        BindingKind.When => "When",
-        BindingKind.Then => "Then",
-        _ => "Any step",
+        BindingKind.Given => Words.Verbatim("Given"),
+        BindingKind.When => Words.Verbatim("When"),
+        BindingKind.Then => Words.Verbatim("Then"),
+        _ => BddWords.AnyStep,
     };
 
     private void GoToChosen()
@@ -233,7 +233,7 @@ public sealed class StepLibraryView : DockPanel
             switch (item)
             {
                 case Heading shown:
-                    title.Text = shown.Title;
+                    ShownWords.Set(title, TextBlock.TextProperty, shown.Title);
                     count.Text = Numbers.Said(shown.Count);
                     break;
                 case LibraryStep shown:
@@ -250,7 +250,7 @@ public sealed class StepLibraryView : DockPanel
     /// tags, how many steps use it (a link to them) or that none does, and Insert, which writes the row's phrase.</summary>
     private (DockPanel Line, Action<LibraryStep> Show) StepRow(Control row)
     {
-        Button insert = ToolButtons.Of(IconKeys.Add, "Insert into Feature", () =>
+        Button insert = ToolButtons.Of(IconKeys.Add, BddWords.InsertIntoFeature, () =>
         {
             if (row.DataContext is LibraryStep step)
             {
@@ -268,7 +268,7 @@ public sealed class StepLibraryView : DockPanel
                 UsagesRequested?.Invoke(this, step);
             }
         };
-        TextBlock unused = new() { Classes = { StyleClasses.Caption }, Text = "Unused", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, Gaps.Tight, 0) };
+        TextBlock unused = new() { Classes = { StyleClasses.Caption }, [ShownWords.TextProperty] = BddWords.Unused, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, Gaps.Tight, 0) };
         unused.Bind(TextBlock.ForegroundProperty, unused.GetResourceObservable(TokenKeys.Warning));
         Panel use = new() { [DockPanel.DockProperty] = Dock.Right, Children = { uses, unused } };
         Border tags = StepTags(out TextBlock tagWords);
@@ -281,12 +281,12 @@ public sealed class StepLibraryView : DockPanel
             bool idle = step.Uses == 0;
             phrase.Classes.Set(StyleClasses.Muted, idle);
             uses.IsVisible = step.Uses is > 0;
-            uses.Content = step.Uses is { } counted ? Plural.Of(counted, "use") : null;
-            ToolButtons.Tip(uses, step.Uses is { } many ? $"Find Usages: the {Plural.Of(many, "feature step")} it binds" : "Find Usages");
+            ShownWords.Set(uses, ContentControl.ContentProperty, step.Uses is { } counted ? BddWords.Uses(counted) : null);
+            ToolButtons.Tip(uses, step.Uses is { } many ? BddWords.FindUsagesOf(many) : ActionTitles.FindUsages);
             unused.IsVisible = idle;
             tags.IsVisible = step.Tags.Count > 0;
             tagWords.Text = string.Join(' ', step.Tags);
-            ToolTip.SetTip(line, Described(step));
+            ShownWords.Set(line, ToolTip.TipProperty, Described(step));
         });
     }
 
@@ -316,8 +316,8 @@ public sealed class StepLibraryView : DockPanel
             method.Text = $"{TypeNames.Short(hook.Type)}.{hook.Method}";
             tags.IsVisible = tagged.Count > 0;
             tagWords.Text = string.Join(' ', tagged);
-            ToolTip.SetTip(line, $"[{hook.Kind}{(tagged.Count > 0 ? $"(\"{string.Join("\", \"", tagged)}\")" : string.Empty)}] {TypeNames.Short(hook.Type)}.{hook.Method}, order {hook.Order}"
-                + (tagged.Count > 0 ? $"\nRuns only where a scenario is tagged {Plural.Either(tagged)}" : string.Empty));
+            Words declared = Words.Verbatim($"[{hook.Kind}{(tagged.Count > 0 ? $"(\"{string.Join("\", \"", tagged)}\")" : string.Empty)}] {TypeNames.Short(hook.Type)}.{hook.Method}, order {hook.Order}");
+            ShownWords.Set(line, ToolTip.TipProperty, tagged.Count > 0 ? BddWords.Lines(declared, BddWords.TaggedOnly(Words.Verbatim(Plural.Either(tagged)))) : declared);
         });
     }
 
@@ -345,19 +345,20 @@ public sealed class StepLibraryView : DockPanel
     }
 
     /// <summary>A definition's tip: its method, its expression as written, its scopes and its documentation's summary.</summary>
-    private static string Described(LibraryStep step)
+    private static Words Described(LibraryStep step)
     {
         StepBinding binding = step.Binding;
-        List<string> lines = [$"[{binding.Kind}{(binding.Expression is { } expression ? $"(\"{expression}\")" : string.Empty)}] {binding.Shown}"];
+        List<Words> lines = [Words.Verbatim($"[{binding.Kind}{(binding.Expression is { } expression ? $"(\"{expression}\")" : string.Empty)}] {binding.Shown}")];
         foreach (StepScope scope in binding.Scopes)
         {
-            lines.Add("Only where " + string.Join(", ", ((string?[])[scope.Tag is { } tag ? $"a scenario is tagged @{tag.TrimStart('@')}" : null,
-                scope.Feature is { } feature ? $"the feature is \"{feature}\"" : null, scope.Scenario is { } scenario ? $"the scenario is \"{scenario}\"" : null]).OfType<string>()));
+            Words[] conditions = [.. ((Words?[])[scope.Tag is { } tag ? BddWords.TaggedScenario(Words.Verbatim(tag.TrimStart('@'))) : null,
+                scope.Feature is { } feature ? BddWords.NamedFeature(Words.Verbatim(feature)) : null, scope.Scenario is { } scenario ? BddWords.NamedScenario(Words.Verbatim(scenario)) : null]).OfType<Words>()];
+            lines.Add(BddWords.OnlyWhere(conditions.Length == 0 ? Words.Verbatim(string.Empty) : conditions.Aggregate(BddWords.Listed)));
         }
         if (binding.Summary is { } summary)
         {
-            lines.Add(summary);
+            lines.Add(Words.Verbatim(summary));
         }
-        return string.Join('\n', lines);
+        return lines.Aggregate(BddWords.Lines);
     }
 }
