@@ -11,13 +11,14 @@ using Passenger.Editor;
 
 namespace Passenger.App.Settings;
 
-/// <summary>Settings: the pages down the left under a search box, the chosen page's options on the right, OK, Cancel
-/// and Apply below. A search keeps the pages with an option whose words match and shows only those options. The options
-/// edit a copy, previewing its visual changes until Apply or OK commits them or closing discards them.</summary>
+/// <summary>Settings: the pages down the left in a tree under a search box, the chosen page's options on the right, OK,
+/// Cancel and Apply below. A search keeps the pages with an option whose words (or its pages' names) match, shown with
+/// the pages above them, and shows only those options. The options edit a copy, previewing its visual changes until
+/// Apply or OK commits them or closing discards them.</summary>
 public sealed partial class SettingsDialog : IdeWindow
 {
     public const string Appearance = "Appearance";
-    public const string SystemPage = "System Settings";
+    public const string GeneralPage = "General";
     public const string AccessibilityPage = "Accessibility";
     public const string UpdatesPage = "Updates";
     public const string ExplorerPage = "Explorer";
@@ -25,9 +26,10 @@ public sealed partial class SettingsDialog : IdeWindow
     public const string CodeFoldingPage = "Code Folding";
     public const string LiveTemplatesPage = "Live Templates";
     public const string PostfixPage = "Postfix Completion";
-    public const string XamlCodeStylePage = "Code Style: XAML";
-    public const string GDScriptCodeStylePage = "Code Style: GDScript";
-    public const string SqlCodeStylePage = "Code Style: SQL";
+    public const string CodeStylePage = "Code Style";
+    public const string XamlCodeStylePage = "XAML";
+    public const string GDScriptCodeStylePage = "GDScript";
+    public const string SqlCodeStylePage = "SQL";
     public const string TerminalPage = "Terminal";
     public const string VersionControlPage = "Version Control";
     public const string BuildPage = "Build";
@@ -44,10 +46,51 @@ public sealed partial class SettingsDialog : IdeWindow
     public const string McpPage = "MCP Server";
     public const string DiscordPage = "Discord";
     public const string DiagnosticsPage = "Diagnostics";
+    public const string BuildAndRunPage = "Build and Run";
+    public const string LanguagesPage = "Languages and Frameworks";
+    public const string WebPage = "Web";
+    public const string ToolsPage = "Tools";
 
-    /// <summary>A page as a message sends a person to it, by its name above as the dialog lists it:
-    /// "Settings | Node.js".</summary>
-    public static string PlaceOfPage(string page) => $"Settings | {page}";
+    /// <summary>Every page under the one it sits under (none at the top), in the order the tree lists them: the one
+    /// declaration of where a page stands, which the tree, a search and every path to a page follow.</summary>
+    private static readonly (string Page, string? Parent)[] Tree =
+    [
+        (Appearance, null), (AccessibilityPage, Appearance),
+        (GeneralPage, null), (TrustPage, GeneralPage), (UpdatesPage, GeneralPage),
+        (KeymapPage, null),
+        (EditorPage, null), (CodeFoldingPage, EditorPage), (LiveTemplatesPage, EditorPage), (PostfixPage, EditorPage),
+        (CodeStylePage, EditorPage), (XamlCodeStylePage, CodeStylePage), (GDScriptCodeStylePage, CodeStylePage), (SqlCodeStylePage, CodeStylePage),
+        (ExplorerPage, null),
+        (VersionControlPage, null),
+        (BuildAndRunPage, null), (BuildPage, BuildAndRunPage), (RunPage, BuildAndRunPage), (HotReloadPage, BuildAndRunPage), (DockerPage, BuildAndRunPage),
+        (LanguagesPage, null), (GodotPage, LanguagesPage), (WebPage, LanguagesPage),
+        (NodePage, WebPage), (EslintPage, WebPage), (PrettierPage, WebPage), (SchemasPage, WebPage), (StylesheetsPage, WebPage),
+        (ToolsPage, null), (TerminalPage, ToolsPage), (McpPage, ToolsPage), (DiscordPage, ToolsPage), (DiagnosticsPage, ToolsPage),
+    ];
+
+    /// <summary>Every page, in the tree's order.</summary>
+    public static IReadOnlyList<string> EveryPage { get; } = [.. Tree.Select(t => t.Page)];
+
+    /// <summary>The page a page sits under; null for one at the top.</summary>
+    public static string? ParentOf(string page) => Tree.Single(t => t.Page == page).Parent;
+
+    /// <summary>The pages from the top down to a page, itself last.</summary>
+    public static IReadOnlyList<string> PathOf(string page)
+    {
+        List<string> path = [page];
+        for (string? above = ParentOf(page); above is not null; above = ParentOf(above))
+        {
+            path.Insert(0, above);
+        }
+        return path;
+    }
+
+    /// <summary>A page as a message sends a person to it, by its path in the tree: "Settings | Languages and Frameworks |
+    /// Web | Node.js".</summary>
+    public static string PlaceOfPage(string page) => $"Settings | {string.Join(" | ", PathOf(page))}";
+
+    /// <summary>An option's row as a message sends a person to it: its page's place, then its label.</summary>
+    public static string PlaceOfRow(string page, string label) => $"{PlaceOfPage(page)} | {label}";
 
     /// <summary>The names of <see cref="BuildResultsMode"/>'s choices, in its order.</summary>
     public static readonly string[] BuildResultsChoices = ["Always", "Only if errors or warnings received", "Only if errors received", "Never"];
@@ -58,9 +101,6 @@ public sealed partial class SettingsDialog : IdeWindow
 
     /// <summary>The names of <see cref="DiscordShown"/>'s choices, in its order.</summary>
     public static readonly string[] DiscordChoices = ["Passenger only", "The solution", "The solution and the file"];
-
-    private static readonly string[] Order = [Appearance, SystemPage, AccessibilityPage, TrustPage, UpdatesPage, ExplorerPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, GDScriptCodeStylePage, SqlCodeStylePage, LiveTemplatesPage,
-        VersionControlPage, BuildPage, RunPage, HotReloadPage, NodePage, EslintPage, PrettierPage, SchemasPage, StylesheetsPage, DockerPage, GodotPage, TerminalPage, McpPage, DiscordPage, DiagnosticsPage, KeymapPage];
 
     /// <summary>The names of Attributes format's choices, in <see cref="Passenger.Xaml.Features.XamlAttributeStyle"/>'s
     /// order.</summary>
@@ -97,7 +137,21 @@ public sealed partial class SettingsDialog : IdeWindow
     private readonly ActionRegistry actions;
     private readonly List<Option> options = [];
     private readonly TextBox search;
-    private readonly ListBox pages;
+    private readonly TreeList pages;
+
+    /// <summary>The tree's rows as listed: every page's row under each open one, or, while a search keeps some, those it keeps
+    /// and the pages above them, open.</summary>
+    private readonly TreeRows<PageRow> pageRows = [];
+
+    /// <summary>Each page's row, by its page.</summary>
+    private readonly Dictionary<string, PageRow> rowOf = Tree.ToDictionary(t => t.Page, t => new PageRow(t.Page, PathOf(t.Page).Count - 1));
+
+    /// <summary>The pages a search keeps options of (or the Keymap page's own finds), in the tree's order; every page while
+    /// there is no search.</summary>
+    private string[] kept = [];
+
+    /// <summary>The pages open as the person left them, kept while a search opens those above what it keeps.</summary>
+    private HashSet<string>? openBeforeSearch;
     private readonly TextBlock heading;
     private readonly StackPanel body;
     private readonly EmptyState nothing;
@@ -143,7 +197,9 @@ public sealed partial class SettingsDialog : IdeWindow
         search = SearchBox.Of("Search settings");
         search.Margin = new Thickness(PagesInset.Left, PagesInset.Top, PagesInset.Right, Gaps.Small);
         search.TextChanged += (_, _) => Filter();
-        pages = new ListBox { Classes = { StyleClasses.Tree, StyleClasses.Pages }, Padding = new Thickness(PagesInset.Left, 0) };
+        pages = new TreeList { Classes = { StyleClasses.Tree, StyleClasses.Pages }, Padding = new Thickness(PagesInset.Left, 0), ItemsSource = pageRows };
+        ReusedRows.Use(pages, PageRowView);
+        TreeKeys.Attach<PageRow>(pages, Toggle);
         pages.SelectionChanged += (_, _) => ShowPage();
         heading = new TextBlock { Classes = { StyleClasses.PageTitle }, Margin = new Thickness(0, 0, Gutter, Gaps.Wide) };
         // The scroll bar shows over the scrolled page's right, so the gutter is inside it: the bar stands there, beside the rows.
@@ -197,13 +253,59 @@ public sealed partial class SettingsDialog : IdeWindow
         set => search.Text = value;
     }
 
-    /// <summary>The pages listed, after the search.</summary>
-    public IReadOnlyList<string> Pages => pages.ItemsSource as IReadOnlyList<string> ?? [];
+    /// <summary>The pages a search keeps options of, in the tree's order; every page with options of its own while there is
+    /// no search.</summary>
+    public IReadOnlyList<string> Pages => [.. kept.Where(p => options.Any(o => o.Page == p) || p == KeymapPage)];
 
+    /// <summary>The tree's rows as listed, each page's name indented two spaces a level below the top.</summary>
+    public IReadOnlyList<string> Listed => [.. pageRows.Select(r => new string(' ', r.Depth * 2) + r.Page)];
+
+    /// <summary>The page chosen; set, the pages above it open so its row shows.</summary>
     public string? Page
     {
-        get => pages.SelectedItem as string;
-        set => pages.SelectedItem = value;
+        get => (pages.SelectedItem as PageRow)?.Page;
+        set
+        {
+            if (value is not null && rowOf.ContainsKey(value))
+            {
+                foreach (string above in PathOf(value).SkipLast(1))
+                {
+                    rowOf[above].IsExpanded = true;
+                }
+                ListRows();
+            }
+            pages.SelectedItem = value is null ? null : rowOf.GetValueOrDefault(value);
+        }
+    }
+
+    /// <summary>Opens or closes a page's row; one closed over the page chosen takes the choice.</summary>
+    private void Toggle(PageRow row)
+    {
+        if (!row.Expands)
+        {
+            return;
+        }
+        bool hid = row.IsExpanded && Page is { } chosen && PathOf(chosen).SkipLast(1).Contains(row.Page);
+        row.IsExpanded = !row.IsExpanded;
+        ListRows();
+        if (hid)
+        {
+            pages.SelectedItem = row;
+        }
+        pages.Retell();
+    }
+
+    /// <summary>Lists the rows: under each open page those the search keeps (every one without a search), a page opening
+    /// only where it has some.</summary>
+    private void ListRows()
+    {
+        HashSet<string> listed = [.. kept.SelectMany(PathOf)];
+        IEnumerable<PageRow> Under(string? parent) => Tree.Where(t => t.Parent == parent && listed.Contains(t.Page)).Select(t => rowOf[t.Page]);
+        foreach (PageRow row in rowOf.Values)
+        {
+            row.Expands = Under(row.Page).Any();
+        }
+        pageRows.Show([.. TreeRows<PageRow>.Shown(Under(null), row => Under(row.Page))]);
     }
 
     /// <summary>The options the chosen page shows now, by their labels.</summary>
@@ -257,19 +359,35 @@ public sealed partial class SettingsDialog : IdeWindow
         Func<Option, bool> byShortcut = ShortcutFiltered();
         foreach (Option option in options)
         {
-            option.Kept = words.All(w => option.Searched.Contains(w, StringComparison.OrdinalIgnoreCase) || option.Shown.Shown.Contains(w, StringComparison.OrdinalIgnoreCase))
+            option.Kept = words.All(w => option.Searched.Contains(w, StringComparison.OrdinalIgnoreCase) || option.Shown.Shown.Contains(w, StringComparison.OrdinalIgnoreCase)
+                    || option.Path.Contains(w, StringComparison.OrdinalIgnoreCase))
                 && byShortcut(option);
         }
         string? was = Page;
-        string[] listed = [.. Order.Where(p => options.Any(o => o.Page == p && o.Kept)
+        bool searching = words.Length > 0 || shortcutFilter is not null;
+        kept = !searching ? [.. EveryPage] : [.. EveryPage.Where(p => options.Any(o => o.Page == p && o.Kept)
             || (p == KeymapPage && (shortcutFilter is not null || FindsKeymapChoice(words))))];
-        // A new list chooses no page for a moment, which would take the Keymap page's top, Find Shortcut with it, away.
-        if (!listed.SequenceEqual(Pages))
+        // A search opens the pages above what it keeps, the person's own opening coming back once it is cleared.
+        if (searching)
         {
-            pages.ItemsSource = listed;
+            openBeforeSearch ??= [.. rowOf.Values.Where(r => r.IsExpanded).Select(r => r.Page)];
+            foreach (string above in kept.SelectMany(p => PathOf(p).SkipLast(1)))
+            {
+                rowOf[above].IsExpanded = true;
+            }
         }
-        nothing.IsVisible = listed.Length == 0;
-        pages.SelectedItem = listed.Contains(was) ? was : listed.FirstOrDefault();
+        else if (openBeforeSearch is { } open)
+        {
+            openBeforeSearch = null;
+            foreach (PageRow row in rowOf.Values)
+            {
+                row.IsExpanded = open.Contains(row.Page);
+            }
+        }
+        // The rows kept stay the same rows, so a page still listed stays chosen, the Keymap page's top, Find Shortcut with it, kept.
+        ListRows();
+        nothing.IsVisible = kept.Length == 0;
+        Page = was is not null && kept.Contains(was) && (!searching || Pages.Contains(was)) ? was : searching ? Pages.FirstOrDefault() : was ?? EveryPage[0];
         ShowPage();
     }
 
@@ -282,6 +400,63 @@ public sealed partial class SettingsDialog : IdeWindow
         foreach (Option option in options.Where(o => o.Page == Page && o.Kept))
         {
             body.Children.Add(option.Row);
+        }
+        // A page with nothing of its own to show (a group of pages, or one the search keeps only for what is under it) lists the pages under it.
+        if (Page is { } page && body.Children.Count == 0 && page != KeymapPage)
+        {
+            foreach (string under in Tree.Where(t => t.Parent == page && kept.Contains(t.Page)).Select(t => t.Page))
+            {
+                body.Children.Add(PageLink(under));
+            }
+        }
+    }
+
+    /// <summary>A page under the one shown, as that one lists it: its name, going to it, and the first of what it holds.</summary>
+    private Control PageLink(string page)
+    {
+        Button go = new() { Content = page, Classes = { StyleClasses.Link }, HorizontalAlignment = HorizontalAlignment.Left };
+        go.Click += (_, _) => Page = page;
+        string[] holds = [.. options.Where(o => o.Kept && PathOf(o.Page).Contains(page)).Select(o => o.Label).Distinct().Take(4)];
+        TextBlock said = new() { Text = string.Join(", ", holds), TextWrapping = TextWrapping.Wrap, Classes = { StyleClasses.Muted } };
+        return new StackPanel { Spacing = Gaps.Tight, Children = { go, said } };
+    }
+
+    /// <summary>A page's row in the tree: its chevron where pages sit under it, and its name, indented by its level.</summary>
+    private Control PageRowView()
+    {
+        RowExpander chevron = RowExpander.Of<PageRow>(Toggle);
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { chevron, name } };
+        return row.Showing<PageRow>(page =>
+        {
+            row.Margin = new Thickness(page.Depth * Gaps.Indent, 0, 0, 0);
+            chevron.Expands = page.Expands;
+            chevron.IsOpen = page.IsExpanded;
+            name.Text = page.Page;
+        });
+    }
+
+    /// <summary>A page's row in the tree.</summary>
+    public sealed class PageRow(string page, int depth) : Observable, ITreeRow
+    {
+        private bool isExpanded;
+        private bool expands;
+
+        public string Page { get; } = page;
+
+        public int Depth { get; } = depth;
+
+        /// <summary>Whether pages are listed under it: any at all, or, while a search keeps some, any it keeps.</summary>
+        public bool Expands
+        {
+            get => expands;
+            set => Set(ref expands, value);
+        }
+
+        public bool IsExpanded
+        {
+            get => isExpanded;
+            set => Set(ref isExpanded, value);
         }
     }
 
@@ -325,7 +500,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.SoundOnSaveRefused);
 
         Add(Declared.ReopenProjectsOnStartup);
-        Add(SystemPage, "Open project in", () =>
+        Add(GeneralPage, "Open project in", () =>
         {
             StackPanel openIn = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Group };
             foreach ((OpenProjectIn choice, string name) in OpenProjectChoices)
@@ -344,7 +519,7 @@ public sealed partial class SettingsDialog : IdeWindow
         }, "open solution project folder new window current window this window ask confirm where frame");
         Add(Declared.ConfirmBeforeClosing);
         Add(Declared.SaveOnDeactivation);
-        Add(SystemPage, "Save when idle for", () =>
+        Add(GeneralPage, "Save when idle for", () =>
         {
             NumericUpDown seconds = Declared.IdleSeconds.Box(Working, Change);
             seconds.IsEnabled = Working.SaveWhenIdle;
@@ -699,6 +874,9 @@ public sealed partial class SettingsDialog : IdeWindow
     private sealed class Option(string page, Words label, Func<Control> make, string words, string? action = null)
     {
         public string Page { get; } = page;
+
+        /// <summary>The names of its page and those above it, which a search finds it by too.</summary>
+        public string Path { get; } = string.Join(' ', PathOf(page));
 
         /// <summary>Its label's English, by which code and agents name it.</summary>
         public string Label { get; } = label.English;

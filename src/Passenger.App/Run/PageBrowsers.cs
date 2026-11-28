@@ -18,7 +18,7 @@ public static class PageBrowsers
     public const string Row = "Browser";
 
     /// <summary>Where Settings names it, in words.</summary>
-    public static string SettingPlace => $"{SettingsDialog.PlaceOfPage(SettingsDialog.RunPage)} › {Row}";
+    public static string SettingPlace => SettingsDialog.PlaceOfRow(SettingsDialog.RunPage, Row);
 
     /// <summary>Where a run configuration names its own, in words.</summary>
     public static string ConfigurationPlace(string configuration) => $"Run › Edit Configurations › {configuration} › {Row}";

@@ -9,7 +9,7 @@ using Passenger.Text;
 
 namespace Passenger.Tests;
 
-/// <summary>Settings' Confirm before closing, chosen in System Settings: Never quits and closes unasked; When quitting asks
+/// <summary>Settings' Confirm before closing, chosen in Settings | General: Never quits and closes unasked; When quitting asks
 /// before Exit, the system's Quit and the last window's close, once however many windows are open; Every window asks before
 /// any window closes too. Cancel keeps Passenger open, Don't ask again sets Never, a close the person agreed to asks
 /// nothing more, and an attached agent's input never closes a window that would ask, nor answers the question.</summary>
@@ -211,7 +211,7 @@ public sealed class ConfirmClosingTests : ProjectWindowsFolders
         Ui.Settle();
         dialog.Query = "confirm before closing";
         Ui.Settle();
-        Assert.Equal(SettingsDialog.SystemPage, dialog.Page);
+        Assert.Equal(SettingsDialog.GeneralPage, dialog.Page);
         ComboBox box = SettingsTests.Editor<ComboBox>(dialog, "Confirm before closing");
         Assert.Equal(["Never", "When quitting", "Every window"], box.Items.Select(i => i?.ToString()));
         Assert.Equal(0, box.SelectedIndex);

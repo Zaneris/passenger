@@ -986,8 +986,8 @@
     <Style Selector="ListBox.tree ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource Passenger.RowSelected}" />
     </Style>
-    <!-- Settings' pages under its search field: a page's name in line with the field's magnifier (the band as wide as the
-         field is SettingsDialog's). -->
+    <!-- Settings' pages under its search field: a top page's chevron column in line with the field's magnifier (the band as
+         wide as the field is SettingsDialog's). -->
     <Style Selector="ListBox.pages ListBoxItem">
         <Setter Property="Padding" Value="{x:Static app:FieldInsets.InLine}" />
     </Style>

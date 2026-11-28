@@ -4,7 +4,7 @@ using Passenger.Core;
 
 namespace Passenger.App;
 
-/// <summary>Confirm before closing (Settings, System Settings): as chosen, the person is asked before Passenger quits (Exit,
+/// <summary>Confirm before closing (Settings | General): as chosen, the person is asked before Passenger quits (Exit,
 /// the system's Quit, the last window's close), once however many windows the quit closes, or before any window closes;
 /// Cancel keeps it open, and Don't ask again sets the setting to Never. Nothing is asked where the close asks a question
 /// of its own that confirms it (programs Hot Reload changed, <see cref="CloseHeldAsync"/>), in a quit already under way,

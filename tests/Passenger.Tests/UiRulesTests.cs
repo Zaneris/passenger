@@ -3596,8 +3596,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     }
 
     /// <summary>A message that sends a person to Settings names a page the dialog lists, as the dialog names it: through
-    /// SettingsDialog.PlaceOfPage, given one of the dialog's page constants. Words written after "Settings |" by hand, or
-    /// a page the dialog does not list, fail here, naming the line.</summary>
+    /// SettingsDialog.PlaceOfPage (or PlaceOfRow, for a row of it), given one of the dialog's page constants, so its path
+    /// is the tree's. Words written after "Settings |" by hand, or a page the dialog does not list, fail here, naming the
+    /// line.</summary>
     [AvaloniaFact]
     public void Every_message_that_sends_a_person_to_Settings_names_a_page_the_dialog_lists()
     {
@@ -3615,7 +3616,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             window.Close();
         }
         Regex byHand = new(@"\bSettings \|(?!\|)");
-        Regex placed = new(@"\bPlaceOfPage\(\s*(?:SettingsDialog\.)?([^()]*?)\s*\)");
+        Regex placed = new(@"\bPlaceOf(?:Page|Row)\(\s*(?:SettingsDialog\.)?([\w.]+?)\s*[,)]");
         List<string> found = [];
         int named = 0;
         foreach ((string path, string text) in UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal)))
@@ -3623,7 +3624,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             string[] lines = text.Split('\n');
             for (int i = 0; i < lines.Length; i++)
             {
-                if (lines[i].TrimStart().StartsWith("//", StringComparison.Ordinal) || lines[i].Contains("static string PlaceOfPage(string page)", StringComparison.Ordinal))
+                if (lines[i].TrimStart().StartsWith("//", StringComparison.Ordinal) || lines[i].Contains("static string PlaceOfPage(string page)", StringComparison.Ordinal)
+                    || lines[i].Contains("static string PlaceOfRow(string page, string label)", StringComparison.Ordinal))
                 {
                     continue;
                 }
@@ -3634,8 +3636,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 foreach (Match place in placed.Matches(lines[i]))
                 {
                     named++;
-                    // A declared setting names the page its row is on, which the dialog lists as it makes the row.
-                    if (place.Groups[1].Value == "Row.Page" && path.EndsWith("Setting.cs", StringComparison.Ordinal))
+                    // A declared setting's row names the page it is on, which the dialog lists as it makes the row.
+                    if (place.Groups[1].Value is "Row.Page" or "row.Page" && (path.EndsWith("Setting.cs", StringComparison.Ordinal) || path.EndsWith("EditorConfigKnown.cs", StringComparison.Ordinal)))
                     {
                         continue;
                     }

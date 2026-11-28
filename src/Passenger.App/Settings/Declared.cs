@@ -143,18 +143,18 @@ public static class Declared
         });
 
     public static readonly ToggleSetting ReopenProjectsOnStartup = new(s => s.ReopenProjectsOnStartup, (s, v) => s with { ReopenProjectsOnStartup = v },
-        new(D.SystemPage, "Reopen projects on startup", "reopen last solution project folder startup start launch welcome screen recent"));
+        new(D.GeneralPage, "Reopen projects on startup", "reopen last solution project folder startup start launch welcome screen recent"));
 
     public static readonly ChoiceSetting<OpenProjectIn> OpenProjectIn = new(s => s.OpenProjectIn, (s, v) => s with { OpenProjectIn = v }, D.OpenProjectChoices);
 
     public static readonly ChoiceSetting<ConfirmClosing> ConfirmBeforeClosing = new(s => s.ConfirmBeforeClosing, (s, v) => s with { ConfirmBeforeClosing = v },
         [(ConfirmClosing.Never, "Never"), (ConfirmClosing.WhenQuitting, "When quitting"), (ConfirmClosing.EveryWindow, "Every window")],
-        new(D.SystemPage, "Confirm before closing", "confirm ask prompt question before closing close quit exit window are you sure accidental",
+        new(D.GeneralPage, "Confirm before closing", "confirm ask prompt question before closing close quit exit window are you sure accidental",
             $"Whether Passenger asks you before it quits ({(OperatingSystem.IsMacOS() ? "Quit Passenger" : "File | Exit")} or closing its last "
             + "window) or before any of its windows closes. The question's Don't ask again sets this back to Never."));
 
     public static readonly ToggleSetting SaveOnDeactivation = new(s => s.SaveOnDeactivation, (s, v) => s with { SaveOnDeactivation = v },
-        new(D.SystemPage, "Save when leaving the IDE", "autosave files switching to a different application or the built-in terminal focus frame deactivation"));
+        new(D.GeneralPage, "Save when leaving the IDE", "autosave files switching to a different application or the built-in terminal focus frame deactivation"));
 
     public static readonly NumberSetting IdleSeconds = new(s => s.IdleSeconds, (s, v) => s with { IdleSeconds = (int)v }, 1, 3600, 1);
 
@@ -327,7 +327,8 @@ public static class Declared
         new(D.EditorPage, "Reformat on save", "save actions on save format on save reformat code formatting layout c# xaml",
             "File, Save and Save All reformat each changed file first, as Reformat Code does, as one undoable edit; autosave never "
             + "does. A web file whose folder names Oxfmt or Biome is laid out by it, one Prettier's Run on save covers otherwise by "
-            + "Prettier alone, and GDScript's own Reformat on save (Code Style: GDScript) turns this on for scripts alone."));
+            + $"Prettier alone, and GDScript's own Reformat on save ({SettingsDialog.PlaceOfPage(SettingsDialog.GDScriptCodeStylePage)}) "
+            + "turns this on for scripts alone."));
 
     public static readonly ToggleSetting OptimizeImportsOnSave = new(s => s.OptimizeImportsOnSave, (s, v) => s with { OptimizeImportsOnSave = v },
         new(D.EditorPage, "Optimize imports on save", "save actions on save optimize imports usings unused remove sort c#",
