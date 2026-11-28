@@ -494,7 +494,7 @@ public sealed class Navigator
         }
         Outline<SymbolRow>? outline = null;
         int caretLine = Editors.CodeEditor.CaretPosition.Line;
-        SymbolPopup popup = new($"File Structure: {active.Name}", "Filter by name, CamelHumps too", async (query, cancel) =>
+        SymbolPopup popup = new($"File Structure: {active.Name}", OutlineFilter, async (query, cancel) =>
         {
             // Where the outline comes from now: a server started again while the popup is open has a new document.
             FileOutline source = Session.OutlineOf(active) ?? throw new Lsp.LanguageServerFailed(Refusals.NoOutline(active.Name).Shown);
@@ -523,14 +523,21 @@ public sealed class Navigator
         }
     }
 
-    /// <summary>An outline's rows whose names hold a query or match it by CamelHumps, each with the rows it is under, as File
-    /// Structure and the navigation bar's lists narrow as typed.</summary>
+    /// <summary>What an outline's search box says it finds by (<see cref="FilterOutline"/>).</summary>
+    internal const string OutlineFilter = "Filter by name or kind (ctor, prop), CamelHumps too";
+
+    /// <summary>An outline's rows whose names hold a query or match it by CamelHumps, or whose kind its first word names
+    /// (<see cref="SymbolRow.KindNamed"/>: <c>ctor</c>, <c>prop</c>), alone or before a name (<c>prop Na</c>), each with the rows
+    /// it is under, as File Structure and the navigation bar's lists narrow as typed.</summary>
     internal static IReadOnlyList<SymbolRow> FilterOutline(IReadOnlyList<SymbolRow> outline, string query)
     {
         if (query.Length == 0)
         {
             return outline;
         }
+        int space = query.IndexOf(' ', StringComparison.Ordinal);
+        string kind = space < 0 ? query : query[..space];
+        string named = space < 0 ? string.Empty : query[(space + 1)..].Trim();
         List<SymbolRow> shown = [];
         List<SymbolRow> path = [];
         // How many of the containers, from the top, are shown already: a match shows all of them.
@@ -542,7 +549,7 @@ public sealed class Navigator
                 path.RemoveAt(path.Count - 1);
             }
             pathShown = Math.Min(pathShown, path.Count);
-            bool matches = row.Name.Contains(query, StringComparison.OrdinalIgnoreCase) || FuzzyMatch.Score(query, row.Name) is not null;
+            bool matches = Names(row, query) || SymbolRow.KindNamed(row.Kind, kind) && (named.Length == 0 || Names(row, named));
             if (matches)
             {
                 // The containers of a match stay, so it reads in its place.
@@ -556,6 +563,8 @@ public sealed class Navigator
             }
         }
         return shown;
+
+        static bool Names(SymbolRow row, string typed) => row.Name.Contains(typed, StringComparison.OrdinalIgnoreCase) || FuzzyMatch.Score(typed, row.Name) is not null;
     }
 
     /// <summary>Go to Line:Column in the file shown.</summary>

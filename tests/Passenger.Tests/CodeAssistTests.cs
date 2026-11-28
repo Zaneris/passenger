@@ -110,6 +110,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     {
         Flow.StepApart("the path, a hover card, File Structure and Go to Symbol name the code and go to it", () => new CodeAssistTests(project), t => t.The_path_a_hover_card_file_structure_and_go_to_symbol_name_the_code_and_go_to_it());
         Flow.StepApart("the links in a wrapped hover signature go to their own declarations", () => new CodeAssistTests(project), t => t.Hover_signature_links_go_to_their_own_declarations());
+        Flow.StepApart("File Structure finds members by their kind's words beside their names, alone or before a name", () => new CodeAssistTests(project), t => t.File_structure_finds_members_by_their_kinds_words_beside_their_names_alone_or_before_a_name());
         Flow.StepApart("a file shown before its folder's server has it names the member the caret is in once it does", () => new CodeAssistTests(project), t => t.A_file_shown_before_its_folders_server_has_it_names_the_member_the_caret_is_in_once_it_does());
         Flow.StepApart("the structure window shows the shown file's outline whenever it is shown, once the server has the file, and follows the editor", () => new CodeAssistTests(project), t => t.The_structure_window_shows_the_shown_files_outline_whenever_it_is_shown_and_once_the_server_has_the_file_and_follows_the_editor());
         Flow.StepApart("the syntax tree window shows the shown C# file's syntax at the selection, follows its unsaved edits and the file shown, and a row chosen selects its code", () => new CodeAssistTests(project), t => t.The_syntax_tree_window_shows_the_shown_files_syntax_at_the_selection_follows_its_unsaved_edits_and_the_file_shown_and_a_row_chosen_selects_its_code());
@@ -255,6 +256,28 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Null(window.Popup);
         Assert.Equal(PathNames.Canonical(project.PathOf("Helper.cs")), window.EditorArea.Active?.Path);
         Assert.Equal(2, window.EditorArea.CodeEditor.CaretPosition.Line);
+        window.Close();
+    }
+
+    /// <summary>File Structure finds members by their kind's words as well as their names: ctor a constructor, prop a property,
+    /// meth (a method's word begun) the methods, and a kind's word before a name that kind's of that name, each under its type.</summary>
+    private void File_structure_finds_members_by_their_kinds_words_beside_their_names_alone_or_before_a_name()
+    {
+        MainWindow window = WithoutNavigationBar(project.Open("Worker.cs"));
+        (string Typed, Passenger.Lsp.SymbolKind Kind, int Count)[] asked = [("ctor", Passenger.Lsp.SymbolKind.Constructor, 1),
+            ("prop", Passenger.Lsp.SymbolKind.Property, 1), ("meth", Passenger.Lsp.SymbolKind.Method, 2), ("method Re", Passenger.Lsp.SymbolKind.Method, 1)];
+        foreach ((string typed, Passenger.Lsp.SymbolKind kind, int count) in asked)
+        {
+            Ui.Run(window, AppActions.FileStructure);
+            SymbolPopup structure = Assert.IsType<SymbolPopup>(window.Popup);
+            Ui.WaitFor(() => structure.IsSettled && structure.Rows.Count > 0, "the file's outline");
+            window.KeyTextInput(typed);
+            string Listed() => string.Join(", ", structure.Rows.Select(r => $"{r.Name} ({r.Kind})"));
+            Ui.WaitFor(() => structure.IsSettled && structure.Rows.Count == count + 1, () => $"File Structure for '{typed}' to list {count} under Worker, not [{Listed()}]");
+            Assert.True(structure.Rows[0] is { Name: "Worker", Depth: 0 } && structure.Rows.Skip(1).All(r => r.Kind == kind),
+                $"File Structure for '{typed}' listed [{Listed()}], not Worker's {kind} members under it");
+            Ui.Press(window, "ESCAPE");
+        }
         window.Close();
     }
 
@@ -4654,6 +4677,12 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Worker.cs"), """
                 public sealed class Worker
                 {
+                    public Worker()
+                    {
+                    }
+
+                    public int Count { get; private set; }
+
                     /// <summary>Calls <see cref="Worker.Reset(int)"/> with the requested count.</summary>
                     /// <param name="count">The reset count.</param>
                     public void Run(int count) => Reset(count);

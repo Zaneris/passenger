@@ -38,7 +38,7 @@ public partial class MainWindow
     /// chosen gone to in the bar's group with the keys given to its editor.</summary>
     private void ShowNavigationList(NavigationList list)
     {
-        SymbolPopup popup = new(list.Title, "Filter by name, CamelHumps too", async (query, cancel) =>
+        SymbolPopup popup = new(list.Title, Navigator.OutlineFilter, async (query, cancel) =>
         {
             string filter = query.Trim();
             return filter.Length == 0 ? list.Rows : await BackgroundWork.Run(() => Navigator.FilterOutline(list.Rows, filter), cancel);

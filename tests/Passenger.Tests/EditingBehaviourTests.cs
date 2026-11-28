@@ -703,6 +703,17 @@ public sealed class EditingBehaviourTests
             }
             Ui.Press(window, "ENTER");
             Assert.Contains("<Button x:Name=\"Save\"", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line), StringComparison.Ordinal);
+
+            // A kind's words find its rows, alone or before a name: a property element, an element named so.
+            foreach ((string typed, string[] listed) in ((string, string[])[])[("prop", ["Shop.MainWindow", "Window.Resources"]), ("element Sa", ["Shop.MainWindow", "StackPanel", "Save"])])
+            {
+                Ui.Run(window, Passenger.App.AppActions.FileStructure);
+                popup = Assert.IsType<Passenger.App.Navigation.SymbolPopup>(window.Popup);
+                Ui.WaitFor(() => popup.IsSettled && popup.Rows.Count > 0, "the window's elements in File Structure");
+                window.KeyTextInput(typed);
+                Ui.WaitFor(() => popup.IsSettled && popup.Rows.Select(r => r.Name).SequenceEqual(listed), () => $"File Structure for '{typed}' listed [{Listed(popup.Rows)}]");
+                Ui.Press(window, "ESCAPE");
+            }
         }
         finally
         {
