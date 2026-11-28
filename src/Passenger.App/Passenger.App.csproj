@@ -389,9 +389,9 @@
     </ItemGroup>
   </Target>
 
-  <!-- The WinUI inspector becomes this project's output under inspector/winui/x64/ and inspector/winui/arm64/ where Passenger
-       runs on Windows, as the WPF one does: for each processor a WinUI app runs on, its assembly, the COM host WinUI's
-       diagnostics load it through and the runtime configuration that host reads. -->
+  <!-- The WinUI inspector becomes this project's output under inspector/winui/x64/, arm64/ and x86/ where Passenger runs on
+       Windows, as the WPF one does: for each processor a WinUI app runs on, its assembly, the COM host WinUI's diagnostics
+       load it through and the runtime configuration that host reads. -->
   <Target Name="IncludeWinUIInspector" BeforeTargets="AssignTargetPaths"
           Condition="('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows'))) Or $(RuntimeIdentifier.StartsWith('win'))">
     <!-- x64's is the project's own build, which the reference above makes: the same instance, so the two never race. -->
@@ -403,11 +403,17 @@
              RemoveProperties="SelfContained;PublishReadyToRun;TargetFramework" BuildInParallel="$(BuildInParallel)">
       <Output TaskParameter="TargetOutputs" ItemName="WinUIInspectorArm64" />
     </MSBuild>
+    <MSBuild Projects="../Passenger.Inspector.WinUI/Passenger.Inspector.WinUI.csproj" Targets="Build;GetTargetPath" Properties="RuntimeIdentifier=win-x86"
+             RemoveProperties="SelfContained;PublishReadyToRun;TargetFramework" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="WinUIInspectorX86" />
+    </MSBuild>
     <ItemGroup>
       <WinUIInspectorFile Include="@(WinUIInspectorX64->'%(RootDir)%(Directory)%(Filename)%(Extension)');@(WinUIInspectorX64->'%(RootDir)%(Directory)%(Filename).pdb');@(WinUIInspectorX64->'%(RootDir)%(Directory)%(Filename).comhost.dll');@(WinUIInspectorX64->'%(RootDir)%(Directory)%(Filename).runtimeconfig.json')"
                           Processor="x64" />
       <WinUIInspectorFile Include="@(WinUIInspectorArm64->'%(RootDir)%(Directory)%(Filename)%(Extension)');@(WinUIInspectorArm64->'%(RootDir)%(Directory)%(Filename).pdb');@(WinUIInspectorArm64->'%(RootDir)%(Directory)%(Filename).comhost.dll');@(WinUIInspectorArm64->'%(RootDir)%(Directory)%(Filename).runtimeconfig.json')"
                           Processor="arm64" />
+      <WinUIInspectorFile Include="@(WinUIInspectorX86->'%(RootDir)%(Directory)%(Filename)%(Extension)');@(WinUIInspectorX86->'%(RootDir)%(Directory)%(Filename).pdb');@(WinUIInspectorX86->'%(RootDir)%(Directory)%(Filename).comhost.dll');@(WinUIInspectorX86->'%(RootDir)%(Directory)%(Filename).runtimeconfig.json')"
+                          Processor="x86" />
       <None Include="@(WinUIInspectorFile)" Link="inspector/winui/%(WinUIInspectorFile.Processor)/%(WinUIInspectorFile.Filename)%(WinUIInspectorFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
