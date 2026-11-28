@@ -35,7 +35,7 @@ public sealed partial class PassengerTools
         (ITelemetryRun run, TelemetrySource? source, string? filter) = await TelemetryOfAsync(current, appHost, resource, cancel);
         if (source is null)
         {
-            throw new InvalidOperationException(TelemetrySource.NoDashboard(run.Name));
+            throw new InvalidOperationException(TelemetrySource.NoDashboard(run.Name).English);
         }
         IReadOnlyList<AspireStructuredLog> logs;
         IReadOnlyList<AspireTrace> traces;
@@ -47,7 +47,7 @@ public sealed partial class PassengerTools
         catch (Exception unread) when (TelemetrySource.Said(unread) && !cancel.IsCancellationRequested)
         {
             // What the dashboard answered or failed to, said as the Telemetry view says it, never reported as Passenger's fault.
-            throw new InvalidOperationException($"{run.Name}: {source.Unread(unread)}", unread);
+            throw new InvalidOperationException($"{run.Name}: {source.Unread(unread).English}", unread);
         }
         if (Session != current || current.IsEnded || run.IsStopped)
         {
@@ -119,7 +119,7 @@ public sealed partial class PassengerTools
         }
         if (app.Telemetry is null)
         {
-            throw new InvalidOperationException(TelemetrySource.NoDashboard(app.Name));
+            throw new InvalidOperationException(TelemetrySource.NoDashboard(app.Name).English);
         }
         return (app, app.Telemetry, selected?.Resource.Name);
     }

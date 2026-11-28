@@ -214,7 +214,7 @@ public sealed class RunDashboard : ITelemetryRun, IDisposable
                 {
                     if (Stopwatch.GetElapsedTime(began) > AnswerLimit)
                     {
-                        return await dashboard.GoneAsync(dashboard.source.Unread(unanswered));
+                        return await dashboard.GoneAsync(dashboard.source.Unread(unanswered).English);
                     }
                 }
                 await Task.Delay(TimeSpan.FromMilliseconds(250), cancel);

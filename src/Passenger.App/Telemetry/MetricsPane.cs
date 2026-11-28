@@ -37,7 +37,7 @@ public sealed class MetricsPane : DockPanel
     private LiveMetrics? live;
     private string? key;
     private string name = string.Empty;
-    private string said = string.Empty;
+    private Words said = Words.Verbatim(string.Empty);
     private int process;
     private ProfilePlace? place;
 
@@ -68,7 +68,7 @@ public sealed class MetricsPane : DockPanel
     }
 
     /// <summary>What the pane says of its program: in place of the charts while it has none, over them once it has.</summary>
-    public string Said => said;
+    public string Said => said.Shown;
 
     /// <summary>The instruments charted, by name, with how many readings each line holds.</summary>
     public IReadOnlyDictionary<string, int> Charted => charts.ToDictionary(chart => chart.Key.Instrument, chart => chart.Value.Line.Count, StringComparer.Ordinal);
@@ -79,7 +79,7 @@ public sealed class MetricsPane : DockPanel
     /// <summary>Reads a program's metrics, or nothing (<paramref name="shown"/> null); without a program it says
     /// <paramref name="none"/>. One in a container (<paramref name="where"/>) is read through Passenger's tools there, the
     /// meters .NET ships alone. The same program again leaves its reading as it is.</summary>
-    public void Show(string? shown, int? program, string? none = null, ProfilePlace? where = null)
+    public void Show(string? shown, int? program, Words? none = null, ProfilePlace? where = null)
     {
         UiThread.Check();
         if (shown is null)
@@ -88,7 +88,7 @@ public sealed class MetricsPane : DockPanel
             {
                 Stop();
             }
-            Say(none ?? string.Empty);
+            Say(none ?? Words.Verbatim(string.Empty));
             return;
         }
         string next = $"{shown}\n{program}\n{where?.Where}";
@@ -101,7 +101,7 @@ public sealed class MetricsPane : DockPanel
         name = shown;
         if (program is not int id)
         {
-            Say(none ?? $"{shown} runs no .NET program on this machine to read metrics from");
+            Say(none ?? TelemetryWords.NoProgram(Words.Verbatim(shown)));
             return;
         }
         process = id;
@@ -110,10 +110,10 @@ public sealed class MetricsPane : DockPanel
         if (Paused?.Invoke(id, where) == true)
         {
             held = true;
-            Say(Refusals.MetricsWhilePaused(shown).Shown);
+            Say(Refusals.MetricsWhilePaused(Words.Verbatim(shown)));
             return;
         }
-        Say($"Waiting for {shown}'s first metrics…");
+        Say(TelemetryWords.WaitingForMetrics(Words.Verbatim(shown)));
         IdeErrors.Observe(FollowAsync(++follows, again: false));
     }
 
@@ -129,24 +129,24 @@ public sealed class MetricsPane : DockPanel
         bool paused = Paused?.Invoke(process, place) == true;
         if (paused)
         {
-            Say(Refusals.MetricsWhilePaused(name).Shown);
+            Say(Refusals.MetricsWhilePaused(name));
         }
         else if (held)
         {
             held = false;
-            Say($"Waiting for {name}'s first metrics…");
+            Say(TelemetryWords.WaitingForMetrics(Words.Verbatim(name)));
             IdeErrors.Observe(FollowAsync(++follows, again: false));
         }
-        else if (said == Refusals.MetricsWhilePaused(name).Shown)
+        else if (said.Equals(Refusals.MetricsWhilePaused(name)))
         {
-            Say(charts.Count == 0 ? $"Waiting for {name}'s first metrics…" : string.Empty);
+            Say(charts.Count == 0 ? TelemetryWords.WaitingForMetrics(Words.Verbatim(name)) : Words.Verbatim(string.Empty));
         }
     }
 
     /// <summary>Charts what a source of its own feeds it (<see cref="Feed"/>: a Godot game's monitors), or nothing
     /// (<paramref name="shown"/> null), saying <paramref name="waiting"/> until the first readings come. The same source again
     /// leaves its charts as they are.</summary>
-    public void ShowFed(string? shown, string waiting)
+    public void ShowFed(string? shown, Words waiting)
     {
         UiThread.Check();
         if (shown is null)
@@ -226,7 +226,7 @@ public sealed class MetricsPane : DockPanel
                     live = started;
                     if (waited && charts.Count == 0)
                     {
-                        Say($"Waiting for {name}'s first metrics…");
+                        Say(TelemetryWords.WaitingForMetrics(Words.Verbatim(name)));
                     }
                     IdeErrors.Observe(EndedAsync(started, follow));
                     return;
@@ -240,16 +240,16 @@ public sealed class MetricsPane : DockPanel
                     if (Paused?.Invoke(process, place) == true)
                     {
                         held = true;
-                        Say(Refusals.MetricsWhilePaused(name).Shown);
+                        Say(Refusals.MetricsWhilePaused(name));
                         return;
                     }
                     bool askAgain = place is null ? SessionStarts.AskAgain(error, Stopwatch.GetElapsedTime(first), HeldStart.PortLimit) : attempt < ContainerAttempts;
                     if (!askAgain)
                     {
-                        Say($"{name}: {error.Message}");
+                        Say(TelemetryWords.Failed(Words.Verbatim(name), Words.Verbatim(error.Message)));
                         return;
                     }
-                    Say(place is null ? $"Waiting for {name}'s runtime to open its diagnostic port…" : $"{name}: {error.Message}; asking again…");
+                    Say(place is null ? TelemetryWords.WaitingForPort(Words.Verbatim(name)) : TelemetryWords.AskingAgain(Words.Verbatim(name), Words.Verbatim(error.Message)));
                     await Task.Delay(TimeSpan.FromMilliseconds(200), asked.Token);
                 }
             }
@@ -293,7 +293,7 @@ public sealed class MetricsPane : DockPanel
         {
             if (follow == follows)
             {
-                Say($"{name}: {why}");
+                Say(TelemetryWords.Failed(Words.Verbatim(name), Words.Verbatim(why)));
             }
         }));
 
@@ -305,7 +305,7 @@ public sealed class MetricsPane : DockPanel
             if (follow == follows && live == session)
             {
                 live = null;
-                Say(charts.Count == 0 ? $"{name} ended before its first metrics" : $"{name} ended: its metrics stop at its end");
+                Say(charts.Count == 0 ? TelemetryWords.EndedBefore(Words.Verbatim(name)) : TelemetryWords.EndedAfter(Words.Verbatim(name)));
             }
         });
     }
@@ -328,7 +328,7 @@ public sealed class MetricsPane : DockPanel
         fed = false;
         held = false;
         process = 0;
-        said = string.Empty;
+        said = Words.Verbatim(string.Empty);
         meters.Clear();
         charts.Clear();
         headings.Clear();
@@ -344,7 +344,7 @@ public sealed class MetricsPane : DockPanel
         await session.DisposeAsync();
     }
 
-    private void Say(string words)
+    private void Say(Words words)
     {
         said = words;
         Showing();
@@ -354,10 +354,10 @@ public sealed class MetricsPane : DockPanel
     private void Showing()
     {
         bool none = charts.Count == 0;
-        waiting.Text = said;
+        ShownWords.Set(waiting, TextBlock.TextProperty, said);
         waiting.IsVisible = none;
-        status.Text = said;
-        status.IsVisible = !none && said.Length > 0;
+        ShownWords.Set(status, TextBlock.TextProperty, said);
+        status.IsVisible = !none && !said.IsEmpty;
     }
 
     /// <summary>An interval's readings, one value an instrument added to its line; the rows laid out again only as one comes.</summary>
@@ -393,7 +393,7 @@ public sealed class MetricsPane : DockPanel
                 // A histogram that measured nothing this second has no median to draw: its line waits for the next.
                 if (charts.TryGetValue(named, out Chart? idle))
                 {
-                    idle.Value.Text = "none this second";
+                    ShownWords.Set(idle.Value, TextBlock.TextProperty, TelemetryWords.NoneThisSecond);
                 }
                 continue;
             }
@@ -422,8 +422,8 @@ public sealed class MetricsPane : DockPanel
         }
         if (first && charts.Count > 0)
         {
-            Say(fed ? $"{name}: sent every second"
-                : $"{name}, process {process.ToString(CultureInfo.InvariantCulture)}{(place is null ? string.Empty : " in its container")}: read every second");
+            Say(fed ? TelemetryWords.SentEverySecond(Words.Verbatim(name))
+                : TelemetryWords.ReadEverySecond(Words.Verbatim(name), Words.Verbatim(process.ToString(CultureInfo.InvariantCulture)), place is null ? "false" : "true"));
         }
     }
 
