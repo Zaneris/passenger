@@ -28,7 +28,7 @@ public static class TestHitsRun
 
     /// <summary>The modules beside a test assembly in a run's own copy instrumented in place (those named alone, where any
     /// are), the files their counts would be written to in <paramref name="hits"/>, and the map of where each count stands;
-    /// null, with why said, where it failed.</summary>
+    /// null, with why said, where it failed, whatever map it wrote.</summary>
     public static async Task<InstrumentedCode?> InstrumentAsync(string assembly, IReadOnlyList<string> modules, string hits, Action<string> log, CancellationToken cancel)
     {
         Directory.CreateDirectory(hits);
@@ -41,13 +41,14 @@ public static class TestHitsRun
         {
             log(line);
         }
-        if (!File.Exists(map))
-        {
-            log($"{Path.GetFileName(assembly)}'s code could not be instrumented ({ExitCodes.Said(result.ExitCode)})");
-            return null;
-        }
         try
         {
+            // A map written by an instrumenting that then failed is of modules instrumented in part.
+            if (!result.Succeeded || !File.Exists(map))
+            {
+                log($"{Path.GetFileName(assembly)}'s code could not be instrumented ({ExitCodes.Said(result.ExitCode)})");
+                return null;
+            }
             return InstrumentedCode.Of(await File.ReadAllBytesAsync(map, cancel), Canonical);
         }
         finally
