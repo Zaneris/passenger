@@ -9,13 +9,14 @@ namespace Passenger.Languages.CSharp;
 /// <summary>Extend Selection: the ranges around a selection, smallest first, each holding the one before. In C# they
 /// come from the syntax tree: the word, a string's text inside its quotes, then every enclosing node, with a block's
 /// statements, a list's items and a type's members before the braces or brackets around them, and a member with its doc
-/// comment after the member alone. In any other text: the word, the line's text, the line, the whole.</summary>
+/// comment after the member alone. In markup, those its reader gives around a selection; in any other text: the word,
+/// the line's text, the line, the whole.</summary>
 public static class SelectionRanges
 {
     /// <summary>The next range out from a selection, or null when it already holds everything; from the file's syntax
-    /// when it is C#, else from its words and lines.</summary>
-    public static TextRange? Extend(TextSnapshot text, ParsedText? csharp, TextRange selection) =>
-        (csharp is not null ? InCSharp(csharp, selection) : InText(text, selection))
+    /// when it is C#, from the ranges <paramref name="markup"/> gives around it in markup, else from its words and lines.</summary>
+    public static TextRange? Extend(TextSnapshot text, ParsedText? csharp, TextRange selection, Func<TextRange, IEnumerable<TextRange>>? markup = null) =>
+        (csharp is not null ? InCSharp(csharp, selection) : markup is not null ? markup(selection) : InText(text, selection))
             .Where(r => r.Start <= selection.Start && r.End >= selection.End && r.Length > selection.Length)
             .OrderBy(r => r.Length)
             .Cast<TextRange?>()
