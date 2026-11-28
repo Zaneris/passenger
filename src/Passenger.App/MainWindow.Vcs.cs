@@ -310,7 +310,7 @@ public partial class MainWindow
         ActionContext context = actions!.Context();
         MenuItem Action(string id)
         {
-            MenuItem item = ToolWindows.ListMenus.Item(actions[id]!.Title.Shown, () => Request(id, context));
+            MenuItem item = ToolWindows.ListMenus.Item(actions[id]!.Title, () => Request(id, context));
             // In the menu's column of keys, as every menu's are, not run on after the title.
             actions.ShowKeys(item, id);
             return item;
@@ -329,7 +329,7 @@ public partial class MainWindow
             }
             else
             {
-                menu.Items.Add(ToolWindows.ListMenus.Notice(Refusals.NoFolder.Shown));
+                menu.Items.Add(ToolWindows.ListMenus.Notice(Refusals.NoFolder));
             }
             Open(menu, widget);
             return;
@@ -406,7 +406,7 @@ public partial class MainWindow
             {
                 items.Add(ToolWindows.ListMenus.Item("More Branches…", () => window.ShowAllBranches(remote + "/")));
             }
-            return items.Count > 0 ? items : [ToolWindows.ListMenus.Notice(Refusals.NothingFetched(remote).Shown)];
+            return items.Count > 0 ? items : [ToolWindows.ListMenus.Notice(Refusals.NothingFetched(remote))];
         }
 
         /// <summary>A branch, shown as <paramref name="shown"/>, opening its own menu; a local one saying what it tracks.</summary>

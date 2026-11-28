@@ -40,7 +40,7 @@ public static class ActionTips
 
     /// <summary>An action's name with its keys after it, as every tip and empty text names them, or the name alone while
     /// nothing runs it.</summary>
-    public static string Named(string name, string? keys) => keys is null ? name : $"{name} ({keys})";
+    public static string Named(string name, string? keys) => keys is null ? name : SharedWords.WithKeys(name, keys).Shown;
 
     /// <summary>The action whose keys a control's tip names, or null for one with no such tip.</summary>
     public static string? ActionOf(Control control) => control.GetValue(TipProperty)?.Action;

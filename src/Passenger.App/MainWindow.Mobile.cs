@@ -89,9 +89,9 @@ public partial class MainWindow
             Words = ["Mac Catalyst", MSBuildNames.MtouchLink, "trimming", "Live Visual Tree", "Hot Reload"],
             Works = AppActions.KeepAssembliesWhole,
         });
-        headsLink = MobileBanner.Link(actions[AppActions.MakeMobileEdits]!.Title.Shown, () => Request(AppActions.MakeMobileEdits));
-        workloadsLink = MobileBanner.Link(actions[AppActions.InstallWorkloads]!.Title.Shown, () => Request(AppActions.InstallWorkloads));
-        androidLink = MobileBanner.Link(actions[AppActions.InstallAndroidDependencies]!.Title.Shown, () => Request(AppActions.InstallAndroidDependencies));
+        headsLink = MobileBanner.Link(actions[AppActions.MakeMobileEdits]!.Title, () => Request(AppActions.MakeMobileEdits));
+        workloadsLink = MobileBanner.Link(actions[AppActions.InstallWorkloads]!.Title, () => Request(AppActions.InstallWorkloads));
+        androidLink = MobileBanner.Link(actions[AppActions.InstallAndroidDependencies]!.Title, () => Request(AppActions.InstallAndroidDependencies));
         xcodeLink = MobileBanner.Link("Get Xcode", () => Browse(XcodePage));
         MobileBanner.Link("Hide", () =>
         {

@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Passenger.Core;
 
 namespace Passenger.App;
 
@@ -16,7 +17,7 @@ public abstract class EditableTable : Border
     /// <param name="columns">The rows' column widths, as their grid has them.</param>
     /// <param name="titled">The columns' titles in order, empty for none.</param>
     /// <param name="scrolls">Whether its rows scroll inside it, for a table given a height of its own.</param>
-    protected EditableTable(string columns, IReadOnlyList<string> titled, bool scrolls = false)
+    protected EditableTable(string columns, IReadOnlyList<Words> titled, bool scrolls = false)
     {
         Classes.Add(StyleClasses.Framed);
         ClipToBounds = true;

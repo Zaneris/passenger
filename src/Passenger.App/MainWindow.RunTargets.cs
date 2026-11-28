@@ -166,7 +166,7 @@ public partial class MainWindow
         }
         else if (menu.Items.Count == 0)
         {
-            menu.Items.Add(ToolWindows.ListMenus.Notice(Refusals.NoTargets.Shown));
+            menu.Items.Add(ToolWindows.ListMenus.Notice(Refusals.NoTargets));
         }
         menu.Items.Add(new Separator());
         menu.Items.Add(ToolWindows.ListMenus.Item("Look Again", () => IdeErrors.Observe(LookAgainAsync())));

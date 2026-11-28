@@ -60,11 +60,11 @@ public partial class MainWindow
             Words = ["dotnet", RuntimeVariables.Root],
             Works = AppActions.AddDotnetToPath,
         });
-        installLink = DotnetBanner.Link(actions[AppActions.InstallDotnetSdk]!.Title.Shown, () => Request(AppActions.InstallDotnetSdk));
+        installLink = DotnetBanner.Link(actions[AppActions.InstallDotnetSdk]!.Title, () => Request(AppActions.InstallDotnetSdk));
         downloadLink = DotnetBanner.Link("Download Page", () => Browse(DotnetReleases.PageOf(DotnetWant.Install?.Channel ?? Channel(DotnetWant.Install?.Version))));
         systemsOwnLink = DotnetBanner.Link(OperatingSystem.IsMacOS() ? "Download Passenger for Apple Silicon" : "Download Passenger for Arm64", () => SystemsOwnPlace.Go());
         globalJsonLink = DotnetBanner.Link("Open global.json", OpenGlobalJson);
-        pathLink = DotnetBanner.Link(actions[AppActions.AddDotnetToPath]!.Title.Shown, () => Request(AppActions.AddDotnetToPath));
+        pathLink = DotnetBanner.Link(actions[AppActions.AddDotnetToPath]!.Title, () => Request(AppActions.AddDotnetToPath));
         hideLink = DotnetBanner.Link("Hide", HideOffPath);
         Activated += (_, _) => ReadDotnet();
         // A C# file of no project shown or left changes what the banner says of it.

@@ -27,7 +27,7 @@ public partial class MainWindow
             Words = ["Workspace Trust", "Restricted", "Safe Mode"],
             Works = AppActions.TrustFolder,
         });
-        TrustBanner.Link(actions[AppActions.TrustFolder]!.Title.Shown, () => Request(AppActions.TrustFolder));
+        TrustBanner.Link(actions[AppActions.TrustFolder]!.Title, () => Request(AppActions.TrustFolder));
         EventHandler changed = (_, _) => UiThread.Post(FollowTrust);
         WorkspaceTrust.Changed += changed;
         Closed += (_, _) => WorkspaceTrust.Changed -= changed;

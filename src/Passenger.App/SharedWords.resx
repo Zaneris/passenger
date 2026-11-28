@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Ok" xml:space="preserve">
+    <value>OK</value>
+    <comment>A dialog's default button where its words say no more of what it does.</comment>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Cancel</value>
+    <comment>A dialog's or a popup's Cancel, which Escape clicks too.</comment>
+  </data>
+  <data name="DontAskAgain" xml:space="preserve">
+    <value>Don't ask again</value>
+    <comment>A question's check box beside its answers: ticked, the answer is kept in Settings and the question not asked again.</comment>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>Close</value>
+    <comment>The tip of a tab's ×, which closes it.</comment>
+  </data>
+  <data name="GoToSource" xml:space="preserve">
+    <value>Go to Source</value>
+    <comment>A list's row menu item going to where the row's code is written, which F4 does.</comment>
+  </data>
+  <data name="WithKeys" xml:space="preserve">
+    <value>{name} ({keys})</value>
+    <comment>A tip naming what a button or tab does and, after it, the keys that do the same (Step Over (F10)).</comment>
+  </data>
+  <data name="Refused" xml:space="preserve">
+    <value>{name}: {why}</value>
+    <comment>A greyed button's tip: what it does, then why it cannot do it now (Delete: main is checked out).</comment>
+  </data>
+  <data name="KeysToFilter" xml:space="preserve">
+    <value>{keys} to filter</value>
+    <comment>A tool window's filter field while it is empty: the keys that take it there (⌘F to filter).</comment>
+  </data>
+</root>
