@@ -521,19 +521,46 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
     }
 
+    /// <summary>How many times in a row Rename's box asks again for the names it offers, of a server that could not give them.</summary>
+    private const int NamesAskedAgain = 5;
+
+    /// <summary>The names offered under Rename's box, once the server gives them while the box is open on the text it was
+    /// opened on. A question the server could not answer (cancelled for a change it took in, refused, or gone with the
+    /// server) is asked again once a server answers for the file: at once where the one asked still does, else once
+    /// another has taken the file in; up to <see cref="NamesAskedAgain"/> times in a row.</summary>
     private async Task OfferRenameSuggestionsAsync(RenameBox box, OpenDocument document, LspDocument served, TextSnapshot text, int offset)
     {
-        using IDisposable held = BackgroundWork.Scope();
         using CancellationTokenSource asking = new();
         void Closed(object? sender, VisualTreeAttachmentEventArgs e) => asking.Cancel();
         box.DetachedFromVisualTree += Closed;
         try
         {
-            string[] suggestions = await served.RenameSuggestionsAsync(offset, asking.Token);
-            if (popups.Modal == box && context.Editors.Active == document && document.Text.Snapshot == text)
+            for (int failed = 0; ; failed++)
             {
-                box.OfferSuggestions(suggestions);
-                popups.Place(box, offset, above: true);
+                LspDocument? gone;
+                using (BackgroundWork.Scope())
+                {
+                    try
+                    {
+                        string[] suggestions = await served.RenameSuggestionsAsync(offset, asking.Token);
+                        if (popups.Modal == box && context.Editors.Active == document && document.Text.Snapshot == text)
+                        {
+                            box.OfferSuggestions(suggestions);
+                            popups.Place(box, offset, above: true);
+                        }
+                        return;
+                    }
+                    catch (LanguageServerFailed refused) when (failed < NamesAskedAgain)
+                    {
+                        gone = refused.Ended ? served : null;
+                    }
+                }
+                if (context.CSharp is not { } csharp)
+                {
+                    return;
+                }
+                // Not held: a server's start or a project's load may take long, or not end while the box is open.
+                served = await csharp.TakenInAsync(document, gone, asking.Token);
             }
         }
         catch (OperationCanceledException) when (asking.IsCancellationRequested)
@@ -541,7 +568,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         catch (LanguageServerFailed)
         {
-            // Suggestions may be unavailable while the input is already usable.
+            // Names may still not come while the box's name is already usable.
         }
         finally
         {

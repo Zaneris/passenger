@@ -201,7 +201,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("a call bound only to another receiver's extension method is offered the using of one that takes its own", () => new CodeAssistTests(project), t => t.A_call_bound_only_to_another_receivers_extension_method_is_offered_the_using_of_one_that_takes_its_own());
         Flow.StepApart("through MCP an action with choices lists them, asks for one and applies the one named", () => new CodeAssistTests(project), t => t.Through_mcp_an_action_with_choices_lists_them_asks_for_one_and_applies_the_one_named());
         Flow.StepApart("Escape closes the lists of choices and the rename box wherever the keys are", () => new CodeAssistTests(project), t => t.Escape_closes_the_lists_of_choices_and_the_rename_box_wherever_the_keys_are());
-        Flow.StepApart("Rename offers names from the declaration, filters them as typed, and commits the editable name in one undo step", () => new CodeAssistTests(project), t => t.Rename_offers_names_filters_them_and_commits_the_editable_name());
+        Flow.StepApart("Rename offers names from the declaration, asked again where the server cancelled the question, filters them as typed, and commits the editable name in one undo step", () => new CodeAssistTests(project), t => t.Rename_offers_names_filters_them_and_commits_the_editable_name());
         Flow.StepApart("live and postfix templates expand where they belong, fill their variables and wrap what they follow", () => new CodeAssistTests(project), t => t.Live_and_postfix_templates_expand_where_they_belong_fill_their_variables_and_wrap_what_they_follow());
         Flow.StepApart("a live template ends when its editor shows another file, and Enter there breaks the line", () => new CodeAssistTests(project), t => t.A_live_template_ends_when_its_editor_shows_another_file_and_enter_there_breaks_the_line());
         Flow.StepApart("Extend Selection grows through the code around the caret, and Shrink takes it back", () => new CodeAssistTests(project), t => t.Extend_selection_grows_through_the_code_around_the_caret_and_shrink_takes_it_back());
@@ -2321,7 +2321,11 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         }
 
         string[] fromInitializer = ["pendingOrders", "orders", "pendingOrderArray", "orderArray"];
+        // The first question for the names is cancelled, as the server cancels one a change it took in made stale; they still come.
+        Task cancelled = window.CSharpService!.Session!.Server.HoldNextAnswer(Passenger.Lsp.LspMethods.DispatchDocumentExtensionMessage, AsksNames,
+            Task.FromCanceled(new CancellationToken(canceled: true)));
         RenameAt("var draft", "pendingOrders");
+        Assert.True(cancelled.IsCompleted, "No question for Rename's names was cancelled, so the step no longer holds the box to asking again");
         Assert.Equal(fromInitializer, Suggestions());
         window.KeyTextInput("ord");
         Ui.WaitFor(() => Suggestions() is ["orders", "orderArray", "pendingOrders", "pendingOrderArray"],
@@ -2394,6 +2398,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Press(window, "ESCAPE");
         window.Close();
     }
+
+    /// <summary>How Passenger's extension is asked for the names Rename offers.</summary>
+    private static bool AsksNames(object parameters) =>
+        parameters is Passenger.Lsp.RoslynExtension.DispatchExtensionMessageParams { MessageName: Passenger.Roslyn.Extension.Handlers.RenameSuggestions };
 
     private void Opening_the_open_folder_again_through_mcp_keeps_the_open_files_language_server()
     {

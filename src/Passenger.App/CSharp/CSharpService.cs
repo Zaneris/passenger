@@ -1454,6 +1454,37 @@ public sealed partial class CSharpService : IAsyncDisposable
 
     public CSharpDocument? For(OpenDocument document) => documents.GetValueOrDefault(document);
 
+    /// <summary>The server's document for an open file once a server has taken the file in (<see cref="Connected"/>), any
+    /// but <paramref name="gone"/>, one whose server ended: at once where one has.</summary>
+    public async Task<LspDocument> TakenInAsync(OpenDocument document, LspDocument? gone, CancellationToken cancel)
+    {
+        UiThread.Check();
+        while (true)
+        {
+            if (For(document)?.Lsp is { } served && served != gone)
+            {
+                return served;
+            }
+            TaskCompletionSource taken = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            void Heard(object? sender, OpenDocument connected)
+            {
+                if (connected == document)
+                {
+                    taken.TrySetResult();
+                }
+            }
+            Connected += Heard;
+            try
+            {
+                await taken.Task.WaitAsync(cancel);
+            }
+            finally
+            {
+                Connected -= Heard;
+            }
+        }
+    }
+
     /// <summary>A file's features let go of and made again: one gone too deep to give the server, closed there.</summary>
     internal void Reattach(OpenDocument document)
     {
