@@ -45,6 +45,9 @@ public sealed class SqlTextTests
                 ["db.orders.find({ n: 'a;b' }) // c;d\n  .sort({ n: 1 })", "db.orders.countDocuments({})", "db.x.drop()"]),
             ("Redis's commands a line each, a # line a comment and a blank one passed over, a # in a word its own", DatabaseKind.Redis,
                 "# seed\n  SET a \"x;y\"\n\nHSET h #f 1\n", ["SET a \"x;y\"", "HSET h #f 1"]),
+            ("MySQL's -- begins a comment only before white space, and what its /*! */ holds is a statement's, run with it", DatabaseKind.MySql,
+                "UPDATE accounts SET balance=10--1 WHERE id=1; -- note\n/*!40101 SET NAMES utf8 */;\nSELECT 1 /*! INTO OUTFILE 'x' */",
+                ["UPDATE accounts SET balance=10--1 WHERE id=1", "/*!40101 SET NAMES utf8 */", "SELECT 1 /*! INTO OUTFILE 'x' */"]),
         }, row => Assert.Equal(row.Runs, SqlText.Runs(row.Sql, row.Kind)), row => row.Holds);
         Cases.Each(new (string Holds, string Sql, int Caret, string? At)[]
         {
@@ -73,6 +76,10 @@ public sealed class SqlTextTests
             ("MongoDB's call on a collection named in a string reads as the call it makes, whatever its filter's words", DatabaseKind.MongoDb,
                 "db.getCollection('orders').find({ op: 'deleteMany' })", SqlEffect.Reads),
             ("MongoDB's pipeline writing out with $out changes data", DatabaseKind.MongoDb, "db.orders.aggregate([{ $match: {} }, { \"$out\": 'copy' }])", SqlEffect.ChangesData),
+            ("MongoDB's $out written with an escape is the stage its reader decodes", DatabaseKind.MongoDb, "db.orders.aggregate([{ \"\\u0024out\": \"archive\" }])",
+                SqlEffect.ChangesData),
+            ("MongoDB's pipeline writing nothing out reads", DatabaseKind.MongoDb, "db.orders.aggregate([{ $match: { qty: { $gt: 1 } } }, { $group: { _id: '$sku' } }])",
+                SqlEffect.Reads),
             ("MongoDB's index made changes the schema", DatabaseKind.MongoDb, "db.orders.createIndex({ name: 1 })", SqlEffect.ChangesSchema),
             ("runCommand reads only for a command known to", DatabaseKind.MongoDb, "db.runCommand({ ping: 1 })", SqlEffect.Reads),
             ("Cosmos DB's SQL only reads", DatabaseKind.CosmosDb, "SELECT * FROM c WHERE c.op = 'DELETE'", SqlEffect.Reads),
@@ -81,6 +88,11 @@ public sealed class SqlTextTests
             ("Redis's read of a key named as a command reads", DatabaseKind.Redis, "HGET DEL field", SqlEffect.Reads),
             ("Redis's write, and one it does not know, change data", DatabaseKind.Redis, "frobnicate x", SqlEffect.ChangesData),
             ("CONFIG GET reads and CONFIG SET or FLUSHDB change the server", DatabaseKind.Redis, "CONFIG SET maxmemory 1mb", SqlEffect.ChangesSchema),
+            ("SLOWLOG GET reads and SLOWLOG RESET changes the server, as LATENCY RESET", DatabaseKind.Redis, "SLOWLOG RESET", SqlEffect.ChangesSchema),
+            ("a sequence's next value taken changes data, which no rollback gives back", DatabaseKind.SqlServer, "SELECT NEXT VALUE FOR dbo.numbers", SqlEffect.ChangesData),
+            ("PostgreSQL's nextval changes data", DatabaseKind.Postgres, "SELECT nextval('orders_id_seq')", SqlEffect.ChangesData),
+            ("MySQL's executable comment runs: INTO OUTFILE in one writes a file", DatabaseKind.MySql, "SELECT 1 /*! INTO OUTFILE '/tmp/demo.txt' */ FROM DUAL",
+                SqlEffect.ChangesData),
         }, row => Assert.Equal(row.Effect, SqlText.EffectOf(row.Sql, row.Kind)), row => row.Holds);
         Cases.Each(new (string Holds, string Run, string[] Words)[]
         {

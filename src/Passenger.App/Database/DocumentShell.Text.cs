@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+
 namespace Passenger.App.Database;
 
 /// <summary>MongoDB's shell as its words are read without its driver: where its strings and comments stand, its statements,
@@ -152,12 +155,72 @@ internal static partial class DocumentShell
         return method switch
         {
             null => SqlEffect.ChangesData,
-            "aggregate" when text.Contains("$out", StringComparison.Ordinal) || text.Contains("$merge", StringComparison.Ordinal) => SqlEffect.ChangesData,
+            "aggregate" when WritesOut(run) => SqlEffect.ChangesData,
             "runCommand" => FirstKey(text, open + 1) is { } command && ReadingCommands.Contains(command) ? SqlEffect.Reads : SqlEffect.ChangesSchema,
             _ when Reading.Contains(method) => SqlEffect.Reads,
             _ when Shaping.Contains(method) => SqlEffect.ChangesSchema,
             _ => SqlEffect.ChangesData,
         };
+    }
+
+    /// <summary>Whether an aggregation writes out: a name or string of it, its escapes read as the shell's reader decodes
+    /// them ("\u0024out" is $out), is $out or $merge.</summary>
+    private static bool WritesOut(string run)
+    {
+        for (int i = 0; i < run.Length;)
+        {
+            if (Skipped(run, i) is { } past)
+            {
+                if (run[i] != '/' && Decoded(run[(i + 1)..Math.Max(i + 1, past - 1)]) is "$out" or "$merge")
+                {
+                    return true;
+                }
+                i = past;
+                continue;
+            }
+            int end = i;
+            while (end < run.Length && (char.IsLetterOrDigit(run[end]) || run[end] is '_' or '$'))
+            {
+                end++;
+            }
+            if (end > i && run[i..end] is "$out" or "$merge")
+            {
+                return true;
+            }
+            i = Math.Max(end, i + 1);
+        }
+        return false;
+    }
+
+    /// <summary>A quoted string's text with its escapes read: \uXXXX, \u{…} and \xXX by their code, any other the
+    /// character after the backslash.</summary>
+    private static string Decoded(string quoted)
+    {
+        if (!quoted.Contains('\\', StringComparison.Ordinal))
+        {
+            return quoted;
+        }
+        StringBuilder text = new(quoted.Length);
+        for (int i = 0; i < quoted.Length; i++)
+        {
+            if (quoted[i] != '\\' || i + 1 >= quoted.Length)
+            {
+                text.Append(quoted[i]);
+                continue;
+            }
+            char next = quoted[++i];
+            int close = next == 'u' && i + 1 < quoted.Length && quoted[i + 1] == '{' ? quoted.IndexOf('}', i) : -1;
+            (int from, int length) = close > 0 ? (i + 2, close - i - 2) : next == 'u' ? (i + 1, 4) : next == 'x' ? (i + 1, 2) : (0, 0);
+            if (length > 0 && from + length <= quoted.Length
+                && int.TryParse(quoted.AsSpan(from, length), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out int code) && code is >= 0 and <= 0x10FFFF)
+            {
+                text.Append(char.ConvertFromUtf32(code is >= 0xD800 and <= 0xDFFF ? 0xFFFD : code));
+                i = close > 0 ? close : from + length - 1;
+                continue;
+            }
+            text.Append(next);
+        }
+        return text.ToString();
     }
 
     /// <summary>The name called first from a place on, outside strings and comments, and where its parenthesis stands.</summary>

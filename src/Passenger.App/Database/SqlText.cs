@@ -29,17 +29,31 @@ public static class SqlText
     /// depth; or a quoted name, its words as written inside its quotes (<see cref="Quoted"/>).</summary>
     public readonly record struct Token(string Word, int Start, int End, int Depth, bool Quoted = false);
 
-    /// <summary>The words and symbols of <paramref name="sql"/>, upper-cased, outside its strings, quoted names and comments.</summary>
+    /// <summary>The words and symbols of <paramref name="sql"/>, upper-cased, outside its strings, quoted names and comments;
+    /// those inside MySQL's executable comments (<see cref="ExecutableOpener"/>) its own, as MySQL runs them.</summary>
     public static List<Token> Tokens(string sql, DatabaseKind kind)
     {
         List<Token> tokens = [];
         int depth = 0;
+        bool executable = false;
         for (int i = 0; i < sql.Length;)
         {
             char c = sql[i];
             if (char.IsWhiteSpace(c))
             {
                 i++;
+                continue;
+            }
+            if (ExecutableOpener(sql, i, kind) is { } inside)
+            {
+                executable = true;
+                i = inside;
+                continue;
+            }
+            if (executable && c == '*' && i + 1 < sql.Length && sql[i + 1] == '/')
+            {
+                executable = false;
+                i += 2;
                 continue;
             }
             if (Skipped(sql, i, kind) is { } past)
@@ -86,7 +100,9 @@ public static class SqlText
         }
         char c = sql[at];
         char next = at + 1 < sql.Length ? sql[at + 1] : '\0';
-        if (c == '-' && next == '-' || c == '#' && kind is DatabaseKind.MySql or DatabaseKind.ClickHouse || c == '/' && next == '/' && kind is DatabaseKind.Snowflake or DatabaseKind.Cassandra)
+        // MySQL's -- begins a comment only before white space or a control character: 10--1 is 10 - -1.
+        bool dashes = c == '-' && next == '-' && (kind != DatabaseKind.MySql || at + 2 >= sql.Length || char.IsWhiteSpace(sql[at + 2]) || char.IsControl(sql[at + 2]));
+        if (dashes || c == '#' && kind is DatabaseKind.MySql or DatabaseKind.ClickHouse || c == '/' && next == '/' && kind is DatabaseKind.Snowflake or DatabaseKind.Cassandra)
         {
             int end = sql.IndexOfAny(['\r', '\n'], at);
             return end < 0 ? sql.Length : end;
@@ -131,6 +147,56 @@ public static class SqlText
             '[' when kind is DatabaseKind.SqlServer or DatabaseKind.Sqlite => Quoted(sql, at, ']', false),
             _ => null,
         };
+    }
+
+    /// <summary>Where the SQL inside a MySQL or MariaDB executable comment starting at <paramref name="at"/> begins, past its
+    /// /*! or /*M! and the server version it may name, which the server runs whatever the version (a check of what it does
+    /// reads it as run); null where none starts there. Its */ closes it.</summary>
+    public static int? ExecutableOpener(string sql, int at, DatabaseKind kind)
+    {
+        if (kind != DatabaseKind.MySql || string.CompareOrdinal(sql, at, "/*", 0, 2) != 0)
+        {
+            return null;
+        }
+        int i = at + 2;
+        if (i < sql.Length && sql[i] == 'M')
+        {
+            i++;
+        }
+        if (i >= sql.Length || sql[i] != '!')
+        {
+            return null;
+        }
+        i++;
+        while (i < sql.Length && char.IsAsciiDigit(sql[i]))
+        {
+            i++;
+        }
+        return i;
+    }
+
+    /// <summary>Where an executable comment's opener ends just before <paramref name="at"/>, white space aside, begins; else
+    /// <paramref name="at"/>, so a statement inside one starts at its opener.</summary>
+    private static int OpenerBefore(string sql, int at, DatabaseKind kind)
+    {
+        int end = at;
+        while (end > 0 && char.IsWhiteSpace(sql[end - 1]))
+        {
+            end--;
+        }
+        int start = end;
+        while (start > 0 && char.IsAsciiDigit(sql[start - 1]))
+        {
+            start--;
+        }
+        foreach (int length in (int[])[3, 4])
+        {
+            if (start - length >= 0 && ExecutableOpener(sql, start - length, kind) == end)
+            {
+                return start - length;
+            }
+        }
+        return at;
     }
 
     /// <summary>Whether a quote starts a name rather than a string, as the database reads it.</summary>
@@ -232,7 +298,7 @@ public static class SqlText
         {
             if (first >= 0 && last >= first)
             {
-                statements.Add((tokens[first].Start, Through(tokens[last].End, last + 1 < tokens.Count ? tokens[last + 1].Start : sql.Length)));
+                statements.Add((OpenerBefore(sql, tokens[first].Start, kind), Through(tokens[last].End, last + 1 < tokens.Count ? tokens[last + 1].Start : sql.Length)));
             }
             first = -1;
         }
@@ -246,6 +312,13 @@ public static class SqlText
                 if (char.IsWhiteSpace(sql[i]))
                 {
                     i++;
+                    continue;
+                }
+                // Between a statement's words a */ can only close the executable comment its last ones stood in.
+                if (kind == DatabaseKind.MySql && sql[i] == '*' && i + 1 < before && sql[i + 1] == '/')
+                {
+                    through = i + 2;
+                    i += 2;
                     continue;
                 }
                 if (Skipped(sql, i, kind) is not { } past)
@@ -494,10 +567,29 @@ public static class SqlText
         for (int t = first + 1; t < end; t++)
         {
             SqlEffect? inside = StartsStatement(tokens, t, end) ? SchemaWords.Contains(tokens[t].Word) ? SqlEffect.ChangesSchema : SqlEffect.ChangesData
-                : SelectsInto(tokens, t, end);
+                : SelectsInto(tokens, t, end) ?? TakesFromSequence(tokens, t, end);
             own = (SqlEffect)Math.Max((int)own, (int)(inside ?? own));
         }
         return own;
+    }
+
+    /// <summary>Whether the words at token <paramref name="t"/> take a sequence's next value or set it (NEXT VALUE FOR, nextval(…),
+    /// setval(…), Snowflake's seq.NEXTVAL), which no transaction's rollback gives back: a change of data.</summary>
+    private static SqlEffect? TakesFromSequence(List<Token> tokens, int t, int end)
+    {
+        if (tokens[t].Quoted)
+        {
+            return null;
+        }
+        string next = t + 1 < end ? tokens[t + 1].Word : string.Empty;
+        bool takes = tokens[t].Word switch
+        {
+            "NEXT" => next == "VALUE" && t + 2 < end && tokens[t + 2].Word == "FOR",
+            "NEXTVAL" => next == "(" || t > 0 && tokens[t - 1].Word == ".",
+            "SETVAL" => next == "(",
+            _ => false,
+        };
+        return takes ? SqlEffect.ChangesData : null;
     }
 
     /// <summary>What a SELECT's INTO at token <paramref name="t"/> makes: a table (SQL Server's and PostgreSQL's), or a file on

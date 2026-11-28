@@ -67,7 +67,18 @@ public static class RedisCommands
         "LINDEX", "LPOS", "SMISMEMBER", "SSCAN", "SRANDMEMBER", "SINTER", "SUNION", "SDIFF", "SINTERCARD", "ZRANGEBYSCORE", "ZREVRANGE",
         "ZREVRANGEBYSCORE", "ZRANGEBYLEX", "ZCOUNT", "ZLEXCOUNT", "ZRANK", "ZREVRANK", "ZSCAN", "ZMSCORE", "ZRANDMEMBER", "XREVRANGE", "XINFO",
         "XREAD", "XPENDING", "ECHO", "TIME", "LASTSAVE", "GETBIT", "BITCOUNT", "BITPOS", "PFCOUNT", "GEOPOS", "GEODIST", "GEOHASH", "GEOSEARCH",
-        "OBJECT", "MEMORY", "DUMP", "TOUCH", "LOLWUT", "COMMAND", "ROLE", "SLOWLOG", "LATENCY",
+        "OBJECT", "DUMP", "TOUCH", "LOLWUT", "COMMAND", "ROLE",
+    };
+
+    /// <summary>The commands whose subcommand says what they do, with the subcommands that only read; any other of theirs
+    /// changes the server (CONFIG SET, SLOWLOG RESET, MEMORY PURGE).</summary>
+    private static readonly Dictionary<string, HashSet<string>> ReadingSubcommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["CONFIG"] = new(StringComparer.OrdinalIgnoreCase) { "GET", "HELP" },
+        ["CLIENT"] = new(StringComparer.OrdinalIgnoreCase) { "LIST", "INFO", "GETNAME", "ID", "GETREDIR", "TRACKINGINFO", "HELP" },
+        ["SLOWLOG"] = new(StringComparer.OrdinalIgnoreCase) { "GET", "LEN", "HELP" },
+        ["LATENCY"] = new(StringComparer.OrdinalIgnoreCase) { "DOCTOR", "GRAPH", "HISTOGRAM", "HISTORY", "LATEST", "HELP" },
+        ["MEMORY"] = new(StringComparer.OrdinalIgnoreCase) { "DOCTOR", "MALLOC-STATS", "STATS", "USAGE", "HELP" },
     };
 
     /// <summary>The commands that change the server or every key rather than some keys' values.</summary>
@@ -170,8 +181,8 @@ public static class RedisCommands
         return words;
     }
 
-    /// <summary>What a command does to its database: a known one's effect, one that only reads, CONFIG and CLIENT by what
-    /// they are asked, one that changes the server; any other taken as changing data.</summary>
+    /// <summary>What a command does to its database: a known one's effect, one that only reads, one whose subcommand says
+    /// (<see cref="ReadingSubcommands"/>) by it, one that changes the server; any other taken as changing data.</summary>
     public static SqlEffect EffectOf(string run)
     {
         List<string> words;
@@ -188,9 +199,9 @@ public static class RedisCommands
             return SqlEffect.Reads;
         }
         string name = words[0];
-        if (name.Equals("CONFIG", StringComparison.OrdinalIgnoreCase) || name.Equals("CLIENT", StringComparison.OrdinalIgnoreCase))
+        if (ReadingSubcommands.TryGetValue(name, out HashSet<string>? reading))
         {
-            return words.Count > 1 && words[1].ToUpperInvariant() is "GET" or "LIST" or "INFO" or "GETNAME" or "ID" ? SqlEffect.Reads : SqlEffect.ChangesSchema;
+            return words.Count > 1 && reading.Contains(words[1]) ? SqlEffect.Reads : SqlEffect.ChangesSchema;
         }
         return Known.FirstOrDefault(k => k.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { Name: not null } known ? known.Effect
             : Reading.Contains(name) ? SqlEffect.Reads
