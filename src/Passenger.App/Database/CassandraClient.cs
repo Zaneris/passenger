@@ -95,12 +95,15 @@ internal static class CassandraClient
             kept = kept.OrderBy(r => place[r]);
         }
         int[] chosen = [.. kept];
+        // Filtered or sorted here, its pages are those of the rows read: where more were left, it says so, never a page of none.
+        bool here = filter is not null || sort is not null;
         return new DatabaseRows(columns, [.. chosen.Skip(offset).Take(DatabaseClient.PageSize).Select(r => all.Rows[r])],
-            chosen.Length > offset + DatabaseClient.PageSize || read.More)
+            chosen.Length > offset + DatabaseClient.PageSize || !here && read.More)
         {
             Schema = schema,
             Offset = offset,
             Types = [.. schema.Columns.Select(c => c.Type)],
+            About = here && read.More ? DatabaseClient.ReadOf(MostRows, null, "rows") : null,
             OrderedBy = sort is { } ordered && Array.IndexOf(columns, ordered.Column) is >= 0 and int column ? (column, ordered.Descending) : null,
         };
     });

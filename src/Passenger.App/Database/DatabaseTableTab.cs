@@ -105,8 +105,8 @@ public sealed class DatabaseTableTab : IDatabaseTab
 
     public string? WhyNotSubmit => Busy ?? (edits.IsEmpty ? Refusals.NoPendingChanges : WhyNotEdited);
     public string? WhyNotRevert => Busy ?? (edits.IsEmpty ? Refusals.NoPendingChanges : null);
-    public string? WhyNotAddRow => Busy ?? WhyNotEdited ?? (shown is null ? Refusals.DatabaseBusy : null);
-    public string? WhyNotDeleteRows => Busy ?? WhyNotEdited ?? (ChosenRows().Count == 0 ? Refusals.NoRowChosen : null);
+    public string? WhyNotAddRow => Busy ?? WhyNotEdited ?? (schema is { RowsFixed: true } ? Refusals.RowsFixed : shown is null ? Refusals.DatabaseBusy : null);
+    public string? WhyNotDeleteRows => Busy ?? WhyNotEdited ?? (schema is { RowsFixed: true } ? Refusals.RowsFixed : ChosenRows().Count == 0 ? Refusals.NoRowChosen : null);
     /// <summary>Why a file's rows may not be imported into the table: its connection marked read-only, or its columns not read yet.</summary>
     public string? WhyNotImport => DatabaseController.WhyNotImport(Now) ?? (schema is null ? Refusals.DatabaseBusy : null);
 
@@ -129,7 +129,22 @@ public sealed class DatabaseTableTab : IDatabaseTab
         Document.DatabaseTitleChanged();
     }
 
-    public Task LoadAsync(int offset = 0, DatabaseFilter? next = null) => RunAsync(AppActions.DatabaseOpenTable, $"Reading {Table}", async cancel =>
+    /// <summary>Why another page may not be read now: a document database's changes not written, which stand by the page's
+    /// own fields, as another page of its documents may hold others in another order.</summary>
+    private string? WhyNotLeavePage => !edits.IsEmpty && DatabaseKinds.HoldsDocuments(Now.Kind) ? Refusals.DocumentChangesPending : null;
+
+    /// <summary>Reads a page of the table, filtered and sorted as asked; refused where its changes may not leave the page shown.</summary>
+    public Task LoadAsync(int offset = 0, DatabaseFilter? next = null)
+    {
+        if (WhyNotLeavePage is { } why)
+        {
+            Say(why);
+            return Task.CompletedTask;
+        }
+        return Read(offset, next);
+    }
+
+    private Task Read(int offset, DatabaseFilter? next) => RunAsync(AppActions.DatabaseOpenTable, $"Reading {Table}", async cancel =>
     {
         DatabaseSource source = Now;
         DatabaseSchema read = schema ?? await BackgroundWork.Run(() => DatabaseClient.SchemaAsync(source, Table, cancel), cancel);
@@ -196,7 +211,20 @@ public sealed class DatabaseTableTab : IDatabaseTab
             {
                 return;
             }
-            await BackgroundWork.Run(() => DatabaseClient.SubmitAsync(source, read, page, writing, cancel), cancel);
+            try
+            {
+                await BackgroundWork.Run(() => DatabaseClient.SubmitAsync(source, read, page, writing, cancel), cancel);
+            }
+            catch (PartlyWritten partly)
+            {
+                // Those written are the database's now: the rest wait on the page as it was read, none written twice.
+                edits = partly.Left;
+                done.Clear();
+                undone.Clear();
+                said = $"{Containers.ContainerSecrets.InSaid(partly.Message)} Written before it: {writing.Besides(partly.Left)}; {partly.Left.Said}.";
+                Show(page);
+                return;
+            }
             edits = PendingEdits.None;
             done.Clear();
             undone.Clear();
@@ -455,6 +483,11 @@ public sealed class DatabaseTableTab : IDatabaseTab
         cells.WriteRefused += (_, _) => Say(WhyNotEdited ?? Refusals.DatabaseBusy);
         cells.SortRequested += (_, wanted) =>
         {
+            if (WhyNotLeavePage is { } why)
+            {
+                Say(why);
+                return;
+            }
             sort = wanted is { } by && rows is { } read ? (read.Columns[by.Column], by.Descending) : null;
             IdeErrors.Observe(LoadAsync(0, filter));
         };
@@ -518,14 +551,15 @@ public sealed class DatabaseTableTab : IDatabaseTab
         MenuFlyout MoreMenu()
         {
             string? idle = operation is null && Valid ? null : Refusals.DatabaseBusy;
+            string? leaving = idle ?? WhyNotLeavePage;
             MenuFlyout menu = new() { Placement = Avalonia.Controls.PlacementMode.BottomEdgeAlignedRight };
             foreach (Control item in new Control[]
             {
-                ListMenus.Item("Read Again", () => IdeErrors.Observe(LoadAsync(rows?.Offset ?? 0, filter)), idle, IconKeys.Rerun),
+                ListMenus.Item("Read Again", () => IdeErrors.Observe(LoadAsync(rows?.Offset ?? 0, filter)), leaving, IconKeys.Rerun),
                 ListMenus.Item("Previous Page", () => IdeErrors.Observe(LoadAsync(Math.Max(0, (rows?.Offset ?? 0) - DatabaseClient.PageSize), filter)),
-                    idle ?? (rows?.Offset > 0 ? null : Refusals.NoPreviousPage), IconKeys.ArrowUp),
+                    leaving ?? (rows?.Offset > 0 ? null : Refusals.NoPreviousPage), IconKeys.ArrowUp),
                 ListMenus.Item("Next Page", () => IdeErrors.Observe(LoadAsync((rows?.Offset ?? 0) + DatabaseClient.PageSize, filter)),
-                    idle ?? (rows?.More == true ? null : Refusals.NoNextPage), IconKeys.ArrowDown),
+                    leaving ?? (rows?.More == true ? null : Refusals.NoNextPage), IconKeys.ArrowDown),
                 ListMenus.Item("Stop", () => operation?.Cancel(), operation is null ? Refusals.DatabaseNotReading : null, IconKeys.Stop),
                 ListMenus.Keyed("Export Data…", AppActions.DatabaseExport, () => request(AppActions.DatabaseExport), schema is null ? Refusals.DatabaseBusy : null),
                 ListMenus.Keyed("Import Data…", AppActions.DatabaseImport, () => request(AppActions.DatabaseImport), WhyNotImport),
@@ -535,12 +569,12 @@ public sealed class DatabaseTableTab : IDatabaseTab
                 ListMenus.Keyed("Submit Changes", AppActions.DatabaseSubmit, () => request(AppActions.DatabaseSubmit), WhyNotSubmit),
                 ListMenus.Keyed("Revert Changes", AppActions.DatabaseRevert, () => request(AppActions.DatabaseRevert), WhyNotRevert),
                 new Separator(),
-                ListMenus.Item("Apply Filter", Apply, idle, IconKeys.Filter),
+                ListMenus.Item("Apply Filter", Apply, leaving, IconKeys.Filter),
                 ListMenus.Item("Clear Filter", () =>
                 {
                     value.Text = string.Empty;
                     IdeErrors.Observe(LoadAsync());
-                }, idle, IconKeys.Close),
+                }, leaving, IconKeys.Close),
             })
             {
                 menu.Items.Add(item);

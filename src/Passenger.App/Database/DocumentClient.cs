@@ -69,7 +69,7 @@ internal static class DocumentClient
                 using FeedIterator<ContainerProperties> read = cosmos.GetDatabase(source.Database).GetContainerQueryIterator<ContainerProperties>();
                 while (read.HasMoreResults)
                 {
-                    objects.AddRange((await read.ReadNextAsync(cancel)).Select(c => new DatabaseObject(string.Empty, c.Id, DatabaseObjectKind.Table, c.PartitionKeyPath ?? string.Empty)));
+                    objects.AddRange((await read.ReadNextAsync(cancel)).Select(c => new DatabaseObject(string.Empty, c.Id, DatabaseObjectKind.Table, string.Join(", ", PartitionPaths(c)))));
                 }
             }
             return [(string.Empty, [.. objects.OrderBy(o => o.Name, StringComparer.Ordinal)])];
@@ -81,6 +81,7 @@ internal static class DocumentClient
     {
         List<DatabasePart> indexes = [];
         List<string> keys = [KeyOf(source.Kind)];
+        IReadOnlyList<string> partition = [];
         IReadOnlyList<Dictionary<string, object?>> sample;
         if (source.Kind == DatabaseKind.MongoDb)
         {
@@ -103,10 +104,24 @@ internal static class DocumentClient
             using CosmosClient cosmos = Cosmos(source);
             Container container = cosmos.GetDatabase(source.Database).GetContainer(table.Name);
             ContainerProperties properties = (await container.ReadContainerAsync(cancellationToken: cancel)).Resource;
-            keys.Add($"partition key {properties.PartitionKeyPath}");
+            partition = PartitionPaths(properties);
+            keys.Add($"partition key {string.Join(", ", partition)}");
             sample = [.. (await QueryAsync(container, new QueryDefinition($"SELECT TOP {Sampled.ToString(CultureInfo.InvariantCulture)} * FROM c"), Sampled, cancel)).Items.Select(Fields)];
         }
-        return new DatabaseSchema(table, Columns(source.Kind, sample), keys, indexes);
+        List<DatabaseColumn> columns = Columns(source.Kind, sample);
+        // Two items of one id in two partitions are two: each partition path's top-level field is a key column after the id.
+        foreach (string field in partition.Select(p => p.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()).OfType<string>()
+            .Where(f => f != KeyOf(source.Kind)).Distinct(StringComparer.Ordinal).Reverse())
+        {
+            int at = columns.FindIndex(c => c.Name == field);
+            DatabaseColumn keyed = at >= 0 ? columns[at] with { Primary = true } : new DatabaseColumn(field, "null", true, true, false);
+            if (at >= 0)
+            {
+                columns.RemoveAt(at);
+            }
+            columns.Insert(Math.Min(1, columns.Count), keyed);
+        }
+        return new DatabaseSchema(table, columns, keys, indexes);
     });
 
     /// <summary>A page of a collection's documents as its table tab reads one: filtered by a field and sorted by one on the
@@ -154,50 +169,70 @@ internal static class DocumentClient
     });
 
     /// <summary>Writes a page's changes document by document: those deleted, then each changed one's fields set (a cell made
-    /// NULL setting null), then each added one made of the fields written, its key the database's own where none was.</summary>
-    internal static async Task SubmitAsync(DatabaseSource source, DatabaseSchema schema, DatabaseRows page, PendingEdits edits, CancellationToken cancel) =>
-        await Guarded<bool>(source, async () =>
+    /// NULL setting null), then each added one made of the fields written, its key the database's own where none was. As no
+    /// transaction holds them together, a failure or Stop after some were written throws <see cref="PartlyWritten"/> with
+    /// those not written, which still wait.</summary>
+    internal static async Task SubmitAsync(DatabaseSource source, DatabaseSchema schema, DatabaseRows page, PendingEdits edits, CancellationToken cancel)
+    {
+        PendingEdits left = edits;
+        try
+        {
+            await WriteAsync();
+        }
+        catch (Exception failed) when (!ReferenceEquals(left, edits) && failed is not PartlyWritten)
+        {
+            throw new PartlyWritten(left, failed is OperationCanceledException ? "Stopped." : failed.Message, failed);
+        }
+
+        Task<bool> WriteAsync() => Guarded<bool>(source, async () =>
         {
             string key = KeyOf(source.Kind);
-            int keyAt = Array.IndexOf(page.Columns, key);
+            string[] keys = [.. schema.Columns.Where(c => c.Primary).Select(c => c.Name)];
             if (source.Kind == DatabaseKind.MongoDb)
             {
                 using MongoClient client = Mongo(source);
                 IMongoCollection<BsonDocument> collection = client.GetDatabase(source.Database).GetCollection<BsonDocument>(schema.Table.Name);
-                // A document changed since it was read stops every write, as no transaction holds them together.
-                foreach ((RowKey changed, ChangedRow row) in edits.Changed)
+                // A document changed since it was read stops every write; each write holds its document to what was read again.
+                Dictionary<RowKey, BsonDocument> held = edits.Changed.ToDictionary(c => c.Key, c => AsRead(key, c.Key, c.Value.Read, page.Columns, c.Value.Written.Keys));
+                foreach ((RowKey changed, BsonDocument read) in held)
                 {
-                    BsonDocument read = new(key, ToBson(changed.Values[0]));
-                    read.AddRange(row.Written.Keys.Select(column => new BsonElement(page.Columns[column], row.Read[column] is AbsentField
-                        ? new BsonDocument("$exists", false) : ToBson(row.Read[column] is JsonText ? null : row.Read[column]))));
                     if (await collection.CountDocumentsAsync(read, cancellationToken: cancel) == 0)
                     {
                         throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), changed.ToString()));
                     }
                 }
-                foreach (RowKey deleted in edits.Deleted.Keys)
+                foreach ((RowKey deleted, object?[] read) in edits.Deleted)
                 {
-                    await collection.DeleteOneAsync(new BsonDocument(key, ToBson(deleted.Values[0])), cancel);
+                    if ((await collection.DeleteOneAsync(AsRead(key, deleted, read, page.Columns, Enumerable.Range(0, read.Length)), cancel)).DeletedCount == 0)
+                    {
+                        throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), deleted.ToString()));
+                    }
+                    left = left with { Deleted = left.Deleted.Remove(deleted) };
                 }
                 foreach ((RowKey changed, ChangedRow row) in edits.Changed)
                 {
                     BsonDocument set = new(row.Written.Select(w => new BsonElement(page.Columns[w.Key], Written(w.Value, row.Read[w.Key]))));
-                    await collection.UpdateOneAsync(new BsonDocument(key, ToBson(changed.Values[0])), new BsonDocument("$set", set), cancellationToken: cancel);
+                    if ((await collection.UpdateOneAsync(held[changed], new BsonDocument("$set", set), cancellationToken: cancel)).MatchedCount == 0)
+                    {
+                        throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), changed.ToString()));
+                    }
+                    left = left with { Changed = left.Changed.Remove(changed) };
                 }
                 foreach (AddedRow added in edits.Added)
                 {
                     await collection.InsertOneAsync(new BsonDocument(added.Written.Select(w => new BsonElement(page.Columns[w.Key], Written(w.Value, null)))), cancellationToken: cancel);
+                    left = left with { Added = left.Added.Remove(added) };
                 }
                 return true;
             }
             using CosmosClient cosmos = Cosmos(source);
             Container container = cosmos.GetDatabase(source.Database).GetContainer(schema.Table.Name);
-            string path = (await container.ReadContainerAsync(cancellationToken: cancel)).Resource.PartitionKeyPath ?? string.Empty;
+            IReadOnlyList<string> paths = PartitionPaths((await container.ReadContainerAsync(cancellationToken: cancel)).Resource);
             // A document changed since it was read (its _etag moved) stops every write, as no transaction holds them together.
             foreach (RowKey changed in edits.Changed.Keys)
             {
-                JsonObject read = DocumentOf(page, keyAt, changed);
-                using ResponseMessage now = await container.ReadItemStreamAsync(Convert.ToString(changed.Values[0], CultureInfo.InvariantCulture), PartitionOf(read, path),
+                JsonObject read = DocumentOf(page, keys, changed);
+                using ResponseMessage now = await container.ReadItemStreamAsync(Convert.ToString(changed.Values[0], CultureInfo.InvariantCulture), PartitionOf(read, paths),
                     cancellationToken: cancel);
                 if (!now.IsSuccessStatusCode || (await JsonNode.ParseAsync(now.Content, cancellationToken: cancel))?["_etag"]?.ToJsonString() != read["_etag"]?.ToJsonString())
                 {
@@ -206,19 +241,25 @@ internal static class DocumentClient
             }
             foreach (RowKey deleted in edits.Deleted.Keys)
             {
-                JsonObject read = DocumentOf(page, keyAt, deleted);
-                Checked(await container.DeleteItemStreamAsync(Convert.ToString(deleted.Values[0], CultureInfo.InvariantCulture), PartitionOf(read, path), cancellationToken: cancel));
+                JsonObject read = DocumentOf(page, keys, deleted);
+                using ResponseMessage gone = await container.DeleteItemStreamAsync(Convert.ToString(deleted.Values[0], CultureInfo.InvariantCulture), PartitionOf(read, paths),
+                    EtagAsRead(read), cancel);
+                Held(gone, deleted);
+                left = left with { Deleted = left.Deleted.Remove(deleted) };
             }
             foreach ((RowKey changed, ChangedRow row) in edits.Changed)
             {
-                JsonObject document = DocumentOf(page, keyAt, changed);
-                PartitionKey partition = PartitionOf(document, path);
+                JsonObject document = DocumentOf(page, keys, changed);
+                PartitionKey partition = PartitionOf(document, paths);
                 foreach ((int column, string? text) in row.Written)
                 {
                     document[page.Columns[column]] = WrittenJson(text, row.Read[column]);
                 }
                 using MemoryStream body = new(Encoding.UTF8.GetBytes(document.ToJsonString()));
-                Checked(await container.ReplaceItemStreamAsync(body, Convert.ToString(changed.Values[0], CultureInfo.InvariantCulture), partition, cancellationToken: cancel));
+                using ResponseMessage replaced = await container.ReplaceItemStreamAsync(body, Convert.ToString(changed.Values[0], CultureInfo.InvariantCulture), partition,
+                    EtagAsRead(document), cancel);
+                Held(replaced, changed);
+                left = left with { Changed = left.Changed.Remove(changed) };
             }
             foreach (AddedRow added in edits.Added)
             {
@@ -229,10 +270,36 @@ internal static class DocumentClient
                 }
                 document[key] ??= Guid.NewGuid().ToString("D");
                 using MemoryStream body = new(Encoding.UTF8.GetBytes(document.ToJsonString()));
-                Checked(await container.CreateItemStreamAsync(body, PartitionOf(document, path), cancellationToken: cancel));
+                Checked(await container.CreateItemStreamAsync(body, PartitionOf(document, paths), cancellationToken: cancel));
+                left = left with { Added = left.Added.Remove(added) };
             }
             return true;
+
+            // A document's write taken only while its _etag is the one read; one refused so is one changed since.
+            static ItemRequestOptions EtagAsRead(JsonObject read) => new() { IfMatchEtag = read["_etag"]?.GetValue<string>() };
+
+            void Held(ResponseMessage answer, RowKey written)
+            {
+                if (answer.StatusCode == HttpStatusCode.PreconditionFailed)
+                {
+                    throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), written.ToString()));
+                }
+                Checked(answer);
+            }
         });
+    }
+
+    /// <summary>A MongoDB document found by its key and the plain fields of <paramref name="held"/> as they were read, a field
+    /// it lacked as missing; a document or array, shown as its JSON alone, holds nothing.</summary>
+    private static BsonDocument AsRead(string key, RowKey row, object?[] read, string[] columns, IEnumerable<int> held)
+    {
+        BsonDocument filter = new(key, ToBson(row.Values[0]));
+        foreach (int column in held.Where(c => columns[c] != key && read[c] is not JsonText))
+        {
+            filter[columns[column]] = read[column] is AbsentField ? new BsonDocument("$exists", false) : ToBson(read[column]);
+        }
+        return filter;
+    }
 
     /// <summary>Runs each of a console's runs in turn as <see cref="DatabaseClient.RunAsync"/> does: MongoDB's in its shell's
     /// words (<see cref="DocumentShell"/>), Cosmos DB's as its SQL against the container its FROM names.</summary>
@@ -395,7 +462,7 @@ internal static class DocumentClient
         BsonType.Int32 => value.AsInt32,
         BsonType.Int64 => value.AsInt64,
         BsonType.Double => value.AsDouble,
-        BsonType.Decimal128 => (decimal)value.AsDecimal128,
+        BsonType.Decimal128 => value,
         BsonType.Boolean => value.AsBoolean,
         BsonType.DateTime => value.ToUniversalTime(),
         BsonType.Null or BsonType.Undefined => null,
@@ -416,6 +483,8 @@ internal static class DocumentClient
         JsonValue plain when plain.GetValueKind() == JsonValueKind.String => plain.GetValue<string>(),
         JsonValue plain when plain.GetValueKind() is JsonValueKind.True or JsonValueKind.False => plain.GetValue<bool>(),
         JsonValue plain when plain.TryGetValue(out long whole) => whole,
+        JsonValue plain when plain.GetValueKind() == JsonValueKind.Number && plain.ToJsonString() is var digits && !digits.AsSpan().ContainsAny(".eE")
+            && decimal.TryParse(digits, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out decimal exact) => exact,
         JsonValue plain when plain.TryGetValue(out double number) => number,
         _ => value.ToJsonString(),
     };
@@ -439,6 +508,8 @@ internal static class DocumentClient
         return read switch
         {
             string => new BsonString(text),
+            BsonDecimal128 when Decimal128.TryParse(text, out Decimal128 exact) => new BsonDecimal128(exact),
+            decimal when decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out decimal whole) => new BsonDecimal128(whole),
             int when int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int small) => small,
             int or long when long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long whole) => whole,
             double or decimal or int or long when double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) => number,
@@ -461,33 +532,80 @@ internal static class DocumentClient
         BsonDouble number => JsonValue.Create(number.AsDouble),
         BsonBoolean truth => JsonValue.Create(truth.AsBoolean),
         BsonDateTime at => JsonValue.Create(at.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)),
+        BsonDecimal128 exact => JsonNode.Parse(exact.AsDecimal128.ToString()),
         BsonValue other => JsonValue.Create(other.ToString()),
     };
 
-    /// <summary>A page's whole document of a key, as read.</summary>
-    private static JsonObject DocumentOf(DatabaseRows page, int keyAt, RowKey key)
+    /// <summary>A page's whole document of a row's key, as read: the one whose key columns (Cosmos DB's id and partition key
+    /// fields) all hold the key's values.</summary>
+    private static JsonObject DocumentOf(DatabaseRows page, string[] keys, RowKey key)
     {
-        int row = Array.FindIndex(page.Rows, r => keyAt >= 0 && PendingEdits.Same(r[keyAt], key.Values[0]));
+        int[] at = [.. keys.Select(k => Array.IndexOf(page.Columns, k))];
+        int row = at.Any(a => a < 0) ? -1 : Array.FindIndex(page.Rows, r => at.Select((column, i) => PendingEdits.Same(r[column], key.Values[i])).All(same => same));
         return row >= 0 && row < page.Documents.Length && JsonNode.Parse(page.Documents[row]) is JsonObject document
             ? document : throw new InvalidOperationException($"The document {key} is not on the page read");
     }
 
-    /// <summary>A document's partition key's value, by its container's path (/a/b); none where it holds no value there.</summary>
-    private static PartitionKey PartitionOf(JsonObject document, string path)
+    /// <summary>A container's partition key's paths: a hierarchical key's each, else its one.</summary>
+    private static IReadOnlyList<string> PartitionPaths(ContainerProperties container) =>
+        container.PartitionKeyPaths is { Count: > 0 } paths ? paths : container.PartitionKeyPath is { Length: > 0 } one ? [one] : [];
+
+    /// <summary>A document's partition key by its container's paths (/a/b each): a path it holds null at as null, one it
+    /// holds nothing at as none, which Cosmos DB keeps apart; a hierarchical key's values in their paths' order.</summary>
+    private static PartitionKey PartitionOf(JsonObject document, IReadOnlyList<string> paths)
     {
-        JsonNode? at = document;
-        foreach (string part in path.Split('/', StringSplitOptions.RemoveEmptyEntries))
+        if (paths.Count == 1)
         {
-            at = at is JsonObject inside ? inside[part] : null;
+            return At(paths[0]) switch
+            {
+                (false, _) => PartitionKey.None,
+                (true, null) => PartitionKey.Null,
+                (true, JsonValue plain) when plain.GetValueKind() == JsonValueKind.String => new PartitionKey(plain.GetValue<string>()),
+                (true, JsonValue plain) when plain.GetValueKind() is JsonValueKind.True or JsonValueKind.False => new PartitionKey(plain.GetValue<bool>()),
+                (true, JsonValue plain) when plain.TryGetValue(out double number) => new PartitionKey(number),
+                _ => PartitionKey.None,
+            };
         }
-        return at switch
+        PartitionKeyBuilder built = new();
+        foreach (string path in paths)
         {
-            null => PartitionKey.None,
-            JsonValue plain when plain.GetValueKind() == JsonValueKind.String => new PartitionKey(plain.GetValue<string>()),
-            JsonValue plain when plain.GetValueKind() is JsonValueKind.True or JsonValueKind.False => new PartitionKey(plain.GetValue<bool>()),
-            JsonValue plain when plain.TryGetValue(out double number) => new PartitionKey(number),
-            _ => PartitionKey.None,
-        };
+            (bool held, JsonNode? value) = At(path);
+            if (held && value is null)
+            {
+                built.AddNullValue();
+            }
+            else if (value is JsonValue words && words.GetValueKind() == JsonValueKind.String)
+            {
+                built.Add(words.GetValue<string>());
+            }
+            else if (value is JsonValue truth && truth.GetValueKind() is JsonValueKind.True or JsonValueKind.False)
+            {
+                built.Add(truth.GetValue<bool>());
+            }
+            else if (value is JsonValue plain && plain.TryGetValue(out double number))
+            {
+                built.Add(number);
+            }
+            else
+            {
+                built.AddNoneType();
+            }
+        }
+        return built.Build();
+
+        // Whether the document holds the path, and what: a JSON null as held, a field it lacks as not.
+        (bool Held, JsonNode? Value) At(string path)
+        {
+            JsonNode? at = document;
+            foreach (string part in path.Split('/', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (at is not JsonObject inside || !inside.TryGetPropertyValue(part, out at))
+                {
+                    return (false, null);
+                }
+            }
+            return (true, at);
+        }
     }
 
     private static void Checked(ResponseMessage answer) => answer.EnsureSuccessStatusCode();
@@ -510,7 +628,10 @@ internal static class DocumentClient
         if (long.TryParse(words, NumberStyles.Integer, CultureInfo.InvariantCulture, out long whole))
         {
             yield return whole;
-            yield return (int)Math.Clamp(whole, int.MinValue, int.MaxValue);
+            if (whole is >= int.MinValue and <= int.MaxValue)
+            {
+                yield return (int)whole;
+            }
         }
         if (double.TryParse(words, NumberStyles.Float, CultureInfo.InvariantCulture, out double number))
         {

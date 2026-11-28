@@ -108,6 +108,11 @@ internal static partial class DatabaseClient
         }
     }
 
+    /// <summary>What a read held to the first <paramref name="read"/> of <paramref name="whole"/> things (a count where it is
+    /// known) says beside its rows: how many it read, and that its filter and sort hold among those alone.</summary>
+    internal static string ReadOf(long read, long? whole, string noun) =>
+        $"the first {Numbers.Said(read)} {noun}{(whole is { } all ? $" of {Numbers.Said(all)}" : string.Empty)} read, filtered and sorted among them alone";
+
     /// <summary>A connection's string whole, as every client of it opens it: its secret parts read from the system's store
     /// where they are kept there, and a found connection's own settings laid over it, each secret marked so no message says it.</summary>
     internal static string Whole(DatabaseSource source)
