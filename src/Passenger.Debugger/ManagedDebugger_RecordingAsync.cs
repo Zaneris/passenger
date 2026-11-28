@@ -97,7 +97,8 @@ public partial class ManagedDebugger
         return (null, threadId, null);
     }
 
-    /// <summary>The open async call whose code a frame runs: one of its MoveNext, its state machine the call's.</summary>
+    /// <summary>The open async call whose code a frame runs: one of its MoveNext, its state machine the call's; none where a
+    /// struct's state machine, which nothing that lasts tells apart, could be any of several open calls of the method.</summary>
     private PendingAsync? AsyncCallRunIn(ICorDebugILFrame frame)
     {
         if (FindModule(frame.Function.Module) is not { } module || !_asyncByMoveNext.ContainsKey((module, frame.Function.Token)))
@@ -106,6 +107,8 @@ public partial class ManagedDebugger
         }
         int token = frame.Function.Token;
         ulong? machine = MachineAt(frame);
+        PendingAsync? unnamed = null;
+        int alike = 0;
         for (int i = _openAsync.Count - 1; i >= 0; i--)
         {
             PendingAsync call = _openAsync[i];
@@ -113,14 +116,18 @@ public partial class ManagedDebugger
             {
                 continue;
             }
-            // A struct's state machine is told apart by nothing that lasts: the newest call of the method is taken.
-            if (call.Machine is null || machine is null
-                || call.Machine.TryGetValue(out CORDB_ADDRESS now) is Cor.S_OK && now.Value == machine)
+            if (call.Machine is not null && machine is not null)
             {
-                return call;
+                if (call.Machine.TryGetValue(out CORDB_ADDRESS now) is Cor.S_OK && now.Value == machine)
+                {
+                    return call;
+                }
+                continue;
             }
+            unnamed ??= call;
+            alike++;
         }
-        return null;
+        return alike == 1 ? unnamed : null;
     }
 
     /// <summary>Where the state machine a MoveNext frame runs lies now, for one that is an object; null for a struct's.</summary>
