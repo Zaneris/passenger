@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -43,8 +44,8 @@ public sealed class DiffTabsTests : IDisposable
 
     /// <summary>Diff tabs as one flow, each step one test's check in an instance of its own: a tab from the Commit
     /// window titled as its window, following the file chosen until kept, its edits saved, Rollback Lines at its caret,
-    /// split, moved to a window and left out of the kept tabs, moved by Settings' Open Diffs In, searched by Find,
-    /// brought back by Back and Reopen, and let go once closed.</summary>
+    /// its strip dragged and the merge's, split, moved to a window and left out of the kept tabs, moved by Settings' Open
+    /// Diffs In, searched by Find, brought back by Back and Reopen, and let go once closed.</summary>
     [AvaloniaFact]
     public void A_diff_opens_in_a_tab_that_follows_the_Commit_window_saves_its_edits_and_lets_go_once_closed()
     {
@@ -53,11 +54,77 @@ public sealed class DiffTabsTests : IDisposable
         Flow.StepApart<DiffTabsTests>("a step past the Commit windows diffs last change goes on into the next changed file there", t => t.A_step_past_the_Commit_windows_diffs_last_change_goes_on_into_the_next_changed_file_there());
         Flow.StepApart<DiffTabsTests>("an edit in a diff tab is saved to the file from the tab and closing the files tab closes the diff", t => t.An_edit_in_a_diff_tab_is_saved_to_the_file_from_the_tab_and_closing_the_files_tab_closes_the_diff());
         Flow.StepApart<DiffTabsTests>("rollback lines in the commit windows diff puts back the change at the caret and the arrows tip names its keys", t => t.Rollback_lines_in_the_commit_windows_diff_puts_back_the_change_at_the_caret_and_the_arrows_tip_names_its_keys());
+        Flow.StepApart<DiffTabsTests>("a drag on the strip between a diffs sides or a merges panes moves the two it divides and its arrows still take a press", t => t.A_drag_on_the_strip_between_a_diffs_sides_or_a_merges_panes_moves_the_two_it_divides_and_its_arrows_still_take_a_press());
         Flow.StepApart<DiffTabsTests>("a diff tab splits moves to a window of its own jumps to its file and is left out of the folders kept tabs", t => t.A_diff_tab_splits_moves_to_a_window_of_its_own_jumps_to_its_file_and_is_left_out_of_the_folders_kept_tabs());
         Flow.StepApart<DiffTabsTests>("open diffs in on Settings Version Control page moves the diffs open between a window and a tab", t => t.Open_diffs_in_on_Settings_Version_Control_page_moves_the_diffs_open_between_a_window_and_a_tab());
         Flow.StepApart<DiffTabsTests>("find in a diff tab searches the side with the caret marking the other and find next steps through it", t => t.Find_in_a_diff_tab_searches_the_side_with_the_caret_marking_the_other_and_find_next_steps_through_it());
         Flow.StepApart<DiffTabsTests>("back returns to the diff tab a file was opened from and reopen closed tab brings a closed diff tab back", t => t.Back_returns_to_the_diff_tab_a_file_was_opened_from_and_reopen_closed_tab_brings_a_closed_diff_tab_back());
         Flow.StepApart<DiffTabsTests>("a closed diff tab kept to open again holds none of its texts nor its closed file", t => t.A_closed_diff_tab_kept_to_open_again_holds_none_of_its_texts_nor_its_closed_file());
+    }
+
+    /// <summary>The Commit window's diff opens with its sides as wide as each other; a drag on the strip between them, where
+    /// it has no button, moves where they divide, the strip as wide as it was, down to the least a side keeps; a band's arrow
+    /// on the strip still takes a press. In the merge window a drag on either strip moves the two panes it divides alone
+    /// (#2418).</summary>
+    private void A_drag_on_the_strip_between_a_diffs_sides_or_a_merges_panes_moves_the_two_it_divides_and_its_arrows_still_take_a_press()
+    {
+        MainWindow window = Open();
+        DiffView view = Assert.IsType<DiffView>(DiffFromCommit(window, byEnter: true).View);
+        Ui.Settle();
+        DiffStrip strip = view.GetVisualDescendants().OfType<DiffStrip>().Single();
+        (double left, double right, double across) = (view.Left.Bounds.Width, view.Right.Bounds.Width, strip.Bounds.Width);
+        Assert.True(Math.Abs(left - right) < 1, $"The diff opened with its sides {left:N0} and {right:N0} wide");
+        Ui.Drag(window, Below(strip, window), Below(strip, window) - new Vector(150, 0));
+        Assert.True(Math.Abs(view.Left.Bounds.Width - (left - 150)) <= 1 && Math.Abs(view.Right.Bounds.Width - (right + 150)) <= 1,
+            $"A drag of 150 on the strip left the sides {view.Left.Bounds.Width:N0} and {view.Right.Bounds.Width:N0} wide, from {left:N0} and {right:N0}");
+        Assert.Equal(across, strip.Bounds.Width);
+        Ui.Drag(window, Below(strip, window), Below(strip, window) - new Vector(5000, 0));
+        Assert.Equal(DiffLines.LeastPane, view.Left.Bounds.Width, 1);
+
+        Button arrow = strip.GetVisualDescendants().OfType<Button>().Single(b => b.IsEffectivelyVisible && Avalonia.Automation.AutomationProperties.GetName(b) == "Roll back change 2 to HEAD");
+        Ui.Click(arrow);
+        Ui.Landed(() => view.Hunks.Count == 1, "the second change rolled back by its arrow on the strip");
+        window.Close();
+
+        // A conflict on the count's type: main made it long, feature short.
+        TestGit.Run(folder, "commit", "-q", "-am", "Long");
+        TestGit.Run(folder, "switch", "-q", "-c", "feature", "HEAD~1");
+        File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("int count", "short count", StringComparison.Ordinal));
+        TestGit.Run(folder, "commit", "-q", "-am", "Short");
+        TestGit.Run(folder, "switch", "-q", "main");
+        ChildResult merged = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command("git", ["merge", "feature"], folder), limit: TimeSpan.FromMinutes(1))),
+            "git merge feature");
+        Assert.False(merged.Succeeded, "The merge was to stop for its conflict");
+        window = Open();
+        Task<bool> merging = window.MergeAsync(Path.Combine(window.Folder!, "Shop.cs"));
+        Ui.Landed(() => window.Frontmost is MergeWindow, "the merge window");
+        MergeWindow merge = (MergeWindow)window.Frontmost;
+        Ui.Settle();
+        CodeEditor[] panes = [merge.View.Left, merge.View.Result, merge.View.Right];
+        DiffStrip[] strips = [.. merge.View.GetVisualDescendants().OfType<DiffStrip>().OrderBy(s => s.TranslatePoint(default, merge.View)!.Value.X)];
+        double[] widths = [.. panes.Select(p => p.Bounds.Width)];
+        Ui.Drag(merge, Below(strips[0], merge), Below(strips[0], merge) - new Vector(60, 0));
+        Assert.Equal([widths[0] - 60, widths[1] + 60, widths[2]], panes.Select(p => Math.Round(p.Bounds.Width, 1)), new WidthComparer());
+        widths = [.. panes.Select(p => p.Bounds.Width)];
+        Ui.Drag(merge, Below(strips[1], merge), Below(strips[1], merge) + new Vector(80, 0));
+        Assert.Equal([widths[0], widths[1] + 80, widths[2] - 80], panes.Select(p => Math.Round(p.Bounds.Width, 1)), new WidthComparer());
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        merge.Close();
+        Ui.Landed(() => merging.IsCompleted, "the merge window closed");
+        window.Close();
+
+        // A point on the strip below its bands and buttons, the change at the file's end being a few lines from its top.
+        static Point Below(DiffStrip strip, Visual within) =>
+            strip.TranslatePoint(new Point(strip.Bounds.Width / 2, strip.Bounds.Height - 40), within)
+                ?? throw new Xunit.Sdk.XunitException("The strip is not laid out");
+    }
+
+    /// <summary>Widths equal to within a pixel, as a layout rounds them.</summary>
+    private sealed class WidthComparer : IEqualityComparer<double>
+    {
+        public bool Equals(double x, double y) => Math.Abs(x - y) <= 1;
+
+        public int GetHashCode(double obj) => 0;
     }
 
     private void Show_Diff_from_the_Commit_window_opens_a_tab_of_the_editors_titled_as_its_window_and_no_window()

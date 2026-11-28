@@ -25,7 +25,9 @@ public sealed record FindChoices(SearchScope Start, IReadOnlyList<ProjectModel> 
 /// <summary>Find in Files (and Replace in Files): the query with Match case, Words and Regex (Alt+C, Alt+O, Alt+X), the
 /// scope (Solution, Project, Directory with Recursively, or a named Scope: Alt+U, Alt+P, Alt+D, Alt+S, Alt+Y) and the
 /// file mask (Alt+K), the lines with matches as they are found, each once with its file and line and every match on it
-/// bold, the chosen one's file previewed below; Enter or a double-click goes to its first match, Escape closes. In Replace mode a replacement and Replace All.</summary>
+/// bold, the chosen one's file previewed below; Enter or a double-click goes to its first match, Escape closes. Replace
+/// in Files has a replacement and Replace All under the query, a row the open popup takes or gives up in place
+/// (<see cref="Replacing"/>).</summary>
 public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
 {
     private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(250);
@@ -49,7 +51,11 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     private readonly Func<string, TextSnapshot?> textOf;
     private readonly Func<string, CSharpParseOptions> parseOptions;
     private readonly TextBox query;
-    private readonly TextBox? replacement;
+    private readonly TextBlock title;
+    private readonly TextBox replacement;
+
+    /// <summary>The replacement and Replace All, shown while it is Replace in Files.</summary>
+    private readonly DockPanel replaceRow;
     private readonly ToggleButton matchCase;
     private readonly ToggleButton words;
     private readonly ToggleButton regex;
@@ -86,7 +92,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         this.parseOptions = parseOptions;
         projects = choices.Projects;
         Width = PopupFrame.Widest;
-        query = SearchBox.InPopup(replace ? "Replace in Files" : "Find in Files", "Text to find");
+        query = SearchBox.InPopup(NameOf(replace), "Text to find");
         query.Text = initial ?? string.Empty;
         matchCase = OptionToggles.Of(OptionToggles.MatchCase);
         words = OptionToggles.Of(OptionToggles.Words);
@@ -107,20 +113,17 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         DockPanel header = new() { Margin = new Thickness(Gaps.Wide, Gaps.Normal, Gaps.Wide, Gaps.Small) };
         DockPanel.SetDock(mask, Dock.Right);
         header.Children.Add(mask);
-        header.Children.Add(new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = replace ? "Replace in Files" : "Find in Files", VerticalAlignment = VerticalAlignment.Center });
-        StackPanel top = new() { Children = { header, find } };
-        if (replace)
-        {
-            replacement = SearchBox.InPopup("Replacement", "Replacement");
-            Editors.ReplaceBoxes.Take(replacement);
-            Button all = new() { Content = "Replace All", Classes = { StyleClasses.Primary }, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
-            all.Click += (_, _) => RequestReplace();
-            DockPanel row = new() { Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Small) };
-            DockPanel.SetDock(all, Dock.Right);
-            row.Children.Add(all);
-            row.Children.Add(replacement);
-            top.Children.Add(row);
-        }
+        title = new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = NameOf(replace), VerticalAlignment = VerticalAlignment.Center };
+        header.Children.Add(title);
+        replacement = SearchBox.InPopup("Replacement", "Replacement");
+        Editors.ReplaceBoxes.Take(replacement);
+        Button all = new() { Content = "Replace All", Classes = { StyleClasses.Primary }, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
+        all.Click += (_, _) => RequestReplace();
+        replaceRow = new DockPanel { Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Small), IsVisible = replace };
+        DockPanel.SetDock(all, Dock.Right);
+        replaceRow.Children.Add(all);
+        replaceRow.Children.Add(replacement);
+        StackPanel top = new() { Children = { header, find, replaceRow } };
 
         projectBox = Field(choices.Projects, editable: false);
         ReusedRows.Use(projectBox, () =>
@@ -205,11 +208,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         directoryBox.PropertyChanged += (_, e) => Retyped(e, ComboBox.TextProperty);
         maskBox.PropertyChanged += (_, e) => Retyped(e, ComboBox.TextProperty);
         AddHandler(KeyDownEvent, OnKey, RoutingStrategies.Tunnel);
-        Dispatcher.UIThread.Post(() =>
-        {
-            query.Focus();
-            query.SelectAll();
-        }, DispatcherPriority.Loaded);
+        Dispatcher.UIThread.Post(TakeKeys, DispatcherPriority.Loaded);
         if (query.Text is { Length: > 0 })
         {
             searching = Refresh();
@@ -218,6 +217,29 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
 
     /// <summary>A match to go to, or null when dismissed.</summary>
     public event EventHandler<SearchMatch?>? Done;
+
+    /// <summary>Whether it is Replace in Files, its replacement row shown, rather than Find in Files. Turned over while it
+    /// is open, the query, its options, the scope, the mask and the matches stay as they are, and the replacement typed
+    /// comes back with its row.</summary>
+    public bool Replacing
+    {
+        get => replaceRow.IsVisible;
+        set
+        {
+            replaceRow.IsVisible = value;
+            title.Text = NameOf(value);
+            AutomationProperties.SetName(query, NameOf(value));
+        }
+    }
+
+    private static string NameOf(bool replacing) => replacing ? "Replace in Files" : "Find in Files";
+
+    /// <summary>Gives the query the keys, all of it chosen, as the popup does as it opens.</summary>
+    public void TakeKeys()
+    {
+        query.Focus();
+        query.SelectAll();
+    }
 
     /// <summary>The link that lists the matches found in the Find window, enabled while there are some.</summary>
     public Button FindWindow { get; }
@@ -324,14 +346,8 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
 
     public string Replacement
     {
-        get => replacement?.Text ?? string.Empty;
-        set
-        {
-            if (replacement is not null)
-            {
-                replacement.Text = value;
-            }
-        }
+        get => replacement.Text ?? string.Empty;
+        set => replacement.Text = value;
     }
 
     public bool MatchCase
@@ -573,7 +589,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
                 Done?.Invoke(this, null);
                 e.Handled = true;
                 break;
-            case Key.Enter when replacement?.IsFocused != true && !InField():
+            case Key.Enter when !replacement.IsFocused && !InField():
                 Choose();
                 e.Handled = true;
                 break;

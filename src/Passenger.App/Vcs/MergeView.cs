@@ -22,12 +22,13 @@ public sealed record MergeChange(MergeChunk Chunk, int ResultStart, int ResultEn
 }
 
 /// <summary>The three-way merge: yours on the left and theirs on the right (read-only), the result between them, which
-/// starts as the version both came from. Each change is tinted on its sides and joined to the result by a band whose
-/// arrow takes that side's lines into the result (a conflict's second arrow adds them after the first's, and a
-/// Ctrl+click on either resolves it with that side) and whose X ignores it; Apply All Non-Conflicting Changes takes
-/// every change only one side made, and Resolve Simple Conflicts those and every conflict whose sides changed different
-/// words. The result can be edited too; undo takes back a change taken. F7 and Shift+F7 (F8 and Shift+F8 too off the
-/// Mac) go to the next and previous change; Accept Left Side and Accept Right Side take the one at the caret.</summary>
+/// starts as the version both came from, a drag on either strip between them moving the two it divides. Each change is
+/// tinted on its sides and joined to the result by a band whose arrow takes that side's lines into the result (a
+/// conflict's second arrow adds them after the first's, and a Ctrl+click on either resolves it with that side) and
+/// whose X ignores it; Apply All Non-Conflicting Changes takes every change only one side made, and Resolve Simple
+/// Conflicts those and every conflict whose sides changed different words. The result can be edited too; undo takes
+/// back a change taken. F7 and Shift+F7 (F8 and Shift+F8 too off the Mac) go to the next and previous change; Accept
+/// Left Side and Accept Right Side take the one at the caret.</summary>
 public sealed class MergeView : DockPanel
 {
     private const double StripWidth = 48;
@@ -96,13 +97,15 @@ public sealed class MergeView : DockPanel
         sides.Children.Add(DiffLines.Title(texts.Sides.LeftTitle, 0));
         sides.Children.Add(DiffLines.Title("Result", 2));
         sides.Children.Add(DiffLines.Title(texts.Sides.RightTitle, 4));
-        Control[] panes = [Left, leftStrip, Result, rightStrip, Right];
+        Control[] panes = [Left, Result, Right];
         for (int i = 0; i < panes.Length; i++)
         {
             Grid.SetRow(panes[i], 1);
-            Grid.SetColumn(panes[i], i);
+            Grid.SetColumn(panes[i], i * 2);
             sides.Children.Add(panes[i]);
         }
+        DiffLines.Divide(sides, leftStrip, 1);
+        DiffLines.Divide(sides, rightStrip, 3);
 
         status = new TextBlock();
         // Two arrows meeting in the middle: the vertical one turned on its side.

@@ -226,7 +226,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
     /// <summary>What runs where: each framework of a multi-targeted project, a project's own test attribute, a base
     /// class's test as each derived one, a platform's build of a solution, one solution's test of two built alone, a
     /// file's own project, a framework's symbols; NUnit's and MSTest's named rows and fixture instances each a row that
-    /// runs and counts; a data row run alone; test actions offered only where tests are.</summary>
+    /// runs and counts; a data row run alone; test actions offered only where tests are; each group's count of its tests.</summary>
     [AvaloniaFact]
     public void A_test_run_from_its_icon_or_the_caret_runs_as_its_framework_and_project_take_it_and_each_case_is_a_row_that_counts()
     {
@@ -303,6 +303,11 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Flow.StepApart<UnitTestsTests>("test sessions made appended to and run from the keys run their tests alone and come back with the folder", () => new UnitTestsTests(restored), t =>
         {
             t.Test_sessions_made_appended_to_and_run_from_the_keys_run_their_tests_alone_and_come_back_with_the_folder();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("each group says how many tests under it the filters and search let through a test under two categories once", () => new UnitTestsTests(restored), t =>
+        {
+            t.Each_group_says_how_many_tests_under_it_the_filters_and_search_let_through_a_test_under_two_categories_once();
             OpenWindows.CloseAll();
         });
     }
@@ -1425,6 +1430,68 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>Each group and class says how many tests under it the tree shows (#2416): as many as the outcomes' filters
+    /// count, a theory's rows each once its run made them under it, closed; a test under two categories once in the groups
+    /// above them; and only those the outcome chosen and the search let through.</summary>
+    private void Each_group_says_how_many_tests_under_it_the_filters_and_search_let_through_a_test_under_two_categories_once()
+    {
+        string solution = NewFolder();
+        Write(solution, "Cats.Tests.csproj", TestProject(TestProjects.Framework));
+        Write(solution, "SumTests.cs",
+            "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class SumTests\n{\n    [Fact]\n    [Trait(\"Category\", \"Fast\")]\n    [Trait(\"Category\", \"Slow\")]\n    public void Adds() { }\n\n" +
+            "    [Fact]\n    [Trait(\"Category\", \"Slow\")]\n    public void Subtracts() { }\n\n    [Fact]\n    public void Plain() { }\n}\n");
+        MainWindow categorized = Ui.OpenFolder(solution, languageServer: false);
+        ListBox tree = Tree(categorized);
+        Ui.WaitFor(() => Method(categorized, "Plain") is not null, "the tests read from the code");
+        GroupBy(categorized, "Categories");
+        GroupBy(categorized, "Project");
+        Assert.Equal(
+            [
+                "Cats.Tests: 3 tests", "  Fast: 1 test", "    Sums.Tests.SumTests: 1 test", "      Adds",
+                "  Slow: 2 tests", "    Sums.Tests.SumTests: 2 tests", "      Adds", "      Subtracts",
+                "  <Uncategorized>: 1 test", "    Sums.Tests.SumTests: 1 test", "      Plain",
+            ],
+            Counted(categorized));
+        ChooseFirst(categorized, tree);
+        Ui.Run(categorized, AppActions.Find);
+        categorized.KeyTextInput("adds");
+        Ui.Settle();
+        Assert.Equal(
+            ["Cats.Tests: 1 test", "  Fast: 1 test", "    Sums.Tests.SumTests: 1 test", "      Adds", "  Slow: 1 test", "    Sums.Tests.SumTests: 1 test", "      Adds"],
+            Counted(categorized));
+        categorized.Close();
+
+        MainWindow window = Open();
+        tree = Tree(window);
+        Ui.WaitFor(() => Method(window, "Doubles") is not null, "the tests read from the code");
+        Assert.Equal(["Sums.Tests: 4 tests", "  Sums.Tests: 4 tests", "    SumTests: 4 tests"], Counted(window).GetRange(0, 3));
+        Assert.True(window.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Two_and_two_make_four")?.State == TestState.Passed, "the run of every test", TimeSpan.FromSeconds(120));
+        Assert.False(Method(window, "Doubles")!.IsExpanded, "The theory opened as its run made its rows");
+        Assert.Equal(["Sums.Tests: 5 tests", "  Sums.Tests: 5 tests", "    SumTests: 5 tests"], Counted(window).GetRange(0, 3));
+        Assert.Equal("5", Count(window, "All Tests"));
+
+        Ui.Click(Filter(window, "Failed Tests"));
+        Assert.Equal(["Sums.Tests: 1 test", "  Sums.Tests: 1 test", "    SumTests: 1 test", "      Two_and_two_make_five"], Counted(window));
+        Ui.Click(Filter(window, "All Tests"));
+        ChooseFirst(window, tree);
+        Ui.Run(window, AppActions.Find);
+        window.KeyTextInput("doubles");
+        Ui.Settle();
+        Assert.Equal(
+            ["Sums.Tests: 2 tests", "  Sums.Tests: 2 tests", "    SumTests: 2 tests", "      Doubles", "        Doubles(value: 1, twice: 2)", "        Doubles(value: 2, twice: 4)"],
+            Counted(window));
+        window.Close();
+    }
+
+    /// <summary>Clicks the tree's first row, scrolled to, so the Unit Tests window has the keys.</summary>
+    private static void ChooseFirst(MainWindow window, ListBox tree)
+    {
+        tree.ScrollIntoView(window.Tests.Tree.Rows[0]);
+        Ui.Settle();
+        Ui.Click(tree.ContainerFromItem(window.Tests.Tree.Rows[0])!);
+    }
+
     private void After_a_run_the_failed_filter_shows_the_failures_alone_as_many_as_it_counts_and_a_modifier_adds_the_ignored()
     {
         MainWindow window = Open();
@@ -2007,6 +2074,29 @@ public abstract class UnitTestsFolders : IDisposable
 
     /// <summary>The Unit Tests window's rows as a person reads them, indented by depth.</summary>
     protected static List<string> Shown(MainWindow window) => [.. window.Tests.Tree.Rows.Select(r => new string(' ', r.Depth * 2) + r.Name)];
+
+    /// <summary>The Unit Tests window's rows as <see cref="Shown"/>, each group's and class's with the count its row draws
+    /// beside its name, each scrolled to.</summary>
+    protected static List<string> Counted(MainWindow window)
+    {
+        ListBox tree = Tree(window);
+        List<string> rows = [];
+        foreach (TestNode row in window.Tests.Tree.Rows.ToList())
+        {
+            string name = new string(' ', row.Depth * 2) + row.Name;
+            if (row.Kind is TestNodeKind.Method or TestNodeKind.Row)
+            {
+                rows.Add(name);
+                continue;
+            }
+            tree.ScrollIntoView(row);
+            Ui.Settle();
+            string? count = tree.ContainerFromItem(row)?.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)
+                .FirstOrDefault(t => t is not null && (t.EndsWith(" test", StringComparison.Ordinal) || t.EndsWith(" tests", StringComparison.Ordinal)));
+            rows.Add($"{name}: {count ?? "no count"}");
+        }
+        return rows;
+    }
 
     /// <summary>The words the Unit Tests window shows.</summary>
     protected static List<string?> ShownTexts(MainWindow window) =>

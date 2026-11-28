@@ -22,12 +22,20 @@ public partial class MainWindow
     private (Task Until, TaskCompletionSource Reached)? holdFindEvery;
 
     /// <summary>Find in Files (Ctrl+Shift+F) or, with replace, Replace in Files (Ctrl+Shift+H), seeded with the
-    /// selection's word, in the scope given (from the Solution view), else the one chosen last.</summary>
+    /// selection's word, in the scope given (from the Solution view), else the one chosen last; while either is open, the
+    /// one open turned to the other, keeping what it was asked, its scope and its matches.</summary>
     public Navigation.FindInFilesPopup? ShowFindInFiles(bool replace, SearchScope? on = null)
     {
         if (Folder is null)
         {
             return null;
+        }
+        if (popups.Open is Navigation.FindInFilesPopup open)
+        {
+            AgentAsks.Popup();
+            open.Replacing = replace;
+            open.TakeKeys();
+            return open;
         }
         Navigation.FindChoices choices = new(on ?? KeptScope(), SearchedProjects, session.FindScope.RecentDirectories, ScopeNames(), findSettings.RecentFileMasks);
         Navigation.FindInFilesPopup popup = new((query, scope, cancellation) => SearchFiles(query, scope, cancellation, FileSearch.MostMatches), Editors.TextOf, path => Editors.ParseOptions(path), replace, navigator.SelectedWord(), choices, settings.Ligatures);

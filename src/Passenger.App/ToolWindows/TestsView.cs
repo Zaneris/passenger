@@ -16,11 +16,12 @@ using Passenger.Text;
 namespace Passenger.App.ToolWindows;
 
 /// <summary>The Unit Tests window: the tests grouped as its Group By chooses (by project and namespace at first), then by
-/// class and method, a theory's data rows under it, each marked with how it last ran and how long it took; the chosen
-/// one's message, stack trace (its frames links to their lines), output and attachments beside the tree, the pictures
-/// among them (a failing headless test's windows) as thumbnails over it; above it the test sessions' tabs while there are
-/// any (every test's, then each session's), the toolbar (Group By, a filter for each outcome with how many tests have it,
-/// the search) and the run's tally; and while there are none, why. Double-click or F4 goes to a test's source.</summary>
+/// class and method, a theory's data rows under it, each marked with how it last ran and how long it took, each group and
+/// class with how many tests under it its filters and search let through; the chosen one's message, stack trace (its
+/// frames links to their lines), output and attachments beside the tree, the pictures among them (a failing headless
+/// test's windows) as thumbnails over it; above it the test sessions' tabs while there are any (every test's, then each
+/// session's), the toolbar (Group By, a filter for each outcome with how many tests have it, the search) and the run's
+/// tally; and while there are none, why. Double-click or F4 goes to a test's source.</summary>
 public sealed class TestsView : DockPanel
 {
     /// <summary>The column a test's state mark is centred in, an icon's width.</summary>
@@ -548,6 +549,7 @@ public sealed class TestsView : DockPanel
         private readonly RowExpander chevron;
         private readonly RowIcon state;
         private readonly TextBlock label;
+        private readonly TextBlock count;
         private readonly TextBlock duration;
         private readonly TextBlock earlier;
         private TestNode? followed;
@@ -560,6 +562,8 @@ public sealed class TestsView : DockPanel
             chevron = RowExpander.Of<TestNode>(model.Toggle);
             state = new RowIcon { VerticalAlignment = VerticalAlignment.Center };
             label = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+            count = MutedText.Caption(string.Empty);
+            count.Margin = new Thickness(Gaps.Wide, 0, 0, 0);
             duration = new TextBlock { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Wide, 0, 0, 0) };
             duration.Classes.Add(StyleClasses.Muted);
             earlier = new TextBlock { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Wide, 0, 0, 0) };
@@ -567,6 +571,7 @@ public sealed class TestsView : DockPanel
             Children.Add(chevron);
             Children.Add(state);
             Children.Add(label);
+            Children.Add(count);
             Children.Add(duration);
             Children.Add(earlier);
         }
@@ -616,6 +621,7 @@ public sealed class TestsView : DockPanel
             chevron.Expands = node.HasChildren;
             ShowExpanded(node);
             ShowState(node);
+            ShowCount(node);
         }
 
         private void OnChanged(object? sender, PropertyChangedEventArgs e)
@@ -638,10 +644,17 @@ public sealed class TestsView : DockPanel
                 case nameof(TestNode.Depth):
                     Margin = node.Indent;
                     break;
+                case nameof(TestNode.ShownTests):
+                    ShowCount(node);
+                    break;
             }
         }
 
         private void ShowExpanded(TestNode node) => chevron.IsOpen = node.IsExpanded;
+
+        /// <summary>A group's or class's tests, as many as the tree shows under it; a test's row has none.</summary>
+        private void ShowCount(TestNode node) =>
+            count.Text = node.Kind is TestNodeKind.Method or TestNodeKind.Row ? string.Empty : Plural.Of(node.ShownTests, "test");
 
         /// <summary>A test's mark, a grey ring not run, a blue dot running, a green tick passed, a red cross failed, a grey
         /// dash skipped, how long it took once it ran, and when, where that was an earlier session's run, and whether its
