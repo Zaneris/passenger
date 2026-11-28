@@ -14,7 +14,15 @@ public class ConnectionServerTests
         ("a keyword string with a quoted semicolon changes only its host and port", A_keyword_string_with_a_quoted_semicolon_changes_only_its_host_and_port),
         ("SQL Servers host keeps its protocol and its port after a comma", SQL_Servers_host_keeps_its_protocol_and_its_port_after_a_comma),
         ("a keyword string no reader takes names its host yet cannot be written again", A_keyword_string_no_reader_takes_names_its_host_yet_cannot_be_written_again),
-        ("a string that names no server has none", A_string_that_names_no_server_has_none));
+        ("a string that names no server has none", A_string_that_names_no_server_has_none),
+        ("a value holding a semicolon is written quoted, read back whole", A_value_holding_a_semicolon_is_written_quoted_read_back_whole));
+
+    private void A_value_holding_a_semicolon_is_written_quoted_read_back_whole()
+    {
+        string written = ConnectionServer.Written(("Host", "localhost"), ("Port", "5432"), ("Password", "part1;Port=1"), ("Username", null));
+        DbConnectionStringBuilder read = new() { ConnectionString = written };
+        Assert.Equal(("part1;Port=1", "5432", false), (read["Password"] as string, read["Port"] as string, read.ContainsKey("Username")));
+    }
 
     private void A_URL_with_a_password_and_no_user_name_moves_to_another_host_and_port_with_the_rest_as_written()
     {

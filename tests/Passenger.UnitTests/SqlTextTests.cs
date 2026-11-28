@@ -343,6 +343,11 @@ public sealed class SqlTextTests
             ("a key revoked is refused, though a line knows it", $"j* ssh-ed25519 {known}\n@revoked * ssh-ed25519 {known}", "jump", 22, KnownHostKey.Revoked),
             ("another kind's key leaves the host unknown", $"jump ssh-rsa {other}", "jump", 22, KnownHostKey.Unknown),
         }, row => Assert.Equal(row.Said, KnownHosts.Judge(row.Text, row.Host, row.Port, "ssh-ed25519", key)), row => row.Holds);
+        Cases.Each(new (string Holds, KnownHostKey[] Said, bool Trusted, KnownHostKey Verdict)[]
+        {
+            ("a key the person trusted before is refused once a file revokes it", [KnownHostKey.Unknown, KnownHostKey.Revoked], true, KnownHostKey.Revoked),
+            ("a key the person trusted is taken where a file knows another, as ssh's own trust would", [KnownHostKey.Changed], true, KnownHostKey.Known),
+        }, row => Assert.Equal(row.Verdict, KnownHosts.Verdict(row.Said, row.Trusted)), row => row.Holds);
         TableShape products = new("products", [new("id", "integer", false), new("name", "varchar(40)", false), new("price", "numeric(6,2)", true)], ["id"], [], []);
         TableShape orders = new("orders", [new("id", "integer", false), new("product_id", "integer", true)], ["id"],
             [new ForeignKeyShape("orders_product", ["product_id"], "products", ["id"])], []);
