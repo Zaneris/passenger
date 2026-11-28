@@ -1797,6 +1797,20 @@ public static class Ui
         Settle();
     }
 
+    /// <summary>The pointer brought to rest on an offset of an editor's text as <see cref="Hover"/> brings it, the text
+    /// scrolled into view first where it lies past the editor's edge, as a person scrolls to what they point at; then lets
+    /// what it ran land.</summary>
+    public static void RestOn(CodeEditor editor, int offset)
+    {
+        double at = editor.PointOf(offset).Y;
+        if (at < 0 || at + editor.LineHeight > editor.Bounds.Height)
+        {
+            editor.ScrollTo(new Vector(editor.ScrollOffset.X, editor.ScrollOffset.Y + at - (editor.Bounds.Height / 3)));
+            Settle();
+        }
+        Hover(editor, editor.PointOf(offset) + new Point(1, editor.LineHeight / 2));
+    }
+
     /// <summary>The words a control's open tip shows, as the tip lays them out; fails where none of its is open.</summary>
     public static TextBlock TipWords(Control control)
     {
