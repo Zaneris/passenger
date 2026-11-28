@@ -1015,6 +1015,12 @@ public sealed partial class Vim
             // From an empty line before a line opening with blanks, as takes each sentence with the white before it, ending at its last character, within its paragraph.
             return r with { Cursor = unitsEnd };
         }
+        if (!inner && n > 1 && VimMotions.LineOf(text, r.Cursor) is { Length: 0 } emptyAbove && emptyAbove.EndIncludingBreak < text.Length
+            && text[emptyAbove.EndIncludingBreak] is ' ' or '\t' && IndentedUnits(text, emptyAbove.Line + 1, n) is { } unitsTo && unitsTo > r.Cursor)
+        {
+            // Counted past that paragraph, a run of empty lines short of the text's last is a unit of its own.
+            return r with { Cursor = unitsTo };
+        }
         if (!inner && n == 2 && VimMotions.LineOf(text, r.Cursor) is { Length: > 0 } beyond && r.Cursor == beyond.End
             && beyond.EndIncludingBreak < text.Length && text[beyond.EndIncludingBreak] is ' ' or '\t'
             && LastOpeningBlank(text, beyond.EndIncludingBreak) + 1 is var opens && opens < text.Length && text[opens] is not ('\n' or '\r')
@@ -1124,6 +1130,53 @@ public sealed partial class Vim
         }
         // Of the empty lines ending the text, the last is none to go to.
         return own.End > after ? r with { Cursor = VimMotions.StepBack(text, own.End) } : Ended(text, r, inner, n);
+    }
+
+    /// <summary>Where <paramref name="n"/> of as's units end from the start of a line opening with blanks: each sentence
+    /// with the white before it, a run of empty lines short of the text's last one with none; null where a line opening
+    /// with text or of blanks alone, or the text's end, comes first.</summary>
+    private int? IndentedUnits(TextSnapshot text, int line, int n)
+    {
+        int lastLine = VimMotions.LastLine(text, breakEnds);
+        int at = text.GetLineStart(line);
+        int to = -1;
+        for (int i = 0; i < n; i++)
+        {
+            LineSpan on = VimMotions.LineOf(text, at);
+            if (on.Length == 0)
+            {
+                int runLast = on.Line;
+                while (runLast < lastLine && VimMotions.Blank(text, runLast + 1))
+                {
+                    runLast++;
+                }
+                if (runLast >= lastLine)
+                {
+                    return null;
+                }
+                (to, at) = (text.GetLineStart(runLast), text.GetLineStart(runLast + 1));
+                continue;
+            }
+            int first = at;
+            while (first < on.End && text[first] is ' ' or '\t')
+            {
+                first++;
+            }
+            if (first == at || first == on.End || VimTextObjects.Of(text, first, "s", inner: true, 1, breakEnds) is not { } sentence
+                || LastWrittenBefore(text, sentence.End) is not { } last || last < first)
+            {
+                return null;
+            }
+            to = last;
+            int after = CharEnd(text, last);
+            LineSpan ends = VimMotions.LineOf(text, after);
+            if (after == ends.End && ends.Line >= lastLine)
+            {
+                return i == n - 1 ? to : null;
+            }
+            at = after == ends.End ? ends.EndIncludingBreak : after;
+        }
+        return to;
     }
 
     /// <summary>Whether the text from <paramref name="from"/> to <paramref name="to"/> is white, blanks and line breaks
@@ -1639,6 +1692,14 @@ public sealed partial class Vim
         {
             more = true;
             return Spanned(text, OwnLine(text, further));
+        }
+        if (inner && n == 2 && found.Anchor == found.Cursor && VimMotions.LineOf(text, r.Cursor) is { Line: > 0 } opening
+            && VimMotions.Blank(text, opening.Line - 1) && TextNavigation.IndentEnd(text, opening) is var indent && r.Cursor < indent
+            && found.Cursor == indent && CharEnd(text, indent) == opening.End && VimTextObjects.Of(text, r.Cursor, "s", inner, n + 1, breakEnds) is { } withWhite)
+        {
+            // From the blanks opening a line below an empty one that holds one character, 2is takes the white after it too.
+            more = true;
+            return new Region(r.Cursor, Spanned(text, OwnLine(text, withWhite)).Cursor);
         }
         if (found.Anchor == found.Cursor && found.Cursor != r.Cursor)
         {
