@@ -30,6 +30,9 @@ public sealed class FormDesign : IDisposable
     private bool disposed;
     private bool listed;
 
+    /// <summary>The newest request sent, by its sequence: an older one ready after it never takes its place.</summary>
+    private int lastSent;
+
     /// <summary>The edit the designer is making, by its request's sequence, answered when its reply or a later one comes.</summary>
     private (int Sequence, TaskCompletionSource<FormDesignReply?> Answer)? editing;
 
@@ -145,6 +148,7 @@ public sealed class FormDesign : IDisposable
         }
         host = started;
         listed = false;
+        lastSent = 0;
         IdeErrors.Observe(UpdateAsync());
     }
 
@@ -162,9 +166,20 @@ public sealed class FormDesign : IDisposable
             Say($"{Path.GetFileName(Files.Designer)} or {Path.GetFileName(Files.Code)} can no longer be read");
             return;
         }
-        if (await RequestAsync(null) is { } request)
+        // An edit begun while this was read is answered first, and asks again as it ends.
+        if (await RequestAsync(null) is { } request && editing is null)
         {
-            host?.Send(request);
+            Send(request);
+        }
+    }
+
+    /// <summary>Sends a request, unless one read after it was sent already, which the designer's answer would wait behind.</summary>
+    private void Send(FormDesignRequest request)
+    {
+        if (host is not null && request.Sequence > lastSent)
+        {
+            lastSent = request.Sequence;
+            host.Send(request);
         }
     }
 
@@ -189,8 +204,8 @@ public sealed class FormDesign : IDisposable
             }
         }
         string? language = Language;
+        // Asked until an answer gives it: a request may be passed over for a later one.
         bool toolbox = !listed;
-        listed = true;
         string? inspect = inspected;
         FormProject now = project();
         FormDesignRequest? request = await BackgroundWork.Run(() =>
@@ -246,13 +261,16 @@ public sealed class FormDesign : IDisposable
         {
             return new DesignEdited(Refusals.DesignerBusy, null);
         }
-        if (await RequestAsync(edit) is not { } request || host is null)
+        // Held from before the request is read, so no redraw or other edit is sent meanwhile.
+        TaskCompletionSource<FormDesignReply?> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        editing = (int.MaxValue, answer);
+        if (await RequestAsync(edit) is not { } request || host is null || answer.Task.IsCompleted)
         {
+            editing = null;
             return new DesignEdited(Status, null);
         }
-        TaskCompletionSource<FormDesignReply?> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
         editing = (request.Sequence, answer);
-        host.Send(request);
+        Send(request);
         FormDesignReply? reply = await answer.Task;
         editing = null;
         DesignEdited made = await WrittenAsync(request, reply, name, write);
@@ -378,6 +396,7 @@ public sealed class FormDesign : IDisposable
         }
         if (answer.Toolbox is { } toolbox)
         {
+            listed = true;
             Toolbox = toolbox;
             ToolboxChanged?.Invoke(this, EventArgs.Empty);
         }
