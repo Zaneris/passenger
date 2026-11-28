@@ -151,7 +151,8 @@ internal static class Rules
             + "where Words go or to a control's words would stay English, and Words joined into a string are said in one "
             + "language and break the sentence a translation keeps whole, as Words said in one language and made Words again keep "
             + "that language for every reader. Turned on folder by folder in .editorconfig as "
-            + "each area's words move into resources.");
+            + "each area's words move into resources; a sweep's passenger_words_sweep there (messages, verbatim) asks for an "
+            + "exception's message made Words and any other string made Words as it is.");
 
     public static readonly DiagnosticDescriptor WordsComparedWithString = new(
         "PSG0013",
