@@ -813,7 +813,8 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
                 $"The agent's Focus Editor left the IDE's window {(window.IsActive ? "active" : "inactive")} and the floating Structure window {(structure.IsActive ? "active" : "inactive")}");
             Assert.True(focusing.IsError == true && Text(focusing).Contains(Refusals.PersonsKeys.English, StringComparison.Ordinal),
                 $"The agent's Focus Editor was answered: {Text(focusing)}");
-            string listed = Assert.Single(Await(Waiting.Apart(() => Call(client, McpTools.IdeActions)), "the agent's list of actions").EnumerateArray()
+            // Asked by its id, as every action no longer fits one answer.
+            string listed = Assert.Single(Await(Waiting.Apart(() => Call(client, McpTools.IdeActions, new() { ["query"] = AppActions.FocusEditor })), "the agent's list of actions").EnumerateArray()
                 .Select(a => a.GetString()!), a => a.StartsWith($"{AppActions.FocusEditor}: ", StringComparison.Ordinal));
             Assert.True(listed.EndsWith($" - cannot run: {Refusals.PersonsKeys.English}", StringComparison.Ordinal), $"ide_actions lists Focus Editor for the agent as {listed}");
         }
