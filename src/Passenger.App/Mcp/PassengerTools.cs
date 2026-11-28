@@ -1550,8 +1550,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             OpenDocument script = await DocumentAsync(path, cancel);
             Outline<Navigation.SymbolRow> members = await new Godot.GDScriptOutline(script.Text).ReadAsync(script.Path, null, cancel);
-            return members.Rows.Count == 0 ? "Nothing is declared in this file"
-                : string.Join('\n', members.Rows.Select(row => $"{new string(' ', row.Depth * 2)}{row.Name}{(row.Detail is { } detail ? " " + detail : string.Empty)} ({SymbolKinds.Name(row.Kind)}, line {row.Position.Line + 1})"));
+            return members.Rows.Count == 0 ? "Nothing is declared in this file" : SymbolLines(members);
         }
         // A generator's code copied has no server document: its own syntax says what it declares.
         if (GeneratedCode.IsCopy(Resolve(path)) && (await DocumentAsync(path, cancel)).Syntax?.Current is { } parsed)
@@ -1577,27 +1576,15 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 return parts.Rows.Count == 0 ? "The file has no feature"
                     : string.Join('\n', parts.Rows.Select(row => $"{new string(' ', row.Depth * 2)}{row.Detail ?? row.Name}: {row.Name} (line {row.Position.Line + 1})"));
         }
-        LspDocument lsp = ((ServerServed)served).Lsp;
-        System.Text.StringBuilder text = new();
-        IReadOnlyList<DocumentSymbol> outline = await lsp.OutlineAsync();
-        TextSnapshot answered = lsp.Text.Snapshot;
-        Write(outline, 0);
-        return text.Length == 0 ? "Nothing is declared in this file" : text.ToString().TrimEnd();
-
-        void Write(IReadOnlyList<DocumentSymbol> symbols, int depth)
-        {
-            foreach (DocumentSymbol symbol in symbols)
-            {
-                text.Append(' ', depth * 2).Append(symbol.Name);
-                if (!string.IsNullOrEmpty(symbol.Detail) && symbol.Detail != symbol.Name)
-                {
-                    text.Append(" : ").Append(symbol.Detail);
-                }
-                text.Append(" (").Append(SymbolKinds.Name(symbol.Kind)).Append(", line ").Append(ServerPlaces.PositionOf(answered, symbol.SelectionRange.Start).Line + 1).Append(")\n");
-                Write(symbol.Children ?? [], depth + 1);
-            }
-        }
+        ServerServed server = (ServerServed)served;
+        Outline<Navigation.SymbolRow> symbols = await Navigation.FileOutline.Served(server.Lsp).ReadAsync(server.Document.Path, null, cancel);
+        return symbols.Rows.Count == 0 ? "Nothing is declared in this file" : SymbolLines(symbols);
     }
+
+    /// <summary>An outline's rows as an agent reads them: each indented by its depth, its type after its name, with its kind
+    /// and line.</summary>
+    private static string SymbolLines(Outline<Navigation.SymbolRow> outline) =>
+        string.Join('\n', outline.Rows.Select(row => $"{new string(' ', row.Depth * 2)}{row.Name}{(row.Detail is { } detail ? " " + detail : string.Empty)} ({SymbolKinds.Name(row.Kind)}, line {row.Position.Line + 1})"));
 
     /// <summary>A scene's outline as Structure shows it: each node by its name and class at its line, its script's and
     /// instance's files, and its signals' connections with the method each calls.</summary>
