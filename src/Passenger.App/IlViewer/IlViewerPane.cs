@@ -96,7 +96,7 @@ internal sealed class IlViewerPane : UserControl
         source.Text = caption;
         source.IsVisible = caption is not null;
         ToolTip.SetTip(source, hasCode ? captionTip ?? caption : null);
-        ShownWords.Set(empty, TextBlock.TextProperty, message);
+        empty.Say(message);
         empty.IsVisible = !hasCode;
         output.IsVisible = hasCode;
 
