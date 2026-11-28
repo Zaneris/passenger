@@ -211,6 +211,9 @@ public static class CSharpParsing
     /// <summary>Whether a person's text reads as a type's name.</summary>
     public static bool ReadsAsType(string text) => CodeBrackets.ReadsAsType(text);
 
+    /// <summary>A text read as a type's name; null for one nested too deeply for the parser.</summary>
+    public static TypeSyntax? TypeName(string text) => CodeBrackets.TypeName(text);
+
     /// <inheritdoc cref="CodeBrackets.DeepAt(SyntaxTree)"/>
     public static int? DeepAt(SyntaxTree tree) => CodeBrackets.DeepAt(tree);
 

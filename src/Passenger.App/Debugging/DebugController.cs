@@ -341,6 +341,9 @@ public sealed partial class DebugController : IDisposable
     /// <summary>The C# language server whose Edit and Continue computes Hot Reload's updates, when it runs.</summary>
     public Func<Lsp.RoslynSession?> Server { get; init; } = () => null;
 
+    /// <summary>The C# language server's document of an open file, where it has one.</summary>
+    public Func<OpenDocument, Lsp.LspDocument?> ServerOf { get; init; } = _ => null;
+
     /// <summary>The workspace the language server reads the code as, the folder's with its build configuration, against
     /// which Hot Reload checks each program's build (<see cref="HotReload.Builds"/>).</summary>
     public Func<Passenger.Workspace.WorkspaceModel?> Reads { get; init; } = () => null;
@@ -2110,11 +2113,7 @@ public sealed partial class DebugController : IDisposable
         // Captures the stack and locals at each hit and lets the program go on.
         Add(AppActions.ToggleSnapshotPoint, "Toggle Snapshot Point", (d, c) => d.Breakpoints.ToggleSnapshot(c.File!.Path, c.Caret.Line),
             (_, c) => Refusals.NeedsLines(c), new("Run", 2, 2));
-        Add(AppActions.ToggleMethodBreakpoint, "Toggle Method Breakpoint", (d, c) =>
-        {
-            MethodBreakpoints.Method method = MethodAtCaret(c)!.Value;
-            d.Breakpoints.ToggleMethod(method.Name, c.File!.Path, method.Line);
-        }, (_, c) => Refusals.NeedsLines(c) ?? (MethodAtCaret(c) is null ? Refusals.NoMethodAtCaret : null), new("Run", 2, 3));
+        Add(AppActions.ToggleMethodBreakpoint, "Toggle Method Breakpoint", (d, c) => d.ToggleMethod(c), (_, c) => Refusals.NeedsLines(c) ?? (MethodAtCaret(c) is null ? Refusals.NoMethodAtCaret : null), new("Run", 2, 3));
         Add(AppActions.ToggleBreakpointEnabled, "Toggle Breakpoint Enabled", (d, c) => d.Breakpoints.ToggleEnabled(c.File!.Path, c.Caret.Line), (_, c) => Refusals.NeedsLines(c), new("Run", 2, 4));
         Add(AppActions.Resume, "Resume Program", (d, c) =>
         {
@@ -2200,6 +2199,39 @@ public sealed partial class DebugController : IDisposable
         context.File?.Syntax?.Current is { } parsed && ReferenceEquals(parsed.Text, context.File.Text.Snapshot)
             ? MethodBreakpoints.At(parsed, parsed.Text.GetOffset(context.Caret))
             : null;
+
+    /// <summary>Toggle Method Breakpoint at the caret: the breakpoint on the method's declaration taken away, else one set at
+    /// once as its file names the method, then named again as the C# server reads the aliases its parameters name (its
+    /// project's global ones among them) where it has the file, as the debugger matches them.</summary>
+    private void ToggleMethod(ActionContext context)
+    {
+        OpenDocument file = context.File!;
+        MethodBreakpoints.Method method = MethodAtCaret(context)!.Value;
+        if ((Breakpoints.FindMethod(method.Name) ?? Breakpoints.MethodsIn(file.Path).FirstOrDefault(m => m.Line == method.Line)) is { } set)
+        {
+            Breakpoints.Remove(set);
+            return;
+        }
+        MethodBreakpoint added = Breakpoints.AddMethod(method.Name, file.Path, method.Line);
+        if (ServerOf(file) is { } lsp && file.Syntax?.Current is { } parsed && ReferenceEquals(parsed.Text, file.Text.Snapshot))
+        {
+            IdeErrors.Observe(NameByServerAsync(lsp, parsed, parsed.Text.GetOffset(context.Caret), added));
+        }
+    }
+
+    /// <summary>A method breakpoint just set named again with the aliases its parameters name as the server reads them, while it
+    /// stands as set.</summary>
+    private async Task NameByServerAsync(Lsp.LspDocument lsp, ParsedText parsed, int caret, MethodBreakpoint set)
+    {
+        if (MethodBreakpoints.At(parsed, caret) is not { } method || await lsp.ParameterAliasesAsync(method.Parameters) is not { Count: > 0 } aliases
+            || MethodBreakpoints.At(parsed, caret, aliases.ToDictionary(a => a.Name, a => a.Target, StringComparer.Ordinal)) is not { } named
+            || named.Name == set.Name || !Breakpoints.Methods.Contains(set))
+        {
+            return;
+        }
+        Breakpoints.Remove(set);
+        Breakpoints.AddMethod(named.Name, set.Path, set.Line);
+    }
 
     /// <summary>The C# lambda the caret is in whose body begins on the caret's line after its code does
     /// (<see cref="LambdaBreakpoints.At"/>), whose own breakpoint Toggle Breakpoint sets; null elsewhere.</summary>

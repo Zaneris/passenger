@@ -46,6 +46,21 @@ internal sealed partial class XamlAssist : LanguageAssist
     /// <summary>The XAML code style as Settings leaves it, which a file's .editorconfig overrides.</summary>
     public XamlFormatSettings XamlFormat { get; set; } = new();
 
+    /// <summary>Enter between an attribute's empty quotes, where it writes a property element (<see cref="PropertyElementTyping"/>).</summary>
+    public override bool FormatsTyped(string typed) => typed == "\n" && context.Editors.Active?.Language == Passenger.Languages.Language.Xaml
+        && Editor.Selections is { HasMultiple: false, Primary: { IsEmpty: true, Caret: int caret } } && PropertyElementTyping.Takes(Editor.Document.Snapshot, caret);
+
+    /// <summary>The attribute Enter broke the line in between its empty quotes written as a property element, joined to Enter's
+    /// step of Undo, the caret inside it.</summary>
+    public override void FormatLineBreak()
+    {
+        if (context.Editors.Active is { } shown && shown.Language == Passenger.Languages.Language.Xaml && Editor.Selections is { HasMultiple: false, Primary: { IsEmpty: true, Caret: int caret } }
+            && PropertyElementTyping.Written(Editor.Document.Snapshot, caret, shown.LineEnding, shown.Indentation.Options.Unit) is ({ } edits, int at))
+        {
+            Editor.FormatKeyAt(Editor.Document.Snapshot, edits, at);
+        }
+    }
+
     public override bool Typed(string text)
     {
         if (context.XamlCurrent is null)

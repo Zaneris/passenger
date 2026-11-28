@@ -20,6 +20,16 @@ internal abstract class LanguageAssist
     /// <summary>Opens completion or Parameter Info for what was just typed in the file shown, as its language has it.</summary>
     public virtual bool Typed(string text) => false;
 
+    /// <summary>Whether the language writes more once a key has typed <paramref name="typed"/> at the one caret of the file
+    /// shown, asked before it is typed (<see cref="Passenger.Editor.CodeEditor.FormatsTyped"/>).</summary>
+    public virtual bool FormatsTyped(string typed) => false;
+
+    /// <summary>Enter that opened no block at the one caret of the file shown, where the language writes what goes on from it,
+    /// joined to Enter's step of Undo (<see cref="Passenger.Editor.CodeEditor.LineBroken"/>).</summary>
+    public virtual void FormatLineBreak()
+    {
+    }
+
     /// <summary>The completion list at the caret.</summary>
     public virtual Task<bool> CompleteAsync(string? trigger, bool incomplete) => Passed;
 
@@ -139,6 +149,18 @@ internal sealed class LanguageAssists(LinkAssist links, HttpAssist http, EditorC
     public WebAssist Web => web;
 
     public CSharpAssist CSharp => csharp;
+
+    /// <summary>Whether any language writes more once a key has typed this at the one caret (<see cref="LanguageAssist.FormatsTyped"/>).</summary>
+    public bool FormatsTyped(string typed) => ladder.Any(language => language.FormatsTyped(typed));
+
+    /// <summary>Each language's writing after Enter that opened no block (<see cref="LanguageAssist.FormatLineBreak"/>).</summary>
+    public void FormatLineBreak()
+    {
+        foreach (LanguageAssist language in ladder)
+        {
+            language.FormatLineBreak();
+        }
+    }
 
     public void Typed(string text)
     {

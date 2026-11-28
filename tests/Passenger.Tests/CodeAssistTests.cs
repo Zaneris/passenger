@@ -111,6 +111,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("the path, a hover card, File Structure and Go to Symbol name the code and go to it", () => new CodeAssistTests(project), t => t.The_path_a_hover_card_file_structure_and_go_to_symbol_name_the_code_and_go_to_it());
         Flow.StepApart("the links in a wrapped hover signature go to their own declarations", () => new CodeAssistTests(project), t => t.Hover_signature_links_go_to_their_own_declarations());
         Flow.StepApart("File Structure finds members by their kind's words beside their names, alone or before a name", () => new CodeAssistTests(project), t => t.File_structure_finds_members_by_their_kinds_words_beside_their_names_alone_or_before_a_name());
+        Flow.StepApart("a method breakpoint names a parameter of a global alias by the type the server says it stands for", () => new CodeAssistTests(project), t => t.A_method_breakpoint_names_a_parameter_of_a_global_alias_by_the_type_the_server_says_it_stands_for());
         Flow.StepApart("a file shown before its folder's server has it names the member the caret is in once it does", () => new CodeAssistTests(project), t => t.A_file_shown_before_its_folders_server_has_it_names_the_member_the_caret_is_in_once_it_does());
         Flow.StepApart("the structure window shows the shown file's outline whenever it is shown, once the server has the file, and follows the editor", () => new CodeAssistTests(project), t => t.The_structure_window_shows_the_shown_files_outline_whenever_it_is_shown_and_once_the_server_has_the_file_and_follows_the_editor());
         Flow.StepApart("the syntax tree window shows the shown C# file's syntax at the selection, follows its unsaved edits and the file shown, and a row chosen selects its code", () => new CodeAssistTests(project), t => t.The_syntax_tree_window_shows_the_shown_files_syntax_at_the_selection_follows_its_unsaved_edits_and_the_file_shown_and_a_row_chosen_selects_its_code());
@@ -256,6 +257,24 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Null(window.Popup);
         Assert.Equal(PathNames.Canonical(project.PathOf("Helper.cs")), window.EditorArea.Active?.Path);
         Assert.Equal(2, window.EditorArea.CodeEditor.CaretPosition.Line);
+        window.Close();
+    }
+
+    /// <summary>Toggle Method Breakpoint on a method taking a type by a global alias another file declares sets the breakpoint
+    /// at once, then names the parameter by the type the server says the alias stands for, which the debugger's metadata has;
+    /// toggled again there, the breakpoint so named goes.</summary>
+    private void A_method_breakpoint_names_a_parameter_of_a_global_alias_by_the_type_the_server_says_it_stands_for()
+    {
+        MainWindow window = project.Open("Ledger.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.WaitFor(() => window.CSharpService?.IsReady == true, () => $"the language server, {window.CSharpService?.State}");
+        Ui.PlaceAfter(editor, "Po");
+        Assert.True(window.Perform(AppActions.ToggleMethodBreakpoint), $"Toggle Method Breakpoint did not run: {Ui.Said(window)}");
+        string Named() => string.Join(", ", window.Debugger.Breakpoints.Methods.Select(m => m.Name));
+        Ui.WaitFor(() => Named() == "Ledger.Post(global::System.Guid, int)", () => $"the breakpoint named by the alias's type, not [{Named()}]");
+        Assert.Equal(2, Assert.Single(window.Debugger.Breakpoints.Methods).Line);
+        Assert.True(window.Perform(AppActions.ToggleMethodBreakpoint), $"Toggle Method Breakpoint did not run again: {Ui.Said(window)}");
+        Assert.True(window.Debugger.Breakpoints.Methods.Count == 0, $"Toggle Method Breakpoint again left [{Named()}]");
         window.Close();
     }
 
@@ -4674,6 +4693,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Paths.cs"), "static class Paths\n{\n"
                 + "    /// <summary>Keeps its logs under <c>C:\\temp</c>, in C:\\temp\\logs, &quot;never&quot; elsewhere.</summary>\n"
                 + "    public static int Keep() => 1;\n}\n");
+            // A global alias the project's other files take, which only the server reads for a method breakpoint.
+            File.WriteAllText(PathOf("LedgerKeys.cs"), "global using LedgerKey = System.Guid;\n");
+            File.WriteAllText(PathOf("Ledger.cs"), "static class Ledger\n{\n    public static int Post(LedgerKey key, int count) => count;\n}\n");
             File.WriteAllText(PathOf("Worker.cs"), """
                 public sealed class Worker
                 {

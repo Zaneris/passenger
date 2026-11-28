@@ -35,6 +35,7 @@ public static class Handlers
     public const string LocalizedReads = "Passenger.Roslyn.Extension.LocalizedReads";
     public const string SymbolsNamed = "Passenger.Roslyn.Extension.SymbolsNamed";
     public const string SymbolAt = "Passenger.Roslyn.Extension.SymbolAt";
+    public const string ParameterAliases = "Passenger.Roslyn.Extension.ParameterAliases";
     public const string SymbolContainers = "Passenger.Roslyn.Extension.SymbolContainers";
     public const string WrittenPlaces = "Passenger.Roslyn.Extension.WrittenPlaces";
     public const string ComponentClass = "Passenger.Roslyn.Extension.ComponentClass";
@@ -87,7 +88,7 @@ public static class Handlers
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, InterfacesLacking, DocumentTexts, DocumentsWritten, ReferencesRead, ReferencedFiles, GeneratorsRun, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
-        AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, SymbolContainers, WrittenPlaces,
+        AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, ParameterAliases, SymbolContainers, WrittenPlaces,
         ComponentClass, GeneratedTexts, GeneratedNamed, GeneratedListed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames, GeneratedMembers,
         MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover, XamlCodeCompletion, XamlCodeSymbol, XamlCodeChecks,
         CompletionCall, RenameSuggestions, StepBindings, EditorConfigKeys, EditorConfigValues, Signposts, CodeClones, ExtractClones, Dependencies, DependencyAt, LayerChecks,
@@ -544,6 +545,12 @@ public sealed record ClonesExtraction(
 
 /// <summary>Where the caret is: what a describing message asks about.</summary>
 public sealed record Caret([property: JsonPropertyName("at")] Place At);
+
+/// <summary>The aliases a parameter list names (<see cref="ParameterAliases"/>).</summary>
+public sealed record AliasesFound([property: JsonPropertyName("aliases")] IReadOnlyList<AliasFound> Aliases);
+
+/// <summary>An alias by its name, and the type it stands for written whole (<c>global::System.Guid</c>).</summary>
+public sealed record AliasFound([property: JsonPropertyName("name")] string Name, [property: JsonPropertyName("target")] string Target);
 
 /// <summary>The type of the expression at a caret as C# writes it there (<see cref="Handlers.ExpressionType"/>); null for none.</summary>
 public sealed record ExpressionTyped([property: JsonPropertyName("type")] string? Type);
