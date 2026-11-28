@@ -103,10 +103,9 @@ public static class EfDatabases
                 _ when image.Contains("clickhouse", StringComparison.OrdinalIgnoreCase) => (8123, ["ClickHouse.Driver"], (host, port) =>
                     ConnectionServer.Written(("Host", host), ("Port", Number(port)), ("Database", Told("CLICKHOUSE_DB") ?? "default"),
                         ("Username", Told("CLICKHOUSE_USER") ?? "default"), ("Password", Told("CLICKHOUSE_PASSWORD") ?? string.Empty))),
-                "redis" => (6379, ["StackExchange.Redis"], (host, port) => $"{host}:{port}"
-                    + (Told("REDIS_PASSWORD", "VALKEY_PASSWORD") is { } secret ? $",password={secret}" : string.Empty)),
-                _ when image.Contains("valkey", StringComparison.OrdinalIgnoreCase) => (6379, ["StackExchange.Redis"], (host, port) => $"{host}:{port}"
-                    + (Told("VALKEY_PASSWORD", "REDIS_PASSWORD") is { } secret ? $",password={secret}" : string.Empty)),
+                "redis" => (6379, ["StackExchange.Redis"], (host, port) => RedisAt(host, port, Told("REDIS_PASSWORD", "VALKEY_PASSWORD"))),
+                _ when image.Contains("valkey", StringComparison.OrdinalIgnoreCase) => (6379, ["StackExchange.Redis"], (host, port) =>
+                    RedisAt(host, port, Told("VALKEY_PASSWORD", "REDIS_PASSWORD"))),
                 _ when image.Contains("cassandra", StringComparison.OrdinalIgnoreCase) => (9042, ["CassandraCSharpDriver"], (host, port) =>
                     ConnectionServer.Written(("Contact Points", host), ("Port", Number(port)), ("Username", Told("CASSANDRA_USER")),
                         ("Password", Told("CASSANDRA_USER") is null ? null : Told("CASSANDRA_PASSWORD") ?? string.Empty))),
@@ -195,6 +194,12 @@ public static class EfDatabases
     private static string Host(ContainerPort published, string? endpoint) => published.LinkOn(endpoint)?.Host ?? "localhost";
 
     private static string Number(int port) => port.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>Redis at a host and port, signed in by its password escaped whole in a redis:// URI, so a comma in it, which
+    /// would end it in a configuration's words, stays its own.</summary>
+    private static string RedisAt(string host, int port, string? password) =>
+        password is null ? $"{host}:{Number(port)}"
+            : $"redis://:{Uri.EscapeDataString(password)}@{(host.Contains(':', StringComparison.Ordinal) && !host.StartsWith('[') ? $"[{host}]" : host)}:{Number(port)}";
 
     private static string? Kind(ComposeService service) => BackingService.OfImage(service.Image)?.Service;
 
