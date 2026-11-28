@@ -46,18 +46,33 @@ internal sealed partial class XamlAssist : LanguageAssist
     /// <summary>The XAML code style as Settings leaves it, which a file's .editorconfig overrides.</summary>
     public XamlFormatSettings XamlFormat { get; set; } = new();
 
-    /// <summary>Enter between an attribute's empty quotes, where it writes a property element (<see cref="PropertyElementTyping"/>).</summary>
-    public override bool FormatsTyped(string typed) => typed == "\n" && context.Editors.Active?.Language == Passenger.Languages.Language.Xaml
+    /// <summary>Enter between an attribute's empty quotes in a file of a project, where it may write a property element (<see cref="PropertyElementTyping"/>).</summary>
+    public override bool FormatsTyped(string typed) => typed == "\n" && context.Editors.Active?.Language == Passenger.Languages.Language.Xaml && context.XamlCurrent is not null
         && Editor.Selections is { HasMultiple: false, Primary: { IsEmpty: true, Caret: int caret } } && PropertyElementTyping.Takes(Editor.Document.Snapshot, caret);
 
-    /// <summary>The attribute Enter broke the line in between its empty quotes written as a property element, joined to Enter's
-    /// step of Undo, the caret inside it.</summary>
+    /// <summary>The attribute Enter broke the line in between its empty quotes written as a property element where the file's
+    /// types read it as a property's, joined to Enter's step of Undo, the caret inside it.</summary>
     public override void FormatLineBreak()
     {
-        if (context.Editors.Active is { } shown && shown.Language == Passenger.Languages.Language.Xaml && Editor.Selections is { HasMultiple: false, Primary: { IsEmpty: true, Caret: int caret } }
-            && PropertyElementTyping.Written(Editor.Document.Snapshot, caret, shown.LineEnding, shown.Indentation.Options.Unit) is ({ } edits, int at))
+        if (context.Editors.Active is { } shown && shown.Language == Passenger.Languages.Language.Xaml && context.XamlOf(shown) is { } xaml
+            && Editor.Selections is { HasMultiple: false, Primary: { IsEmpty: true, Caret: int caret } })
         {
-            Editor.FormatKeyAt(Editor.Document.Snapshot, edits, at);
+            IdeErrors.Observe(PropertyElementAsync(Editor, shown, xaml, caret));
+        }
+    }
+
+    /// <summary>The property element for the attribute Enter broke the line in at <paramref name="caret"/>, read against the
+    /// file's types as the text stands, made only where it still stands so. Held as the window's work until made or let go.</summary>
+    private static async Task PropertyElementAsync(Passenger.Editor.CodeEditor editor, OpenDocument shown, XamlDocument xaml, int caret)
+    {
+        using (BackgroundWork.Scope())
+        {
+            TextSnapshot asked = shown.Text.Snapshot;
+            if (await xaml.FileAsync() is { } file && ReferenceEquals(shown.Text.Snapshot, asked)
+                && PropertyElementTyping.Written(file, asked, caret, shown.LineEnding, shown.Indentation.Options.Unit) is ({ } edits, int at))
+            {
+                editor.FormatKeyAt(asked, edits, at);
+            }
         }
     }
 

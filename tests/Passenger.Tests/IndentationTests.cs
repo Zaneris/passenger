@@ -47,7 +47,7 @@ public sealed class IndentationTests : IDisposable
     public void Enter_in_markup_indents_by_the_tags_around_the_caret()
     {
         Flow.StepApart<IndentationTests>("enter in xaml and html indents by the tags a level in from a start tag back after a closed one and under a first attribute", t => t.Enter_in_xaml_and_html_indents_by_the_tags_a_level_in_from_a_start_tag_back_after_a_closed_one_and_under_a_first_attribute());
-        Flow.StepApart<IndentationTests>("enter between an attribute's empty quotes in xaml writes it as a property element inside the element in one step of undo", t => t.Enter_between_an_attributes_empty_quotes_in_xaml_writes_it_as_a_property_element_inside_the_element_in_one_step_of_undo());
+        Flow.StepApart<IndentationTests>("enter between an attribute's empty quotes in xaml of no project breaks the line, its element's type unknown", t => t.Enter_between_an_attributes_empty_quotes_in_xaml_of_no_project_breaks_the_line_its_elements_type_unknown());
         Flow.StepApart<IndentationTests>("a XAML window whose attributes line up under its tags is read as its elements' four spaces and reformat keeps them", t => t.A_xaml_window_whose_attributes_line_up_under_its_tags_is_read_as_its_elements_four_spaces_and_reformat_keeps_them());
         Flow.StepApart<IndentationTests>("enter near the end of a large XAML file reads only the elements around the caret", t => t.Enter_near_the_end_of_a_large_xaml_file_reads_only_the_elements_around_the_caret());
     }
@@ -340,36 +340,24 @@ public sealed class IndentationTests : IDisposable
         window.Close();
     }
 
-    /// <summary>Enter between an attribute's empty quotes in XAML takes the attribute out of its tag and writes it as a property
-    /// element, the element's first child on a line of its own with the caret inside, one step of Undo: a self-closing element
-    /// opened into its tags, an attached property named by its owner as written. In a directive's empty quotes Enter breaks
-    /// the line as anywhere.</summary>
-    private void Enter_between_an_attributes_empty_quotes_in_xaml_writes_it_as_a_property_element_inside_the_element_in_one_step_of_undo()
+    /// <summary>Enter between an attribute's empty quotes in a XAML file of no project breaks the line as anywhere: with no
+    /// types to read the attribute by, nothing says it sets a property rather than handles an event, so no property element
+    /// is written for it.</summary>
+    private void Enter_between_an_attributes_empty_quotes_in_xaml_of_no_project_breaks_the_line_its_elements_type_unknown()
     {
         const string Before = "<Window xmlns=\"https://github.com/avaloniaui\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\">\n"
-            + "    <Grid Style=\"\" Margin=\"4\">\n        <Button Grid.Row=\"\" />\n    </Grid>\n    <TextBlock x:Name=\"\" />\n</Window>\n";
+            + "    <Grid Style=\"\" Margin=\"4\">\n        <Button Click=\"\" />\n    </Grid>\n</Window>\n";
         Write("Properties.axaml", Before);
         MainWindow window = Open("Properties.axaml");
         CodeEditor editor = window.EditorArea.CodeEditor;
 
         Ui.PlaceAfter(editor, "<Grid Style=\"");
         Ui.Press(window, "ENTER");
-        string styled = Before.Replace("    <Grid Style=\"\" Margin=\"4\">\n", "    <Grid Margin=\"4\">\n        <Grid.Style></Grid.Style>\n", StringComparison.Ordinal);
-        Assert.True(Text(editor) == styled, $"Enter between Style's empty quotes did not write <Grid.Style> as Grid's first child:\n{Text(editor)}");
-        Assert.Equal(new TextPosition(2, 20), editor.CaretPosition);
-        Ui.Run(window, Passenger.Editor.EditorActions.Undo);
-        Assert.True(Text(editor) == Before, $"One Undo did not take back Enter and the property element it wrote:\n{Text(editor)}");
-
-        Ui.PlaceAfter(editor, "<Button Grid.Row=\"");
+        Ui.PlaceAfter(editor, "<Button Click=\"");
         Ui.Press(window, "ENTER");
-        Assert.True(Text(editor).Contains("        <Button>\n            <Grid.Row></Grid.Row>\n        </Button>\n    </Grid>", StringComparison.Ordinal),
-            $"Enter between an attached property's empty quotes did not open the button and write <Grid.Row> inside it:\n{Text(editor)}");
-        Assert.Equal(new TextPosition(3, 22), editor.CaretPosition);
-
-        Ui.PlaceAfter(editor, "<TextBlock x:Name=\"");
-        Ui.Press(window, "ENTER");
-        Assert.DoesNotContain("x:Name>", Text(editor), StringComparison.Ordinal);
-        Assert.Contains("<TextBlock x:Name=\"\n", Text(editor), StringComparison.Ordinal);
+        Assert.True(Text(editor).Contains("<Grid Style=\"\n", StringComparison.Ordinal) && Text(editor).Contains("<Button Click=\"\n", StringComparison.Ordinal)
+            && !Text(editor).Contains("<Grid.Style>", StringComparison.Ordinal) && !Text(editor).Contains("<Button.Click>", StringComparison.Ordinal),
+            $"Enter between the empty quotes of a file of no project, whose types nothing reads, did more than break the line:\n{Text(editor)}");
         window.Close();
     }
 

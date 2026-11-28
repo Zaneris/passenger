@@ -6,25 +6,28 @@ namespace Passenger.Xaml.Features;
 /// <summary>Enter typed between the empty quotes of a XAML attribute (<c>&lt;Grid Style="|"&gt;</c>): the attribute taken out of
 /// its start tag and written as a property element, the element's first child on a line of its own
 /// (<c>&lt;Grid.Style&gt;|&lt;/Grid.Style&gt;</c>), a self-closing element opened into its start and end tags. An attached
-/// property (<c>Grid.Row</c>) is named by its owner as written; a namespace's declaration and a directive (<c>x:Name</c>)
-/// set no property, so Enter in theirs is a line break as anywhere.</summary>
+/// property (<c>Grid.Row</c>) is named by its owner as written. Only a property's attribute, as the file's types read it
+/// (<see cref="XamlFile.MeaningOf"/>), has an element: an event's, a namespace's declaration, a directive's (<c>x:Name</c>)
+/// and one of an element whose type is not known take Enter as a line break as anywhere.</summary>
 public static class PropertyElementTyping
 {
-    /// <summary>Whether a caret stands between the quotes of an attribute of no value that a property element can be written
-    /// for, where Enter writes one; read from the quotes around it before the markup.</summary>
+    /// <summary>Whether a caret stands between the quotes of an attribute of no value that a property element may be written
+    /// for once the file's types are read, where Enter may write one; read from the quotes around it before the markup.</summary>
     public static bool Takes(TextSnapshot text, int caret) =>
         caret > 0 && caret < text.Length && text[caret - 1] is '"' or '\'' && text[caret] == text[caret - 1]
-        && Settable(XmlTree.Parse(text.ToString()), caret) is { Attribute.RawValue.Length: 0 };
+        && Quoted(XmlTree.Parse(text.ToString()), caret) is { Attribute.RawValue.Length: 0 };
 
     /// <summary>The edits that write the property element once Enter broke the line between the empty quotes, in the text as
-    /// Enter left it, and where they put the caret: inside the property element, in the text they make. Null where the caret
-    /// no longer stands in such an attribute's value, white space and the line break alone. <paramref name="unit"/> is one
-    /// level of the file's indentation, which the child takes in from the element's line.</summary>
-    public static (IReadOnlyList<TextEdit> Edits, int Caret)? Written(TextSnapshot text, int caret, string eol, string unit)
+    /// Enter left it, which <paramref name="file"/> read, and where they put the caret: inside the property element, in the
+    /// text they make. Null where the caret no longer stands in such an attribute's value, white space and the line break
+    /// alone, or where the file's types do not read the attribute as a property's, the element's own or attached.
+    /// <paramref name="unit"/> is one level of the file's indentation, which the child takes in from the element's line.</summary>
+    public static (IReadOnlyList<TextEdit> Edits, int Caret)? Written(XamlFile file, TextSnapshot text, int caret, string eol, string unit)
     {
-        string whole = text.ToString();
-        if (Settable(XmlTree.Parse(whole), caret) is not { } place || place.Attribute is not { } attribute || place.Element is not { } element
-            || !string.IsNullOrWhiteSpace(attribute.RawValue) || !attribute.RawValue.Contains('\n') && !attribute.RawValue.Contains('\r'))
+        string whole = file.Text;
+        if (Quoted(file.Tree, caret) is not { } place || place.Attribute is not { } attribute || place.Element is not { } element
+            || !string.IsNullOrWhiteSpace(attribute.RawValue) || !attribute.RawValue.Contains('\n') && !attribute.RawValue.Contains('\r')
+            || file.MeaningOf(attribute).Kind is not (XamlAttributeKind.Property or XamlAttributeKind.Attached))
         {
             return null;
         }
@@ -76,10 +79,11 @@ public static class PropertyElementTyping
         return ([taken, written], written.Start - taken.Length + into);
     }
 
-    /// <summary>The attribute whose value holds a caret, with its element, where a property element can set what it sets: an
-    /// object element's start tag closed, the attribute's value quoted and closed, and the attribute a property's, its own or
-    /// attached, never a namespace's declaration or a directive of a prefix's own (<c>x:Name</c>, <c>d:DesignWidth</c>).</summary>
-    private static XmlPlace? Settable(XmlTree tree, int caret)
+    /// <summary>The attribute whose value holds a caret, with its element, where its markup alone lets a property element be
+    /// written for it: an object element's start tag closed, the attribute's value quoted and closed, and its name one a
+    /// property may have, the element's own or an owner's, never a namespace's declaration or a prefix's own
+    /// (<c>x:Name</c>, <c>d:DesignWidth</c>).</summary>
+    private static XmlPlace? Quoted(XmlTree tree, int caret)
     {
         XmlPlace place = tree.PlaceAt(caret);
         return place is { Kind: XmlPlaceKind.AttributeValue, Element: { IsStartTagClosed: true, IsPropertyElement: false }, Attribute: { IsValueClosed: true } attribute }
