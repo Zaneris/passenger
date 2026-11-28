@@ -13,7 +13,7 @@ public partial class MainWindow
         IdeErrors.Raised += OnIdeError;
         Closed += (_, _) => IdeErrors.Raised -= OnIdeError;
         ShowErrorCount();
-        actions!.Add(new IdeAction(AppActions.ShowLog, $"Show Log in {FileManager.Name}", "Help", _ => ShowLog())
+        actions!.Add(new IdeAction(AppActions.ShowLog, ActionTitles.ShowLog(FileManager.Name), "Help", _ => ShowLog())
         {
             Menus = [new MenuPlace("Help", 1, 0)],
         });

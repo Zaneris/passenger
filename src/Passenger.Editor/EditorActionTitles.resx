@@ -1,0 +1,339 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Left" xml:space="preserve">
+    <value>Left</value>
+    <comment>The title of the editor action Left, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Right" xml:space="preserve">
+    <value>Right</value>
+    <comment>The title of the editor action Right, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Up" xml:space="preserve">
+    <value>Up</value>
+    <comment>The title of the editor action Up, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Down" xml:space="preserve">
+    <value>Down</value>
+    <comment>The title of the editor action Down, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="WordLeft" xml:space="preserve">
+    <value>Word Left</value>
+    <comment>The title of the editor action WordLeft, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="WordRight" xml:space="preserve">
+    <value>Word Right</value>
+    <comment>The title of the editor action WordRight, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="LineStart" xml:space="preserve">
+    <value>Line Start</value>
+    <comment>The title of the editor action LineStart, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="LineEnd" xml:space="preserve">
+    <value>Line End</value>
+    <comment>The title of the editor action LineEnd, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="TextStart" xml:space="preserve">
+    <value>Text Start</value>
+    <comment>The title of the editor action TextStart, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="TextEnd" xml:space="preserve">
+    <value>Text End</value>
+    <comment>The title of the editor action TextEnd, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="PageUp" xml:space="preserve">
+    <value>Page Up</value>
+    <comment>The title of the editor action PageUp, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="PageDown" xml:space="preserve">
+    <value>Page Down</value>
+    <comment>The title of the editor action PageDown, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="ScrollUp" xml:space="preserve">
+    <value>Scroll Up</value>
+    <comment>The title of the editor action ScrollUp, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="ScrollDown" xml:space="preserve">
+    <value>Scroll Down</value>
+    <comment>The title of the editor action ScrollDown, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Backspace" xml:space="preserve">
+    <value>Backspace</value>
+    <comment>The title of the editor action Backspace, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Delete" xml:space="preserve">
+    <value>Delete</value>
+    <comment>The title of the editor action Delete, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="DeleteWordLeft" xml:space="preserve">
+    <value>Delete Word Left</value>
+    <comment>The title of the editor action DeleteWordLeft, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="DeleteWordRight" xml:space="preserve">
+    <value>Delete Word Right</value>
+    <comment>The title of the editor action DeleteWordRight, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="NewLine" xml:space="preserve">
+    <value>New Line</value>
+    <comment>The title of the editor action NewLine, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="StartNewLine" xml:space="preserve">
+    <value>Start New Line</value>
+    <comment>The title of the editor action StartNewLine, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="StartNewLineBefore" xml:space="preserve">
+    <value>Start New Line Before</value>
+    <comment>The title of the editor action StartNewLineBefore, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Indent" xml:space="preserve">
+    <value>Indent</value>
+    <comment>The title of the editor action Indent, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Outdent" xml:space="preserve">
+    <value>Outdent</value>
+    <comment>The title of the editor action Outdent, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Duplicate" xml:space="preserve">
+    <value>Duplicate</value>
+    <comment>The title of the editor action Duplicate, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="DeleteLine" xml:space="preserve">
+    <value>Delete Line</value>
+    <comment>The title of the editor action DeleteLine, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="MoveLineUp" xml:space="preserve">
+    <value>Move Line Up</value>
+    <comment>The title of the editor action MoveLineUp, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="MoveLineDown" xml:space="preserve">
+    <value>Move Line Down</value>
+    <comment>The title of the editor action MoveLineDown, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="ToggleLineComment" xml:space="preserve">
+    <value>Comment with Line Comment</value>
+    <comment>The title of the editor action ToggleLineComment, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="ToggleBlockComment" xml:space="preserve">
+    <value>Comment with Block Comment</value>
+    <comment>The title of the editor action ToggleBlockComment, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Comment" xml:space="preserve">
+    <value>Comment</value>
+    <comment>The title of the editor action Comment, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Uncomment" xml:space="preserve">
+    <value>Uncomment</value>
+    <comment>The title of the editor action Uncomment, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="JoinLines" xml:space="preserve">
+    <value>Join Lines</value>
+    <comment>The title of the editor action JoinLines, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="ToggleCase" xml:space="preserve">
+    <value>Toggle Case</value>
+    <comment>The title of the editor action ToggleCase, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="CutToLineEnd" xml:space="preserve">
+    <value>Cut to Line End</value>
+    <comment>The title of the editor action CutToLineEnd, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="SplitLine" xml:space="preserve">
+    <value>Split Line</value>
+    <comment>The title of the editor action SplitLine, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="DeleteToLineStart" xml:space="preserve">
+    <value>Delete to Line Start</value>
+    <comment>The title of the editor action DeleteToLineStart, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="DeleteToLineEnd" xml:space="preserve">
+    <value>Delete to Line End</value>
+    <comment>The title of the editor action DeleteToLineEnd, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Transpose" xml:space="preserve">
+    <value>Transpose</value>
+    <comment>The title of the editor action Transpose, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="ToggleOverwrite" xml:space="preserve">
+    <value>Toggle Insert/Overwrite</value>
+    <comment>The title of the editor action ToggleOverwrite, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="ToggleColumnMode" xml:space="preserve">
+    <value>Column Selection Mode</value>
+    <comment>The title of the editor action ToggleColumnMode, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Undo" xml:space="preserve">
+    <value>Undo</value>
+    <comment>The title of the editor action Undo, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Redo" xml:space="preserve">
+    <value>Redo</value>
+    <comment>The title of the editor action Redo, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Cut" xml:space="preserve">
+    <value>Cut</value>
+    <comment>The title of the editor action Cut, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Copy" xml:space="preserve">
+    <value>Copy</value>
+    <comment>The title of the editor action Copy, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Paste" xml:space="preserve">
+    <value>Paste</value>
+    <comment>The title of the editor action Paste, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="PasteAsPlainText" xml:space="preserve">
+    <value>Paste as Plain Text</value>
+    <comment>The title of the editor action PasteAsPlainText, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="ExpandWord" xml:space="preserve">
+    <value>Cyclic Expand Word</value>
+    <comment>The title of the editor action ExpandWord, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="ExpandWordBackward" xml:space="preserve">
+    <value>Cyclic Expand Word (Backward)</value>
+    <comment>The title of the editor action ExpandWordBackward, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="SelectAll" xml:space="preserve">
+    <value>Select All</value>
+    <comment>The title of the editor action SelectAll, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="SelectNextOccurrence" xml:space="preserve">
+    <value>Select Next Occurrence</value>
+    <comment>The title of the editor action SelectNextOccurrence, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="UnselectOccurrence" xml:space="preserve">
+    <value>Unselect Occurrence</value>
+    <comment>The title of the editor action UnselectOccurrence, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="SelectAllOccurrences" xml:space="preserve">
+    <value>Select All Occurrences</value>
+    <comment>The title of the editor action SelectAllOccurrences, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="CaretPerLine" xml:space="preserve">
+    <value>Caret Per Line</value>
+    <comment>The title of the editor action CaretPerLine, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="CloneCaretAbove" xml:space="preserve">
+    <value>Clone Caret Above</value>
+    <comment>The title of the editor action CloneCaretAbove, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="CloneCaretBelow" xml:space="preserve">
+    <value>Clone Caret Below</value>
+    <comment>The title of the editor action CloneCaretBelow, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Escape" xml:space="preserve">
+    <value>Escape</value>
+    <comment>The title of the editor action Escape, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="ToggleFold" xml:space="preserve">
+    <value>Toggle Folding</value>
+    <comment>The title of the editor action ToggleFold, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Fold" xml:space="preserve">
+    <value>Collapse</value>
+    <comment>The title of the editor action Fold, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="Unfold" xml:space="preserve">
+    <value>Expand</value>
+    <comment>The title of the editor action Unfold, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="FoldAll" xml:space="preserve">
+    <value>Collapse All</value>
+    <comment>The title of the editor action FoldAll, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="UnfoldAll" xml:space="preserve">
+    <value>Expand All</value>
+    <comment>The title of the editor action UnfoldAll, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="FoldToDefinitions" xml:space="preserve">
+    <value>Collapse to Definitions</value>
+    <comment>The title of the editor action FoldToDefinitions, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="UnfoldDocComments" xml:space="preserve">
+    <value>Expand Doc Comments</value>
+    <comment>The title of the editor action UnfoldDocComments, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="FoldDocComments" xml:space="preserve">
+    <value>Collapse Doc Comments</value>
+    <comment>The title of the editor action FoldDocComments, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="UnfoldRecursively" xml:space="preserve">
+    <value>Expand Recursively</value>
+    <comment>The title of the editor action UnfoldRecursively, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="FoldRecursively" xml:space="preserve">
+    <value>Collapse Recursively</value>
+    <comment>The title of the editor action FoldRecursively, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="UnfoldToLevel1" xml:space="preserve">
+    <value>Expand to Level 1</value>
+    <comment>The title of the editor action UnfoldToLevel1, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="UnfoldToLevel2" xml:space="preserve">
+    <value>Expand to Level 2</value>
+    <comment>The title of the editor action UnfoldToLevel2, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="UnfoldToLevel3" xml:space="preserve">
+    <value>Expand to Level 3</value>
+    <comment>The title of the editor action UnfoldToLevel3, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="UnfoldToLevel4" xml:space="preserve">
+    <value>Expand to Level 4</value>
+    <comment>The title of the editor action UnfoldToLevel4, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="UnfoldToLevel5" xml:space="preserve">
+    <value>Expand to Level 5</value>
+    <comment>The title of the editor action UnfoldToLevel5, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="UnfoldAllToLevel1" xml:space="preserve">
+    <value>Expand All to Level 1</value>
+    <comment>The title of the editor action UnfoldAllToLevel1, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="UnfoldAllToLevel2" xml:space="preserve">
+    <value>Expand All to Level 2</value>
+    <comment>The title of the editor action UnfoldAllToLevel2, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="UnfoldAllToLevel3" xml:space="preserve">
+    <value>Expand All to Level 3</value>
+    <comment>The title of the editor action UnfoldAllToLevel3, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="UnfoldAllToLevel4" xml:space="preserve">
+    <value>Expand All to Level 4</value>
+    <comment>The title of the editor action UnfoldAllToLevel4, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="UnfoldAllToLevel5" xml:space="preserve">
+    <value>Expand All to Level 5</value>
+    <comment>The title of the editor action UnfoldAllToLevel5, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="MatchBrace" xml:space="preserve">
+    <value>Move Caret to Matching Brace</value>
+    <comment>The title of the editor action MatchBrace, as the menus, Find Action and the keymap list it.</comment>
+  </data>
+  <data name="AddOrRemoveCaret" xml:space="preserve">
+    <value>Add or Remove Caret</value>
+    <comment>The title of the mouse's editor action AddOrRemoveCaret, named where a gesture's keys conflict.</comment>
+  </data>
+  <data name="ColumnSelectionFromCaret" xml:space="preserve">
+    <value>Column Selection from Caret</value>
+    <comment>The title of the mouse's editor action ColumnSelectionFromCaret, named where a gesture's keys conflict.</comment>
+  </data>
+  <data name="ColumnSelectionDrag" xml:space="preserve">
+    <value>Column Selection</value>
+    <comment>The title of the mouse's editor action ColumnSelectionDrag, named where a gesture's keys conflict.</comment>
+  </data>
+  <data name="AddColumnSelectionDrag" xml:space="preserve">
+    <value>Add Column Selection</value>
+    <comment>The title of the mouse's editor action AddColumnSelectionDrag, named where a gesture's keys conflict.</comment>
+  </data>
+</root>

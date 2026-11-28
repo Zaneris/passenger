@@ -2089,7 +2089,7 @@ public sealed partial class DebugController : IDisposable
     public static void AddActions(ActionRegistry actions, Func<DebugController> current)
     {
         UiThread.Check();
-        Add(AppActions.ToggleBreakpoint, "Toggle Breakpoint", (d, c) =>
+        Add(AppActions.ToggleBreakpoint, ActionTitles.ToggleBreakpoint, (d, c) =>
         {
             // On an Avalonia XAML attribute, the attribute's own: it stops as that property is set.
             if (AttributeAtCaret(c) is { } attribute)
@@ -2107,14 +2107,14 @@ public sealed partial class DebugController : IDisposable
             }
         }, (_, c) => Refusals.NeedsLines(c), new("Run", 2, 0));
         // Taken away once it takes a hit, so it stops (or logs) once.
-        Add(AppActions.ToggleTemporaryBreakpoint, "Toggle Temporary Breakpoint", (d, c) => d.Breakpoints.ToggleTemporary(c.File!.Path, c.Caret.Line),
+        Add(AppActions.ToggleTemporaryBreakpoint, ActionTitles.ToggleTemporaryBreakpoint, (d, c) => d.Breakpoints.ToggleTemporary(c.File!.Path, c.Caret.Line),
             (_, c) => Refusals.NeedsLines(c), new("Run", 2, 1));
         // Captures the stack and locals at each hit and lets the program go on.
-        Add(AppActions.ToggleSnapshotPoint, "Toggle Snapshot Point", (d, c) => d.Breakpoints.ToggleSnapshot(c.File!.Path, c.Caret.Line),
+        Add(AppActions.ToggleSnapshotPoint, ActionTitles.ToggleSnapshotPoint, (d, c) => d.Breakpoints.ToggleSnapshot(c.File!.Path, c.Caret.Line),
             (_, c) => Refusals.NeedsLines(c), new("Run", 2, 2));
-        Add(AppActions.ToggleMethodBreakpoint, "Toggle Method Breakpoint", (d, c) => d.ToggleMethod(c), (_, c) => Refusals.NeedsLines(c) ?? (MethodAtCaret(c) is null ? Refusals.NoMethodAtCaret : null), new("Run", 2, 3));
-        Add(AppActions.ToggleBreakpointEnabled, "Toggle Breakpoint Enabled", (d, c) => d.Breakpoints.ToggleEnabled(c.File!.Path, c.Caret.Line), (_, c) => Refusals.NeedsLines(c), new("Run", 2, 4));
-        Add(AppActions.Resume, "Resume Program", (d, c) =>
+        Add(AppActions.ToggleMethodBreakpoint, ActionTitles.ToggleMethodBreakpoint, (d, c) => d.ToggleMethod(c), (_, c) => Refusals.NeedsLines(c) ?? (MethodAtCaret(c) is null ? Refusals.NoMethodAtCaret : null), new("Run", 2, 3));
+        Add(AppActions.ToggleBreakpointEnabled, ActionTitles.ToggleBreakpointEnabled, (d, c) => d.Breakpoints.ToggleEnabled(c.File!.Path, c.Caret.Line), (_, c) => Refusals.NeedsLines(c), new("Run", 2, 4));
+        Add(AppActions.Resume, ActionTitles.Resume, (d, c) =>
         {
             if (!d.IsDebugging)
             {
@@ -2123,65 +2123,65 @@ public sealed partial class DebugController : IDisposable
             }
             IdeErrors.Observe(d.ResumeAsync(session => session.ContinueAsync(), "resume"));
         }, (d, c) => d.IsDebugging ? d.NotPaused() : actions.WhyNot(AppActions.Debug, c), new("Run", 1, 0));
-        Add(AppActions.Pause, "Pause Program", (d, c) => IdeErrors.Observe(d.Session!.PauseAsync()),
+        Add(AppActions.Pause, ActionTitles.Pause, (d, c) => IdeErrors.Observe(d.Session!.PauseAsync()),
             (d, _) => d.NotLive() ?? d.Session!.State switch
             {
                 DebugState.Paused => "The program is paused already",
                 DebugState.Starting => StillStarting,
                 _ => null,
             }, new("Run", 1, 1));
-        Add(AppActions.StepOver, "Step Over", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepOverAsync(), "step over")), (d, _) => d.NotSteppable(), new("Run", 1, 2));
-        Add(AppActions.StepInto, "Step Into", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepIntoAsync(), "step into")), (d, _) => d.NotSteppable(), new("Run", 1, 3));
-        Add(AppActions.SmartStepInto, "Smart Step Into", (d, c) => IdeErrors.Observe(d.SmartStepIntoAsync()), (d, _) => d.NotSteppable(), new("Run", 1, 4));
-        Add(AppActions.StepOut, "Step Out", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepOutAsync(), "step out")), (d, _) => d.NotSteppable(), new("Run", 1, 5));
-        Add(AppActions.RunToCursor, "Run to Cursor", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.RunToCursorAsync(c.File!.Path, c.Caret.Line), "run to the cursor")),
+        Add(AppActions.StepOver, ActionTitles.StepOver, (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepOverAsync(), "step over")), (d, _) => d.NotSteppable(), new("Run", 1, 2));
+        Add(AppActions.StepInto, ActionTitles.StepInto, (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepIntoAsync(), "step into")), (d, _) => d.NotSteppable(), new("Run", 1, 3));
+        Add(AppActions.SmartStepInto, ActionTitles.SmartStepInto, (d, c) => IdeErrors.Observe(d.SmartStepIntoAsync()), (d, _) => d.NotSteppable(), new("Run", 1, 4));
+        Add(AppActions.StepOut, ActionTitles.StepOut, (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepOutAsync(), "step out")), (d, _) => d.NotSteppable(), new("Run", 1, 5));
+        Add(AppActions.RunToCursor, ActionTitles.RunToCursor, (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.RunToCursorAsync(c.File!.Path, c.Caret.Line), "run to the cursor")),
             (d, c) => Refusals.NeedsLines(c) ?? d.NotPaused() ?? d.Session!.RunToWhyNot(c.File!.Path), new("Run", 1, 6));
-        Add(AppActions.SetNextStatement, "Set Next Statement", (d, c) => IdeErrors.Observe(d.SetNextStatementAsync(d.Session!, c.File!.Path, c.Caret.Line)),
+        Add(AppActions.SetNextStatement, ActionTitles.SetNextStatement, (d, c) => IdeErrors.Observe(d.SetNextStatementAsync(d.Session!, c.File!.Path, c.Caret.Line)),
             (d, c) => Refusals.NeedsLines(c) ?? d.NotPaused() ?? (d.Session!.MovesNextStatement ? null : Refusals.NoNextStatement), new("Run", 1, 7));
-        Add(AppActions.ShowExecutionPoint, "Show Execution Point", (d, _) =>
+        Add(AppActions.ShowExecutionPoint, ActionTitles.ShowExecutionPoint, (d, _) =>
         {
             (string path, int line) = d.executionPoint!.Value;
             d.Navigate?.Invoke(d, (path, new TextPosition(d.Current(path, line), 0)));
         }, (d, _) => d.NotPaused() ?? (d.executionPoint is null ? "Where the program is paused has no source" : null), new("Run", 1, 8));
-        Add(AppActions.Evaluate, "Evaluate Expression…", (d, c) => d.view.FocusEvaluate(c.Symbol ?? string.Empty), (d, _) => d.NotPaused(), new("Run", 1, 9));
-        Add(AppActions.AddToWatches, "Add to Watches", (d, c) => IdeErrors.Observe(d.Evaluate(c.Symbol!, watch: true)),
+        Add(AppActions.Evaluate, ActionTitles.Evaluate, (d, c) => d.view.FocusEvaluate(c.Symbol ?? string.Empty), (d, _) => d.NotPaused(), new("Run", 1, 9));
+        Add(AppActions.AddToWatches, ActionTitles.AddToWatches, (d, c) => IdeErrors.Observe(d.Evaluate(c.Symbol!, watch: true)),
             (d, c) => d.NotPaused() ?? (c.Symbol is { Length: > 0 } ? null : Refusals.NoExpression), null);
-        Add(AppActions.QuickEvaluate, "Quick Evaluate Expression", (d, c) => IdeErrors.Observe(d.QuickEvaluateAsync(c)),
+        Add(AppActions.QuickEvaluate, ActionTitles.QuickEvaluate, (d, c) => IdeErrors.Observe(d.QuickEvaluateAsync(c)),
             (d, c) => d.NotPaused() ?? (c.File is null ? Refusals.NoFile : c.Symbol is { Length: > 0 } ? null : Refusals.NoExpression), new("Run", 1, 10));
-        Add(AppActions.Detach, "Detach", (d, c) => IdeErrors.Observe(d.RunDetach is { } run && run.Takes(c, d.Session) ? run.Detach(c, d.Session) : d.DetachAsync()),
+        Add(AppActions.Detach, ActionTitles.Detach, (d, c) => IdeErrors.Observe(d.RunDetach is { } run && run.Takes(c, d.Session) ? run.Detach(c, d.Session) : d.DetachAsync()),
             (d, c) => d.RunDetach is { } run && run.Takes(c, d.Session) ? run.WhyNot(c, d.Session) : d.WhyNotDetach(), new("Run", 0, 8));
         // On an expression pinned to the caret's line already, Unpin from Line: the pin goes.
-        actions.Add(new IdeAction(AppActions.PinToLine, PinToLineTitle, "Debug", c => current().Breakpoints.Pins.Toggle(c.File!.Path, c.Caret.Line, c.Symbol!))
+        actions.Add(new IdeAction(AppActions.PinToLine, ActionTitles.PinToLine, "Debug", c => current().Breakpoints.Pins.Toggle(c.File!.Path, c.Caret.Line, c.Symbol!))
         {
             WhyNot = c => Refusals.NeedsLines(c) ?? (c.Symbol is { Length: > 0 } ? null : Refusals.NoExpression),
             TitleIn = c => c.File is { } file && c.Symbol is { Length: > 0 } expression && current().Breakpoints.Pins.At(file.Path, c.Caret.Line, expression) is not null
-                ? UnpinFromLineTitle : PinToLineTitle,
+                ? ActionTitles.UnpinFromLine : ActionTitles.PinToLine,
             Menus = [new("Run", 1, 11)],
         });
         // Past Just My Code and every breakpoint on the way, where the session's debugger forces steps.
-        Add(AppActions.ForceStepOver, "Force Step Over", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepOverAsync(force: true), "step over")),
+        Add(AppActions.ForceStepOver, ActionTitles.ForceStepOver, (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepOverAsync(force: true), "step over")),
             (d, _) => d.NotSteppable() ?? d.Session!.ForcesWhyNot, new("Run", 1, 20));
-        Add(AppActions.ForceStepInto, "Force Step Into", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepIntoAsync(force: true), "step into")),
+        Add(AppActions.ForceStepInto, ActionTitles.ForceStepInto, (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepIntoAsync(force: true), "step into")),
             (d, _) => d.NotSteppable() ?? d.Session!.ForcesWhyNot, new("Run", 1, 21));
-        Add(AppActions.ForceRunToCursor, "Force Run to Cursor", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.RunToCursorAsync(c.File!.Path, c.Caret.Line, force: true), "run to the cursor")),
+        Add(AppActions.ForceRunToCursor, ActionTitles.ForceRunToCursor, (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.RunToCursorAsync(c.File!.Path, c.Caret.Line, force: true), "run to the cursor")),
             (d, c) => Refusals.NeedsLines(c) ?? d.NotPaused() ?? d.Session!.ForcesWhyNot ?? d.Session!.RunToWhyNot(c.File!.Path), new("Run", 1, 22));
-        Add(AppActions.StepBack, "Step Back", (d, _) => IdeErrors.Observe(d.SaidAsync(d.StepBackAsync())), (d, _) => d.WhyNotStepBack(), new("Run", 1, 13));
-        Add(AppActions.StepForward, "Step Forward", (d, _) => IdeErrors.Observe(d.SaidAsync(d.StepForwardAsync())),
+        Add(AppActions.StepBack, ActionTitles.StepBack, (d, _) => IdeErrors.Observe(d.SaidAsync(d.StepBackAsync())), (d, _) => d.WhyNotStepBack(), new("Run", 1, 13));
+        Add(AppActions.StepForward, ActionTitles.StepForward, (d, _) => IdeErrors.Observe(d.SaidAsync(d.StepForwardAsync())),
             (d, _) => d.NotPaused() ?? (d.MomentShown is null ? Refusals.LiveStop : null), new("Run", 1, 14));
         // Recorded from the program's start where it is on before Debug, else from then on.
-        actions.Add(new IdeAction(AppActions.RecordCalls, "Record Calls", "Debug", _ => current().SetRecording(!current().RecordsCalls))
+        actions.Add(new IdeAction(AppActions.RecordCalls, ActionTitles.RecordCalls, "Debug", _ => current().SetRecording(!current().RecordsCalls))
         {
             Menus = [new("Run", 2, 8)],
             IsChecked = _ => current().RecordsCalls,
         });
         // Every breakpoint stays as it is, and none stops the program until it is chosen again.
-        actions.Add(new IdeAction(AppActions.MuteBreakpoints, "Mute Breakpoints", "Debug", _ => current().Breakpoints.SetMuted(!current().Breakpoints.Muted))
+        actions.Add(new IdeAction(AppActions.MuteBreakpoints, ActionTitles.MuteBreakpoints, "Debug", _ => current().Breakpoints.SetMuted(!current().Breakpoints.Muted))
         {
             Menus = [new("Run", 2, 7)],
             IsChecked = _ => current().Breakpoints.Muted,
         });
 
-        void Add(string id, string title, Action<DebugController, ActionContext> run, Func<DebugController, ActionContext, Words?> whyNot, MenuPlace? menu) =>
+        void Add(string id, Words title, Action<DebugController, ActionContext> run, Func<DebugController, ActionContext, Words?> whyNot, MenuPlace? menu) =>
             actions.Add(new IdeAction(id, title, "Debug", c => run(current(), c)) { WhyNot = c => whyNot(current(), c), Menus = menu is null ? [] : [menu] });
     }
 

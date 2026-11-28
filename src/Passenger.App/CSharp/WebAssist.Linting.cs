@@ -21,7 +21,7 @@ internal sealed partial class WebAssist
     /// <summary>Reformat with Prettier and Fix ESLint Problems, in the editor's menu.</summary>
     public void AddLintingActions(ActionRegistry registry)
     {
-        registry.Add(new IdeAction(AppActions.ReformatWithPrettier, "Reformat with Prettier", "Code", context => IdeErrors.Observe(ReformatWithPrettier()))
+        registry.Add(new IdeAction(AppActions.ReformatWithPrettier, ActionTitles.ReformatWithPrettier, "Code", context => IdeErrors.Observe(ReformatWithPrettier()))
         {
             WhyNot = action => action.File is null ? Refusals.NoFile
                 : action.ReadOnlyWhy is { } readOnly ? readOnly
@@ -29,7 +29,7 @@ internal sealed partial class WebAssist
                 : web.Prettier.PackageFor(action.File.Path) is null ? $"No prettier package formats {action.File.Name}: install it in the project, or name one in {PrettierService.Place}"
                 : null,
         });
-        registry.Add(new IdeAction(AppActions.FixEslintProblems, "Fix ESLint Problems", "Code", context => IdeErrors.Observe(FixEslintProblems()))
+        registry.Add(new IdeAction(AppActions.FixEslintProblems, ActionTitles.FixEslintProblems, "Code", context => IdeErrors.Observe(FixEslintProblems()))
         {
             WhyNot = context => context.File is null ? Refusals.NoFile
                 : context.ReadOnlyWhy is { } readOnly ? readOnly

@@ -290,7 +290,7 @@ public sealed class SmallestWindowTests
                 Assert.True(Drawn(window, shown) == Placed(window, shown),
                     $"The Commit window's '{Words(shown)}' at {Placed(window, shown)} is cut to {Drawn(window, shown)} in a window with room for it");
             }
-            Button create = empty.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == VcsController.CreateRepository);
+            Button create = empty.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == ActionTitles.CreateRepository.English);
             Visual? hit = window.InputHitTest(Placed(window, create).Center) as Visual;
             Assert.True(hit is not null && hit.GetSelfAndVisualAncestors().Contains(create),
                 $"Create Git Repository at {Placed(window, create)} is covered by {hit?.GetType().Name ?? "nothing"}: a click on it misses");

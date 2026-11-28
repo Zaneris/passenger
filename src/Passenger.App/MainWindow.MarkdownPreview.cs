@@ -14,25 +14,25 @@ public partial class MainWindow
 {
     private void AddMarkdownPreview()
     {
-        actions!.Add(new IdeAction(A.MarkdownPreview, "Markdown Preview", "Editor", _ => Editors.ShowsMarkdownPreview = !Editors.ShowsMarkdownPreview)
+        actions!.Add(new IdeAction(A.MarkdownPreview, ActionTitles.MarkdownPreview, "Editor", _ => Editors.ShowsMarkdownPreview = !Editors.ShowsMarkdownPreview)
         {
             WhyNot = WhyNotMarkdown,
             IsChecked = _ => Editors.ShowsMarkdownPreview,
             Menus = [new MenuPlace("View", 4, 1)],
             Words = ["Preview Markdown"],
         });
-        AddMarkdownLayout(A.MarkdownEditorOnly, "Editor Only", PaneView.Editor, ["Hide Markdown Preview"]);
-        AddMarkdownLayout(A.MarkdownEditorAndPreview, "Editor and Preview", PaneView.Split,
+        AddMarkdownLayout(A.MarkdownEditorOnly, ActionTitles.MarkdownEditorOnly, PaneView.Editor, ["Hide Markdown Preview"]);
+        AddMarkdownLayout(A.MarkdownEditorAndPreview, ActionTitles.MarkdownEditorAndPreview, PaneView.Split,
             ["Markdown Preview Beside the Editor", "Markdown Preview Under the Editor", "Turn Markdown Split"]);
-        AddMarkdownLayout(A.MarkdownPreviewOnly, "Preview Only", PaneView.Preview, ["Markdown Preview Alone"]);
-        actions.Add(new IdeAction(A.SvgPreview, "SVG Preview", "Editor", _ => ToggleSvgPreview())
+        AddMarkdownLayout(A.MarkdownPreviewOnly, ActionTitles.MarkdownPreviewOnly, PaneView.Preview, ["Markdown Preview Alone"]);
+        actions.Add(new IdeAction(A.SvgPreview, ActionTitles.SvgPreview, "Editor", _ => ToggleSvgPreview())
         {
             WhyNot = context => context.File is null ? Refusals.NoFile : !EditorArea.IsSvg(context.File) ? "The picture is for SVG files" : null,
             IsChecked = _ => Editors.ShowsSvgPreview,
             Menus = [new MenuPlace("View", 4, 2)],
             Words = ["Preview SVG", "SVG Picture"],
         });
-        actions.Add(new IdeAction(A.HtmlPreview, "HTML Preview", "Editor", _ => ToggleHtmlPreview())
+        actions.Add(new IdeAction(A.HtmlPreview, ActionTitles.HtmlPreview, "Editor", _ => ToggleHtmlPreview())
         {
             WhyNot = context => context.File is null ? Refusals.NoFile
                 : context.File.Language != Languages.Language.Html ? "The preview is for HTML files" : null,
@@ -57,7 +57,7 @@ public partial class MainWindow
 
     /// <summary>A Markdown file's layout as an action, checked while it is in force: Editor and Preview chosen while it is
     /// turns the split, the preview under the editor or beside it, back to as the group's shape stands it.</summary>
-    private void AddMarkdownLayout(string id, string title, PaneView view, IReadOnlyList<string> words) =>
+    private void AddMarkdownLayout(string id, Words title, PaneView view, IReadOnlyList<string> words) =>
         actions!.Add(new IdeAction(id, title, "Editor", _ =>
         {
             PaneLayout layout = Editors.MarkdownLayout;

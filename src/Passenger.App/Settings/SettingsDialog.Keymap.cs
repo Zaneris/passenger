@@ -19,7 +19,7 @@ public sealed partial class SettingsDialog
     /// <summary>What the keymap in force does with a keystroke, as Settings names it beside Vim mode's Ctrl keys: the
     /// action's title, the chords it begins, or nothing.</summary>
     public static string KeymapDoes(ActionRegistry actions, Keystroke stroke) =>
-        actions.Keymap.ActionFor(new Shortcut(stroke)) is { } id ? actions[id]?.Title ?? id
+        actions.Keymap.ActionFor(new Shortcut(stroke)) is { } id ? actions[id]?.Title.Shown ?? id
             : actions.Keymap.StartsChord(stroke) ? "the chords it begins" : "nothing";
 
     private const string ConflictWarning = "This shortcut is already assigned to other actions. Do you want to remove the other assignments?";
@@ -159,7 +159,7 @@ public sealed partial class SettingsDialog
         [.. keymap.ShortcutsFor(action).Select(KeyWords.Of), .. keymap.MouseShortcutsFor(action).Select(KeyWords.Of)];
 
     /// <summary>An action's name as the page and its dialogs say it: the IDE's, else the editor's for its mouse's own.</summary>
-    private string TitleOf(string id) => actions[id]?.Title ?? EditorActions.Gestures.FirstOrDefault(g => g.Id == id).Title ?? id;
+    private string TitleOf(string id) => actions[id]?.Title.Shown ?? EditorActions.Gestures.FirstOrDefault(g => g.Id == id).Title?.Shown ?? id;
 
     /// <summary>The Keymap page: its header (the keymap, Find Actions by Shortcut) and a row for every action, each found by a
     /// search from its words and made as the page is first shown.</summary>
@@ -167,7 +167,7 @@ public sealed partial class SettingsDialog
     {
         AddKeymapHeader();
         Keymap current = Current;
-        foreach (IdeAction action in actions.All.OrderBy(a => a.Title, StringComparer.Ordinal))
+        foreach (IdeAction action in actions.All.OrderBy(a => a.Title.Shown, StringComparer.Ordinal))
         {
             string[] shown = ShownOf(current, action.Id);
             KeymapAction listed = new(action, shown);

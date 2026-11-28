@@ -25,13 +25,13 @@ public partial class MainWindow
 
     private void AddRemoteActions()
     {
-        actions!.Add(new IdeAction(AppActions.PushTo, "Push to…", "Git", _ => IdeErrors.Observe(ShowPushAsync(null, elsewhere: true)))
+        actions!.Add(new IdeAction(AppActions.PushTo, ActionTitles.PushTo, "Git", _ => IdeErrors.Observe(ShowPushAsync(null, elsewhere: true)))
         {
             WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository
                 : session.Vcs.WhyNotRemote ?? (session.Vcs.Branch is null ? Refusals.Detached : null)),
             Menus = [new MenuPlace("Git", 0, 1)],
         });
-        actions.Add(new IdeAction(AppActions.ManageRemotes, "Manage Remotes…", "Git", _ => ShowRemotes())
+        actions.Add(new IdeAction(AppActions.ManageRemotes, ActionTitles.ManageRemotes, "Git", _ => ShowRemotes())
         {
             WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : null),
             Menus = [new MenuPlace("Git", 0, 3)],

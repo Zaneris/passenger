@@ -189,7 +189,7 @@ public partial class MainWindow
         };
         work.Told += (_, told) => announcer.Tell(told.Said.Shown, told.Succeeded ? Urgency.Polite : Urgency.Assertive);
         AddEditing();
-        actions.Add(new IdeAction(A.ShowDebugMemory, "Memory", "Tool Windows", context =>
+        actions.Add(new IdeAction(A.ShowDebugMemory, ActionTitles.ShowDebugMemory, "Tool Windows", context =>
         {
             if (context.ByAgent)
             {
@@ -205,16 +205,16 @@ public partial class MainWindow
                 DebugWindow.Memory.FocusAddress();
             }
         }) { Menus = [new("Run", 1, 13)], FromTerminal = true, WhyNot = _ => Dock[ToolWindowIds.Debug].Unserved });
-        actions.Add(new IdeAction(A.RecentFiles, "Recent Files", "IDE", _ => ShowRecentFiles()) { Menus = [new("File", 0, 4), new("View", 2, 0)] });
-        Add(A.Save, "Save", "IDE", context => IdeErrors.Observe(SaveExplicitly(all: false)), Refusals.NeedsUnsaved, ("File", 1, 0));
-        Add(A.SaveAll, "Save All", "IDE", context => IdeErrors.Observe(SaveExplicitly(all: true)), _ => Editors.Documents.Any(d => d.IsModified) ? null : "Every file is saved", ("File", 1, 1));
+        actions.Add(new IdeAction(A.RecentFiles, ActionTitles.RecentFiles, "IDE", _ => ShowRecentFiles()) { Menus = [new("File", 0, 4), new("View", 2, 0)] });
+        Add(A.Save, ActionTitles.Save, "IDE", context => IdeErrors.Observe(SaveExplicitly(all: false)), Refusals.NeedsUnsaved, ("File", 1, 0));
+        Add(A.SaveAll, ActionTitles.SaveAll, "IDE", context => IdeErrors.Observe(SaveExplicitly(all: true)), _ => Editors.Documents.Any(d => d.IsModified) ? null : "Every file is saved", ("File", 1, 1));
         // Quit is the application menu's on macOS, named and found as it names it; either closes every window.
-        Add(A.Exit, QuitTitle, "IDE", _ => Exit(), c => c.ByAgent ? Refusals.QuitIsThePersons : null, OperatingSystem.IsMacOS() ? null : ("File", 4, 0),
+        Add(A.Exit, OperatingSystem.IsMacOS() ? ActionTitles.QuitPassenger : ActionTitles.Exit, "IDE", _ => Exit(), c => c.ByAgent ? Refusals.QuitIsThePersons : null, OperatingSystem.IsMacOS() ? null : ("File", 4, 0),
             words: [OperatingSystem.IsMacOS() ? "Exit" : "Quit"]);
-        Add(A.FindAction, "Find Action…", "IDE", _ => ShowFindAction(), menu: ("Help", 0, 0));
+        Add(A.FindAction, ActionTitles.FindAction, "IDE", _ => ShowFindAction(), menu: ("Help", 0, 0));
 
         // Unit Tests, Problems, the Explorer, the Step Library and Coverage take Find's keys for their filters, a console its text.
-        Add(A.Find, "Find", "IDE", c =>
+        Add(A.Find, ActionTitles.Find, "IDE", c =>
         {
             if (c.ToolWindow?.Id == ToolWindowIds.Tests)
             {
@@ -258,55 +258,55 @@ public partial class MainWindow
             }
         }, c => c.ToolWindow?.Id is ToolWindowIds.Tests or ToolWindowIds.Problems or ToolWindowIds.StepLibrary or ToolWindowIds.Coverage or ToolWindowIds.Modules || c.ToolWindow?.Id == ToolWindowIds.Explorer && Explorer.Tree.Root is not null || ConsoleFind(c) is not null
             || DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 0));
-        Add(A.Replace, "Replace", "IDE", c => (DiffWindowOf(c) is { } window ? (Action<bool>)window.ShowFind : Editors.ShowFind)(true),
+        Add(A.Replace, ActionTitles.Replace, "IDE", c => (DiffWindowOf(c) is { } window ? (Action<bool>)window.ShowFind : Editors.ShowFind)(true),
             c => DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 1));
-        Add(A.FindNext, "Find Next", "IDE", c => (ConsoleFind(c) ?? DiffWindowOf(c)?.Find ?? Editors.FindBar).Next(),
+        Add(A.FindNext, ActionTitles.FindNext, "IDE", c => (ConsoleFind(c) ?? DiffWindowOf(c)?.Find ?? Editors.FindBar).Next(),
             c => ConsoleFind(c) is not null || DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 2));
-        Add(A.FindPrevious, "Find Previous", "IDE", c => (ConsoleFind(c) ?? DiffWindowOf(c)?.Find ?? Editors.FindBar).Previous(),
+        Add(A.FindPrevious, ActionTitles.FindPrevious, "IDE", c => (ConsoleFind(c) ?? DiffWindowOf(c)?.Find ?? Editors.FindBar).Previous(),
             c => ConsoleFind(c) is not null || DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 3));
-        Add(A.FindWordAtCaret, "Find Word at Caret", "IDE", _ => Editors.FindBar.FindAtCaret(forward: true), Refusals.NeedsFile, ("Edit/Find", 0, 4));
-        Add(A.FindPreviousWordAtCaret, "Find Previous Word at Caret", "IDE", _ => Editors.FindBar.FindAtCaret(forward: false), Refusals.NeedsFile,
+        Add(A.FindWordAtCaret, ActionTitles.FindWordAtCaret, "IDE", _ => Editors.FindBar.FindAtCaret(forward: true), Refusals.NeedsFile, ("Edit/Find", 0, 4));
+        Add(A.FindPreviousWordAtCaret, ActionTitles.FindPreviousWordAtCaret, "IDE", _ => Editors.FindBar.FindAtCaret(forward: false), Refusals.NeedsFile,
             ("Edit/Find", 0, 5));
-        Add(A.FindInSelection, "Find in Selection", "IDE", _ => Editors.FindBar.ToggleInSelection(), Refusals.NeedsFile, ("Edit/Find", 0, 6));
-        Add(A.IncrementalSearch, "Incremental Search", "IDE", _ => Editors.FindBar.OpenEmpty(), Refusals.NeedsFile, ("Edit/Find", 0, 7));
-        Add(A.FindInFiles, "Find in Files…", "IDE", c => ShowFindInFiles(replace: false, ExplorerScope(c)), NeedsFolder, ("Edit/Find", 1, 0));
-        Add(A.ReplaceInFiles, "Replace in Files…", "IDE", c => ShowFindInFiles(replace: true, ExplorerScope(c)), NeedsFolder, ("Edit/Find", 1, 1));
-        Add(A.ExtendSelection, "Extend Selection", "Editor", _ => ExtendSelection(), Refusals.NeedsFile, ("Edit", 2, 1));
-        Add(A.ShrinkSelection, "Shrink Selection", "Editor", _ => ShrinkSelection(), Refusals.NeedsFile, ("Edit", 2, 2));
-        Add(A.MethodUp, "Method Up", "Editor", _ => MoveToMember(down: false), WhyNoCSharpStructure, words: ["Previous Method", "Previous Member"]);
-        Add(A.MethodDown, "Method Down", "Editor", _ => MoveToMember(down: true), WhyNoCSharpStructure, words: ["Next Method", "Next Member"]);
-        Add(A.NextUsage, "Next Usage", "Navigate", _ => MoveToUsage(next: true), Refusals.NeedsFile, words: ["Next Highlighted Usage", "Next Occurrence"]);
-        Add(A.PreviousUsage, "Previous Usage", "Navigate", _ => MoveToUsage(next: false), Refusals.NeedsFile, words: ["Previous Highlighted Usage", "Previous Occurrence"]);
-        Add(A.GoToContainingDeclaration, "Go to Containing Declaration", "Navigate", _ => ToContainingDeclaration(select: false), WhyNoCSharpStructure);
-        Add(A.SelectContainingDeclaration, "Select Containing Declaration", "Editor", _ => ToContainingDeclaration(select: true), WhyNoCSharpStructure);
-        Add(A.CodeBlockStart, "Move Caret to Code Block Start", "Editor", _ => ToCodeBlock(end: false, extend: false), Refusals.NeedsFile);
-        Add(A.CodeBlockEnd, "Move Caret to Code Block End", "Editor", _ => ToCodeBlock(end: true, extend: false), Refusals.NeedsFile);
-        Add(A.CodeBlockStartWithSelection, "Move Caret to Code Block Start with Selection", "Editor", _ => ToCodeBlock(end: false, extend: true), Refusals.NeedsFile);
-        Add(A.CodeBlockEndWithSelection, "Move Caret to Code Block End with Selection", "Editor", _ => ToCodeBlock(end: true, extend: true), Refusals.NeedsFile);
-        Add(A.GoToRegion, "Go to Region", "Navigate", _ => GoToRegion(), WhyNoCSharpStructure, ("Navigate", 1, 7), words: ["Regions", "#region"]);
-        Add(A.QuickImplementations, "Quick Implementations", "Code", _ => IdeErrors.Observe(Assist.QuickImplementationsAsync(TitleOf(A.QuickImplementations))),
+        Add(A.FindInSelection, ActionTitles.FindInSelection, "IDE", _ => Editors.FindBar.ToggleInSelection(), Refusals.NeedsFile, ("Edit/Find", 0, 6));
+        Add(A.IncrementalSearch, ActionTitles.IncrementalSearch, "IDE", _ => Editors.FindBar.OpenEmpty(), Refusals.NeedsFile, ("Edit/Find", 0, 7));
+        Add(A.FindInFiles, ActionTitles.FindInFiles, "IDE", c => ShowFindInFiles(replace: false, ExplorerScope(c)), NeedsFolder, ("Edit/Find", 1, 0));
+        Add(A.ReplaceInFiles, ActionTitles.ReplaceInFiles, "IDE", c => ShowFindInFiles(replace: true, ExplorerScope(c)), NeedsFolder, ("Edit/Find", 1, 1));
+        Add(A.ExtendSelection, ActionTitles.ExtendSelection, "Editor", _ => ExtendSelection(), Refusals.NeedsFile, ("Edit", 2, 1));
+        Add(A.ShrinkSelection, ActionTitles.ShrinkSelection, "Editor", _ => ShrinkSelection(), Refusals.NeedsFile, ("Edit", 2, 2));
+        Add(A.MethodUp, ActionTitles.MethodUp, "Editor", _ => MoveToMember(down: false), WhyNoCSharpStructure, words: ["Previous Method", "Previous Member"]);
+        Add(A.MethodDown, ActionTitles.MethodDown, "Editor", _ => MoveToMember(down: true), WhyNoCSharpStructure, words: ["Next Method", "Next Member"]);
+        Add(A.NextUsage, ActionTitles.NextUsage, "Navigate", _ => MoveToUsage(next: true), Refusals.NeedsFile, words: ["Next Highlighted Usage", "Next Occurrence"]);
+        Add(A.PreviousUsage, ActionTitles.PreviousUsage, "Navigate", _ => MoveToUsage(next: false), Refusals.NeedsFile, words: ["Previous Highlighted Usage", "Previous Occurrence"]);
+        Add(A.GoToContainingDeclaration, ActionTitles.GoToContainingDeclaration, "Navigate", _ => ToContainingDeclaration(select: false), WhyNoCSharpStructure);
+        Add(A.SelectContainingDeclaration, ActionTitles.SelectContainingDeclaration, "Editor", _ => ToContainingDeclaration(select: true), WhyNoCSharpStructure);
+        Add(A.CodeBlockStart, ActionTitles.CodeBlockStart, "Editor", _ => ToCodeBlock(end: false, extend: false), Refusals.NeedsFile);
+        Add(A.CodeBlockEnd, ActionTitles.CodeBlockEnd, "Editor", _ => ToCodeBlock(end: true, extend: false), Refusals.NeedsFile);
+        Add(A.CodeBlockStartWithSelection, ActionTitles.CodeBlockStartWithSelection, "Editor", _ => ToCodeBlock(end: false, extend: true), Refusals.NeedsFile);
+        Add(A.CodeBlockEndWithSelection, ActionTitles.CodeBlockEndWithSelection, "Editor", _ => ToCodeBlock(end: true, extend: true), Refusals.NeedsFile);
+        Add(A.GoToRegion, ActionTitles.GoToRegion, "Navigate", _ => GoToRegion(), WhyNoCSharpStructure, ("Navigate", 1, 7), words: ["Regions", "#region"]);
+        Add(A.QuickImplementations, ActionTitles.QuickImplementations, "Code", _ => IdeErrors.Observe(Assist.QuickImplementationsAsync(TitleOf(A.QuickImplementations))),
             WhyNoCSharpStructure, words: ["Quick Definition", "Peek Definition", "Peek Implementation"]);
-        Add(A.ErrorDescription, "Error Description", "Code", _ => IdeErrors.Observe(Assist.ErrorDescriptionAsync(TitleOf(A.ErrorDescription))), Refusals.NeedsFile,
+        Add(A.ErrorDescription, ActionTitles.ErrorDescription, "Code", _ => IdeErrors.Observe(Assist.ErrorDescriptionAsync(TitleOf(A.ErrorDescription))), Refusals.NeedsFile,
             words: ["Problem", "Diagnostic"]);
-        Add(A.ExpressionTypeInfo, "Expression Type Info", "Code", _ => IdeErrors.Observe(Assist.ExpressionTypeAsync(TitleOf(A.ExpressionTypeInfo))), WhyNoCSharpStructure,
+        Add(A.ExpressionTypeInfo, ActionTitles.ExpressionTypeInfo, "Code", _ => IdeErrors.Observe(Assist.ExpressionTypeAsync(TitleOf(A.ExpressionTypeInfo))), WhyNoCSharpStructure,
             words: ["Type of Expression"]);
-        Add(A.CollapseSelection, "Collapse Selection", "Editor", _ => CollapseSelection(), Refusals.NeedsFile, words: ["Fold Selection", "Folding"]);
-        Add(A.CollapseBlock, "Collapse Block", "Editor", _ => CollapseBlock(), Refusals.NeedsFile, words: ["Fold Block", "Folding"]);
-        Add(A.PasteFromHistory, "Paste from History", "Editor", _ => IdeErrors.Observe(ShowPasteHistoryAsync()), c => Refusals.NeedsFile(c) ?? c.ReadOnlyWhy,
+        Add(A.CollapseSelection, ActionTitles.CollapseSelection, "Editor", _ => CollapseSelection(), Refusals.NeedsFile, words: ["Fold Selection", "Folding"]);
+        Add(A.CollapseBlock, ActionTitles.CollapseBlock, "Editor", _ => CollapseBlock(), Refusals.NeedsFile, words: ["Fold Block", "Folding"]);
+        Add(A.PasteFromHistory, ActionTitles.PasteFromHistory, "Editor", _ => IdeErrors.Observe(ShowPasteHistoryAsync()), c => Refusals.NeedsFile(c) ?? c.ReadOnlyWhy,
             words: ["Clipboard History", "Paste Multiple"]);
-        Add(A.CopyReference, "Copy Reference", "Editor", _ => IdeErrors.Observe(CopyReferenceAsync()), Refusals.NeedsFile,
+        Add(A.CopyReference, ActionTitles.CopyReference, "Editor", _ => IdeErrors.Observe(CopyReferenceAsync()), Refusals.NeedsFile,
             words: ["Copy Qualified Name", "Copy Fully Qualified Name"]);
-        Add(A.ShowFilePath, "Show File Path", "Navigate", _ => Assist.ShowFilePath(TitleOf(A.ShowFilePath), Editors.Active!, ShowInFileManager), Refusals.NeedsFile,
+        Add(A.ShowFilePath, ActionTitles.ShowFilePath, "Navigate", _ => Assist.ShowFilePath(TitleOf(A.ShowFilePath), Editors.Active!, ShowInFileManager), Refusals.NeedsFile,
             words: ["Reveal", "Folder"]);
 
-        Add(A.Back, "Back", "Navigate", _ => navigator.StepHistory(-1), _ => navigator.WhyNotStepHistory(-1), ("Navigate", 0, 0));
-        Add(A.Forward, "Forward", "Navigate", _ => navigator.StepHistory(1), _ => navigator.WhyNotStepHistory(1), ("Navigate", 0, 1));
-        Add(A.GoToEverything, "Search Everywhere", "Navigate", _ => navigator.ShowGoToEverything(), NeedsFolder, ("Navigate", 1, 0));
-        Add(A.GoToFile, "Go to File", "Navigate", _ => navigator.ShowGoToFile(), NeedsFolder, ("Navigate", 1, 1));
-        Add(A.GoToSymbol, "Go to Symbol", "Navigate", _ => navigator.ShowGoToSymbol(), NeedsFolder, ("Navigate", 1, 2));
-        Add(A.GoToLine, "Go to Line:Column", "Navigate", _ => navigator.ShowGoToLine(), Refusals.NeedsLines, ("Navigate", 1, 3));
-        Add(A.FileStructure, "File Structure", "Navigate", _ => navigator.ShowFileStructure(), Refusals.NeedsFile, ("Navigate", 1, 4));
-        Add(A.GoToRelated, "Go to Related File", "Navigate", c => OpenFile(Navigation.CodeBehind.PartnerOf(c.File!.Path)!),
+        Add(A.Back, ActionTitles.Back, "Navigate", _ => navigator.StepHistory(-1), _ => navigator.WhyNotStepHistory(-1), ("Navigate", 0, 0));
+        Add(A.Forward, ActionTitles.Forward, "Navigate", _ => navigator.StepHistory(1), _ => navigator.WhyNotStepHistory(1), ("Navigate", 0, 1));
+        Add(A.GoToEverything, ActionTitles.GoToEverything, "Navigate", _ => navigator.ShowGoToEverything(), NeedsFolder, ("Navigate", 1, 0));
+        Add(A.GoToFile, ActionTitles.GoToFile, "Navigate", _ => navigator.ShowGoToFile(), NeedsFolder, ("Navigate", 1, 1));
+        Add(A.GoToSymbol, ActionTitles.GoToSymbol, "Navigate", _ => navigator.ShowGoToSymbol(), NeedsFolder, ("Navigate", 1, 2));
+        Add(A.GoToLine, ActionTitles.GoToLine, "Navigate", _ => navigator.ShowGoToLine(), Refusals.NeedsLines, ("Navigate", 1, 3));
+        Add(A.FileStructure, ActionTitles.FileStructure, "Navigate", _ => navigator.ShowFileStructure(), Refusals.NeedsFile, ("Navigate", 1, 4));
+        Add(A.GoToRelated, ActionTitles.GoToRelated, "Navigate", c => OpenFile(Navigation.CodeBehind.PartnerOf(c.File!.Path)!),
             c => c.File is not { } file ? Refusals.NoFile : Navigation.CodeBehind.PartnerOf(file.Path) is null ? $"{file.Name} has no code-behind or markup beside it" : null,
             ("Navigate", 1, 5), words: ["Code-Behind", "View Code", "View Markup"]);
 
@@ -325,25 +325,25 @@ public partial class MainWindow
         AddFrameActions();
 
         // The tool windows' frame, run from the terminal too.
-        actions.Add(new IdeAction(A.MaximizeToolWindow, "Maximize Tool Window", "Tool Windows", _ => Dock.ToggleMaximize()) { Menus = [new("View", 3, 0)], FromTerminal = true });
-        actions.Add(new IdeAction(A.HideAllToolWindows, "Hide All Tool Windows", "Tool Windows", _ => Dock.ToggleHideAll()) { Menus = [new("View", 3, 1)], FromTerminal = true });
-        actions.Add(new IdeAction(A.HideToolWindow, "Hide Active Tool Window", "Tool Windows", HideToolWindow) { Menus = [new("View", 3, 2)], FromTerminal = true });
-        actions.Add(new IdeAction(A.CloseToolWindow, "Close Active Tool Window", "Tool Windows", CloseToolWindow)
+        actions.Add(new IdeAction(A.MaximizeToolWindow, ActionTitles.MaximizeToolWindow, "Tool Windows", _ => Dock.ToggleMaximize()) { Menus = [new("View", 3, 0)], FromTerminal = true });
+        actions.Add(new IdeAction(A.HideAllToolWindows, ActionTitles.HideAllToolWindows, "Tool Windows", _ => Dock.ToggleHideAll()) { Menus = [new("View", 3, 1)], FromTerminal = true });
+        actions.Add(new IdeAction(A.HideToolWindow, ActionTitles.HideToolWindow, "Tool Windows", HideToolWindow) { Menus = [new("View", 3, 2)], FromTerminal = true });
+        actions.Add(new IdeAction(A.CloseToolWindow, ActionTitles.CloseToolWindow, "Tool Windows", CloseToolWindow)
         {
             FromTerminal = true,
             WhyNot = _ => !Dock.ClosesOffStripe ? Refusals.ClosedKeepIcons : Dock.Active is not { IsShown: true } ? Refusals.NoToolWindowOpen : null,
         });
-        actions.Add(new IdeAction(A.ExpandAll, "Expand All", "Tool Windows", c => c.ToolWindow!.ExpandAll!()) { WhyNot = c => NoTree(c, c.ToolWindow?.ExpandAll, "open") });
-        actions.Add(new IdeAction(A.CollapseAll, "Collapse All", "Tool Windows", c => c.ToolWindow!.CollapseAll!()) { WhyNot = c => NoTree(c, c.ToolWindow?.CollapseAll, "close") });
+        actions.Add(new IdeAction(A.ExpandAll, ActionTitles.ExpandAll, "Tool Windows", c => c.ToolWindow!.ExpandAll!()) { WhyNot = c => NoTree(c, c.ToolWindow?.ExpandAll, "open") });
+        actions.Add(new IdeAction(A.CollapseAll, ActionTitles.CollapseAll, "Tool Windows", c => c.ToolWindow!.CollapseAll!()) { WhyNot = c => NoTree(c, c.ToolWindow?.CollapseAll, "close") });
         // Pressed in a tool window by the editor's Escape (KeysIn), where nothing of the window's own takes that key.
-        actions.Add(new IdeAction(A.FocusEditor, "Focus Editor", "IDE", _ => FocusEditor())
+        actions.Add(new IdeAction(A.FocusEditor, ActionTitles.FocusEditor, "IDE", _ => FocusEditor())
         {
             WhyNot = c => c.ByAgent ? Refusals.PersonsKeys : Refusals.NeedsFile(c),
             KeysOf = () => AppActions.KeysIn(A.FocusEditor) is var keys && keys != A.FocusEditor ? keys : null,
         });
-        Add(A.ToggleSolutionAnalysis, "Toggle Solution-Wide Analysis", "IDE", _ => ToggleSolutionAnalysis(),
+        Add(A.ToggleSolutionAnalysis, ActionTitles.ToggleSolutionAnalysis, "IDE", _ => ToggleSolutionAnalysis(),
             _ => session.CSharp is null ? session.WhyNoCSharp : null, ("Code", 4, 0));
-        Add(A.RestartCSharpServer, "Restart C# Language Server", "IDE", _ => RestartCSharpServer(),
+        Add(A.RestartCSharpServer, ActionTitles.RestartCSharpServer, "IDE", _ => RestartCSharpServer(),
             _ => session.CSharp is null ? session.WhyNoCSharp : null, ("Code", 4, 1), words: ["Roslyn"]);
     }
 
@@ -417,7 +417,7 @@ public partial class MainWindow
             menus[E.UnfoldToLevels[level]] = [new("Code/Folding/Expand to Level", 0, level)];
             menus[E.UnfoldAllToLevels[level]] = [new("Code/Folding/Expand All to Level", 0, level)];
         }
-        foreach ((string id, string title) in E.All)
+        foreach ((string id, Words title) in E.All)
         {
             actions!.Add(new IdeAction(id, title, "Editor", context => Edit(id, context))
             {
@@ -493,36 +493,36 @@ public partial class MainWindow
     /// Configurations.</summary>
     private void AddBuilding()
     {
-        Add(A.Build, "Build Solution", "Run", _ => BuildSolution(), Unbuildable, ("Build", 0, 0));
+        Add(A.Build, ActionTitles.Build, "Run", _ => BuildSolution(), Unbuildable, ("Build", 0, 0));
         // One build at a time, whichever began it: while one works, the others say so.
-        Add(A.RebuildSolution, "Rebuild Solution", "Build", _ => Build(BuildKind.Rebuild), Unbuildable, ("Build", 0, 1), works: A.Build);
-        Add(A.CleanSolution, "Clean Solution", "Build", _ => Build(BuildKind.Clean), Unbuildable, ("Build", 0, 2), works: A.Build);
-        Add(A.CancelBuild, "Cancel Build", "Build", _ => session.Builder.Stop(), _ => session.Builder.IsRunning ? null : Refusals.NoBuildRunning, ("Build", 0, 3));
-        Add(A.BuildSelected, "Build Selected Projects", "Build", _ => Build(BuildKind.Build, SelectedProjects()), NoneSelected, ("Build", 1, 0), works: A.Build);
-        Add(A.RebuildSelected, "Rebuild Selected Projects", "Build", _ => Build(BuildKind.Rebuild, SelectedProjects()), NoneSelected, ("Build", 1, 1), works: A.Build);
-        Add(A.CleanSelected, "Clean Selected Projects", "Build", _ => Build(BuildKind.Clean, SelectedProjects()), NoneSelected, ("Build", 1, 2), works: A.Build);
+        Add(A.RebuildSolution, ActionTitles.RebuildSolution, "Build", _ => Build(BuildKind.Rebuild), Unbuildable, ("Build", 0, 1), works: A.Build);
+        Add(A.CleanSolution, ActionTitles.CleanSolution, "Build", _ => Build(BuildKind.Clean), Unbuildable, ("Build", 0, 2), works: A.Build);
+        Add(A.CancelBuild, ActionTitles.CancelBuild, "Build", _ => session.Builder.Stop(), _ => session.Builder.IsRunning ? null : Refusals.NoBuildRunning, ("Build", 0, 3));
+        Add(A.BuildSelected, ActionTitles.BuildSelected, "Build", _ => Build(BuildKind.Build, SelectedProjects()), NoneSelected, ("Build", 1, 0), works: A.Build);
+        Add(A.RebuildSelected, ActionTitles.RebuildSelected, "Build", _ => Build(BuildKind.Rebuild, SelectedProjects()), NoneSelected, ("Build", 1, 1), works: A.Build);
+        Add(A.CleanSelected, ActionTitles.CleanSelected, "Build", _ => Build(BuildKind.Clean, SelectedProjects()), NoneSelected, ("Build", 1, 2), works: A.Build);
 
-        Add(A.RunProgram, "Run", "Run", _ => RunSelected(), _ => Unconfigured("run"), ("Run", 0, 0));
-        Add(A.Debug, "Debug", "Run", _ => DebugSelected(), _ => Untrusted() ?? (Configuration is { IsScript: true } script ? Refusals.ScriptOnlyRuns(script.Name) : Unconfigured("debug")),
+        Add(A.RunProgram, ActionTitles.RunProgram, "Run", _ => RunSelected(), _ => Unconfigured("run"), ("Run", 0, 0));
+        Add(A.Debug, ActionTitles.Debug, "Run", _ => DebugSelected(), _ => Untrusted() ?? (Configuration is { IsScript: true } script ? Refusals.ScriptOnlyRuns(script.Name) : Unconfigured("debug")),
             ("Run", 0, 1));
-        Add(A.RunCurrentScene, "Run Current Scene", "Run", _ => IdeErrors.Observe(buildRun.RunCurrentSceneAsync()), _ => Untrusted() ?? buildRun.WhyNotRunScene(), ("Run", 0, 2));
-        Add(A.RunAnotherCopy, "Run Another Copy", "Run", _ => IdeErrors.Observe(buildRun.RunAnotherCopyAsync()),
+        Add(A.RunCurrentScene, ActionTitles.RunCurrentScene, "Run", _ => IdeErrors.Observe(buildRun.RunCurrentSceneAsync()), _ => Untrusted() ?? buildRun.WhyNotRunScene(), ("Run", 0, 2));
+        Add(A.RunAnotherCopy, ActionTitles.RunAnotherCopy, "Run", _ => IdeErrors.Observe(buildRun.RunAnotherCopyAsync()),
             _ => Untrusted() ?? (session.Configurations.Chosen is { } chosen ? buildRun.WhyNotRunAnotherCopy(chosen) : Unconfigured("run")), ("Run", 0, 2), works: A.RunProgram);
-        Add(A.DebugAnotherCopy, "Debug Another Copy", "Run", _ => IdeErrors.Observe(DebugAnotherCopyAsync()),
+        Add(A.DebugAnotherCopy, ActionTitles.DebugAnotherCopy, "Run", _ => IdeErrors.Observe(DebugAnotherCopyAsync()),
             _ => Untrusted() ?? (session.Configurations.Chosen is { } chosen ? buildRun.WhyNotAnotherCopy(chosen) : Unconfigured("debug")), ("Run", 0, 2), works: A.Debug);
-        Add(A.RunInTerminal, "Run in the Terminal", "Run", c => StartInTerminal(c, A.RunProgram), _ => Untrusted() ?? (buildRun.RunNeed is null ? Refusals.NoTerminalNeed("Run") : null),
+        Add(A.RunInTerminal, ActionTitles.RunInTerminal, "Run", c => StartInTerminal(c, A.RunProgram), _ => Untrusted() ?? (buildRun.RunNeed is null ? Refusals.NoTerminalNeed("Run") : null),
             words: ["Use external console", "Console.ReadKey"], works: A.RunProgram);
-        Add(A.DebugInTerminal, "Debug in the Terminal", "Run", c => StartInTerminal(c, A.Debug), _ => Untrusted() ?? (buildRun.DebugNeed is null ? Refusals.NoTerminalNeed("Debug") : null),
+        Add(A.DebugInTerminal, ActionTitles.DebugInTerminal, "Run", c => StartInTerminal(c, A.Debug), _ => Untrusted() ?? (buildRun.DebugNeed is null ? Refusals.NoTerminalNeed("Debug") : null),
             words: ["Use external console", "Console.ReadKey"], works: A.Debug);
-        Add(A.ProfileInTerminal, "Profile in the Terminal", "Run", c => StartInTerminal(c, A.Profile),
+        Add(A.ProfileInTerminal, ActionTitles.ProfileInTerminal, "Run", c => StartInTerminal(c, A.Profile),
             _ => Untrusted() ?? (buildRun.RunNeed is not { Profiled: true } ? Refusals.NoTerminalNeed("Profiler") : null),
             words: ["Use external console", "Console.ReadKey"], works: A.Profile);
         // No key in Rider's Visual Studio keymaps.
-        Add(A.EditConfigurations, "Edit Configurations…", "Run", _ => ShowRunConfigurations(), NeedsFolder, ("Run", 0, 5));
+        Add(A.EditConfigurations, ActionTitles.EditConfigurations, "Run", _ => ShowRunConfigurations(), NeedsFolder, ("Run", 0, 5));
         // Edit Configurations' button, on the configuration chosen there; elsewhere, on the toolbar's.
-        Add(A.SaveAsLaunchProfile, "Save as Launch Profile", "Run", _ => IdeErrors.Observe(ShareChosenAsync()), _ => WhyNotShare());
+        Add(A.SaveAsLaunchProfile, ActionTitles.SaveAsLaunchProfile, "Run", _ => IdeErrors.Observe(ShareChosenAsync()), _ => WhyNotShare());
         // Rerun runs the last session again, as it ran; one still running is stopped first.
-        Add(A.Rerun, "Rerun", "Run", c =>
+        Add(A.Rerun, ActionTitles.Rerun, "Run", c =>
         {
             if (session.Debug.Session is { } debugged && debugged == attachSession)
             {
@@ -537,10 +537,10 @@ public partial class MainWindow
                 IdeErrors.Observe(RerunAsync());
             }
         }, _ => session.Debug.Session is { } debugged && debugged == attachSession ? null : Unconfigured("run"), ("Run", 0, 6));
-        Add(A.Stop, "Stop", "Run", _ => buildRun.Stop(), _ => buildRun.WhyNotStop(), ("Run", 0, 7));
+        Add(A.Stop, ActionTitles.Stop, "Run", _ => buildRun.Stop(), _ => buildRun.WhyNotStop(), ("Run", 0, 7));
         // Every program debugged, where Stop ends the one chosen in the Debug window.
-        Add(A.StopAll, "Stop All", "Run", context => IdeErrors.Observe(buildRun.StopAllAsync()), _ => buildRun.WhyNotStop(), ("Run", 0, 7));
-        Add(A.EditBreakpoint, "Edit Breakpoint…", "Debug", c =>
+        Add(A.StopAll, ActionTitles.StopAll, "Run", context => IdeErrors.Observe(buildRun.StopAllAsync()), _ => buildRun.WhyNotStop(), ("Run", 0, 7));
+        Add(A.EditBreakpoint, ActionTitles.EditBreakpoint, "Debug", c =>
         {
             (string Name, Passenger.Text.TextPosition At)? attribute = Debugging.DebugController.AttributeAtCaret(c);
             int line = attribute?.At.Line ?? c.Caret.Line;
@@ -571,13 +571,13 @@ public partial class MainWindow
             }
             ShowBreakpointPopup(editing);
         }, Refusals.NeedsFile, ("Run", 2, 5));
-        Add(A.ViewBreakpoints, "View Breakpoints and Exceptions…", "Debug", _ => ShowBreakpoints(null), menu: ("Run", 2, 6));
-        Add(A.ExceptionSettings, "Exception Settings…", "Debug", _ => ShowBreakpoints(session.Debug.Breakpoints.Exceptions.FirstOrDefault()), menu: ("Run", 2, 11),
+        Add(A.ViewBreakpoints, ActionTitles.ViewBreakpoints, "Debug", _ => ShowBreakpoints(null), menu: ("Run", 2, 6));
+        Add(A.ExceptionSettings, ActionTitles.ExceptionSettings, "Debug", _ => ShowBreakpoints(session.Debug.Breakpoints.Exceptions.FirstOrDefault()), menu: ("Run", 2, 11),
             words: ["Exception Breakpoints", "Break on Exceptions"]);
-        Add(A.RemoveAllBreakpoints, "Remove All Breakpoints", "Debug", _ => session.Debug.Breakpoints.RemoveAllInCode(),
+        Add(A.RemoveAllBreakpoints, ActionTitles.RemoveAllBreakpoints, "Debug", _ => session.Debug.Breakpoints.RemoveAllInCode(),
             _ => session.Debug.Breakpoints.All.Any() || session.Debug.Breakpoints.Methods.Count > 0 ? null : Refusals.NoBreakpointsInCode, ("Run", 2, 10));
-        Add(A.ExportBreakpoints, "Export Breakpoints…", "Debug", _ => IdeErrors.Observe(ExportBreakpointsAsync()), NeedsFolder, ("Run", 2, 8));
-        Add(A.ImportBreakpoints, "Import Breakpoints…", "Debug", _ => IdeErrors.Observe(ImportBreakpointsAsync()), NeedsFolder, ("Run", 2, 9));
+        Add(A.ExportBreakpoints, ActionTitles.ExportBreakpoints, "Debug", _ => IdeErrors.Observe(ExportBreakpointsAsync()), NeedsFolder, ("Run", 2, 8));
+        Add(A.ImportBreakpoints, ActionTitles.ImportBreakpoints, "Debug", _ => IdeErrors.Observe(ImportBreakpointsAsync()), NeedsFolder, ("Run", 2, 9));
 
         Words? Unbuildable(ActionContext _) => Folder is null ? Refusals.NoFolderTo("build") : Untrusted() is { } untrusted ? untrusted : IsBuilding ? Refusals.Building
             : session.Workspace is { Solution: null, Projects.Count: 0, GodotGames.Count: > 0 } ? Refusals.NothingToBuildOfScripts : WithoutSdk();
@@ -593,20 +593,20 @@ public partial class MainWindow
     /// test at the caret), all of them, again, and Stop.</summary>
     private void AddTests()
     {
-        Add(A.RunTests, "Run Unit Tests", "Unit Tests", c => RunTestsInContext(c, debug: false), NoTestHere, ("Tests", 0, 0));
-        Add(A.DebugTests, "Debug Unit Tests", "Unit Tests", c => RunTestsInContext(c, debug: true), NoTestHere, ("Tests", 0, 1), works: A.RunTests);
-        Add(A.RunTestsUntilFailure, "Run Unit Tests Until Failure", "Unit Tests", c => RunTestsInContext(c, debug: false, untilFailure: true), NoTestHere, ("Tests", 0, 2), works: A.RunTests);
-        Add(A.RunAllTests, "Run All Tests", "Unit Tests", _ => RunTests(() => session.Tests.RunAsync(Folder!)), c => NeedsTestBuild(c) ?? session.Tests.NeverRuns(), ("Tests", 0, 3),
+        Add(A.RunTests, ActionTitles.RunTests, "Unit Tests", c => RunTestsInContext(c, debug: false), NoTestHere, ("Tests", 0, 0));
+        Add(A.DebugTests, ActionTitles.DebugTests, "Unit Tests", c => RunTestsInContext(c, debug: true), NoTestHere, ("Tests", 0, 1), works: A.RunTests);
+        Add(A.RunTestsUntilFailure, ActionTitles.RunTestsUntilFailure, "Unit Tests", c => RunTestsInContext(c, debug: false, untilFailure: true), NoTestHere, ("Tests", 0, 2), works: A.RunTests);
+        Add(A.RunAllTests, ActionTitles.RunAllTests, "Unit Tests", _ => RunTests(() => session.Tests.RunAsync(Folder!)), c => NeedsTestBuild(c) ?? session.Tests.NeverRuns(), ("Tests", 0, 3),
             works: A.RunTests);
-        Add(A.RerunTests, "Rerun Unit Tests", "Unit Tests", _ => RunTests(() => session.Tests.RerunAsync(Folder!)), NeedsTestBuild, ("Tests", 1, 0));
-        Add(A.RerunFailedTests, "Rerun Failed Tests", "Unit Tests", _ => RunTests(() => session.Tests.RerunFailedAsync(Folder!)), NeedsTestBuild, ("Tests", 1, 1));
-        Add(A.StopTests, "Stop Unit Tests", "Unit Tests", _ => session.Tests.Stop(), NothingRunning, ("Tests", 1, 2));
-        Add(A.CoverTests, "Run Unit Tests with Coverage", "Unit Tests", c => CoverTests(() => RunTestsInContext(c, debug: false, cover: true)), NoTestHere,
+        Add(A.RerunTests, ActionTitles.RerunTests, "Unit Tests", _ => RunTests(() => session.Tests.RerunAsync(Folder!)), NeedsTestBuild, ("Tests", 1, 0));
+        Add(A.RerunFailedTests, ActionTitles.RerunFailedTests, "Unit Tests", _ => RunTests(() => session.Tests.RerunFailedAsync(Folder!)), NeedsTestBuild, ("Tests", 1, 1));
+        Add(A.StopTests, ActionTitles.StopTests, "Unit Tests", _ => session.Tests.Stop(), NothingRunning, ("Tests", 1, 2));
+        Add(A.CoverTests, ActionTitles.CoverTests, "Unit Tests", c => CoverTests(() => RunTestsInContext(c, debug: false, cover: true)), NoTestHere,
             ("Tests", 0, 4), works: A.RunTests);
-        Add(A.CoverAllTests, "Run All Tests with Coverage", "Unit Tests", _ => CoverTests(() => RunTests(() => session.Tests.RunAsync(Folder!, cover: true))),
+        Add(A.CoverAllTests, ActionTitles.CoverAllTests, "Unit Tests", _ => CoverTests(() => RunTests(() => session.Tests.RunAsync(Folder!, cover: true))),
             c => NeedsTestBuild(c) ?? session.Tests.NeverRuns(), ("Tests", 0, 5), works: A.RunTests);
-        Add(A.ExportCoverage, "Export Coverage as Cobertura…", "Unit Tests", _ => IdeErrors.Observe(ExportCoverageAsync()), Measured, ("Tests", 1, 3));
-        Add(A.ClearCoverage, "Clear Coverage", "Unit Tests", _ => session.Tests.ClearCoverage(), Measured, ("Tests", 1, 4));
+        Add(A.ExportCoverage, ActionTitles.ExportCoverage, "Unit Tests", _ => IdeErrors.Observe(ExportCoverageAsync()), Measured, ("Tests", 1, 3));
+        Add(A.ClearCoverage, ActionTitles.ClearCoverage, "Unit Tests", _ => session.Tests.ClearCoverage(), Measured, ("Tests", 1, 4));
         AddTestSessions();
 
         // Where the Explorer has the keys, its rows say what to run, never the editor's caret.
@@ -679,7 +679,7 @@ public partial class MainWindow
         string? Here(string id, bool place) => place && id != action && AppActions.KeysIn(id) == action ? id : null;
     }
 
-    private void Add(string id, string title, string group, Action<ActionContext> run, Func<ActionContext, Words?>? whyNot = null, (string Path, int Group, int Order)? menu = null,
+    private void Add(string id, Words title, string group, Action<ActionContext> run, Func<ActionContext, Words?>? whyNot = null, (string Path, int Group, int Order)? menu = null,
         IReadOnlyList<string>? words = null, string? works = null) =>
         actions!.Add(new IdeAction(id, title, group, run)
         {

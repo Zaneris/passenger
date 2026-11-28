@@ -14,6 +14,9 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
     private readonly Dictionary<string, IdeAction> byId = new(StringComparer.Ordinal);
     private IReadOnlyList<IdeAction>? sorted;
 
+    /// <summary>The language <see cref="sorted"/> was put in order in, as its titles say.</summary>
+    private UiLanguage? sortedIn;
+
     /// <summary>Adds an action; an id added twice is a mistake in the code, never a choice between two.</summary>
     public void Add(IdeAction action)
     {
@@ -34,9 +37,20 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
     /// refactoring writes by it, and Find Usages' results take the keys only where they still are.</summary>
     public event EventHandler<(IdeAction Action, ActionContext Context)>? Running;
 
-    /// <summary>Every action, in the order Find Action lists them before anything is typed: by group, then title.</summary>
-    public IReadOnlyList<IdeAction> All => sorted ??=
-        InMenuOrder([.. byId.Values.OrderBy(a => a.Group, StringComparer.Ordinal).ThenBy(a => a.Title, StringComparer.Ordinal)]);
+    /// <summary>Every action, in the order Find Action lists them before anything is typed: by group, then title as the
+    /// language in force says it.</summary>
+    public IReadOnlyList<IdeAction> All
+    {
+        get
+        {
+            if (sorted is null || sortedIn != UiLanguage.InForce)
+            {
+                sortedIn = UiLanguage.InForce;
+                sorted = InMenuOrder([.. byId.Values.OrderBy(a => a.Group, StringComparer.Ordinal).ThenBy(a => a.Title.Shown, StringComparer.Ordinal)]);
+            }
+            return sorted;
+        }
+    }
 
     /// <summary>Actions as listed, but those that keep their menu's order (<see cref="IdeAction.KeepsMenuOrder"/>) put in
     /// it, each run of a menu's in the places its actions took.</summary>
@@ -112,7 +126,7 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
     };
 
     /// <summary>The actions whose title, group, id or other names have every word typed, those whose title or other name
-    /// starts with the query first.</summary>
+    /// starts with the query first: the title as the person reads it and in English, so an action is found by either.</summary>
     public IReadOnlyList<IdeAction> Find(string query)
     {
         string[] words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -121,13 +135,13 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
             return All;
         }
         string typed = query.Trim();
-        IEnumerable<string> Names(IdeAction action) => [action.Title, .. action.Words];
+        IEnumerable<string> Names(IdeAction action) => [action.Title.Shown, action.Title.English, .. action.Words];
         return InMenuOrder([.. All
             .Where(a => words.All(w => Names(a).Any(n => n.Contains(w, StringComparison.OrdinalIgnoreCase)) || a.Group.Contains(w, StringComparison.OrdinalIgnoreCase)
                 || a.Id.Contains(w, StringComparison.OrdinalIgnoreCase)))
             .OrderBy(a => Names(a).Any(n => n.StartsWith(typed, StringComparison.OrdinalIgnoreCase)) ? 0
                 : Names(a).Any(n => words.All(w => n.Contains(w, StringComparison.OrdinalIgnoreCase))) ? 1 : 2)
-            .ThenBy(a => a.Title.Length)]);
+            .ThenBy(a => a.Title.Shown.Length)]);
     }
 
     /// <summary>Null when the action can run in this context, else why not: no action has the id, its work is under way

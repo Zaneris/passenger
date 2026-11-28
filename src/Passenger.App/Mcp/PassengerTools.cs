@@ -3348,10 +3348,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         ActionRegistry actions = window.Actions;
         ActionContext context = Beside ? actions.Context().ForAgent() : actions.Context();
         IdeAction[] asked = query is not { Length: > 0 } words ? [.. actions.All]
-            : [.. actions.All.Where(a => a.Id.Contains(words, StringComparison.OrdinalIgnoreCase) || a.Title.Contains(words, StringComparison.OrdinalIgnoreCase)
+            : [.. actions.All.Where(a => a.Id.Contains(words, StringComparison.OrdinalIgnoreCase) || a.Title.English.Contains(words, StringComparison.OrdinalIgnoreCase)
                 || a.Group.Contains(words, StringComparison.OrdinalIgnoreCase))];
         string[] lines = [.. asked.Select(a =>
-            $"{a.Id}: {a.Title} [{a.Group}]{(actions.Shortcut(a.Id) is { } keys ? $" ({keys})" : string.Empty)}"
+            $"{a.Id}: {a.Title.English} [{a.Group}]{(actions.Shortcut(a.Id) is { } keys ? $" ({keys})" : string.Empty)}"
             + $"{(a.IsChecked?.Invoke(context) is { } on ? on ? " (on)" : " (off)" : string.Empty)}{(a.WhyNot(context) is { } why ? $" - cannot run: {why.English}" : string.Empty)}")];
         // Cut short, it names the groups of those it left out, which a query of each lists.
         return Task.FromResult(Held(lines, "action", "query, a group's name or a word of the action's, narrows them", readOn: last =>

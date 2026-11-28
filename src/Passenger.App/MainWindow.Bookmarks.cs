@@ -1,5 +1,6 @@
 using Passenger.App.Navigation;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.App;
@@ -61,22 +62,22 @@ public partial class MainWindow
     /// bookmarks' Toggle Bookmark and Go to Bookmark 0 to 9.</summary>
     private void AddBookmarkActions()
     {
-        actions!.Add(new IdeAction(AppActions.ToggleBookmark, "Toggle Bookmark", "Bookmarks", context => session.Bookmarks.Toggle(context.File!.Path, context.Caret.Line))
+        actions!.Add(new IdeAction(AppActions.ToggleBookmark, ActionTitles.ToggleBookmark, "Bookmarks", context => session.Bookmarks.Toggle(context.File!.Path, context.Caret.Line))
         {
             WhyNot = Refusals.NeedsLines,
             Menus = [new MenuPlace("Navigate/Bookmarks", 0, 0)],
         });
-        Step(AppActions.NextBookmark, "Next Bookmark", 1);
-        Step(AppActions.PreviousBookmark, "Previous Bookmark", -1);
+        Step(AppActions.NextBookmark, ActionTitles.NextBookmark, 1);
+        Step(AppActions.PreviousBookmark, ActionTitles.PreviousBookmark, -1);
         for (int n = 0; n < AppActions.NumberedBookmarks.Count; n++)
         {
             char digit = (char)('0' + n);
-            actions.Add(new IdeAction(AppActions.NumberedBookmarks[n].Toggle, $"Toggle Bookmark {digit}", "Bookmarks",
+            actions.Add(new IdeAction(AppActions.NumberedBookmarks[n].Toggle, ActionTitles.ToggleNumberedBookmark(digit.ToString()), "Bookmarks",
                 context => session.Bookmarks.ToggleNumbered(context.File!.Path, context.Caret.Line, digit))
             {
                 WhyNot = Refusals.NeedsLines,
             });
-            actions.Add(new IdeAction(AppActions.NumberedBookmarks[n].GoTo, $"Go to Bookmark {digit}", "Bookmarks", _ =>
+            actions.Add(new IdeAction(AppActions.NumberedBookmarks[n].GoTo, ActionTitles.GoToNumberedBookmark(digit.ToString()), "Bookmarks", _ =>
             {
                 Bookmark numbered = session.Bookmarks.Numbered(digit)!;
                 NavigateTo(numbered.Path, new TextPosition(numbered.Line, 0));
@@ -86,7 +87,7 @@ public partial class MainWindow
             });
         }
 
-        void Step(string id, string title, int step) => actions.Add(new IdeAction(id, title, "Bookmarks", context =>
+        void Step(string id, Words title, int step) => actions.Add(new IdeAction(id, title, "Bookmarks", context =>
         {
             Bookmark next = session.Bookmarks.Next(context.File?.Path, context.File is null ? -1 : context.Caret.Line, step)!;
             NavigateTo(next.Path, new TextPosition(next.Line, 0));

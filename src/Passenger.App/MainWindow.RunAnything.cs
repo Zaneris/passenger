@@ -14,10 +14,10 @@ public partial class MainWindow
 {
     private void AddRunAnything()
     {
-        Add(A.RunAnything, "Run Anything…", "Run", ShowRunAnything, NeedsFolder, ("Run", 0, 4), words: ["Command", "Terminal", "Run configuration"]);
-        Add(A.ChooseRunConfiguration, "Choose and Run…", "Run", context => ShowConfigurationChoice(context, debug: false), NeedsFolder, ("Run", 0, 4),
+        Add(A.RunAnything, ActionTitles.RunAnything, "Run", ShowRunAnything, NeedsFolder, ("Run", 0, 4), words: ["Command", "Terminal", "Run configuration"]);
+        Add(A.ChooseRunConfiguration, ActionTitles.ChooseRunConfiguration, "Run", context => ShowConfigurationChoice(context, debug: false), NeedsFolder, ("Run", 0, 4),
             words: ["Run configuration", "Choose Run Configuration"]);
-        Add(A.ChooseDebugConfiguration, "Choose and Debug…", "Run", context => ShowConfigurationChoice(context, debug: true), NeedsFolder, ("Run", 0, 4),
+        Add(A.ChooseDebugConfiguration, ActionTitles.ChooseDebugConfiguration, "Run", context => ShowConfigurationChoice(context, debug: true), NeedsFolder, ("Run", 0, 4),
             words: ["Debug configuration", "Choose Debug Configuration"]);
     }
 
@@ -35,7 +35,7 @@ public partial class MainWindow
     private void ShowConfigurationChoice(ActionContext context, bool debug)
     {
         string id = debug ? A.ChooseDebugConfiguration : A.ChooseRunConfiguration;
-        RunOffer[] offered = [.. ConfigurationChoices(string.Empty), new RunOffer(actions![A.EditConfigurations]!.TitleWhere(context), string.Empty, Action: A.EditConfigurations)];
+        RunOffer[] offered = [.. ConfigurationChoices(string.Empty), new RunOffer(actions![A.EditConfigurations]!.TitleWhere(context).Shown, string.Empty, Action: A.EditConfigurations)];
         RunOffersPopup popup = new(TitleOf(id), debug ? $"Debug a configuration; {OtherwiseKey} runs it" : $"Run a configuration; {OtherwiseKey} debugs it", offered,
             commands: false, Refusals.NoRunConfigurationMatches.Shown);
         popups.Show(popup, chosen => Take(chosen, popup.Otherwise != debug, context));

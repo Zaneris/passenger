@@ -55,7 +55,7 @@ public partial class MainWindow
             ExpandAll = () => ClonesWindow.ExpandAll(),
             CollapseAll = () => ClonesWindow.CollapseAll(),
         });
-        actions!.Add(new IdeAction(AppActions.FindClones, "Find Code Clones", "Code", context =>
+        actions!.Add(new IdeAction(AppActions.FindClones, ActionTitles.FindClones, "Code", context =>
         {
             (IReadOnlyList<string> within, string searched) = ClonesScope(context);
             IdeErrors.Observe(FindClonesAsync(AppActions.FindClones, within, searched, null));
@@ -65,18 +65,18 @@ public partial class MainWindow
             Menus = [new MenuPlace("Code", 3, 0)],
             Words = ["duplicates", "duplicated code", "copy and paste"],
         });
-        actions.Add(new IdeAction(AppActions.FindClonesOfSelection, "Find Clones of Selection", "Code", context => IdeErrors.Observe(FindSelectionClonesAsync()))
+        actions.Add(new IdeAction(AppActions.FindClonesOfSelection, ActionTitles.FindClonesOfSelection, "Code", context => IdeErrors.Observe(FindSelectionClonesAsync()))
         {
             WhyNot = context => Refusals.NeedsFile(context) ?? (context.File!.Language != Languages.Language.CSharp ? Refusals.NotCSharpStatements
                 : session.CSharp is null ? session.WhyNoCSharp : null),
             Menus = [new MenuPlace("Code", 3, 1)],
             Words = ["duplicates"],
         });
-        actions.Add(new IdeAction(AppActions.CompareClones, "Compare Clones Side by Side", "Code", _ => IdeErrors.Observe(CompareClonesAsync()))
+        actions.Add(new IdeAction(AppActions.CompareClones, ActionTitles.CompareClones, "Code", _ => IdeErrors.Observe(CompareClonesAsync()))
         {
             WhyNot = _ => clones?.Chosen.Set is null ? Refusals.NoCloneChosen : null,
         });
-        actions.Add(new IdeAction(AppActions.ExtractClones, "Extract Method from Clones…", "Code", _ => IdeErrors.Observe(ExtractClonesAsync()))
+        actions.Add(new IdeAction(AppActions.ExtractClones, ActionTitles.ExtractClones, "Code", _ => IdeErrors.Observe(ExtractClonesAsync()))
         {
             WhyNot = _ => clones?.Chosen.Set is not { } set ? Refusals.NoCloneChosen
                 : clonesExtracted.TryGetValue(set, out StrongBox<Words?>? why) && why.Value is { } refused ? refused

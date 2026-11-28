@@ -319,7 +319,7 @@ internal sealed class ToolPane : DockPanel
         }
         if (window?.HeaderAction is { } asked)
         {
-            own = ToolButtons.Of(asked.Action, asked.Icon, asked.Title, Ask);
+            own = ToolButtons.Of(asked.Action, asked.Icon, asked.Title.Shown, Ask);
             ShrinkingRow.SetGoesWhole(own, true);
             buttons.Children.Insert(0, own);
         }

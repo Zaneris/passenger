@@ -28,7 +28,7 @@ public partial class MainWindow
 
     private void AddGodotOpenInEditor()
     {
-        actions!.Add(new IdeAction(AppActions.GodotOpenInEditor, "Open in Godot Editor", "Godot", _ => IdeErrors.Observe(OpenInGodotEditorAsync()))
+        actions!.Add(new IdeAction(AppActions.GodotOpenInEditor, ActionTitles.GodotOpenInEditor, "Godot", _ => IdeErrors.Observe(OpenInGodotEditorAsync()))
         {
             WhyNot = _ => Folder is null ? Refusals.NoFolder : Untrusted() is { } untrusted ? untrusted : GodotAtHand() is null ? Refusals.NoGodotProject
                 : Editors.Active?.Path is { } path && GodotOfFile(path) is not null && (GodotFileKinds.IsScene(path) || IsGodotScript(path)) ? null : Refusals.NoGodotScene,

@@ -34,14 +34,6 @@ public static class LineSeparators
         _ => @"\n",
     };
 
-    /// <summary>Its menu item: "LF - Unix and macOS (\n)".</summary>
-    public static string Title(this LineSeparator separator) => separator switch
-    {
-        LineSeparator.CRLF => $"CRLF - Windows ({separator.Escaped()})",
-        LineSeparator.CR => $"CR - Classic Mac OS ({separator.Escaped()})",
-        _ => $"LF - Unix and macOS ({separator.Escaped()})",
-    };
-
     /// <summary>Its value in an .editorconfig's <c>end_of_line</c>.</summary>
     public static string Value(this LineSeparator separator) => separator.ToString().ToLowerInvariant();
 }

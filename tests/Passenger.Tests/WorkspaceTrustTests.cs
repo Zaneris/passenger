@@ -96,7 +96,7 @@ public sealed class WorkspaceTrustTests
                 Assert.Equal(Refusals.Untrusted.Shown, window.Actions.WhyNot(action, window.Actions.Context())?.Shown);
             }
 
-            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title.English);
             Ui.WaitFor(() => File.Exists(monitored), "Git's status to run the repository's fsmonitor once the folder is trusted");
             Ui.WaitFor(() => File.Exists(built), () => $"a design-time build to run Directory.Build.targets' Exec once the folder is trusted (the C# server {window.Session.CSharp?.State ?? "never started"})",
                 TimeSpan.FromMinutes(3));
@@ -219,7 +219,7 @@ public sealed class WorkspaceTrustTests
             Assert.False(WorkspaceTrust.Trusts(app) || WorkspaceTrust.Trusts(tools), "A folder in the repository stayed trusted once the repository's trust was taken back");
             Assert.Equal(Refusals.UntrustedInRepository(repository).Shown, window.TrustSaid);
 
-            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title.English);
             Ui.Settle();
             Assert.True(window.Session.Trusted && WorkspaceTrust.Trusts(tools), "The banner's Trust Folder did not trust the folder's Git repository");
         }
@@ -323,7 +323,7 @@ public sealed class WorkspaceTrustTests
                 () => $"the status bar to name Passenger's TypeScript in the folder not trusted ({window.LanguageShown})");
             Assert.False(File.Exists(ran), "The folder's own tsserver ran before the folder was trusted");
 
-            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title.English);
             Ui.WaitFor(() => File.Exists(ran), () => $"the folder's own tsserver to run once it is trusted ({window.LanguageShown})");
         }
         finally
@@ -480,7 +480,7 @@ public sealed class WorkspaceTrustTests
             Assert.False(File.Exists(asked), "MSBuild ran the mobile project's target in the folder not trusted, from what its cache kept");
             Assert.Equal(Refusals.Untrusted.Shown, window.Actions.WhyNot(AppActions.ChooseRunTarget, window.Actions.Context())?.Shown);
 
-            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title.English);
             Ui.WaitFor(() => File.Exists(asked), () => $"the workload's question to run once the folder is trusted: {Ui.Said(window)}", TimeSpan.FromMinutes(2));
         }
         finally
@@ -528,7 +528,7 @@ public sealed class WorkspaceTrustTests
             Assert.True(File.Exists(Path.Combine(folder, "Lib", "Lib.csproj")), $"No Lib.csproj was made: {window.Status}");
             Assert.False(File.Exists(ran), $"The SDK the folder's global.json names ran in the folder not trusted, asked {(File.Exists(ran) ? File.ReadAllText(ran) : null)}");
 
-            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title.English);
             Ui.Settle();
             Ui.Run(window, AppActions.NewProject);
             Ui.WaitFor(() => File.Exists(ran), () => $"New Project's read of the templates to run the SDK the folder's global.json names once it is trusted: {Ui.Said(window)}",
@@ -647,7 +647,7 @@ public sealed class WorkspaceTrustTests
             CommitResult refused = Ui.Landed(window.Vcs.CommitAsync([picture.Change], "The picture", amend: false, push: false), "the commit's answer");
             Assert.Equal(Why, refused.Commit.Message);
 
-            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title.English);
             Ui.Landed(() => commit.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "Picture.bin" && r.CanChoose), "Picture.bin offered for commit once the folder is trusted");
         }
         finally
@@ -711,7 +711,7 @@ public sealed class WorkspaceTrustTests
             Assert.Equal((false, Why), (switched.Succeeded, switched.Message));
             Assert.Equal(("main", "two\n"), (window.Vcs.Branch, File.ReadAllText(picture)));
 
-            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title.English);
             Ui.Landed(() => window.Actions.WhyNot(AppActions.Stash, window.Actions.Context())?.Shown is null, "Stash Changes offered once the folder is trusted");
             MenuItem trusted = window.GitBranches.Menu(pictured).OfType<MenuItem>().Single(i => (string?)i.Header == "Checkout");
             Ui.Settle();

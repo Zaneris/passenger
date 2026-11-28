@@ -18,7 +18,7 @@ public partial class MainWindow
 
     private void AddNewItemAction()
     {
-        actions!.Add(new IdeAction(AppActions.NewItem, "New Item…", ExplorerGroup, c => ShowNewItem(NewItemPlace(c)!))
+        actions!.Add(new IdeAction(AppActions.NewItem, ActionTitles.NewItem, ExplorerGroup, c => ShowNewItem(NewItemPlace(c)!))
         {
             WhyNot = c => NewItemPlace(c) is { } place ? ExplorerNode.KeptOut(place)
                 : RowOf(c) is { } row ? $"Nothing new goes in {row.Name}" : Refusals.NoFolder,

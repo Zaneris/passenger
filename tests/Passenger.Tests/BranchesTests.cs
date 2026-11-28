@@ -891,7 +891,7 @@ public sealed class BranchesTests : IDisposable
             File.WriteAllText(added, "class Added { }\n");
             MainWindow window = Open();
             window.Confirm = (_, _, _) => Task.FromResult(true);
-            Assert.Equal("Get from Branch or Tag…", window.Actions[AppActions.GetFromBranch]?.Title);
+            Assert.Equal("Get from Branch or Tag…", window.Actions[AppActions.GetFromBranch]?.Title.English);
             BranchesPanel panel = window.GitBranches;
             Choose(panel, List(panel), "feature", "Show Diff with Working Tree");
             WorkingTreeDiffView changes = Assert.IsType<WorkingTreeDiffView>(window.GitWindow.Shown);

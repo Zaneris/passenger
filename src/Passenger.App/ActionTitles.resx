@@ -1,0 +1,2123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="OpenSolution" xml:space="preserve">
+    <value>Open Solution…</value>
+    <comment>The title of the action app.openSolution, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="OpenFolder" xml:space="preserve">
+    <value>Open Folder…</value>
+    <comment>The title of the action app.openFolder, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="OpenFile" xml:space="preserve">
+    <value>Open File…</value>
+    <comment>The title of the action app.openFile, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NewSolution" xml:space="preserve">
+    <value>New Solution…</value>
+    <comment>The title of the action app.newSolution, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NewProject" xml:space="preserve">
+    <value>New Project…</value>
+    <comment>The title of the action app.newProject, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Exit" xml:space="preserve">
+    <value>Exit</value>
+    <comment>The title of the action app.exit in the File menu, where no application menu names it.</comment>
+  </data>
+  <data name="QuitPassenger" xml:space="preserve">
+    <value>Quit Passenger</value>
+    <comment>The title of the action app.exit in macOS's application menu.</comment>
+  </data>
+  <data name="NextProjectWindow" xml:space="preserve">
+    <value>Next Solution Window</value>
+    <comment>The title of the action app.nextProjectWindow, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PreviousProjectWindow" xml:space="preserve">
+    <value>Previous Solution Window</value>
+    <comment>The title of the action app.previousProjectWindow, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FileEncoding" xml:space="preserve">
+    <value>File Encoding</value>
+    <comment>The title of the action app.fileEncoding, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="LineSeparatorsCrlf" xml:space="preserve">
+    <value>CRLF - Windows ({escaped})</value>
+    <comment>The Line Separators menu's item turning a file's lines to CRLF; {escaped} is the break escaped, \r\n.</comment>
+  </data>
+  <data name="LineSeparatorsLf" xml:space="preserve">
+    <value>LF - Unix and macOS ({escaped})</value>
+    <comment>The Line Separators menu's item turning a file's lines to LF; {escaped} is the break escaped, \n.</comment>
+  </data>
+  <data name="LineSeparatorsCr" xml:space="preserve">
+    <value>CR - Classic Mac OS ({escaped})</value>
+    <comment>The Line Separators menu's item turning a file's lines to CR; {escaped} is the break escaped, \r.</comment>
+  </data>
+  <data name="FileIndentation" xml:space="preserve">
+    <value>File Indentation</value>
+    <comment>The title of the action app.fileIndentation, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ConvertIndentationToTabs" xml:space="preserve">
+    <value>Convert Indentation to Tabs</value>
+    <comment>The title of the action app.convertIndentation.tabs, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ConvertIndentationToSpaces" xml:space="preserve">
+    <value>Convert Indentation to Spaces</value>
+    <comment>The title of the action app.convertIndentation.spaces, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="TargetFramework" xml:space="preserve">
+    <value>Target Framework</value>
+    <comment>The title of the action app.code.targetFramework, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>Save</value>
+    <comment>The title of the action app.save, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="SaveAll" xml:space="preserve">
+    <value>Save All</value>
+    <comment>The title of the action app.saveAll, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CloseTab" xml:space="preserve">
+    <value>Close Tab</value>
+    <comment>The title of the action app.closeTab, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CloseTabInMenu" xml:space="preserve">
+    <value>Close</value>
+    <comment>Close Tab's title on a tab's own menu.</comment>
+  </data>
+  <data name="NextTab" xml:space="preserve">
+    <value>Next Tab</value>
+    <comment>The title of the action app.nextTab, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PreviousTab" xml:space="preserve">
+    <value>Previous Tab</value>
+    <comment>The title of the action app.previousTab, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Switcher" xml:space="preserve">
+    <value>Switcher</value>
+    <comment>The title of the action app.switcher, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="SwitcherBackward" xml:space="preserve">
+    <value>Switcher Backward</value>
+    <comment>The title of the action app.switcherBackward, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GoToFile" xml:space="preserve">
+    <value>Go to File</value>
+    <comment>The title of the action app.goToFile, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GoToLine" xml:space="preserve">
+    <value>Go to Line:Column</value>
+    <comment>The title of the action app.goToLine, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GoToSymbol" xml:space="preserve">
+    <value>Go to Symbol</value>
+    <comment>The title of the action app.goToSymbol, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GoToEverything" xml:space="preserve">
+    <value>Search Everywhere</value>
+    <comment>The title of the action app.goToEverything, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FileStructure" xml:space="preserve">
+    <value>File Structure</value>
+    <comment>The title of the action app.fileStructure, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="JumpToNavigationBar" xml:space="preserve">
+    <value>Jump to Navigation Bar</value>
+    <comment>The title of the action app.jumpToNavigationBar, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GoToRelated" xml:space="preserve">
+    <value>Go to Related File</value>
+    <comment>The title of the action app.goToRelated, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FindAction" xml:space="preserve">
+    <value>Find Action…</value>
+    <comment>The title of the action app.findAction, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FindInFiles" xml:space="preserve">
+    <value>Find in Files…</value>
+    <comment>The title of the action app.findInFiles, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RecentFiles" xml:space="preserve">
+    <value>Recent Files</value>
+    <comment>The title of the action app.recentFiles, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RecentChangedFiles" xml:space="preserve">
+    <value>Recently Changed Files</value>
+    <comment>The title of the action app.recentChangedFiles, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RecentLocations" xml:space="preserve">
+    <value>Recent Locations</value>
+    <comment>The title of the action app.recentLocations, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="LastEditLocation" xml:space="preserve">
+    <value>Last Edit Location</value>
+    <comment>The title of the action app.lastEditLocation, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NextEditLocation" xml:space="preserve">
+    <value>Next Edit Location</value>
+    <comment>The title of the action app.nextEditLocation, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ToggleBookmark" xml:space="preserve">
+    <value>Toggle Bookmark</value>
+    <comment>The title of the action app.bookmarks.toggle, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NextBookmark" xml:space="preserve">
+    <value>Next Bookmark</value>
+    <comment>The title of the action app.bookmarks.next, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PreviousBookmark" xml:space="preserve">
+    <value>Previous Bookmark</value>
+    <comment>The title of the action app.bookmarks.previous, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ToggleNumberedBookmark" xml:space="preserve">
+    <value>Toggle Bookmark {digit}</value>
+    <comment>The title of Toggle Bookmark 0 to 9; {digit} is the bookmark's digit, the key that goes to it.</comment>
+  </data>
+  <data name="GoToNumberedBookmark" xml:space="preserve">
+    <value>Go to Bookmark {digit}</value>
+    <comment>The title of Go to Bookmark 0 to 9; {digit} is the bookmark's digit, the key that goes to it.</comment>
+  </data>
+  <data name="ReplaceInFiles" xml:space="preserve">
+    <value>Replace in Files…</value>
+    <comment>The title of the action app.replaceInFiles, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowSettings" xml:space="preserve">
+    <value>Settings…</value>
+    <comment>The title of the action app.settings, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowLog" xml:space="preserve">
+    <value>Show Log in {fileManager}</value>
+    <comment>The title of the action app.showLog; {fileManager} is the system's file manager: Finder, Explorer, File Manager.</comment>
+  </data>
+  <data name="About" xml:space="preserve">
+    <value>About</value>
+    <comment>The title of the action app.about, in the Help menu where it is no application menu's.</comment>
+  </data>
+  <data name="AboutPassenger" xml:space="preserve">
+    <value>About Passenger</value>
+    <comment>The title of the action app.about in macOS's application menu.</comment>
+  </data>
+  <data name="CheckForUpdates" xml:space="preserve">
+    <value>Check for Updates…</value>
+    <comment>The title of the action app.checkForUpdates, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RestartToUpdate" xml:space="preserve">
+    <value>Restart to Update</value>
+    <comment>The title of the action app.restartToUpdate, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="WhatsNew" xml:space="preserve">
+    <value>What's New</value>
+    <comment>The title of the action app.whatsNew, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Profile" xml:space="preserve">
+    <value>Profile</value>
+    <comment>The title of the action app.profile, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AttachProfiler" xml:space="preserve">
+    <value>Attach Profiler to Running Program</value>
+    <comment>The title of the action app.profiler.attach, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MemorySnapshot" xml:space="preserve">
+    <value>Get Memory Snapshot</value>
+    <comment>The title of the action app.profiler.memorySnapshot, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="SelectElement" xml:space="preserve">
+    <value>Select Element</value>
+    <comment>The title of the action app.liveTree.selectElement, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="SelectIn3D" xml:space="preserve">
+    <value>Select Element Among 3D Nodes</value>
+    <comment>The title of the action app.liveTree.selectIn3D, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PauseGameLoop" xml:space="preserve">
+    <value>Pause Game Loop</value>
+    <comment>The title of the action app.godot.pauseLoop, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NextFrame" xml:space="preserve">
+    <value>Next Frame</value>
+    <comment>The title of the action app.godot.nextFrame, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GameKeys" xml:space="preserve">
+    <value>Give the Keys to the Game</value>
+    <comment>The title of the action app.godot.gameKeys, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MuteGameAudio" xml:space="preserve">
+    <value>Mute Game Audio</value>
+    <comment>The title of the action app.godot.muteAudio, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="UnmuteGameAudio" xml:space="preserve">
+    <value>Unmute Game Audio</value>
+    <comment>Mute Game Audio's title while the game's audio is muted.</comment>
+  </data>
+  <data name="GodotScriptEditor" xml:space="preserve">
+    <value>Make Passenger Godot's Script Editor…</value>
+    <comment>The title of the action app.godot.scriptEditor, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GodotScriptTemplates" xml:space="preserve">
+    <value>Write C# Script Templates for Godot…</value>
+    <comment>The title of the action app.godot.scriptTemplates, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GodotOpenInEditor" xml:space="preserve">
+    <value>Open in Godot Editor</value>
+    <comment>The title of the action app.godot.openInEditor, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GodotAddon" xml:space="preserve">
+    <value>Install Passenger's Godot Addon…</value>
+    <comment>The title of the action app.godot.addon, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GodotProject" xml:space="preserve">
+    <value>Godot Project</value>
+    <comment>The title of the action app.godot.project, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="InstallGodotTemplates" xml:space="preserve">
+    <value>Install Godot Export Templates…</value>
+    <comment>The title of the action app.godot.installTemplates, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="TrustFolder" xml:space="preserve">
+    <value>Trust Folder</value>
+    <comment>The title of the action app.trustFolder, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="InstallDotnetSdk" xml:space="preserve">
+    <value>Install .NET SDK…</value>
+    <comment>The title of the action app.dotnet.install, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AddDotnetToPath" xml:space="preserve">
+    <value>Add .NET to the Shell's PATH…</value>
+    <comment>The title of the action app.dotnet.addToPath, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AddCommand" xml:space="preserve">
+    <value>Add the {command} Command…</value>
+    <comment>The title of the action app.command.add; {command} is the command's name, passenger-ide.</comment>
+  </data>
+  <data name="RemoveCommand" xml:space="preserve">
+    <value>Remove the {command} Command…</value>
+    <comment>The title of the action app.command.remove; {command} is the command's name, passenger-ide.</comment>
+  </data>
+  <data name="InstallWorkloads" xml:space="preserve">
+    <value>Install Workloads…</value>
+    <comment>The title of the action app.dotnet.installWorkloads, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="InstallAndroidDependencies" xml:space="preserve">
+    <value>Install Android SDK and Java…</value>
+    <comment>The title of the action app.android.install, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MakeMobileEdits" xml:space="preserve">
+    <value>Make the Mobile Edits</value>
+    <comment>The title of the action app.mobile.makeEdits, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="KeepAssembliesWhole" xml:space="preserve">
+    <value>Keep .NET's Assemblies Whole in Debug</value>
+    <comment>The title of the action app.mobile.keepAssembliesWhole, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="TestEndpoint" xml:space="preserve">
+    <value>Test Request</value>
+    <comment>The title of the action app.endpoints.test, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="TestEndpointNamed" xml:space="preserve">
+    <value>Send ''{request}''</value>
+    <comment>Test Request's title in an .http file's gutter menu; {request} is the request's name.</comment>
+  </data>
+  <data name="TestEndpointTo" xml:space="preserve">
+    <value>Send {method} {url}</value>
+    <comment>Test Request's title in an .http file's gutter menu for a request of no name; {method} and {url} are its method and address.</comment>
+  </data>
+  <data name="GenerateOpenApiRequests" xml:space="preserve">
+    <value>Generate Requests from OpenAPI</value>
+    <comment>The title of the action app.endpoints.openApiRequests, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NameOpenApiDocument" xml:space="preserve">
+    <value>Name OpenAPI Document…</value>
+    <comment>The title of the action app.endpoints.openApiDocument, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RequestsCommandConsole" xml:space="preserve">
+    <value>Open Command in SQL Console</value>
+    <comment>The title of the action app.requests.commandConsole, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseRefresh" xml:space="preserve">
+    <value>Refresh Database Connections</value>
+    <comment>The title of the action app.database.refresh, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseConnect" xml:space="preserve">
+    <value>Open Database Connection</value>
+    <comment>The title of the action app.database.connect, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseAdd" xml:space="preserve">
+    <value>New Database Connection…</value>
+    <comment>The title of the action app.database.add, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseConnectionEdit" xml:space="preserve">
+    <value>Edit Database Connection…</value>
+    <comment>The title of the action app.database.connectionEdit, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseConnectionRename" xml:space="preserve">
+    <value>Rename Database Connection…</value>
+    <comment>The title of the action app.database.connectionRename, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseConnectionRemove" xml:space="preserve">
+    <value>Remove Database Connection…</value>
+    <comment>The title of the action app.database.connectionRemove, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseOpenTable" xml:space="preserve">
+    <value>Open Table Data</value>
+    <comment>The title of the action app.database.openTable, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseCancel" xml:space="preserve">
+    <value>Stop Database Operation</value>
+    <comment>The title of the action app.database.cancel, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseShowDdl" xml:space="preserve">
+    <value>Show DDL</value>
+    <comment>The title of the action app.database.showDdl, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseScriptCreate" xml:space="preserve">
+    <value>Generate Create Script</value>
+    <comment>The title of the action app.database.scriptCreate, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseScriptAlter" xml:space="preserve">
+    <value>Generate Alter Script</value>
+    <comment>The title of the action app.database.scriptAlter, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseScriptDrop" xml:space="preserve">
+    <value>Generate Drop Script</value>
+    <comment>The title of the action app.database.scriptDrop, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseConsole" xml:space="preserve">
+    <value>Open Query Console</value>
+    <comment>The title of the action app.database.console, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseRun" xml:space="preserve">
+    <value>Run Statement</value>
+    <comment>The title of the action app.database.run, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseRunStop" xml:space="preserve">
+    <value>Stop Statement</value>
+    <comment>The title of the action app.database.runStop, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseRunFile" xml:space="preserve">
+    <value>Run SQL File</value>
+    <comment>The title of the action app.database.runFile, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseHistory" xml:space="preserve">
+    <value>Query History</value>
+    <comment>The title of the action app.database.history, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseExplain" xml:space="preserve">
+    <value>Explain Plan</value>
+    <comment>The title of the action app.database.explain, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseCommit" xml:space="preserve">
+    <value>Commit</value>
+    <comment>The title of the action app.database.commit, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseRollback" xml:space="preserve">
+    <value>Roll Back</value>
+    <comment>The title of the action app.database.rollback, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseSubmit" xml:space="preserve">
+    <value>Submit Changes</value>
+    <comment>The title of the action app.database.submit, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseRevert" xml:space="preserve">
+    <value>Revert Changes</value>
+    <comment>The title of the action app.database.revert, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseAddRow" xml:space="preserve">
+    <value>Add Row</value>
+    <comment>The title of the action app.database.addRow, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseAddNamedRow" xml:space="preserve">
+    <value>Add {noun}</value>
+    <comment>Add Row's title on a table of documents; {noun} is the database's word for one (Item, Document).</comment>
+  </data>
+  <data name="DatabaseDeleteRows" xml:space="preserve">
+    <value>Delete Rows</value>
+    <comment>The title of the action app.database.deleteRows, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseDeleteNamedRows" xml:space="preserve">
+    <value>Delete {noun}s</value>
+    <comment>Delete Rows' title on a table of documents; {noun} is the database's word for one (Item, Document).</comment>
+  </data>
+  <data name="DatabaseExpire" xml:space="preserve">
+    <value>Set Time to Live…</value>
+    <comment>The title of the action app.database.expire, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseSignIn" xml:space="preserve">
+    <value>Sign In…</value>
+    <comment>The title of the action app.database.signIn, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseReadOnly" xml:space="preserve">
+    <value>Read-Only Connection</value>
+    <comment>The title of the action app.database.readOnly, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseProduction" xml:space="preserve">
+    <value>Production Connection</value>
+    <comment>The title of the action app.database.production, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseExport" xml:space="preserve">
+    <value>Export Data…</value>
+    <comment>The title of the action app.database.export, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseImport" xml:space="preserve">
+    <value>Import Data…</value>
+    <comment>The title of the action app.database.import, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseDiagram" xml:space="preserve">
+    <value>Show Schema Diagram</value>
+    <comment>The title of the action app.database.diagram, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DatabaseCompare" xml:space="preserve">
+    <value>Compare Schemas…</value>
+    <comment>The title of the action app.database.compare, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CopyAsCsv" xml:space="preserve">
+    <value>Copy as CSV</value>
+    <comment>The title of the action app.table.copyAsCsv, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CopyAsTsv" xml:space="preserve">
+    <value>Copy as Tab-Separated</value>
+    <comment>The title of the action app.table.copyAsTsv, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CopyAsJson" xml:space="preserve">
+    <value>Copy as JSON</value>
+    <comment>The title of the action app.table.copyAsJson, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CopyAsInserts" xml:space="preserve">
+    <value>Copy as SQL Inserts</value>
+    <comment>The title of the action app.table.copyAsInserts, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MigrationsRefresh" xml:space="preserve">
+    <value>Refresh Migrations</value>
+    <comment>The title of the action app.migrations.refresh, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AddMigration" xml:space="preserve">
+    <value>Add Migration…</value>
+    <comment>The title of the action app.migrations.add, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RemoveLastMigration" xml:space="preserve">
+    <value>Remove Last Migration</value>
+    <comment>The title of the action app.migrations.removeLast, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="UpdateDatabase" xml:space="preserve">
+    <value>Update Database</value>
+    <comment>The title of the action app.migrations.update, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="UpdateDatabaseTo" xml:space="preserve">
+    <value>Update Database to Chosen Migration</value>
+    <comment>The title of the action app.migrations.updateTo, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="UpdateDatabaseToNamed" xml:space="preserve">
+    <value>Update Database to {migration}</value>
+    <comment>Update Database to Chosen Migration's title; {migration} is the migration chosen in the Migrations window.</comment>
+  </data>
+  <data name="ScriptMigrations" xml:space="preserve">
+    <value>Script Migrations…</value>
+    <comment>The title of the action app.migrations.script, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="BundleMigrations" xml:space="preserve">
+    <value>Bundle Migrations</value>
+    <comment>The title of the action app.migrations.bundle, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MigrationsFix" xml:space="preserve">
+    <value>Fix What Migrations Lack</value>
+    <comment>The title of the action app.migrations.fix, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MigrationsEnvironment" xml:space="preserve">
+    <value>Choose Migrations Environment…</value>
+    <comment>The title of the action app.migrations.environment, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MigrationsDatabase" xml:space="preserve">
+    <value>Open Context's Database</value>
+    <comment>The title of the action app.migrations.database, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MigrationsDatabaseOf" xml:space="preserve">
+    <value>Open {context}'s Database</value>
+    <comment>Open Context's Database's title; {context} is the DbContext Migrations shows.</comment>
+  </data>
+  <data name="ContainersRefresh" xml:space="preserve">
+    <value>Refresh</value>
+    <comment>The title of the action app.containers.refresh, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainerStart" xml:space="preserve">
+    <value>Start</value>
+    <comment>The title of the action app.containers.start, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainerStop" xml:space="preserve">
+    <value>Stop</value>
+    <comment>The title of the action app.containers.stop, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainerRestart" xml:space="preserve">
+    <value>Restart</value>
+    <comment>The title of the action app.containers.restart, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainerPause" xml:space="preserve">
+    <value>Pause or Unpause</value>
+    <comment>The title of the action app.containers.pause, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainerRemove" xml:space="preserve">
+    <value>Remove</value>
+    <comment>The title of the action app.containers.remove, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainerScale" xml:space="preserve">
+    <value>Scale Service…</value>
+    <comment>The title of the action app.containers.scale, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainerPull" xml:space="preserve">
+    <value>Pull</value>
+    <comment>The title of the action app.containers.pull, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainerPrune" xml:space="preserve">
+    <value>Prune…</value>
+    <comment>The title of the action app.containers.prune, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainerInspect" xml:space="preserve">
+    <value>Inspect</value>
+    <comment>The title of the action app.containers.inspect, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ScoutBaseImages" xml:space="preserve">
+    <value>Check Base Images with Docker Scout</value>
+    <comment>The title of the action app.containers.scoutBaseImages, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainerShell" xml:space="preserve">
+    <value>Open Shell</value>
+    <comment>The title of the action app.containers.shell, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainersLog" xml:space="preserve">
+    <value>Show Container Log</value>
+    <comment>The title of the action app.containers.log, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainersStats" xml:space="preserve">
+    <value>Show Container Stats</value>
+    <comment>The title of the action app.containers.stats, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainersFiles" xml:space="preserve">
+    <value>Show Container Files</value>
+    <comment>The title of the action app.containers.files, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainersDetails" xml:space="preserve">
+    <value>Show Container Details</value>
+    <comment>The title of the action app.containers.details, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainersTelemetry" xml:space="preserve">
+    <value>Show Container Telemetry</value>
+    <comment>The title of the action app.containers.telemetry, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainersLogFind" xml:space="preserve">
+    <value>Find in Container Logs</value>
+    <comment>The title of the action app.containers.logFind, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainersShowTrace" xml:space="preserve">
+    <value>Show Container Log Trace</value>
+    <comment>The title of the action app.containers.showTrace, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContainersShowRelatedLogs" xml:space="preserve">
+    <value>Show Related Container Logs</value>
+    <comment>The title of the action app.containers.showRelatedLogs, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ServiceDebug" xml:space="preserve">
+    <value>Debug Service</value>
+    <comment>The title of the action app.service.debug, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ServiceDebugReplica" xml:space="preserve">
+    <value>Debug Replica (Every Replica Next Run)</value>
+    <comment>Debug Service's title on one replica of several the Aspire window chose: what it keeps for the next run is every replica's.</comment>
+  </data>
+  <data name="ServiceAttach" xml:space="preserve">
+    <value>Attach to Service</value>
+    <comment>The title of the action app.service.attach, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ServiceRun" xml:space="preserve">
+    <value>Run Service without Debugger</value>
+    <comment>The title of the action app.service.runWithoutDebugger, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ServiceRunReplica" xml:space="preserve">
+    <value>Run Replica without Debugger (Every Replica Next Run)</value>
+    <comment>Run Service without Debugger's title on one replica of several the Aspire window chose: what it keeps for the next run is every replica's.</comment>
+  </data>
+  <data name="ServiceProfile" xml:space="preserve">
+    <value>Profile Service</value>
+    <comment>The title of the action app.service.profile, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AvaloniaOverlay" xml:space="preserve">
+    <value>Avalonia Debug Overlay: {overlay}</value>
+    <comment>The title of each of Avalonia's renderer debug overlays; {overlay} is the overlay's name, which its own menu shows alone.</comment>
+  </data>
+  <data name="Find" xml:space="preserve">
+    <value>Find</value>
+    <comment>The title of the action app.find, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Replace" xml:space="preserve">
+    <value>Replace</value>
+    <comment>The title of the action app.replace, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FindNext" xml:space="preserve">
+    <value>Find Next</value>
+    <comment>The title of the action app.findNext, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FindPrevious" xml:space="preserve">
+    <value>Find Previous</value>
+    <comment>The title of the action app.findPrevious, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FindWordAtCaret" xml:space="preserve">
+    <value>Find Word at Caret</value>
+    <comment>The title of the action app.findWordAtCaret, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FindPreviousWordAtCaret" xml:space="preserve">
+    <value>Find Previous Word at Caret</value>
+    <comment>The title of the action app.findPreviousWordAtCaret, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FindInSelection" xml:space="preserve">
+    <value>Find in Selection</value>
+    <comment>The title of the action app.findInSelection, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="IncrementalSearch" xml:space="preserve">
+    <value>Incremental Search</value>
+    <comment>The title of the action app.incrementalSearch, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="SelectOpenedFile" xml:space="preserve">
+    <value>Select Opened File</value>
+    <comment>The title of the action app.explorer.selectOpenedFile, the Explorer header's button's too.</comment>
+  </data>
+  <data name="DeleteRow" xml:space="preserve">
+    <value>Delete…</value>
+    <comment>The editor's Delete on an Explorer row whose files go to the Trash.</comment>
+  </data>
+  <data name="RemoveRow" xml:space="preserve">
+    <value>Remove…</value>
+    <comment>The editor's Delete on an Explorer row that leaves its files on disk (a project's).</comment>
+  </data>
+  <data name="SwitchExplorerView" xml:space="preserve">
+    <value>Switch Explorer View</value>
+    <comment>The title of the action app.explorer.switchView, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NewFile" xml:space="preserve">
+    <value>New File…</value>
+    <comment>The title of the action app.explorer.newFile, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NewFolder" xml:space="preserve">
+    <value>New Folder…</value>
+    <comment>The title of the action app.explorer.newFolder, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NewType" xml:space="preserve">
+    <value>Class/Interface…</value>
+    <comment>The title of the action app.explorer.newType, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NewItem" xml:space="preserve">
+    <value>New Item…</value>
+    <comment>The title of the action app.explorer.newItem, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NewRepositoryFile" xml:space="preserve">
+    <value>New {file} File</value>
+    <comment>The title of New .editorconfig File, New .gitignore File and New .gitattributes File; {file} is the file's name.</comment>
+  </data>
+  <data name="OpenRepositoryFile" xml:space="preserve">
+    <value>Open {file}</value>
+    <comment>New .editorconfig File's (and the like's) title in the Explorer's Add menu where the folder has one already; {file} is its name.</comment>
+  </data>
+  <data name="RepositoryFileInMenu" xml:space="preserve">
+    <value>{file} File</value>
+    <comment>New .editorconfig File's (and the like's) title in the Explorer's Add menu; {file} is the file's name.</comment>
+  </data>
+  <data name="NewSolutionFolder" xml:space="preserve">
+    <value>New Solution Folder…</value>
+    <comment>The title of the action app.explorer.newSolutionFolder, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AddExistingProject" xml:space="preserve">
+    <value>Add Existing Project…</value>
+    <comment>The title of the action app.explorer.addExistingProject, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AddExistingItem" xml:space="preserve">
+    <value>Add Existing Item…</value>
+    <comment>The title of the action app.explorer.addExistingItem, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AddReference" xml:space="preserve">
+    <value>Add Reference…</value>
+    <comment>The title of the action app.explorer.addReference, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AddDockerSupport" xml:space="preserve">
+    <value>Add Docker Support…</value>
+    <comment>The title of the action app.explorer.addDockerSupport, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AddDockerCompose" xml:space="preserve">
+    <value>Add Docker Compose…</value>
+    <comment>The title of the action app.explorer.addDockerCompose, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AddAspireOrchestration" xml:space="preserve">
+    <value>Add Aspire Orchestration…</value>
+    <comment>The title of the action app.explorer.addAspireOrchestration, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AddAspireOrchestrationInMenu" xml:space="preserve">
+    <value>Aspire Orchestration…</value>
+    <comment>Add Aspire Orchestration's title in the Explorer row menu's Add submenu.</comment>
+  </data>
+  <data name="ManageNuGet" xml:space="preserve">
+    <value>Manage NuGet Packages</value>
+    <comment>The title of the action app.explorer.manageNuGet, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ManageNuGetForSolution" xml:space="preserve">
+    <value>Manage NuGet Packages for Solution</value>
+    <comment>The title of the action app.explorer.manageNuGetForSolution, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ManageUserSecrets" xml:space="preserve">
+    <value>Manage User Secrets</value>
+    <comment>The title of the action app.explorer.manageUserSecrets, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="EditProjectFile" xml:space="preserve">
+    <value>Edit Project File</value>
+    <comment>The title of the action app.explorer.editProjectFile, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="UnloadProject" xml:space="preserve">
+    <value>Unload Project</value>
+    <comment>The title of the action app.explorer.unloadProject, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ReloadProject" xml:space="preserve">
+    <value>Reload Project</value>
+    <comment>The title of the action app.explorer.reloadProject, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="IncludeInProject" xml:space="preserve">
+    <value>Include in Project</value>
+    <comment>The title of the action app.explorer.includeInProject, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ExcludeFromProject" xml:space="preserve">
+    <value>Exclude from Project</value>
+    <comment>The title of the action app.explorer.excludeFromProject, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CompareFiles" xml:space="preserve">
+    <value>Compare Files</value>
+    <comment>The title of the action app.explorer.compareFiles, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CompareWith" xml:space="preserve">
+    <value>Compare With…</value>
+    <comment>Compare Files' title on one file chosen in the Explorer, which asks what to compare it with.</comment>
+  </data>
+  <data name="CopyPath" xml:space="preserve">
+    <value>Copy Path</value>
+    <comment>The title of the action app.explorer.copyPath, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RevealInFileManager" xml:space="preserve">
+    <value>Show in {fileManager}</value>
+    <comment>The title of the action app.explorer.reveal on Windows and Linux; {fileManager} is the system's file manager: Explorer, File Manager.</comment>
+  </data>
+  <data name="RevealInFinder" xml:space="preserve">
+    <value>Reveal in Finder</value>
+    <comment>The title of the action app.explorer.reveal on macOS, as Finder names it.</comment>
+  </data>
+  <data name="OpenInTerminal" xml:space="preserve">
+    <value>Open in Terminal</value>
+    <comment>The title of the action app.explorer.openInTerminal, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="OpenInTerminalInMenu" xml:space="preserve">
+    <value>Terminal</value>
+    <comment>Open in Terminal's title in the Explorer row menu's Open In submenu.</comment>
+  </data>
+  <data name="OpenInBrowser" xml:space="preserve">
+    <value>Open in Browser</value>
+    <comment>The title of the action app.explorer.openInBrowser, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="OpenInBrowserInMenu" xml:space="preserve">
+    <value>Browser</value>
+    <comment>Open in Browser's title in the Explorer row menu's Open In submenu.</comment>
+  </data>
+  <data name="Build" xml:space="preserve">
+    <value>Build Solution</value>
+    <comment>The title of the action app.build, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RebuildSolution" xml:space="preserve">
+    <value>Rebuild Solution</value>
+    <comment>The title of the action app.build.rebuildSolution, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CleanSolution" xml:space="preserve">
+    <value>Clean Solution</value>
+    <comment>The title of the action app.build.cleanSolution, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="BuildSelected" xml:space="preserve">
+    <value>Build Selected Projects</value>
+    <comment>The title of the action app.build.selected, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RebuildSelected" xml:space="preserve">
+    <value>Rebuild Selected Projects</value>
+    <comment>The title of the action app.build.rebuildSelected, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CleanSelected" xml:space="preserve">
+    <value>Clean Selected Projects</value>
+    <comment>The title of the action app.build.cleanSelected, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Publish" xml:space="preserve">
+    <value>Publish…</value>
+    <comment>The title of the action app.build.publish, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PublishAgain" xml:space="preserve">
+    <value>Publish Again</value>
+    <comment>The title of the action app.build.publishAgain, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RunProgram" xml:space="preserve">
+    <value>Run</value>
+    <comment>The title of the action app.run, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Debug" xml:space="preserve">
+    <value>Debug</value>
+    <comment>The title of the action app.debug, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RunCurrentScene" xml:space="preserve">
+    <value>Run Current Scene</value>
+    <comment>The title of the action app.run.currentScene, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RunAnotherCopy" xml:space="preserve">
+    <value>Run Another Copy</value>
+    <comment>The title of the action app.run.anotherCopy, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DebugAnotherCopy" xml:space="preserve">
+    <value>Debug Another Copy</value>
+    <comment>The title of the action app.debug.anotherCopy, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RunInTerminal" xml:space="preserve">
+    <value>Run in the Terminal</value>
+    <comment>The title of the action app.run.inTerminal, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DebugInTerminal" xml:space="preserve">
+    <value>Debug in the Terminal</value>
+    <comment>The title of the action app.debug.inTerminal, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ProfileInTerminal" xml:space="preserve">
+    <value>Profile in the Terminal</value>
+    <comment>The title of the action app.profile.inTerminal, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RunHere" xml:space="preserve">
+    <value>Run This Program</value>
+    <comment>The title of the action app.run.here, which runs the program at hand (the file shown, the Explorer's row).</comment>
+  </data>
+  <data name="RunHereNamed" xml:space="preserve">
+    <value>Run ''{configuration}''</value>
+    <comment>Run This Program's title where the program at hand has a run configuration; {configuration} is its name.</comment>
+  </data>
+  <data name="DebugHere" xml:space="preserve">
+    <value>Debug This Program</value>
+    <comment>The title of the action app.debug.here, which debugs the program at hand (the file shown, the Explorer's row).</comment>
+  </data>
+  <data name="DebugHereNamed" xml:space="preserve">
+    <value>Debug ''{configuration}''</value>
+    <comment>Debug This Program's title where the program at hand has a run configuration; {configuration} is its name.</comment>
+  </data>
+  <data name="ProfileHere" xml:space="preserve">
+    <value>Profile This Program</value>
+    <comment>The title of the action app.profile.here, which profiles the program at hand (the file shown, the Explorer's row).</comment>
+  </data>
+  <data name="ProfileHereNamed" xml:space="preserve">
+    <value>Profile ''{configuration}''</value>
+    <comment>Profile This Program's title where the program at hand has a run configuration; {configuration} is its name.</comment>
+  </data>
+  <data name="Stop" xml:space="preserve">
+    <value>Stop</value>
+    <comment>The title of the action app.stop, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="StopAll" xml:space="preserve">
+    <value>Stop All</value>
+    <comment>The title of the action app.stopAll, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Rerun" xml:space="preserve">
+    <value>Rerun</value>
+    <comment>The title of the action app.rerun, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="EditConfigurations" xml:space="preserve">
+    <value>Edit Configurations…</value>
+    <comment>The title of the action app.editConfigurations, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RunAnything" xml:space="preserve">
+    <value>Run Anything…</value>
+    <comment>The title of the action app.runAnything, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ChooseRunConfiguration" xml:space="preserve">
+    <value>Choose and Run…</value>
+    <comment>The title of the action app.chooseRunConfiguration, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ChooseDebugConfiguration" xml:space="preserve">
+    <value>Choose and Debug…</value>
+    <comment>The title of the action app.chooseDebugConfiguration, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ChooseRunTarget" xml:space="preserve">
+    <value>Choose Where It Runs…</value>
+    <comment>The title of the action app.chooseRunTarget, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ChooseBuildConfiguration" xml:space="preserve">
+    <value>Choose Build Configuration…</value>
+    <comment>The title of the action app.chooseBuildConfiguration, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="SaveAsLaunchProfile" xml:space="preserve">
+    <value>Save as Launch Profile</value>
+    <comment>The title of the action app.saveAsLaunchProfile, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowBuild" xml:space="preserve">
+    <value>Build Tool Window</value>
+    <comment>The title of the action showing the Build tool window, where Build alone builds.</comment>
+  </data>
+  <data name="ShowRun" xml:space="preserve">
+    <value>Run Tool Window</value>
+    <comment>The title of the action showing the Run tool window, where Run alone runs a program.</comment>
+  </data>
+  <data name="ShowAspire" xml:space="preserve">
+    <value>Aspire Tool Window</value>
+    <comment>The title of the action showing the Aspire tool window.</comment>
+  </data>
+  <data name="AspireRefresh" xml:space="preserve">
+    <value>Refresh Aspire Resources</value>
+    <comment>The title of the action app.aspire.refresh, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireDiscover" xml:space="preserve">
+    <value>Discover Aspire AppHosts</value>
+    <comment>The title of the action app.aspire.discover, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireCommand" xml:space="preserve">
+    <value>Run Aspire Resource Command…</value>
+    <comment>The title of the action app.aspire.command, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireLogFind" xml:space="preserve">
+    <value>Find in Aspire Logs</value>
+    <comment>The title of the action app.aspire.logFind, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireShowTrace" xml:space="preserve">
+    <value>Show Aspire Log Trace</value>
+    <comment>The title of the action app.aspire.showTrace, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireShowRelatedLogs" xml:space="preserve">
+    <value>Show Related Aspire Logs</value>
+    <comment>The title of the action app.aspire.showRelatedLogs, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireResources" xml:space="preserve">
+    <value>Show Aspire Resources</value>
+    <comment>The title of the action app.aspire.resources, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireConsole" xml:space="preserve">
+    <value>Show Aspire Log</value>
+    <comment>The title of the action app.aspire.console, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireTelemetry" xml:space="preserve">
+    <value>Show Aspire Telemetry</value>
+    <comment>The title of the action app.aspire.telemetry, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireStats" xml:space="preserve">
+    <value>Show Aspire Stats</value>
+    <comment>The title of the action app.aspire.stats, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireGraph" xml:space="preserve">
+    <value>Show Aspire Graph</value>
+    <comment>The title of the action app.aspire.graph, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireGraphMermaid" xml:space="preserve">
+    <value>Copy Aspire Graph as Mermaid</value>
+    <comment>The title of the action app.aspire.graphMermaid, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireLogs" xml:space="preserve">
+    <value>Show Aspire Structured logs</value>
+    <comment>The title of the action app.aspire.logs, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireTraces" xml:space="preserve">
+    <value>Show Aspire Traces</value>
+    <comment>The title of the action app.aspire.traces, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireAppHostConsole" xml:space="preserve">
+    <value>Show Aspire AppHost Log</value>
+    <comment>The title of the action app.aspire.appHostConsole, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireOpenLink" xml:space="preserve">
+    <value>Open Aspire Resource Endpoint</value>
+    <comment>The title of the action app.aspire.openLink, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireSource" xml:space="preserve">
+    <value>Open Aspire Resource Source</value>
+    <comment>The title of the action app.aspire.source, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AspireContainer" xml:space="preserve">
+    <value>Show Aspire Resource Container</value>
+    <comment>The title of the action app.aspire.container, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowProblems" xml:space="preserve">
+    <value>Problems</value>
+    <comment>The title of the action showing the Problems tool window, whose own title carries a count.</comment>
+  </data>
+  <data name="ShowFind" xml:space="preserve">
+    <value>Find Tool Window</value>
+    <comment>The title of the action showing the Find tool window, where Find alone is the editor's search.</comment>
+  </data>
+  <data name="ToggleSolutionAnalysis" xml:space="preserve">
+    <value>Toggle Solution-Wide Analysis</value>
+    <comment>The title of the action app.toggleSolutionAnalysis, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RestartCSharpServer" xml:space="preserve">
+    <value>Restart C# Language Server</value>
+    <comment>The title of the action app.restartCSharpServer, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowDebug" xml:space="preserve">
+    <value>Debug Tool Window</value>
+    <comment>The title of the action showing the Debug tool window, where Debug alone debugs a program.</comment>
+  </data>
+  <data name="HideToolWindow" xml:space="preserve">
+    <value>Hide Active Tool Window</value>
+    <comment>The title of the action app.hideToolWindow, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CloseToolWindow" xml:space="preserve">
+    <value>Close Active Tool Window</value>
+    <comment>The title of the action app.closeToolWindow, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DockToolWindow" xml:space="preserve">
+    <value>Dock Tool Window</value>
+    <comment>The title of the action app.dockToolWindow, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DockToolWindowIn" xml:space="preserve">
+    <value>Dock {window} in {place}</value>
+    <comment>Dock Tool Window's title on a tool window's tab among the editors; {window} is the window and {place} where it docks.</comment>
+  </data>
+  <data name="Back" xml:space="preserve">
+    <value>Back</value>
+    <comment>The title of the action app.back, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Forward" xml:space="preserve">
+    <value>Forward</value>
+    <comment>The title of the action app.forward, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Complete" xml:space="preserve">
+    <value>Basic Completion</value>
+    <comment>The title of the action app.code.complete, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="QuickFix" xml:space="preserve">
+    <value>Show Context Actions</value>
+    <comment>The title of the action app.code.quickFix, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Rename" xml:space="preserve">
+    <value>Rename…</value>
+    <comment>The title of the action app.code.rename, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GoToDeclaration" xml:space="preserve">
+    <value>Go to Declaration</value>
+    <comment>The title of the action app.code.goToDeclaration, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GoToImplementation" xml:space="preserve">
+    <value>Go to Implementation</value>
+    <comment>The title of the action app.code.goToImplementation, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GoToTypeDeclaration" xml:space="preserve">
+    <value>Go to Type Declaration</value>
+    <comment>The title of the action app.code.goToTypeDeclaration, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="BaseSymbols" xml:space="preserve">
+    <value>Base Symbols</value>
+    <comment>The title of the action app.code.baseSymbols, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DerivedSymbols" xml:space="preserve">
+    <value>Derived Symbols</value>
+    <comment>The title of the action app.code.derivedSymbols, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FindUsages" xml:space="preserve">
+    <value>Find Usages</value>
+    <comment>The title of the action app.code.findUsages, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowUsages" xml:space="preserve">
+    <value>Show Usages</value>
+    <comment>The title of the action app.code.showUsages, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="HighlightUsages" xml:space="preserve">
+    <value>Highlight Usages in File</value>
+    <comment>The title of the action app.code.highlightUsages, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Reformat" xml:space="preserve">
+    <value>Reformat Code</value>
+    <comment>The title of the action app.code.reformat, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CodeCleanup" xml:space="preserve">
+    <value>Code Cleanup</value>
+    <comment>The title of the action app.code.cleanup, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="OrderScriptParts" xml:space="preserve">
+    <value>Order Script's Parts</value>
+    <comment>The title of the action app.code.orderScriptParts, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FindUnusedStepDefinitions" xml:space="preserve">
+    <value>Find Unused Step Definitions</value>
+    <comment>The title of the action app.code.findUnusedStepDefinitions, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="InsertStep" xml:space="preserve">
+    <value>Insert Step into Feature</value>
+    <comment>The title of the action app.steps.insert, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ReformatWithPrettier" xml:space="preserve">
+    <value>Reformat with Prettier</value>
+    <comment>The title of the action app.code.reformatWithPrettier, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FixEslintProblems" xml:space="preserve">
+    <value>Fix ESLint Problems</value>
+    <comment>The title of the action app.code.fixEslintProblems, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RefactorThis" xml:space="preserve">
+    <value>Refactor This…</value>
+    <comment>The title of the action app.code.refactorThis, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Generate" xml:space="preserve">
+    <value>Generate…</value>
+    <comment>The title of the action app.code.generate, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ExtractMethod" xml:space="preserve">
+    <value>Extract Method…</value>
+    <comment>The title of the action app.code.extractMethod, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="IntroduceVariable" xml:space="preserve">
+    <value>Introduce Variable…</value>
+    <comment>The title of the action app.code.introduceVariable, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Inline" xml:space="preserve">
+    <value>Inline…</value>
+    <comment>The title of the action app.code.inline, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ParameterInfo" xml:space="preserve">
+    <value>Parameter Info</value>
+    <comment>The title of the action app.code.parameterInfo, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NextOverload" xml:space="preserve">
+    <value>Next Overload</value>
+    <comment>The title of the action app.code.nextOverload, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PreviousOverload" xml:space="preserve">
+    <value>Previous Overload</value>
+    <comment>The title of the action app.code.previousOverload, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CompletionFilter" xml:space="preserve">
+    <value>Completion Filter: {kind}</value>
+    <comment>The title of each of the completion list's filters by kind of member; {kind} is the kind (Methods, Properties).</comment>
+  </data>
+  <data name="SurroundWith" xml:space="preserve">
+    <value>Surround With…</value>
+    <comment>The title of the action app.code.surroundWith, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CompleteStatement" xml:space="preserve">
+    <value>Complete Current Statement</value>
+    <comment>The title of the action app.code.completeStatement, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="OptimizeUsings" xml:space="preserve">
+    <value>Optimize Imports</value>
+    <comment>The title of the action app.code.optimizeUsings, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="SafeDelete" xml:space="preserve">
+    <value>Safe Delete…</value>
+    <comment>The title of the action app.code.safeDelete, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="IntroduceField" xml:space="preserve">
+    <value>Introduce Field…</value>
+    <comment>The title of the action app.code.introduceField, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="IntroduceParameter" xml:space="preserve">
+    <value>Introduce Parameter…</value>
+    <comment>The title of the action app.code.introduceParameter, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="EncapsulateField" xml:space="preserve">
+    <value>Encapsulate Field…</value>
+    <comment>The title of the action app.code.encapsulateField, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ChangeSignature" xml:space="preserve">
+    <value>Change Signature…</value>
+    <comment>The title of the action app.code.changeSignature, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ExtractInterface" xml:space="preserve">
+    <value>Extract Interface…</value>
+    <comment>The title of the action app.code.extractInterface, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Move" xml:space="preserve">
+    <value>Move…</value>
+    <comment>The title of the action app.code.move, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PullMembersUp" xml:space="preserve">
+    <value>Pull Members Up…</value>
+    <comment>The title of the action app.code.pullMembersUp, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PushMembersDown" xml:space="preserve">
+    <value>Push Members Down…</value>
+    <comment>The title of the action app.code.pushMembersDown, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ExtractResource" xml:space="preserve">
+    <value>Extract Resource…</value>
+    <comment>The title of the action app.code.extractResource, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ExtractStyle" xml:space="preserve">
+    <value>Extract Style…</value>
+    <comment>The title of the action app.code.extractStyle, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="QuickDocumentation" xml:space="preserve">
+    <value>Quick Documentation</value>
+    <comment>The title of the action app.code.quickDocumentation, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContextHelp" xml:space="preserve">
+    <value>Context Help</value>
+    <comment>The title of the action app.contextHelp, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NextError" xml:space="preserve">
+    <value>Next Highlighted Error</value>
+    <comment>The title of the action app.code.nextError, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PreviousError" xml:space="preserve">
+    <value>Previous Highlighted Error</value>
+    <comment>The title of the action app.code.previousError, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NextErrorInSolution" xml:space="preserve">
+    <value>Next Error in Solution</value>
+    <comment>The title of the action app.code.nextErrorInSolution, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PreviousErrorInSolution" xml:space="preserve">
+    <value>Previous Error in Solution</value>
+    <comment>The title of the action app.code.previousErrorInSolution, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="InspectThis" xml:space="preserve">
+    <value>Inspect This…</value>
+    <comment>The title of the action app.hierarchy.inspectThis, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RunInspectionByName" xml:space="preserve">
+    <value>Run Inspection by Name…</value>
+    <comment>The title of the action app.code.runInspectionByName, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FocusEditor" xml:space="preserve">
+    <value>Focus Editor</value>
+    <comment>The title of the action app.focusEditor, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NextRegion" xml:space="preserve">
+    <value>Next Region</value>
+    <comment>The title of the action app.nextRegion, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PreviousRegion" xml:space="preserve">
+    <value>Previous Region</value>
+    <comment>The title of the action app.previousRegion, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ReadAsText" xml:space="preserve">
+    <value>Read as Text</value>
+    <comment>The title of the action app.readAsText, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ToggleBreakpoint" xml:space="preserve">
+    <value>Toggle Breakpoint</value>
+    <comment>The title of the action app.debug.toggleBreakpoint, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ToggleTemporaryBreakpoint" xml:space="preserve">
+    <value>Toggle Temporary Breakpoint</value>
+    <comment>The title of the action app.debug.toggleTemporaryBreakpoint, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ToggleMethodBreakpoint" xml:space="preserve">
+    <value>Toggle Method Breakpoint</value>
+    <comment>The title of the action app.debug.toggleMethodBreakpoint, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ToggleSnapshotPoint" xml:space="preserve">
+    <value>Toggle Snapshot Point</value>
+    <comment>The title of the action app.debug.toggleSnapshotPoint, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ToggleBreakpointEnabled" xml:space="preserve">
+    <value>Toggle Breakpoint Enabled</value>
+    <comment>The title of the action app.debug.toggleBreakpointEnabled, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RecordCalls" xml:space="preserve">
+    <value>Record Calls</value>
+    <comment>The title of the action app.debug.recordCalls, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="StepBack" xml:space="preserve">
+    <value>Step Back</value>
+    <comment>The title of the action app.debug.stepBack, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="StepForward" xml:space="preserve">
+    <value>Step Forward</value>
+    <comment>The title of the action app.debug.stepForward, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MuteBreakpoints" xml:space="preserve">
+    <value>Mute Breakpoints</value>
+    <comment>The title of the action app.debug.muteBreakpoints, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Resume" xml:space="preserve">
+    <value>Resume Program</value>
+    <comment>The title of the action app.debug.resume, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ResumeGameLoop" xml:space="preserve">
+    <value>Resume Game Loop</value>
+    <comment>Pause Game Loop's title while the Godot game's loop is paused.</comment>
+  </data>
+  <data name="Pause" xml:space="preserve">
+    <value>Pause Program</value>
+    <comment>The title of the action app.debug.pause, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="StepOver" xml:space="preserve">
+    <value>Step Over</value>
+    <comment>The title of the action app.debug.stepOver, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="StepInto" xml:space="preserve">
+    <value>Step Into</value>
+    <comment>The title of the action app.debug.stepInto, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="SmartStepInto" xml:space="preserve">
+    <value>Smart Step Into</value>
+    <comment>The title of the action app.debug.smartStepInto, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="StepOut" xml:space="preserve">
+    <value>Step Out</value>
+    <comment>The title of the action app.debug.stepOut, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RunToCursor" xml:space="preserve">
+    <value>Run to Cursor</value>
+    <comment>The title of the action app.debug.runToCursor, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="SetNextStatement" xml:space="preserve">
+    <value>Set Next Statement</value>
+    <comment>The title of the action app.debug.setNextStatement, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ExtendSelection" xml:space="preserve">
+    <value>Extend Selection</value>
+    <comment>The title of the action app.editor.extendSelection, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CallHierarchy" xml:space="preserve">
+    <value>Call Hierarchy</value>
+    <comment>The title of the action app.hierarchy.calls, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="TypeHierarchy" xml:space="preserve">
+    <value>Type Hierarchy</value>
+    <comment>The title of the action app.hierarchy.types, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShrinkSelection" xml:space="preserve">
+    <value>Shrink Selection</value>
+    <comment>The title of the action app.editor.shrinkSelection, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MethodUp" xml:space="preserve">
+    <value>Method Up</value>
+    <comment>The title of the action app.editor.methodUp, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MethodDown" xml:space="preserve">
+    <value>Method Down</value>
+    <comment>The title of the action app.editor.methodDown, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NextUsage" xml:space="preserve">
+    <value>Next Usage</value>
+    <comment>The title of the action app.editor.nextUsage, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PreviousUsage" xml:space="preserve">
+    <value>Previous Usage</value>
+    <comment>The title of the action app.editor.previousUsage, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GoToContainingDeclaration" xml:space="preserve">
+    <value>Go to Containing Declaration</value>
+    <comment>The title of the action app.editor.goToContainingDeclaration, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="SelectContainingDeclaration" xml:space="preserve">
+    <value>Select Containing Declaration</value>
+    <comment>The title of the action app.editor.selectContainingDeclaration, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CodeBlockStart" xml:space="preserve">
+    <value>Move Caret to Code Block Start</value>
+    <comment>The title of the action app.editor.codeBlockStart, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CodeBlockEnd" xml:space="preserve">
+    <value>Move Caret to Code Block End</value>
+    <comment>The title of the action app.editor.codeBlockEnd, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CodeBlockStartWithSelection" xml:space="preserve">
+    <value>Move Caret to Code Block Start with Selection</value>
+    <comment>The title of the action app.editor.codeBlockStartWithSelection, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CodeBlockEndWithSelection" xml:space="preserve">
+    <value>Move Caret to Code Block End with Selection</value>
+    <comment>The title of the action app.editor.codeBlockEndWithSelection, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GoToRegion" xml:space="preserve">
+    <value>Go to Region</value>
+    <comment>The title of the action app.goToRegion, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="QuickImplementations" xml:space="preserve">
+    <value>Quick Implementations</value>
+    <comment>The title of the action app.code.quickImplementations, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ErrorDescription" xml:space="preserve">
+    <value>Error Description</value>
+    <comment>The title of the action app.code.errorDescription, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ExpressionTypeInfo" xml:space="preserve">
+    <value>Expression Type Info</value>
+    <comment>The title of the action app.code.expressionTypeInfo, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowFilePath" xml:space="preserve">
+    <value>Show File Path</value>
+    <comment>The title of the action app.showFilePath, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CollapseSelection" xml:space="preserve">
+    <value>Collapse Selection</value>
+    <comment>The title of the action app.editor.collapseSelection, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CollapseBlock" xml:space="preserve">
+    <value>Collapse Block</value>
+    <comment>The title of the action app.editor.collapseBlock, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PasteFromHistory" xml:space="preserve">
+    <value>Paste from History</value>
+    <comment>The title of the action app.editor.pasteFromHistory, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CopyReference" xml:space="preserve">
+    <value>Copy Reference</value>
+    <comment>The title of the action app.copyReference, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="SmartTypeCompletion" xml:space="preserve">
+    <value>Smart Type Completion</value>
+    <comment>The title of the action app.code.smartTypeCompletion, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NewBranch" xml:space="preserve">
+    <value>New Branch…</value>
+    <comment>The title of the action app.vcs.newBranch, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CommitAndPush" xml:space="preserve">
+    <value>Commit and Push…</value>
+    <comment>The title of the action app.vcs.commitAndPush, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="VcsOperations" xml:space="preserve">
+    <value>VCS Operations</value>
+    <comment>The title of the action app.vcs.operations, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ForceStepInto" xml:space="preserve">
+    <value>Force Step Into</value>
+    <comment>The title of the action app.debug.forceStepInto, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ForceStepOver" xml:space="preserve">
+    <value>Force Step Over</value>
+    <comment>The title of the action app.debug.forceStepOver, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ForceRunToCursor" xml:space="preserve">
+    <value>Force Run to Cursor</value>
+    <comment>The title of the action app.debug.forceRunToCursor, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RemoveAllBreakpoints" xml:space="preserve">
+    <value>Remove All Breakpoints</value>
+    <comment>The title of the action app.debug.removeAllBreakpoints, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ExceptionSettings" xml:space="preserve">
+    <value>Exception Settings…</value>
+    <comment>The title of the action app.debug.exceptionSettings, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CancelBuild" xml:space="preserve">
+    <value>Cancel Build</value>
+    <comment>The title of the action app.build.cancel, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowExecutionPoint" xml:space="preserve">
+    <value>Show Execution Point</value>
+    <comment>The title of the action app.debug.showExecutionPoint, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MoveStatementUp" xml:space="preserve">
+    <value>Move Statement Up</value>
+    <comment>The title of the action app.editor.moveStatementUp, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MoveStatementDown" xml:space="preserve">
+    <value>Move Statement Down</value>
+    <comment>The title of the action app.editor.moveStatementDown, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MoveElementLeft" xml:space="preserve">
+    <value>Move Element Left</value>
+    <comment>The title of the action app.editor.moveElementLeft, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MoveElementRight" xml:space="preserve">
+    <value>Move Element Right</value>
+    <comment>The title of the action app.editor.moveElementRight, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Unwrap" xml:space="preserve">
+    <value>Unwrap</value>
+    <comment>The title of the action app.editor.unwrap, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AutoIndentLines" xml:space="preserve">
+    <value>Auto-Indent Lines</value>
+    <comment>The title of the action app.editor.autoIndentLines, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AttachToProcess" xml:space="preserve">
+    <value>Attach to Process…</value>
+    <comment>The title of the action app.debug.attachToProcess, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ReattachToProcess" xml:space="preserve">
+    <value>Reattach to Process…</value>
+    <comment>The title of the action app.debug.reattachToProcess, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Detach" xml:space="preserve">
+    <value>Detach</value>
+    <comment>The title of the action app.debug.detach, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ApplyHotReloadChanges" xml:space="preserve">
+    <value>Apply Hot Reload Changes</value>
+    <comment>The title of the action app.debug.applyHotReloadChanges, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Evaluate" xml:space="preserve">
+    <value>Evaluate Expression…</value>
+    <comment>The title of the action app.debug.evaluate, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AddToWatches" xml:space="preserve">
+    <value>Add to Watches</value>
+    <comment>The title of the action app.debug.addToWatches, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="QuickEvaluate" xml:space="preserve">
+    <value>Quick Evaluate Expression</value>
+    <comment>The title of the action app.debug.quickEvaluate, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PinToLine" xml:space="preserve">
+    <value>Pin to Line</value>
+    <comment>The title of the action app.debug.pinToLine, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="UnpinFromLine" xml:space="preserve">
+    <value>Unpin from Line</value>
+    <comment>Pin to Line's title on an expression pinned to the caret's line already.</comment>
+  </data>
+  <data name="ShowContextMenu" xml:space="preserve">
+    <value>Show Context Menu</value>
+    <comment>The title of the action app.contextMenu, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RunTests" xml:space="preserve">
+    <value>Run Unit Tests</value>
+    <comment>The title of the action app.tests.run, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DebugTests" xml:space="preserve">
+    <value>Debug Unit Tests</value>
+    <comment>The title of the action app.tests.debug, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RunAllTests" xml:space="preserve">
+    <value>Run All Tests</value>
+    <comment>The title of the action app.tests.runAll, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RunTestsUntilFailure" xml:space="preserve">
+    <value>Run Unit Tests Until Failure</value>
+    <comment>The title of the action app.tests.runUntilFailure, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RerunTests" xml:space="preserve">
+    <value>Rerun Unit Tests</value>
+    <comment>The title of the action app.tests.rerun, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RerunFailedTests" xml:space="preserve">
+    <value>Rerun Failed Tests</value>
+    <comment>The title of the action app.tests.rerunFailed, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="StopTests" xml:space="preserve">
+    <value>Stop Unit Tests</value>
+    <comment>The title of the action app.tests.stop, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NewTestSession" xml:space="preserve">
+    <value>New Unit Test Session</value>
+    <comment>The title of the action app.tests.newSession, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AppendToTestSession" xml:space="preserve">
+    <value>Append to Unit Test Session</value>
+    <comment>The title of the action app.tests.appendToSession, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RunTestSession" xml:space="preserve">
+    <value>Run Current Unit Test Session</value>
+    <comment>The title of the action app.tests.runSession, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowAllTests" xml:space="preserve">
+    <value>Show All Unit Tests</value>
+    <comment>The title of the action app.tests.showAll, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowTestSession" xml:space="preserve">
+    <value>Show Current Unit Test Session</value>
+    <comment>The title of the action app.tests.showSession, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="TestsQuickList" xml:space="preserve">
+    <value>Unit Test Operations</value>
+    <comment>The title of the action app.tests.quickList, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GoToTest" xml:space="preserve">
+    <value>Go to Test</value>
+    <comment>The title of the action app.goToTest, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CoverTests" xml:space="preserve">
+    <value>Run Unit Tests with Coverage</value>
+    <comment>The title of the action app.tests.cover, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CoverAllTests" xml:space="preserve">
+    <value>Run All Tests with Coverage</value>
+    <comment>The title of the action app.tests.coverAll, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ClearCoverage" xml:space="preserve">
+    <value>Clear Coverage</value>
+    <comment>The title of the action app.tests.clearCoverage, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ExportCoverage" xml:space="preserve">
+    <value>Export Coverage as Cobertura…</value>
+    <comment>The title of the action app.tests.exportCoverage, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowDebugMemory" xml:space="preserve">
+    <value>Memory</value>
+    <comment>The title of the action app.showDebugMemory, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FindClones" xml:space="preserve">
+    <value>Find Code Clones</value>
+    <comment>The title of the action app.code.findClones, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FindClonesOfSelection" xml:space="preserve">
+    <value>Find Clones of Selection</value>
+    <comment>The title of the action app.code.findClonesOfSelection, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CompareClones" xml:space="preserve">
+    <value>Compare Clones Side by Side</value>
+    <comment>The title of the action app.clones.compare, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ExtractClones" xml:space="preserve">
+    <value>Extract Method from Clones…</value>
+    <comment>The title of the action app.clones.extractMethod, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CreateFake" xml:space="preserve">
+    <value>Create Fake…</value>
+    <comment>The title of the action app.code.createFake, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FillArgumentsWithDoubles" xml:space="preserve">
+    <value>Fill Arguments with Doubles</value>
+    <comment>The title of the action app.code.fillArgumentsWithDoubles, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowDependencyMap" xml:space="preserve">
+    <value>Show Dependency Map</value>
+    <comment>The title of the action app.showDependencyMap, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContinuousTesting" xml:space="preserve">
+    <value>Continuous Testing</value>
+    <comment>The title of the action app.tests.continuous, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="SplitRight" xml:space="preserve">
+    <value>Split Right</value>
+    <comment>The title of the action app.editor.splitRight, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="SplitDown" xml:space="preserve">
+    <value>Split Down</value>
+    <comment>The title of the action app.editor.splitDown, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MoveToOppositeGroup" xml:space="preserve">
+    <value>Move to Opposite Group</value>
+    <comment>The title of the action app.editor.moveToOppositeGroup, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="OpenInNewWindow" xml:space="preserve">
+    <value>Open Tab in New Window</value>
+    <comment>The title of the action app.editor.openInNewWindow, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ReopenClosedTab" xml:space="preserve">
+    <value>Reopen Closed Tab</value>
+    <comment>The title of the action app.editor.reopenClosedTab, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PinTab" xml:space="preserve">
+    <value>Pin Tab</value>
+    <comment>The title of the action app.editor.pinTab, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="UnpinTab" xml:space="preserve">
+    <value>Unpin Tab</value>
+    <comment>Pin Tab's title on a pinned tab.</comment>
+  </data>
+  <data name="CloseOtherTabs" xml:space="preserve">
+    <value>Close Other Tabs</value>
+    <comment>The title of the action app.editor.closeOthers, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CloseAllTabs" xml:space="preserve">
+    <value>Close All Tabs</value>
+    <comment>The title of the action app.editor.closeAll, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CloseUnpinned" xml:space="preserve">
+    <value>Close All but Pinned</value>
+    <comment>The title of the action app.editor.closeUnpinned, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CloseTabsLeft" xml:space="preserve">
+    <value>Close Tabs to the Left</value>
+    <comment>The title of the action app.editor.closeLeft, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CloseTabsRight" xml:space="preserve">
+    <value>Close Tabs to the Right</value>
+    <comment>The title of the action app.editor.closeRight, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Unsplit" xml:space="preserve">
+    <value>Unsplit</value>
+    <comment>The title of the action app.editor.unsplit, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="UnsplitAll" xml:space="preserve">
+    <value>Unsplit All</value>
+    <comment>The title of the action app.editor.unsplitAll, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="SoftWrap" xml:space="preserve">
+    <value>Soft-Wrap</value>
+    <comment>The title of the action app.editor.softWrap, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowWhitespaces" xml:space="preserve">
+    <value>Show Whitespaces</value>
+    <comment>The title of the action app.editor.showWhitespaces, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="IncreaseFontSize" xml:space="preserve">
+    <value>Increase Font Size</value>
+    <comment>The title of the action app.editor.increaseFontSize, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DecreaseFontSize" xml:space="preserve">
+    <value>Decrease Font Size</value>
+    <comment>The title of the action app.editor.decreaseFontSize, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ResetFontSize" xml:space="preserve">
+    <value>Reset Font Size</value>
+    <comment>The title of the action app.editor.resetFontSize, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="XamlPreview" xml:space="preserve">
+    <value>XAML Preview</value>
+    <comment>The title of the action app.editor.xamlPreview, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="BuildForPreview" xml:space="preserve">
+    <value>Build for XAML Preview</value>
+    <comment>The title of the action app.xaml.buildForPreview, which the XAML preview's link shows too.</comment>
+  </data>
+  <data name="MarkdownPreview" xml:space="preserve">
+    <value>Markdown Preview</value>
+    <comment>The title of the action app.editor.markdownPreview, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MarkdownEditorOnly" xml:space="preserve">
+    <value>Editor Only</value>
+    <comment>The title of the action app.editor.markdownEditorOnly, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MarkdownEditorAndPreview" xml:space="preserve">
+    <value>Editor and Preview</value>
+    <comment>The title of the action app.editor.markdownEditorAndPreview, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MarkdownPreviewOnly" xml:space="preserve">
+    <value>Preview Only</value>
+    <comment>The title of the action app.editor.markdownPreviewOnly, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FormCodeOnly" xml:space="preserve">
+    <value>View Code</value>
+    <comment>The title of the action app.editor.formCodeOnly, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FormCodeAndDesign" xml:space="preserve">
+    <value>Code and Design</value>
+    <comment>The title of the action app.editor.formCodeAndDesign, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FormDesignOnly" xml:space="preserve">
+    <value>View Designer</value>
+    <comment>The title of the action app.editor.formDesignOnly, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FormDelete" xml:space="preserve">
+    <value>Delete</value>
+    <comment>The title of the action app.design.delete, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FormBringToFront" xml:space="preserve">
+    <value>Bring to Front</value>
+    <comment>The title of the action app.design.bringToFront, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FormSendToBack" xml:space="preserve">
+    <value>Send to Back</value>
+    <comment>The title of the action app.design.sendToBack, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FormMoveUp" xml:space="preserve">
+    <value>Move Up</value>
+    <comment>The title of the action app.design.moveUp, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FormMoveDown" xml:space="preserve">
+    <value>Move Down</value>
+    <comment>The title of the action app.design.moveDown, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="SvgPreview" xml:space="preserve">
+    <value>SVG Preview</value>
+    <comment>The title of the action app.editor.svgPreview, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="HtmlPreview" xml:space="preserve">
+    <value>HTML Preview</value>
+    <comment>The title of the action app.editor.htmlPreview, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CloseSolution" xml:space="preserve">
+    <value>Close Solution</value>
+    <comment>The title of the action app.closeSolution, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RestoreDefaultLayout" xml:space="preserve">
+    <value>Restore Default Layout</value>
+    <comment>The title of the action app.window.restoreDefaultLayout, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NewTerminalSession" xml:space="preserve">
+    <value>New Terminal Session</value>
+    <comment>The title of the action app.terminal.newSession, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="MaximizeToolWindow" xml:space="preserve">
+    <value>Maximize Tool Window</value>
+    <comment>The title of the action app.window.maximize, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="HideAllToolWindows" xml:space="preserve">
+    <value>Hide All Tool Windows</value>
+    <comment>The title of the action app.window.hideAll, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="HideSideWindows" xml:space="preserve">
+    <value>Hide Side Windows</value>
+    <comment>The title of the action app.window.hideSides, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="LastToolWindow" xml:space="preserve">
+    <value>Jump to Last Tool Window</value>
+    <comment>The title of the action app.window.last, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CloseToolTab" xml:space="preserve">
+    <value>Close Tool Window Tab</value>
+    <comment>The title of the action app.window.closeTab, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ZoomIn" xml:space="preserve">
+    <value>Zoom In</value>
+    <comment>The title of the action app.window.zoomIn, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ZoomOut" xml:space="preserve">
+    <value>Zoom Out</value>
+    <comment>The title of the action app.window.zoomOut, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ResetZoom" xml:space="preserve">
+    <value>Reset Zoom</value>
+    <comment>The title of the action app.window.resetZoom, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="FullScreen" xml:space="preserve">
+    <value>Full Screen</value>
+    <comment>The title of the action app.window.fullScreen, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NextSplit" xml:space="preserve">
+    <value>Next Split</value>
+    <comment>The title of the action app.editor.nextSplit, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PreviousSplit" xml:space="preserve">
+    <value>Previous Split</value>
+    <comment>The title of the action app.editor.previousSplit, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ExpandAll" xml:space="preserve">
+    <value>Expand All</value>
+    <comment>The title of the action app.window.expandAll, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CollapseAll" xml:space="preserve">
+    <value>Collapse All</value>
+    <comment>The title of the action app.window.collapseAll, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="EndpointsRefresh" xml:space="preserve">
+    <value>Refresh Endpoints</value>
+    <comment>The title of the action app.endpoints.refresh, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GitLogRefresh" xml:space="preserve">
+    <value>Refresh Git Log</value>
+    <comment>The title of the action app.vcs.refreshLog, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="IlViewerRefresh" xml:space="preserve">
+    <value>Refresh Compiled Code</value>
+    <comment>The title of the action app.ilViewer.refresh, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CommitSigning" xml:space="preserve">
+    <value>Commit Signing…</value>
+    <comment>The title of the action app.vcs.commitSigning, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CommitRefresh" xml:space="preserve">
+    <value>Refresh Changes</value>
+    <comment>The title of the action app.vcs.refreshChanges, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GroupByDirectory" xml:space="preserve">
+    <value>Group by Directory</value>
+    <comment>The title of the action app.vcs.groupByDirectory, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CommitMessageHistory" xml:space="preserve">
+    <value>Commit Message History</value>
+    <comment>The title of the action app.vcs.commitMessageHistory, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NuGetRefresh" xml:space="preserve">
+    <value>Refresh NuGet</value>
+    <comment>The title of the action app.nuget.refresh, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NuGetUpdateAll" xml:space="preserve">
+    <value>Update All NuGet Packages</value>
+    <comment>The title of the action app.nuget.updateAll, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NuGetUpdateEverywhere" xml:space="preserve">
+    <value>Update NuGet Package in All Projects</value>
+    <comment>The title of the action app.nuget.updateEverywhere, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NuGetUpdateSelected" xml:space="preserve">
+    <value>Update Selected NuGet Packages</value>
+    <comment>The title of the action app.nuget.updateSelected, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="LiveTreeRefresh" xml:space="preserve">
+    <value>Refresh Live Visual Tree</value>
+    <comment>The title of the action app.liveTree.refresh, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="EditBreakpoint" xml:space="preserve">
+    <value>Edit Breakpoint…</value>
+    <comment>The title of the action app.breakpoints.edit, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ViewBreakpoints" xml:space="preserve">
+    <value>View Breakpoints and Exceptions…</value>
+    <comment>The title of the action app.breakpoints.view, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ExportBreakpoints" xml:space="preserve">
+    <value>Export Breakpoints…</value>
+    <comment>The title of the action app.breakpoints.export, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ImportBreakpoints" xml:space="preserve">
+    <value>Import Breakpoints…</value>
+    <comment>The title of the action app.breakpoints.import, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowCommit" xml:space="preserve">
+    <value>Commit Tool Window</value>
+    <comment>The title of the action showing the Commit tool window, where Commit alone is the commit's own.</comment>
+  </data>
+  <data name="Commit" xml:space="preserve">
+    <value>Commit…</value>
+    <comment>The title of the action app.vcs.commit, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Push" xml:space="preserve">
+    <value>Push…</value>
+    <comment>The title of the action app.vcs.push, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Branches" xml:space="preserve">
+    <value>Branches…</value>
+    <comment>The title of the action app.vcs.branches, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NextChange" xml:space="preserve">
+    <value>Next Change</value>
+    <comment>The title of the action app.vcs.nextChange, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PreviousChange" xml:space="preserve">
+    <value>Previous Change</value>
+    <comment>The title of the action app.vcs.previousChange, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="RollbackLines" xml:space="preserve">
+    <value>Rollback Lines</value>
+    <comment>The title of the action app.vcs.rollbackLines, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Stage" xml:space="preserve">
+    <value>Stage</value>
+    <comment>The title of the action app.vcs.stage, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Unstage" xml:space="preserve">
+    <value>Unstage</value>
+    <comment>The title of the action app.vcs.unstage, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowDiff" xml:space="preserve">
+    <value>Show Diff</value>
+    <comment>The title of the action app.vcs.showDiff, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DiffSettings" xml:space="preserve">
+    <value>Diff Settings</value>
+    <comment>The title of the action app.vcs.diffSettings, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="DiffJumpToSource" xml:space="preserve">
+    <value>Jump to Source</value>
+    <comment>The title of the action app.vcs.diffJumpToSource, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Annotate" xml:space="preserve">
+    <value>Annotate with Git Blame</value>
+    <comment>The title of the action app.vcs.annotate, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="UpdateProject" xml:space="preserve">
+    <value>Update Project…</value>
+    <comment>The title of the action app.vcs.update, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Fetch" xml:space="preserve">
+    <value>Fetch</value>
+    <comment>The title of the action app.vcs.fetch, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Stash" xml:space="preserve">
+    <value>Stash Changes…</value>
+    <comment>The title of the action app.vcs.stash, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="Unstash" xml:space="preserve">
+    <value>Unstash Changes…</value>
+    <comment>The title of the action app.vcs.unstash, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CloneRepository" xml:space="preserve">
+    <value>Clone Repository…</value>
+    <comment>The title of the action app.vcs.clone, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CreateRepository" xml:space="preserve">
+    <value>Create Git Repository</value>
+    <comment>The title of the action app.vcs.createRepository, which the Commit and Git windows offer where the folder is in no repository.</comment>
+  </data>
+  <data name="ResolveConflicts" xml:space="preserve">
+    <value>Resolve Conflicts…</value>
+    <comment>The title of the action app.vcs.resolveConflicts, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ContinueRebase" xml:space="preserve">
+    <value>Continue Rebase</value>
+    <comment>The title of the action app.vcs.continueRebase, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="SkipRebase" xml:space="preserve">
+    <value>Skip Commit</value>
+    <comment>The title of the action app.vcs.skipRebase, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AbortRebase" xml:space="preserve">
+    <value>Abort Rebase</value>
+    <comment>The title of the action app.vcs.abortRebase, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AbortMerge" xml:space="preserve">
+    <value>Abort Merge</value>
+    <comment>The title of the action app.vcs.abortMerge, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AbortCherryPick" xml:space="preserve">
+    <value>Abort Cherry-Pick</value>
+    <comment>The title of the action app.vcs.abortCherryPick, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AbortRevert" xml:space="preserve">
+    <value>Abort Revert</value>
+    <comment>The title of the action app.vcs.abortRevert, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="InteractiveRebase" xml:space="preserve">
+    <value>Interactively Rebase from Here…</value>
+    <comment>The title of the action app.vcs.interactiveRebase, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NewTag" xml:space="preserve">
+    <value>New Tag…</value>
+    <comment>The title of the action app.vcs.newTag, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="NewWorktree" xml:space="preserve">
+    <value>New Worktree…</value>
+    <comment>The title of the action app.vcs.newWorktree, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ManageRemotes" xml:space="preserve">
+    <value>Manage Remotes…</value>
+    <comment>The title of the action app.vcs.manageRemotes, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PushTo" xml:space="preserve">
+    <value>Push to…</value>
+    <comment>The title of the action app.vcs.pushTo, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowHistory" xml:space="preserve">
+    <value>Show History</value>
+    <comment>The title of the action app.vcs.showHistory, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowHistoryForSelection" xml:space="preserve">
+    <value>Show History for Selection…</value>
+    <comment>The title of the action app.vcs.showHistoryForSelection, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CompareWithBranch" xml:space="preserve">
+    <value>Compare with Branch or Tag…</value>
+    <comment>The title of the action app.vcs.compareWithBranch, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="CompareWithRevision" xml:space="preserve">
+    <value>Compare with Revision…</value>
+    <comment>The title of the action app.vcs.compareWithRevision, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GetFromBranch" xml:space="preserve">
+    <value>Get from Branch or Tag…</value>
+    <comment>The title of the action app.vcs.getFromBranch, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="AddToGitIgnore" xml:space="preserve">
+    <value>Add to .gitignore</value>
+    <comment>The title of the action app.vcs.addToGitIgnore, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="GoToIgnoringLine" xml:space="preserve">
+    <value>Go to Ignoring Line</value>
+    <comment>The title of the action app.vcs.goToIgnoringLine, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowLocalHistory" xml:space="preserve">
+    <value>Show Local History…</value>
+    <comment>The title of the action app.localHistory.show, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowLocalHistoryInMenu" xml:space="preserve">
+    <value>Show History…</value>
+    <comment>Show Local History's title in the Local History menus.</comment>
+  </data>
+  <data name="ShowProjectHistory" xml:space="preserve">
+    <value>Show Local History for Project…</value>
+    <comment>The title of the action app.localHistory.showProject, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="ShowProjectHistoryInMenu" xml:space="preserve">
+    <value>Show Project History…</value>
+    <comment>Show Project History's title in the Local History menus.</comment>
+  </data>
+  <data name="RecentChanges" xml:space="preserve">
+    <value>Recent Changes</value>
+    <comment>The title of the action app.localHistory.recentChanges, as the menus, Find Action and its tips show it.</comment>
+  </data>
+  <data name="PutLabel" xml:space="preserve">
+    <value>Put Label…</value>
+    <comment>The title of the action app.localHistory.putLabel, as the menus, Find Action and its tips show it.</comment>
+  </data>
+</root>

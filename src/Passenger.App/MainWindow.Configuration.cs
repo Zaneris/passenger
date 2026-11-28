@@ -30,7 +30,7 @@ public partial class MainWindow
             return Task.CompletedTask;
         });
         Closed += (_, _) => configurationTyped.Stop();
-        actions!.Add(new IdeAction(A.ManageUserSecrets, "Manage User Secrets", ExplorerGroup, c => IdeErrors.Observe(ManageUserSecretsAsync(SecretsProjectOf(c)!.Path)))
+        actions!.Add(new IdeAction(A.ManageUserSecrets, ActionTitles.ManageUserSecrets, ExplorerGroup, c => IdeErrors.Observe(ManageUserSecretsAsync(SecretsProjectOf(c)!.Path)))
         {
             WhyNot = c => SecretsProjectOf(c) is not null ? null
                 : RowOf(c) is { } row ? Refusals.NotAProject(row.Name)

@@ -20,7 +20,7 @@ public partial class MainWindow
 
     private void AddGodotEditor()
     {
-        actions!.Add(new IdeAction(AppActions.GodotScriptEditor, "Make Passenger Godot's Script Editor…", "Godot", _ => IdeErrors.Observe(MakeGodotScriptEditorAsync()))
+        actions!.Add(new IdeAction(AppActions.GodotScriptEditor, ActionTitles.GodotScriptEditor, "Godot", _ => IdeErrors.Observe(MakeGodotScriptEditorAsync()))
         {
             WhyNot = _ => Folder is null ? Refusals.NoFolder : GodotAtHand() is null ? Refusals.NoGodotProject : null,
             Menus = [new MenuPlace("Tools", 0, 6)],

@@ -51,9 +51,9 @@ public partial class MainWindow
 
     private void AddFormDesigner()
     {
-        AddFormLayout(A.FormCodeOnly, "View Code", PaneView.Editor, ["Code Only", "Form's Code", "Hide Form Designer"]);
-        AddFormLayout(A.FormCodeAndDesign, "Code and Design", PaneView.Split, ["Form Designer Beside the Code", "Form Designer Under the Code"]);
-        AddFormLayout(A.FormDesignOnly, "View Designer", PaneView.Preview, ["Design Only", "Windows Forms Designer", "Form Designer"]);
+        AddFormLayout(A.FormCodeOnly, ActionTitles.FormCodeOnly, PaneView.Editor, ["Code Only", "Form's Code", "Hide Form Designer"]);
+        AddFormLayout(A.FormCodeAndDesign, ActionTitles.FormCodeAndDesign, PaneView.Split, ["Form Designer Beside the Code", "Form Designer Under the Code"]);
+        AddFormLayout(A.FormDesignOnly, ActionTitles.FormDesignOnly, PaneView.Preview, ["Design Only", "Windows Forms Designer", "Form Designer"]);
         Editors.Designs = document => FormOf(document) is not null;
         Editors.DesignOf = DesignOf;
         Editors.FormLayoutChanged += (_, _) =>
@@ -130,7 +130,7 @@ public partial class MainWindow
 
     /// <summary>A form's layout as an action, checked while it is in force: Code and Design chosen while it is turns the
     /// split, the design under the code or beside it, back to as the group's shape stands it.</summary>
-    private void AddFormLayout(string id, string title, PaneView view, IReadOnlyList<string> words) =>
+    private void AddFormLayout(string id, Words title, PaneView view, IReadOnlyList<string> words) =>
         actions!.Add(new IdeAction(id, title, "Editor", _ =>
         {
             PaneLayout layout = Editors.FormLayout;
@@ -380,23 +380,23 @@ public partial class MainWindow
     /// keys, in its menu and Find Action; Delete takes the Delete key there.</summary>
     private void AddDesignEdits()
     {
-        actions!.Add(new IdeAction(A.FormDelete, "Delete", "Design", context => Edit(context, DesignEditKinds.Delete))
+        actions!.Add(new IdeAction(A.FormDelete, ActionTitles.FormDelete, "Design", context => Edit(context, DesignEditKinds.Delete))
         {
             WhyNot = context => DesignWhyNot(context),
             Words = ["Delete Component", "Remove Control"],
         });
-        actions.Add(new IdeAction(A.FormBringToFront, "Bring to Front", "Design", context => Edit(context, DesignEditKinds.Front))
+        actions.Add(new IdeAction(A.FormBringToFront, ActionTitles.FormBringToFront, "Design", context => Edit(context, DesignEditKinds.Front))
         {
             WhyNot = context => DesignWhyNot(context, orders: true),
             Words = ["Order", "Z-order"],
         });
-        actions.Add(new IdeAction(A.FormSendToBack, "Send to Back", "Design", context => Edit(context, DesignEditKinds.Back))
+        actions.Add(new IdeAction(A.FormSendToBack, ActionTitles.FormSendToBack, "Design", context => Edit(context, DesignEditKinds.Back))
         {
             WhyNot = context => DesignWhyNot(context, orders: true),
             Words = ["Order", "Z-order"],
         });
 
-        actions.Add(new IdeAction(A.FormMoveUp, "Move Up", "Design", context => Edit(context, DesignEditKinds.Order, -1))
+        actions.Add(new IdeAction(A.FormMoveUp, ActionTitles.FormMoveUp, "Design", context => Edit(context, DesignEditKinds.Order, -1))
         {
             WhyNot = context => DesignWhyNot(context) ?? DesignWith(context)?.Pane.Chosen switch
             {
@@ -406,7 +406,7 @@ public partial class MainWindow
             },
             Words = ["Move Item Up", "Order"],
         });
-        actions.Add(new IdeAction(A.FormMoveDown, "Move Down", "Design", context => Edit(context, DesignEditKinds.Order, 1))
+        actions.Add(new IdeAction(A.FormMoveDown, ActionTitles.FormMoveDown, "Design", context => Edit(context, DesignEditKinds.Order, 1))
         {
             WhyNot = context => DesignWhyNot(context) ?? DesignWith(context)?.Pane.Chosen switch
             {

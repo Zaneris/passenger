@@ -11,7 +11,7 @@ public partial class MainWindow
     private static readonly string?[] ApplicationActions = [AppActions.About, AppActions.CheckForUpdates, null, AppActions.ShowSettings];
 
     private void AddAbout() =>
-        actions!.Add(new IdeAction(AppActions.About, OperatingSystem.IsMacOS() ? "About Passenger" : "About", "Help", _ => ShowAbout())
+        actions!.Add(new IdeAction(AppActions.About, OperatingSystem.IsMacOS() ? ActionTitles.AboutPassenger : ActionTitles.About, "Help", _ => ShowAbout())
         {
             Menus = OperatingSystem.IsMacOS() ? [] : [new MenuPlace("Help", 3, 2)],
         });
@@ -44,7 +44,7 @@ public partial class MainWindow
         {
             for (int at = 0; at < ApplicationActions.Length; at++)
             {
-                menu.Items.Insert(at, ApplicationActions[at] is { } id ? new NativeMenuItem(NativeWords(actions![id]!.Title))
+                menu.Items.Insert(at, ApplicationActions[at] is { } id ? new NativeMenuItem(NativeWords(actions![id]!.Title.Shown))
                 {
                     Command = new MenuCommand(() => RunInFront(id)),
                     CommandParameter = id,
@@ -55,7 +55,7 @@ public partial class MainWindow
         foreach (NativeMenuItem item in menu.Items.OfType<NativeMenuItem>().Where(OfApplication))
         {
             string id = (string)item.CommandParameter!;
-            item.Header = NativeWords(actions[id]!.TitleWhere(context));
+            item.Header = NativeWords(actions[id]!.TitleWhere(context).Shown);
             item.Gesture = actions.MenuBarGesture(id);
         }
 

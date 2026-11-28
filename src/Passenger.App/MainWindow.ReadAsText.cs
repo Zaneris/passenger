@@ -17,7 +17,7 @@ public partial class MainWindow
 
     private void AddReadAsText()
     {
-        actions!.Add(new IdeAction(AppActions.ReadAsText, "Read as Text", "View", context => IdeErrors.Observe(ReadAsTextAsync(context)))
+        actions!.Add(new IdeAction(AppActions.ReadAsText, ActionTitles.ReadAsText, "View", context => IdeErrors.Observe(ReadAsTextAsync(context)))
         {
             WhyNot = context => context.ByAgent ? Refusals.AsksThePerson
                 : Reading(context.Focused) is not null ? Refusals.ReadingAlready

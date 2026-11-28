@@ -10,13 +10,13 @@ public partial class MainWindow
 {
     private void AddGitIgnoreActions()
     {
-        actions!.Add(new IdeAction(AppActions.AddToGitIgnore, "Add to .gitignore", "Git", context => IdeErrors.Observe(IgnoreAsync(Target(context, fileOnly: false)!)))
+        actions!.Add(new IdeAction(AppActions.AddToGitIgnore, ActionTitles.AddToGitIgnore, "Git", context => IdeErrors.Observe(IgnoreAsync(Target(context, fileOnly: false)!)))
         {
             WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : WhyNoTarget(context, fileOnly: false))
                 ?? (Unversioned(Target(context, fileOnly: false)!) ? null : Refusals.NotUnversioned),
             Menus = [new MenuPlace("Git", 2, 7)],
         });
-        actions!.Add(new IdeAction(AppActions.GoToIgnoringLine, "Go to Ignoring Line", "Git", context => IdeErrors.Observe(GoToIgnoringLineAsync(Target(context, fileOnly: false)!)))
+        actions!.Add(new IdeAction(AppActions.GoToIgnoringLine, ActionTitles.GoToIgnoringLine, "Git", context => IdeErrors.Observe(GoToIgnoringLineAsync(Target(context, fileOnly: false)!)))
         {
             WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : WhyNoTarget(context, fileOnly: false)),
             Menus = [new MenuPlace("Git", 2, 8)],

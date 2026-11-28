@@ -22,12 +22,12 @@ public partial class MainWindow
             GoTo = (file, line) => NavigateTo(file, new TextPosition(line, 0)),
             Open = file => OpenFile(file),
             Run = action => Request(action),
-            TitleOf = action => actions![action]!.Title,
+            TitleOf = action => actions![action]!.Title.Shown,
             Export = (folder, preset) => ShowGodotExport(folder, preset),
             SetPlugin = SetGodotPluginAsync,
             Edit = EditGodotProjectAsync,
         };
-        actions!.Add(new IdeAction(AppActions.GodotProject, "Godot Project", "Godot", c => ShowGodotProject(GodotProjectOf(c)!))
+        actions!.Add(new IdeAction(AppActions.GodotProject, ActionTitles.GodotProject, "Godot", c => ShowGodotProject(GodotProjectOf(c)!))
         {
             WhyNot = c => Folder is null ? Refusals.NoFolder : GodotProjectOf(c) is null ? Refusals.NoGodotProject : null,
             Words = ["project.godot", "Project Settings", "Input Map", "Autoload", "Export Presets", "Plugins"],

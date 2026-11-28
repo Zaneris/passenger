@@ -15,7 +15,7 @@ namespace Passenger.App;
 public partial class MainWindow
 {
     private void AddContextHelp() =>
-        actions!.Add(new IdeAction(AppActions.ContextHelp, "Context Help", "Help", _ => IdeErrors.Observe(ContextHelpAsync()))
+        actions!.Add(new IdeAction(AppActions.ContextHelp, ActionTitles.ContextHelp, "Help", _ => IdeErrors.Observe(ContextHelpAsync()))
         {
             WhyNot = _ => Editors.Active is not { } file ? Refusals.NoFile
                 : HelpServer(file) is null && !ReadsScript(file) && !CSharp.GodotShaderAssist.InShader(file, Editors.CodeEditor.Selections.Primary.Caret) ? Refusals.NoContextHelp(file.Name) : null,

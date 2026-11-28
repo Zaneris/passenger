@@ -20,7 +20,7 @@ public partial class MainWindow
 
     private void AddContinuousTesting()
     {
-        actions!.Add(new IdeAction(A.ContinuousTesting, "Continuous Testing", "Unit Tests",
+        actions!.Add(new IdeAction(A.ContinuousTesting, ActionTitles.ContinuousTesting, "Unit Tests",
             _ => Questions.Set(Declared.ContinuousTesting, !Questions.IsOn(Declared.ContinuousTesting)))
         {
             WhyNot = NeedsTestBuild,

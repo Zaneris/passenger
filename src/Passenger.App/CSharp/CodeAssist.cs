@@ -821,41 +821,41 @@ public sealed class CodeAssist
     {
         context.Work = registry.Work;
         WebAssist web = context.Languages.Web;
-        Code(AppActions.Complete, "Basic Completion", context => IdeErrors.Observe(completion.Start(null)), new("Code/Code Completion", 0, 0), xaml: true, msbuild: true,
+        Code(AppActions.Complete, ActionTitles.Complete, context => IdeErrors.Observe(completion.Start(null)), new("Code/Code Completion", 0, 0), xaml: true, msbuild: true,
             godot: true, shader: true, writes: true, config: true);
-        Code(AppActions.SmartTypeCompletion, "Smart Type Completion", _ => IdeErrors.Observe(context.Current?.Lsp is { } lsp ? completion.FittingAsync(lsp) : Task.CompletedTask),
+        Code(AppActions.SmartTypeCompletion, ActionTitles.SmartTypeCompletion, _ => IdeErrors.Observe(context.Current?.Lsp is { } lsp ? completion.FittingAsync(lsp) : Task.CompletedTask),
             new("Code/Code Completion", 0, 1), writes: true, csharp: true);
-        Code(AppActions.CompleteStatement, "Complete Current Statement", _ => completion.CompleteStatement(), new("Code/Code Completion", 1, 0), server: false, syntax: true, writes: true);
-        registry.Add(new IdeAction(AppActions.NextOverload, "Next Overload", "Code", _ => parameterInfo.Step(1))
+        Code(AppActions.CompleteStatement, ActionTitles.CompleteStatement, _ => completion.CompleteStatement(), new("Code/Code Completion", 1, 0), server: false, syntax: true, writes: true);
+        registry.Add(new IdeAction(AppActions.NextOverload, ActionTitles.NextOverload, "Code", _ => parameterInfo.Step(1))
         {
             WhyNot = _ => parameterInfo.Steps ? null : Refusals.NoOverloadsShown,
         });
-        registry.Add(new IdeAction(AppActions.PreviousOverload, "Previous Overload", "Code", _ => parameterInfo.Step(-1))
+        registry.Add(new IdeAction(AppActions.PreviousOverload, ActionTitles.PreviousOverload, "Code", _ => parameterInfo.Step(-1))
         {
             WhyNot = _ => parameterInfo.Steps ? null : Refusals.NoOverloadsShown,
         });
         foreach (MemberKinds kind in MemberKindsOf.All)
         {
             // The list's keys while it shows its filters, the editor's own anywhere else.
-            registry.Add(new IdeAction(MemberKindsOf.ActionOf(kind), $"Completion Filter: {MemberKindsOf.Words(kind)}", "Code", _ => completion.ToggleFilter(kind))
+            registry.Add(new IdeAction(MemberKindsOf.ActionOf(kind), ActionTitles.CompletionFilter(MemberKindsOf.Words(kind)), "Code", _ => completion.ToggleFilter(kind))
             {
                 InEditor = true,
                 WhyNot = _ => completion.WhyNotFilter(kind),
             });
         }
         // Passenger's own fixes first, which a file the server does not read (a XAML file) may have too.
-        registry.Add(new IdeAction(AppActions.QuickFix, "Show Context Actions", "Code", context => IdeErrors.Observe(actions.ShowFixes(AppActions.QuickFix)))
+        registry.Add(new IdeAction(AppActions.QuickFix, ActionTitles.QuickFix, "Code", context => IdeErrors.Observe(actions.ShowFixes(AppActions.QuickFix)))
         {
             WhyNot = context => (actions.OwnFixes(context.File, context.Editor.Selections.Primary.Caret).Count > 0 ? null : WhyNot(context, server: true, xaml: true))
                 ?? context.ReadOnlyWhy,
             Menus = [new("Code", 0, 1)],
         });
         // Generate: the server's actions that write code for the type (constructors, equality, members, overrides).
-        Code(AppActions.Generate, "Generate…", context => IdeErrors.Observe(actions.ShowFixes(AppActions.Generate, a => RoslynNames.Generate.Any(w => a.Title.StartsWith(w, StringComparison.Ordinal)), "Generate")),
+        Code(AppActions.Generate, ActionTitles.Generate, context => IdeErrors.Observe(actions.ShowFixes(AppActions.Generate, a => RoslynNames.Generate.Any(w => a.Title.StartsWith(w, StringComparison.Ordinal)), "Generate")),
             new("Code", 0, 2), writes: true);
-        Code(AppActions.SurroundWith, "Surround With…", _ => completion.ShowSurround(), new("Code", 0, 3), server: false, syntax: true, markup: true, writes: true);
+        Code(AppActions.SurroundWith, ActionTitles.SurroundWith, _ => completion.ShowSurround(), new("Code", 0, 3), server: false, syntax: true, markup: true, writes: true);
         // A file the folder's formatter lays out (Prettier, Oxfmt, Biome), a GDScript, a .feature and a SQL file need no language server.
-        registry.Add(OverChosen(Tidying.Reformat, new IdeAction(AppActions.Reformat, "Reformat Code", "Code", context => IdeErrors.Observe(actions.Reformat()))
+        registry.Add(OverChosen(Tidying.Reformat, new IdeAction(AppActions.Reformat, ActionTitles.Reformat, "Code", context => IdeErrors.Observe(actions.Reformat()))
         {
             WhyNot = context => (context.File is { } file && (web.FolderReformats(file) || Godot.GodotScriptTypes.IsScript(file.Path) || Passenger.App.Bdd.FeatureChecks.IsFeature(file.Path)
                 || file.Language == Passenger.Languages.Language.Sql)
@@ -863,68 +863,68 @@ public sealed class CodeAssist
             Menus = [new("Code", 1, 0)],
         }));
         web.AddLintingActions(registry);
-        registry.Add(OverChosen(Tidying.Cleanup, CodeAction(AppActions.CodeCleanup, "Code Cleanup", context => IdeErrors.Observe(actions.Cleanup()), new("Code", 1, 1), markup: true, writes: true)));
-        registry.Add(OverChosen(Tidying.OptimizeImports, CodeAction(AppActions.OptimizeUsings, "Optimize Imports", context => IdeErrors.Observe(actions.OptimizeUsings()), new("Code", 1, 2), writes: true)));
-        registry.Add(new IdeAction(AppActions.FindUnusedStepDefinitions, "Find Unused Step Definitions", "Code",
+        registry.Add(OverChosen(Tidying.Cleanup, CodeAction(AppActions.CodeCleanup, ActionTitles.CodeCleanup, context => IdeErrors.Observe(actions.Cleanup()), new("Code", 1, 1), markup: true, writes: true)));
+        registry.Add(OverChosen(Tidying.OptimizeImports, CodeAction(AppActions.OptimizeUsings, ActionTitles.OptimizeUsings, context => IdeErrors.Observe(actions.OptimizeUsings()), new("Code", 1, 2), writes: true)));
+        registry.Add(new IdeAction(AppActions.FindUnusedStepDefinitions, ActionTitles.FindUnusedStepDefinitions, "Code",
             context => IdeErrors.Observe(this.context.Languages.Gherkin.ShowUnusedAsync()))
         {
             WhyNot = _ => this.context.Languages.Gherkin.Source?.Invoke() is { } bdd && bdd.Session.Steps.Projects.Any() ? null : Refusals.NoReqnrollProject,
             Menus = [new("Navigate", 2, 9)],
         });
-        registry.Add(new IdeAction(AppActions.OrderScriptParts, "Order Script's Parts", "Code", context => IdeErrors.Observe(OrderScriptParts()))
+        registry.Add(new IdeAction(AppActions.OrderScriptParts, ActionTitles.OrderScriptParts, "Code", context => IdeErrors.Observe(OrderScriptParts()))
         {
             WhyNot = context => context.File is not { } file ? Refusals.NoFile : !Godot.GodotScriptTypes.IsScript(file.Path) ? "The file is not a GDScript"
                 : context.ReadOnlyWhy,
             Menus = [new("Code", 1, 3)],
         });
-        Code(AppActions.RefactorThis, "Refactor This…", context => IdeErrors.Observe(actions.ShowFixes(AppActions.RefactorThis, a => a.Kind?.StartsWith("refactor", StringComparison.Ordinal) == true, "Refactor This",
+        Code(AppActions.RefactorThis, ActionTitles.RefactorThis, context => IdeErrors.Observe(actions.ShowFixes(AppActions.RefactorThis, a => a.Kind?.StartsWith("refactor", StringComparison.Ordinal) == true, "Refactor This",
             OwnRefactorings(registry, context))),
             new("Refactor", 0, 0), xaml: true, writes: true);
         // A GDScript's are Passenger's own, over its reading of the project's scripts (CodeActions.GDScriptRefactor).
-        Code(AppActions.ChangeSignature, "Change Signature…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.ChangeSignature, () => actions.GDScriptRefactor(GDScriptRefactoring.ChangeSignature))
+        Code(AppActions.ChangeSignature, ActionTitles.ChangeSignature, context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.ChangeSignature, () => actions.GDScriptRefactor(GDScriptRefactoring.ChangeSignature))
             : actions.AskingAsync(AppActions.ChangeSignature, actions.ChangeSignature)), new("Refactor", 1, 1), gdscript: true, writes: true, csharp: true);
-        Code(AppActions.ExtractMethod, "Extract Method…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.ExtractMethod, () => actions.GDScriptRefactor(GDScriptRefactoring.ExtractFunction))
+        Code(AppActions.ExtractMethod, ActionTitles.ExtractMethod, context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.ExtractMethod, () => actions.GDScriptRefactor(GDScriptRefactoring.ExtractFunction))
             : actions.Refactor(CodeActions.ExtractsMethod, "Extract Method", renameMethod: true, AppActions.ExtractMethod)), new("Refactor", 1, 2), gdscript: true, writes: true);
-        Code(AppActions.IntroduceVariable, "Introduce Variable…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.IntroduceVariable, () => actions.GDScriptRefactor(GDScriptRefactoring.ExtractVariable))
+        Code(AppActions.IntroduceVariable, ActionTitles.IntroduceVariable, context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.IntroduceVariable, () => actions.GDScriptRefactor(GDScriptRefactoring.ExtractVariable))
             : actions.Refactor(CodeActions.IntroducesLocal, "Introduce Variable", renameMethod: false, AppActions.IntroduceVariable)),
             new("Refactor", 1, 3), gdscript: true, writes: true);
-        Code(AppActions.IntroduceField, "Introduce Field…", context => IdeErrors.Observe(actions.Refactor(CodeActions.IntroduceField, AppActions.IntroduceField)), new("Refactor", 1, 4), writes: true);
-        Code(AppActions.IntroduceParameter, "Introduce Parameter…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.IntroduceParameter, () => actions.GDScriptRefactor(GDScriptRefactoring.IntroduceParameter))
+        Code(AppActions.IntroduceField, ActionTitles.IntroduceField, context => IdeErrors.Observe(actions.Refactor(CodeActions.IntroduceField, AppActions.IntroduceField)), new("Refactor", 1, 4), writes: true);
+        Code(AppActions.IntroduceParameter, ActionTitles.IntroduceParameter, context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.IntroduceParameter, () => actions.GDScriptRefactor(GDScriptRefactoring.IntroduceParameter))
             : actions.Refactor(CodeActions.IntroduceParameter, AppActions.IntroduceParameter)), new("Refactor", 1, 5), gdscript: true, writes: true);
-        Code(AppActions.ExtractInterface, "Extract Interface…", context => IdeErrors.Observe(actions.AskingAsync(AppActions.ExtractInterface, actions.ExtractInterface)), new("Refactor", 1, 6), writes: true, csharp: true);
-        Code(AppActions.Inline, "Inline…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.Inline, () => actions.GDScriptRefactor(GDScriptRefactoring.Inline))
+        Code(AppActions.ExtractInterface, ActionTitles.ExtractInterface, context => IdeErrors.Observe(actions.AskingAsync(AppActions.ExtractInterface, actions.ExtractInterface)), new("Refactor", 1, 6), writes: true, csharp: true);
+        Code(AppActions.Inline, ActionTitles.Inline, context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.Inline, () => actions.GDScriptRefactor(GDScriptRefactoring.Inline))
             : actions.Refactor(CodeActions.Inlines, "Inline", renameMethod: false, AppActions.Inline)),
             new("Refactor", 1, 7), gdscript: true, writes: true);
-        Code(AppActions.Move, "Move…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.Move, () => actions.GDScriptRefactor(GDScriptRefactoring.Move)) : actions.AskingAsync(AppActions.Move, actions.Move)),
+        Code(AppActions.Move, ActionTitles.Move, context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.Move, () => actions.GDScriptRefactor(GDScriptRefactoring.Move)) : actions.AskingAsync(AppActions.Move, actions.Move)),
             new("Refactor", 2, 0), gdscript: true, writes: true, csharp: true);
-        Code(AppActions.SafeDelete, "Safe Delete…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.SafeDelete, () => actions.GDScriptRefactor(GDScriptRefactoring.SafeDelete))
+        Code(AppActions.SafeDelete, ActionTitles.SafeDelete, context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.SafeDelete, () => actions.GDScriptRefactor(GDScriptRefactoring.SafeDelete))
             : actions.SafeDelete()), new("Refactor", 2, 1), gdscript: true, writes: true, csharp: true);
-        Code(AppActions.PullMembersUp, "Pull Members Up…", context => IdeErrors.Observe(actions.AskingAsync(AppActions.PullMembersUp, () => actions.MoveMembers(up: true))), new("Refactor", 3, 0), writes: true, csharp: true);
-        Code(AppActions.PushMembersDown, "Push Members Down…", context => IdeErrors.Observe(actions.AskingAsync(AppActions.PushMembersDown, () => actions.MoveMembers(up: false))), new("Refactor", 3, 1), writes: true, csharp: true);
-        Code(AppActions.EncapsulateField, "Encapsulate Field…", context => IdeErrors.Observe(actions.Refactor(CodeActions.EncapsulateField, AppActions.EncapsulateField)), new("Refactor", 3, 2), writes: true);
-        registry.Add(new IdeAction(AppActions.ExtractResource, "Extract Resource…", "Code", context => IdeErrors.Observe(actions.AskingAsync(AppActions.ExtractResource, actions.ExtractResource)))
+        Code(AppActions.PullMembersUp, ActionTitles.PullMembersUp, context => IdeErrors.Observe(actions.AskingAsync(AppActions.PullMembersUp, () => actions.MoveMembers(up: true))), new("Refactor", 3, 0), writes: true, csharp: true);
+        Code(AppActions.PushMembersDown, ActionTitles.PushMembersDown, context => IdeErrors.Observe(actions.AskingAsync(AppActions.PushMembersDown, () => actions.MoveMembers(up: false))), new("Refactor", 3, 1), writes: true, csharp: true);
+        Code(AppActions.EncapsulateField, ActionTitles.EncapsulateField, context => IdeErrors.Observe(actions.Refactor(CodeActions.EncapsulateField, AppActions.EncapsulateField)), new("Refactor", 3, 2), writes: true);
+        registry.Add(new IdeAction(AppActions.ExtractResource, ActionTitles.ExtractResource, "Code", context => IdeErrors.Observe(actions.AskingAsync(AppActions.ExtractResource, actions.ExtractResource)))
         {
             WhyNot = context => WhyNotXaml(context),
             Menus = [new("Refactor", 4, 0)],
         });
-        registry.Add(new IdeAction(AppActions.ExtractStyle, "Extract Style…", "Code", context => IdeErrors.Observe(actions.AskingAsync(AppActions.ExtractStyle, actions.ExtractStyle)))
+        registry.Add(new IdeAction(AppActions.ExtractStyle, ActionTitles.ExtractStyle, "Code", context => IdeErrors.Observe(actions.AskingAsync(AppActions.ExtractStyle, actions.ExtractStyle)))
         {
             WhyNot = context => WhyNotXaml(context),
             Menus = [new("Refactor", 4, 1)],
         });
-        Code(AppActions.GoToDeclaration, "Go to Declaration", context => IdeErrors.Observe(navigation.GoToDefinition(Caret)), new("Navigate", 2, 0), xaml: true, msbuild: true, http: true,
+        Code(AppActions.GoToDeclaration, ActionTitles.GoToDeclaration, context => IdeErrors.Observe(navigation.GoToDefinition(Caret)), new("Navigate", 2, 0), xaml: true, msbuild: true, http: true,
             godot: true, shader: true, gherkin: true, link: true, config: true);
-        Code(AppActions.DerivedSymbols, "Derived Symbols", context => IdeErrors.Observe(navigation.GoToDerivedSymbols(Caret)), new("Navigate", 2, 1));
-        Code(AppActions.GoToImplementation, "Go to Implementation", context => IdeErrors.Observe(navigation.GoToImplementation(Caret)), new("Navigate", 2, 2));
-        Code(AppActions.GoToTypeDeclaration, "Go to Type Declaration", context => IdeErrors.Observe(navigation.GoToTypeDeclaration(Caret)), new("Navigate", 2, 3));
-        Code(AppActions.BaseSymbols, "Base Symbols", context => IdeErrors.Observe(navigation.GoToBaseSymbols(Caret)), new("Navigate", 2, 4));
-        Code(AppActions.FindUsages, "Find Usages", context => IdeErrors.Observe(navigation.FindUsages(Caret)), new("Navigate", 2, 5), xaml: true, shader: true, gherkin: true);
-        Code(AppActions.ShowUsages, "Show Usages", context => IdeErrors.Observe(navigation.FindUsages(Caret, inPopup: true)), new("Navigate", 2, 8), xaml: true, shader: true, gherkin: true);
-        Code(AppActions.ParameterInfo, "Parameter Info", context => IdeErrors.Observe(parameterInfo.Show()), new("View", 1, 2));
-        Code(AppActions.NextError, "Next Highlighted Error", _ => navigation.StepToMarker(forward: true), new("Navigate", 3, 0), server: false);
-        Code(AppActions.PreviousError, "Previous Highlighted Error", _ => navigation.StepToMarker(forward: false), new("Navigate", 3, 1), server: false);
+        Code(AppActions.DerivedSymbols, ActionTitles.DerivedSymbols, context => IdeErrors.Observe(navigation.GoToDerivedSymbols(Caret)), new("Navigate", 2, 1));
+        Code(AppActions.GoToImplementation, ActionTitles.GoToImplementation, context => IdeErrors.Observe(navigation.GoToImplementation(Caret)), new("Navigate", 2, 2));
+        Code(AppActions.GoToTypeDeclaration, ActionTitles.GoToTypeDeclaration, context => IdeErrors.Observe(navigation.GoToTypeDeclaration(Caret)), new("Navigate", 2, 3));
+        Code(AppActions.BaseSymbols, ActionTitles.BaseSymbols, context => IdeErrors.Observe(navigation.GoToBaseSymbols(Caret)), new("Navigate", 2, 4));
+        Code(AppActions.FindUsages, ActionTitles.FindUsages, context => IdeErrors.Observe(navigation.FindUsages(Caret)), new("Navigate", 2, 5), xaml: true, shader: true, gherkin: true);
+        Code(AppActions.ShowUsages, ActionTitles.ShowUsages, context => IdeErrors.Observe(navigation.FindUsages(Caret, inPopup: true)), new("Navigate", 2, 8), xaml: true, shader: true, gherkin: true);
+        Code(AppActions.ParameterInfo, ActionTitles.ParameterInfo, context => IdeErrors.Observe(parameterInfo.Show()), new("View", 1, 2));
+        Code(AppActions.NextError, ActionTitles.NextError, _ => navigation.StepToMarker(forward: true), new("Navigate", 3, 0), server: false);
+        Code(AppActions.PreviousError, ActionTitles.PreviousError, _ => navigation.StepToMarker(forward: false), new("Navigate", 3, 1), server: false);
         // With the completion list open, the chosen item's documentation, which its card beside the list shows, is read out.
-        Code(AppActions.QuickDocumentation, "Quick Documentation", context =>
+        Code(AppActions.QuickDocumentation, ActionTitles.QuickDocumentation, context =>
         {
             if (completion.IsOpen)
             {
@@ -937,7 +937,7 @@ public sealed class CodeAssist
         }, new("View", 1, 1), server: false);
 
         // One that edits the file shown (writes) greys on a read-only one, a file the language server serves too.
-        void Code(string id, string title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false,
+        void Code(string id, Words title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false,
             bool http = false, bool godot = false, bool shader = false, bool gdscript = false, bool gherkin = false, bool writes = false, bool link = false, bool config = false,
             bool csharp = false) =>
             registry.Add(CodeAction(id, title, run, menu, server, syntax, xaml, markup, msbuild, http, godot, shader, gdscript, gherkin, writes, link, config, csharp));
@@ -960,7 +960,7 @@ public sealed class CodeAssist
         };
 
         // One of C#'s own refactorings (csharp) works in a C# file alone, or a GDScript where it has a GDScript path.
-        IdeAction CodeAction(string id, string title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false,
+        IdeAction CodeAction(string id, Words title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false,
             bool msbuild = false, bool http = false, bool godot = false, bool shader = false, bool gdscript = false, bool gherkin = false, bool writes = false, bool link = false,
             bool config = false, bool csharp = false) =>
             new(id, title, "Code", run)
@@ -985,7 +985,7 @@ public sealed class CodeAssist
     private static IReadOnlyList<OwnRefactoring> OwnRefactorings(ActionRegistry registry, ActionContext context) =>
         [.. MainMenu.ActionsIn(MainMenu.Of(registry.All, MainMenu.Refactor))
             .Where(id => id != AppActions.RefactorThis && registry.WhyNot(id, context) is null)
-            .Select(id => new OwnRefactoring(registry[id]!.TitleWhere(context), registry.ShortcutsShown(id) ?? string.Empty, () => registry.Run(id, context)?.Shown,
+            .Select(id => new OwnRefactoring(registry[id]!.TitleWhere(context).Shown, registry.ShortcutsShown(id) ?? string.Empty, () => registry.Run(id, context)?.Shown,
                 CodeActions.ServersOf(id)))];
 
     private int Caret => Editor.Selections.Primary.Caret;

@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Passenger.App.Settings;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App;
@@ -29,6 +30,23 @@ public partial class MainWindow
     {
         BuildMenuBar();
         MainMenuPlace.IsVisible = !SystemMenuBar;
+        EventHandler follow = (_, _) => FollowLanguage();
+        UiLanguage.Changed += follow;
+        Closed += (_, _) => UiLanguage.Changed -= follow;
+    }
+
+    /// <summary>The menu bar and the action buttons' tips said again in the language put in force, as Settings previews
+    /// or applies it.</summary>
+    private void FollowLanguage()
+    {
+        if (menuBar is not null)
+        {
+            BuildMenuBar();
+        }
+        foreach (Visual within in (Visual[])[this, .. OwnedWindows])
+        {
+            ActionTips.Follow(within);
+        }
     }
 
     /// <summary>The main menu as a bar on the toolbar or behind its button, as Settings says; its titles made once, each
@@ -356,7 +374,7 @@ public partial class MainWindow
                 {
                     IdeAction listed = actions[(string)item.CommandParameter!]!;
                     item.IsEnabled = listed.CanRun(now);
-                    item.Header = NativeWords(listed.TitleWhere(now));
+                    item.Header = NativeWords(listed.TitleWhere(now).Shown);
                     item.IsChecked = listed.IsChecked?.Invoke(now) == true;
                 }
                 FillInline(menu, inline);
@@ -364,7 +382,7 @@ public partial class MainWindow
             return new NativeMenuItem(NativeWords(entry.Title!)) { Menu = menu };
         }
         IdeAction action = actions![entry.Action!]!;
-        NativeMenuItem actionItem = new(NativeWords(action.TitleWhere(context)))
+        NativeMenuItem actionItem = new(NativeWords(action.TitleWhere(context).Shown))
         {
             Command = new MenuCommand(() => RunFromMenu(action.Id)),
             CommandParameter = action.Id,
@@ -525,7 +543,7 @@ public partial class MainWindow
             return menu;
         }
         IdeAction action = actions![entry.Action!]!;
-        MenuItem actionItem = new() { Header = action.TitleWhere(context) };
+        MenuItem actionItem = new() { [ShownWords.HeaderProperty] = action.TitleWhere(context) };
         // Greyed, it says why on hover, as running it would (a library's Publish..., a project's tests).
         ToolWindows.ListMenus.Grey(actionItem, action.WhyNot(context));
         actions.ShowKeys(actionItem, action.Id);
@@ -544,12 +562,12 @@ public partial class MainWindow
     private MenuItem RowMenuItem(string id)
     {
         IdeAction action = actions![id]!;
-        MenuItem item = new() { Header = action.Title };
+        MenuItem item = new() { [ShownWords.HeaderProperty] = action.Title };
         actions.ShowKeys(item, action.Id);
         item.AttachedToVisualTree += (_, _) =>
         {
             ActionContext context = actions.Context();
-            item.Header = action.TitleWhere(context);
+            item[ShownWords.HeaderProperty] = action.TitleWhere(context);
             ToolWindows.ListMenus.Grey(item, actions.WhyNot(action.Id, context));
         };
         item.Click += (_, _) => Request(action.Id);

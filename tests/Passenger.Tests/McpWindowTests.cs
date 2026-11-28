@@ -468,7 +468,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
 
             Ui.ClickButton(question, WorkspaceTrustDialog.Untrusted);
             Ui.WaitFor(() => window.TrustSaid == Refusals.UntrustedSaid.English, "the banner over the folder opened without trusting it");
-            string title = window.Actions[AppActions.TrustFolder]!.Title;
+            string title = window.Actions[AppActions.TrustFolder]!.Title.English;
             Avalonia.Controls.Button link = window.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => (b.Content as string) == title && b.IsEffectivelyVisible);
             Avalonia.Point at = Avalonia.VisualExtensions.TranslatePoint(link, new Avalonia.Point(link.Bounds.Width / 2, link.Bounds.Height / 2), window)
                 ?? throw new InvalidOperationException("The banner's Trust Folder is not in the window");
@@ -608,7 +608,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId, folder])), "the agent attaching");
         try
         {
-            string title = window.Actions[AppActions.InstallWorkloads]!.Title;
+            string title = window.Actions[AppActions.InstallWorkloads]!.Title.English;
             Avalonia.Controls.Button link = window.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => (b.Content as string) == title && b.IsEffectivelyVisible);
             Avalonia.Point at = Avalonia.VisualExtensions.TranslatePoint(link, new Avalonia.Point(link.Bounds.Width / 2, link.Bounds.Height / 2), window)
                 ?? throw new InvalidOperationException("The banner's Install Workloads… is not in the window");

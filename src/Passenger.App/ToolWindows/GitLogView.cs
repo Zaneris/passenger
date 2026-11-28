@@ -371,7 +371,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             : Scope.IsLines ? $"No commit changed these lines of {name}"
             : $"Git has no history of {name}";
         bool creates = repository is null && Scope is null && Range is null && vcs.WhyNotCreate is null;
-        placeholder.Offer(creates ? AppActions.CreateRepository : null, VcsController.CreateRepository);
+        placeholder.Offer(creates ? AppActions.CreateRepository : null, ActionTitles.CreateRepository.Shown);
         placeholder.IsVisible = rows.Count == 0;
         if (Scope is not null && list.SelectedIndex < 0 && rows.Count > 0)
         {

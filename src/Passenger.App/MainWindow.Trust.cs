@@ -18,7 +18,7 @@ public partial class MainWindow
 
     private void AddTrust()
     {
-        actions!.Add(new IdeAction(AppActions.TrustFolder, "Trust Folder", "IDE", _ => TrustFolder(session.Folder!))
+        actions!.Add(new IdeAction(AppActions.TrustFolder, ActionTitles.TrustFolder, "IDE", _ => TrustFolder(session.Folder!))
         {
             WhyNot = context => context.ByAgent ? Refusals.TrustIsThePersons
                 : session.Folder is null ? Refusals.NoFolder
@@ -27,7 +27,7 @@ public partial class MainWindow
             Words = ["Workspace Trust", "Restricted", "Safe Mode"],
             Works = AppActions.TrustFolder,
         });
-        TrustBanner.Link(actions[AppActions.TrustFolder]!.Title, () => Request(AppActions.TrustFolder));
+        TrustBanner.Link(actions[AppActions.TrustFolder]!.Title.Shown, () => Request(AppActions.TrustFolder));
         EventHandler changed = (_, _) => UiThread.Post(FollowTrust);
         WorkspaceTrust.Changed += changed;
         Closed += (_, _) => WorkspaceTrust.Changed -= changed;

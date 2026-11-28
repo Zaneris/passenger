@@ -9,7 +9,7 @@ public partial class MainWindow
 {
     private void AddAspireActions()
     {
-        Add(A.AspireDiscover, "Discover Aspire AppHosts", "Aspire", context =>
+        Add(A.AspireDiscover, ActionTitles.AspireDiscover, "Aspire", context =>
         {
             ShowToolWindow(ToolWindowIds.Aspire);
             IdeErrors.Observe(WorkingAsync(A.AspireDiscover, "Discovering AppHosts", async () =>
@@ -18,7 +18,7 @@ public partial class MainWindow
                 return (true, Aspire.Status);
             }));
         }, NeedsAspire);
-        Add(A.AspireRefresh, "Refresh Aspire Resources", "Aspire", context =>
+        Add(A.AspireRefresh, ActionTitles.AspireRefresh, "Aspire", context =>
         {
             ShowToolWindow(ToolWindowIds.Aspire);
             IdeErrors.Observe(WorkingAsync(A.AspireRefresh, "Refreshing resources", async () =>
@@ -29,7 +29,7 @@ public partial class MainWindow
         },
             c => NeedsAspire(c) ?? (Aspire.SelectedApp is null ? "No Aspire AppHost is selected" : null));
         // A resource's Debug, Attach, Run without Debugger and Profile are every run of services' (AddServiceActions).
-        Add(A.AspireCommand, "Run Aspire Resource Command…", "Aspire", context =>
+        Add(A.AspireCommand, ActionTitles.AspireCommand, "Aspire", context =>
         {
             if (Aspire.TakePendingCommand() is { } command)
             {
@@ -44,16 +44,26 @@ public partial class MainWindow
                 ShownAspire().ShowCommandChoices();
             }
         }, NeedsAspireResource);
-        Add(A.AspireLogFind, "Find in Aspire Logs", "Aspire", _ => { ShowToolWindow(ToolWindowIds.Aspire); Aspire.ShowPage(RunWindows.LogTab); AspireWindow.OpenFind(); }, NeedsAspire);
-        Add(A.AspireShowTrace, "Show Aspire Log Trace", "Aspire", _ => { ShowToolWindow(ToolWindowIds.Aspire); AspireWindow.ShowSelectedTrace(); },
+        Add(A.AspireLogFind, ActionTitles.AspireLogFind, "Aspire", _ => { ShowToolWindow(ToolWindowIds.Aspire); Aspire.ShowPage(RunWindows.LogTab); AspireWindow.OpenFind(); }, NeedsAspire);
+        Add(A.AspireShowTrace, ActionTitles.AspireShowTrace, "Aspire", _ => { ShowToolWindow(ToolWindowIds.Aspire); AspireWindow.ShowSelectedTrace(); },
             c => NeedsAspire(c) ?? (aspireView?.Telemetry.SelectedLog is { TraceId.Length: > 0 } ? null : "No log with a trace is selected"));
-        Add(A.AspireShowRelatedLogs, "Show Related Aspire Logs", "Aspire", _ => { ShowToolWindow(ToolWindowIds.Aspire); AspireWindow.ShowRelatedLogs(); },
+        Add(A.AspireShowRelatedLogs, ActionTitles.AspireShowRelatedLogs, "Aspire", _ => { ShowToolWindow(ToolWindowIds.Aspire); AspireWindow.ShowRelatedLogs(); },
             c => NeedsAspire(c) ?? (aspireView?.Telemetry is { SelectedTrace: not null, SelectedSpan: not null } ? null : "No trace span is selected"));
         foreach (string page in AspireModel.Pages)
         {
             // Details is the chosen resource's, beside every resource listed; each found by its tab's former name too, Stats by what it charts.
             string id = AspireModel.PageAction(page);
-            Add(id, id == A.AspireResources ? "Show Aspire Resources" : $"Show Aspire {page}", "Aspire", _ =>
+            Words title = id switch
+            {
+                A.AspireResources => ActionTitles.AspireResources,
+                A.AspireConsole => ActionTitles.AspireConsole,
+                A.AspireStats => ActionTitles.AspireStats,
+                A.AspireGraph => ActionTitles.AspireGraph,
+                A.AspireTelemetry => ActionTitles.AspireTelemetry,
+                A.AspireAppHostConsole => ActionTitles.AspireAppHostConsole,
+                _ => throw new InvalidOperationException($"No title for the Aspire window's {page} page"),
+            };
+            Add(id, title, "Aspire", _ =>
             {
                 ShowToolWindow(ToolWindowIds.Aspire);
                 Aspire.ShowPage(page);
@@ -67,8 +77,8 @@ public partial class MainWindow
                 _ => null,
             });
         }
-        foreach ((string id, string title, Passenger.App.Telemetry.TelemetryPage page) in (ReadOnlySpan<(string, string, Passenger.App.Telemetry.TelemetryPage)>)[
-            (A.AspireLogs, "Show Aspire Structured logs", Passenger.App.Telemetry.TelemetryPage.Logs), (A.AspireTraces, "Show Aspire Traces", Passenger.App.Telemetry.TelemetryPage.Traces)])
+        foreach ((string id, Words title, Passenger.App.Telemetry.TelemetryPage page) in (ReadOnlySpan<(string, Words, Passenger.App.Telemetry.TelemetryPage)>)[
+            (A.AspireLogs, ActionTitles.AspireLogs, Passenger.App.Telemetry.TelemetryPage.Logs), (A.AspireTraces, ActionTitles.AspireTraces, Passenger.App.Telemetry.TelemetryPage.Traces)])
         {
             Add(id, title, "Aspire", _ =>
             {
@@ -77,14 +87,14 @@ public partial class MainWindow
             }, NeedsAspire);
         }
         // The graph as drawn, for a document: Mermaid's flowchart, which renders where Markdown does.
-        Add(A.AspireGraphMermaid, "Copy Aspire Graph as Mermaid", "Aspire", _ =>
+        Add(A.AspireGraphMermaid, ActionTitles.AspireGraphMermaid, "Aspire", _ =>
         {
             if (aspireView?.Graph.Mermaid() is { } flowchart)
             {
                 IdeErrors.Observe(CopyAsync(flowchart, $"Copied the graph of {Plural.Of(aspireView.Graph.Nodes.Count, "resource")} as a Mermaid flowchart"));
             }
         }, c => NeedsAspire(c) ?? (aspireView?.Graph.Nodes.Count is > 0 ? null : "The Aspire graph shows no resources"), words: ["Export Aspire Graph as Mermaid"]);
-        Add(A.AspireOpenLink, "Open Aspire Resource Endpoint", "Aspire", _ =>
+        Add(A.AspireOpenLink, ActionTitles.AspireOpenLink, "Aspire", _ =>
         {
             if (Aspire.TakePendingLink() is { Scheme: "http" or "https" } link)
             {
@@ -95,7 +105,7 @@ public partial class MainWindow
                 ShownAspire().ShowEndpointChoices();
             }
         }, NeedsAspire);
-        Add(A.AspireSource, "Open Aspire Resource Source", "Aspire", _ =>
+        Add(A.AspireSource, ActionTitles.AspireSource, "Aspire", _ =>
         {
             if (Aspire.SelectedResource?.Source is { } source && Path.IsPathFullyQualified(source))
             {
@@ -103,7 +113,7 @@ public partial class MainWindow
             }
         },
             c => NeedsAspire(c) ?? (Aspire.SelectedResource?.Source is { } source && Path.IsPathFullyQualified(source) ? null : "No resource source is selected"));
-        Add(A.AspireContainer, "Show Aspire Resource Container", "Aspire", _ =>
+        Add(A.AspireContainer, ActionTitles.AspireContainer, "Aspire", _ =>
         {
             if (Aspire.SelectedContainerId is { } id)
             {

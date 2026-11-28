@@ -265,7 +265,7 @@ public sealed class KeymapTests : IDisposable
             Keystroke first = Keystroke.Parse($"{Cmd} K");
             string[] starting = [.. window.Actions.All
                 .Where(a => window.Actions.Keymap.ShortcutsFor(a.Id).Any(s => s.First == first))
-                .Select(a => a.Title).Order(StringComparer.Ordinal)];
+                .Select(a => a.Title.English).Order(StringComparer.Ordinal)];
             Assert.Contains("Comment", starting);
             Assert.Contains("Toggle Bookmark", starting);
             Assert.Equal(starting, dialog.Shown.Order(StringComparer.Ordinal));

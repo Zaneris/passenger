@@ -70,31 +70,31 @@ public partial class MainWindow
         controller.Changed += (_, _) => ListMigrationsIfShown();
         // dotnet ef builds the project and runs its code.
         Func<ActionContext, Words?> none = _ => Folder is null ? Refusals.NoFolder : Untrusted() ?? (controller.Projects.Count == 0 ? Refusals.NoEfCore : null);
-        actions!.Add(new IdeAction(A.MigrationsRefresh, "Refresh Migrations", "Migrations", c => IdeErrors.Observe(controller.ListAsync(A.MigrationsRefresh)))
+        actions!.Add(new IdeAction(A.MigrationsRefresh, ActionTitles.MigrationsRefresh, "Migrations", c => IdeErrors.Observe(controller.ListAsync(A.MigrationsRefresh)))
         {
             WhyNot = none,
             Menus = [new MenuPlace("Tools/Migrations", 0, 0)],
             Words = ["dotnet ef migrations list", "Entity Framework Core", "EF Core"],
         });
-        actions.Add(new IdeAction(A.AddMigration, "Add Migration…", "Migrations", c => IdeErrors.Observe(AddMigrationAsync()))
+        actions.Add(new IdeAction(A.AddMigration, ActionTitles.AddMigration, "Migrations", c => IdeErrors.Observe(AddMigrationAsync()))
         {
             WhyNot = none,
             Menus = [new MenuPlace("Tools/Migrations", 0, 1)],
             Words = ["dotnet ef migrations add", "Entity Framework Core", "EF Core"],
         });
-        actions.Add(new IdeAction(A.RemoveLastMigration, "Remove Last Migration", "Migrations", c => IdeErrors.Observe(controller.RemoveLastAsync(A.RemoveLastMigration)))
+        actions.Add(new IdeAction(A.RemoveLastMigration, ActionTitles.RemoveLastMigration, "Migrations", c => IdeErrors.Observe(controller.RemoveLastAsync(A.RemoveLastMigration)))
         {
             WhyNot = none,
             Menus = [new MenuPlace("Tools/Migrations", 0, 2)],
             Words = ["dotnet ef migrations remove"],
         });
-        actions.Add(new IdeAction(A.UpdateDatabase, "Update Database", "Migrations", c => IdeErrors.Observe(controller.UpdateAsync(A.UpdateDatabase, null)))
+        actions.Add(new IdeAction(A.UpdateDatabase, ActionTitles.UpdateDatabase, "Migrations", c => IdeErrors.Observe(controller.UpdateAsync(A.UpdateDatabase, null)))
         {
             WhyNot = none,
             Menus = [new MenuPlace("Tools/Migrations", 1, 0)],
             Words = ["dotnet ef database update", "Apply Migrations"],
         });
-        actions.Add(new IdeAction(A.UpdateDatabaseTo, "Update Database to Chosen Migration", "Migrations", c =>
+        actions.Add(new IdeAction(A.UpdateDatabaseTo, ActionTitles.UpdateDatabaseTo, "Migrations", c =>
         {
             if (migrationsView?.Chosen is { } chosen)
             {
@@ -103,23 +103,23 @@ public partial class MainWindow
         })
         {
             WhyNot = context => none(context) ?? (migrationsView?.Chosen is null ? "No migration is chosen in the Migrations window" : null),
-            TitleIn = _ => migrationsView?.Chosen is { } chosen ? $"Update Database to {chosen.Name}" : "Update Database to Chosen Migration",
+            TitleIn = _ => migrationsView?.Chosen is { } chosen ? ActionTitles.UpdateDatabaseToNamed(chosen.Name) : ActionTitles.UpdateDatabaseTo,
             Menus = [new MenuPlace("Tools/Migrations", 1, 1)],
             Words = ["Roll Back Migration", "dotnet ef database update"],
         });
-        actions.Add(new IdeAction(A.ScriptMigrations, "Script Migrations…", "Migrations", c => IdeErrors.Observe(ScriptMigrationsAsync()))
+        actions.Add(new IdeAction(A.ScriptMigrations, ActionTitles.ScriptMigrations, "Migrations", c => IdeErrors.Observe(ScriptMigrationsAsync()))
         {
             WhyNot = none,
             Menus = [new MenuPlace("Tools/Migrations", 2, 0)],
             Words = ["dotnet ef migrations script", "SQL Script"],
         });
-        actions.Add(new IdeAction(A.BundleMigrations, "Bundle Migrations", "Migrations", c => IdeErrors.Observe(controller.BundleAsync(A.BundleMigrations)))
+        actions.Add(new IdeAction(A.BundleMigrations, ActionTitles.BundleMigrations, "Migrations", c => IdeErrors.Observe(controller.BundleAsync(A.BundleMigrations)))
         {
             WhyNot = none,
             Menus = [new MenuPlace("Tools/Migrations", 2, 1)],
             Words = ["dotnet ef migrations bundle", "efbundle"],
         });
-        actions.Add(new IdeAction(A.MigrationsEnvironment, "Choose Migrations Environment…", "Migrations", c =>
+        actions.Add(new IdeAction(A.MigrationsEnvironment, ActionTitles.MigrationsEnvironment, "Migrations", c =>
         {
             ShowToolWindow(ToolWindowIds.Migrations);
             MigrationsView.OpenEnvironments();
@@ -129,14 +129,14 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools/Migrations", 3, 0)],
             Words = [Core.AspNetCoreVariables.AspNetCoreEnvironment, Core.AspNetCoreVariables.DotnetEnvironment, "appsettings", "Staging", "Production"],
         });
-        actions.Add(new IdeAction(A.MigrationsDatabase, "Open Context's Database", "Migrations", c => IdeErrors.Observe(OpenMigrationsDatabaseAsync()))
+        actions.Add(new IdeAction(A.MigrationsDatabase, ActionTitles.MigrationsDatabase, "Migrations", c => IdeErrors.Observe(OpenMigrationsDatabaseAsync()))
         {
             WhyNot = context => none(context) ?? (controller.Startup is null ? Refusals.NoEfCore : null),
-            TitleIn = _ => controller.Context is { } context ? $"Open {context}'s Database" : "Open Context's Database",
+            TitleIn = _ => controller.Context is { } context ? ActionTitles.MigrationsDatabaseOf(context) : ActionTitles.MigrationsDatabase,
             Menus = [new MenuPlace("Tools/Migrations", 1, 2)],
             Words = ["Database window", "connection string", "query console"],
         });
-        actions.Add(new IdeAction(A.MigrationsFix, "Fix What Migrations Lack", "Migrations", c =>
+        actions.Add(new IdeAction(A.MigrationsFix, ActionTitles.MigrationsFix, "Migrations", c =>
         {
             if (FirstFix() is { } fix)
             {
@@ -145,7 +145,7 @@ public partial class MainWindow
         })
         {
             WhyNot = context => none(context) ?? (FirstFix() is null ? "The Migrations window shows nothing to fix" : null),
-            TitleIn = _ => FirstFix()?.Title ?? "Fix What Migrations Lack",
+            TitleIn = _ => FirstFix()?.Title ?? ActionTitles.MigrationsFix,
             Words = ["dotnet tool install dotnet-ef", "Microsoft.EntityFrameworkCore.Design"],
         });
 

@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
+using Passenger.Core;
 
 namespace Passenger.App.Docking;
 
@@ -161,7 +162,7 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     public string? Action { get; init; }
 
     /// <summary>Its action's name in Find Action, where the window's own would be another action's ("Run Tool Window").</summary>
-    public string? ActionTitle { get; init; }
+    public Words? ActionTitle { get; init; }
 
     /// <summary>Where the menus list its action, besides View's Tool Windows.</summary>
     public IReadOnlyList<MenuPlace> Menus { get; init; } = [];
@@ -179,7 +180,7 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
 
     /// <summary>One of the window's actions its header carries as a button before Expand All, with the button's icon and
     /// the action's title for its tip (the Explorer's Select Opened File).</summary>
-    public (string Action, string Icon, string Title)? HeaderAction { get; init; }
+    public (string Action, string Icon, Words Title)? HeaderAction { get; init; }
 
     /// <summary>Opens every row of its tree, for Expand All, its button in the header.</summary>
     public Action? ExpandAll { get; init; }

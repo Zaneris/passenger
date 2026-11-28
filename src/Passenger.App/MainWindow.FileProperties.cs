@@ -18,12 +18,12 @@ public partial class MainWindow
 {
     private void AddFileProperties()
     {
-        actions!.Add(new IdeAction(A.FileEncoding, "File Encoding", "IDE", _ => ShowEncodingMenu())
+        actions!.Add(new IdeAction(A.FileEncoding, ActionTitles.FileEncoding, "IDE", _ => ShowEncodingMenu())
         {
             WhyNot = Unchangeable,
             Menus = [new MenuPlace("File", 2, 0)],
         });
-        actions.Add(new IdeAction(A.FileIndentation, "File Indentation", "IDE", _ => ShowIndentMenu())
+        actions.Add(new IdeAction(A.FileIndentation, ActionTitles.FileIndentation, "IDE", _ => ShowIndentMenu())
         {
             WhyNot = Refusals.NeedsLines,
             Menus = [new MenuPlace("File", 2, 2)],
@@ -31,7 +31,7 @@ public partial class MainWindow
         });
         foreach ((string id, bool tabs) in (ReadOnlySpan<(string, bool)>)[(A.ConvertIndentationToTabs, true), (A.ConvertIndentationToSpaces, false)])
         {
-            actions.Add(new IdeAction(id, tabs ? "Convert Indentation to Tabs" : "Convert Indentation to Spaces", "IDE", context => ConvertIndentation(context.File!, tabs))
+            actions.Add(new IdeAction(id, tabs ? ActionTitles.ConvertIndentationToTabs : ActionTitles.ConvertIndentationToSpaces, "IDE", context => ConvertIndentation(context.File!, tabs))
             {
                 WhyNot = context => Refusals.NeedsLines(context) ?? context.File!.WhyNotConverted(tabs),
                 Words = [tabs ? "Tabify" : "Untabify"],
@@ -41,7 +41,7 @@ public partial class MainWindow
         {
             LineSeparator separator = LineSeparators.All[i];
             // The file's own is checked (MenuChoice), and choosing it again changes nothing.
-            actions.Add(new IdeAction(LineSeparatorAction(separator), separator.Title(), "Line Separators", context =>
+            actions.Add(new IdeAction(LineSeparatorAction(separator), LineSeparatorTitle(separator), "Line Separators", context =>
             {
                 if (context.File!.Separator != separator)
                 {
@@ -73,6 +73,14 @@ public partial class MainWindow
         LineSeparator.CRLF => A.LineSeparatorsCrlf,
         LineSeparator.CR => A.LineSeparatorsCr,
         _ => A.LineSeparatorsLf,
+    };
+
+    /// <summary>A line separator's item in the Line Separators menu, its break escaped: "LF - Unix and macOS (\n)".</summary>
+    private static Words LineSeparatorTitle(LineSeparator separator) => separator switch
+    {
+        LineSeparator.CRLF => ActionTitles.LineSeparatorsCrlf(separator.Escaped()),
+        LineSeparator.CR => ActionTitles.LineSeparatorsCr(separator.Escaped()),
+        _ => ActionTitles.LineSeparatorsLf(separator.Escaped()),
     };
 
     /// <summary>Why the file's line separator and encoding cannot change: none is open, or it is read-only.</summary>

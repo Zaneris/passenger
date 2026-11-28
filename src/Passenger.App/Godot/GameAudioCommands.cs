@@ -33,9 +33,9 @@ public sealed class GameAudioCommands
             }
             Show();
         };
-        parts.Actions.Add(new IdeAction(AppActions.MuteGameAudio, "Mute Game Audio", "Debug", context => IdeErrors.Observe(ToggleAsync(context.ByAgent)))
+        parts.Actions.Add(new IdeAction(AppActions.MuteGameAudio, ActionTitles.MuteGameAudio, "Debug", context => IdeErrors.Observe(ToggleAsync(context.ByAgent)))
         {
-            TitleIn = _ => Game() is { AudioMuted: true } ? "Unmute Game Audio" : "Mute Game Audio",
+            TitleIn = _ => Game() is { AudioMuted: true } ? ActionTitles.UnmuteGameAudio : ActionTitles.MuteGameAudio,
             IsChecked = _ => Game() is { AudioMuted: true },
             WhyNot = _ => Game() is null ? "No Godot game is being debugged: Debug one, its tab chosen in the Debug window" : null,
         });

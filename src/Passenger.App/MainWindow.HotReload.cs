@@ -33,7 +33,7 @@ public partial class MainWindow
     /// dotnet watch applies.</summary>
     private void AddHotReload()
     {
-        Add(AppActions.ApplyHotReloadChanges, "Apply Hot Reload Changes", "Run", context =>
+        Add(AppActions.ApplyHotReloadChanges, ActionTitles.ApplyHotReloadChanges, "Run", context =>
         {
             // A game whose GDScript Godot reloads as each file is saved takes its edits as they are saved.
             if (UnsavedGameScripts() is { Count: > 0 } unsaved)

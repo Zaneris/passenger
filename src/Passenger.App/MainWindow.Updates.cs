@@ -108,12 +108,12 @@ public partial class MainWindow
 
     private void AddUpdates()
     {
-        actions!.Add(new IdeAction(AppActions.CheckForUpdates, "Check for Updates…", "Help",
+        actions!.Add(new IdeAction(AppActions.CheckForUpdates, ActionTitles.CheckForUpdates, "Help",
             context => IdeErrors.Observe(CheckForUpdatesAskedAsync()))
         {
             Menus = OperatingSystem.IsMacOS() ? [] : [new MenuPlace("Help", 3, 1)],
         });
-        actions.Add(new IdeAction(AppActions.RestartToUpdate, "Restart to Update", "Help", _ => RestartToUpdate())
+        actions.Add(new IdeAction(AppActions.RestartToUpdate, ActionTitles.RestartToUpdate, "Help", _ => RestartToUpdate())
         {
             WhyNot = context => AskedByAgent(context) ? Refusals.RestartIsThePersons
                 : UpdatesOwner.readyRelease is null ? "No update is downloaded and ready to install"

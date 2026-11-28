@@ -501,8 +501,8 @@ public partial class MainWindow
 
     /// <summary>The editor's Delete as the Explorer's menu names it: Remove for what only leaves the solution, chosen
     /// alone.</summary>
-    private string? DeleteTitle(ActionContext context) =>
-        ExplorerEdits(E.Delete, context) && RowOf(context) is { } row ? RowsDeleted(row) is [{ LeavesFilesBehind: true }] ? "Remove…" : "Delete…" : null;
+    private Words? DeleteTitle(ActionContext context) =>
+        ExplorerEdits(E.Delete, context) && RowOf(context) is { } row ? RowsDeleted(row) is [{ LeavesFilesBehind: true }] ? ActionTitles.RemoveRow : ActionTitles.DeleteRow : null;
 
     /// <summary>The editor's Cut, Copy, Paste or Delete run on the Explorer's row; its Undo and Redo on the last command
     /// that renamed or moved files.</summary>

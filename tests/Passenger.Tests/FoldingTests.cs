@@ -504,7 +504,7 @@ public sealed class FoldingTests : IDisposable
         Assert.Equal([14, 17, 19, 26, 28], FoldedLines());
         Ui.Run(window, EditorActions.UnfoldAllToLevel5);
         Assert.Empty(FoldedLines());
-        Assert.Equal("Expand All to Level 5", window.Actions[EditorActions.UnfoldAllToLevel5]!.Title);
+        Assert.Equal("Expand All to Level 5", window.Actions[EditorActions.UnfoldAllToLevel5]!.Title.English);
         window.Close();
     }
 
@@ -583,7 +583,7 @@ public sealed class FoldingTests : IDisposable
         Assert.Equal(editor.PointOf(text.GetLineStart(14)).Y + editor.LineHeight, editor.PointOf(text.GetLineStart(17)).Y, 1);
         Assert.Equal(editor.PointOf(text.GetLineStart(17)).Y + (2 * editor.LineHeight), editor.PointOf(text.GetLineStart(26)).Y, 1);
 
-        Assert.Equal("Collapse to Definitions", window.Actions[EditorActions.FoldToDefinitions]!.Title);
+        Assert.Equal("Collapse to Definitions", window.Actions[EditorActions.FoldToDefinitions]!.Title.English);
         Assert.Contains("M, O", window.Actions.Shortcut(EditorActions.FoldToDefinitions), StringComparison.Ordinal);
 
         SettingsDialog dialog = window.ShowSettings();
@@ -633,7 +633,7 @@ public sealed class FoldingTests : IDisposable
             Assert.Equal(0, editor.Selections.Primary.Caret);
             Ui.Run(window, collapse);
             Assert.Contains(editor.FoldRegions, r => r.Folded);
-            Ui.DrawsText(window, editor, $"{window.Actions[collapse]!.Title} with the view wheeled down to the end");
+            Ui.DrawsText(window, editor, $"{window.Actions[collapse]!.Title.English} with the view wheeled down to the end");
             Ui.Run(window, EditorActions.UnfoldAll);
         }
         window.Close();
