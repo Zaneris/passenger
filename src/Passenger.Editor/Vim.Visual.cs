@@ -850,6 +850,13 @@ public sealed partial class Vim
             Region? from = SentencesOver(text, new Region(lastMacro.Start, lastMacro.Start), inner, n + 1, ref keeps);
             return from is { } back ? new Region(lastMacro.Start, back.Cursor) : null;
         }
+        if (last > 1 && text.GetLine(last) is { Length: > 0 } closes && VimMotions.Bound(text, last) && r.Anchor <= r.Cursor
+            && VimMotions.LineOf(text, r.Cursor) is { Length: > 0 } past && r.Cursor == past.End && past.Line < last - 1
+            && Enumerable.Range(past.Line + 1, last - past.Line - 1).All(line => VimMotions.Blank(text, line)))
+        {
+            // Past the end of a line above the empty lines before a macro line ending the text, any count goes to the last of them.
+            return r with { Cursor = text.GetLineStart(last - 1) };
+        }
         if (last > 0 && text.GetLine(last) is { Length: > 0 } ending && VimMotions.Bound(text, last)
             && r.Anchor <= ending.Start && (r.Cursor <= ending.Start || (r.Anchor < ending.Start && r.Cursor < VimMotions.StepBack(text, ending.End))))
         {
@@ -1146,11 +1153,11 @@ public sealed partial class Vim
         return TextNavigation.IndentEnd(text, line) - 1;
     }
 
-    /// <summary>A stretch with nothing after its cursor to take: from a line of text above the empty lines ending the
-    /// text, or from the last of them, the cursor goes to the one before the last, where it stays; in the white ending the
-    /// text (<see cref="WhiteEndingText"/>) is goes to its last blank and the last sentence's end by turns, a step each; else to
-    /// the last character that is no blank, at or before it for is (an even count to the blanks after it), the text's for
-    /// as, which leaves one at or past the last line of text's end there.</summary>
+    /// <summary>A stretch with nothing after its cursor to take: from a line of text above the empty lines ending the text, from
+    /// the last of them, from any of them by three units or more or in a text of them alone, the cursor goes to the one before
+    /// the last, where it stays; in the white ending the text (<see cref="WhiteEndingText"/>) is goes to its last blank and the
+    /// last sentence's end by turns, a step each; else to the last character that is no blank, at or before it for is (an even
+    /// count to the blanks after it), the text's for as, which leaves one at or past the last line of text's end there.</summary>
     private Region? Ended(TextSnapshot text, Region r, bool inner, int n)
     {
         int last = VimMotions.LastLine(text, breakEnds);
@@ -1169,7 +1176,9 @@ public sealed partial class Vim
             return stays != r.Cursor ? r with { Cursor = stays } : null;
         }
         if (last > 1 && VimMotions.Blank(text, last) && VimMotions.Blank(text, last - 1) && text.GetLineStart(last - 1) is var before
-            && (r.Cursor == before || on.Line == last || (on.Length > 0 && (r.Cursor < on.End || (!inner && n > 1)))))
+            && (r.Cursor == before || on.Line == last || (on.Length > 0 && (r.Cursor < on.End || (!inner && n > 1)))
+                || (on.Length == 0 && Enumerable.Range(on.Line, last - on.Line).All(line => VimMotions.Blank(text, line))
+                    && ((inner ? n : 2 * n) > 2 || Enumerable.Range(0, on.Line).All(line => VimMotions.Blank(text, line))))))
         {
             return r.Cursor == before ? null : r with { Cursor = before };
         }

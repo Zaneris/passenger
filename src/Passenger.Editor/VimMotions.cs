@@ -1031,6 +1031,12 @@ public static class VimMotions
                     (to, next, toEmpty) = (textUntil, after, false);
                     continue;
                 }
+                if (!closes && i < n - 1 && textUntil == until.Start && until.Line > sentenceLine.Line && until.Line < last && MacroLine(text, until.Line))
+                {
+                    // Counted on to a macro line below, the sentence ends at its line's end, the macro line taken next with the break before it.
+                    (to, next, toEmpty) = (text.GetLine(until.Line - 1).End, textUntil, false);
+                    continue;
+                }
                 if (!closes)
                 {
                     return new VimSpan(from, i == 0 ? from : to, false, EndKept: i > 0 && toEmpty);
