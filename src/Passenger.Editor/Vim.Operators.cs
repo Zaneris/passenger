@@ -47,6 +47,7 @@ public sealed partial class Vim
         if (stretches.Count == 0)
         {
             // Nothing to act on: a count of words cut short leaves each caret where it ran out, as Vim's does.
+            jumpOwed = command.Name == "`";
             SelectionSet left = SelectionSet.Create(ranOut, selections.PrimaryIndex);
             if (command.Name == "$")
             {
@@ -88,7 +89,7 @@ public sealed partial class Vim
                 && (t.Inclusive || (command.Name is "i" or "a" && command.Argument == "s" && VimMotions.LastLine(text, breakEnds) == 0))));
         if (op is "d" or "c" && !empty)
         {
-            Registers.Delete(command.Register, taken, Jumps.Contains(command.Name));
+            Registers.Delete(command.Register, taken, Jumps.Contains(command.Name) || jumpCarried);
             EraseMarks(text, stretches, op == "c", view);
         }
         else if (op == "y")

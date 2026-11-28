@@ -108,6 +108,13 @@ public sealed partial class Vim(VimRegisters registers)
     /// <summary>The line an exclusive motion just ended at the start of, which the operator's stretch leaves out; null with none.</summary>
     private int? reachedPast;
 
+    /// <summary>Set where an operator's ` went to a mark not set, so the next command, a delete or change however small,
+    /// goes to register 1 as one over a ` does; the next command or command line takes it (<see cref="jumpCarried"/>).</summary>
+    private bool jumpOwed;
+
+    /// <summary>Whether the command under way took <see cref="jumpOwed"/>, for the length of that command alone.</summary>
+    private bool jumpCarried;
+
     /// <summary>Set while a command writes into a text a delete emptied (<see cref="OnOneEmptyLine"/>), whose one empty line
     /// a delete or change takes nothing of, as Vim's empty buffer gives its registers nothing.</summary>
     private bool intoEmptied;
@@ -215,6 +222,7 @@ public sealed partial class Vim(VimRegisters registers)
         }
         if (key is ":" or "/" or "?" && TakesCommandLine(pending, search: key != ":"))
         {
+            jumpOwed = false;
             return OpenCommandLine(key[0], string.Empty);
         }
         pending.Add(key == VimKeys.Delete ? "x" : key);
@@ -227,9 +235,18 @@ public sealed partial class Vim(VimRegisters registers)
         searchSaid = null;
         // A command Vim mode doesn't know is swallowed whole, so its keys never type into the text.
         SelectionSet? aimedFor = wantedFor;
-        VimResult result = command is null ? VimResult.Held
-            : WritesIntoEmpty(command, text, view) ? OnOneEmptyLine(command, text, view)
-            : Run(command, text, selections, view);
+        (jumpCarried, jumpOwed) = (jumpOwed, false);
+        VimResult result;
+        try
+        {
+            result = command is null ? VimResult.Held
+                : WritesIntoEmpty(command, text, view) ? OnOneEmptyLine(command, text, view)
+                : Run(command, text, selections, view);
+        }
+        finally
+        {
+            jumpCarried = false;
+        }
         if ((command is { Operator: null, Name: "." or "p" or "P" or "gp" or "gP" or "~" or "r" or "h" or "l" or " " or VimKeys.Backspace or "f" or "F" or "t" or "T" or ";" or "," or "*" or "#"
                 or "S" or "Y" or "s" or "x" or "X" or "J" or "gJ" or "%" or "+" or "-" or "_" or "[(" or "])" or "[{" or "]}" }
             && (ReferenceEquals(result, VimResult.Held) || result is { Edits: null, Selections: null, ReadsClipboard: false }))
