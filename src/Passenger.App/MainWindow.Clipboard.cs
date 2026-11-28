@@ -60,7 +60,7 @@ public partial class MainWindow
         {
             Remember(new CopiedText(now, WholeLines: false));
         }
-        ChoicePopup popup = new(TitleOf(AppActions.PasteFromHistory), "Search copied texts", [.. copied.Select(Chosen)], Refusals.NothingCopied.Shown);
+        ChoicePopup popup = new(TitleOf(AppActions.PasteFromHistory), "Search copied texts", [.. copied.Select(Chosen)], Refusals.NothingCopied);
         popups.Show(popup, chosen =>
         {
             if (chosen?.Value is CopiedText text)

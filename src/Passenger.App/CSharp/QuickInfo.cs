@@ -99,7 +99,7 @@ internal sealed class QuickInfo
     /// <summary>A peek at the caret (Quick Implementations, Error Description, Expression Type Info): the card filled by
     /// <paramref name="fill"/>, placed and told as Quick Documentation's is; <paramref name="none"/> said where it fills
     /// nothing, and a server's failure said for <paramref name="what"/>.</summary>
-    public async Task PeekAsync(string what, string none, Func<InfoCard, CancellationToken, Task> fill)
+    public async Task PeekAsync(Words what, Words none, Func<InfoCard, CancellationToken, Task> fill)
     {
         hovering?.Cancel();
         CancellationTokenSource cancel = new();
@@ -114,7 +114,7 @@ internal sealed class QuickInfo
         }
         catch (LanguageServerFailed failed)
         {
-            context.Failed(what, failed);
+            context.Failed(what.Shown, failed);
             return;
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)

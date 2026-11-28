@@ -398,8 +398,8 @@ public sealed class CodeAssist
     public string? OfferedTitle => popups.OfferedTitle;
 
     /// <summary>A titled list of choices at the caret (Inspect This), the one chosen handed on, or null where it was given up.</summary>
-    public void OfferAtCaret(string title, IReadOnlyList<Choice> choices, Func<Choice?, Task> done) =>
-        popups.ShowModal(new ChoicePopup(title, choices), context.Caret, title, done);
+    public void OfferAtCaret(Words title, IReadOnlyList<Choice> choices, Func<Choice?, Task> done) =>
+        popups.ShowModal(new ChoicePopup(title, choices), context.Caret, title.Shown, done);
 
     /// <summary>While the debugger is paused, the value of what the pointer rests on, which the hover card shows
     /// instead of the symbol's description; in a debugged app's .axaml file, a binding's.</summary>
@@ -432,7 +432,7 @@ public sealed class CodeAssist
 
     /// <summary>Quick Implementations: the code of what implements the symbol at the caret, else of its declaration, each
     /// under its file and line, in a card at the caret.</summary>
-    public Task QuickImplementationsAsync(string title) => quickInfo.PeekAsync(title, Refusals.NothingImplements.Shown, async (card, cancel) =>
+    public Task QuickImplementationsAsync(Words title) => quickInfo.PeekAsync(title, Refusals.NothingImplements, async (card, cancel) =>
     {
         if (context.Editors.Active is not { } file || context.ServerOf(file)?.Lsp is not { } lsp)
         {
@@ -480,7 +480,7 @@ public sealed class CodeAssist
     }
 
     /// <summary>Error Description: the problems on the caret's line, each in its kind's colour, in a card at the caret.</summary>
-    public Task ErrorDescriptionAsync(string title) => quickInfo.PeekAsync(title, Refusals.NoProblemHere.Shown, (card, _) =>
+    public Task ErrorDescriptionAsync(Words title) => quickInfo.PeekAsync(title, Refusals.NoProblemHere, (card, _) =>
     {
         TextSnapshot text = context.Editor.Document.Snapshot;
         LineSpan line = text.GetLine(text.GetLineFromOffset(Math.Min(context.Caret, text.Length)));
@@ -497,7 +497,7 @@ public sealed class CodeAssist
     });
 
     /// <summary>Expression Type Info: the type of the expression at the caret, as C# writes it there, in a card.</summary>
-    public Task ExpressionTypeAsync(string title) => quickInfo.PeekAsync(title, Refusals.NoExpressionType.Shown, async (card, cancel) =>
+    public Task ExpressionTypeAsync(Words title) => quickInfo.PeekAsync(title, Refusals.NoExpressionType, async (card, cancel) =>
     {
         if (context.Editors.Active is { } file && file.Language == Passenger.Languages.Language.CSharp && context.ServerOf(file)?.Lsp is { } lsp
             && (await lsp.ExtensionAsync<Roslyn.Extension.ExpressionTyped>(Roslyn.Extension.Handlers.ExpressionType, new Roslyn.Extension.Caret(lsp.PlaceOf(context.Caret)), cancel)).Type is { } type)
@@ -523,14 +523,14 @@ public sealed class CodeAssist
 
     /// <summary>Show File Path: the file shown and each folder above it, in a list at the caret; the one chosen is shown in
     /// the system's file manager by <paramref name="reveal"/>.</summary>
-    public void ShowFilePath(string title, OpenDocument file, Action<string> reveal)
+    public void ShowFilePath(Words title, OpenDocument file, Action<string> reveal)
     {
         List<Choice> choices = [new Choice(Path.GetFileName(file.Path), file.Path, file.Path)];
         foreach (string folder in FoldersUp.From(Path.GetDirectoryName(file.Path) ?? string.Empty))
         {
             choices.Add(new Choice(Path.GetFileName(folder) is { Length: > 0 } name ? name : folder, folder, folder));
         }
-        popups.ShowModal(new ChoicePopup(title, choices), context.Caret, title, choice =>
+        popups.ShowModal(new ChoicePopup(title, choices), context.Caret, title.Shown, choice =>
         {
             if (choice?.Value is string chosen)
             {
@@ -542,7 +542,7 @@ public sealed class CodeAssist
 
     /// <summary>Places of the file shown to go to, by their names (Go to Region's): straight to one, else a list at the
     /// caret to choose from; <paramref name="none"/> said where there are none.</summary>
-    public void ShowPlaces(string title, OpenDocument file, IReadOnlyList<int> offsets, IReadOnlyList<string> names, string none)
+    public void ShowPlaces(Words title, OpenDocument file, IReadOnlyList<int> offsets, IReadOnlyList<string> names, Words none)
     {
         ServerLines lines = ServerLines.Of(file.Text.Snapshot);
         string uri = DocumentUris.FromPath(file.Path);
@@ -553,7 +553,7 @@ public sealed class CodeAssist
 
     /// <summary>Places in any file to go to, by their names (Go to Test's): straight to one, else a list at the caret to
     /// choose from; <paramref name="none"/> said where there are none.</summary>
-    public void ShowPlaces(string title, IReadOnlyList<(string Path, TextSnapshot Text, int Offset, string Name)> places, string none)
+    public void ShowPlaces(Words title, IReadOnlyList<(string Path, TextSnapshot Text, int Offset, string Name)> places, Words none)
     {
         navigation.Go([.. places.Select(p =>
         {

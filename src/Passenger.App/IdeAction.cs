@@ -63,6 +63,9 @@ public sealed record IdeAction(string Id, Words Title, Words Group, Action<Actio
 
     /// <summary>Its title in a menu opened in this context.</summary>
     public Words TitleWhere(ActionContext context) => TitleIn?.Invoke(context) ?? Title;
+
+    /// <summary>Its title without the "…" that says it asks more: what titles the popup it opens (Go to Region, VCS Operations).</summary>
+    public Words PlainTitle => Title.TrimmedEnd('…');
 }
 
 /// <summary>Where an action runs: the file the editor shows and its caret, the expression there, what has the keys (an

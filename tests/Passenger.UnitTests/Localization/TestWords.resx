@@ -46,4 +46,8 @@
   <data name="NotYetTranslated" xml:space="preserve">
     <value>Not yet translated</value>
   </data>
+  <data name="AsksMore" xml:space="preserve">
+    <value>Rename…</value>
+    <comment>An action's title ending in the dots that say it asks more.</comment>
+  </data>
 </root>

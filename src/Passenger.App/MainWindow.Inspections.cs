@@ -23,10 +23,10 @@ public partial class MainWindow
     /// chosen runs over the solution. Null where the C# server cannot list them yet, the status bar saying why.</summary>
     public async Task<ChoicePopup?> ShowInspectionsAsync()
     {
-        string title = TitleOf(AppActions.RunInspectionByName);
+        Words title = TitleOf(AppActions.RunInspectionByName);
         if (session.CSharp is not { } csharp || !csharp.IsReady || csharp.Session is not { } server)
         {
-            status.Text = session.CSharp is { } unready ? unready.Unready(title) : session.WhyNoCSharp;
+            status.Text = session.CSharp is { } unready ? unready.Unready(title.Shown) : session.WhyNoCSharp;
             return null;
         }
         // Held, so what comes next in the window finds the rules offered.
@@ -49,7 +49,7 @@ public partial class MainWindow
                 return null;
             }
         }
-        ChoicePopup popup = new(title, "Search rules by name or id", [.. found.Rules.Select(r => new Choice(r.Title, $"{r.Id} · {r.Category}", r))], Refusals.NoInspections.Shown);
+        ChoicePopup popup = new(title, "Search rules by name or id", [.. found.Rules.Select(r => new Choice(r.Title, $"{r.Id} · {r.Category}", r))], Refusals.NoInspections);
         popups.Show(popup, chosen =>
         {
             if (chosen?.Value is EditorConfigDiagnostic rule)

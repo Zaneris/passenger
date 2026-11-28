@@ -76,12 +76,19 @@ public sealed class Words : IEquatable<Words>
     public string English => In(UiLanguage.English);
 
     /// <summary>The words in <paramref name="language"/>.</summary>
-    public string In(UiLanguage language)
+    public string In(UiLanguage language) => IsVerbatim ? name : language.Pseudo is null ? Unpadded(language) : PseudoWords.Padded(Unpadded(language));
+
+    /// <summary>These words without <paramref name="ending"/> where they end in it, in every language: an action's title
+    /// without the "…" that says it asks more, as the popup it opens is titled.</summary>
+    public Words TrimmedEnd(char ending) => IsVerbatim ? new(name.TrimEnd(ending)) : new(new SaidTrimmed(this, ending));
+
+    /// <summary>The words in <paramref name="language"/>, the pseudo-locale's accented but not yet lengthened and bracketed.</summary>
+    private string Unpadded(UiLanguage language)
     {
         if (patterned is not null)
         {
             string text = patterned.In(language);
-            return language.Pseudo is null ? text : PseudoWords.Padded(PseudoWords.Accented(text));
+            return language.Pseudo is null ? text : PseudoWords.Accented(text);
         }
         if (resources is null)
         {
@@ -90,7 +97,12 @@ public sealed class Words : IEquatable<Words>
         (MessagePattern pattern, CultureInfo written) = Pattern(language);
         StringBuilder said = new();
         Write(said, pattern.Parts, language, written, null);
-        return language.Pseudo is null ? said.ToString() : PseudoWords.Padded(said.ToString());
+        return said.ToString();
+    }
+
+    private sealed record SaidTrimmed(Words Trimmed, char Ending) : ISaid
+    {
+        public string In(UiLanguage language) => Trimmed.Unpadded(language).TrimEnd(Ending);
     }
 
     public override string ToString() => Shown;

@@ -111,6 +111,6 @@ public partial class MainWindow
             return;
         }
         IReadOnlyList<(string Name, int Start)> regions = CodeStructure.Regions(csharp);
-        Assist.ShowPlaces(TitleOf(AppActions.GoToRegion), document, [.. regions.Select(r => r.Start)], [.. regions.Select(r => r.Name)], Refusals.NoRegions(document.Name).Shown);
+        Assist.ShowPlaces(TitleOf(AppActions.GoToRegion), document, [.. regions.Select(r => r.Start)], [.. regions.Select(r => r.Name)], Refusals.NoRegions(document.Name));
     }
 }
