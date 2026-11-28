@@ -373,7 +373,7 @@ public partial class MainWindow
         }
         ContainerEngine engine = row.Container?.Engine ?? Engine;
         await ForgetUnmaskedCopiesAsync();
-        string copy = Path.Combine(ContainerSecrets.InspectCopies(StateFolder), $"{string.Concat(row.Name.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.' ? c : '_'))}.json");
+        string copy = Path.Combine(ContainerSecrets.InspectCopies(StateFolder), $"{FileNames.Safe(row.Name)}.json");
         string? problem = await BackgroundWork.Run(async () =>
         {
             try
