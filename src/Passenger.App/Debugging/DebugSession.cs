@@ -698,6 +698,10 @@ public sealed class DebugSession
 
     public Task StepOutAsync() => Resume(DapCommands.StepOut);
 
+    /// <summary>Why Run to Cursor can't run to a file's line: one of XAML the program reads as it runs, whose breakpoints are
+    /// sent as the code that loads it; null where it can.</summary>
+    public Words? RunToWhyNot(string path) => (MauiXaml is not null || XamlAtRunTime) && IsRunTimeXaml(path) ? Refusals.NoRunToCursorInXaml : null;
+
     /// <summary>Runs on to a line: a breakpoint the user never sees, gone again at the next stop (the stop shown again when the
     /// continue is refused among them, so no later run stops at a breakpoint no one set); forced, past every other breakpoint
     /// on the way (Force Run to Cursor).</summary>
@@ -1688,7 +1692,7 @@ public sealed class DebugSession
         }
         int xamlFrom = requests.Count;
         requests.AddRange(xaml.Select(b => new DapFunctionBreakpoint(Inspector.Wire.Loaded, XamlCondition(b), b.HitCondition, b.LogMessage, b.Snapshot is null && b.Suspend, b.Key,
-            b.WaitsFor?.Key, b.Temporary ? true : null)));
+            b.WaitsFor?.Key, b.Temporary ? true : null, b.Snapshot is null ? null : true, b.Snapshot?.Captures, b.Snapshot?.Limit)));
         SetBreakpointsResponse response;
         try
         {

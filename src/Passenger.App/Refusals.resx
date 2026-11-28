@@ -411,6 +411,10 @@
     <value>The paused program's debugger cannot move where it goes on, so there is no Set Next Statement there</value>
     <comment>Set Next Statement asked of a program whose debugger cannot move where a paused thread goes on (a Godot game's GDScript).</comment>
   </data>
+  <data name="NoRunToCursorInXaml" xml:space="preserve">
+    <value>A line of XAML the program reads as it runs is no place Run to Cursor can stop at: put a breakpoint on it</value>
+    <comment>Run to Cursor asked in a XAML file the debugged program reads as it runs, whose breakpoints stand on the code that loads it rather than a line of its own.</comment>
+  </data>
   <data name="NothingToBuild" xml:space="preserve">
     <value>The open folder has no solution or project to build</value>
     <comment>A build asked of a folder with no solution or project file MSBuild could build, which it would refuse in its own words (MSB1003); short enough to read whole in the smallest window's status bar.</comment>
