@@ -120,6 +120,13 @@ public sealed partial class BuildRunController
             {
                 return $"{chosen.Name} cannot start {configuration.Name}: a Godot game starts from its own configuration, which follows its scenes and copies";
             }
+            // What a start does before such a program runs is its own configuration's, never a part's plain start.
+            if ((plan.Device is not null ? "an app on a device starts from its own configuration, which installs it there"
+                : plan.MacCatalyst is not null ? "a Mac Catalyst app starts from its own configuration, which has the system open it"
+                : plan.Package is not null ? "a packaged Windows app starts from its own configuration, which registers it with Windows" : null) is { } apart)
+            {
+                return $"{chosen.Name} cannot start {configuration.Name}: {apart}";
+            }
             // Its program goes by its own configuration's name (or the part's own), set apart where the run starts that one twice.
             string name = RunConfiguration.UniqueName(part.Name.Length > 0 ? part.Name : configuration.Name, named);
             named.Add(name);

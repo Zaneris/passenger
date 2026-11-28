@@ -112,8 +112,16 @@ public sealed class PartReadiness(RunPart part, string name, bool dotnet) : IDis
             }
             IdeErrors.Observe(ListenAsync(address, listening.Token));
         }
-        Task done = await Task.WhenAny(ready.Task, ended);
-        await listening.CancelAsync();
+        Task done;
+        try
+        {
+            // A stop ends the wait itself: a part that neither readies nor ends would hold it for good.
+            done = await Task.WhenAny(ready.Task, ended).WaitAsync(stop);
+        }
+        finally
+        {
+            await listening.CancelAsync();
+        }
         stop.ThrowIfCancellationRequested();
         // Its last line, which no line break ended, is heard as its end lands.
         foreach (ConsoleLines lines in hearing.OfType<ConsoleLines>())
