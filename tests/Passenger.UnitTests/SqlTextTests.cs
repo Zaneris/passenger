@@ -235,8 +235,10 @@ public sealed class SqlTextTests
             ("a table's columns one to a line", DatabaseKind.Sqlite, "create table t (id integer primary key, name text not null, price decimal(6,2))",
                 "CREATE TABLE t (\n    id integer PRIMARY KEY,\n    name text NOT NULL,\n    price decimal(6, 2)\n)"),
             ("an operator of several characters kept whole, SQLite's == and the shifts", DatabaseKind.Sqlite, "select 4<<1, 8>>1 where 1==1", "SELECT 4 << 1,\n       8 >> 1\nWHERE 1 == 1"),
-            ("PostgreSQL's operators read as its lexer reads them, a sign after one its number's", DatabaseKind.Postgres, "select a<<=b, c @-d where e=-1 and f<->g",
+            ("PostgreSQL's operators read as its lexer reads them, a sign after one its number's", DatabaseKind.Postgres, "select a<<=b, c@-d where e=-1 and f<->g",
                 "SELECT a <<= b,\n       c @- d\nWHERE e = -1\n    AND f <-> g"),
+            ("an @ or # inside a name SQL Server's alone, MySQL's # a comment", DatabaseKind.MySql, "select a#b\nfrom t", "SELECT a #b\nFROM t"),
+            ("SQL Server's name going on through @ and #", DatabaseKind.SqlServer, "select a@b, c#d from t", "SELECT a@b,\n       c#d\nFROM t"),
         }, row =>
         {
             Assert.Equal(row.Laid, SqlFormatter.Format(row.Sql, row.Kind));

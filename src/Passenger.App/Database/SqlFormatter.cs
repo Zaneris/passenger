@@ -425,7 +425,8 @@ public static class SqlFormatter
             else if (char.IsLetter(c) || c is '_' or '@' or '#' && kind == DatabaseKind.SqlServer)
             {
                 i++;
-                while (i < sql.Length && (char.IsLetterOrDigit(sql[i]) || sql[i] is '_' or '$' or '@' or '#'))
+                // SQL Server's names alone go on through @ and #: PostgreSQL's @ is an operator's, MySQL's # a comment's.
+                while (i < sql.Length && (char.IsLetterOrDigit(sql[i]) || sql[i] is '_' or '$' || sql[i] is '@' or '#' && kind == DatabaseKind.SqlServer))
                 {
                     i++;
                 }
