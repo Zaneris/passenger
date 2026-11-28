@@ -10,7 +10,7 @@ namespace Passenger.App.ToolWindows;
 /// is (<c>emptyText</c>), and under them, while one is offered, a link to the action that would give it something to show
 /// (Create Git Repository where the folder is in no repository), named with its keys in the keymap in force, which
 /// <see cref="ActionRequested"/> asks the window for. Words that name an action's keys follow the keymap too
-/// (<see cref="SayWithKeys(string, Func{string?, string})"/>). Where its window leaves it less room than its words take,
+/// (<see cref="SayWithKeys(string, Func{string?, Words})"/>). Where its window leaves it less room than its words take,
 /// they wrap and are cut, never drawn over what is beside it. It is the one place such words are made.</summary>
 public sealed class EmptyState : StackPanel
 {
@@ -47,10 +47,10 @@ public sealed class EmptyState : StackPanel
     public void Say(Words? said) => ShownWords.Set(words, TextBlock.TextProperty, said);
 
     /// <summary>Has it say words naming an action's keys as the keymap in force has them, null while nothing runs it.</summary>
-    public void SayWithKeys(string action, Func<string?, string> said) => ActionTips.SetWords(words, action, said);
+    public void SayWithKeys(string action, Func<string?, Words> said) => ActionTips.SetWords(words, action, said);
 
     /// <summary>Has it say words naming several actions' keys, each as <c>keys(action)</c> gives it.</summary>
-    public void SayWithKeys(Func<Func<string, string?>, string> said) => ActionTips.SetWords(words, said);
+    public void SayWithKeys(Func<Func<string, string?>, Words> said) => ActionTips.SetWords(words, said);
 
     /// <summary>The action its link asks for, by its id and title, the link naming its keys; none with null.</summary>
     public void Offer(string? action, Words? title)
@@ -63,7 +63,7 @@ public sealed class EmptyState : StackPanel
             return;
         }
         Words named = title ?? action;
-        ActionTips.SetWords(link, action, keys => ActionTips.Named(named.Shown, keys));
+        ActionTips.SetWords(link, action, keys => ActionTips.Named(named, keys));
         // The link sits under the words as their next line, not a paragraph apart.
         words.Margin = new Thickness(Gaps.Group, Gaps.Group, Gaps.Group, Gaps.Tight);
     }

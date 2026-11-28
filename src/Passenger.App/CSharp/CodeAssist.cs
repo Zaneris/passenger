@@ -19,7 +19,7 @@ namespace Passenger.App.CSharp;
 /// <summary>A fix Passenger offers itself at a place in a file, beside the language server's (a running app's failed binding's
 /// nearest member, a compose file's undefined name): what Show Context Actions lists, a quieter detail, and the text it puts
 /// in place of a range.</summary>
-public sealed record EditorFix(string Title, string Detail, TextRange Range, string Text)
+public sealed record EditorFix(Words Title, Words Detail, TextRange Range, string Text)
 {
     /// <summary>The fix worked out again on the file's text as it stands when it is chosen, null when that text no longer
     /// has what it fixes; none for a fix made as it was offered.</summary>
@@ -1065,7 +1065,7 @@ public sealed class CodeAssist
     internal Task<IReadOnlyList<EditorFix>> OwnFixesAsync(OpenDocument? file, int offset) => actions.OwnFixesAsync(file, offset);
 
     /// <summary>The titles of Passenger's own fixes Show Context Actions lists first at an offset of a file, in its order.</summary>
-    public async Task<IReadOnlyList<string>> OwnFixTitlesAsync(OpenDocument file, int offset) => [.. (await actions.OwnFixesAsync(file, offset)).Select(f => f.Title)];
+    public async Task<IReadOnlyList<string>> OwnFixTitlesAsync(OpenDocument file, int offset) => [.. (await actions.OwnFixesAsync(file, offset)).Select(f => f.Title.English)];
 
     /// <summary>A fix's changes to files made as one command, once the files not open it wrote have landed
     /// (<see cref="CodeActions.ApplyFileChangesAsync"/>): null once made, else why not.</summary>

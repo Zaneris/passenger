@@ -390,11 +390,11 @@ public sealed partial class PassengerTools
     {
         if (fix.On(document.Text.Snapshot) is not { } now)
         {
-            throw new InvalidOperationException($"'{fix.Title}' was not applied: the file changed, so it no longer fits");
+            throw new InvalidOperationException($"'{fix.Title.English}' was not applied: the file changed, so it no longer fits");
         }
         if (now.Asks is { } asks)
         {
-            RefactorOutcome set = await asks.Make(value ?? throw new InvalidOperationException($"'{fix.Title}' sets a value: give it as name"), patience);
+            RefactorOutcome set = await asks.Make(value ?? throw new InvalidOperationException($"'{fix.Title.English}' sets a value: give it as name"), patience);
             if (set.Problem is { } refused)
             {
                 throw new RefusedException(refused);
@@ -405,7 +405,7 @@ public sealed partial class PassengerTools
         if (now.Confirms is { } confirms)
         {
             // The agent's call is its agreeing; what it wrote is said back.
-            string question = await confirms.Question() ?? throw new InvalidOperationException($"'{fix.Title}' was not applied: the file changed, so it no longer fits");
+            string question = await confirms.Question() ?? throw new InvalidOperationException($"'{fix.Title.English}' was not applied: the file changed, so it no longer fits");
             RefactorOutcome agreed = await confirms.Make(patience);
             if (agreed.Problem is { } declined)
             {
@@ -422,11 +422,11 @@ public sealed partial class PassengerTools
                 throw new RefusedException(problem);
             }
             await SaveLandedAsync(CancellationToken.None);
-            return $"Applied '{fix.Title}' to {AgentAnswers.Named([.. made.Files.Select(f => Relative(f.Path)).Distinct()], "file", FilesOfTheChange)}";
+            return $"Applied '{fix.Title.English}' to {AgentAnswers.Named([.. made.Files.Select(f => Relative(f.Path)).Distinct()], "file", FilesOfTheChange)}";
         }
         WorkspaceEdits.ApplyTo(Editors, document, now.Edits ?? [new TextEdit(now.Range.Start, now.Range.Length, now.Text)]);
         await SaveLandedAsync(CancellationToken.None);
-        return $"Applied '{fix.Title}' to {Relative(document.Path)}";
+        return $"Applied '{fix.Title.English}' to {Relative(document.Path)}";
     }
 
     /// <summary>One of XAML's fixes or refactorings at a place, as code_actions lists it and apply_code_action makes it.</summary>
@@ -439,7 +439,7 @@ public sealed partial class PassengerTools
     {
         // Passenger's own fixes (a translation a language lacks) stand on the file's check of the text as the agent wrote it.
         await xaml.Xaml.CheckedAsync();
-        List<XamlAction> offered = [.. window.Assist.OwnFixes(xaml.Document, offset).Select(f => new XamlAction(f.Title, "quickfix", [], f))];
+        List<XamlAction> offered = [.. window.Assist.OwnFixes(xaml.Document, offset).Select(f => new XamlAction(f.Title.English, "quickfix", [], f))];
         XamlFile file = xaml.File;
         IReadOnlyList<XamlDiagnostic> found = await BackgroundWork.Run(() => XamlDiagnostics.Of(file));
         TextSnapshot text = TextSnapshot.From(file.Text);

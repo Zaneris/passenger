@@ -1,4 +1,5 @@
 using Passenger.App.Run;
+using Passenger.Core;
 using A = Passenger.App.AppActions;
 
 namespace Passenger.App;
@@ -24,9 +25,9 @@ public partial class MainWindow
     /// <summary>Run Anything: a configuration chosen runs (Shift+Enter debugs it), a command line runs in a Terminal tab.</summary>
     private void ShowRunAnything(ActionContext context)
     {
-        RunOffer[] offered = [.. ConfigurationChoices("Run configuration"), .. session.Configurations.RecentCommands.Select(c => new RunOffer(c, RunWords.RecentInTerminal, Command: c))];
+        RunOffer[] offered = [.. ConfigurationChoices("Run configuration"), .. session.Configurations.RecentCommands.Select(c => new RunOffer(Words.Verbatim(c), RunWords.RecentInTerminal, Command: c))];
         RunOffersPopup popup = new(TitleOf(A.RunAnything), $"Run a configuration or a command line; {OtherwiseKey} debugs", offered, commands: true,
-            Refusals.NothingToRunYet.Shown);
+            Refusals.NothingToRunYet);
         popups.Show(popup, chosen => Take(chosen, popup.Otherwise, context));
     }
 
@@ -35,9 +36,9 @@ public partial class MainWindow
     private void ShowConfigurationChoice(ActionContext context, bool debug)
     {
         string id = debug ? A.ChooseDebugConfiguration : A.ChooseRunConfiguration;
-        RunOffer[] offered = [.. ConfigurationChoices(string.Empty), new RunOffer(actions![A.EditConfigurations]!.TitleWhere(context).Shown, string.Empty, Action: A.EditConfigurations)];
+        RunOffer[] offered = [.. ConfigurationChoices(string.Empty), new RunOffer(actions![A.EditConfigurations]!.TitleWhere(context), string.Empty, Action: A.EditConfigurations)];
         RunOffersPopup popup = new(TitleOf(id), debug ? $"Debug a configuration; {OtherwiseKey} runs it" : $"Run a configuration; {OtherwiseKey} debugs it", offered,
-            commands: false, Refusals.NoRunConfigurationMatches.Shown);
+            commands: false, Refusals.NoRunConfigurationMatches);
         popups.Show(popup, chosen => Take(chosen, popup.Otherwise != debug, context));
     }
 
@@ -48,7 +49,7 @@ public partial class MainWindow
     /// greyed with why where it cannot launch here.</summary>
     private IEnumerable<RunOffer> ConfigurationChoices(string detail) =>
         Configurations.Where(c => !c.IsScript || !c.Generated).Concat(Configurations.Where(c => c is { IsScript: true, Generated: true }))
-            .Select(c => new RunOffer(c.Name, detail, Configuration: c, Refused: WhyNotHere(c)));
+            .Select(c => new RunOffer(Words.Verbatim(c.Name), detail, Configuration: c, Refused: WhyNotHere(c)));
 
     /// <summary>What was chosen, run: a configuration, chosen as the toolbar's is, then run or debugged by its action; a command
     /// line in a Terminal tab of its own; an action by itself.</summary>

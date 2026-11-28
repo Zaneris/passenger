@@ -313,7 +313,7 @@ public partial class MainWindow
     {
         UiThread.Check();
         wholeAsked = project;
-        BottomPanel.Run.ShowOffer($"{name}'s Debug build trims .NET's own assemblies, so {MacCatalystApp.KeptOut}", actions![AppActions.KeepAssembliesWhole]!.Title.Shown,
+        BottomPanel.Run.ShowOffer($"{name}'s Debug build trims .NET's own assemblies, so {MacCatalystApp.KeptOut}", actions![AppActions.KeepAssembliesWhole]!.Title,
             () => Request(AppActions.KeepAssembliesWhole));
     }
 
@@ -371,7 +371,7 @@ public partial class MainWindow
         if (MobileWant.Trimmed.FirstOrDefault(h => PathNames.Same(h.Project, file.Path)) is { } trimmed
             && MobileHeads.CatalystPlaces(text).Any(p => line >= p.Start && line <= p.End))
         {
-            fixes.Add(new CSharp.EditorFix(actions![AppActions.KeepAssembliesWhole]!.Title.Shown, $"{trimmed.Name}'s Debug build trims .NET's own assemblies, so {MacCatalystApp.KeptOut}",
+            fixes.Add(new CSharp.EditorFix(actions![AppActions.KeepAssembliesWhole]!.Title, $"{trimmed.Name}'s Debug build trims .NET's own assemblies, so {MacCatalystApp.KeptOut}",
                 new TextRange(offset, 0), string.Empty)
             {
                 Elsewhere = async (_, _) =>
@@ -387,7 +387,7 @@ public partial class MainWindow
         {
             return fixes;
         }
-        return [.. fixes, new CSharp.EditorFix(actions![AppActions.MakeMobileEdits]!.Title.Shown, head.Said, new TextRange(offset, 0), string.Empty)
+        return [.. fixes, new CSharp.EditorFix(actions![AppActions.MakeMobileEdits]!.Title, head.Said, new TextRange(offset, 0), string.Empty)
         {
             Elsewhere = async (_, _) =>
             {

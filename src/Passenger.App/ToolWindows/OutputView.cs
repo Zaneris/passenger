@@ -7,6 +7,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Terminal;
 using Passenger.Text;
@@ -171,9 +172,9 @@ public sealed class OutputView : DockPanel, IOwnKeys
 
     /// <summary>Has the console say, while it is empty and nothing runs in it, what shows in it and offer the action that
     /// fills it, named with its keys in the keymap in force; a press asks for it (<see cref="ActionRequested"/>).</summary>
-    public void OfferWhenEmpty(string words, string action, string title)
+    public void OfferWhenEmpty(Words words, string action, Words title)
     {
-        empty.Text = words;
+        empty.Say(words);
         empty.Offer(action, title);
         saysEmpty = true;
         ShowEmpty();
@@ -228,13 +229,19 @@ public sealed class OutputView : DockPanel, IOwnKeys
 
     private Action? offered;
 
+    private Words? offerSaid;
+
+    private Words? offerLinkSaid;
+
     /// <summary>Shows over the console words offering a change with a link that makes it, until the console is emptied;
     /// null takes it away.</summary>
-    public void ShowOffer(string? said, string link = "", Action? make = null)
+    public void ShowOffer(Words? said, Words? link = null, Action? make = null)
     {
         UiThread.Check();
         string? before = Offered;
         offered = make;
+        offerSaid = make is null ? null : said;
+        offerLinkSaid = make is null ? null : link;
         if (said is null || make is null)
         {
             offer?.Say(null);
@@ -247,7 +254,7 @@ public sealed class OutputView : DockPanel, IOwnKeys
                 offerLink = offer.Link(link, TakeOffer);
                 Children.Insert(Children.IndexOf(body), offer);
             }
-            offerLink.Content = link;
+            ShownWords.Set(offerLink, ContentControl.ContentProperty, link);
             offer.Say(said);
         }
         if (before != Offered || said is not null)
@@ -261,6 +268,10 @@ public sealed class OutputView : DockPanel, IOwnKeys
 
     /// <summary>What the offer's link says, while there is one.</summary>
     public string? OfferLink => Offered is null ? null : offerLink?.Content as string;
+
+    /// <summary>The words the offer over the console says and its link's, null while it shows none: for another view to
+    /// show the same offer, said again as the language changes.</summary>
+    public (Words Said, Words? Link)? OfferWords => Offered is null || offerSaid is null ? null : (offerSaid, offerLinkSaid);
 
     /// <summary>The offer over the console shown, changed or taken away.</summary>
     public event EventHandler? OfferChanged;

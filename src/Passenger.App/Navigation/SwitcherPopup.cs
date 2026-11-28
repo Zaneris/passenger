@@ -6,6 +6,7 @@ using Passenger.App.CSharp;
 using Passenger.App.Docking;
 using Passenger.App.Editors;
 using Passenger.App.Workspace;
+using Passenger.Editor;
 using Passenger.Text;
 
 namespace Passenger.App.Navigation;
@@ -42,7 +43,7 @@ public sealed class SwitcherPopup : SearchPopup<SwitcherRow>, IOwnKeys
     {
         all = rows;
         first = chosen;
-        AutomationProperties.SetName(this, Title);
+        ShownWords.Set(this, AutomationProperties.NameProperty, Title);
         QueryChanged();
         AttachedToVisualTree += (_, _) => Tell(Urgency.Polite);
     }
@@ -108,7 +109,7 @@ public sealed class SwitcherPopup : SearchPopup<SwitcherRow>, IOwnKeys
             return;
         }
         string choice = PopupPlacement.Chosen(row.Name, row.Said, Chosen(), Rows.Count);
-        announcer.Tell(told ? choice : $"{Title}, {choice}", urgency, this);
+        announcer.Tell(told ? choice : $"{Title.Shown}, {choice}", urgency, this);
         told = true;
     }
 

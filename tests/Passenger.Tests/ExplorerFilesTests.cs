@@ -1319,7 +1319,7 @@ public sealed class ExplorerFilesTests : IDisposable
             Renamed(window, "Uno.txt");
             Ui.ChooseFromRowMenu(window, Row(window, "Uno.txt"), "Edit", "Delete…");
             Gone(window, "Uno.txt", "the delete from the row's menu");
-            Ui.ChooseFromRowMenu(window, Row(window, "Four.txt"), "Open In", FileManager.Name);
+            Ui.ChooseFromRowMenu(window, Row(window, "Four.txt"), "Open In", FileManager.Name.English);
             Assert.Equal([Row(window, "Four.txt").Path!], window.ShownInFileManager);
 
             Pick(window, Row(window, "Two.txt"));

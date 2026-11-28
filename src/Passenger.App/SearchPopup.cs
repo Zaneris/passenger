@@ -4,6 +4,8 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Threading;
+using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App;
 
@@ -30,13 +32,15 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
     private readonly TextBlock empty;
     private readonly CheckBox? option;
     private readonly DockPanel heading = new();
+    private Words called;
 
     /// <param name="listHeight">How tall the list grows, for rows taller than a line (Recent Locations' code).</param>
-    protected SearchPopup(string title, string placeholder, double width, string? initialQuery = null, (string Label, bool Checked)? option = null,
+    protected SearchPopup(Words title, Words placeholder, double width, string? initialQuery = null, (Words Label, bool Checked)? option = null,
         double listHeight = ListHeight)
     {
         Width = width;
-        this.title = new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = title, VerticalAlignment = VerticalAlignment.Center };
+        this.title = new TextBlock { Classes = { StyleClasses.PaneTitle }, [ShownWords.TextProperty] = title, VerticalAlignment = VerticalAlignment.Center };
+        called = title;
         query = SearchBox.InPopup(title, placeholder);
         query.Text = initialQuery ?? string.Empty;
         results = new ListBox
@@ -89,13 +93,14 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
     }
 
     /// <summary>What the popup is called over its query, and the query's name.</summary>
-    public string Title
+    public Words Title
     {
-        get => title.Text ?? string.Empty;
+        get => called;
         protected set
         {
-            title.Text = value;
-            Avalonia.Automation.AutomationProperties.SetName(query, value);
+            called = value;
+            ShownWords.Set(title, TextBlock.TextProperty, value);
+            ShownWords.Set(query, Avalonia.Automation.AutomationProperties.NameProperty, value);
         }
     }
 
@@ -155,7 +160,7 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
 
     /// <summary>Lists what a query found, <paramref name="chosen"/> chosen and in sight, or <paramref name="none"/> when it
     /// found nothing.</summary>
-    protected void Show(IReadOnlyList<T> found, string none, int chosen = 0)
+    protected void Show(IReadOnlyList<T> found, Words none, int chosen = 0)
     {
         results.ItemsSource = found;
         results.SelectedIndex = found.Count > 0 ? Math.Clamp(chosen, 0, found.Count - 1) : -1;
@@ -163,14 +168,14 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
         {
             results.ScrollIntoView(results.SelectedIndex);
         }
-        empty.Text = none;
+        ShownWords.Set(empty, TextBlock.TextProperty, none);
         empty.IsVisible = found.Count == 0;
     }
 
     /// <summary>Says why nothing could be listed (a search that failed), over the list.</summary>
-    protected void Say(string why)
+    protected void Say(Words why)
     {
-        empty.Text = why;
+        ShownWords.Set(empty, TextBlock.TextProperty, why);
         empty.IsVisible = true;
     }
 

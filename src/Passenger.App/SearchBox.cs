@@ -36,7 +36,7 @@ public static class SearchBox
     public static TextBox Finding(Words name)
     {
         TextBox box = Of(name);
-        ActionTips.SetWords(box, AppActions.Find, keys => keys is null ? name.Shown : SharedWords.KeysToFilter(keys).Shown);
+        ActionTips.SetWords(box, AppActions.Find, keys => keys is null ? name : SharedWords.KeysToFilter(keys));
         return box;
     }
 

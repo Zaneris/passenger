@@ -515,8 +515,8 @@ public sealed class DebugView : DockPanel, IOwnKeys
     /// <summary>What the chosen program's console offers, over the Debugger tab too.</summary>
     private void ShowOffer()
     {
-        offerLink.Content = model.Console.OfferLink;
-        offer.Say(model.Console.Offered);
+        ShownWords.Set(offerLink, ContentControl.ContentProperty, model.Console.OfferWords?.Link);
+        offer.Say(model.Console.OfferWords?.Said);
     }
 
     /// <summary>What the Debugger tab offers over its frames and values, null while it offers nothing.</summary>

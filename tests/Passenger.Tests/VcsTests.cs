@@ -3292,7 +3292,7 @@ public sealed partial class VcsTests : IDisposable
             window.EditorArea.CodeEditor.Focus();
             Ui.Press(window, Ui.Shortcut(AppActions.VcsOperations));
             Passenger.App.Vcs.ChoicePopup operations = Assert.IsType<Passenger.App.Vcs.ChoicePopup>(window.Popup);
-            Assert.True(operations.Rows.FirstOrDefault()?.Label == "Commit…" && operations.Rows.Any(r => r.Label == "Commit and Push…" && r.Detail.Length > 0),
+            Assert.True(operations.Rows.FirstOrDefault()?.Label.English == "Commit…" && operations.Rows.Any(r => r.Label.English == "Commit and Push…" && r.Detail.English.Length > 0),
                 $"VCS Operations listed [{string.Join("; ", operations.Rows.Select(r => $"{r.Label} {r.Detail}"))}], not the Git menu's actions with their keys");
             Ui.Press(window, "ENTER");
             Ui.Settle();

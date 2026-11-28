@@ -584,7 +584,7 @@ public partial class MainWindow
     {
         UiThread.Check();
         string start = need.Debugged ? AppActions.DebugInTerminal : need.Profiled ? AppActions.ProfileInTerminal : AppActions.RunInTerminal;
-        console.ShowOffer(need.Said.Shown, actions![start]!.Title.Shown, () => Request(start));
+        console.ShowOffer(need.Said, actions![start]!.Title, () => Request(start));
         if (need.Profiled)
         {
             ProfilerView.Offer(console);
@@ -596,7 +596,7 @@ public partial class MainWindow
     private void OfferRebuild(string said)
     {
         UiThread.Check();
-        BottomPanel.Build.ShowOffer(said, actions![AppActions.RebuildSolution]!.Title.Shown, () => Request(AppActions.RebuildSolution));
+        BottomPanel.Build.ShowOffer(said, actions![AppActions.RebuildSolution]!.Title, () => Request(AppActions.RebuildSolution));
     }
 
     /// <summary>Run, Debug or Profile in the Terminal: the configuration whose program said it needs a terminal set to run in

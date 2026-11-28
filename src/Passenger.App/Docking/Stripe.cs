@@ -152,7 +152,7 @@ internal sealed class Stripe : Border
             shortcuts[window] = window.Action is { } action ? KeyWords.Of(keymap, action) : null;
         }
         button.IsChecked = window.IsShown;
-        ToolTip.SetTip(button, ActionTips.Named(window.Title, shortcuts[window]));
+        ShownWords.Set(button, ToolTip.TipProperty, ActionTips.Named(window.Title, shortcuts[window]));
         return button;
     }
 

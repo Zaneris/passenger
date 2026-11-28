@@ -44,4 +44,16 @@
     <value>{keys} to filter</value>
     <comment>A tool window's filter field while it is empty: the keys that take it there (⌘F to filter).</comment>
   </data>
+  <data name="Finder" xml:space="preserve">
+    <value>Finder</value>
+    <comment>macOS's file manager, as the system names it in this language.</comment>
+  </data>
+  <data name="Explorer" xml:space="preserve">
+    <value>Explorer</value>
+    <comment>Windows' file manager (File Explorer), as the system names it in this language.</comment>
+  </data>
+  <data name="FileManager" xml:space="preserve">
+    <value>File Manager</value>
+    <comment>A Linux desktop's file manager, whichever it has.</comment>
+  </data>
 </root>

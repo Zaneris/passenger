@@ -104,7 +104,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         find.Children.Add(query);
 
         maskOn = PopupFrame.Option("File mask:", choices.Start.Mask is not null, takesKeys: true);
-        ToolTip.SetTip(maskOn, ActionTips.Named("File mask", KeyWords.Of(MaskKey)));
+        ShownWords.Set(maskOn, ToolTip.TipProperty, ActionTips.Named("File mask", KeyWords.Of(MaskKey)));
         maskBox = Field(choices.Masks.Count > 0 ? choices.Masks : ["*.cs"], editable: true);
         maskBox.Width = 150;
         maskBox.Text = choices.Start.Mask ?? choices.Masks.FirstOrDefault() ?? "*.cs";
@@ -149,7 +149,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         details[SearchScopeKind.Scope] = scopeBox;
         foreach ((SearchScopeKind each, string name, Key key) in Kinds)
         {
-            ToolTip.SetTip(kinds.Add(each, name), ActionTips.Named(name, KeyWords.Of(key, KeyModifiers.Alt)));
+            ShownWords.Set(kinds.Add(each, name), ToolTip.TipProperty, ActionTips.Named(name, KeyWords.Of(key, KeyModifiers.Alt)));
         }
         kinds.Chosen += (_, each) => ScopeKind = each;
         Panel shown = new();
@@ -164,7 +164,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
 
         status = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center };
         FindWindow = new Button { Classes = { StyleClasses.Link, StyleClasses.Caption }, Content = "Open in Find Window", IsEnabled = false, [DockPanel.DockProperty] = Dock.Right };
-        ToolTip.SetTip(FindWindow, ActionTips.Named("Open in Find Window", KeyWords.Of(FindWindowKey)));
+        ShownWords.Set(FindWindow, ToolTip.TipProperty, ActionTips.Named("Open in Find Window", KeyWords.Of(FindWindowKey)));
         ToolTip.SetShowOnDisabled(FindWindow, true);
         FindWindow.Click += (_, _) => KeepInFindWindow();
         top.Children.Add(new DockPanel { Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Small), Children = { FindWindow, status } });

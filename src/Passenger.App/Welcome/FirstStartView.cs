@@ -11,6 +11,7 @@ using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App.Settings;
 using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App.Welcome;
 
@@ -28,7 +29,7 @@ public sealed class FirstStartView : UserControl, IOwnKeys
 
     private readonly Func<AppSettings> now;
     private readonly Action<Func<AppSettings, AppSettings>> change;
-    private readonly Func<string, string> titleOf;
+    private readonly Func<string, Words> titleOf;
     private readonly Dictionary<string, Bitmap> pictures = [];
     private readonly TextBlock title = new() { Classes = { StyleClasses.WelcomeTitle } };
     private readonly TextBlock about = new() { Classes = { StyleClasses.WelcomeSubtitle }, TextWrapping = TextWrapping.Wrap };
@@ -42,7 +43,7 @@ public sealed class FirstStartView : UserControl, IOwnKeys
     private readonly Button keep = new() { Classes = { StyleClasses.Link, StyleClasses.FirstStartQuiet }, Content = "Keep the Defaults" };
 
     /// <param name="titleOf">An action's title, as the window's actions name it.</param>
-    public FirstStartView(Func<AppSettings> now, Action<Func<AppSettings, AppSettings>> change, Func<string, string> titleOf)
+    public FirstStartView(Func<AppSettings> now, Action<Func<AppSettings, AppSettings>> change, Func<string, Words> titleOf)
     {
         this.now = now;
         this.change = change;
@@ -293,7 +294,7 @@ public sealed class FirstStartView : UserControl, IOwnKeys
         StackPanel keys = new() { Margin = new Thickness(Gaps.Normal), Spacing = Gaps.Small };
         foreach (string action in KeysShown)
         {
-            StackPanel one = new() { Children = { new TextBlock { Classes = { StyleClasses.FirstStartWords }, Text = titleOf(action), TextWrapping = TextWrapping.Wrap } } };
+            StackPanel one = new() { Children = { new TextBlock { Classes = { StyleClasses.FirstStartWords }, [ShownWords.TextProperty] = titleOf(action), TextWrapping = TextWrapping.Wrap } } };
             if (KeyWords.Of(keymap, action) is { } first)
             {
                 Border box = SettingsDialog.KeyBox(first);

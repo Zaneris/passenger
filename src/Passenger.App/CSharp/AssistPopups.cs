@@ -13,6 +13,7 @@ using Avalonia.VisualTree;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.App.Editors;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -743,20 +744,21 @@ public sealed class ChoicePopup : FittingFrame, IHeardPopup, IHeldToEditor
 {
     private readonly ListBox list;
 
-    /// <summary>What is offered, by its words.</summary>
-    public IReadOnlyList<string> Titles { get; }
+    private readonly IReadOnlyList<Choice> choices;
+
+    /// <summary>What is offered, by its words in the language in force.</summary>
+    public IReadOnlyList<string> Titles => [.. choices.Select(c => c.Text.Shown)];
 
     /// <summary>What each choice says beside its words.</summary>
-    public IReadOnlyList<string> Details { get; }
+    public IReadOnlyList<string> Details => [.. choices.Select(c => c.Detail.Shown)];
 
     /// <summary>What the list is titled.</summary>
-    public string Title { get; }
+    public Words Title { get; }
 
-    public ChoicePopup(string title, IReadOnlyList<Choice> choices)
+    public ChoicePopup(Words title, IReadOnlyList<Choice> choices)
     {
         Title = title;
-        Titles = [.. choices.Select(c => c.Text)];
-        Details = [.. choices.Select(c => c.Detail)];
+        this.choices = choices;
         bool numbered = choices.Any(c => c.Mnemonic is not null);
         Padding = ListRow.PopupList;
         list = new ListBox
@@ -774,7 +776,7 @@ public sealed class ChoicePopup : FittingFrame, IHeardPopup, IHeldToEditor
             Spacing = Gaps.Tight,
             Children =
             {
-                new TextBlock { Text = title, Classes = { StyleClasses.PaneTitle }, Margin = new Thickness(Gaps.Wide, Gaps.Hair) },
+                new TextBlock { [ShownWords.TextProperty] = title, Classes = { StyleClasses.PaneTitle }, Margin = new Thickness(Gaps.Wide, Gaps.Hair) },
                 list,
             },
         };
@@ -785,7 +787,7 @@ public sealed class ChoicePopup : FittingFrame, IHeardPopup, IHeldToEditor
 
     public AutomationControlType Role => AutomationControlType.List;
 
-    public string Called => Title;
+    public string Called => Title.Shown;
 
     /// <summary>Held to a room narrower than the width it takes, its words then ending in an ellipsis.</summary>
     public void Within(double room) => MaxWidth = Math.Max(0, room);
@@ -825,8 +827,8 @@ public sealed class ChoicePopup : FittingFrame, IHeardPopup, IHeldToEditor
         {
             digit.Text = choice.Mnemonic?.ToString();
             digit.Foreground = InfoCard.Brush(TokenKeys.TextMuted);
-            text.Text = choice.Text;
-            detail.Text = choice.Detail;
+            ShownWords.Set(text, TextBlock.TextProperty, choice.Text);
+            ShownWords.Set(detail, TextBlock.TextProperty, choice.Detail);
             detail.Foreground = InfoCard.Brush(TokenKeys.TextMuted);
             detail.Resource(TextBlock.FontFamilyProperty, ref detailFont, choice.DetailIsCode ? CodeFonts.Key : null);
         });
@@ -850,7 +852,7 @@ public sealed class ChoicePopup : FittingFrame, IHeardPopup, IHeldToEditor
 
 /// <summary>One thing to choose: what it says, a quieter detail beside it, what it stands for, and the digit that
 /// chooses it, if it has one.</summary>
-public sealed record Choice(string Text, string Detail, object Value, bool DetailIsCode = false, char? Mnemonic = null);
+public sealed record Choice(Words Text, Words Detail, object Value, bool DetailIsCode = false, char? Mnemonic = null);
 
 /// <summary>Inline rename: the name in a box over itself, all of it selected; Enter renames (a new name's box, under its
 /// own caption, names what a refactoring makes). For a

@@ -1672,7 +1672,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                         {
                             hides++;
                             string? hide = KeysOf(AppActions.HideToolWindow);
-                            Assert.True(tip == ActionTips.Named("Hide", hide),
+                            Assert.True(tip == ActionTips.Named("Hide", hide).English,
                                 $"Under {preset}'s keymap, {tool.Title}'s Hide says \"{tip}\", where the keys that hide it are {hide ?? "none"}");
                         }
                         else if ((ActionButtons.GetAction(button) ?? ActionTips.ActionOf(button)) is { } action && KeysOf(action) is { } keys)
@@ -2317,7 +2317,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Assert.True(untold.Count == 0, $"{untold.Count} controls of the diff say nothing of what they do: give each ToolButtons.Tip:\n{string.Join("\n", untold)}");
 
             // The arrow's tip names Rollback Lines' keys, which do its work to the change at the caret.
-            string rollBack = ActionTips.Named("Roll back change 1 to HEAD", ActionTips.Keys(AppActions.RollbackLines));
+            string rollBack = ActionTips.Named("Roll back change 1 to HEAD", ActionTips.Keys(AppActions.RollbackLines)).English;
             Button arrow = icons.Single(b => ToolTip.GetTip(b) as string == rollBack);
             CheckBox box = icons.OfType<CheckBox>().Single(b => ToolTip.GetTip(b) as string == "Include change 1 in commit");
             Assert.Equal("Roll back change 1 to HEAD", Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(arrow).GetName());

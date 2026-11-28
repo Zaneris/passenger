@@ -1050,11 +1050,11 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         {
             Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Hello"), "Hello's run configuration");
             Ui.Run(window, AppActions.ChooseDebugConfiguration);
-            Assert.True(window.Popup is RunOffersPopup { Title: "Choose and Debug" }, $"Choose and Debug's key opened {window.Popup?.GetType().Name ?? "nothing"}");
+            Assert.True(window.Popup is RunOffersPopup { Title.English: "Choose and Debug" }, $"Choose and Debug's key opened {window.Popup?.GetType().Name ?? "nothing"}");
             Ui.Press(window, "ESCAPE");
             Ui.Run(window, AppActions.ChooseRunConfiguration);
             RunOffersPopup choose = Assert.IsType<RunOffersPopup>(window.Popup);
-            Assert.True(choose.Rows.Select(r => r.Label).SequenceEqual([.. window.Configurations.Select(c => c.Name), "Edit Configurations…"]),
+            Assert.True(choose.Rows.Select(r => r.Label.English).SequenceEqual([.. window.Configurations.Select(c => c.Name), "Edit Configurations…"]),
                 $"Choose and Run listed [{string.Join(", ", choose.Rows.Select(r => r.Label))}], where it lists the configurations, Edit Configurations last");
             window.KeyTextInput("Hello");
             Ui.Press(window, "ENTER");
@@ -1064,7 +1064,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
 
             Ui.Press(window, "control , control");
             RunOffersPopup anything = Assert.IsType<RunOffersPopup>(window.Popup);
-            Assert.Equal("Run Anything", anything.Title);
+            Assert.Equal("Run Anything", anything.Title.English);
             window.KeyTextInput("echo ran-from-anything");
             Assert.True(anything.Rows is [.., { Command: "echo ran-from-anything" }], $"Run Anything offered no command line for what was typed: [{string.Join(", ", anything.Rows.Select(r => r.Label))}]");
             Ui.Press(window, "ENTER");
@@ -1075,7 +1075,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Ui.Settle();
             Assert.True(window.TerminalPanel.View.IsFocused, "The terminal did not have the keys before Ctrl's double tap");
             Ui.Press(window, "control , control");
-            Assert.Contains(Assert.IsType<RunOffersPopup>(window.Popup).Rows, r => r is { Command: "echo ran-from-anything", Detail: RunWords.RecentInTerminal });
+            Assert.Contains(Assert.IsType<RunOffersPopup>(window.Popup).Rows, r => r is { Command: "echo ran-from-anything", Detail.English: RunWords.RecentInTerminal });
             Ui.Press(window, "ESCAPE");
             window.Close();
 

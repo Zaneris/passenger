@@ -603,9 +603,9 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Passenger.App.Vcs.ChoicePopup rules = (Passenger.App.Vcs.ChoicePopup)window.Popup!;
         rules.Query = "IDE0059";
         Ui.Settle();
-        Assert.True(rules.Rows.FirstOrDefault()?.Detail.StartsWith("IDE0059 ", StringComparison.Ordinal) == true,
+        Assert.True(rules.Rows.FirstOrDefault()?.Detail.English.StartsWith("IDE0059 ", StringComparison.Ordinal) == true,
             $"Searching the rules for IDE0059 found [{string.Join("; ", rules.Rows.Take(5).Select(r => $"{r.Label} {r.Detail}"))}]");
-        string title = rules.Rows[0].Label;
+        string title = rules.Rows[0].Label.English;
         Ui.Press(window, "ENTER");
         Ui.WaitFor(() => problems.InspectionProblems is not null, () => $"IDE0059's run over the solution; the window says {window.Status}", TimeSpan.FromMinutes(1));
         Problem found = Assert.Single(problems.InspectionProblems!);

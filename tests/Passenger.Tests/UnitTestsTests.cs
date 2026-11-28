@@ -351,7 +351,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         editor.Focus();
         Ui.Run(window, AppActions.TestsQuickList);
         Passenger.App.Vcs.ChoicePopup operations = Assert.IsType<Passenger.App.Vcs.ChoicePopup>(window.Popup);
-        Assert.True(operations.Rows.Any(r => r.Label == "Run Current Unit Test Session" && r.Detail.Length > 0),
+        Assert.True(operations.Rows.Any(r => r.Label.English == "Run Current Unit Test Session" && r.Detail.English.Length > 0),
             $"Unit Test Operations listed [{string.Join("; ", operations.Rows.Select(r => $"{r.Label} {r.Detail}"))}], not Run Current Session with its keys");
         window.KeyTextInput("Run Current");
         Ui.Press(window, "ENTER");

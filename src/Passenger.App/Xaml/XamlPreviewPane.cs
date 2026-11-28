@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App.Xaml;
@@ -60,9 +61,9 @@ public sealed class XamlPreviewPane : DockPanel
     private Rect? outlined;
 
     /// <summary>The title of an action the pane's words offer (<see cref="XamlPreview.Offers"/>), by its id.</summary>
-    private readonly Func<string, string> titleOf;
+    private readonly Func<string, Words> titleOf;
 
-    public XamlPreviewPane(XamlPreview preview, Func<string, string> titleOf)
+    public XamlPreviewPane(XamlPreview preview, Func<string, Words> titleOf)
     {
         this.preview = preview;
         this.titleOf = titleOf;

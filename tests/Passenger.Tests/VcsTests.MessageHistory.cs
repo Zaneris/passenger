@@ -43,7 +43,7 @@ public sealed partial class VcsTests
             MainWindow again = OpenWithState(state);
             Ui.Click(again.CommitView.GetVisualDescendants().OfType<Button>().Single(b => b.Name == AppActions.CommitMessageHistory));
             ChoicePopup kept = Assert.IsType<ChoicePopup>(again.Popup);
-            Assert.True(kept.Rows.Select(r => r.Label).SequenceEqual(["Fix #13: round totals", "Add the till", "Fix #12: round totals"]),
+            Assert.True(kept.Rows.Select(r => r.Label.English).SequenceEqual(["Fix #13: round totals", "Add the till", "Fix #12: round totals"]),
                 $"The folder opened again offers [{string.Join("; ", kept.Rows.Select(r => r.Label))}], not the messages it kept, newest first");
             Ui.Press(again, "ESCAPE");
             again.Close();

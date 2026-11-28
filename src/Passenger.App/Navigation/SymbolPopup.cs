@@ -86,8 +86,8 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
     /// a search that answers at once chooses it too.</param>
     /// <param name="width">How wide it is, a step of the popups' scale: wide for the files and places of a solution, less for
     /// a file's own few (a navigation bar's list).</param>
-    public SymbolPopup(string title, string placeholder, Func<string, CancellationToken, Task<IReadOnlyList<SymbolRow>>> search, string? initialQuery = null,
-        (string Label, bool Checked)? option = null, Func<IReadOnlyList<SymbolRow>, int>? initial = null, double width = PopupFrame.Wide)
+    public SymbolPopup(Words title, Words placeholder, Func<string, CancellationToken, Task<IReadOnlyList<SymbolRow>>> search, string? initialQuery = null,
+        (Words Label, bool Checked)? option = null, Func<IReadOnlyList<SymbolRow>, int>? initial = null, double width = PopupFrame.Wide)
         : base(title, placeholder, width, initialQuery, option)
     {
         this.search = search;

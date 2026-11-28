@@ -147,7 +147,7 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         int abstractArea = editor.Document.Snapshot.GetLineStart(7) + "    public abstract double Ar".Length;
         Ui.RightClick(editor, editor.PointOf(abstractArea) + new Vector(1, editor.LineHeight / 2));
         Avalonia.Controls.MenuItem goTo = window.OpenContextMenu!.Items.OfType<Avalonia.Controls.MenuItem>().First(i => (string?)i.Header == "Go To");
-        Assert.Equal(["Go to Declaration", "Derived Symbols", "Go to Implementation", "Go to Type Declaration", "Base Symbols", "Call Hierarchy", "Type Hierarchy"],
+        Assert.Equal(["Go to Declaration", "Derived Symbols", "Go to Implementation", "Go to Type Declaration", "Base Symbols", "Call Hierarchy", "Type Hierarchy", "Show Dependency Map"],
             goTo.Items.OfType<Avalonia.Controls.MenuItem>().Select(i => i.Header as string));
         Ui.Choose(window.OpenContextMenu, "Go To", "Derived Symbols");
         Ui.WaitFor(() => window.Assist.Offered.Count > 0, "the overrides of Shape's abstract Area to choose from");
@@ -192,7 +192,7 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
 
         RunAnyhow(window, AppActions.RecentLocations, "Recent Locations");
         RecentLocationsPopup popup = Assert.IsType<RecentLocationsPopup>(window.Popup);
-        Assert.Equal("Recent Locations", popup.Title);
+        Assert.Equal("Recent Locations", popup.Title.English);
         Assert.Equal(["Shapes.cs:13", "Program.cs:7"], popup.Rows.Select(r => $"{r.Name}:{r.Place.Line + 1}"));
         // Each with its line and two either side, numbered as the file numbers them, and what it is in.
         RecentLocation call = popup.Rows[1];
@@ -305,7 +305,7 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         RecentLocationsPopup places = Assert.IsType<RecentLocationsPopup>(window.Popup);
         places.EditedOnly = true;
         Ui.Settle();
-        Assert.Equal("Recently Edited Locations", places.Title);
+        Assert.Equal("Recently Edited Locations", places.Title.English);
         Assert.Equal(["Shapes.cs:26", "Program.cs:8"], places.Rows.Select(r => $"{r.Name}:{r.Place.Line + 1}"));
         Ui.Press(window, "ESCAPE");
         window.Close();

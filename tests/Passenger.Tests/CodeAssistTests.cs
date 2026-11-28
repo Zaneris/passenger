@@ -967,7 +967,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Press(window, Ui.Shortcut(AppActions.PasteFromHistory));
         Ui.Landed(() => window.Popup is Passenger.App.Vcs.ChoicePopup, "Paste from History's list");
         Passenger.App.Vcs.ChoicePopup popup = (Passenger.App.Vcs.ChoicePopup)window.Popup!;
-        Assert.True(popup.Rows.Take(2).Select(r => r.Label).SequenceEqual(["public int Read() => 1;", "/* Read */ int Read();"]),
+        Assert.True(popup.Rows.Take(2).Select(r => r.Label.English).SequenceEqual(["public int Read() => 1;", "/* Read */ int Read();"]),
             $"Paste from History listed [{string.Join("; ", popup.Rows.Select(r => r.Label))}], not the two lines copied, newest first");
         Ui.Press(window, "DOWN");
         Ui.Press(window, "ENTER");
@@ -1753,7 +1753,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.ShowUsages)[0].Notation());
         Ui.WaitFor(() => window.Popup is UsagesPopup { Rows.Count: 3 }, () => $"the usages of total in Show Usages' popup ({window.Status})");
         UsagesPopup usages = (UsagesPopup)window.Popup!;
-        Assert.Equal("Usages of total  3 usages", usages.Title);
+        Assert.Equal("Usages of total  3 usages", usages.Title.English);
         Assert.Equal([(4, "int total = 0;"), (7, "total += i * 2;"), (9, "return total;")], usages.Rows.Select(u => (u.Line, u.LineText.Trim())));
         Assert.Equal(Languages.CSharp.UsageKind.Declaration, usages.Rows[0].Kind);
         Border frame = PopupFrame.FrameOf(usages)!;

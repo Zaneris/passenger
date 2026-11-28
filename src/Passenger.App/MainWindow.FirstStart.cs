@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Passenger.App.Updates;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.App.Welcome;
 
@@ -54,7 +55,7 @@ public partial class MainWindow
         {
             return shown;
         }
-        FirstStartView page = new(() => settingsStore.Effective, change => settingsStore.Update(change), id => actions![id]?.Title.Shown ?? id);
+        FirstStartView page = new(() => settingsStore.Effective, change => settingsStore.Update(change), id => actions![id]?.Title ?? Words.Verbatim(id));
         page.Ended += (_, _) => EndFirstStart();
         Grid.SetRow(page, 1);
         Grid.SetRowSpan(page, 2);

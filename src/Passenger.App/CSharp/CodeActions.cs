@@ -83,7 +83,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         if (fix.On(document.Text.Snapshot) is not { } now)
         {
-            context.Say($"{fix.Title} was not applied: the file changed, so it no longer fits");
+            context.Say($"{fix.Title.Shown} was not applied: the file changed, so it no longer fits");
             return;
         }
         if (now.Elsewhere is not null)
@@ -91,19 +91,19 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             // Worked out again on the text as it stands each time it is made.
             RefactorOutcome outcome = await context.PatientlyAsync(AppActions.QuickFix, patience => fix.On(document.Text.Snapshot) is { Elsewhere: { } making } again
                 ? making(again.Range, patience)
-                : Task.FromResult(RefactorOutcome.Refused($"{fix.Title} was not applied: the file changed, so it no longer fits")));
+                : Task.FromResult(RefactorOutcome.Refused($"{fix.Title.Shown} was not applied: the file changed, so it no longer fits")));
             context.Say(outcome.Problem ?? outcome.Said);
             return;
         }
         if (now.Asks is { } asks)
         {
             // Not awaited: the question holds no background work, so a settle waits on the IDE, never on the person.
-            IdeErrors.Observe(AskAndMakeAsync(now.Title.TrimEnd('…'), asks));
+            IdeErrors.Observe(AskAndMakeAsync(now.Title.Shown.TrimEnd('…'), asks));
             return;
         }
         if (now.Confirms is { } confirms)
         {
-            IdeErrors.Observe(ConfirmAndMakeAsync(now.Title.TrimEnd('…'), confirms));
+            IdeErrors.Observe(ConfirmAndMakeAsync(now.Title.Shown.TrimEnd('…'), confirms));
             return;
         }
         if (now.Edits is { } edits)

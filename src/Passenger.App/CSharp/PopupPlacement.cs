@@ -63,7 +63,7 @@ internal sealed class PopupPlacement
     public IReadOnlyList<string> OfferedDetails => layer.Children.OfType<ChoicePopup>().LastOrDefault()?.Details ?? [];
 
     /// <summary>What the open list of choices is titled ("Select expression to parenthesize"); null with none open.</summary>
-    public string? OfferedTitle => layer.Children.OfType<ChoicePopup>().LastOrDefault()?.Title;
+    public string? OfferedTitle => layer.Children.OfType<ChoicePopup>().LastOrDefault()?.Title.Shown;
 
     /// <summary>A card or list that stays on the layer, hidden until it is shown, and goes with it to another window's; a
     /// card the person moved into goes at Escape there (<paramref name="escaped"/>, as Escape in the editor takes it), and
@@ -344,7 +344,7 @@ internal sealed class PopupPlacement
         // Its choice is said as completion's is: by its title as it opens, and at once as the keys move it.
         if (popup.ChosenAt >= 0)
         {
-            Tell($"{popup.Title}, {ChoiceSaid(popup)}", Urgency.Polite, popup);
+            Tell($"{popup.Title.Shown}, {ChoiceSaid(popup)}", Urgency.Polite, popup);
         }
         popup.Moved += (_, _) =>
         {

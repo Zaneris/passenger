@@ -32,20 +32,20 @@ public static class ActionTips
 
     /// <summary>Gives a block, a box's placeholder or a link's words naming an action's keys, made from the keys' display,
     /// null while nothing runs it.</summary>
-    public static void SetWords(Control control, string action, Func<string?, string> words) => Say(control, action, keys => words(keys(action)));
+    public static void SetWords(Control control, string action, Func<string?, Words> words) => Say(control, action, keys => words(keys(action)));
 
     /// <summary>Gives a block words naming several actions' keys (a tool window's empty text naming each way to fill it),
     /// made from each one's keys' display as <c>keys(action)</c> gives it, null while nothing runs that one.</summary>
-    public static void SetWords(Control control, Func<Func<string, string?>, string> words) => Say(control, null, words);
+    public static void SetWords(Control control, Func<Func<string, string?>, Words> words) => Say(control, null, words);
 
     /// <summary>An action's name with its keys after it, as every tip and empty text names them, or the name alone while
     /// nothing runs it.</summary>
-    public static string Named(string name, string? keys) => keys is null ? name : SharedWords.WithKeys(name, keys).Shown;
+    public static Words Named(Words name, string? keys) => keys is null ? name : SharedWords.WithKeys(name, keys);
 
     /// <summary>The action whose keys a control's tip names, or null for one with no such tip.</summary>
     public static string? ActionOf(Control control) => control.GetValue(TipProperty)?.Action;
 
-    private static void Say(Control control, string? action, Func<Func<string, string?>, string> words)
+    private static void Say(Control control, string? action, Func<Func<string, string?>, Words> words)
     {
         if (control.GetValue(TipProperty) is null)
         {
@@ -56,7 +56,7 @@ public static class ActionTips
     }
 
     /// <summary>The control's tip as the keymap in force has its action's keys now, or null for one with no such tip.</summary>
-    public static string? Of(Control control) => control.GetValue(TipProperty) is { Text: null, Action: { } action } tip ? Named(tip.Words.Shown, Keys(action)) : null;
+    public static string? Of(Control control) => control.GetValue(TipProperty) is { Text: null, Action: { } action } tip ? Named(tip.Words, Keys(action)).Shown : null;
 
     /// <summary>An action's keys in words as the keymap in force has them now (<see cref="KeyWords"/>), those of the action
     /// whose keys it takes where it takes another's (<see cref="AppActions.KeysIn"/>), or null while nothing runs it: for
@@ -79,15 +79,15 @@ public static class ActionTips
         {
             if (control is TextBox box)
             {
-                box.PlaceholderText = words(Keys);
+                box.PlaceholderText = words(Keys).Shown;
             }
             else if (control is TextBlock block)
             {
-                block.Text = words(Keys);
+                block.Text = words(Keys).Shown;
             }
             else if (control is ContentControl content)
             {
-                content.Content = words(Keys);
+                content.Content = words(Keys).Shown;
             }
         }
         else if (!ActionButtons.IsWorking(control))
@@ -96,5 +96,5 @@ public static class ActionTips
         }
     }
 
-    private sealed record Tip(string? Action, Words Words, Func<Func<string, string?>, string>? Text);
+    private sealed record Tip(string? Action, Words Words, Func<Func<string, string?>, Words>? Text);
 }

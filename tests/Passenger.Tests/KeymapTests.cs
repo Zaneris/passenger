@@ -121,11 +121,11 @@ public sealed class KeymapTests : IDisposable
                 $"Go to Everything's tip names {window.Actions.Shortcut(AppActions.GoToEverything)}, where the keymap's first key for it is {doubleShift}");
             window.EditorArea.CodeEditor.Focus();
             Ui.Press(window, "shift , shift");
-            Assert.True(window.Popup is SymbolPopup { Title: "Go to Everything" }, $"{doubleShift} in the Visual Studio keymap opened no Go to Everything");
+            Assert.True(window.Popup is SymbolPopup { Title.English: "Go to Everything" }, $"{doubleShift} in the Visual Studio keymap opened no Go to Everything");
             Ui.Press(window, "ESCAPE");
             window.EditorArea.CodeEditor.Focus();
             Ui.Press(window, "control , control");
-            Assert.True(window.Popup is Passenger.App.Run.RunOffersPopup { Title: "Run Anything" },
+            Assert.True(window.Popup is Passenger.App.Run.RunOffersPopup { Title.English: "Run Anything" },
                 $"{Shortcut.Parse("control , control").Display()} in the Visual Studio keymap opened {window.Popup?.GetType().Name ?? "nothing"}, where it opens Run Anything");
             Ui.Press(window, "ESCAPE");
             window.EditorArea.CodeEditor.Focus();

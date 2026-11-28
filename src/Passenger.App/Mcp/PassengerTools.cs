@@ -1045,7 +1045,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (Godot.GodotScriptTypes.IsScript(Resolve(path)))
         {
             OpenDocument script = await DocumentAsync(path, cancel);
-            listed = [.. (await window.Assist.OwnFixesAsync(script, Offset(script, line, column))).Select(f => (f.Title, $"{f.Title} [quickfix]"))];
+            listed = [.. (await window.Assist.OwnFixesAsync(script, Offset(script, line, column))).Select(f => (f.Title.English, $"{f.Title.English} [quickfix]"))];
             return title is null ? (IReadOnlyList<string>)[.. listed.Select(a => a.Shown)]
                 : listed.Where(a => a.Title == title).Select(a => a.Shown).ToList() is { Count: > 0 } fixes ? fixes
                 : throw new InvalidOperationException(listed.Count == 0 ? $"No fixes here in {Relative(script.Path)}" : $"No action '{title}' here; there are: {string.Join("; ", listed.Select(a => a.Title))}");
@@ -1058,25 +1058,25 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                     .Select(a => (a.Title, a.Choices.Count == 0 ? $"{a.Title} [{a.Kind}]" : $"{a.Title} [{a.Kind}], choices: {string.Join("; ", a.Choices)}"))];
                 break;
             case MSBuildServed when window.Assist.OwnFixes(served.Document, Offset(served.Document, line, column)) is { Count: > 0 } own:
-                listed = [.. own.Select(f => (f.Title, $"{f.Title} [quickfix]"))];
+                listed = [.. own.Select(f => (f.Title.English, $"{f.Title.English} [quickfix]"))];
                 break;
             case MSBuildServed:
                 throw Lacks(served, "fixes or refactorings", MSBuildHas);
             case GodotServed when await SceneFixes(served, line, column, cancel) is { Count: > 0 } own:
-                listed = [.. own.Select(f => (f.Title, $"{f.Title} [quickfix]"))];
+                listed = [.. own.Select(f => (f.Title.English, $"{f.Title.English} [quickfix]"))];
                 break;
             case GodotServed:
                 throw new InvalidOperationException(SceneFixesHere);
             case ShaderServed:
                 throw Lacks(served, "fixes or refactorings", ShaderHas);
             case FeatureServed feature:
-                listed = [.. (await window.Assist.OwnFixesAsync(feature.Document, Offset(feature.Document, line, column))).Select(f => (f.Title, $"{f.Title} [quickfix]"))];
+                listed = [.. (await window.Assist.OwnFixesAsync(feature.Document, Offset(feature.Document, line, column))).Select(f => (f.Title.English, $"{f.Title.English} [quickfix]"))];
                 break;
             default:
                 int offset = Offset(served.Document, line, column);
                 await AspireMarked(served, cancel);
                 IReadOnlyList<LintFix> linted = await LintFixes(served, offset, cancel);
-                listed = [.. (await window.Assist.OwnFixesAsync(served.Document, offset)).Select(f => (f.Title, $"{f.Title} [quickfix]")),
+                listed = [.. (await window.Assist.OwnFixesAsync(served.Document, offset)).Select(f => (f.Title.English, $"{f.Title.English} [quickfix]")),
                     .. linted.Select(f => (f.Title, f.Action.Kind is { Length: > 0 } kind ? $"{f.Title} [{kind}]" : f.Title)),
                     .. (await Actions((ServerServed)served, line, column, endLine, endColumn)).Select(a => (a.Title, Described(a, all: title is not null)))];
                 break;
@@ -1109,8 +1109,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             OpenDocument script = await DocumentAsync(path, cancel);
             IReadOnlyList<EditorFix> fixes = await window.Assist.OwnFixesAsync(script, Offset(script, line, column));
-            return await ApplyOwnFix(script, fixes.FirstOrDefault(f => f.Title == title)
-                ?? throw new InvalidOperationException(fixes.Count == 0 ? $"No fixes here in {Relative(script.Path)}" : $"No action '{title}' here; there are: {string.Join("; ", fixes.Select(f => f.Title))}"),
+            return await ApplyOwnFix(script, fixes.FirstOrDefault(f => f.Title.English == title)
+                ?? throw new InvalidOperationException(fixes.Count == 0 ? $"No fixes here in {Relative(script.Path)}" : $"No action '{title}' here; there are: {string.Join("; ", fixes.Select(f => f.Title.English))}"),
                 patience, name);
         }
         Served served = await Serve(path, cancel);
@@ -1119,11 +1119,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             case XamlServed xaml:
                 return await ApplyXamlAction(xaml, Offset(xaml.Document, line, column), title, choice, name);
-            case MSBuildServed when window.Assist.OwnFixes(served.Document, Offset(served.Document, line, column)).FirstOrDefault(f => f.Title == title) is { } ownFix:
+            case MSBuildServed when window.Assist.OwnFixes(served.Document, Offset(served.Document, line, column)).FirstOrDefault(f => f.Title.English == title) is { } ownFix:
                 return await ApplyOwnFix(served.Document, ownFix, patience, name);
             case MSBuildServed:
                 throw Lacks(served, "fixes or refactorings", MSBuildHas);
-            case GodotServed when (await SceneFixes(served, line, column, cancel)).FirstOrDefault(f => f.Title == title) is { } sceneFix:
+            case GodotServed when (await SceneFixes(served, line, column, cancel)).FirstOrDefault(f => f.Title.English == title) is { } sceneFix:
                 return await ApplyOwnFix(served.Document, sceneFix, patience, name);
             case GodotServed:
                 throw new InvalidOperationException(SceneFixesHere);
@@ -1131,14 +1131,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 throw Lacks(served, "fixes or refactorings", ShaderHas);
             case FeatureServed feature:
                 IReadOnlyList<EditorFix> stepFixes = await window.Assist.OwnFixesAsync(feature.Document, Offset(feature.Document, line, column));
-                return await ApplyOwnFix(feature.Document, stepFixes.FirstOrDefault(f => f.Title == title)
-                    ?? throw new InvalidOperationException(stepFixes.Count == 0 ? $"No fixes here in {Relative(feature.Document.Path)}" : $"No action '{title}' here; there are: {string.Join("; ", stepFixes.Select(f => f.Title))}"),
+                return await ApplyOwnFix(feature.Document, stepFixes.FirstOrDefault(f => f.Title.English == title)
+                    ?? throw new InvalidOperationException(stepFixes.Count == 0 ? $"No fixes here in {Relative(feature.Document.Path)}" : $"No action '{title}' here; there are: {string.Join("; ", stepFixes.Select(f => f.Title.English))}"),
                     patience, name);
         }
         ServerServed server = (ServerServed)served;
         int offset = Offset(served.Document, line, column);
         await AspireMarked(served, cancel);
-        if ((await window.Assist.OwnFixesAsync(served.Document, offset)).FirstOrDefault(f => f.Title == title) is { } own)
+        if ((await window.Assist.OwnFixesAsync(served.Document, offset)).FirstOrDefault(f => f.Title.English == title) is { } own)
         {
             return await ApplyOwnFix(served.Document, own, patience, name);
         }
@@ -1153,7 +1153,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         IReadOnlyList<CodeAction> actions = await Actions(server, line, column, endLine, endColumn);
         CodeAction chosen = actions.FirstOrDefault(a => a.Title == title)
             ?? throw new InvalidOperationException($"No action '{title}' here; there are: {string.Join("; ",
-                [.. window.Assist.OwnFixes(served.Document, offset).Select(f => f.Title), .. linted.Select(f => f.Title), .. actions.Select(a => a.Title)])}");
+                [.. window.Assist.OwnFixes(served.Document, offset).Select(f => f.Title.English), .. linted.Select(f => f.Title), .. actions.Select(a => a.Title)])}");
         IReadOnlyList<ActionChoice> choices = ClientCommands.Choices(chosen);
         string? scope = null;
         if (choices.Count > 0)

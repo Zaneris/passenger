@@ -46,7 +46,7 @@ public partial class MainWindow
 
     /// <summary>A state file set aside, chosen in the file manager.</summary>
     private StatusPlace SetAsidePlace(string kept) =>
-        new($"show {Path.GetFileName(kept)} in {FileManager.Name}", () => ShowInFileManager(kept));
+        new($"show {Path.GetFileName(kept)} in {FileManager.Name.Shown}", () => ShowInFileManager(kept));
 
     /// <summary>A solution that does not read, open in the editor where its reader stopped.</summary>
     private StatusPlace UnreadSolutionPlace(UnreadSolution unread) => new($"open {Path.GetFileName(unread.Path)} where it stops reading", () =>
@@ -58,7 +58,7 @@ public partial class MainWindow
     });
 
     /// <summary>Help, Show Log: the log chosen in the file manager.</summary>
-    private StatusPlace LogPlace => new($"show the log in {FileManager.Name}", ShowLog);
+    private StatusPlace LogPlace => new($"show the log in {FileManager.Name.Shown}", ShowLog);
 
     /// <summary>The download page of the .NET SDK the folder wants (<see cref="MissingSdk.Download"/>), in the browser; for a
     /// Passenger the system translates that loads none of the system's own SDKs, the Passenger built for this computer.</summary>

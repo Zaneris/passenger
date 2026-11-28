@@ -796,11 +796,11 @@ public sealed class KeymapChoiceTests : IDisposable
         Ui.Press(window, "ESCAPE");
         window.EditorArea.CodeEditor.Focus();
         Ui.Press(window, mac ? "meta O" : "control N");
-        Assert.True(window.Popup is SymbolPopup { Title: "Go to Symbol" }, "IntelliJ IDEA's Go to Class key opened no Go to Symbol");
+        Assert.True(window.Popup is SymbolPopup { Title.English: "Go to Symbol" }, "IntelliJ IDEA's Go to Class key opened no Go to Symbol");
         Ui.Press(window, "ESCAPE");
         window.EditorArea.CodeEditor.Focus();
         Ui.Press(window, "shift , shift");
-        Assert.True(window.Popup is SymbolPopup { Title: "Go to Everything" }, "IntelliJ IDEA's double Shift opened no Search Everywhere");
+        Assert.True(window.Popup is SymbolPopup { Title.English: "Go to Everything" }, "IntelliJ IDEA's double Shift opened no Search Everywhere");
         Ui.Press(window, "ESCAPE");
         window.EditorArea.CodeEditor.Focus();
         Ui.Press(window, ownKey);

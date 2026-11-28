@@ -141,7 +141,7 @@ public sealed class StateTests : IDisposable
         Assert.Contains("set aside as settings.json.bad", log, StringComparison.Ordinal);
         Assert.True(window.Status?.Contains($"settings.json did not read, so its defaults stand: what it held is kept as {file}.bad", StringComparison.Ordinal) == true,
             $"Only the log says the settings were set aside, so the person finds them gone with nothing saying where they went: '{window.Status}'");
-        Assert.True(window.StatusPlace?.Name == $"show settings.json.bad in {Passenger.App.FileManager.Name}",
+        Assert.True(window.StatusPlace?.Name == $"show settings.json.bad in {Passenger.App.FileManager.Name.English}",
             $"The status bar's word on the settings set aside goes to '{window.StatusPlace?.Name}', not to the file they are kept in");
 
         window.ApplySettings(window.Settings with { EditorFontSize = 15 });
@@ -188,7 +188,7 @@ public sealed class StateTests : IDisposable
         Assert.False(File.Exists(file + ".bad"), "settings.json was set aside for one value of the wrong kind");
         Assert.True(window.Status == "settings.json's editorFontSize is \"16\", where a number goes: its default stands",
             $"The status bar says \"{window.Status}\", not which value was passed over and why");
-        Assert.True(window.StatusPlace?.Name == $"show settings.json in {Passenger.App.FileManager.Name}",
+        Assert.True(window.StatusPlace?.Name == $"show settings.json in {Passenger.App.FileManager.Name.English}",
             $"The status bar's word on the value passed over goes to '{window.StatusPlace?.Name}', not to settings.json");
 
         // Edited by hand while the window is open, a comma left out: the window keeps what it has, and says why.

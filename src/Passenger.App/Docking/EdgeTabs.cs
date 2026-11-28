@@ -88,7 +88,7 @@ internal sealed class EdgeTabs : Border
         foreach ((ToolWindow window, Border tab) in tabs)
         {
             tab.Classes.Set(StyleClasses.Active, window == peeked);
-            ToolTip.SetTip(tab, ActionTips.Named(window.Title, window.Action is { } action ? KeyWords.Of(keymap, action) : null));
+            ShownWords.Set(tab, ToolTip.TipProperty, ActionTips.Named(window.Title, window.Action is { } action ? KeyWords.Of(keymap, action) : null));
         }
     }
 

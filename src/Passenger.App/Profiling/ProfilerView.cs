@@ -161,7 +161,7 @@ public sealed class ProfilerView : DockPanel
         keptSummary = new TextBlock { Margin = new Thickness(Gaps.Wide, Gaps.Normal), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
         Button reveal = new()
         {
-            Content = FileManager.Showing,
+            [ShownWords.ContentProperty] = FileManager.Showing,
             Margin = new Thickness(0, 0, Gaps.Wide, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -367,14 +367,14 @@ public sealed class ProfilerView : DockPanel
 
     private void ShowOffer(object? sender, EventArgs e)
     {
-        if (offering?.Offered is not { } said)
+        if (offering?.OfferWords is not { } said)
         {
             LetGoOfOffer();
             offer.Say(null);
             return;
         }
-        offerLink.Content = offering.OfferLink;
-        offer.Say(said);
+        ShownWords.Set(offerLink, ContentControl.ContentProperty, said.Link);
+        offer.Say(said.Said);
     }
 
     /// <summary>A run is starting, its program not yet at the profiler: Kill ends it, and nothing is recorded to snapshot.</summary>
