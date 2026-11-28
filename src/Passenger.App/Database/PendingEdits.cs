@@ -103,7 +103,10 @@ public sealed class PendingTable(DatabaseRows page, PendingEdits edits, bool edi
     public PendingEdits Edits { get; set; } = edits;
     public bool Editable { get; set; } = editable;
 
-    public override int RowCount => Page.RowCount + Edits.Added.Count + (Editable ? 1 : 0);
+    public override int RowCount => Page.RowCount + Edits.Added.Count + (Editable && Grows ? 1 : 0);
+
+    /// <summary>Whether rows may be added and deleted, as a Redis string's one value may not.</summary>
+    private bool Grows => Page.Schema is not { RowsFixed: true };
     public override int RecordCount => Page.RowCount + Edits.Added.Count;
     public override int ColumnCount => Page.ColumnCount;
     public override string Header(int column) => Page.Header(column);
@@ -115,7 +118,7 @@ public sealed class PendingTable(DatabaseRows page, PendingEdits edits, bool edi
     /// <summary>The row added at a place, null for a row read or the empty row.</summary>
     public AddedRow? AddedAt(int row) => row >= Page.RowCount && row - Page.RowCount < Edits.Added.Count ? Edits.Added[row - Page.RowCount] : null;
 
-    public override bool IsNewRow(int row) => Editable && row == RowCount - 1;
+    public override bool IsNewRow(int row) => Editable && Grows && row == RowCount - 1;
 
     /// <summary>A row read's primary key, null where a key's column holds nothing or the table has none.</summary>
     public RowKey? KeyOf(int row)
@@ -206,7 +209,7 @@ public sealed class PendingTable(DatabaseRows page, PendingEdits edits, bool edi
     /// <summary>What a row is, as its menus name it: a Row, or a Document of a collection.</summary>
     public string Noun { get; init; } = "Row";
 
-    public override string? DeleteTitle(int rows) => Editable ? $"Delete {Plural.Noun(rows, Noun)}" : null;
+    public override string? DeleteTitle(int rows) => Editable && Grows ? $"Delete {Plural.Noun(rows, Noun)}" : null;
 
     public override CellMark MarkOf(int row, int column)
     {

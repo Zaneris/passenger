@@ -360,7 +360,8 @@ public sealed class DatabaseExplorer : DockPanel
         {
             // A Redis database's keys stand under their types, each with its time to live.
             return Notes(depth, [.. read.Where(t => t.Objects.Count > 0).Select(t => Group(t.Schema, depth, node, [.. t.Objects.Select(k =>
-                new DatabaseNode(DatabaseNodeKind.Table, k.Name, depth + 1, source) { Database = database, Object = k.Name, Detail = k.Detail })]))], "No keys", source);
+                new DatabaseNode(DatabaseNodeKind.Table, k.Name, depth + 1, source) { Database = database, Object = k.Name, Detail = k.Detail })])),
+                .. read.Where(t => t.Schema == RedisClient.KeysUnlisted).Select(t => new DatabaseNode(DatabaseNodeKind.Note, t.Schema, depth, source))], "No keys", source);
         }
         bool flat = source.Kind == DatabaseKind.Sqlite || DatabaseKinds.SchemaIsDatabase(source.Kind);
         List<DatabaseNode> shown = [];

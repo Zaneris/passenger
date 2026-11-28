@@ -122,6 +122,9 @@ public sealed record DatabaseColumn(string Name, string Type, bool Nullable, boo
 public sealed record DatabaseSchema(DatabaseTable Table, IReadOnlyList<DatabaseColumn> Columns, IReadOnlyList<string> Keys, IReadOnlyList<DatabasePart> Indexes)
 {
     public IReadOnlyList<DatabasePart> Triggers { get; init; } = [];
+
+    /// <summary>Whether its rows are written in place alone, none added or deleted: a Redis string's one value.</summary>
+    public bool RowsFixed { get; init; }
 }
 
 /// <summary>A part of a table by its own name (an index, a trigger) and the words its row shows.</summary>

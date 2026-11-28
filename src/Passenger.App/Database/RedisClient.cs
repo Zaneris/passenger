@@ -1,5 +1,6 @@
 using System.Globalization;
 using Passenger.App.Tables;
+using Passenger.Core;
 using StackExchange.Redis;
 
 namespace Passenger.App.Database;
@@ -22,6 +23,9 @@ internal static class RedisClient
     public const int MostKeys = 1000;
 
     public const int MostElements = 10000;
+
+    /// <summary>What a database's keys past <see cref="MostKeys"/> are said as, standing as a group of no keys of its own.</summary>
+    public static readonly string KeysUnlisted = $"Only the first {Numbers.Said(MostKeys)} keys are listed: SCAN in a console reads the rest";
 
     /// <summary>The types a key may be, as the explorer groups them, in its order.</summary>
     private static readonly (RedisType Type, string Title)[] Types =
@@ -52,13 +56,15 @@ internal static class RedisClient
             await using ConnectionMultiplexer redis = await ConnectAsync(source);
             IDatabase database = redis.GetDatabase(RedisNames.Number(source.Database));
             List<RedisKey> keys = [];
+            bool more = false;
             await foreach (RedisKey key in Server(redis).KeysAsync(database.Database, pageSize: 500).WithCancellation(cancel))
             {
-                keys.Add(key);
-                if (keys.Count >= MostKeys)
+                if (keys.Count == MostKeys)
                 {
+                    more = true;
                     break;
                 }
+                keys.Add(key);
             }
             // Each key's type and time to live asked together, pipelined as the client sends them.
             RedisType[] types = await Task.WhenAll(keys.Select(k => database.KeyTypeAsync(k)));
@@ -70,6 +76,10 @@ internal static class RedisClient
                     .Select(k => new DatabaseObject(title, k.key.ToString(), DatabaseObjectKind.Table, LifeSaid(lives[k.at])))
                     .OrderBy(o => o.Name, StringComparer.Ordinal)];
                 groups.Add((title, members));
+            }
+            if (more)
+            {
+                groups.Add((KeysUnlisted, []));
             }
             return (IReadOnlyList<(string, IReadOnlyList<DatabaseObject>)>)groups;
         });
@@ -95,7 +105,7 @@ internal static class RedisClient
             _ => throw new InvalidOperationException($"{table.Name} is no key of {source.Database}: read the database again"),
         };
         cancel.ThrowIfCancellationRequested();
-        return new DatabaseSchema(table, columns, [$"{TypeName(type)} · {LifeSaid(life)}"], []);
+        return new DatabaseSchema(table, columns, [$"{TypeName(type)} · {LifeSaid(life)}"], []) { RowsFixed = type == RedisType.String };
     });
 
     /// <summary>A page of a key's value as rows, read whole (to <see cref="MostElements"/>) then filtered by a column, sorted
@@ -119,6 +129,16 @@ internal static class RedisClient
             RedisType.Stream => [.. (await database.StreamRangeAsync(key, count: MostElements)).Select(e => columns.Select(c => c == "id" ? (object?)e.Id.ToString()
                 : e.Values.FirstOrDefault(v => v.Name == c) is { Name.IsNull: false } held ? new FixedValue(held.Value.ToString()) : AbsentField.Value).ToArray())],
             _ => throw new InvalidOperationException($"{schema.Table.Name} is no longer a key of {source.Database}: read the database again"),
+        };
+        // A value longer than a tab reads is said so, its filter and sort holding among what was read alone.
+        long length = type switch
+        {
+            RedisType.Hash => await database.HashLengthAsync(key),
+            RedisType.List => await database.ListLengthAsync(key),
+            RedisType.Set => await database.SetLengthAsync(key),
+            RedisType.SortedSet => await database.SortedSetLengthAsync(key),
+            RedisType.Stream => await database.StreamLengthAsync(key),
+            _ => 1,
         };
         cancel.ThrowIfCancellationRequested();
         DatabaseRows all = new(columns, [.. rows]);
@@ -150,7 +170,7 @@ internal static class RedisClient
             Offset = offset,
             Types = [.. schema.Columns.Select(c => c.Type)],
             OrderedBy = sort is { } ordered && Array.IndexOf(columns, ordered.Column) is >= 0 and int at ? (at, ordered.Descending) : null,
-            About = $"{TypeName(type)} · {LifeSaid(life)}",
+            About = $"{TypeName(type)} · {LifeSaid(life)}" + (length > MostElements ? $" · {DatabaseClient.ReadOf(MostElements, length, "elements")}" : string.Empty),
         };
     });
 
@@ -171,6 +191,10 @@ internal static class RedisClient
             switch (type)
             {
                 case RedisType.String:
+                    if (!edits.Deleted.IsEmpty || !edits.Added.IsEmpty)
+                    {
+                        throw new InvalidOperationException(Refusals.RowsFixed);
+                    }
                     foreach ((RowKey _, ChangedRow row) in edits.Changed)
                     {
                         transaction.AddCondition(Condition.StringEqual(key, Text(row.Read[1])));
@@ -234,15 +258,16 @@ internal static class RedisClient
                         transaction.AddCondition(Condition.SortedSetEqual(key, Text(member.Values[0]), Score(Text(row.Read[1]))));
                         writes.Add(transaction.SortedSetAddAsync(key, Text(member.Values[0]), Score(row.Written.GetValueOrDefault(1))));
                     }
-                    foreach (RowKey member in edits.Deleted.Keys)
+                    foreach ((RowKey member, object?[] read) in edits.Deleted)
                     {
-                        transaction.AddCondition(Condition.SortedSetContains(key, Text(member.Values[0])));
+                        transaction.AddCondition(Condition.SortedSetEqual(key, Text(member.Values[0]), Score(Text(read[1]))));
                         writes.Add(transaction.SortedSetRemoveAsync(key, Text(member.Values[0])));
                     }
                     foreach (AddedRow added in edits.Added)
                     {
-                        writes.Add(transaction.SortedSetAddAsync(key, added.Written.GetValueOrDefault(0) ?? throw new InvalidOperationException("A sorted set's member added needs its words"),
-                            Score(added.Written.GetValueOrDefault(1))));
+                        string member = added.Written.GetValueOrDefault(0) ?? throw new InvalidOperationException("A sorted set's member added needs its words");
+                        transaction.AddCondition(Condition.SortedSetNotContains(key, member));
+                        writes.Add(transaction.SortedSetAddAsync(key, member, Score(added.Written.GetValueOrDefault(1))));
                     }
                     break;
                 case RedisType.Stream:
@@ -263,12 +288,12 @@ internal static class RedisClient
                 default:
                     throw new InvalidOperationException($"{key} is no longer a key of {source.Database}: read the database again");
             }
+            // Once EXEC ran, its writes are the database's whatever Stop asks after: the changes are said written.
             if (!await transaction.ExecuteAsync())
             {
                 throw new InvalidOperationException(Refusals.KeyChanged(schema.Table.Name));
             }
             await Task.WhenAll(writes);
-            cancel.ThrowIfCancellationRequested();
             return true;
         });
 

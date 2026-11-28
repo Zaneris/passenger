@@ -105,8 +105,8 @@ public sealed class DatabaseTableTab : IDatabaseTab
 
     public string? WhyNotSubmit => Busy ?? (edits.IsEmpty ? Refusals.NoPendingChanges : WhyNotEdited);
     public string? WhyNotRevert => Busy ?? (edits.IsEmpty ? Refusals.NoPendingChanges : null);
-    public string? WhyNotAddRow => Busy ?? WhyNotEdited ?? (shown is null ? Refusals.DatabaseBusy : null);
-    public string? WhyNotDeleteRows => Busy ?? WhyNotEdited ?? (ChosenRows().Count == 0 ? Refusals.NoRowChosen : null);
+    public string? WhyNotAddRow => Busy ?? WhyNotEdited ?? (schema is { RowsFixed: true } ? Refusals.RowsFixed : shown is null ? Refusals.DatabaseBusy : null);
+    public string? WhyNotDeleteRows => Busy ?? WhyNotEdited ?? (schema is { RowsFixed: true } ? Refusals.RowsFixed : ChosenRows().Count == 0 ? Refusals.NoRowChosen : null);
     /// <summary>Why a file's rows may not be imported into the table: its connection marked read-only, or its columns not read yet.</summary>
     public string? WhyNotImport => DatabaseController.WhyNotImport(Now) ?? (schema is null ? Refusals.DatabaseBusy : null);
 

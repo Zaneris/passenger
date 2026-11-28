@@ -17,7 +17,7 @@ namespace Passenger.App.Database;
 /// failure of the client is said as an <see cref="IOException"/>, as a relational driver's is.</summary>
 internal static class DynamoClient
 {
-    /// <summary>The most items a tab scans, and the most changes one transaction writes (DynamoDB's own limit).</summary>
+    /// <summary>The most items a tab sorts here, and the most changes one transaction writes (DynamoDB's own limit).</summary>
     public const int MostItems = 10000;
 
     private const int MostInTransaction = 100;
@@ -107,6 +107,7 @@ internal static class DynamoClient
             }
             request.ExpressionAttributeValues = values;
         }
+        // A page in the table's own order scans as far as it reaches, however far; one sorted here, to MostItems alone.
         int wanted = sort is null ? offset + DatabaseClient.PageSize + 1 : MostItems;
         List<JsonObject> items = [];
         do
@@ -115,7 +116,8 @@ internal static class DynamoClient
             items.AddRange((page.Items ?? []).Select(Json));
             request.ExclusiveStartKey = page.LastEvaluatedKey is { Count: > 0 } last ? last : null;
         }
-        while (request.ExclusiveStartKey is not null && items.Count < Math.Min(wanted, MostItems));
+        while (request.ExclusiveStartKey is not null && items.Count < wanted);
+        bool cut = sort is not null && request.ExclusiveStartKey is not null;
         DatabaseRows all = DocumentClient.Rows(items.Select(i => (DocumentClient.FieldsOf(i), i.ToJsonString())), false);
         string[] columns = [.. schema.Columns.Select(c => c.Name).Concat(all.Columns).Distinct(StringComparer.Ordinal)];
         DatabaseSchema widened = schema with
@@ -129,10 +131,11 @@ internal static class DynamoClient
             order = Tables.TableSort.Order(new DatabaseRows(columns, rows), at, by.Descending);
         }
         int[] chosen = [.. order.Skip(offset).Take(DatabaseClient.PageSize)];
-        return new DatabaseRows(columns, [.. chosen.Select(r => rows[r])], order.Length > offset + DatabaseClient.PageSize || request.ExclusiveStartKey is not null)
+        return new DatabaseRows(columns, [.. chosen.Select(r => rows[r])], order.Length > offset + DatabaseClient.PageSize || sort is null && request.ExclusiveStartKey is not null)
         {
             Schema = widened,
             Offset = offset,
+            About = cut ? DatabaseClient.ReadOf(MostItems, null, "items") : null,
             Types = [.. columns.Select(c => widened.Columns.First(w => w.Name == c).Type)],
             Documents = [.. chosen.Select(r => items[r].ToJsonString())],
             OrderedBy = sort is { } ordered && Array.IndexOf(columns, ordered.Column) is >= 0 and int sorted ? (sorted, ordered.Descending) : null,
