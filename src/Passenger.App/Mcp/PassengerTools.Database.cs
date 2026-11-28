@@ -109,6 +109,12 @@ public sealed partial class PassengerTools
                 return true;
             }
             await using DbConnection held = await DatabaseClient.OpenAsync(source, cancel);
+            if (!DatabaseKinds.HasTransactions(source.Kind))
+            {
+                // ClickHouse holds no transaction: its read-only session (readonly=2) refuses every change itself.
+                await DatabaseClient.RunOnAsync(source, held, null, runs, most, results.Add, cancel);
+                return true;
+            }
             await using DbTransaction transaction = await held.BeginTransactionAsync(cancel);
             await DatabaseClient.RunOnAsync(source, held, transaction, runs, most, results.Add, cancel);
             await transaction.RollbackAsync(cancel);

@@ -1009,19 +1009,15 @@ internal static partial class DatabaseClient
             {
                 return match.Value;
             }
-            switch (command.Connection)
+            if (command.Connection is ClickHouse.Driver.ADO.ClickHouseConnection)
             {
-                case DuckDB.NET.Data.DuckDBConnection:
-                    placed.Add((name, value));
-                    return "$" + name;
-                case ClickHouse.Driver.ADO.ClickHouseConnection:
-                    placed.Add((name, value));
-                    string type = value switch { null => "Nullable(String)", bool => "Bool", int => "Int32", long => "Int64", double => "Float64", decimal => "Decimal(38, 10)", _ => "String" };
-                    return "{" + name + ":" + type + "}";
-                default:
-                    placed.Add(((placed.Count + 1).ToString(CultureInfo.InvariantCulture), value));
-                    return "?";
+                placed.Add((name, value));
+                string type = value switch { null => "Nullable(String)", bool => "Bool", int => "Int32", long => "Int64", double => "Float64", decimal => "Decimal(38, 10)", _ => "String" };
+                return "{" + name + ":" + type + "}";
             }
+            (string written, string bound) = Placed(command.Connection, name, placed.Count);
+            placed.Add((bound, value));
+            return written;
         });
         foreach ((string name, object? value) in placed.DistinctBy(p => p.Name))
         {
@@ -1032,6 +1028,16 @@ internal static partial class DatabaseClient
             command.Parameters.Add(parameter);
         }
     }
+
+    /// <summary>How a command on <paramref name="connection"/> writes its parameter <paramref name="name"/>, the
+    /// <paramref name="place"/>th from 0, in its SQL, and the name it binds it by: DuckDB's $name, Snowflake's ? by its
+    /// place from 1, every other's @name.</summary>
+    internal static (string Written, string Bound) Placed(DbConnection? connection, string name, int place) => connection switch
+    {
+        DuckDB.NET.Data.DuckDBConnection => ("$" + name, name),
+        Snowflake.Data.Client.SnowflakeDbConnection => ("?", (place + 1).ToString(CultureInfo.InvariantCulture)),
+        _ => ("@" + name, "@" + name),
+    };
 
     [System.Text.RegularExpressions.GeneratedRegex(@"(?<![\w@])@(\w+)")]
     private static partial System.Text.RegularExpressions.Regex Parameter();

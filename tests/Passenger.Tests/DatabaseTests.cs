@@ -535,6 +535,21 @@ public sealed class DatabaseTests
                 Assert.Equal("has \"quotes\"", Scalar(folder, "SELECT Note FROM Products WHERE Id = 900"));
                 Assert.Null(Value(folder, "SELECT Note FROM Products WHERE Id = 901"));
 
+                // The columns are the table chosen last's, however late an earlier choice's read answers.
+                TaskCompletionSource<DatabaseSchema> slow = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                DatabaseTable[] two = [new(string.Empty, "Early"), new(string.Empty, "Late")];
+                DatabaseImportDialog racing = new(DatabaseKind.Sqlite, imports, string.Empty, two, two[0], (table, _) => table == two[0] ? slow.Task
+                    : Task.FromResult(new DatabaseSchema(table, [new DatabaseColumn("Note", "TEXT", true, false, false)], [], [])));
+                racing.Show(window);
+                Ui.Settle();
+                racing.File = Path.Combine(imports, "more.csv");
+                Field<ComboBox>(racing, "ImportInto").SelectedIndex = 2;
+                Ui.WaitFor(() => !racing.IsReading && racing.Columns.Count == 3, () => $"the file and Late read: {racing.Problem}");
+                slow.SetResult(new DatabaseSchema(two[0], [new DatabaseColumn("Name", "TEXT", true, false, false)], [], []));
+                Ui.Settle();
+                Assert.Equal(", Note, ", string.Join(", ", racing.Columns.Select(c => c.Into)));
+                racing.Close();
+
                 File.WriteAllText(Path.Combine(imports, "again.csv"), "Id,Name\n902,Fine\n900,Taken\n");
                 Assert.True(window.Perform(AppActions.DatabaseImport), "Import Data did not run again");
                 dialog = Dialog<DatabaseImportDialog>(window);
@@ -831,6 +846,34 @@ public sealed class DatabaseTests
                 SqlConsole duckConsole = window.EditorArea.ActiveGroup.Console!.Console!;
                 Assert.True(duckConsole.Results is [{ Error: null }], duckConsole.Said);
                 Assert.Equal(["bolt 120", "nut 60"], Enumerable.Range(0, 2).Select(r => $"{duckConsole.Results[0].Sets[0].Cell(r, 0)} {duckConsole.Results[0].Sets[0].Cell(r, 1)}"));
+
+                // DuckDB binds an import's values, and a filtered table's export its filter, at its own $name places.
+                string duckFiles = TestFolders.Create("database-duck-");
+                File.WriteAllText(Path.Combine(duckFiles, "more.csv"), "id,item,count\n3,washer,9\n");
+                List<string> told = Told(window);
+                ListBox tree = Explorer(window).GetVisualDescendants().OfType<ListBox>().Single(l => l.Name == "DatabaseTree");
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "stock" && r.Source.Kind == DatabaseKind.DuckDb));
+                Ui.ChooseFromMenu(tree, "Import Data…");
+                DatabaseImportDialog importing = Dialog<DatabaseImportDialog>(window);
+                importing.File = Path.Combine(duckFiles, "more.csv");
+                Ui.WaitFor(() => !importing.IsReading && importing.Columns.Count == 3, () => importing.Problem);
+                Ui.ClickButton(importing, "Import");
+                Ui.WaitFor(() => told.Any(t => t.StartsWith("Imported 1 row of more.csv into", StringComparison.Ordinal)), () => string.Join("; ", told));
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "stock" && r.Source.Kind == DatabaseKind.DuckDb));
+                Assert.True(window.Perform(AppActions.DatabaseOpenTable), $"Open Table Data did not run: {window.Status}");
+                Ui.WaitFor(() => Data(window) is { Reading: false, Rows.RowCount: 3 }, () => $"stock's rows among the editors ({window.Database.Said})");
+                Tab<ComboBox>(window, "DatabaseFilterColumn").SelectedItem = "item";
+                Filter(window, "wash");
+                Ui.WaitFor(() => Data(window) is { Reading: false, Rows.RowCount: 1 }, "stock's washer alone");
+                Tab<CellGrid>(window, "DatabaseTabResults").Focus();
+                Assert.True(window.Perform(AppActions.DatabaseExport), "Export Data did not run from the table");
+                DatabaseExportDialog exporting = Dialog<DatabaseExportDialog>(window);
+                Field<ComboBox>(exporting, "ExportFormat").SelectedIndex = (int)ExportFormat.Csv;
+                Field<TextBox>(exporting, "ExportFile").Text = Path.Combine(duckFiles, "washers.csv");
+                Ui.ClickButton(exporting, "Export");
+                Ui.WaitFor(() => told.Any(t => t.StartsWith("Exported 1 row of ", StringComparison.Ordinal) && t.Contains("washers.csv", StringComparison.Ordinal)),
+                    () => string.Join("; ", told));
+                Assert.Equal("id,item,count\n3,washer,9\n", File.ReadAllText(Path.Combine(duckFiles, "washers.csv")).ReplaceLineEndings("\n"));
             });
             Flow.Step("a release downloads DuckDB's engine as a DuckDB connection first opens, checked against its SHA256SUMS, a wrong one refused and Stop ending one, and keeps it", () =>
             {

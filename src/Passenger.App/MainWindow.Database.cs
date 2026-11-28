@@ -961,9 +961,7 @@ public partial class MainWindow
     }
 
     private string? WhyNotImport(ActionContext context) => ImportOf(context) is not { } to ? Refusals.NothingToImportInto
-        : !DatabaseKinds.SpeaksSql(to.Source.Kind) ? Refusals.NotSql(DatabaseKinds.Title(to.Source.Kind))
-        : to.Source.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(to.Source.Name)
-        : WhyNotOpened(to.Source) ?? (database?.Busy == true ? Refusals.DatabaseBusy : null);
+        : DatabaseController.WhyNotImport(to.Source) ?? WhyNotOpened(to.Source) ?? (database?.Busy == true ? Refusals.DatabaseBusy : null);
 
     /// <summary>Import Data: the database's tables read, the file, the table and the columns asked of the person
     /// (<see cref="DatabaseImportDialog"/>), asking first on a production connection, then the rows written

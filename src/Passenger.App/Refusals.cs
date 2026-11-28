@@ -864,6 +864,9 @@ public static class Refusals
     /// <summary>Manual commit on a database whose statements each stand alone.</summary>
     public static string NoTransactions(string kind) => $"{kind} runs each statement alone, with no transaction to commit or roll back";
 
+    /// <summary>Import Data into a database with no transaction, where a row refused could not leave the rows before it unwritten.</summary>
+    public static string NoImport(string kind) => $"{kind} writes each statement alone, so an import refused partway could not write nothing: import with its own tools";
+
     /// <summary>SQL's own reading of a database that speaks no SQL (its DDL, a plan, an import of rows, a whole table's
     /// export): a document database's documents and Redis's keys are read through their own clients, in their own queries.</summary>
     public static string NotSql(string kind) => $"{kind} is read in its own queries, in a console of it, not as SQL's tables";

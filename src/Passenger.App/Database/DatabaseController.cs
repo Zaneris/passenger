@@ -446,6 +446,12 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         return done ? null : said;
     }
 
+    /// <summary>Why a file's rows may not be imported into a connection's database: one not read in SQL, one whose statements
+    /// each stand alone (ClickHouse's, where a row refused could not leave those before it unwritten), one read-only.</summary>
+    public static string? WhyNotImport(DatabaseSource source) => !DatabaseKinds.SpeaksSql(source.Kind) ? Refusals.NotSql(DatabaseKinds.Title(source.Kind))
+        : !DatabaseKinds.HasTransactions(source.Kind) ? Refusals.NoImport(DatabaseKinds.Title(source.Kind))
+        : source.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(source.Name) : null;
+
     /// <summary>Writes a file's rows into a table as <paramref name="choice"/> maps them, in one transaction, under a
     /// <see cref="Working"/> that says how many it has written and that Stop ends, nothing written then; what it came to is
     /// said, a row refused by its number. Null once written, else why not.</summary>
