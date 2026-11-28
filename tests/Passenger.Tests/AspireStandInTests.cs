@@ -2616,10 +2616,8 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             AspireInteractionDialog form = Interaction(window, "API settings");
             TextBox input = Assert.IsType<TextBox>(form.InputControls["value"]);
             Ui.Click(input);
-            Ui.WaitFor(() => backend.Answers.Any(answer => answer.InteractionId == 2
-                && answer.KindCase == WatchInteractionsRequestUpdate.KindOneofCase.InputsDialog
-                && answer.ResponseUpdate && answer.InputsDialog.InputItems[0].Value == "before"),
-                "the form's first value");
+            // A form only shown sends nothing: a value goes to the AppHost as the person changes it.
+            Assert.DoesNotContain(backend.Answers, answer => answer.InteractionId == 2);
             int baseline = backend.Answers.Length;
             AspireInteractionHost.WireBarrier sending = backend.HoldNextAnswer();
             string firstValue = new string('x', 256 * 1024) + "typed while connected";
