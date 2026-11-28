@@ -10,11 +10,12 @@ namespace Passenger.UnitTests.Analyzers;
 
 /// <summary>PSG0012 (<see cref="UnextractedWords"/>) over code compiled in memory, turned on as a folder's .editorconfig turns
 /// it on: words written in the code and made Words or given to a control's words are flagged, and so are Words made a
-/// string or said in one language and made Words again; a name, words with no letter and Words given whole pass.</summary>
+/// string or said in one language and made Words again; a name, words with no letter and Words given whole pass. And PSG0013
+/// (<see cref="WordsComparisons"/>), on everywhere: Words compared with a string are flagged, their English passing.</summary>
 public class UnextractedWordsTests
 {
     [Fact]
-    public Task Words_a_person_reads_written_in_the_code_are_flagged_and_names_and_resources_pass() => Cases.EachAsync<(string Code, string? Flagged)>(
+    public Task Words_a_person_reads_written_in_the_code_or_compared_with_a_string_are_flagged_and_names_and_resources_pass() => Cases.EachAsync<(string Code, string? Flagged)>(
     [
         ("Words w = \"Save all\";", "\"Save all\" is made Words"),
         ("Words w = $\"Saved {name}\";", "\"Saved {}\" is made Words"),
@@ -29,16 +30,33 @@ public class UnextractedWordsTests
         ("Words w = \"…\";", null),
         ("TextBlock t = new() { Text = name };", null),
         ("ShownWords.Set(new TextBlock(), Words.Verbatim(name));", null),
+        ("Assert.Equal(name, Words.Verbatim(name));", "Equal compares Words with a string"),
+        ("Assert.Equal<object>(\"Saved\", Words.Verbatim(name));", "Equal compares Words with a string"),
+        ("Assert.Equal([name], new List<Words>());", "Equal compares Words with a string"),
+        ("Assert.Contains(name, new List<Words>());", "Contains compares Words with a string"),
+        ("bool same = Words.Verbatim(name).Equals(name);", "Equals compares Words with a string"),
+        ("Assert.Equal(\"Saved\", Words.Verbatim(name).English);", null),
+        ("Assert.Equal(Words.Verbatim(name), Words.Verbatim(name));", null),
     ], async row =>
     {
         string[] found = await FlaggedAsync(row.Code);
         string[] expected = row.Flagged is null ? [] : [row.Flagged];
-        Assert.True(found.SequenceEqual(expected), $"PSG0012 said [{string.Join("; ", found)}] of {row.Code}, not [{string.Join("; ", expected)}]");
+        Assert.True(found.SequenceEqual(expected), $"PSG0012 and PSG0013 said [{string.Join("; ", found)}] of {row.Code}, not [{string.Join("; ", expected)}]");
     }, row => row.Code);
 
     /// <summary>Stand-ins for Core's Words, Avalonia's controls and the door.</summary>
     private const string Home = """
-        namespace Passenger.Core { public sealed class Words { public static Words Verbatim(string s) => null!; public static implicit operator Words(string s) => null!; public string Shown => null!; public string English => null!; } }
+        namespace Passenger.Core
+        {
+            public sealed class Words : System.IEquatable<Words>
+            {
+                public static Words Verbatim(string s) => null!;
+                public static implicit operator Words(string s) => null!;
+                public string Shown => null!;
+                public string English => null!;
+                public bool Equals(Words? other) => false;
+            }
+        }
         namespace Avalonia { public class AvaloniaObject { } }
         namespace Avalonia.Controls
         {
@@ -49,19 +67,19 @@ public class UnextractedWordsTests
         namespace Passenger.Editor { public static class ShownWords { public static void Set(Avalonia.AvaloniaObject control, Passenger.Core.Words words) { } } }
         """;
 
-    /// <summary>The messages PSG0012 gives over the code, the part naming what it is before the advice.</summary>
+    /// <summary>The messages PSG0012 and PSG0013 give over the code, the part naming what it is before the advice.</summary>
     private static async Task<string[]> FlaggedAsync(string code)
     {
-        SyntaxTree tree = CSharpSyntaxTree.ParseText(Home + "\nnamespace Area { using Passenger.Core; using Passenger.Editor; using Avalonia.Controls;\n"
+        SyntaxTree tree = CSharpSyntaxTree.ParseText(Home + "\nnamespace Area { using System.Collections.Generic; using Xunit; using Passenger.Core; using Passenger.Editor; using Avalonia.Controls;\n"
             + $"public static class Shows {{ public static void Show(string name) {{ {code} }} }} }}", new CSharpParseOptions(LanguageVersion.Latest));
         IEnumerable<MetadataReference> references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
             .Where(p => Path.GetFileName(p) is { } name && (name.StartsWith("System.", StringComparison.Ordinal) || name is "netstandard.dll" or "mscorlib.dll"))
-            .Select(p => MetadataReference.CreateFromFile(p));
+            .Append(typeof(Assert).Assembly.Location).Select(p => MetadataReference.CreateFromFile(p));
         CSharpCompilation compilation = CSharpCompilation.Create("Shows", [tree], references, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
-            specificDiagnosticOptions: new Dictionary<string, ReportDiagnostic> { ["PSG0012"] = ReportDiagnostic.Warn }, nullableContextOptions: NullableContextOptions.Enable));
+            specificDiagnosticOptions: new Dictionary<string, ReportDiagnostic> { ["PSG0012"] = ReportDiagnostic.Warn, ["PSG0013"] = ReportDiagnostic.Warn }, nullableContextOptions: NullableContextOptions.Enable));
         Diagnostic[] errors = [.. compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)];
         Assert.True(errors.Length == 0, $"The case does not compile:\n{code}\n{string.Join('\n', errors.Select(e => e.ToString()))}");
-        ImmutableArray<Diagnostic> found = await compilation.WithAnalyzers([new UnextractedWords()]).GetAnalyzerDiagnosticsAsync(TestContext.Current.CancellationToken);
-        return [.. found.Where(d => d.Id == "PSG0012").Select(d => d.GetMessage(System.Globalization.CultureInfo.InvariantCulture).Split(':')[0])];
+        ImmutableArray<Diagnostic> found = await compilation.WithAnalyzers([new UnextractedWords(), new WordsComparisons()]).GetAnalyzerDiagnosticsAsync(TestContext.Current.CancellationToken);
+        return [.. found.Where(d => d.Id is "PSG0012" or "PSG0013").Select(d => d.GetMessage(System.Globalization.CultureInfo.InvariantCulture).Split(':')[0])];
     }
 }

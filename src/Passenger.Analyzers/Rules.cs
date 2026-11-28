@@ -153,6 +153,18 @@ internal static class Rules
             + "that language for every reader. Turned on folder by folder in .editorconfig as "
             + "each area's words move into resources.");
 
+    public static readonly DiagnosticDescriptor WordsComparedWithString = new(
+        "PSG0013",
+        "Words are compared with a string",
+        "{0} compares Words with a string: it holds only while the Words are verbatim, so compare their English (.English), or Words made as they are",
+        Category,
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "A string compared with Words is made Words (verbatim) or compared as an object, so the check compiles "
+            + "and holds only while the Words compared are verbatim too: once they are a resource's, it fails, and only when "
+            + "run. A check of what Words say compares their English; one of which words they are compares Words made the "
+            + "same way.");
+
     public static readonly DiagnosticDescriptor KeysUnread = new(
         "PSG9001",
         "A resource keys file is not read",
