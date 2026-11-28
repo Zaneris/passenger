@@ -83,10 +83,12 @@ public sealed partial class Vim
         };
         // An emptied text gives the registers nothing, as Vim's empty buffer gives them nothing.
         bool emptied = text.Length == 0 || intoEmptied;
+        // ]] from past a last } line's start takes a text of nothing into them, as Vim's does.
+        bool takesNothing = command.Name == "]]" && !emptied && stretches.All(t => !t.Lines && t.End == t.Start && t.Start > text.GetLineStart(t.First));
         // Nothing taken leaves them, but changing an empty line's place (or one empty line's sentence) empties one; blocks take pieces.
-        bool empty = emptied || !(block && (op == "c" || (lines is { } over && over.Bottom > over.Top)))
+        bool empty = !takesNothing && (emptied || !(block && (op == "c" || (lines is { } over && over.Bottom > over.Top)))
             && stretches.All(t => !t.Lines && t.End == t.Start && !(op == "c" && VimMotions.LineOf(text, t.Start).Length == 0
-                && (t.Inclusive || (command.Name is "i" or "a" && command.Argument == "s" && VimMotions.LastLine(text, breakEnds) == 0))));
+                && (t.Inclusive || (command.Name is "i" or "a" && command.Argument == "s" && VimMotions.LastLine(text, breakEnds) == 0)))));
         if (op is "d" or "c" && !empty)
         {
             Registers.Delete(command.Register, taken, Jumps.Contains(command.Name) || jumpCarried);
@@ -439,7 +441,9 @@ public sealed partial class Vim
     {
         if (value.Blockwise)
         {
-            return PutBlock(value, before, count, text, selections, view, cursorAfter);
+            VimResult block = PutBlock(value, before, count, text, selections, view, cursorAfter);
+            // A block put into an emptied text leaves its one line, however little it writes there, as Vim's does.
+            return intoEmptied && block.Edits is [{ } plan] ? block with { Edits = [plan with { Edits = [.. plan.Edits.Where(edit => edit.Text.Length > 0)] }] } : block;
         }
         string eol = view.LineEnding;
         bool dealt = selections.Count > 1 && value.Parts.Count == selections.Count;

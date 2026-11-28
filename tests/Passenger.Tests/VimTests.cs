@@ -252,12 +252,6 @@ public sealed partial class VimTests
             (vimCase, vim, _) => vimCase.Commands.Select((command, at) => (command, at)).Any(made => made.command.Keys[0] == VimKeys.CtrlV
                 && made.command.Keys.Contains("<") && (vim.Cursor.Column > Math.Max(1, vim.Lines[vim.Cursor.Line - 1].Length)
                     || vimCase.Commands.Skip(made.at).SelectMany(command => command.Keys).SkipWhile(key => key != "<").Contains("~")))),
-        ("d, c and y with ]] from past the first column of a last line beginning with }, from which ]] goes nowhere, leave Vim's "
-            + "unnamed and small delete registers empty, as though they took a text of nothing, where Vim's d and c over nothing "
-            + "elsewhere leave them as they were, as Passenger's do there too",
-            (vimCase, vim, passenger) => vimCase.Commands.Any(command => string.Concat(command.Keys).Contains("]]", StringComparison.Ordinal))
-                && vim.Lines.SequenceEqual(passenger.Lines) && vim.Cursor == passenger.Cursor && vim.Visual == passenger.Visual
-                && Registers.All(name => vim.Registers[name] == passenger.Registers[name] || vim.Registers[name].Text.Length == 0)),
     ];
 
     private const string TypedEnter = "Enter typed in insert mode";

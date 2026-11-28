@@ -663,7 +663,9 @@ public sealed partial class Vim
             {
                 Registers.Delete(null, replaced, always: false);
             }
-            return new VimResult(true, Edits: [new EditPlan(deletes, SelectionSet.Single(corner), EditKind.Other), .. put.Edits ?? []]);
+            // Over an emptied text's line, taking nothing, it leaves the text emptied unless it writes there.
+            IReadOnlyList<EditPlan> deleted = deletes.Count == 0 && intoEmptied ? [] : [new EditPlan(deletes, SelectionSet.Single(corner), EditKind.Other)];
+            return new VimResult(true, Edits: [.. deleted, .. put.Edits ?? []]);
         }
         if (block && !value.Text.Contains('\n', StringComparison.Ordinal))
         {
