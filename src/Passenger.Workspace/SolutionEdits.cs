@@ -219,6 +219,11 @@ public static class SolutionEdits
         /// and line breaks it came with.</summary>
         public void Write() => FileText.SaveOver(FilePath, file, Written());
 
+        /// <summary>The platform a project of these platforms alone builds as for a solution's platform: the one of its name,
+        /// else its first.</summary>
+        protected static string PlatformFor(string solution, IReadOnlyList<string> own) =>
+            own.FirstOrDefault(p => p.Equals(solution, StringComparison.OrdinalIgnoreCase)) ?? own[0];
+
         /// <summary>The platforms a project builds for alone where it names only processors' (a WinUI app's x86, x64 and
         /// ARM64, no AnyCPU), as its file writes them; null for any other, which builds as AnyCPU. A solution's first such
         /// project gives the solution those platforms and is mapped to each, as Visual Studio's template does, which a
@@ -431,13 +436,10 @@ public static class SolutionEdits
             return null;
         }
 
-        /// <summary>The platform a project of these platforms alone builds as for a solution configuration: the one of its
-        /// name, else its first; Any CPU for a project of none.</summary>
-        private static string PlatformOf(string configuration, IReadOnlyList<string>? own)
-        {
-            string platform = configuration.Split('|') is [_, { } named] ? named : "Any CPU";
-            return own is null ? "Any CPU" : own.FirstOrDefault(p => p.Equals(platform, StringComparison.OrdinalIgnoreCase)) ?? own[0];
-        }
+        /// <summary>The platform a project of these platforms alone builds as for a solution configuration
+        /// (<see cref="PlatformFor"/>); Any CPU for a project of none.</summary>
+        private static string PlatformOf(string configuration, IReadOnlyList<string>? own) =>
+            own is null ? "Any CPU" : PlatformFor(configuration.Split('|') is [_, { } named] ? named : "Any CPU", own);
 
         public override string? RemoveProject(string project)
         {
@@ -680,17 +682,20 @@ public static class SolutionEdits
                 string where = folder is null ? "the solution's top" : $"the solution folder {folder.Trim('/').Split('/')[^1]}";
                 return $"A project named {NameOf(project)} is in {where} already, which can hold only one of a name: put it in another solution folder";
             }
-            // A solution's first project of processors alone gives it those platforms, mapped to each (ProcessorsAlone).
-            IReadOnlyList<string>? own = ProcessorsAlone(project) is { } platforms && !Projects().Any() && xml.Section("Configurations") is null ? platforms : null;
+            // A solution's first project of processors alone gives it those platforms (ProcessorsAlone).
+            IReadOnlyList<string>? alone = ProcessorsAlone(project);
+            IReadOnlyList<string>? own = alone is not null && !Projects().Any() && xml.Section("Configurations") is null ? alone : null;
             foreach (string platform in own ?? [])
             {
                 xml.AddChild("Configurations", $"<Platform Name=\"{XmlEntities.Encode(platform, '"')}\" />");
             }
+            // A project of processors alone is mapped from each of the solution's platforms, which would build it as AnyCPU.
+            IReadOnlyList<(string Solution, string Project)> mapped = alone is null ? [] : [.. (own ?? SolutionPlatforms()).Select(p => (p, PlatformFor(p, alone)))];
             XElement into = folder is null ? Solution : Element(folder);
             string path = XmlEntities.Encode(Relative(project).Replace('\\', '/'), '"');
             string inside = xml.IndentIn(into);
-            string added = own is null ? $"<Project Path=\"{path}\" />"
-                : $"<Project Path=\"{path}\">{string.Concat(own.Select(p => $"{xml.NewLine}{inside}{xml.StepIn(into)}<Platform Solution=\"*|{XmlEntities.Encode(p, '"')}\" Project=\"{XmlEntities.Encode(p, '"')}\" />"))}"
+            string added = mapped.Count == 0 ? $"<Project Path=\"{path}\" />"
+                : $"<Project Path=\"{path}\">{string.Concat(mapped.Select(m => $"{xml.NewLine}{inside}{xml.StepIn(into)}<Platform Solution=\"*|{XmlEntities.Encode(m.Solution, '"')}\" Project=\"{XmlEntities.Encode(m.Project, '"')}\" />"))}"
                     + $"{xml.NewLine}{inside}</Project>";
             if (into.Elements().LastOrDefault(e => e.Name.LocalName == "Project") is { } last)
             {
@@ -702,6 +707,11 @@ public static class SolutionEdits
             }
             return null;
         }
+
+        /// <summary>The solution's platforms as its Configurations declare them; Any CPU alone where they declare none.</summary>
+        private IReadOnlyList<string> SolutionPlatforms() =>
+            Solution.Elements().FirstOrDefault(e => e.Name.LocalName == "Configurations")?.Elements().Where(e => e.Name.LocalName == "Platform")
+                .Select(e => e.Attribute("Name")?.Value).OfType<string>().ToList() is { Count: > 0 } declared ? declared : ["Any CPU"];
 
         public override bool Move(Func<string, string> moved)
         {

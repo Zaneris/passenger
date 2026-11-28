@@ -115,6 +115,9 @@ public sealed class SolutionProjectsTests : IDisposable
         string other = Write("Other.slnx", "<Solution>\n</Solution>\n");
         Assert.Null(SolutionEdits.AddProject(other, null, library));
         Assert.DoesNotContain("Configurations", File.ReadAllText(other), StringComparison.Ordinal);
+        // Added after another, it is mapped from the solution's Any CPU, as a .sln's first project's platform is.
+        Assert.Null(SolutionEdits.AddProject(other, null, app));
+        Assert.Contains("<Project Path=\"App/App.csproj\">\n    <Platform Solution=\"*|Any CPU\" Project=\"x86\" />\n  </Project>", File.ReadAllText(other), StringComparison.Ordinal);
     }
 
     private string At(params string[] parts) => Path.Combine([root, .. parts.SelectMany(p => p.Split('/'))]);
