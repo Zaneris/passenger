@@ -66,7 +66,7 @@ public partial class MainWindow
                 peer.Debugs = null;
                 peer.Builds = null;
                 peer.PlayAsked = false;
-                return LaunchWords.PlayNotTaken(name, Durations.Said(Waits.Of(PlayTaken)));
+                return LaunchWords.PlayNotTaken(name, Durations.Words(Waits.Of(PlayTaken)));
             }
             status.Text = LaunchWords.PlaysThroughAddon(debug ? "debugged" : "run", name).Shown;
             return null;

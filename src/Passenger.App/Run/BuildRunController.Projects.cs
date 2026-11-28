@@ -318,7 +318,7 @@ public sealed partial class BuildRunController
                 {
                     waiting.Set(PartState.Ended);
                 }
-                return started.Count == 0 || at >= starts.Count ? why : LaunchWords.PartDidNotStart(part: starts[at].Name, why: why, started: Plural.Listed(started), count: started.Count);
+                return started.Count == 0 || at >= starts.Count ? why : LaunchWords.PartDidNotStart(part: starts[at].Name, why: why, started: Plural.Listed(Words.Names(started)), count: started.Count);
             }
         }
         finally

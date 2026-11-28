@@ -6,8 +6,9 @@ namespace Passenger.UnitTests.Localization;
 /// <summary>Words said in a language (<see cref="Words"/>) over this project's own TestWords.resx, translated into French
 /// and, its greeting alone, Punjabi in Gurmukhi (xlf/TestWords.*.xlf, made satellites as the project builds): the nearest
 /// carried language of .NET's chain, never across a change of script, else English; the system's languages followed to
-/// the first that reaches one; a message's arguments, plurals by CLDR's rules and numbers in the asked culture; a
-/// translation waiting or naming other arguments giving way to the English; and the pseudo-locale.</summary>
+/// the first that reaches one; a message's arguments, plurals by CLDR's rules and numbers in the asked culture; lists,
+/// whiles, sizes and numbers by CLDR's patterns; a translation waiting or naming other arguments giving way to the English;
+/// and the pseudo-locale.</summary>
 public class WordsTests
 {
     private static readonly IReadOnlyList<CultureInfo> Carried = UiLanguage.CarriedBy(typeof(WordsTests).Assembly);
@@ -22,6 +23,7 @@ public class WordsTests
         ("the system's languages are followed to the first that reaches a carried one", The_systems_languages_are_followed_to_the_first_that_reaches_a_carried_one),
         ("a message says its arguments, plurals and numbers in its language", A_message_says_its_arguments_plurals_and_numbers_in_its_language),
         ("a translation waiting or naming other arguments gives way to the English", A_translation_waiting_or_naming_other_arguments_gives_way_to_the_English),
+        ("lists, whiles, sizes and numbers are said by the language's CLDR patterns, in English by Passenger's own", Lists_whiles_sizes_and_numbers_are_said_by_the_languages_CLDR_patterns),
         ("the pseudo-locale accents, lengthens and brackets a resource's words and leaves names alone", The_pseudo_locale_accents_lengthens_and_brackets_words_and_leaves_names_alone));
 
     private static void A_culture_reaches_the_nearest_carried_language_never_across_a_script() => Cases.Each(
@@ -74,6 +76,32 @@ public class WordsTests
             ("apostrophes quoting and standing for themselves", TestWords.Quoted.English, "The folder's {braces} and it's quoted"),
             ("verbatim words in French", ((Words)"Api.csproj").In(canada), "Api.csproj"),
         ], row => Assert.True(row.Item2 == row.Item3, $"{row.Item1} reads \"{row.Item2}\", not \"{row.Item3}\""), row => row.Item1);
+    }
+
+    private static void Lists_whiles_sizes_and_numbers_are_said_by_the_languages_CLDR_patterns()
+    {
+        UiLanguage canada = In("fr-CA");
+        UiLanguage punjabi = In("pa-IN");
+        string Grouped(double number) => number.ToString("#,0.###", canada.Asked);
+        Words three = Plural.Listed(Words.Names(["Api", "Web", "Worker"]));
+        Cases.Each(
+        [
+            ("three names, in English", three.English, "Api, Web and Worker"),
+            ("three names, in French", three.In(canada), "Api, Web et Worker"),
+            ("a choice of two, in Punjabi", Plural.Either(Words.Names(["Api", "Web"])).In(punjabi), "Api ਜਾਂ Web"),
+            ("a while of minutes, in English", Durations.Words(TimeSpan.FromSeconds(90)).English, "1.5 minutes"),
+            ("a while of minutes, French's one", Durations.Words(TimeSpan.FromSeconds(90)).In(canada), $"{Grouped(1.5)} minute"),
+            ("a while of milliseconds, in French", Durations.Words(TimeSpan.FromMilliseconds(250)).In(canada), "250\u202Fms"),
+            ("a while of hours, Punjabi's other", Durations.Words(TimeSpan.FromHours(2)).In(punjabi), "2 ਘੰਟੇ"),
+            ("a size, in English", Sizes.Words(1536).English, "1.5 KB"),
+            ("a size, in French", Sizes.Words(1536).In(canada), $"{Grouped(1.5)}\u202Fko"),
+            ("a count, in French", Numbers.Words(1234567).In(canada), Grouped(1234567)),
+            ("a list and a while given a message, in French", TestWords.Stopped(three, Durations.Words(TimeSpan.FromSeconds(3))).In(canada),
+                "Api, Web et Worker s'est arrêté : 3\u202Fs"),
+        ], row => Assert.True(row.Item2 == row.Item3, $"{row.Item1} reads \"{row.Item2}\", not \"{row.Item3}\""), row => row.Item1);
+        string pseudo = Durations.Words(TimeSpan.FromSeconds(90)).In(In(UiLanguage.PseudoTag));
+        Assert.True(pseudo.StartsWith("[1.5 ɱîñûţéš", StringComparison.Ordinal) && pseudo.EndsWith(']'),
+            $"The pseudo-locale says a while as \"{pseudo}\", where it accents and brackets a while as it does a resource's words");
     }
 
     private static void A_translation_waiting_or_naming_other_arguments_gives_way_to_the_English()

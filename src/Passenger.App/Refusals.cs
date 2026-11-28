@@ -39,7 +39,7 @@ public static partial class Refusals
     public static Words UntrustedInRepository(string repository) => UntrustedInRepositoryNamed(Path.GetFileName(repository));
 
     /// <summary>What the banner over a folder no longer trusted says while what the person started there runs on.</summary>
-    public static Words UntrustedRunsOn(IReadOnlyList<string> running) => UntrustedWhileRunning(Plural.Listed(running), running.Count);
+    public static Words UntrustedRunsOn(IReadOnlyList<string> running) => UntrustedWhileRunning(Plural.Listed(Words.Names(running)), running.Count);
 
     /// <summary>A branch checked out in another working tree of the repository, which git checks out in one at a time and
     /// deletes only once none has it.</summary>
@@ -61,7 +61,7 @@ public static partial class Refusals
 
     /// <summary>A C# file come under a project that the language server has not loaded into it (<see
     /// cref="CSharp.CSharpService.UnplacedAsync"/>), whose answers about the solution would leave it out.</summary>
-    public static Words NotTakenIn(string file, string project) => NotTakenInAfter(file, project, Durations.Said(CSharp.Patience.Limit));
+    public static Words NotTakenIn(string file, string project) => NotTakenInAfter(file, project, Durations.Words(CSharp.Patience.Limit));
 
     /// <summary>A command (<paramref name="what"/>) asked of a file the C# language server is ready but has not taken in
     /// yet: one come under a project (<paramref name="project"/>) whose load of it has not ended, else one it is still to open.</summary>
@@ -70,7 +70,7 @@ public static partial class Refusals
 
     /// <summary>A project the C# language server was asked to load again (its file or an import changed) that it has not
     /// loaded since (<see cref="CSharp.CSharpService.UnplacedAsync"/>), whose answers would be of the project as it was.</summary>
-    public static Words NotLoadedAgain(string project) => NotLoadedAgainAfter(project, Durations.Said(CSharp.Patience.Limit));
+    public static Words NotLoadedAgain(string project) => NotLoadedAgainAfter(project, Durations.Words(CSharp.Patience.Limit));
 
     /// <summary>What an answer given before the C# language server took C# files come under its projects into them went
     /// without (<see cref="CSharp.CSharpService.UntakenAsync"/>), the files named as shown.</summary>
@@ -113,19 +113,19 @@ public static partial class Refusals
     /// <summary>A C# code tool's answer, empty, while projects the language server met an error loading may hold what it
     /// looked for.</summary>
     public static Words NoneWhileUnloaded(string none, IReadOnlyList<(string Project, string Error)> failed) =>
-        NoneWhileProjectsUnloaded(none, Plural.Listed([.. failed.Select(f => f.Project)]), string.Join("; ", failed.Select(f => $"{f.Project}: {f.Error}")));
+        NoneWhileProjectsUnloaded(none, Plural.Listed(Words.Names(failed.Select(f => f.Project))), string.Join("; ", failed.Select(f => $"{f.Project}: {f.Error}")));
 
     /// <summary>A C# code tool asked while the language server is still loading the folder's projects after the wait.</summary>
     public static Words StillLoading(TimeSpan waited, string state) =>
-        state.Length > 0 ? StillLoadingAfter(Durations.Said(waited), state) : StillLoadingStarting(Durations.Said(waited));
+        state.Length > 0 ? StillLoadingAfter(Durations.Words(waited), state) : StillLoadingStarting(Durations.Words(waited));
 
     /// <summary>A code tool asked of a file whose language server (<paramref name="server"/>, "YAML") is still starting
     /// after the wait.</summary>
-    public static Words StillStarting(string server, TimeSpan waited) => StillStartingAfter(server, Durations.Said(waited));
+    public static Words StillStarting(string server, TimeSpan waited) => StillStartingAfter(server, Durations.Words(waited));
 
     /// <summary>A C# code tool asked while what a restore brought, or a load again, is still to reach the language server
     /// after the wait: <paramref name="coming"/> says what, as the agent was told it waited for.</summary>
-    public static Words StillComing(TimeSpan waited, string coming) => StillComingAfter(Durations.Said(waited), coming);
+    public static Words StillComing(TimeSpan waited, string coming) => StillComingAfter(Durations.Words(waited), coming);
 
     /// <summary>An x64 Passenger the system translates found only a .NET SDK of the system's own processor, whose MSBuild it
     /// cannot load (<see cref="MissingSdk.ForOtherProcessor"/>).</summary>
@@ -154,9 +154,9 @@ public static partial class Refusals
         DotnetLack.GlobalJsonSdk or DotnetLack.NoSdk => NoSdk(want.Missing!, folder),
         DotnetLack.OlderThanProject when want.ChosenBy is { } asked => asked.RollForward is { } roll
             ? SdkTooOldChosenRolling(want.Newer!.Value.Project, want.Newer.Value.Framework, want.Sdk ?? string.Empty, PathNames.Shown(asked.Path, folder),
-                asked.Version ?? string.Empty, roll, want.Builders.Count, Plural.Listed(want.Builders))
+                asked.Version ?? string.Empty, roll, want.Builders.Count, Plural.Listed(Words.Names(want.Builders)))
             : SdkTooOldChosen(want.Newer!.Value.Project, want.Newer.Value.Framework, want.Sdk ?? string.Empty, PathNames.Shown(asked.Path, folder),
-                asked.Version ?? string.Empty, want.Builders.Count, Plural.Listed(want.Builders)),
+                asked.Version ?? string.Empty, want.Builders.Count, Plural.Listed(Words.Names(want.Builders))),
         DotnetLack.OlderThanProject => SdkTooOld(want.Newer!.Value.Project, want.Newer.Value.Framework, want.Sdk ?? string.Empty),
         DotnetLack.OffPath => SdkOffPath(want.Sdk ?? string.Empty, PathNames.Shown(want.Root!, null)),
         _ => null,
@@ -221,7 +221,7 @@ public static partial class Refusals
     public static Words NoTestOf(string name, string? unfound) => unfound is null ? NoTestFound(name) : NoTestFoundBecause(name, unfound);
 
     /// <summary>A test chosen of one of the classes GoDotTest cannot tell apart (<see cref="Testing.GoDotTests.Alike"/>).</summary>
-    public static Words GoDotTestAlike(string suite, IReadOnlyList<string> classes) => GoDotTestAlikeClasses(Plural.Listed(classes), suite);
+    public static Words GoDotTestAlike(string suite, IReadOnlyList<string> classes) => GoDotTestAlikeClasses(Plural.Listed(Words.Names(classes)), suite);
 
     /// <summary>A game's GoDotTest tests asked to run where they cannot start (<see cref="Testing.GoDotTests.Start"/>): no
     /// scene runs them, or the scene its run settings name is not the game's or runs none; null where they can.</summary>
@@ -240,7 +240,7 @@ public static partial class Refusals
     /// <summary>What a build whose projects' assemblies hold Avalonia XAML never compiled says (<see cref="Passenger.Xaml.Metadata.UncompiledXaml"/>),
     /// and a preview whose previewer Avalonia's runtime ended for it: the build that last compiled their C# stopped before
     /// Avalonia's XAML compiler finished, and each build since took that as up to date. A rebuild runs both compilers again.</summary>
-    public static Words XamlUncompiled(IReadOnlyList<string> projects) => XamlUncompiledIn(projects.Count, Plural.Listed(projects));
+    public static Words XamlUncompiled(IReadOnlyList<string> projects) => XamlUncompiledIn(projects.Count, Plural.Listed(Words.Names(projects)));
 
     /// <summary>An agent's call whose question the window took away as it left the folder it was asked in (<paramref
     /// name="left"/>), for another or none, before the person answered: an answer would have allowed it where it no longer is.</summary>
@@ -256,11 +256,11 @@ public static partial class Refusals
     /// <summary>What an edit did, and the files it left as they were for being edited meanwhile: "Renamed in 3 files, but not
     /// in A.cs and B.cs: they were edited meanwhile"; what it did alone where it left none.</summary>
     public static Words EditedMeanwhile(string done, IReadOnlyList<string> files) =>
-        files.Count == 0 ? done : DoneButNotIn(done, Plural.Listed(files), files.Count);
+        files.Count == 0 ? done : DoneButNotIn(done, Plural.Listed(Words.Names(files)), files.Count);
 
     /// <summary>An edit said not applied to the files it left as they were for being edited meanwhile: "Extract Method was not
     /// applied to A.cs: it was edited meanwhile".</summary>
-    public static Words NotAppliedEditedMeanwhile(string what, IReadOnlyList<string> files) => NotAppliedTo(what, Plural.Listed(files), files.Count);
+    public static Words NotAppliedEditedMeanwhile(string what, IReadOnlyList<string> files) => NotAppliedTo(what, Plural.Listed(Words.Names(files)), files.Count);
 
     /// <summary>A feature's diagnostics with no step definitions read to match its steps against: the C# language server,
     /// which reads them, runs and did not answer for them (<paramref name="serverRuns"/>), or runs for no folder.</summary>
@@ -337,7 +337,7 @@ public static partial class Refusals
 
     /// <summary>An agent's act in Godot's editor naming no scene by its path in the folder, which holds several Godot projects
     /// whose editors each take such an act: the project is told by the scene's path alone.</summary>
-    public static Words GodotProjectUnnamed(IReadOnlyList<string> projects) => GodotProjectsUnnamed(projects.Count, Plural.Listed(projects), projects[0]);
+    public static Words GodotProjectUnnamed(IReadOnlyList<string> projects) => GodotProjectsUnnamed(projects.Count, Plural.Listed(Words.Names(projects)), projects[0]);
 
     /// <summary>An agent's act in Godot's editor whose addon is older than one that takes it.</summary>
     public static Words GodotAddonOlder(string project, int version) => GodotAddonOlderAt(project, version.ToString(CultureInfo.InvariantCulture));
@@ -375,7 +375,7 @@ public static partial class Refusals
     /// <summary>A 32-bit x86 program whose x86 .NET installation, in <paramref name="root"/>, lacks what it runs on, each by
     /// the installer that brings it and its version (<see cref="Run.X86Programs.Installers"/>), with where to download each.</summary>
     public static Words X86RuntimeMissing(string root, IReadOnlyList<(string Installer, string Version)> lacking) => X86RuntimeLacking(
-        DotnetProcesses.RunsAs32Bit, PathNames.Shown(root, null), Plural.Listed([.. lacking.Select(l => $"{l.Installer} {l.Version}")]),
+        DotnetProcesses.RunsAs32Bit, PathNames.Shown(root, null), Plural.Listed(Words.Names(lacking.Select(l => $"{l.Installer} {l.Version}"))),
         string.Join(", ", lacking.Select(l => $"https://dotnet.microsoft.com/download/dotnet/{l.Version}").Distinct(StringComparer.Ordinal)));
 
     /// <summary>An Android app run where this machine (<paramref name="host"/>, "Linux on Arm64") builds none.</summary>
@@ -389,7 +389,7 @@ public static partial class Refusals
     /// the files it would write over there, or git's own words where it named none.</summary>
     public static Words CannotBring(string to, IReadOnlyList<string> files, string said) => files.Count == 0
         ? GitCannotBringSaying(to, said)
-        : GitCannotBringOver(to, files.Count <= 3 ? Plural.Listed(files) : TwoFilesAndMore(files[0], files[1], files.Count - 2));
+        : GitCannotBringOver(to, files.Count <= 3 ? Plural.Listed(Words.Names(files)) : TwoFilesAndMore(files[0], files[1], files.Count - 2));
 
     /// <summary>A .NET installed for every user that installs workloads into itself, not each user's own folder, which takes
     /// an administrator's rights: <paramref name="command"/> as an administrator runs it (<see cref="WorkloadInstalls.AsAdministrator"/>).</summary>
@@ -408,7 +408,7 @@ public static partial class Refusals
     }, folder);
 
     /// <summary>A debugged Functions app whose host started no worker within its time.</summary>
-    public static Words NoFunctionsWorker(TimeSpan limit) => NoFunctionsWorkerWithin(Durations.Said(limit));
+    public static Words NoFunctionsWorker(TimeSpan limit) => NoFunctionsWorkerWithin(Durations.Words(limit));
 
     /// <summary>Find Usages of a step definition no feature step binds, or whose steps are not counted yet.</summary>
     public static Words StepUses(int? uses) => uses is null ? StepUsesNotCounted : NoStepBinds;

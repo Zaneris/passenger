@@ -2149,7 +2149,7 @@ public sealed class VcsController : IDisposable
             IReadOnlyList<string> tracking = await TrackingAsync(name);
             GitResult removed = await repository.RemoveRemoteAsync(name);
             await RefreshAsync();
-            return removed.Succeeded ? Report(true, VcsWords.RemovedRemote(name, tracking.Count, Plural.Listed(tracking)).Shown)
+            return removed.Succeeded ? Report(true, VcsWords.RemovedRemote(name, tracking.Count, Plural.Listed(Words.Names(tracking))).Shown)
                 : Report(false, $"The remote {name} was not removed: {removed.Message}");
         }, refused => refused);
     }

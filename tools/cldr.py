@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Writes src/Passenger.Core/PluralRules.Cldr.cs and src/Passenger.Core/LikelyScripts.Cldr.cs from the Unicode CLDR.
+"""Writes src/Passenger.Core/PluralRules.Cldr.cs, LikelyScripts.Cldr.cs and LanguagePatterns.Cldr.cs from the Unicode CLDR.
 
 PluralRules.Cldr.cs holds each language's plural rules (supplemental/plurals.xml): the category a count takes, each rule
 turned into C# over the operands CLDR defines (n, i, v, w, f, t, e). LikelyScripts.Cldr.cs holds the script each language
 is written in where its tag names none (supplemental/likelySubtags.xml), which the words' fallback reads so it never
-crosses into another script. The files are fetched once into artifacts/cldr/<version>/. THIRD_PARTY_NOTICES.md carries
-the Unicode licence.
+crosses into another script. LanguagePatterns.Cldr.cs holds how each language Passenger carries (LANGUAGES, and each
+src/**/xlf/*.<tag>.xlf's) joins a list by and and by or, and writes the units of the whiles and sizes Passenger says
+(main/<language>.xml, resolved through CLDR's inheritance to root). The files are fetched once into
+artifacts/cldr/<version>/. THIRD_PARTY_NOTICES.md carries the Unicode licence.
 """
+import glob
 import importlib.util
 import os
 import re
@@ -18,6 +21,22 @@ _spec.loader.exec_module(fetched)
 
 VERSION = "49"
 BASE = f"https://raw.githubusercontent.com/unicode-org/cldr/release-{VERSION}/common/supplemental/"
+MAIN = f"https://raw.githubusercontent.com/unicode-org/cldr/release-{VERSION}/common/main/"
+# The languages Passenger's first translations are made in, by CLDR's locale ids; a language a translation file carries is
+# taken too.
+LANGUAGES = ["de", "es", "fr", "hi", "it", "pa", "pt", "zh"]
+# Each unit Passenger says, by its name in LanguagePatterns, CLDR's unit and the width it is said in.
+UNITS = [
+    ("millisecond", "duration-millisecond", "short"),
+    ("second", "duration-second", "short"),
+    ("minute", "duration-minute", "long"),
+    ("hour", "duration-hour", "long"),
+    ("byte", "digital-byte", "short"),
+    ("kilobyte", "digital-kilobyte", "short"),
+    ("megabyte", "digital-megabyte", "short"),
+    ("gigabyte", "digital-gigabyte", "short"),
+]
+INHERITED = "\u2191\u2191\u2191"
 OPERANDS = {"n": "o.N", "i": "o.I", "v": "o.V", "w": "o.W", "f": "o.F", "t": "o.T", "e": "o.E", "c": "o.E"}
 HEADER = [
     f"// Written by tools/cldr.py from the Unicode CLDR {VERSION} ({{0}}, under the Unicode License v3; see",
@@ -27,6 +46,10 @@ HEADER = [
 
 def fetch(name):
     return fetched.text(BASE + name, os.path.join(fetched.ROOT, "artifacts", "cldr", VERSION, name))
+
+
+def fetch_main(locale):
+    return fetched.text(MAIN + f"{locale}.xml", os.path.join(fetched.ROOT, "artifacts", "cldr", VERSION, "main", f"{locale}.xml"))
 
 
 def tag(locale):
@@ -134,6 +157,95 @@ def likely_scripts():
     return lines
 
 
+def carried():
+    """LANGUAGES and each language a translation file under src/ carries, as CLDR's locale ids (zh_Hans, not zh-Hans)."""
+    tags = {os.path.basename(path).split(".")[-2] for path in glob.glob(os.path.join(fetched.ROOT, "src", "**", "xlf", "*.xlf"), recursive=True)}
+    return sorted(set(LANGUAGES) | {t.replace("-", "_") for t in tags})
+
+
+def patterns(locale):
+    """A locale's own list patterns ({kind: {part: text}}) and unit patterns ({(width, unit): {count: text}}), what it
+    inherits left out."""
+    root = ElementTree.fromstring(fetch_main(locale))
+    lists = {}
+    for pattern in root.iter("listPattern"):
+        kind = pattern.get("type") or "and"
+        if kind in ("and", "or"):
+            lists[kind] = {part.get("type"): part.text for part in pattern.findall("listPatternPart") if part.text != INHERITED}
+    units = {}
+    wanted = {unit for _, unit, _ in UNITS}
+    for length in root.iter("unitLength"):
+        for unit in length.findall("unit"):
+            if unit.get("type") in wanted:
+                units[(length.get("type"), unit.get("type"))] = {
+                    p.get("count"): p.text for p in unit.findall("unitPattern") if p.get("case") is None and p.text != INHERITED}
+    return lists, units
+
+
+def chain(locale):
+    """The locale and its parents to root, by truncation as CLDR's main files inherit (zh_Hant's parent is root)."""
+    parents = {"zh_Hant": "root", "pa_Arab": "root"}
+    steps = [locale]
+    while steps[-1] != "root":
+        at = steps[-1]
+        steps.append(parents.get(at) or ("_".join(at.split("_")[:-1]) if "_" in at else "root"))
+    return steps
+
+
+def resolved(locale):
+    """A locale's list patterns (and, then or: start, middle, end, 2) and each unit's patterns by plural count, each part
+    taken from the nearest locale of its chain that gives it; a unit's long width, where none gives it, its short's."""
+    read = [patterns(step) for step in chain(locale)]
+    lists = []
+    for kind in ("and", "or"):
+        for part in ("start", "middle", "end", "2"):
+            lists.append(next(own[kind][part] for own, _ in read if part in own.get(kind, {})))
+    units = []
+    for name, unit, width in UNITS:
+        widths = [width, "short"] if width != "short" else ["short"]
+        counts = {}
+        for want in widths:
+            for _, own in read:
+                for count, text in own.get((want, unit), {}).items():
+                    counts.setdefault(count, text)
+            if "other" in counts:
+                break
+        units.append((name, sorted(counts.items(), key=lambda c: (c[0] == "other", c[0]))))
+    return lists, units
+
+
+def cs(text):
+    """A C# string literal of the text, its non-ASCII spaces escaped so they show."""
+    return '"' + "".join(f"\\u{ord(c):04X}" if c in "\u00a0\u202f\u2009" else ("\\" + c if c in '"\\' else c) for c in text) + '"'
+
+
+def language_patterns():
+    rows = [(tag(locale), resolved(locale)) for locale in carried()]
+    lines = [line.format("main/<language>.xml") for line in HEADER] + [
+        "namespace Passenger.Core;",
+        "",
+        "public static partial class LanguagePatterns",
+        "{",
+        "    /// <summary>A language's list patterns by its tag, joining by and then by or: each a start, a middle, an end and a pair's;",
+        "    /// null for a language CLDR's patterns are not carried of.</summary>",
+        "    private static string[]? Lists(string language) => language switch",
+        "    {",
+    ]
+    for language, (lists, _) in rows:
+        lines.append(f"        \"{language}\" => [{', '.join(cs(p) for p in lists)}],")
+    lines += ["        _ => null,", "    };", "",
+              "    /// <summary>A language's patterns of a unit by its tag, each plural category before its pattern; null for a language",
+              "    /// CLDR's patterns are not carried of.</summary>",
+              "    private static string[]? Units(string language, string unit) => (language, unit) switch",
+              "    {"]
+    for language, (_, units) in rows:
+        for name, counts in units:
+            flat = ", ".join(f"\"{count}\", {cs(text)}" for count, text in counts)
+            lines.append(f"        (\"{language}\", \"{name}\") => [{flat}],")
+    lines += ["        _ => null,", "    };", "}"]
+    return lines
+
+
 def write(name, lines):
     target = os.path.join(fetched.ROOT, "src", "Passenger.Core", name)
     with open(target, "w", encoding="utf-8", newline="\n") as out:
@@ -144,6 +256,7 @@ def write(name, lines):
 def main():
     write("PluralRules.Cldr.cs", plural_rules())
     write("LikelyScripts.Cldr.cs", likely_scripts())
+    write("LanguagePatterns.Cldr.cs", language_patterns())
 
 
 if __name__ == "__main__":
