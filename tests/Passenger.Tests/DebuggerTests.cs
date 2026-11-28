@@ -566,7 +566,8 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
     /// <summary>Step Over from a floated Debug window, dragging the execution arrow past a loop, Smart Step Into
     /// offering a line's calls (under its framework's symbols, and in a file nested past what the parser reads), a
-    /// step over a call listing what it returned and an exception stop naming the exception at its line.</summary>
+    /// step over a call listing what it returned and an exception stop naming the exception at its line, and a step's
+    /// stop leaving the view still while its line is in view.</summary>
     [AvaloniaFact]
     public async Task Stepping_goes_where_it_is_asked_over_a_call_into_the_call_chosen_and_past_a_loop()
     {
@@ -597,6 +598,12 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         await Flow.StepApartLivedAsync<DebuggerTests>("a step over a call lists what it returned smart step into steps into the call chosen and an exception stop names the exception at its line", () => new DebuggerTests(sum, sleeper, folders), t =>
         {
             t.A_step_over_a_call_lists_what_it_returned_smart_step_into_steps_into_the_call_chosen_and_an_exception_stop_names_the_exception_at_its_line();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a step to a line in view leaves the view still and a step off it brings its line into view", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_step_to_a_line_in_view_leaves_the_view_still_and_a_step_off_it_brings_its_line_into_view();
             OpenWindows.CloseAll();
             return Task.CompletedTask;
         });
@@ -1122,6 +1129,47 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Ui.Run(floating, AppActions.Stop);
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "Stop, pressed in the floating Debug window, to end the session");
         window.Close();
+    }
+
+    /// <summary>A stop shows its line without moving the view while the line stands in it, clear of its edges; a stop
+    /// on a line out of view scrolls it in.</summary>
+    private void A_step_to_a_line_in_view_leaves_the_view_still_and_a_step_off_it_brings_its_line_into_view()
+    {
+        const int First = 50;
+        const int Far = 200;
+        Write("Program.cs", new string('\n', First) + "int total = 1;\ntotal += 2;\ntotal += 3;\nConsole.WriteLine($\"total {total}\");\n"
+            + new string('\n', Far - First - 4) + "Console.WriteLine($\"twice {total * 2}\");\n");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(First, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        StartDebugging(window);
+        StoppedAt(First);
+
+        // The stop's line put lower than a stop off screen puts it, in view.
+        editor.ScrollTo(new Vector(0, (First - 3) * editor.LineHeight));
+        Ui.Settle();
+        Vector still = editor.ScrollOffset;
+        foreach (int line in (int[])[First + 1, First + 2, First + 3])
+        {
+            Ui.Run(window, AppActions.StepOver);
+            StoppedAt(line);
+            Assert.True(editor.ScrollOffset == still, $"A step to line {line + 1}, in view, scrolled the view from {still} to {editor.ScrollOffset}");
+        }
+        Ui.Run(window, AppActions.StepOver);
+        StoppedAt(Far);
+        double at = editor.PointOf(editor.Document.Snapshot.GetLineStart(Far)).Y;
+        Assert.True(at >= 0 && at + editor.LineHeight <= editor.Bounds.Height, $"A step to line {Far + 1}, out of view, left it at {at} in a view {editor.Bounds.Height} high");
+
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
+
+        void StoppedAt(int line)
+        {
+            WaitDebugging(window, () => editor.LineMarks.Contains(new LineMark(line, LineMarkKind.ExecutionPoint)) && editor.CaretPosition.Line == line, $"the stop at line {line + 1}");
+            Ui.Settle();
+        }
     }
 
     private void Dragging_the_execution_arrow_past_the_loop_goes_on_from_there_and_skips_it()

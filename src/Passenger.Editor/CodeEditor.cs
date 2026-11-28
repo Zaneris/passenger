@@ -569,6 +569,43 @@ public sealed partial class CodeEditor : Control
     /// show that place too.</summary>
     public event EventHandler<int>? WentTo;
 
+    /// <summary>Puts the primary caret at a line and column as <see cref="GoTo"/> does, but leaves the view still where the
+    /// place's row already stands in it, clear of its top and foot by <see cref="StillMargin"/> rows (a debugger's stops,
+    /// stepping along what is shown); elsewhere it scrolls as GoTo does.</summary>
+    public void GoToKeepingView(TextPosition position)
+    {
+        int offset = document.Snapshot.GetOffset(position);
+        if (!StandsInView(offset))
+        {
+            GoTo(position);
+            return;
+        }
+        SetSelections(SelectionSet.Single(offset), reveal: false);
+        Reveal(offset);
+        placed = (document.Snapshot, offset, scroll.Y, PointOf(offset).Y);
+        WentTo?.Invoke(this, offset);
+    }
+
+    /// <summary>The rows a place <see cref="GoToKeepingView"/> leaves the view still for stands clear of the view's top and
+    /// foot, where there is text beyond them.</summary>
+    private const int StillMargin = 2;
+
+    /// <summary>Whether an offset's row stands in the view laid out, clear of its edges by <see cref="StillMargin"/> rows
+    /// (fewer in a view too short for them).</summary>
+    private bool StandsInView(int offset)
+    {
+        if (Bounds.Height <= 0 || pendingGoTo is not null || awaitedY is not null)
+        {
+            return false;
+        }
+        double top = RowOfOffset(document.Snapshot, offset, LeansBack(offset)).Row * metrics.LineHeight;
+        double usable = Viewport.Height - horizontal.DesiredSize.Height;
+        double margin = Math.Min(StillMargin * metrics.LineHeight, Math.Max(0, (usable - metrics.LineHeight) / 2));
+        double above = scroll.Y > 0 ? margin : 0;
+        double below = scroll.Y < MaxScrollY ? margin : 0;
+        return top >= scroll.Y + above && top + metrics.LineHeight <= scroll.Y + usable - below;
+    }
+
     /// <summary>Scrolls an offset a third of the way down the view, as <see cref="GoTo"/> does; not laid out yet, the
     /// first arrange does it, leaving the carets as they stand then (a selection made after the GoTo).</summary>
     private void ScrollToPlace(int offset)

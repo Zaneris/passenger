@@ -759,10 +759,11 @@ public partial class MainWindow : IdeWindow
         return chosen;
     }
 
-    /// <summary>Shows where the debugger stopped: the file and line, and the Debug window's frames.</summary>
+    /// <summary>Shows where the debugger stopped (a step, a breakpoint, a frame chosen): the file and line, the view left
+    /// still where the line already stands in it, and the Debug window's frames.</summary>
     private void ShowStop(string path, TextPosition position)
     {
-        NavigateTo(path, position);
+        navigator.NavigateTo(path, position, keepingView: true);
         ShowToolWindow(ToolWindowIds.Debug);
         if (!Bottom.Debug.IsMemoryShown)
         {
