@@ -101,8 +101,8 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         DateTime written = File.GetLastWriteTimeUtc(decompiled);
 
         string outline = (await Call(client, McpTools.Outline, new() { ["path"] = "MainWindow.axaml" })).GetString()!;
-        Assert.True(outline.StartsWith("Window x:Class=\"Gallery.MainWindow\" x:DataType=\"vm:MainViewModel\" (line 1)\n  StackPanel (line 10)\n", StringComparison.Ordinal)
-            && outline.Contains("\n    Button Name=\"Go\" (line 12)", StringComparison.Ordinal), $"The window's outline is not its element tree:\n{outline}");
+        Assert.True(outline.StartsWith("Gallery.MainWindow: Window x:DataType=\"vm:MainViewModel\" (line 1)\n  StackPanel (line 10)\n", StringComparison.Ordinal)
+            && outline.Contains("\n    Go: Button (line 12)", StringComparison.Ordinal), $"The window's outline is not its element tree as File Structure names it:\n{outline}");
 
         Assert.Equal("class Avalonia.Controls.Button : ContentControl", (await Call(client, McpTools.SymbolInfo, At(window, "MainWindow.axaml", "<Butt"))).GetString());
         JsonElement greeting = Assert.Single((await Call(client, McpTools.Definition, At(window, "MainWindow.axaml", "{Binding Gree"))).EnumerateArray());
@@ -253,8 +253,8 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         string window = File.ReadAllText(Path.Combine(gallery, "MainWindow.xaml"));
 
         string outline = (await Call(client, McpTools.Outline, new() { ["path"] = "MainWindow.xaml" })).GetString()!;
-        Assert.True(outline.StartsWith("Window x:Class=\"Gallery.MainWindow\" (line 1)\n  Window.Resources (line 10)\n    Style TargetType=\"Button\" (line 11)\n", StringComparison.Ordinal)
-            && outline.Contains("\n    Button x:Name=\"Go\" (line 30)", StringComparison.Ordinal), $"The window's outline is not its element tree:\n{outline}");
+        Assert.True(outline.StartsWith("Gallery.MainWindow: Window (line 1)\n  Window.Resources (line 10)\n    Button: Style (line 11)\n", StringComparison.Ordinal)
+            && outline.Contains("\n    Go: Button (line 30)", StringComparison.Ordinal), $"The window's outline is not its element tree as File Structure names it:\n{outline}");
         Assert.Equal("class System.Windows.Controls.TextBlock : FrameworkElement",
             (await Call(client, McpTools.SymbolInfo, At(window, "MainWindow.xaml", "<StackPanel Margin=\"12\">\n        <TextBl"))).GetString());
         JsonElement accent = Assert.Single((await Call(client, McpTools.Definition, At(window, "MainWindow.xaml", "{StaticResource Acc"))).EnumerateArray());

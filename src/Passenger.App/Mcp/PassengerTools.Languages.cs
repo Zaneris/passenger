@@ -364,34 +364,13 @@ public sealed partial class PassengerTools
         return $"Renamed {old} to {newName} in {Plural.Of(renamed.Files.Count, "file")}: {AgentAnswers.Named([.. renamed.Files.Select(f => Relative(f.Path))], "file", FilesOfTheChange)}";
     }
 
-    /// <summary>A XAML file's elements, indented, each with what names it (x:Class, x:Name, x:Key, a style's selector or
-    /// target type) and its line.</summary>
+    /// <summary>A XAML file's elements, indented, each as File Structure shows it (<see cref="Xaml.XamlOutline"/>: by what names
+    /// it, x:Class, x:Name, x:Key, a style's selector or target type, its type and x:DataType after) with its line.</summary>
     private static string XamlOutline(XamlServed xaml)
     {
-        System.Text.StringBuilder text = new();
-        TextSnapshot snapshot = TextSnapshot.From(xaml.File.Text);
-        // Walked with a stack of its own, so a tree as deep as it is read costs no thread its stack.
-        Stack<(XmlElement Element, int Depth)> left = new(xaml.File.Tree.Roots.Reverse().Select(r => (r, 0)));
-        while (left.TryPop(out (XmlElement Element, int Depth) at))
-        {
-            Write(at.Element, at.Depth);
-            for (int i = at.Element.Children.Count - 1; i >= 0; i--)
-            {
-                left.Push((at.Element.Children[i], at.Depth + 1));
-            }
-        }
-        return text.Length == 0 ? "The file has no elements" : text.ToString().TrimEnd();
-
-        void Write(XmlElement element, int depth)
-        {
-            text.Append(' ', depth * 2).Append(element.Name);
-            foreach (XmlAttribute attribute in element.Attributes.Where(a => a.Name is "Name" or "Selector" or "TargetType"
-                || (a.LocalName is "Class" or "Name" or "Key" or "DataType" && XamlFile.Directive(element, a.LocalName) == a)))
-            {
-                text.Append(' ').Append(attribute.Name).Append("=\"").Append(attribute.Value).Append('"');
-            }
-            text.Append(" (line ").Append(snapshot.GetLineFromOffset(Math.Min(element.Start, snapshot.Length)) + 1).Append(")\n");
-        }
+        Outline<Navigation.SymbolRow> outline = Xaml.XamlOutline.Of(xaml.File.Tree, TextSnapshot.From(xaml.File.Text), xaml.Document.Path);
+        return outline.Rows.Count == 0 ? "The file has no elements"
+            : string.Join('\n', outline.Rows.Select(row => $"{new string(' ', row.Depth * 2)}{row.Name}{row.Detail} (line {row.Position.Line + 1})"));
     }
 
     /// <summary>What a scene with no fix at a place says: its fixes are its marks', a line at a time.</summary>
