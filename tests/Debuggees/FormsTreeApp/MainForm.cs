@@ -13,6 +13,8 @@ public partial class MainForm : Form
     {
         InitializeComponent();
         List.Items.AddRange([.. Enumerable.Range(1, 40).Select(i => (object)$"Item {i}")]);
+        // Made here, not in the designer code: a password box whose text an agent is shown only as dots.
+        Controls.Add(new MaskedTextBox { Name = "Secret", PasswordChar = '*', Location = new Point(240, 168), Size = new Size(200, 23), Text = "hunter2" });
     }
 
     private void OnCount(object? sender, EventArgs e)

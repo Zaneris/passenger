@@ -147,6 +147,12 @@ public sealed class McpWpfAppTests : McpRig
         Assert.Contains("\"Help asked\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Hello" })), StringComparison.Ordinal);
         Assert.Contains("ListBox#List", Text(await Call(client, McpTools.AppScroll, new() { ["control"] = "#List", ["dy"] = 3 })), StringComparison.Ordinal);
 
+        // A password box's text, whatever its password character, reaches an agent only as dots: in the tree and its details.
+        string secret = Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Secret" }));
+        Assert.True(secret.Contains("\"•••••••\"", StringComparison.Ordinal) && !secret.Contains("hunter2", StringComparison.Ordinal), $"The password box showed an agent {secret}");
+        JsonElement masked = await Call(client, McpTools.AppDetails, new() { ["control"] = "#Secret" });
+        Assert.False(masked.ToString().Contains("hunter2", StringComparison.Ordinal), $"The password box's details showed an agent its text: {masked}");
+
         await Call(client, McpTools.Stop);
     }
 }
