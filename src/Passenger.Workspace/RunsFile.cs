@@ -82,6 +82,10 @@ public sealed record RunPart(string Project, ProjectLaunchAction? Action, string
     [JsonIgnore]
     public string? Unread { get; init; }
 
+    /// <summary>An entry of passenger-runs.json's parts that is no object (a string, a number), kept as written.</summary>
+    [JsonIgnore]
+    public JsonElement? NoObject { get; init; }
+
     /// <summary>Whether Visual Studio's multi-project launch profile can hold it: a .NET project with nothing of its own but
     /// its action and launch profile.</summary>
     [JsonIgnore]
@@ -145,8 +149,8 @@ public static class RunsFile
     }
 
     /// <summary>The runs a file's text holds, their paths read from the <paramref name="folder"/>; none with why for a text
-    /// that is no object of runs, or of a later format. A run without a name, or an item that is no object, is passed over;
-    /// a part this Passenger cannot read keeps its run, which says why it cannot start.</summary>
+    /// that is no object of runs, or of a later format. A run without a name, or a run's item that is no object, is passed
+    /// over; a part this Passenger cannot read, one that is no object too, keeps its run, which says why it cannot start.</summary>
     public static (IReadOnlyList<RunsFileRun> Runs, string? Problem) Parse(string text, string folder)
     {
         try
@@ -169,7 +173,8 @@ public static class RunsFile
                 {
                     continue;
                 }
-                List<RunPart> parts = [.. JsonMembers.Items(items[i], PartsKey).Where(p => p.ValueKind == JsonValueKind.Object).Select(p => PartOf(p, folder))];
+                List<RunPart> parts = [.. JsonMembers.Items(items[i], PartsKey).Select(p => p.ValueKind == JsonValueKind.Object ? PartOf(p, folder)
+                    : new RunPart(string.Empty, ProjectLaunchAction.Start, string.Empty) { Kind = RunPartKind.Command, Unread = "it is no object of a part's members", NoObject = p.Clone() })];
                 runs.Add(new RunsFileRun(name, parts) { Read = JsonObject.Create(items[i].Clone()), Index = i });
             }
             return (runs, null);
@@ -405,7 +410,7 @@ public static class RunsFile
     {
         JsonObject value = run.Read is { } read ? (JsonObject)read.DeepClone() : [];
         value["name"] = run.Name;
-        value[PartsKey] = new JsonArray([.. run.Parts.Select(p => (JsonNode)PartValue(p, folder))]);
+        value[PartsKey] = new JsonArray([.. run.Parts.Select(p => p.NoObject is { } kept ? JsonSerializer.SerializeToNode(kept) : PartValue(p, folder))]);
         return value;
     }
 
