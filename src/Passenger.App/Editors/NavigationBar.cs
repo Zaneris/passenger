@@ -480,6 +480,7 @@ public sealed class NavigationBar
         {
             SymbolRow.HeadingKind => "heading",
             SymbolRow.NodeKind => "node",
+            SymbolRow.ElementKind => "element",
             SymbolRow.FileKind => "file",
             _ => SymbolKinds.Name(kind),
         };
