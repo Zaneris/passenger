@@ -39,6 +39,20 @@ public static class WordCharacters
         c < '\u0080' ? char.IsAsciiLetterOrDigit(c) || c == '_'
         : char.IsLetterOrDigit(c) || char.IsSurrogate(c) || CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.ConnectorPunctuation;
 
+    /// <summary>Whether text typed inside a word keeps it one word: every character a word's own, or a mark or joiner
+    /// carrying one on.</summary>
+    public static bool KeepsWord(string typed)
+    {
+        foreach (char c in typed)
+        {
+            if (!IsWord(c) && !Extends(c))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /// <summary>Whether a character carries on the one before it: a mark, or a joiner (U+200C, U+200D).</summary>
     public static bool Extends(char c) =>
         c >= '\u0300' && (c is '\u200C' or '\u200D'

@@ -18,10 +18,13 @@ public abstract class CarriedColours : IHighlighter, IBraceMatcher, IDisposable
     /// the text it made.</summary>
     private readonly List<(int Version, IReadOnlyList<TextEdit> Edits)> history = [];
 
-    protected CarriedColours(IHighlighter syntax, TextDocument text)
+    /// <param name="keepsName">The language's rule whether text typed inside a coloured name keeps it one name, by what its
+    /// names are made of; text it refuses would split the name, so the name's colour is not carried over it.</param>
+    protected CarriedColours(IHighlighter syntax, TextDocument text, Func<string, bool> keepsName)
     {
         this.syntax = syntax;
         this.text = text;
+        KeepsName = keepsName;
         syntax.Changed += OnSyntaxChanged;
         text.Changed += OnDocumentChanged;
     }
@@ -38,6 +41,9 @@ public abstract class CarriedColours : IHighlighter, IBraceMatcher, IDisposable
     /// <summary>While <see cref="Changed"/> is raised, where the colours it was raised for differ: the parser's own range,
     /// or where those over it changed; null where that is not known.</summary>
     public TextRange? ChangedWithin { get; private set; }
+
+    /// <summary>Whether text typed inside a coloured name keeps it one name, by the language's rule.</summary>
+    protected Func<string, bool> KeepsName { get; }
 
     /// <summary>How many changes the colours held are carried through to the text as it stands, each range drawn going
     /// through each: a run of typing in one place is one, however long the colours take to come.</summary>
@@ -137,7 +143,7 @@ public abstract class CarriedColours : IHighlighter, IBraceMatcher, IDisposable
         }
         for (int i = first; i < history.Count; i++)
         {
-            CarriedSpans.Forward(found, history[i].Edits, Word);
+            CarriedSpans.Forward(found, history[i].Edits, KeepsName);
         }
         return found;
     }
@@ -176,20 +182,6 @@ public abstract class CarriedColours : IHighlighter, IBraceMatcher, IDisposable
         merged.AddRange(colours);
         merged.Sort(static (a, b) => a.Start.CompareTo(b.Start));
         return merged;
-    }
-
-    /// <summary>Whether text typed inside a coloured name keeps it one: letters, digits and underscores, never what would
-    /// split it.</summary>
-    protected static bool Word(string typed)
-    {
-        foreach (char c in typed)
-        {
-            if (!char.IsLetterOrDigit(c) && c != '_')
-            {
-                return false;
-            }
-        }
-        return true;
     }
 
     /// <summary>Where the changes made after a version of the text begin among those held.</summary>

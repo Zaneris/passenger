@@ -50,7 +50,7 @@ public sealed class SemanticHighlighter : CarriedColours
     private SentRequest? outAfter;
 
     public SemanticHighlighter(IHighlighter syntax, LspDocument document, SemanticTokensLegend legend)
-        : base(syntax, document.Text)
+        : base(syntax, document.Text, KeepsCSharpName)
     {
         this.document = document;
         kinds = legend.TokenTypes.Select(SemanticKinds.Of).ToArray();
@@ -274,6 +274,20 @@ public sealed class SemanticHighlighter : CarriedColours
     /// <summary>The protocol's relative encoding (each token as line and column deltas, length, type, modifiers) turned
     /// into offsets in the snapshot it was asked for, in order. Off the UI thread: a long file has hundreds of thousands
     /// of tokens, read once to count those with a colour and once to place them, each line found once.</summary>
+    /// <summary>Whether text typed inside a coloured name keeps it one C# name: every character one Roslyn reads as carrying
+    /// a name on.</summary>
+    private static bool KeepsCSharpName(string typed)
+    {
+        foreach (char c in typed)
+        {
+            if (!Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsIdentifierPartCharacter(c))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static SyntaxSpan[] Decode(int[] data, TextSnapshot snapshot, TokenKind?[] kinds)
     {
         ServerLines lines = ServerLines.Of(snapshot);

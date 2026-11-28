@@ -216,6 +216,18 @@ public sealed class GDScriptTokenizer
         return at == text.Length;
     }
 
+    /// <summary>Whether every character of a text carries an identifier on, as Godot's tokenizer reads one after its first:
+    /// text typed inside a name keeps it one name.</summary>
+    public static bool ContinuesIdentifier(string text)
+    {
+        int at = 0;
+        for (int width; (width = IdentifierContinue(text, at)) > 0;)
+        {
+            at += width;
+        }
+        return at == text.Length;
+    }
+
     private void AdvanceBy(int count)
     {
         for (int i = 0; i < count; i++)
