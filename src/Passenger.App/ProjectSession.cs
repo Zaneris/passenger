@@ -1608,10 +1608,11 @@ public sealed class ProjectSession : IAsyncDisposable
     public Web.WebLanguages? Web { get; private set; }
 
     /// <summary>Where an open file's outline comes from, which File Structure, the Structure window and an agent's outline
-    /// read: a Markdown file's headings and a GDScript's members as Passenger reads them, else the C# server's document,
-    /// else its web language's, else a Godot project's scene as Passenger reads it; null while none has it.</summary>
+    /// read: a Markdown file's headings, a XAML file's elements and a GDScript's members as Passenger reads them, else the C#
+    /// server's document, else its web language's, else a Godot project's scene as Passenger reads it; null while none has it.</summary>
     public Passenger.App.Navigation.FileOutline? OutlineOf(OpenDocument document) =>
         document.Language == Languages.Language.Markdown ? new Editors.MarkdownOutline(document.Text)
+        : document.Language == Languages.Language.Xaml ? new Xaml.XamlOutline(document.Text)
         : document.Language == Languages.Language.Gherkin ? new Editors.FeatureOutline(document.Text, () => FeatureProjectFolder(document.Path))
         : Godot.GodotScriptTypes.IsScript(document.Path) ? new Godot.GDScriptOutline(document.Text)
         : (CSharp?.For(document)?.Lsp ?? Web?.For(document)?.Lsp) is { } lsp ? Passenger.App.Navigation.FileOutline.Served(lsp)

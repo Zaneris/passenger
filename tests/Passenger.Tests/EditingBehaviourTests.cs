@@ -65,6 +65,7 @@ public sealed class EditingBehaviourTests
         Flow.StepApart<EditingBehaviourTests>("paste as plain text pastes the clipboard as it is where paste reindents it", t => t.Paste_as_plain_text_pastes_the_clipboard_as_it_is_where_paste_reindents_it());
         Flow.StepApart<EditingBehaviourTests>("statements and elements move by the syntax and unwrap takes a body out each one step of undo", t => t.Statements_and_elements_move_by_the_syntax_and_unwrap_takes_a_body_out_each_one_step_of_undo());
         Flow.StepApart<EditingBehaviourTests>("extend selection in xaml grows through the markup around the caret never a line and shrink takes it back", t => t.Extend_selection_in_xaml_grows_through_the_markup_around_the_caret_never_a_line_and_shrink_takes_it_back());
+        Flow.StepApart<EditingBehaviourTests>("a xaml file's elements outline in structure and file structure by what names them and follow its typing", t => t.A_xaml_files_elements_outline_in_structure_and_file_structure_by_what_names_them_and_follow_its_typing());
         Flow.StepApart<EditingBehaviourTests>("split line transpose delete to line ends overwrite and column mode act on their keys", t => t.Split_line_transpose_delete_to_line_ends_overwrite_and_column_mode_act_on_their_keys());
         Flow.StepApart<EditingBehaviourTests>("a control character shows its mark two columns wide a separator typed its mark one and the line goes on past each", t => t.A_control_character_shows_its_mark_two_columns_wide_a_separator_typed_its_mark_one_and_the_line_goes_on_past_each());
     }
@@ -658,6 +659,58 @@ public sealed class EditingBehaviourTests
             window.Close();
             TestFolders.Delete(folder);
         }
+    }
+
+    /// <summary>A XAML file's elements outline in Structure and File Structure as its markup nests them, each by what names it
+    /// with its type after (the root by its class, a resource by its key, an element by its name), another by its type and a
+    /// property element as written; Structure follows an element typed, and File Structure narrows to a name and goes to it.</summary>
+    private void A_xaml_files_elements_outline_in_structure_and_file_structure_by_what_names_them_and_follow_its_typing()
+    {
+        const string Xaml = "<Window xmlns=\"https://github.com/avaloniaui\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" x:Class=\"Shop.MainWindow\">\n"
+            + "    <Window.Resources>\n        <SolidColorBrush x:Key=\"Accent\" Color=\"Teal\" />\n    </Window.Resources>\n"
+            + "    <StackPanel>\n        <TextBlock Text=\"Shop\" />\n        <Button x:Name=\"Save\" Content=\"Save\" />\n    </StackPanel>\n</Window>\n";
+        string folder = TestFolders.Create("outline-");
+        File.WriteAllText(Path.Combine(folder, "MainWindow.axaml"), Xaml);
+        Passenger.App.MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
+        try
+        {
+            window.OpenFile("MainWindow.axaml");
+            Ui.Settle();
+            Ui.Run(window, Passenger.App.AppActions.ShowStructure);
+            Passenger.App.ToolWindows.StructureView structure = window.StructureView;
+            Ui.WaitFor(() => structure.Rows.Any(r => r.Name == "Save"), () => $"the window's elements in Structure: {Listed(structure.Rows)} ({structure.Said})");
+            (string Name, int Depth, string? Detail)[] nested = [("Shop.MainWindow", 0, ": Window"), ("Window.Resources", 1, null), ("Accent", 2, ": SolidColorBrush"),
+                ("StackPanel", 1, null), ("TextBlock", 2, null), ("Save", 2, ": Button")];
+            Assert.Equal(nested, structure.Rows.Select(r => (r.Name, r.Depth, r.Detail)));
+
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.Press(window, "ESCAPE");
+            Ui.PlaceAfter(editor, "<TextBlock Text=\"Shop\" />");
+            Ui.Press(window, "ENTER");
+            window.KeyTextInput("<CheckBox Name=\"Fresh\" />");
+            Ui.WaitFor(() => structure.Rows.Any(r => r.Name == "Fresh"), () => $"Structure to follow the element typed: {Listed(structure.Rows)}");
+            Assert.Equal([("TextBlock", 2), ("Fresh", 2), ("Save", 2)], structure.Rows.Skip(4).Select(r => (r.Name, r.Depth)));
+
+            Ui.Run(window, Passenger.App.AppActions.FileStructure);
+            Passenger.App.Navigation.SymbolPopup popup = Assert.IsType<Passenger.App.Navigation.SymbolPopup>(window.Popup);
+            Ui.WaitFor(() => popup.IsSettled && popup.Rows.Any(r => r.Name == "Save"), () => $"the window's elements in File Structure: {Listed(popup.Rows)}");
+            window.KeyTextInput("Save");
+            Ui.WaitFor(() => popup.IsSettled && popup.Rows.Count > 0 && popup.Rows[^1].Name == "Save", () => $"File Structure filtered to Save, not [{Listed(popup.Rows)}]");
+            for (int i = 0; i < popup.Rows.Count && popup.Selected?.Name != "Save"; i++)
+            {
+                // The elements it is under come first, for where the match is.
+                Ui.Press(window, "DOWN");
+            }
+            Ui.Press(window, "ENTER");
+            Assert.Contains("<Button x:Name=\"Save\"", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+
+        static string Listed(IEnumerable<Passenger.App.Navigation.SymbolRow> rows) => string.Join(", ", rows.Select(r => $"{new string(' ', r.Depth)}{r.Name}"));
     }
 
     /// <summary>Split Line breaks the line leaving the caret before the break, Transpose swaps the characters around it, Delete

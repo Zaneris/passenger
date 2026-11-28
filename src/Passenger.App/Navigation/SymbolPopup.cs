@@ -42,6 +42,9 @@ public sealed record SymbolRow(string Name, string? Detail, string? Where, Symbo
 
     /// <summary>A component of a Windows Forms form's design, a kind of Passenger's own as <see cref="NodeKind"/> is.</summary>
     public const SymbolKind ComponentKind = (SymbolKind)103;
+
+    /// <summary>An object element of a XAML file, a kind of Passenger's own as <see cref="NodeKind"/> is.</summary>
+    public const SymbolKind ElementKind = (SymbolKind)104;
 }
 
 /// <summary>A query over symbols, answered as it is typed (a moment after the last key, the previous answer given
@@ -180,7 +183,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
     /// heading's their own, as every badge has them (<see cref="KindBadges"/>).</summary>
     public static (string Letter, string Brush) Badge(SymbolKind kind) => KindBadges.Of(kind switch
     {
-        SymbolRow.NodeKind or SymbolRow.ComponentKind => BadgeKind.Node,
+        SymbolRow.NodeKind or SymbolRow.ComponentKind or SymbolRow.ElementKind => BadgeKind.Node,
         SymbolRow.HeadingKind => BadgeKind.Heading,
         _ => KindBadges.Of(kind),
     });
