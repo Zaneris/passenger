@@ -77,6 +77,9 @@ public sealed class WindowsPackageLayoutsTests
         Assert.DoesNotContain(unpackaged, f => f.Path == "Package.appxmanifest");
         Assert.All(WinUIApps.Logos(), logo => Assert.Equal((byte[])[0x89, 0x50, 0x4E, 0x47], logo.Png[..4]));
         Assert.Equal("_2nd.App", WinUIApps.Namespace("2nd.App"));
+        // A name as long as an identity holds is cut short before the unique part that keeps two projects apart.
+        Guid unique = Guid.Parse("0123456789abcdef0123456789abcdef");
+        Assert.Equal("Contoso.Warehouse.0123456789abcdef0123456789abcdef", WinUIApps.IdentityOf("Contoso.Warehouse.Inventory.Management.Console.App", unique));
     }
 
     private void The_manifest_gives_the_identity_the_applications_and_the_packages_it_depends_on()
