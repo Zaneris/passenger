@@ -211,13 +211,15 @@ public sealed partial class VimTests
             + "start, where from the first '.' of \"x.\", \".\", \".\", \"a\" it passes the second '.' and the \"a\" after it alike, and "
             + "from the '.' of \"x!\", \".\", \")\" it stays, the ')' carrying the '.''s end",
             (vimCase, _, passenger) => vimCase.Keys.Contains(")") && passenger.Seen.Contains(LoneMarks)),
-        ("A characterwise visual change of one line made after $ and made again by . takes from the caret to its line's end, "
-            + "as . makes a visual change again from the caret, where Vim's takes that only from the line's first two columns and "
-            + "from any other the line's start to the caret, whatever the stretch was: Vim's . there follows no rule of its own",
+        ("A characterwise visual change of one line made after $ and made again by . on a line holding a character several "
+            + "columns wide (a tab, a control character's mark) takes from the line's first two columns to its end and from any "
+            + "later the line's start to the caret by the column the caret stands in, where Vim's goes by no rule found there: "
+            + "after j, k or a column's | onto a tab it takes from the caret to the line's end",
             (vimCase, _, passenger) => vimCase.Commands.Select((command, at) => (command, at)).Any(made => (made.command.Keys[0] == "v"
                 || (made.command.Keys[0] is "V" or VimKeys.CtrlV && passenger.Seen.Contains(CharwiseChange)))
                 && (made.command.Keys.Contains("$") || (made.at > 0 && vimCase.Commands[made.at - 1].Keys[^1] == "$"))
-                && vimCase.Commands.Skip(made.at).SelectMany(after => after.Keys).Contains("."))),
+                && vimCase.Commands.Skip(made.at).SelectMany(after => after.Keys).Contains("."))
+                && (passenger.Seen.Contains(HoldsControl) || passenger.Seen.Contains(HoldsTab))),
         ("is and as in visual mode within a line of an nroff macro line, which Vim's take in ways of their own past the rules "
             + "Vim mode follows: from the \"x\" of \"x\", \".P\", \"{\" as stops at the macro line's end where the operator's 2as goes "
             + "on to the \"{\"; from the blank ending \".H \" after an empty line it goes back to the \"H\", from the \"o\" of \".P o\" "
@@ -264,6 +266,7 @@ public sealed partial class VimTests
     private const string CharwiseChange = "a visual change of a characterwise stretch";
     private const string VisualSentenceNearMacro = "is or as in visual mode within a line of a macro line";
     private const string HoldsControl = "a control character shown as a mark";
+    private const string HoldsTab = "a tab";
     private const string FormFeedAlone = "a line opening with a form feed alone or a form feed and a blank";
 
     /// <summary>A case of 1 to 6 lines and 1 to 4 commands, the cursor anywhere on a character; a visual stretch the
@@ -701,14 +704,15 @@ public sealed partial class VimTests
     private const string Asked = "asked the host";
 
     /// <summary>What Passenger's side came through that <see cref="Kept"/> may name: two lines in a row that each hold one
-    /// sentence's end mark or closer alone, a control character, a line opening with a form feed alone or before a blank, a
-    /// text of end marks, closers and white alone, a line of blanks opening the text or a paragraph, a word of end marks and
-    /// closers alone.</summary>
+    /// sentence's end mark or closer alone, a control character, a tab, a line opening with a form feed alone or before a
+    /// blank, a text of end marks, closers and white alone, a line of blanks opening the text or a paragraph, a word of end
+    /// marks and closers alone.</summary>
     private static void Observe(TextSnapshot text, HashSet<string> seen)
     {
         seen.UnionWith(Enumerable.Range(1, Math.Max(0, text.LineCount - 1)).Any(line => LoneMark(text, line - 1) && LoneMark(text, line)) ? [LoneMarks] : []);
         string all = text.ToString();
         seen.UnionWith(all.Any(c => ControlCharacters.MarkOf(c) is not null) ? [HoldsControl] : []);
+        seen.UnionWith(all.Contains('\t', StringComparison.Ordinal) ? [HoldsTab] : []);
         seen.UnionWith(Enumerable.Range(0, text.LineCount).Any(line => text.GetLine(line) is { Length: > 0 } feed && text[feed.Start] == '\f'
             && (feed.Length == 1 || text[feed.Start + 1] is ' ' or '\t')) ? [FormFeedAlone] : []);
         seen.UnionWith(all.Any(c => c != '\n') && all.All(c => EndMark(c) || c is ' ' or '\t' or '\n') ? [MarksAlone] : []);

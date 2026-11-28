@@ -467,16 +467,21 @@ public sealed partial class Vim
         int tab = view.Indent.TabWidth;
         if (to == VimMode.VisualBlock)
         {
+            // A stretch $ took to its line's end makes a block reaching each line's end.
             Region r = regions[Math.Clamp(visualPrimary, 0, regions.Count - 1)];
+            bool toEnd = visualAims.Length == regions.Count && visualAims[Math.Clamp(visualPrimary, 0, regions.Count - 1)] == int.MaxValue;
             regions = [r];
             visualPrimary = 0;
             visualAims = [-1];
-            blockColumns = (TextNavigation.VisualColumn(text, r.Anchor, tab), TextNavigation.VisualColumn(text, r.Cursor, tab), false);
+            blockColumns = (TextNavigation.VisualColumn(text, r.Anchor, tab), TextNavigation.VisualColumn(text, r.Cursor, tab), toEnd);
         }
         else if (Mode == VimMode.VisualBlock)
         {
+            // A block after $ leaves its cursor on its line's end, past the last character, aiming there.
             Region r = regions[0];
-            regions = [new Region(r.Anchor, VimMotions.OffsetAtColumn(text, text.GetLineFromOffset(r.Cursor), blockColumns.Cursor, tab))];
+            int line = text.GetLineFromOffset(r.Cursor);
+            regions = [new Region(r.Anchor, blockColumns.ToEnd ? LineEndOf(text, line) : VimMotions.OffsetAtColumn(text, line, blockColumns.Cursor, tab))];
+            visualAims = [blockColumns.ToEnd ? int.MaxValue : -1];
         }
         Mode = to;
         return ShowVisual(text, view);

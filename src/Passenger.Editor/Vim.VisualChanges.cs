@@ -265,6 +265,11 @@ public sealed partial class Vim
             int last = TextNavigation.VisualColumn(text, caret, tab) + (caret < end.End && text[caret] == '\t' ? CellsOf(text, caret, tab) - 1 : 0) + extent.Columns;
             return new Region(caret, TextNavigation.VisualColumn(text, end.End, tab) <= last ? end.End : Math.Max(caret, VimMotions.OffsetAtColumn(text, line, last, tab)));
         }
+        if (extent.Lines == 0 && CaretColumn(text, caret, tab) >= 2)
+        {
+            // A line's stretch $ took to its end is taken again from past the line's second column as its start to the caret.
+            return new Region(end.Start, caret);
+        }
         // Past the last line's end, the stretch takes its line break.
         return new Region(caret, extent.ToEnd || TextNavigation.VisualColumn(text, end.End, tab) <= extent.Columns ? end.End : VimMotions.OffsetAtColumn(text, line, extent.Columns, tab));
     }
